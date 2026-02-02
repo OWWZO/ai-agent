@@ -1,0 +1,53 @@
+# /usr/local/bin/docker-compose -f /docs/dev-ops/environment/environment-docker-compose-2.4.yml up -d
+version: '3.8'
+# docker-compose -f docker-compose-mcp.yml up -d
+# 你需要修改system为你自身系统的仓库名
+services:
+  mcp-server-csdn-app:
+    image: fuzhengwei/mcp-server-csdn-app:1.1
+    container_name: mcp-server-csdn-app
+    restart: always
+    ports:
+      - "8101:8101"
+    volumes:
+      - ./log:/data/log
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8101
+      - CSDN_API_CATEGORIES=Java场景面试宝典
+      - CSDN_API_COOKIE=uuid_tt_dd=10_37460597350-1744844879196-503302; fid=20_62169880674-1744844879383-403592; c_first_ref=default; c_first_page=https%3A//www.csdn.net/; c_segment=6; dc_sid=f10c7d1fd119eb1bf959a585479b0857; c_ab_test=1; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1744844880; HMACCOUNT=E7518BE6E90847F7; loginbox_strategy=%7B%22taskId%22%3A349%2C%22abCheckTime%22%3A1744844880595%2C%22version%22%3A%22exp11%22%7D; SESSION=beb961db-b099-4263-8cde-5f48147381d7; UserName=weixin_46755643; UserInfo=65db8867619a4646b9ae059b8446c725; UserToken=65db8867619a4646b9ae059b8446c725; UserNick=%E5%B0%8F%E5%82%85%E5%93%A5%E7%9A%84%E7%A0%81%E4%BB%94; AU=1C3; UN=weixin_46755643; BT=1744844895726; p_uid=U010000; csdn_newcert_weixin_46755643=1; c_pref=https%3A//mpbeta.csdn.net/; c_ref=https%3A//www.csdn.net/; dc_session_id=10_1745131415797.140449; c_dsid=11_1745131415934.929779; c_page_id=default; log_Id_pv=1; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1745131418; creativeSetApiNew=%7B%22toolbarImg%22%3A%22https%3A//img-home.csdnimg.cn/images/20231011044944.png%22%2C%22publishSuccessImg%22%3A%22https%3A//img-home.csdnimg.cn/images/20240229024608.png%22%2C%22articleNum%22%3A0%2C%22type%22%3A0%2C%22oldUser%22%3Afalse%2C%22useSeven%22%3Atrue%2C%22oldFullVersion%22%3Afalse%2C%22userName%22%3A%22weixin_46755643%22%7D; log_Id_view=22; dc_tos=sv0810
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - my-network
+
+  mcp-server-weixin-app:
+    image: fuzhengwei/mcp-server-weixin-app:1.1
+    container_name: mcp-server-weixin-app
+    restart: always
+    ports:
+      - "8102:8102"
+    volumes:
+      - ./log:/data/log
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8102
+      - WEIXIN_API_ORIGINAL_ID=gh_e067c267e056
+      - WEIXIN_API_APP_ID=wx5a228ff69e28a91f
+      - WEIXIN_API_APP_SECRET=0bea03aa1310bac050aae79dd8703928
+      - WEIXIN_API_TEMPLATE_ID=O8qI6gy75F-bXfPiQugInTMLA0MRzaMff9WSBb16cFk
+      - WEIXIN_API_TOUSER=or0Ab6ivwmypESVp_bYuk92T6SvU
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge

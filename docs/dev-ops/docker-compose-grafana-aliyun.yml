@@ -1,0 +1,62 @@
+# Grafana MCP server https://github.com/grafana/mcp-grafana
+version: '3.9'
+# 执行脚本；docker-compose -f docker-compose-grafana-aliyun.yml up -d
+services:
+  # 数据采集
+  prometheus:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/prometheus:2.47.2
+    container_name: prometheus
+    restart: always
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - my-network
+
+  # 监控界面
+  grafana:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/grafana:10.2.0
+    container_name: grafana
+    restart: always
+    ports:
+      - 4000:4000
+      - 3000:3000
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana:/etc/grafana
+    networks:
+      - my-network
+
+  # 监控服务 mcp https://github.com/grafana/mcp-grafana
+  grafana-mcp:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/grafana-mcp:latest
+    container_name: grafana-mcp
+    ports:
+      - "8000:8000"
+    environment:
+      - GRAFANA_URL=http://grafana:4000
+      - GRAFANA_API_KEY=glsa_ELtYrUYyZUsZQSrwUmTC46ndtYacghyc_88cd15c4
+    restart: unless-stopped
+    networks:
+      - my-network
+
+  # 模拟指标库
+  node-exporter:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/node-exporter:v1.9.1
+    container_name: node-exporter
+    restart: always
+    ports:
+      - "9100:9100"
+    volumes:
+      - /tmp:/host/tmp:ro
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.textfile.directory=/host/tmp'
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge

@@ -1,0 +1,73 @@
+# /usr/local/bin/docker-compose -f /docs/dev-ops/environment/environment-docker-compose-2.4.yml up -d
+version: '3.8'
+# docker-compose -f docker-compose-app.yml up -d
+services:
+  # 部署前端项目
+  ai-agent-station-front-app:
+    image: registry.cn-hangzhou.aliyuncs.com/xfg-studio/nginx:latest
+    container_name: ai-agent-station-front-app
+    restart: always
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/html:/usr/share/nginx/html
+    privileged: true
+    networks:
+      - my-network
+
+  # 管理后台
+  ai-agent-station-admin-app:
+#    image: fuzhengwei/ai-agent-station-admin-app:1.0
+    image: registry.cn-hangzhou.aliyuncs.com/fuzhengwei/ai-agent-station-admin-app:1.0
+    container_name: ai-agent-station-admin-app
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    networks:
+      - my-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3002" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-agent-front.rule=Host(`localhost`)"
+      - "traefik.http.services.ai-agent-front.loadbalancer.server.port=3002"
+
+  # 进入后端命令 docker exec -it ai-agent-station-study-app /bin/bash
+  ai-agent-station-study-app:
+#    image: fuzhengwei/ai-agent-station-study-app:1.1
+    image: registry.cn-hangzhou.aliyuncs.com/fuzhengwei/ai-agent-station-study-app:1.1
+    container_name: ai-agent-station-study-app
+    restart: on-failure
+    ports:
+      - "8099:8099"
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8099
+      - SPRING_DATASOURCE_MYSQL_USERNAME=root
+      - SPRING_DATASOURCE_MYSQL_PASSWORD=123456
+      - SPRING_DATASOURCE_MYSQL_URL=jdbc:mysql://mysql:3306/ai-agent-station-study?serverTimezone=UTC&characterEncoding=utf8&autoReconnect=true&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_MYSQL_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver
+      - SPRING_DATASOURCE_PGVECTOR_DRIVER_CLASS_NAME=org.postgresql.Driver
+      - SPRING_DATASOURCE_PGVECTOR_USERNAME=postgres
+      - SPRING_DATASOURCE_PGVECTOR_PASSWORD=postgres
+      - SPRING_DATASOURCE_PGVECTOR_URL=jdbc:postgresql://vector_db:5432/ai-rag-knowledge?connectTimeout=120
+      - SPRING_AI_OPENAI_BASE_URL=https://apis.itedus.cn
+      - SPRING_AI_OPENAI_API_KEY=sk-Vb7vnKNtGFAsKGhz6765DfE3F1974908Bb6650D7169d5aD7
+      - SPRING_AI_OPENAI_AGENT_AUTO-CONFIG_ENABLED=true
+    volumes:
+      - ./log:/data/log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge

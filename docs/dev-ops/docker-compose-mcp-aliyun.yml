@@ -1,0 +1,55 @@
+# /usr/local/bin/docker-compose -f /docs/dev-ops/environment/environment-docker-compose-2.4.yml up -d
+version: '3.8'
+# docker-compose -f docker-compose-mcp-aliyun.yml up -d
+# 你需要修改system为你自身系统的仓库名
+services:
+  mcp-server-csdn-app:
+    #    image: fuzhengwei/mcp-server-csdn-app:1.1
+    image: registry.cn-hangzhou.aliyuncs.com/fuzhengwei/mcp-server-csdn-app:1.1
+    container_name: mcp-server-csdn-app
+    restart: always
+    ports:
+      - "8101:8101"
+    volumes:
+      - ./log:/data/log
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8101
+      - CSDN_API_CATEGORIES=Java场景面试宝典
+      - CSDN_API_COOKIE=uuid_tt_dd=10_6645150240-1755433252939-628136; fid=20_12896762606-1755433251318-732108; c_first_ref=default; c_segment=8; https_waf_cookie=0e0b79b3-a456-4b4137d1813c84566471ee9ed9f8b3ad40e2; dc_sid=f0267d8badb04ff102f51395d26e575c; c_ab_test=1; Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1755433252; HMACCOUNT=D1E898D8115E0083; SESSION=3d201838-5f32-4755-b70d-5aa070bf7b95; UserName=weixin_46755643; UserInfo=e91b876fc8614f32a145263fdad14d05; UserToken=e91b876fc8614f32a145263fdad14d05; UserNick=%E5%8C%97%E4%BA%AC%E5%B0%8F%E7%A0%81%E4%BB%94; AU=1C3; UN=weixin_46755643; BT=1755433268638; p_uid=U010000; csdn_newcert_weixin_46755643=1; _clck=mcwc42%7C2%7Cfyj%7C0%7C2055; c_pref=default; dc_session_id=10_1755919660427.839630; c_first_page=https%3A//www.csdn.net/; c_dsid=11_1755919661019.727129; c-sidebar-collapse=0; Hm_lpvt_6bcd52f51e9b3dce32bec4a3997715ac=1755919661; bc_bot_session=1755919661c86fb07dedba383a; creativeSetApiNew=%7B%22toolbarImg%22%3A%22https%3A//img-home.csdnimg.cn/images/20230921102607.png%22%2C%22publishSuccessImg%22%3A%22https%3A//img-home.csdnimg.cn/images/20240229024608.png%22%2C%22articleNum%22%3A1272%2C%22type%22%3A2%2C%22oldUser%22%3Atrue%2C%22useSeven%22%3Afalse%2C%22oldFullVersion%22%3Atrue%2C%22userName%22%3A%22weixin_46755643%22%7D; creative_btn_mp=1; log_Id_view=48; log_Id_click=1; waf_captcha_marker=c22cf8fbe0c86c583cf6573ad52acfca127722eab6d69ed9736cab84ffefb2f2; c_ref=https%3A//www.csdn.net/; c_page_id=default; dc_tos=t1fgab; log_Id_pv=2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - my-network
+
+  mcp-server-weixin-app:
+    #    image: fuzhengwei/mcp-server-weixin-app:1.1
+    image: registry.cn-hangzhou.aliyuncs.com/fuzhengwei/mcp-server-weixin-app:1.1
+    container_name: mcp-server-weixin-app
+    restart: always
+    ports:
+      - "8102:8102"
+    volumes:
+      - ./log:/data/log
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8102
+      - WEIXIN_API_ORIGINAL_ID=gh_e067c267e056
+      - WEIXIN_API_APP_ID=wx5a228ff69e28a91f
+      - WEIXIN_API_APP_SECRET=0bea03aa1310bac050aae79dd8703928
+      - WEIXIN_API_TEMPLATE_ID=O8qI6gy75F-bXfPiQugInTMLA0MRzaMff9WSBb16cFk
+      - WEIXIN_API_TOUSER=or0Ab6ivwmypESVp_bYuk92T6SvU
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge

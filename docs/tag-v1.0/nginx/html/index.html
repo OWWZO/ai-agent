@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Auto Agent 智能体 - By 小傅哥</title>
+    <script src="js/3.4.17.js"></script>
+    <script src="js/marked.min.js"></script>
+    <script src="js/purify.min.js"></script>
+    <script src="js/highlight.min.js"></script>
+    <script src="js/api-service.js"></script>
+    <link rel="stylesheet" href="css/github.min.css">
+    <link rel="stylesheet" href="css/css2.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 自定义样式 */
+        .stage-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 8px;
+            text-transform: uppercase;
+        }
+
+        .stage-analysis {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .stage-execution {
+            background-color: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .stage-supervision {
+            background-color: #fff3e0;
+            color: #f57c00;
+        }
+
+        .stage-summary {
+            background-color: #e8f5e8;
+            color: #388e3c;
+        }
+
+        .stage-error {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+
+        .sub-type-indicator {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 500;
+            margin-left: 4px;
+            background-color: rgba(0, 0, 0, 0.1);
+            color: rgba(0, 0, 0, 0.7);
+        }
+        
+        /* 智能体卡片样式 */
+        .agent-card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 1rem;
+            background-color: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        .agent-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-color: #d1d5db;
+        }
+        
+        .agent-card.selected {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+        
+        .agent-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        
+        .agent-icon::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.1;
+            z-index: -1;
+        }
+        
+        .agent-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            color: #1f2937;
+        }
+        
+        .agent-description {
+            font-size: 0.875rem;
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+        
+        .agent-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #3b82f6;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+        }
+        
+        /* 案例卡片样式 */
+        .case-card {
+            background-color: white;
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: 1px solid #e5e7eb;
+            margin-bottom: 0.25rem;
+        }
+        
+        .case-card:hover {
+            background-color: #f9fafb;
+            border-color: #d1d5db;
+        }
+        
+        .case-card.selected {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        .case-title {
+            font-weight: 500;
+            font-size: 0.75rem;
+            color: #374151;
+            display: flex;
+            align-items: center;
+        }
+        
+        .case-title svg {
+            margin-right: 0.25rem;
+            flex-shrink: 0;
+        }
+        
+        /* 下拉菜单案例项样式 */
+        .dropdown-case-item {
+            display: flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 0.75rem;
+        }
+        
+        .dropdown-case-item:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .dropdown-case-item.selected {
+            background-color: #eff6ff;
+            color: #2563eb;
+        }
+        
+        /* 步数选择器样式 */
+        .steps-selector {
+            display: flex;
+            align-items: center;
+            background-color: white;
+            border-radius: 8px;
+            padding: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .step-button {
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #6b7280;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            margin: 0 0.25rem;
+        }
+        
+        .step-button:hover {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        
+        .step-button.selected {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        /* 动画效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .case-container {
+            animation: fadeIn 0.3s ease-in-out;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* 动画效果 */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+
+        .markdown-content {
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .markdown-content h1 { font-size: 1.5em; }
+        .markdown-content h2 { font-size: 1.3em; }
+        .markdown-content h3 { font-size: 1.2em; }
+        .markdown-content h4 { font-size: 1.1em; }
+
+        .markdown-content p {
+            margin: 8px 0;
+        }
+
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+
+        .markdown-content li {
+            margin: 4px 0;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #3498db;
+            margin: 16px 0;
+            padding: 8px 16px;
+            background: #f8f9fa;
+            color: #555;
+            font-style: italic;
+        }
+
+        .markdown-content code {
+            background: #f1f3f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d73a49;
+        }
+
+        .markdown-content pre {
+            background: #f6f8fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        .markdown-content pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            font-size: 0.85em;
+        }
+
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+        }
+
+        .markdown-content th,
+        .markdown-content td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .markdown-content th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        .markdown-content a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .markdown-content a:hover {
+            text-decoration: underline;
+        }
+
+        .markdown-content strong {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .markdown-content em {
+            font-style: italic;
+            color: #555;
+        }
+
+        @keyframes messageSlideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message {
+            animation: messageSlideIn 0.3s ease-out;
+        }
+
+        /* 滚动条样式 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+
+        .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #d1d5db transparent;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col bg-gray-50 font-sans">
+<!-- Top Navigation -->
+<nav class="border-b bg-white px-4 py-3 flex items-center gap-3 shadow-sm sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+                <span class="text-white font-bold text-sm">🤖</span>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800">AI Auto Agent By 小傅哥</h1>
+        </div>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center">
+        <div class="flex items-center gap-3 text-gray-600">
+            <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+            <span class="font-medium">智能对话助手 - 实时流式交互体验</span>
+            <span class="text-xl">🐏</span>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <button id="newChatBtn" class="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            新建对话
+        </button>
+
+        <button id="clearAllChatsBtn" class="flex items-center gap-1 px-3 py-2 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            清空对话
+        </button>
+    </div>
+</nav>
+
+<div class="flex-1 flex overflow-hidden">
+    <!-- 侧边栏 -->
+    <aside id="sidebar" class="w-64 bg-white border-r overflow-y-auto transition-all duration-300 ease-in-out shadow-sm custom-scrollbar">
+        <div class="p-4">
+            <h2 class="font-bold mb-3 text-lg text-gray-800 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+                对话历史
+            </h2>
+            <ul id="chatList" class="space-y-2">
+                <!-- 对话历史列表 -->
+            </ul>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
+        <!-- 双面板内容区域 -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- 左侧思考过程面板 -->
+            <div class="w-1/2 flex flex-col border-r border-gray-200 bg-white">
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                    <span class="text-lg">🧠</span>
+                    <h3 class="font-semibold text-gray-800">AI思考执行过程</h3>
+                </div>
+                <div id="thinkingMessages" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                            <div class="text-sm text-primary-800">
+                                <strong>AI助手:</strong> 您好！我是AI Auto Agent智能对话助手，请在右侧输入您的问题，我将在这里展示思考和执行过程。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧结果面板 -->
+            <div class="w-1/2 flex flex-col bg-white">
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                    <span class="text-lg">📋</span>
+                    <h3 class="font-semibold text-gray-800">最终执行结果</h3>
+                </div>
+                <div id="resultMessages" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                            <div class="text-sm text-primary-800">
+                                <strong>AI助手:</strong> 这里将显示AI的最终执行结果和总结。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部输入区域 -->
+        <div class="border-t border-gray-200 bg-white p-4">
+            <!-- 加载状态 -->
+            <div id="loading" class="hidden text-center py-2 text-primary-600">
+                <div class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="font-medium">AI正在思考中，请稍候...</span>
+                </div>
+            </div>
+
+            <!-- 控制面板 -->
+            <div class="mb-3 p-2 bg-gray-50 rounded-lg">
+                <!-- 智能体选择区域 -->
+                <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            <a href="select-agent.html" class="flex items-center text-xs font-semibold text-gray-800 hover:text-primary-600 transition-colors">选择智能体 <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg></a>
+                        </div>
+                        
+                        <!-- 智能体下拉选择框 -->
+                        <div class="relative">
+                            <select id="agentSelector" class="text-xs bg-white border border-gray-300 rounded-lg px-2 py-1 pr-6 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200 min-w-[150px]">
+                                <option value="">选择智能体...</option>
+                            </select>
+                            <div id="agentSelectorLoading" class="hidden absolute right-2 top-1/2 transform -translate-y-1/2">
+                                <svg class="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 最大执行步数选择 -->
+                    <div class="flex items-center">
+                        <span class="text-xs font-medium text-gray-700 mr-1">最大执行步数:</span>
+                        <div class="steps-selector">
+                            <div class="step-button" data-step="1">1</div>
+                            <div class="step-button" data-step="2">2</div>
+                            <div class="step-button" data-step="3">3</div>
+                            <div class="step-button selected" data-step="5">5</div>
+                            <div class="step-button" data-step="10">10</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-wrap gap-1">
+                    <!-- 智能体卡片 1 -->
+                    <div class="agent-card flex-1 min-w-[110px] py-1 px-2" data-agent-id="1">
+                        <div class="agent-badge text-xs">1</div>
+                        <div class="agent-icon w-8 h-8 mb-1" style="color: #0ea5e9;">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <h5 class="agent-title text-xs" style="display: none;">自动智能对话体-1</h5>
+                        <p class="agent-description text-xs mb-0">自动自主规划（CSDN发帖+通知）</p>
+                    </div>
+                    
+                    <!-- 智能体卡片 3 -->
+                    <div class="agent-card flex-1 min-w-[110px] py-1 px-2" data-agent-id="3">
+                        <div class="agent-badge text-xs">3</div>
+                        <div class="agent-icon w-8 h-8 mb-1" style="color: #8b5cf6;">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                            </svg>
+                        </div>
+                        <h5 class="agent-title text-xs" style="display: none;">自动智能对话体-3</h5>
+                        <p class="agent-description text-xs mb-0">智能对话分析</p>
+                    </div>
+                    
+                    <!-- 智能体卡片 4 -->
+                    <div class="agent-card flex-1 min-w-[110px] py-1 px-2" data-agent-id="4">
+                        <div class="agent-badge text-xs">4</div>
+                        <div class="agent-icon w-8 h-8 mb-1" style="color: #ec4899;">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <h5 class="agent-title text-xs" style="display: none;">自动智能对话体-4</h5>
+                        <p class="agent-description text-xs mb-0">ELK日志检索分析</p>
+                    </div>
+                    
+                    <!-- 智能体卡片 5 -->
+                    <div class="agent-card flex-1 min-w-[110px] py-1 px-2" data-agent-id="5">
+                        <div class="agent-badge text-xs">5</div>
+                        <div class="agent-icon w-8 h-8 mb-1" style="color: #10b981;">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                        </div>
+                        <h5 class="agent-title text-xs" style="display: none;">自动智能对话体-5</h5>
+                        <p class="agent-description text-xs mb-0">智能监控分析服务</p>
+                    </div>
+                </div>
+                
+                <!-- 最大执行步数选择器已移至智能体选择区域的顶部 -->
+                
+                <!-- 提问案例选择 - 隐藏原来的区域，改为使用下拉菜单 -->
+                <div id="caseSelectContainer" style="display: none;">
+                    <!-- 智能体案例容器 -->
+                    <div class="flex flex-wrap gap-2">
+                        <!-- 智能体1的案例 -->
+                        <div class="case-container" id="agent-1-cases" style="display: none;">
+                            <div class="case-card py-0.5 px-1.5" data-case="我需要你帮我生成一篇文章，要求如下；
+
+                        1. 场景为互联网大厂java求职者面试
+                        2. 提问的技术栈如下；
+
+                            核心语言与平台: Java SE (8/11/17), Jakarta EE (Java EE), JVM
+                            构建工具: Maven, Gradle, Ant
+                            Web框架: Spring Boot, Spring MVC, Spring WebFlux, Jakarta EE, Micronaut, Quarkus, Play Framework, Struts (Legacy)
+                            数据库与ORM: Hibernate, MyBatis, JPA, Spring Data JDBC, HikariCP, C3P0, Flyway, Liquibase
+                            测试框架: JUnit 5, TestNG, Mockito, PowerMock, AssertJ, Selenium, Cucumber
+                            微服务与云原生: Spring Cloud, Netflix OSS (Eureka, Zuul), Consul, gRPC, Apache Thrift, Kubernetes Client, OpenFeign, Resilience4j
+                            安全框架: Spring Security, Apache Shiro, JWT, OAuth2, Keycloak, Bouncy Castle
+                            消息队列: Kafka, RabbitMQ, ActiveMQ, JMS, Apache Pulsar, Redis Pub/Sub
+                            缓存技术: Redis, Ehcache, Caffeine, Hazelcast, Memcached, Spring Cache
+                            日志框架: Log4j2, Logback, SLF4J, Tinylog
+                            监控与运维: Prometheus, Grafana, Micrometer, ELK Stack, New Relic, Jaeger, Zipkin
+                            模板引擎: Thymeleaf, FreeMarker, Velocity, JSP/JSTL
+                            REST与API工具: Swagger/OpenAPI, Spring HATEOAS, Jersey, RESTEasy, Retrofit
+                            序列化: Jackson, Gson, Protobuf, Avro
+                            CI/CD工具: Jenkins, GitLab CI, GitHub Actions, Docker, Kubernetes
+                            大数据处理: Hadoop, Spark, Flink, Cassandra, Elasticsearch
+                            版本控制: Git, SVN
+                            工具库: Apache Commons, Guava, Lombok, MapStruct, JSch, POI
+                            AI：Spring AI, Google A2A, MCP（模型上下文协议）, RAG（检索增强生成）, Agent（智能代理）, 聊天会话内存, 工具执行框架, 提示填充, 向量化, 语义检索, 向量数据库（Milvus/Chroma/Redis）, Embedding模型（OpenAI/Ollama）, 客户端-服务器架构, 工具调用标准化, 扩展能力, Agentic RAG, 文档加载, 企业文档问答, 复杂工作流, 智能客服系统, AI幻觉（Hallucination）, 自然语言语义搜索
+                            其他: JUnit Pioneer, Dubbo, R2DBC, WebSocket
+                        3. 提问的场景方案可包括但不限于；音视频场景,内容社区与UGC,AIGC,游戏与虚拟互动,电商场景,本地生活服务,共享经济,支付与金融服务,互联网医疗,健康管理,医疗供应链,企业协同与SaaS,产业互联网,大数据与AI服务,在线教育,求职招聘,智慧物流,供应链金融,智慧城市,公共服务数字化,物联网应用,Web3.0与区块链,安全与风控,广告与营销,能源与环保。
+                        4. 按照故事场景，以严肃的面试官和搞笑的水货程序员谢飞机进行提问，谢飞机对简单问题可以回答出来，回答好了面试官还会夸赞和引导。复杂问题含糊其辞，回答的不清晰。
+                        5. 每次进行3轮提问，每轮可以有3-5个问题。这些问题要有技术业务场景上的衔接性，循序渐进引导提问。最后是面试官让程序员回家等通知类似的话术。
+                        6. 提问后把问题的答案详细的，写到文章最后，讲述出业务场景和技术点，让小白可以学习下来。
+
+                        根据以上内容，不要阐述其他信息，请直接提供；文章标题（需要含带技术点）、文章内容、文章标签（多个用英文逗号隔开）、文章简述（100字）
+
+                        将以上内容发布文章到CSDN
+
+                        之后进行，微信公众号消息通知，平台：CSDN、主题：为文章标题、描述：为文章简述、跳转地址：为发布文章到CSDN获取 http url 文章地址">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    创作技术文章，发表到CSDN，并推送公众号通知
+                                </div>
+                            </div>
+                        </div>
+                    
+                        <!-- 智能体3的案例 -->
+                        <div class="case-container" id="agent-3-cases" style="display: none;">
+                            <div class="case-card py-0.5 px-1.5" data-case="1+1">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    1+1
+                                </div>
+                            </div>
+                            <div class="case-card py-0.5 px-1.5" data-case="检索小傅哥的相关项目，列出一份学习计划">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    检索小傅哥的相关项目，列出一份学习计划
+                                </div>
+                            </div>
+                            <div class="case-card py-0.5 px-1.5" data-case="根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位。">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    根据当前北京互联网程序员加班情况，收入，公司文化等，列出一份大学生推荐入职单位
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 智能体4的案例 -->
+                        <div class="case-container" id="agent-4-cases" style="display: none;">
+                            <div class="case-card py-0.5 px-1.5" data-case="通过ES查询被限流的用户，给出被限流用户列表。">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    通过ES查询被限流的用户，给出被限流用户列表
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 智能体5的案例 -->
+                        <div class="case-container" id="agent-5-cases" style="display: none;">
+                            <div class="case-card py-0.5 px-1.5" data-case="分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据。展示出所有接口 TPS、QPS 响应数据。">
+                                <div class="case-title text-xs">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5 text-primary-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    分析 Grafana 普罗米修斯，group-buy-market-app 拼团系统，运行数据
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 输入框区域 -->
+            <div class="flex gap-3">
+                <!-- 提问案例下拉选择 -->
+                <div class="relative" style="min-width: 150px;">
+                    <button id="caseDropdownButton" class="w-full flex items-center justify-between px-2 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700">
+                        <div class="flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span class="text-xs">提问案例</span>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="caseDropdown" class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-md hidden max-h-48 overflow-y-auto">
+                        <!-- 案例选项将通过JavaScript动态填充 -->
+                        <div id="dropdownCaseContainer" class="p-1.5">
+                            <div id="dropdown-default-message" class="text-center py-1.5 text-gray-500 text-xs">
+                                请先选择一个智能体类型
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 输入框和发送按钮 -->
+                <input type="text" id="messageInput" placeholder="请输入您的问题..." maxlength="1000"
+                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-primary-300 focus:border-primary-500 outline-none transition-all duration-200 text-gray-700 placeholder-gray-400 text-sm">
+                <button id="sendBtn" onclick="sendMessage()"
+                        class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-primary-500 transition-colors duration-200 font-medium flex items-center gap-1.5 text-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    发送
+                </button>
+            </div>
+
+            <!-- 会话状态 -->
+            <div class="mt-3 text-center">
+                <div class="text-xs text-gray-500">
+                    会话ID: <span id="sessionId" class="font-mono"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 生成唯一的会话ID的函数
+    function generateSessionId() {
+        return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // 初始化会话ID
+    let sessionId = generateSessionId();
+    document.getElementById('sessionId').textContent = sessionId;
+
+    let isConnected = false;
+    let eventSource = null;
+    let currentStepMessages = new Map();
+    
+    // 对话历史管理
+    let currentChatHistory = {
+        sessionId: sessionId,
+        title: '',
+        timestamp: Date.now(),
+        messages: [],
+        agentId: null,
+        maxStep: '5'
+    };
+    
+    // 历史对话存储键名
+    const CHAT_HISTORY_KEY = 'ai_agent_chat_history';
+    
+    // 获取所有历史对话
+    function getChatHistory() {
+        try {
+            const history = localStorage.getItem(CHAT_HISTORY_KEY);
+            return history ? JSON.parse(history) : [];
+        } catch (e) {
+            console.error('获取历史对话失败:', e);
+            return [];
+        }
+    }
+    
+    // 保存对话到历史记录
+    function saveChatToHistory(chatData) {
+        try {
+            const history = getChatHistory();
+            // 检查是否已存在相同sessionId的对话
+            const existingIndex = history.findIndex(chat => chat.sessionId === chatData.sessionId);
+            if (existingIndex >= 0) {
+                // 更新现有对话
+                history[existingIndex] = chatData;
+            } else {
+                // 添加新对话到开头
+                history.unshift(chatData);
+            }
+            // 限制历史记录数量（最多保存50条）
+            if (history.length > 50) {
+                history.splice(50);
+            }
+            localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(history));
+            // 更新侧边栏显示
+            updateChatHistoryUI();
+        } catch (e) {
+            console.error('保存历史对话失败:', e);
+        }
+    }
+    
+    // 删除指定的历史对话
+    function deleteChatHistory(sessionId) {
+        try {
+            const history = getChatHistory();
+            const filteredHistory = history.filter(chat => chat.sessionId !== sessionId);
+            localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(filteredHistory));
+            updateChatHistoryUI();
+        } catch (e) {
+            console.error('删除历史对话失败:', e);
+        }
+    }
+    
+    // 更新侧边栏历史对话UI
+    function updateChatHistoryUI() {
+        const chatList = document.getElementById('chatList');
+        const history = getChatHistory();
+        
+        chatList.innerHTML = '';
+        
+        if (history.length === 0) {
+            chatList.innerHTML = '<li class="text-gray-500 text-sm text-center py-4">暂无历史对话</li>';
+            return;
+        }
+        
+        history.forEach(chat => {
+            const listItem = document.createElement('li');
+            listItem.className = 'group';
+            
+            const date = new Date(chat.timestamp);
+            const timeStr = date.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // 生成对话标题（取用户第一条消息的前20个字符）
+            let title = chat.title;
+            if (!title && chat.messages.length > 0) {
+                const firstUserMessage = chat.messages.find(msg => msg.type === 'user');
+                if (firstUserMessage) {
+                    title = firstUserMessage.content.substring(0, 20) + (firstUserMessage.content.length > 20 ? '...' : '');
+                }
+            }
+            if (!title) title = '新对话';
+            
+            listItem.innerHTML = `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors duration-200" 
+                     onclick="loadChatHistory('${chat.sessionId}')">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium text-gray-900 truncate" title="${title}">
+                            ${title}
+                        </div>
+                        <div class="text-xs text-gray-500">
+                            ${timeStr}
+                        </div>
+                    </div>
+                    <button class="opacity-0 group-hover:opacity-100 ml-2 p-1 text-red-500 hover:text-red-700 transition-opacity duration-200" 
+                            onclick="event.stopPropagation(); deleteChatHistory('${chat.sessionId}')" 
+                            title="删除对话">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            chatList.appendChild(listItem);
+        });
+    }
+    
+    // 加载指定的历史对话
+    function loadChatHistory(sessionId) {
+        const history = getChatHistory();
+        const chat = history.find(c => c.sessionId === sessionId);
+        
+        if (!chat) {
+            alert('对话记录不存在');
+            return;
+        }
+        
+        // 清空当前对话面板
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        const resultDiv = document.getElementById('resultMessages');
+        
+        // 保留欢迎消息，清空其他消息
+        const thinkingChildren = Array.from(thinkingDiv.children);
+        thinkingChildren.slice(1).forEach(child => child.remove());
+        
+        const resultChildren = Array.from(resultDiv.children);
+        resultChildren.slice(1).forEach(child => child.remove());
+        
+        // 恢复对话内容
+        chat.messages.forEach(message => {
+            if (message.type === 'user') {
+                addMessage(message.content, 'user');
+            } else if (message.type === 'ai') {
+                // 根据消息的stage类型决定显示在哪个面板
+                let targetContainer;
+                if (message.stage === 'summary' || message.stage === 'completed') {
+                    targetContainer = document.getElementById('resultMessages');
+                } else {
+                    targetContainer = document.getElementById('thinkingMessages');
+                }
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex items-start gap-3 message';
+                messageDiv.innerHTML = message.html;
+                targetContainer.appendChild(messageDiv);
+                
+                // 重新高亮代码块
+                messageDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+        });
+        
+        // 更新当前会话信息
+        currentChatHistory = { ...chat };
+        document.getElementById('sessionId').textContent = chat.sessionId;
+        
+        // 恢复智能体选择状态
+        if (chat.agentId) {
+            selectedAgentId = chat.agentId;
+            document.querySelectorAll('.agent-card').forEach(card => {
+                card.classList.remove('selected');
+                if (card.getAttribute('data-agent-id') === chat.agentId) {
+                    card.classList.add('selected');
+                }
+            });
+            updateDropdownCases(chat.agentId);
+        }
+        
+        // 恢复步数选择状态
+        if (chat.maxStep) {
+            selectedMaxStep = chat.maxStep;
+            document.querySelectorAll('.step-button').forEach(button => {
+                button.classList.remove('selected');
+                if (button.getAttribute('data-step') === chat.maxStep) {
+                    button.classList.add('selected');
+                }
+            });
+        }
+        
+        // 滚动到底部
+        scrollToBottom();
+    }
+    
+    // 初始化变量
+    let selectedAgentId = null;
+    let selectedMaxStep = '5'; // 默认选择5步
+
+    // 配置marked选项
+    marked.setOptions({
+        highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                try {
+                    return hljs.highlight(code, { language: lang }).value;
+                } catch (err) {}
+            }
+            return hljs.highlightAuto(code).value;
+        },
+        breaks: true,
+        gfm: true
+    });
+
+    // 阶段类型映射
+    const stageTypeMap = {
+        'analysis': { name: '分析阶段', icon: '🎯', class: 'stage-analysis' },
+        'execution': { name: '执行阶段', icon: '⚡', class: 'stage-execution' },
+        'supervision': { name: '监督阶段', icon: '🔍', class: 'stage-supervision' },
+        'summary': { name: '总结阶段', icon: '📊', class: 'stage-summary' },
+        'error': { name: '错误信息', icon: '❌', class: 'stage-error' },
+        'complete': { name: '完成', icon: '✅', class: 'stage-summary' }
+    };
+
+    // 子类型映射
+    const subTypeMap = {
+        'analysis_status': '任务状态',
+        'analysis_history': '历史评估',
+        'analysis_strategy': '执行策略',
+        'analysis_progress': '完成度',
+        'analysis_task_status': '任务状态',
+        'execution_target': '执行目标',
+        'execution_process': '执行过程',
+        'execution_result': '执行结果',
+        'execution_quality': '质量检查',
+        'assessment': '质量评估',
+        'issues': '问题识别',
+        'suggestions': '改进建议',
+        'score': '质量评分',
+        'pass': '检查结果',
+        'completed_work': '已完成工作',
+        'incomplete_reasons': '未完成原因',
+        'evaluation': '效果评估',
+        'summary_overview': '总结概览'
+    };
+
+    // 发送消息
+    function sendMessage() {
+        const messageInput = document.getElementById('messageInput');
+        const message = messageInput.value.trim();
+
+        if (!message) {
+            alert('请输入消息内容');
+            return;
+        }
+
+        if (isConnected) {
+            alert('正在处理中，请稍候...');
+            return;
+        }
+
+        // 如果是新对话，生成新的会话ID和历史记录
+        if (currentChatHistory.messages.length === 0) {
+            sessionId = generateSessionId();
+            document.getElementById('sessionId').textContent = sessionId;
+            
+            // 生成对话标题（取用户消息的前20个字符）
+            const chatTitle = message.substring(0, 20) + (message.length > 20 ? '...' : '');
+            
+            // 初始化新的对话历史
+            currentChatHistory = {
+                sessionId: sessionId,
+                title: chatTitle,
+                timestamp: Date.now(),
+                messages: [],
+                agentId: selectedAgentId,
+                maxStep: selectedMaxStep
+            };
+            
+            // 立即保存新对话到历史记录
+            saveChatToHistory(currentChatHistory);
+        }
+
+        // 显示用户消息
+        addMessage(message, 'user');
+        
+        // 保存用户消息到历史记录
+        currentChatHistory.messages.push({
+            type: 'user',
+            content: message,
+            timestamp: Date.now()
+        });
+        
+        // 立即保存用户消息到历史记录
+        saveChatToHistory(currentChatHistory);
+
+        // 清空输入框
+        messageInput.value = '';
+
+        // 禁用发送按钮
+        const sendBtn = document.getElementById('sendBtn');
+        sendBtn.disabled = true;
+
+        // 显示加载状态
+        document.getElementById('loading').style.display = 'block';
+
+        // 准备请求数据
+        const requestData = {
+            aiAgentId: selectedAgentId,
+            message: message,
+            sessionId: sessionId,
+            maxStep: parseInt(selectedMaxStep)
+        };
+
+        // 使用ApiService发送请求
+        ApiService.sendAutoAgentRequest(requestData)
+        .then(response => {
+            // 清空当前步骤消息缓存
+            currentStepMessages.clear();
+
+            // 清空之前的AI消息（保留欢迎消息）
+            const thinkingDiv = document.getElementById('thinkingMessages');
+            const resultDiv = document.getElementById('resultMessages');
+
+            // 清空思考面板（保留第一条欢迎消息）
+            const thinkingChildren = Array.from(thinkingDiv.children);
+            thinkingChildren.slice(1).forEach(child => child.remove());
+
+            // 清空结果面板（保留第一条欢迎消息）
+            const resultChildren = Array.from(resultDiv.children);
+            resultChildren.slice(1).forEach(child => child.remove());
+
+            isConnected = true;
+
+            // 处理流式响应
+            ApiService.handleStreamResponse(
+                response,
+                // onData回调
+                (data) => {
+                    if (data && data !== '[DONE]') {
+                        try {
+                            // Try to parse JSON data
+                            const jsonData = JSON.parse(data);
+                            handleSSEMessage(jsonData);
+                        } catch (e) {
+                            // If not JSON, treat as plain text
+                            console.warn('无法解析JSON数据:', data);
+                            addStageMessage('error', null, data, null);
+                        }
+                        // Scroll to bottom after adding content
+                        scrollToBottom();
+                    }
+                },
+                // onComplete回调
+                () => {
+                    isConnected = false;
+                    sendBtn.disabled = false;
+                    document.getElementById('loading').style.display = 'none';
+                    // 添加完成标识
+                    addStageMessage('complete', null, '任务执行完成', null);
+                },
+                // onError回调
+                (error) => {
+                    console.error('读取流数据错误:', error);
+                    isConnected = false;
+                    sendBtn.disabled = false;
+                    document.getElementById('loading').style.display = 'none';
+                    addStageMessage('error', null, '连接中断，请重试', null);
+                }
+            );
+        })
+        .catch(error => {
+            console.error('请求错误:', error);
+            isConnected = false;
+            sendBtn.disabled = false;
+            document.getElementById('loading').style.display = 'none';
+            addStageMessage('error', null, '请求失败: ' + error.message, null);
+        });
+    }
+
+    // 处理SSE消息
+    function handleSSEMessage(jsonData) {
+        const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
+
+        if (!content || content.trim() === '') {
+            return; // 忽略空内容
+        }
+
+        // 根据type和subType添加消息
+        addStageMessage(type, subType, content, step);
+    }
+
+    // 添加阶段消息
+    function addStageMessage(type, subType, content, step) {
+        // 根据消息类型决定显示在哪个面板
+        let targetContainer;
+        if (type === 'summary' || type === 'completed') {
+            // 总结和完成消息显示在右侧结果面板
+            targetContainer = document.getElementById('resultMessages');
+        } else {
+            // 其他消息（分析、执行、监督等）显示在左侧思考面板
+            targetContainer = document.getElementById('thinkingMessages');
+        }
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'flex items-start gap-3 message';
+
+        // 获取阶段信息
+        const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
+        const subTypeName = subType ? subTypeMap[subType] || subType : '';
+
+        // 构建标识标签
+        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
+        if (subTypeName) {
+            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
+        }
+        if (step) {
+            indicators += `<span class="sub-type-indicator">第${step}步</span>`;
+        }
+
+        // 渲染Markdown内容
+        const renderedContent = marked.parse(content);
+
+        const messageHTML = `
+            <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                <span class="text-white text-sm font-semibold">AI</span>
+            </div>
+            <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                <div class="text-sm text-primary-800">
+                    <strong>AI助手:</strong> ${indicators}
+                    <div class="markdown-content">${renderedContent}</div>
+                </div>
+            </div>
+        `;
+        
+        messageDiv.innerHTML = messageHTML;
+        targetContainer.appendChild(messageDiv);
+
+        // 保存AI消息到历史记录
+        if (currentChatHistory && currentChatHistory.sessionId) {
+            currentChatHistory.messages.push({
+                type: 'ai',
+                content: content,
+                stage: type,
+                subType: subType,
+                step: step,
+                timestamp: Date.now(),
+                html: messageHTML
+            });
+            
+            // 每次AI消息都立即保存到历史记录
+            saveChatToHistory(currentChatHistory);
+        }
+
+        // 高亮代码块
+        messageDiv.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
+
+        // 滚动到对应面板的底部
+        scrollToBottom(targetContainer);
+        return messageDiv;
+    }
+
+    // 添加用户消息
+    function addMessage(content, type) {
+        if (type === 'user') {
+            // 用户消息同时显示在两个面板的顶部
+            const thinkingDiv = document.getElementById('thinkingMessages');
+            const resultDiv = document.getElementById('resultMessages');
+
+            [thinkingDiv, resultDiv].forEach(container => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex items-start gap-3 message';
+
+                messageDiv.innerHTML = `
+                    <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span class="text-white text-sm font-semibold">您</span>
+                    </div>
+                    <div class="flex-1 bg-green-50 rounded-lg p-3">
+                        <div class="text-sm text-green-800">
+                            <strong>您:</strong> ${content}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(messageDiv);
+                scrollToBottom(container);
+            });
+        }
+    }
+
+    // 滚动到底部
+    function scrollToBottom(container) {
+        if (!container) {
+            // 如果没有指定容器，滚动两个面板
+            const thinkingDiv = document.getElementById('thinkingMessages');
+            const resultDiv = document.getElementById('resultMessages');
+            thinkingDiv.scrollTop = thinkingDiv.scrollHeight;
+            resultDiv.scrollTop = resultDiv.scrollHeight;
+        } else {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    // 新建对话
+    function createNewChat() {
+        // 清空消息面板（保留欢迎消息）
+        const thinkingDiv = document.getElementById('thinkingMessages');
+        const resultDiv = document.getElementById('resultMessages');
+
+        const thinkingChildren = Array.from(thinkingDiv.children);
+        thinkingChildren.slice(1).forEach(child => child.remove());
+
+        const resultChildren = Array.from(resultDiv.children);
+        resultChildren.slice(1).forEach(child => child.remove());
+
+        // 重置会话ID
+        sessionId = '';
+        document.getElementById('sessionId').textContent = '等待开始...';
+        
+        // 重置当前对话历史
+        currentChatHistory = {
+            sessionId: '',
+            title: '',
+            timestamp: 0,
+            messages: [],
+            agentId: '',
+            maxStep: 0
+        };
+
+        // 清空输入框
+        document.getElementById('messageInput').value = '';
+
+        // 聚焦输入框
+        document.getElementById('messageInput').focus();
+        
+        // 更新侧边栏显示
+        updateChatHistoryUI();
+    }
+
+    // 清空所有对话
+    function clearAllChats() {
+        if (confirm('确定要清空所有对话记录吗？')) {
+            // 清空localStorage中的历史记录
+            localStorage.removeItem(CHAT_HISTORY_KEY);
+            
+            // 创建新对话
+            createNewChat();
+            
+            // 更新侧边栏显示
+            updateChatHistoryUI();
+        }
+    }
+
+    // 事件监听器
+    document.getElementById('messageInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // 智能体卡片点击事件
+    document.querySelectorAll('.agent-card').forEach(card => {
+        card.addEventListener('click', function() {
+            // 获取选中的智能体ID
+            const agentId = this.getAttribute('data-agent-id');
+            
+            // 使用同步函数更新选择状态
+            syncAgentSelection(agentId);
+        });
+    });
+    
+    // 更新下拉菜单中的案例选项
+    function updateDropdownCases(agentId) {
+        const dropdownContainer = document.getElementById('dropdownCaseContainer');
+        const defaultMessage = document.getElementById('dropdown-default-message');
+        
+        // 清空当前下拉菜单内容
+        dropdownContainer.innerHTML = '';
+        dropdownContainer.appendChild(defaultMessage);
+        
+        // 获取对应智能体的案例容器
+        const targetCaseContainer = document.getElementById(`agent-${agentId}-cases`);
+        
+        if (targetCaseContainer) {
+            // 隐藏默认消息
+            defaultMessage.style.display = 'none';
+            
+            // 复制案例卡片到下拉菜单
+            const caseCards = targetCaseContainer.querySelectorAll('.case-card');
+            caseCards.forEach(card => {
+                const caseItem = document.createElement('div');
+                caseItem.className = 'dropdown-case-item py-1 px-2 hover:bg-gray-100 rounded cursor-pointer';
+                caseItem.setAttribute('data-case', card.getAttribute('data-case'));
+                
+                // 复制案例标题内容
+                const titleDiv = card.querySelector('.case-title');
+                if (titleDiv) {
+                    caseItem.innerHTML = titleDiv.innerHTML;
+                }
+                
+                dropdownContainer.appendChild(caseItem);
+            });
+            
+            // 设置案例点击事件
+            setupCaseCardEvents();
+        } else {
+            // 显示默认消息
+            defaultMessage.style.display = 'block';
+        }
+    }
+    
+    // 步数按钮点击事件
+    document.querySelectorAll('.step-button').forEach(button => {
+        button.addEventListener('click', function() {
+            // 移除其他按钮的选中状态
+            document.querySelectorAll('.step-button').forEach(b => b.classList.remove('selected'));
+            // 添加当前按钮的选中状态
+            this.classList.add('selected');
+            // 获取选中的最大步数
+            selectedMaxStep = this.getAttribute('data-step');
+        });
+    });
+    
+    // 案例卡片点击事件 - 为下拉菜单中的案例选项准备
+    function setupCaseCardEvents() {
+        document.querySelectorAll('.dropdown-case-item').forEach(item => {
+            item.addEventListener('click', function() {
+                // 获取案例内容
+                const caseContent = this.getAttribute('data-case');
+                // 填充到输入框
+                document.getElementById('messageInput').value = caseContent;
+                // 添加选中效果
+                document.querySelectorAll('.dropdown-case-item').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+                // 隐藏下拉菜单
+                document.getElementById('caseDropdown').classList.add('hidden');
+                // 聚焦到输入框
+                document.getElementById('messageInput').focus();
+            });
+        });
+    }
+    
+    // 下拉菜单按钮点击事件
+    document.getElementById('caseDropdownButton').addEventListener('click', function() {
+        const dropdown = document.getElementById('caseDropdown');
+        dropdown.classList.toggle('hidden');
+    });
+    
+    // 点击页面其他地方关闭下拉菜单
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('caseDropdown');
+        const dropdownButton = document.getElementById('caseDropdownButton');
+        
+        if (!dropdown.contains(event.target) && !dropdownButton.contains(event.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+
+    document.getElementById('newChatBtn').addEventListener('click', createNewChat);
+    document.getElementById('clearAllChatsBtn').addEventListener('click', clearAllChats);
+
+    // 获取智能体列表数据
+    async function loadAvailableAgents() {
+        const agentSelector = document.getElementById('agentSelector');
+        const agentSelectorLoading = document.getElementById('agentSelectorLoading');
+        
+        try {
+            // 显示加载状态
+            agentSelectorLoading.style.display = 'inline-block';
+            agentSelector.disabled = true;
+            
+            // 使用ApiService获取智能体列表
+            const result = await ApiService.queryAvailableAgents();
+            
+            if (result.code === '0000' && result.data) {
+                // 清空现有选项（保留默认选项）
+                agentSelector.innerHTML = '<option value="">请选择智能体</option>';
+                
+                // 添加智能体选项
+                result.data.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.agentId;
+                    option.textContent = agent.agentName;
+                    option.setAttribute('data-description', agent.description || '');
+                    agentSelector.appendChild(option);
+                });
+                
+                console.log('智能体列表加载成功:', result.data);
+            } else {
+                console.error('获取智能体列表失败:', result.info || '未知错误');
+                // 显示错误提示
+                agentSelector.innerHTML = '<option value="">加载失败，请刷新重试</option>';
+            }
+        } catch (error) {
+            console.error('获取智能体列表错误:', error);
+            agentSelector.innerHTML = '<option value="">加载失败，请刷新重试</option>';
+        } finally {
+            // 隐藏加载状态
+            agentSelectorLoading.style.display = 'none';
+            agentSelector.disabled = false;
+        }
+    }
+
+    // 智能体选择事件处理
+    document.getElementById('agentSelector').addEventListener('change', function() {
+        const newSelectedAgentId = this.value;
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (newSelectedAgentId) {
+            // 更新全局选择的智能体ID
+            selectedAgentId = newSelectedAgentId;
+            currentChatHistory.agentId = newSelectedAgentId;
+            
+            // 获取智能体描述
+            const agentDescription = selectedOption.getAttribute('data-description');
+            console.log('选择智能体:', selectedOption.textContent, '描述:', agentDescription);
+            
+            // 同步更新智能体卡片的选择状态
+            document.querySelectorAll('.agent-card').forEach(card => {
+                card.classList.remove('selected');
+                if (card.getAttribute('data-agent-id') === newSelectedAgentId) {
+                    card.classList.add('selected');
+                }
+            });
+            
+            // 更新下拉菜单中的案例
+            updateDropdownCases(newSelectedAgentId);
+        } else {
+            selectedAgentId = null;
+            currentChatHistory.agentId = '';
+            
+            // 清除所有智能体卡片的选择状态
+            document.querySelectorAll('.agent-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // 清空案例下拉菜单
+            const dropdownContainer = document.getElementById('dropdownCaseContainer');
+            const defaultMessage = document.getElementById('dropdown-default-message');
+            dropdownContainer.innerHTML = '';
+            dropdownContainer.appendChild(defaultMessage);
+            defaultMessage.style.display = 'block';
+        }
+    });
+
+    // 更新智能体卡片点击事件，确保与下拉框同步
+    function syncAgentSelection(agentId) {
+        // 更新下拉框选择
+        const agentSelector = document.getElementById('agentSelector');
+        agentSelector.value = agentId || '';
+        
+        // 触发change事件以保持一致性
+        agentSelector.dispatchEvent(new Event('change'));
+    }
+
+    // 页面加载完成后初始化
+    window.addEventListener('load', function() {
+        // 初始化当前对话历史
+        currentChatHistory = {
+            sessionId: '',
+            title: '',
+            timestamp: 0,
+            messages: [],
+            agentId: '',
+            maxStep: 0
+        };
+        
+        // 加载并显示历史对话列表
+        updateChatHistoryUI();
+        
+        // 加载智能体列表
+        loadAvailableAgents();
+        
+        document.getElementById('messageInput').focus();
+        
+        // 如果已经选择了智能体，初始化下拉菜单中的案例
+        if (selectedAgentId) {
+            updateDropdownCases(selectedAgentId);
+        }
+    });
+</script>
+</body>
+</html>

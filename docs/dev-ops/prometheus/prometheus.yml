@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # 应用程序指标采集，模拟 group-buy-market-app Node Exporter 指标采集（包含自定义指标）
+  - job_name: 'group-buy-market-app'
+    static_configs:
+      - targets:
+          - 'node-exporter:9100'
+        labels:
+          instance: 'group-buy-market-app'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
