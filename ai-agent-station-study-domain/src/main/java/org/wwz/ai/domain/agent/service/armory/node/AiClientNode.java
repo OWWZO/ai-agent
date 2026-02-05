@@ -51,12 +51,12 @@ public class AiClientNode extends AbstractArmorySupport {
             // 2. 对话模型
             OpenAiChatModel chatModel = getBean(aiClientVO.getModelBeanName());
 
-            // 3. MCP 服务
-            List<McpSyncClient> mcpSyncClients = new ArrayList<>();
-            List<String> mcpBeanNameList = aiClientVO.getMcpBeanNameList();
-            for (String mcpBeanName : mcpBeanNameList) {
-                mcpSyncClients.add(getBean(mcpBeanName));
-            }
+//            // 3. MCP 服务
+//            List<McpSyncClient> mcpSyncClients = new ArrayList<>();
+//            List<String> mcpBeanNameList = aiClientVO.getMcpBeanNameList();
+//            for (String mcpBeanName : mcpBeanNameList) {
+//                mcpSyncClients.add(getBean(mcpBeanName));
+//            }
 
             // 4. advisor 顾问角色
             List<Advisor> advisors = new ArrayList<>();
@@ -70,7 +70,7 @@ public class AiClientNode extends AbstractArmorySupport {
             // 5. 构建对话客户端
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
-                    .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
+//                    .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
                     .defaultAdvisors(advisorArray)
                     .build();
 

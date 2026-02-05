@@ -22,9 +22,6 @@ import java.util.Map;
 
 /**
  * MCP客户端配置节点
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/7/5 12:48
  */
 @Slf4j
 @Service
@@ -39,18 +36,18 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
 
         List<AiClientToolMcpVO> aiClientToolMcpList = dynamicContext.getValue(dataName());
 
-        if (aiClientToolMcpList == null || aiClientToolMcpList.isEmpty()) {
-            log.warn("没有需要被初始化的 ai client tool mcp");
-            return router(requestParameter, dynamicContext);
-        }
-
-        for (AiClientToolMcpVO mcpVO : aiClientToolMcpList) {
-            // 创建 MCP 服务
-            McpSyncClient mcpSyncClient = createMcpSyncClient(mcpVO);
-
-            // 注册 MCP 对象
-            registerBean(beanName(mcpVO.getMcpId()), McpSyncClient.class, mcpSyncClient);
-        }
+//        if (aiClientToolMcpList == null || aiClientToolMcpList.isEmpty()) {
+//            log.warn("没有需要被初始化的 ai client tool mcp");
+//            return router(requestParameter, dynamicContext);
+//        }
+//
+//        for (AiClientToolMcpVO mcpVO : aiClientToolMcpList) {
+//            // 创建 MCP 服务
+//            McpSyncClient mcpSyncClient = createMcpSyncClient(mcpVO);
+//
+//            // 注册 MCP 对象
+//            registerBean(beanName(mcpVO.getMcpId()), McpSyncClient.class, mcpSyncClient);
+//        }
 
         return router(requestParameter, dynamicContext);
     }

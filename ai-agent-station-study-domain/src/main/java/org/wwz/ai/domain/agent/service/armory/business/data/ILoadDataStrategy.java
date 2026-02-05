@@ -5,9 +5,6 @@ import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategy
 
 /**
  * 数据加载策略
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/6/27 17:16
  */
 public interface ILoadDataStrategy {
 

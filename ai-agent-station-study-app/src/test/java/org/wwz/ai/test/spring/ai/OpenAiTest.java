@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
+//测试全部通过
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest

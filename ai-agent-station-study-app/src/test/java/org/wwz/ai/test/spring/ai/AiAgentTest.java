@@ -35,6 +35,8 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.concurrent.CountDownLatch;
 
+
+//TODO 测试微信公众号推送
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
@@ -54,17 +56,18 @@ public class AiAgentTest {
     public void init() {
 
         OpenAiApi openAiApi = OpenAiApi.builder()
-                .baseUrl("https://apis.itedus.cn")
-                .apiKey("sk-lIqVNiHon00O6veJ15Cc57DaF5Dd401f93B3A107B4B3677e")
-                .completionsPath("v1/chat/completions")
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+                .apiKey("sk-ad51211fe54e482aa4bf13feee209f74")
                 .embeddingsPath("v1/embeddings")
                 .build();
 
         chatModel = OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("gpt-4.1-mini")
-                        .toolCallbacks(new SyncMcpToolCallbackProvider(stdioMcpClient(), sseMcpClient01(), sseMcpClient02()).getToolCallbacks())
+                        .model("deepseek-v3.2")
+                        .toolCallbacks(new SyncMcpToolCallbackProvider(stdioMcpClient(),
+//                                sseMcpClient01(),
+                                sseMcpClient02()).getToolCallbacks())
                         .build())
                 .build();
 
@@ -80,7 +83,9 @@ public class AiAgentTest {
                         	 3. 获取发送到 CSDN 文章的 URL 地址。
                         	 4. 微信公众号消息通知，平台：CSDN、主题：为文章标题、描述：为文章简述、跳转地址：从发布文章到CSDN获取 URL 地址
                         """)
-                .defaultToolCallbacks(new SyncMcpToolCallbackProvider(stdioMcpClient(), sseMcpClient01(), sseMcpClient02()).getToolCallbacks())
+                .defaultToolCallbacks(new SyncMcpToolCallbackProvider(stdioMcpClient(),
+//                        sseMcpClient01(),
+                        sseMcpClient02()).getToolCallbacks())
                 .defaultAdvisors(
                         PromptChatMemoryAdvisor.builder(
                                 MessageWindowChatMemory.builder()
@@ -217,19 +222,19 @@ public class AiAgentTest {
                                 MessageWindowChatMemory.builder()
                                         .maxMessages(100)
                                         .build()
-                        ).build(),
-                        new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
+                        ).build()
+                        , new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
                                 .topK(5)
                                 .filterExpression("knowledge == 'article-prompt-words'")
                                 .build())
                 )
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("gpt-4.1")
+                        .model("deepseek-v3.2")
                         .build())
                 .build();
 
         String content = chatClient01
-                .prompt("生成一篇文章")
+                .prompt("生成一篇文章 和Python异步编程asyncio使用指南相关")
 
                 .system(s -> s.param("current_date", LocalDate.now().toString()))
                 .advisors(a -> a
@@ -251,7 +256,9 @@ public class AiAgentTest {
                         	 3. 获取发送到 CSDN 文章的 URL 地址。
                         	 4. 微信公众号消息通知，平台：CSDN、主题：为文章标题、描述：为文章简述、跳转地址：为发布文章到CSDN获取 URL地址 CSDN文章链接 https 开头的地址。
                         """)
-//                .defaultTools(new SyncMcpToolCallbackProvider(sseMcpClient01(), sseMcpClient02()))
+                .defaultToolCallbacks(new SyncMcpToolCallbackProvider(
+//                        sseMcpClient01(),
+                        sseMcpClient02()))
                 .defaultAdvisors(
                         PromptChatMemoryAdvisor.builder(
                                 MessageWindowChatMemory.builder()
@@ -261,7 +268,7 @@ public class AiAgentTest {
                         new SimpleLoggerAdvisor()
                 )
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("gpt-4.1")
+                        .model("deepseek-v3.2")
                         .build())
                 .build();
 
@@ -278,10 +285,8 @@ public class AiAgentTest {
 
     public McpSyncClient stdioMcpClient() {
 
-        // based on
-        // https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
-        var stdioParams = ServerParameters.builder("npx")
-                .args("-y", "@modelcontextprotocol/server-filesystem", "/Users/fuzhengwei/Desktop", "/Users/fuzhengwei/Desktop")
+        var stdioParams = ServerParameters.builder("npx.cmd")
+                .args("-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\WWZ\\Desktop", "C:\\Users\\WWZ\\Desktop")
                 .build();
 
         var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
@@ -295,21 +300,22 @@ public class AiAgentTest {
 
     }
 
-    public McpSyncClient sseMcpClient01() {
-
-        HttpClientSseClientTransport sseClientTransport = HttpClientSseClientTransport.builder("http://192.168.1.108:8102").build();
-
-        McpSyncClient mcpSyncClient = McpClient.sync(sseClientTransport).requestTimeout(Duration.ofMinutes(180)).build();
-
-        var init = mcpSyncClient.initialize();
-        System.out.println("SSE MCP Initialized: " + init);
-
-        return mcpSyncClient;
-    }
+//微信公众号通知
+//    public McpSyncClient sseMcpClient01() {
+//
+//        HttpClientSseClientTransport sseClientTransport = HttpClientSseClientTransport.builder("http://192.168.1.108:8102").build();
+//
+//        McpSyncClient mcpSyncClient = McpClient.sync(sseClientTransport).requestTimeout(Duration.ofMinutes(180)).build();
+//
+//        var init = mcpSyncClient.initialize();
+//        System.out.println("SSE MCP Initialized: " + init);
+//
+//        return mcpSyncClient;
+//    }
 
     public McpSyncClient sseMcpClient02() {
 
-        HttpClientSseClientTransport sseClientTransport = HttpClientSseClientTransport.builder("http://192.168.1.108:8101").build();
+        HttpClientSseClientTransport sseClientTransport = HttpClientSseClientTransport.builder("http://127.0.0.1:8101").build();
 
         McpSyncClient mcpSyncClient = McpClient.sync(sseClientTransport).requestTimeout(Duration.ofMinutes(180)).build();
 

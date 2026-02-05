@@ -19,12 +19,12 @@ import org.springframework.test.context.junit4.SpringRunner;
 
 import java.time.Duration;
 
+
+//全通过测试
 /**
  * mcp；https://sai.baidu.com/zh/
  * 百度搜索；<a href="https://sai.baidu.com/zh/detail/e014c6ffd555697deabf00d058baf388">https://sai.baidu.com/zh/detail/e014c6ffd555697deabf00d058baf388</a>
  * key申请；<a href="https://console.bce.baidu.com/iam/?_=1753597622044#/iam/apikey/list">apikey</a>
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/7/27 14:29
  */
 @Slf4j
 @RunWith(SpringRunner.class)

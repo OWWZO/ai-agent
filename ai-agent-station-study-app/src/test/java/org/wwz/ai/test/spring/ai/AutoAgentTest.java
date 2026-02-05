@@ -28,6 +28,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 import java.time.Duration;
 import java.time.LocalDate;
 
+//测试全部通过
 /**
  * AutoAgent 测试类
  * 基于 PlanningAgent 的动态执行机制，实现用户需求的自动化处理

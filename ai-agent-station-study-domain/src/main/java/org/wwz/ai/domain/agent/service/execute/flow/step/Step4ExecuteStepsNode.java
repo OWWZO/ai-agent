@@ -29,7 +29,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             // 获取配置信息
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.EXECUTOR_CLIENT.getCode());
 
-            // 获取规划客户端
+            // 获取执行客户端
             ChatClient executorChatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
             // 从动态上下文获取解析的步骤
