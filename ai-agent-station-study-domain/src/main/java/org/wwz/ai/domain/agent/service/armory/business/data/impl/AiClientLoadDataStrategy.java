@@ -17,9 +17,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 以客户端串联，加载数据策略
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/6/27 17:20
  */
 @Slf4j
 @Service("aiClientLoadDataStrategy")
@@ -38,7 +35,7 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
 
         //根据id列表 运用CompletableFuture 进行多线程查询 然后收集结果
 
-        //api查询
+        //api查询 根据每个clientId查询出modelId 再根据modelId来查询api的id 然后将api的信息封装成apiVO的形式返回 所有client的apiId都装在一起
         CompletableFuture<List<AiClientApiVO>> aiClientApiListFuture = CompletableFuture.supplyAsync(() -> {
             log.info("查询配置数据(ai_client_api) {}", clientIdList);
             return repository.queryAiClientApiVOListByClientIds(clientIdList);

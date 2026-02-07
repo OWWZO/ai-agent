@@ -234,7 +234,7 @@ public class AiAgentTest {
                 .build();
 
         String content = chatClient01
-                .prompt("生成一篇文章 和Python异步编程asyncio使用指南相关")
+                .prompt("生成一篇文章 介绍一下Java 的内存模型（JMM） ")
 
                 .system(s -> s.param("current_date", LocalDate.now().toString()))
                 .advisors(a -> a

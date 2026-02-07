@@ -86,6 +86,7 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         prompt.append("- 特定的业务规则、约束条件或要求\n");
         prompt.append("- 输出格式、质量标准或验收条件\n");
         prompt.append("- 时间要求、优先级或其他执行约束\n\n");
+        prompt.append("- 时间要求：要求每个步骤时长最多不超过5分钟\n\n");
 
         // 2. 工具能力分析
         prompt.append("## 🔧 MCP工具能力分析结果\n");
@@ -215,7 +216,7 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
             toolsInfo.append("- **核心功能**: 通过百度搜索引擎检索技术资料和信息\n");
             toolsInfo.append("- **主要工具函数**: search\n");
             toolsInfo.append("- **参数要求**: query(搜索关键词)\n");
-            toolsInfo.append("- **适用场景**: 技术资料搜索、信息收集、知识获取\n\n");
+            toolsInfo.append("- **适用场景**: 技术资料搜索、信息收集、知识获取 搜索信息时长别超过2分钟\n\n");
 
             // 获取CSDN工具信息
             toolsInfo.append("## 2. CSDN发布工具 (CsdnPublish)\n");
@@ -225,13 +226,6 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
             toolsInfo.append("- **参数要求**: title(文章标题), content(文章内容), tags(标签)\n");
             toolsInfo.append("- **适用场景**: 技术文章发布、知识分享、内容创作\n\n");
 
-            // 获取微信工具信息
-            toolsInfo.append("## 3. 微信通知工具 (WeixinNotify)\n");
-            toolsInfo.append("- **服务端点**: http://localhost:8080/mcp/weixin\n");
-            toolsInfo.append("- **核心功能**: 发送微信通知消息\n");
-            toolsInfo.append("- **主要工具函数**: send_message\n");
-            toolsInfo.append("- **参数要求**: message(消息内容), recipient(接收者)\n");
-            toolsInfo.append("- **适用场景**: 状态通知、结果反馈、任务提醒\n\n");
 
         } catch (Exception e) {
             log.warn("获取MCP工具信息时发生错误: {}", e.getMessage());

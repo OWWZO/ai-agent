@@ -117,6 +117,7 @@ public class AgentRepository implements IAgentRepository {
             // 1. 通过clientId查询关联的modelId
             List<AiClientConfig> configs = aiClientConfigDao.queryBySourceTypeAndId(AI_CLIENT.getCode(), clientId);
 
+            //跳过不带modelId的config
             for (AiClientConfig config : configs) {
                 if (AI_CLIENT_MODEL.getCode().equals(config.getTargetType()) && config.getStatus() == 1) {
                     String modelId = config.getTargetId();
@@ -166,24 +167,20 @@ public class AgentRepository implements IAgentRepository {
         Set<String> processedMcpIds = new HashSet<>();
 
         for (String clientId : clientIdList) {
-            // 1. 通过clientId查询关联的model配置
+            // 1. 通过clientId查询关联的配置
             List<AiClientConfig> clientConfigs = aiClientConfigDao.queryBySourceTypeAndId(AI_CLIENT.getCode(), clientId);
 
+            //跳过TargetType不为mcp的元素
             for (AiClientConfig clientConfig : clientConfigs) {
-                if (AI_CLIENT_MODEL.getCode().equals(clientConfig.getTargetType()) && clientConfig.getStatus() == 1) {
-                    String modelId = clientConfig.getTargetId();
+                if (AI_CLIENT_TOOL_MCP.getCode().equals(clientConfig.getTargetType()) && clientConfig.getStatus() == 1) {
 
-                    // 2. 通过modelId查询关联的tool_mcp配置
-                    List<AiClientConfig> modelConfigs = aiClientConfigDao.queryBySourceTypeAndId(AI_CLIENT_MODEL.getCode(), modelId);
-
-                    for (AiClientConfig modelConfig : modelConfigs) {
-                        if (AI_CLIENT_TOOL_MCP.getCode().equals(modelConfig.getTargetType()) && modelConfig.getStatus() == 1) {
-                            String mcpId = modelConfig.getTargetId();
+                            String mcpId = clientConfig.getTargetId();
 
                             // 避免重复处理相同的mcpId
                             if (processedMcpIds.contains(mcpId)) {
                                 continue;
                             }
+
                             processedMcpIds.add(mcpId);
 
                             // 3. 通过mcpId查询ai_client_tool_mcp表获取MCP工具配置
@@ -223,8 +220,8 @@ public class AgentRepository implements IAgentRepository {
                                 }
                                 result.add(mcpVO);
                             }
-                        }
-                    }
+
+//                    }
                 }
             }
         }

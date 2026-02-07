@@ -12,9 +12,6 @@ import org.springframework.stereotype.Service;
 
 /**
  * 任务分析节点
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/7/27 16:36
  */
 @Slf4j
 @Service

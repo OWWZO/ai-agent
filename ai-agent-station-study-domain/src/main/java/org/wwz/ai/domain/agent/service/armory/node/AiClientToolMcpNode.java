@@ -36,18 +36,18 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
 
         List<AiClientToolMcpVO> aiClientToolMcpList = dynamicContext.getValue(dataName());
 
-//        if (aiClientToolMcpList == null || aiClientToolMcpList.isEmpty()) {
-//            log.warn("没有需要被初始化的 ai client tool mcp");
-//            return router(requestParameter, dynamicContext);
-//        }
-//
-//        for (AiClientToolMcpVO mcpVO : aiClientToolMcpList) {
-//            // 创建 MCP 服务
-//            McpSyncClient mcpSyncClient = createMcpSyncClient(mcpVO);
-//
-//            // 注册 MCP 对象
-//            registerBean(beanName(mcpVO.getMcpId()), McpSyncClient.class, mcpSyncClient);
-//        }
+        if (aiClientToolMcpList == null || aiClientToolMcpList.isEmpty()) {
+            log.warn("没有需要被初始化的 ai client tool mcp");
+            return router(requestParameter, dynamicContext);
+        }
+
+        for (AiClientToolMcpVO mcpVO : aiClientToolMcpList) {
+            // 创建 MCP 服务
+            McpSyncClient mcpSyncClient = createMcpSyncClient(mcpVO);
+
+            // 注册 MCP 对象
+            registerBean(beanName(mcpVO.getMcpId()), McpSyncClient.class, mcpSyncClient);
+        }
 
         return router(requestParameter, dynamicContext);
     }
@@ -118,7 +118,7 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                 // 2. 设置请求超时时间：从配置中获取值，单位为【分钟】
                 // 3. build()完成客户端基础构建
                 McpSyncClient mcpSyncClient = McpClient.sync(sseClientTransport)
-                        .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout()+1))
+                        .requestTimeout(Duration.ofMinutes(aiClientToolMcpVO.getRequestTimeout()))
                         .build();
                 // 初始化MCP客户端：执行协议握手/建立底层连接，保证客户端可直接用于后续调用
                 var init_sse = mcpSyncClient.initialize();
