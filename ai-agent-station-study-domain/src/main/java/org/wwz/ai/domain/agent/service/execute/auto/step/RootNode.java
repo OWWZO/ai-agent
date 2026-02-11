@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 执行根节点
+ ReAct思考架构 Think → Act → Observe → Repeat
  */
 @Slf4j
 @Service("executeRootNode")

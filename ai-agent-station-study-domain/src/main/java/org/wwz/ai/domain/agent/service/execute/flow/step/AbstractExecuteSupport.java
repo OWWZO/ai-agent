@@ -4,6 +4,7 @@ import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
+import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
@@ -11,6 +12,7 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
@@ -48,6 +50,28 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     protected <T> T getBean(String beanName) {
         return (T) applicationContext.getBean(beanName);
+    }
+
+    /**
+     * 调用 LLM 并采集 token 用量
+     * 仅调用 chatResponse() 一次，从中提取 content，避免 chatResponse()+content() 重复触发导致 Advisor 链消耗
+     * @return 模型返回的文本内容
+     */
+    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                       DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        ChatResponse response = chatClient.prompt().user(userMessage).call().chatResponse();
+        if (response != null) {
+            LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
+            if (collector != null) {
+                collector.accumulate(response);
+            }
+            var result = response.getResult();
+            if (result != null && result.getOutput() != null) {
+                String text = result.getOutput().getText();
+                return text != null ? text : "";
+            }
+        }
+        return "";
     }
 
     /**

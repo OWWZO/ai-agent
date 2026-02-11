@@ -23,7 +23,7 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("\n--- 步骤1: MCP工具能力分析（仅分析阶段，不执行用户请求） ---");
+        log.info("\n步骤1: MCP工具能力分析（仅分析阶段，不执行用户请求）");
 
         // 获取配置信息
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TOOL_MCP_CLIENT.getCode());
@@ -74,12 +74,9 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
                 dynamicContext.getCurrentTask()
         );
 
-        String mcpToolsAnalysis = mcpToolsChatClient.prompt()
-                .user(mcpAnalysisPrompt)
-                .call()
-                .content();
+        String mcpToolsAnalysis = callLlmWithMetrics(mcpToolsChatClient, mcpAnalysisPrompt, dynamicContext);
         
-        log.info("MCP工具分析结果（仅分析，未执行实际操作）: {}", mcpToolsAnalysis);
+        log.info("步骤一 MCP工具分析结果: {}", mcpToolsAnalysis);
         
         // 保存分析结果到上下文
         dynamicContext.setValue("mcpToolsAnalysis", mcpToolsAnalysis);
@@ -90,6 +87,7 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
                 "analysis_tools", 
                 mcpToolsAnalysis, 
                 requestParameter.getSessionId());
+
         sendSseResult(dynamicContext, result);
         
         // 更新步骤

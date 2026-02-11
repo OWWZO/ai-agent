@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 /**
  * AutoAgent 执行结果实体
  *
@@ -30,9 +32,14 @@ public class AutoAgentExecuteResultEntity {
     private String subType;
 
     /**
-     * 当前步骤
+     * 当前步骤(大步骤 1-4)
      */
     private Integer step;
+
+    /**
+     * 步骤名称，用于前端展示：MCP工具分析/执行规划/解析步骤/执行步骤
+     */
+    private String stepName;
 
     /**
      * 数据内容
@@ -55,12 +62,40 @@ public class AutoAgentExecuteResultEntity {
     private String sessionId;
 
     /**
+     * 执行指标（仅 complete 类型携带）
+     */
+    private LlmMetrics metrics;
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class LlmMetrics {
+        /** 输入 token 总数 */
+        private Long inputTokens;
+        /** 输出 token 总数 */
+        private Long outputTokens;
+        /** 总 token 数 */
+        private Long totalTokens;
+        /** 预估成本（元） */
+        private BigDecimal estimatedCost;
+        /** 总耗时（毫秒） */
+        private Long totalDurationMs;
+        /** LLM 调用次数 */
+        private Integer callCount;
+    }
+
+    /** 大步骤名称映射 */
+    public static final String[] STEP_NAMES = {"", "MCP工具分析", "执行规划", "解析步骤", "执行步骤"};
+
+    /**
      * 创建分析阶段结果
      */
     public static AutoAgentExecuteResultEntity createAnalysisResult(Integer step, String content, String sessionId) {
         return AutoAgentExecuteResultEntity.builder()
                 .type("analysis")
                 .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
                 .content(content)
                 .completed(false)
                 .timestamp(System.currentTimeMillis())
@@ -76,6 +111,7 @@ public class AutoAgentExecuteResultEntity {
                 .type("analysis")
                 .subType(subType)
                 .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
                 .content(content)
                 .completed(false)
                 .timestamp(System.currentTimeMillis())
@@ -90,6 +126,7 @@ public class AutoAgentExecuteResultEntity {
         return AutoAgentExecuteResultEntity.builder()
                 .type("execution")
                 .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
                 .content(content)
                 .completed(false)
                 .timestamp(System.currentTimeMillis())
@@ -188,6 +225,13 @@ public class AutoAgentExecuteResultEntity {
      * 创建完成标识
      */
     public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId) {
+        return createCompleteResult(sessionId, null);
+    }
+
+    /**
+     * 创建完成标识（携带指标）
+     */
+    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId, LlmMetrics metrics) {
         return AutoAgentExecuteResultEntity.builder()
                 .type("complete")
                 .step(null)
@@ -195,6 +239,7 @@ public class AutoAgentExecuteResultEntity {
                 .completed(true)
                 .timestamp(System.currentTimeMillis())
                 .sessionId(sessionId)
+                .metrics(metrics)
                 .build();
     }
 

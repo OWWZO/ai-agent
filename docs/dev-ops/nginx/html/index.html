@@ -407,6 +407,10 @@
             scrollbar-width: thin;
             scrollbar-color: #d1d5db transparent;
         }
+
+        .metrics-card {
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col bg-gray-50 font-sans">
@@ -1187,46 +1191,49 @@
 
     // 处理SSE消息
     function handleSSEMessage(jsonData) {
-        const { type, subType, step, content, completed, timestamp, sessionId } = jsonData;
+        const { type, subType, step, stepName, content, completed, timestamp, sessionId, metrics } = jsonData;
 
+        // complete 类型可无 content，用于携带 metrics
+        if (type === 'complete' && !content && metrics) {
+            addStageMessage(type, subType, '执行完成', step, stepName, metrics);
+            return;
+        }
         if (!content || content.trim() === '') {
             return; // 忽略空内容
         }
 
-        // 根据type和subType添加消息
-        addStageMessage(type, subType, content, step);
+        addStageMessage(type, subType, content, step, stepName, metrics);
     }
 
     // 添加阶段消息
-    function addStageMessage(type, subType, content, step) {
+    function addStageMessage(type, subType, content, step, stepName, metrics) {
         // 根据消息类型决定显示在哪个面板
         let targetContainer;
-        if (type === 'summary' || type === 'completed') {
-            // 总结和完成消息显示在右侧结果面板
+        if (type === 'summary' || type === 'complete') {
             targetContainer = document.getElementById('resultMessages');
         } else {
-            // 其他消息（分析、执行、监督等）显示在左侧思考面板
             targetContainer = document.getElementById('thinkingMessages');
         }
 
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message';
 
-        // 获取阶段信息
         const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
         const subTypeName = subType ? subTypeMap[subType] || subType : '';
 
-        // 构建标识标签
+        // 构建标识标签：优先使用 stepName（如 MCP工具分析），其次 step（第1步）
         let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
-        if (subTypeName) {
-            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
-        }
-        if (step) {
+        if (stepName) {
+            indicators += `<span class="sub-type-indicator">${stepName}</span>`;
+        } else if (step) {
             indicators += `<span class="sub-type-indicator">第${step}步</span>`;
         }
+        if (subTypeName && type !== 'complete') {
+            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
+        }
 
-        // 渲染Markdown内容
-        const renderedContent = marked.parse(content);
+        // 渲染内容
+        const renderedContent = type === 'complete' && metrics ? buildMetricsHtml(metrics) : marked.parse(content || '执行完成');
 
         const messageHTML = `
             <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
@@ -1243,7 +1250,6 @@
         messageDiv.innerHTML = messageHTML;
         targetContainer.appendChild(messageDiv);
 
-        // 保存AI消息到历史记录
         if (currentChatHistory && currentChatHistory.sessionId) {
             currentChatHistory.messages.push({
                 type: 'ai',
@@ -1251,22 +1257,41 @@
                 stage: type,
                 subType: subType,
                 step: step,
+                stepName: stepName,
+                metrics: metrics,
                 timestamp: Date.now(),
                 html: messageHTML
             });
-            
-            // 每次AI消息都立即保存到历史记录
             saveChatToHistory(currentChatHistory);
         }
 
-        // 高亮代码块
         messageDiv.querySelectorAll('pre code').forEach((block) => {
             hljs.highlightElement(block);
         });
 
-        // 滚动到对应面板的底部
         scrollToBottom(targetContainer);
         return messageDiv;
+    }
+
+    // 构建指标卡片 HTML
+    function buildMetricsHtml(metrics) {
+        if (!metrics) return '<p>执行完成</p>';
+        const m = metrics;
+        const tokens = (m.totalTokens ?? 0).toLocaleString();
+        const cost = m.estimatedCost != null ? m.estimatedCost : '-';
+        const duration = m.totalDurationMs != null ? (m.totalDurationMs / 1000).toFixed(1) + 's' : '-';
+        const calls = m.callCount ?? '-';
+        return `
+            <div class="metrics-card rounded-lg p-3 bg-white border border-gray-200 mt-2">
+                <div class="text-xs font-semibold text-gray-600 mb-2">📊 本次执行指标</div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div><span class="text-gray-500">Token 用量:</span> <span class="font-mono font-medium">${tokens}</span></div>
+                    <div><span class="text-gray-500">预估成本:</span> <span class="font-mono font-medium">${cost} 元</span></div>
+                    <div><span class="text-gray-500">耗时:</span> <span class="font-mono font-medium">${duration}</span></div>
+                    <div><span class="text-gray-500">LLM 调用:</span> <span class="font-mono font-medium">${calls} 次</span></div>
+                </div>
+            </div>
+        `;
     }
 
     // 添加用户消息

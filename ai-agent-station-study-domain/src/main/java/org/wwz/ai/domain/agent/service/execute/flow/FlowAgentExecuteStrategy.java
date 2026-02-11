@@ -35,16 +35,7 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
         
         String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
         log.info("流程执行结果:{}", apply);
-        
-        // 发送完成标识
-        try {
-            AutoAgentExecuteResultEntity completeResult = AutoAgentExecuteResultEntity.createCompleteResult(executeCommandEntity.getSessionId());
-            // 发送SSE格式的数据
-            String sseData = "data: " + JSON.toJSONString(completeResult) + "\n\n";
-            emitter.send(sseData);
-        } catch (Exception e) {
-            log.error("发送完成标识失败：{}", e.getMessage(), e);
-        }
+        // 完成标识由 Step4 在 sendCompleteResult 中携带 metrics 发送
     }
 
 }

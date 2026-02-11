@@ -127,7 +127,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
      */
     private void executeStep(ChatClient executorChatClient, Integer stepNumber, String stepKey, String stepContent, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         log.info("\n--- 开始执行 {} ---", stepKey);
-        log.info("步骤内容: {}", stepContent.substring(0, Math.min(200, stepContent.length())) + "...");
+        log.info("步骤内容: {}", stepContent.substring(0, Math.min(200, stepContent.length())));
 
         try {
             // 更新执行上下文
@@ -135,28 +135,16 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             dynamicContext.setValue("currentStepKey", stepKey);
             dynamicContext.setValue("currentStepContent", stepContent);
 
-            // 使用执行器ChatClient来执行具体步骤
-            String executionResult = executorChatClient.prompt()
-                    .user(buildStepExecutionPrompt(stepContent, dynamicContext))
-                    .call()
-                    .content();
+            Map<String, String> stepsMap = dynamicContext.getValue("stepsMap");
+            int totalSteps = stepsMap != null ? stepsMap.size() : 1;
+            String executionResult = callLlmWithMetrics(executorChatClient,
+                    buildStepExecutionPrompt(stepContent, stepNumber, totalSteps, dynamicContext), dynamicContext);
 
             assert executionResult != null;
-            log.info("步骤 {} 执行结果: {}", stepNumber, executionResult.substring(0, Math.min(150, executionResult.length())) + "...");
+            log.info("步骤 {} 执行结果: {}", stepNumber, executionResult.substring(0, Math.min(150, executionResult.length())));
 
-            // 保存执行结果
+            // 保存执行结果（不向前端发送每个子步骤，用户只需知道大步骤进度）
             dynamicContext.setValue("step" + stepNumber + "Result", executionResult);
-            
-            // 发送步骤执行结果的SSE
-            AutoAgentExecuteResultEntity stepResult = AutoAgentExecuteResultEntity.createExecutionResult(
-                    stepNumber,
-                    stepKey + " 执行完成: " + executionResult.substring(0, Math.min(500, executionResult.length())),
-                    (String) dynamicContext.getValue("sessionId")
-            );
-            sendSseResult(dynamicContext, stepResult);
-
-            // 短暂延迟，避免请求过于频繁
-            Thread.sleep(1000);
 
         } catch (Exception e) {
             log.error("执行步骤 {} 时发生错误: {}", stepNumber, e.getMessage());
@@ -188,80 +176,101 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             log.info("检测到网络错误，将在后续重试机制中处理");
         }
 
-        // 标记步骤为部分完成状态
+        // 标记步骤为部分完成状态（不向前端发送子步骤错误，仅记录日志，总结时会体现）
         dynamicContext.setValue("step" + stepNumber + "Status", "FAILED_WITH_ERROR");
-        
-        // 发送错误结果的SSE
-        try {
-            AutoAgentExecuteResultEntity errorResult = AutoAgentExecuteResultEntity.createExecutionResult(
-                    stepNumber,
-                    stepKey + " 执行失败: " + e.getMessage(),
-                    dynamicContext.getValue("sessionId")
-            );
-            sendSseResult(dynamicContext, errorResult);
-        } catch (Exception sseException) {
-            log.error("发送错误SSE结果失败", sseException);
-        }
     }
     
     /**
      * 构建步骤执行提示词
+     * 中间步骤：【用户回答】内写「本步为中间步骤」；最后一步：【用户回答】内为面向用户的完整回复
      */
-    private String buildStepExecutionPrompt(String stepContent, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        return "你是一个智能执行助手，需要执行以下步骤:\n\n" +
-                "**步骤内容:**\n" +
-                stepContent + "\n\n" +
-                "**用户原始请求:**\n" +
-                dynamicContext.getCurrentTask() + "\n\n" +
-                "**执行要求:**\n" +
-                "1. 仔细分析步骤内容，理解需要执行的具体任务\n" +
-                "2. 如果涉及MCP工具调用，请使用相应的工具\n" +
-                "3. 提供详细的执行过程和结果\n" +
-                "4. 如果遇到问题，请说明具体的错误信息\n" +
-                "5. **重要**: 执行完成后，必须在回复末尾明确输出执行结果，格式如下:\n" +
-                "   ```\n" +
-                "   === 执行结果 ===\n" +
-                "   状态: [成功/失败]\n" +
-                "   结果描述: [具体的执行结果描述]\n" +
-                "   输出数据: [如果有具体的输出数据，请在此列出]\n" +
-                "   ```\n\n" +
-                "请开始执行这个步骤，并严格按照要求提供详细的执行报告和结果输出。";
+    private String buildStepExecutionPrompt(String stepContent, int stepNumber, int totalSteps,
+                                           DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+        boolean isLastStep = (stepNumber >= totalSteps);
+        String prevResult = dynamicContext.getValue("step" + (stepNumber - 1) + "Result");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("执行以下步骤，完成用户请求。\n\n");
+        sb.append("**步骤内容:**\n").append(stepContent).append("\n\n");
+        sb.append("**用户请求:**\n").append(dynamicContext.getCurrentTask()).append("\n\n");
+        if (prevResult != null && !prevResult.trim().isEmpty()) {
+            sb.append("**前一步结果（可引用）:**\n").append(prevResult.substring(0, Math.min(1500, prevResult.length()))).append("\n\n");
+        }
+        sb.append("**输出格式（严格遵守）:**\n");
+        if (isLastStep) {
+            sb.append("本步为最后一步，【用户回答】内必须给出面向用户的完整回复，直接解决用户请求。简洁或详细取决于请求。\n");
+        } else {
+            sb.append("本步为中间步骤，【用户回答】内写「本步为中间步骤」。\n");
+        }
+        sb.append("【用户回答】\n");
+        sb.append(isLastStep ? "[此处写用户可见的回复]\n" : "本步为中间步骤\n");
+        sb.append("【/用户回答】\n\n");
+        sb.append("不要输出执行报告、JSON、API结构等内部细节。请执行并输出。");
+        return sb.toString();
     }
     
     /**
-     * 发送总结结果到流式输出
+     * 从步骤输出中提取【用户回答】内的内容
+     */
+    private String extractUserAnswer(String stepResult) {
+        if (stepResult == null) return null;
+        int start = stepResult.indexOf("【用户回答】");
+        if (start == -1) return null;
+        start += "【用户回答】".length();
+        int end = stepResult.indexOf("【/用户回答】", start);
+        if (end == -1) return null;
+        return stepResult.substring(start, end).trim();
+    }
+
+    /**
+     * 发送总结结果到流式输出，包含 AI 对各步骤的执行结果及最终回答
      */
     private void sendSummaryResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
-        // 构建执行总结内容
         StringBuilder summaryContent = new StringBuilder();
-        summaryContent.append("## 执行步骤完成总结\n\n");
-        
-        // 获取执行历史
-        StringBuilder executionHistory = dynamicContext.getExecutionHistory();
-        if (executionHistory != null && executionHistory.length() > 0) {
-            summaryContent.append("### 已完成的工作\n");
-            summaryContent.append(executionHistory.toString());
-            summaryContent.append("\n\n");
+
+        // 1. 收集各步骤执行结果，最后一步作为 AI 最终回答
+        Map<String, String> stepsMap = dynamicContext.getValue("stepsMap");
+        int lastStepNum = 0;
+        String lastStepResult = null;
+        if (stepsMap != null && !stepsMap.isEmpty()) {
+            List<Integer> nums = new ArrayList<>();
+            for (String key : stepsMap.keySet()) {
+                Matcher m = Pattern.compile("第(\\d+)步").matcher(key);
+                if (m.find()) nums.add(Integer.parseInt(m.group(1)));
+            }
+            if (!nums.isEmpty()) {
+                nums.sort(Integer::compareTo);
+                lastStepNum = nums.get(nums.size() - 1);
+                lastStepResult = dynamicContext.getValue("step" + lastStepNum + "Result");
+            }
         }
-        
-        summaryContent.append("### 执行状态\n");
-        summaryContent.append("✅ 所有规划步骤已成功执行完成\n\n");
-        
-        summaryContent.append("### 执行效果评估\n");
-        summaryContent.append("📊 任务执行流程顺利完成，各步骤按计划执行");
-        
+
+        if (lastStepResult != null && !lastStepResult.trim().isEmpty()) {
+            String userAnswer = extractUserAnswer(lastStepResult);
+            summaryContent.append(userAnswer != null ? userAnswer.trim() : lastStepResult.trim());
+            summaryContent.append("\n\n---\n\n");
+        }
+
+
         AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSummaryResult(
                 summaryContent.toString(), sessionId);
         sendSseResult(dynamicContext, result);
-        log.info("📊 已发送总结结果到【最终执行结果】区域");
+        log.info("已发送总结结果到【最终执行结果】区域，含 AI 最终回答");
     }
     
     /**
-     * 发送完成标识到流式输出
+     * 发送完成标识到流式输出（携带 token/成本 等指标）
      */
     private void sendCompleteResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createCompleteResult(sessionId);
+        var collector = dynamicContext.getLlmMetricsCollector();
+        var metrics = collector != null ? collector.build() : null;
+        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
         sendSseResult(dynamicContext, result);
-        log.info("✅ 已发送完成标识");
+        if (metrics != null) {
+            log.info("✅ 已发送完成标识 | 总Token: {} | 预估成本: {} 元 | 耗时: {} ms",
+                    metrics.getTotalTokens(), metrics.getEstimatedCost(), metrics.getTotalDurationMs());
+        } else {
+            log.info("✅ 已发送完成标识");
+        }
     }
 }
