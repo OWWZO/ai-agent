@@ -1,11 +1,9 @@
 package org.wwz.ai.domain.agent.service.execute.auto;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,16 +33,7 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         
         String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
         log.info("测试结果:{}", apply);
-        
-        // 发送完成标识
-        try {
-            AutoAgentExecuteResultEntity completeResult = AutoAgentExecuteResultEntity.createCompleteResult(executeCommandEntity.getSessionId());
-            // 发送SSE格式的数据
-            String sseData = "data: " + JSON.toJSONString(completeResult) + "\n\n";
-            emitter.send(sseData);
-        } catch (Exception e) {
-            log.error("发送完成标识失败：{}", e.getMessage(), e);
-        }
+        // 完成标识由 Step4 统一发送，此处不再重复发送
     }
 
 }

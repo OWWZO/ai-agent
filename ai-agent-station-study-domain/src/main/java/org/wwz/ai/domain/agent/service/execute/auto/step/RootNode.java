@@ -13,7 +13,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- ReAct思考架构 Think → Act → Observe → Repeat
+ * Plan-Act-Reflect 思考架构（动态、带反思、可修正）
+ * Plan → Act → Reflect → Plan(修订) → Act → Reflect → ... → 完成
  */
 @Slf4j
 @Service("executeRootNode")

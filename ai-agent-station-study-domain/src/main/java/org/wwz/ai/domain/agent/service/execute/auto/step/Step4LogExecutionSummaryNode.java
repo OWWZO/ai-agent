@@ -23,9 +23,7 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
 
         // 第四阶段：执行总结
         log.info("\n📊 阶段4: 执行总结分析");
-        
-        // 记录执行总结
-        logExecutionSummary(dynamicContext.getMaxStep(), dynamicContext.getExecutionHistory(), dynamicContext.isCompleted());
+
         
         // 生成最终总结报告（无论任务是否完成都需要生成）
         generateFinalReport(requestParameter, dynamicContext);
@@ -125,38 +123,15 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
     }
 
     /**
-     * 输出最终总结报告
+     * 输出最终总结报告（仅发送一次完整总结，避免分段重复）
      */
     private void logFinalReport(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String summaryResult, String sessionId) {
         boolean isCompleted = dynamicContext.isCompleted();
         log.info("\n📋 === {}任务最终总结报告 ===", isCompleted ? "已完成" : "未完成");
 
-        String[] lines = summaryResult.split("\n");
-        String currentSection = "summary_overview";
-        StringBuilder sectionContent = new StringBuilder();
-        
-        for (String line : lines) {
+        for (String line : summaryResult.split("\n")) {
             line = line.trim();
             if (line.isEmpty()) continue;
-            
-            // 检测是否开始新的总结部分
-            String newSection = detectSummarySection(line);
-            if (newSection != null && !newSection.equals(currentSection)) {
-                // 发送前一个部分的内容
-                if (!sectionContent.isEmpty()) {
-                    sendSummarySubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
-                }
-                currentSection = newSection;
-                sectionContent.setLength(0);
-            }
-            
-            // 收集当前部分的内容
-            if (!sectionContent.isEmpty()) {
-                sectionContent.append("\n");
-            }
-            sectionContent.append(line);
-            
-            // 根据内容类型添加不同图标
             if (line.contains("已完成") || line.contains("完成的工作")) {
                 log.info("✅ {}", line);
             } else if (line.contains("未完成") || line.contains("原因")) {
@@ -170,16 +145,8 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             }
         }
         
-        // 发送最后一个部分的内容
-        if (!sectionContent.isEmpty()) {
-            sendSummarySubResult(dynamicContext, currentSection, sectionContent.toString(), sessionId);
-        }
-        
-        // 发送完整的总结结果
+        // 仅发送一次完整总结，面向用户
         sendSummaryResult(dynamicContext, summaryResult, sessionId);
-        
-        // 发送完成标识
-        sendCompleteResult(dynamicContext, sessionId);
     }
     
     /**
@@ -192,43 +159,5 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
         sendSseResult(dynamicContext, result);
     }
     
-    /**
-     * 发送总结阶段细分结果到流式输出
-     */
-    private void sendSummarySubResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
-                                     String subType, String content, String sessionId) {
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSummarySubResult(
-                subType, content, sessionId);
-        sendSseResult(dynamicContext, result);
-    }
-    
-    /**
-     * 发送完成标识到流式输出
-     */
-    private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createCompleteResult(sessionId);
-        sendSseResult(dynamicContext, result);
-        log.info("✅ 已发送完成标识");
-    }
-    
-    /**
-     * 检测总结部分标识
-     */
-    private String detectSummarySection(String content) {
-        if (content.contains("已完成的工作") || content.contains("完成的工作") || content.contains("工作内容和成果")) {
-            return "completed_work";
-        } else if (content.contains("未完成的原因") || content.contains("未完成原因")) {
-            return "incomplete_reasons";
-        } else if (content.contains("关键因素") || content.contains("完成的关键因素")) {
-            return "key_factors";
-        } else if (content.contains("执行效率") || content.contains("执行效率和质量")) {
-            return "efficiency_quality";
-        } else if (content.contains("完成剩余任务的建议") || content.contains("建议") || content.contains("优化建议") || content.contains("经验总结")) {
-            return "suggestions";
-        } else if (content.contains("整体执行效果") || content.contains("评估")) {
-            return "evaluation";
-        }
-        return null;
-    }
 
 }

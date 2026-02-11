@@ -54,6 +54,9 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         private Map<String, Object> dataObjects = new HashMap<>();
 
+        /** Reflect 阶段输出，供下一轮 Plan 修订计划时使用 */
+        private String reflectFeedback;
+
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);
         }

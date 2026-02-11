@@ -19,7 +19,7 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("\n 阶段2: 精准任务执行");
+        log.info("\n阶段2: Act - 执行当前步骤");
         
         // 从动态上下文中获取分析结果
         String analysisResult = dynamicContext.getValue("analysisResult");

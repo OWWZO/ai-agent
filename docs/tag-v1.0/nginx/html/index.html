@@ -1139,8 +1139,7 @@
                     isConnected = false;
                     sendBtn.disabled = false;
                     document.getElementById('loading').style.display = 'none';
-                    // 添加完成标识
-                    addStageMessage('complete', null, '任务执行完成', null);
+                    // 完成标识由后端统一发送，此处不再重复添加
                 },
                 // onError回调
                 (error) => {

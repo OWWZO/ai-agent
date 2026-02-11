@@ -105,7 +105,7 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
 
         // 4. 格式规范 - 通用化任务格式
         prompt.append("### 格式规范\n");
-        prompt.append("请使用以下Markdown格式生成3-5个执行步骤：\n");
+        prompt.append("请使用以下Markdown格式生成1-5个执行步骤：\n");
         prompt.append("```markdown\n");
         prompt.append("# 执行步骤规划\n\n");
         prompt.append("[ ] 第1步：[步骤描述]\n");

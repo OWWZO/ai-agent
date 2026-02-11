@@ -24,8 +24,8 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
         // 获取配置信息
         AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode());
 
-        // 第一阶段 任务分析
-        log.info("\n阶段1: 任务状态分析");
+        // Plan 阶段：规划/修订计划（Plan-Act-Reflect 模式）
+        log.info("\n阶段1: Plan - 规划/修订计划");
         String analysisPrompt = String.format(aiAgentClientFlowConfigVO.getStepPrompt(),
                 requestParameter.getMessage(),
                 dynamicContext.getStep(),
@@ -33,6 +33,11 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                 !dynamicContext.getExecutionHistory().isEmpty() ? dynamicContext.getExecutionHistory().toString() : "[首次执行]",
                 dynamicContext.getCurrentTask()
         );
+        // 若有 Reflect 反馈，追加供 Plan 修订计划
+        String reflectFeedback = dynamicContext.getReflectFeedback();
+        if (reflectFeedback != null && !reflectFeedback.isBlank()) {
+            analysisPrompt += "\n\n**上一轮 Reflect 反馈（请据此修订计划）:**\n" + reflectFeedback;
+        }
 
         ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
@@ -43,7 +48,6 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
                 .call().content();
 
-        assert analysisResult != null;
         parseAnalysisResult(dynamicContext, analysisResult, requestParameter.getSessionId());
         
         // 将分析结果保存到动态上下文中，供下一步使用

@@ -221,26 +221,7 @@ public class AutoAgentExecuteResultEntity {
                 .build();
     }
 
-    /**
-     * 创建完成标识
-     */
-    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId) {
-        return createCompleteResult(sessionId, null);
-    }
 
-    /**
-     * 创建完成标识（携带指标）
-     */
-    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId, LlmMetrics metrics) {
-        return AutoAgentExecuteResultEntity.builder()
-                .type("complete")
-                .step(null)
-                .content("执行完成")
-                .completed(true)
-                .timestamp(System.currentTimeMillis())
-                .sessionId(sessionId)
-                .metrics(metrics)
-                .build();
-    }
+
 
 }
