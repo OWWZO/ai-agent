@@ -74,21 +74,23 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
                 dynamicContext.getCurrentTask()
         );
 
-        String mcpToolsAnalysis = callLlmWithMetrics(mcpToolsChatClient, mcpAnalysisPrompt, dynamicContext);
+        // 流式调用 LLM，前端实时看到输出
+        int step = dynamicContext.getStep();
+        String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
+                ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "MCP工具分析";
+        String mcpToolsAnalysis = streamLlmWithMetrics(
+                mcpToolsChatClient,
+                mcpAnalysisPrompt,
+                dynamicContext,
+                requestParameter.getSessionId(),
+                step,
+                stepName,
+                "analysis_tools");
         
         log.info("步骤一 MCP工具分析结果: {}", mcpToolsAnalysis);
         
         // 保存分析结果到上下文
         dynamicContext.setValue("mcpToolsAnalysis", mcpToolsAnalysis);
-        
-        // 发送SSE结果
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createAnalysisSubResult(
-                dynamicContext.getStep(), 
-                "analysis_tools", 
-                mcpToolsAnalysis, 
-                requestParameter.getSessionId());
-
-        sendSseResult(dynamicContext, result);
         
         // 更新步骤
         dynamicContext.setStep(dynamicContext.getStep() + 1);

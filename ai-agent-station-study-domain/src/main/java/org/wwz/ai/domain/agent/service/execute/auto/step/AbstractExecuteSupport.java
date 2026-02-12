@@ -11,8 +11,10 @@ import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
@@ -65,6 +67,113 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
         } catch (IOException e) {
             log.error("发送SSE结果失败：{}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * 流式调用 LLM：通过 SSE 将模型输出逐块推送到前端
+     * 支持带 advisors 的调用
+     *
+     * @param sessionId  会话 ID，用于 SSE 事件
+     * @param step       当前步骤
+     * @param stepName   步骤名称
+     * @param subType    子类型
+     * @return 模型返回的完整文本内容
+     */
+    protected String streamLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                         String sessionId, int step, String stepName, String subType) {
+        final String sessionIdFinal = sessionId != null ? sessionId : "";
+
+        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+        if (emitter == null) {
+            // 如果没有 emitter，回退到普通调用
+            ChatResponse response = chatClient.prompt().user(userMessage).call().chatResponse();
+            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+                String text = response.getResult().getOutput().getText();
+                return text != null ? text : "";
+            }
+            return "";
+        }
+
+        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+
+        StringBuilder fullText = new StringBuilder();
+
+        try {
+            Flux<ChatResponse> flux = chatClient.prompt().user(userMessage).stream().chatResponse();
+            flux.doOnNext(cr -> {
+                if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
+                    String text = cr.getResult().getOutput().getText();
+                    if (text != null && !text.isEmpty()) {
+                        fullText.append(text);
+                        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
+                    }
+                }
+            }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
+        } catch (Exception e) {
+            log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
+        }
+
+        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        return fullText.toString();
+    }
+
+    /**
+     * 流式调用 LLM（带 advisors）：通过 SSE 将模型输出逐块推送到前端
+     *
+     * @param sessionId  会话 ID，用于 SSE 事件
+     * @param step       当前步骤
+     * @param stepName   步骤名称
+     * @param subType    子类型
+     * @param advisorConfig  advisor 配置函数（Consumer&lt;ChatClient.AdvisorSpec&gt;）
+     * @return 模型返回的完整文本内容
+     */
+    protected String streamLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                         String sessionId, int step, String stepName, String subType,
+                                         java.util.function.Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        final String sessionIdFinal = sessionId != null ? sessionId : "";
+
+        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+        if (emitter == null) {
+            // 如果没有 emitter，回退到普通调用
+            var promptBuilder = chatClient.prompt().user(userMessage);
+            if (advisorConfig != null) {
+                promptBuilder = promptBuilder.advisors(advisorConfig);
+            }
+            ChatResponse response = promptBuilder.call().chatResponse();
+            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+                String text = response.getResult().getOutput().getText();
+                return text != null ? text : "";
+            }
+            return "";
+        }
+
+        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+
+        StringBuilder fullText = new StringBuilder();
+
+        try {
+            var promptBuilder = chatClient.prompt().user(userMessage);
+            if (advisorConfig != null) {
+                promptBuilder = promptBuilder.advisors(advisorConfig);
+            }
+            Flux<ChatResponse> flux = promptBuilder.stream().chatResponse();
+            flux.doOnNext(cr -> {
+                if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
+                    String text = cr.getResult().getOutput().getText();
+                    if (text != null && !text.isEmpty()) {
+                        fullText.append(text);
+                        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
+                    }
+                }
+            }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
+        } catch (Exception e) {
+            log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
+        }
+
+        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        return fullText.toString();
     }
 
 }

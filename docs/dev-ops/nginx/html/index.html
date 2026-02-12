@@ -411,6 +411,14 @@
         .metrics-card {
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
+
+        .stream-cursor {
+            animation: blink 1s step-end infinite;
+            color: #0ea5e9;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col bg-gray-50 font-sans">
@@ -1116,8 +1124,9 @@
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
-            // 清空当前步骤消息缓存
+            // 清空当前步骤消息缓存与流式累积
             currentStepMessages.clear();
+            Object.keys(streamAccumulated).forEach(k => delete streamAccumulated[k]);
 
             // 清空之前的AI消息（保留欢迎消息）
             const thinkingDiv = document.getElementById('thinkingMessages');
@@ -1187,9 +1196,30 @@
         });
     }
 
+    // 流式消息：按 step+subType 累积内容，用于 streamEnd 时做 markdown 渲染
+    const streamAccumulated = {};
+
     // 处理SSE消息
     function handleSSEMessage(jsonData) {
-        const { type, subType, step, stepName, content, completed, timestamp, sessionId, metrics } = jsonData;
+        const { type, subType, step, stepName, content, completed, timestamp, sessionId, metrics,
+                streamStart, streamDelta, streamEnd } = jsonData;
+
+        // 流式开始：创建新消息占位，等待后续 delta 追加
+        if (streamStart === true) {
+            addStreamingMessagePlaceholder(step, subType, stepName);
+            streamAccumulated[streamKey(step, subType)] = '';
+            return;
+        }
+        // 流式增量：追加到当前流式消息
+        if (streamDelta === true && (content || '') !== '') {
+            appendStreamDelta(step, subType, content);
+            return;
+        }
+        // 流式结束：用累积全文做 markdown 渲染并结束流式状态
+        if (streamEnd === true) {
+            finalizeStreamingMessage(step, subType, stepName);
+            return;
+        }
 
         // complete 类型可无 content，用于携带 metrics
         if (type === 'complete' && !content && metrics) {
@@ -1201,6 +1231,83 @@
         }
 
         addStageMessage(type, subType, content, step, stepName, metrics);
+    }
+
+    function streamKey(step, subType) {
+        return (step != null ? step : '') + '_' + (subType || '');
+    }
+
+    function addStreamingMessagePlaceholder(step, subType, stepName) {
+        const targetContainer = document.getElementById('thinkingMessages');
+        const key = streamKey(step, subType);
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'flex items-start gap-3 message streaming-message';
+        messageDiv.setAttribute('data-stream-key', key);
+        const stageInfo = stageTypeMap['analysis'] || { name: '分析阶段', icon: '🎯', class: 'stage-analysis' };
+        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
+        if (stepName) indicators += `<span class="sub-type-indicator">${stepName}</span>`;
+        if (subType) indicators += `<span class="sub-type-indicator">${subTypeMap[subType] || subType}</span>`;
+        messageDiv.innerHTML = `
+            <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
+                <span class="text-white text-sm font-semibold">AI</span>
+            </div>
+            <div class="flex-1 bg-primary-50 rounded-lg p-3">
+                <div class="text-sm text-primary-800">
+                    <strong>AI助手:</strong> ${indicators}
+                    <div class="markdown-content stream-content" data-stream-key="${key}"></div>
+                    <span class="stream-cursor">▌</span>
+                </div>
+            </div>
+        `;
+        targetContainer.appendChild(messageDiv);
+        scrollToBottom(targetContainer);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function appendStreamDelta(step, subType, content) {
+        const key = streamKey(step, subType);
+        if (streamAccumulated[key] === undefined) streamAccumulated[key] = '';
+        streamAccumulated[key] += content || '';
+        const contentEl = document.querySelector(`.stream-content[data-stream-key="${key}"]`);
+        if (contentEl) {
+            contentEl.innerHTML += escapeHtml(content || '');
+            contentEl.closest('.message') && scrollToBottom(contentEl.closest('.message').parentElement);
+        }
+    }
+
+    function finalizeStreamingMessage(step, subType, stepName) {
+        const key = streamKey(step, subType);
+        const fullContent = streamAccumulated[key] || '';
+        delete streamAccumulated[key];
+        const messageDiv = document.querySelector(`.message.streaming-message[data-stream-key="${key}"]`);
+        if (!messageDiv) return;
+        messageDiv.classList.remove('streaming-message');
+        const contentEl = messageDiv.querySelector('.stream-content');
+        const cursorEl = messageDiv.querySelector('.stream-cursor');
+        if (cursorEl) cursorEl.remove();
+        if (contentEl) {
+            contentEl.innerHTML = fullContent ? marked.parse(fullContent) : '';
+            contentEl.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        }
+        if (currentChatHistory && currentChatHistory.sessionId) {
+            currentChatHistory.messages.push({
+                type: 'ai',
+                content: fullContent,
+                stage: 'analysis',
+                subType: subType,
+                step: step,
+                stepName: stepName,
+                timestamp: Date.now(),
+                html: messageDiv.innerHTML
+            });
+            saveChatToHistory(currentChatHistory);
+        }
+        scrollToBottom(document.getElementById('thinkingMessages'));
     }
 
     // 添加阶段消息

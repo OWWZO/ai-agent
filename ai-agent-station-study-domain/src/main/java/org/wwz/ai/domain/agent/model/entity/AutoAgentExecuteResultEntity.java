@@ -66,6 +66,21 @@ public class AutoAgentExecuteResultEntity {
      */
     private LlmMetrics metrics;
 
+    /**
+     * 流式输出：是否为流开始（前端创建新消息占位）
+     */
+    private Boolean streamStart;
+
+    /**
+     * 流式输出：是否为增量内容（前端追加到当前消息）
+     */
+    private Boolean streamDelta;
+
+    /**
+     * 流式输出：是否为流结束（前端结束当前流式消息）
+     */
+    private Boolean streamEnd;
+
     @Data
     @Builder
     @AllArgsConstructor
@@ -221,7 +236,80 @@ public class AutoAgentExecuteResultEntity {
                 .build();
     }
 
+    /**
+     * 创建完成标识（无指标）
+     */
+    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId) {
+        return AutoAgentExecuteResultEntity.builder()
+                .type("complete")
+                .step(null)
+                .content(null)
+                .completed(true)
+                .timestamp(System.currentTimeMillis())
+                .sessionId(sessionId)
+                .build();
+    }
 
+    /**
+     * 创建完成标识（带指标）
+     */
+    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId, LlmMetrics metrics) {
+        return AutoAgentExecuteResultEntity.builder()
+                .type("complete")
+                .step(null)
+                .content(null)
+                .completed(true)
+                .timestamp(System.currentTimeMillis())
+                .sessionId(sessionId)
+                .metrics(metrics)
+                .build();
+    }
 
+    /**
+     * 流式开始：前端创建新消息占位
+     */
+    public static AutoAgentExecuteResultEntity createStreamStart(Integer step, String stepName, String subType, String sessionId) {
+        return AutoAgentExecuteResultEntity.builder()
+                .type("analysis")
+                .subType(subType)
+                .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
+                .content("")
+                .streamStart(true)
+                .timestamp(System.currentTimeMillis())
+                .sessionId(sessionId)
+                .build();
+    }
 
+    /**
+     * 流式增量：前端追加 content 到当前消息
+     */
+    public static AutoAgentExecuteResultEntity createStreamDelta(Integer step, String stepName, String subType, String content, String sessionId) {
+        return AutoAgentExecuteResultEntity.builder()
+                .type("analysis")
+                .subType(subType)
+                .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
+                .content(content)
+                .streamDelta(true)
+                .timestamp(System.currentTimeMillis())
+                .sessionId(sessionId)
+                .build();
+    }
+
+    /**
+     * 流式结束：前端结束当前流式消息
+     */
+    public static AutoAgentExecuteResultEntity createStreamEnd(Integer step, String stepName, String subType, String sessionId) {
+        return AutoAgentExecuteResultEntity.builder()
+                .type("analysis")
+                .subType(subType)
+                .step(step)
+                .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
+                .content(null)
+                .streamEnd(true)
+                .timestamp(System.currentTimeMillis())
+                .sessionId(sessionId)
+                .build();
+    }
 }

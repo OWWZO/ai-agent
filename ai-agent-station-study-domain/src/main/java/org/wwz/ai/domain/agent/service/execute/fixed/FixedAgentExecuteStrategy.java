@@ -9,9 +9,11 @@ import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import reactor.core.publisher.Flux;
 
 import javax.annotation.Resource;
 import java.time.LocalDate;
@@ -38,31 +40,50 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
         // 1. 获取配置客户端
         List<AiAgentClientFlowConfigVO> aiAgentClientList = repository.queryAiAgentClientsByAgentId(requestParameter.getAiAgentId());
 
-        // 2. 循环执行客户端
+        // 2. 循环执行客户端（流式输出）
         String content = "";
+        final String sessionId = requestParameter.getSessionId() != null ? requestParameter.getSessionId() : "";
 
         for (AiAgentClientFlowConfigVO config : aiAgentClientList) {
             ChatClient chatClient = getChatClientByClientId(config.getClientId());
 
-            content = chatClient.prompt(requestParameter.getMessage() + "，" + content)
-                    .system(s -> s.param("current_date", LocalDate.now().toString()))
-                    .advisors(a -> a
-                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 100))
-                    .call().content();
+            // 流式调用 LLM
+            String stepName = "智能对话";
+            String subType = "summary";
+            sendStreamStart(emitter, 1, stepName, subType, sessionId);
+
+            StringBuilder fullText = new StringBuilder();
+            try {
+                Flux<ChatResponse> flux = chatClient.prompt(requestParameter.getMessage() + "，" + content)
+                        .system(s -> s.param("current_date", LocalDate.now().toString()))
+                        .advisors(a -> a
+                                .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                                .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 100))
+                        .stream().chatResponse();
+
+                flux.doOnNext(cr -> {
+                    if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
+                        String text = cr.getResult().getOutput().getText();
+                        if (text != null && !text.isEmpty()) {
+                            fullText.append(text);
+                            sendStreamDelta(emitter, 1, stepName, subType, text, sessionId);
+                        }
+                    }
+                }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
+            } catch (Exception e) {
+                log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
+            }
+
+            sendStreamEnd(emitter, 1, stepName, subType, sessionId);
+            content = fullText.toString();
 
             log.info("智能体对话进行，客户端ID {}", requestParameter.getAiAgentId());
         }
 
         log.info("智能体对话请求，结果 {} {}", requestParameter.getAiAgentId(), content);
         
-        // 发送最终结果通知（确保 content 不为空）
-        if (content != null && !content.trim().isEmpty()) {
-            sendFinalResult(emitter, content, requestParameter.getSessionId());
-        }
-        
         // 发送完成标识
-        sendCompleteResult(emitter, requestParameter.getSessionId());
+        sendCompleteResult(emitter, sessionId);
     }
 
     private ChatClient getChatClientByClientId(String clientId) {
@@ -74,16 +95,41 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
     }
     
     /**
-     * 发送最终结果到流式输出
+     * 发送流式开始事件
      */
-    private void sendFinalResult(ResponseBodyEmitter emitter, String content, String sessionId) {
+    private void sendStreamStart(ResponseBodyEmitter emitter, int step, String stepName, String subType, String sessionId) {
         try {
-            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSummaryResult(content, sessionId);
+            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionId);
             String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
             emitter.send(sseData);
-            log.info("✅ 已发送最终结果");
         } catch (Exception e) {
-            log.error("发送最终结果失败：{}", e.getMessage(), e);
+            log.error("发送流式开始事件失败：{}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 发送流式增量事件
+     */
+    private void sendStreamDelta(ResponseBodyEmitter emitter, int step, String stepName, String subType, String content, String sessionId) {
+        try {
+            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, content, sessionId);
+            String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
+            emitter.send(sseData);
+        } catch (Exception e) {
+            log.error("发送流式增量事件失败：{}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 发送流式结束事件
+     */
+    private void sendStreamEnd(ResponseBodyEmitter emitter, int step, String stepName, String subType, String sessionId) {
+        try {
+            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionId);
+            String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
+            emitter.send(sseData);
+        } catch (Exception e) {
+            log.error("发送流式结束事件失败：{}", e.getMessage(), e);
         }
     }
     

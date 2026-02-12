@@ -40,7 +40,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             }
             
             // 按顺序执行规划步骤
-            executeStepsInOrder(executorChatClient, stepsMap, dynamicContext);
+            executeStepsInOrder(executorChatClient, stepsMap, dynamicContext, request);
             
             // 发送SSE结果
             AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createExecutionResult(
@@ -77,7 +77,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
     /**
      * 按顺序执行规划步骤
      */
-    private void executeStepsInOrder(ChatClient executorChatClient, Map<String, String> stepsMap, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+    private void executeStepsInOrder(ChatClient executorChatClient, Map<String, String> stepsMap, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, ExecuteCommandEntity request) {
         if (stepsMap == null || stepsMap.isEmpty()) {
             log.warn("步骤映射为空，无法执行");
             return;
@@ -115,7 +115,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             }
 
             if (stepContent != null) {
-                executeStep(executorChatClient, stepNumber, stepKey, stepContent, dynamicContext);
+                executeStep(executorChatClient, stepNumber, stepKey, stepContent, dynamicContext, request.getSessionId());
             } else {
                 log.warn("未找到步骤内容: {}", stepKey);
             }
@@ -125,7 +125,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
     /**
      * 执行单个步骤
      */
-    private void executeStep(ChatClient executorChatClient, Integer stepNumber, String stepKey, String stepContent, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
+    private void executeStep(ChatClient executorChatClient, Integer stepNumber, String stepKey, String stepContent, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
         log.info("\n--- 开始执行 {} ---", stepKey);
         log.info("步骤内容: {}", stepContent.substring(0, Math.min(200, stepContent.length())));
 
@@ -137,8 +137,16 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
 
             Map<String, String> stepsMap = dynamicContext.getValue("stepsMap");
             int totalSteps = stepsMap != null ? stepsMap.size() : 1;
-            String executionResult = callLlmWithMetrics(executorChatClient,
-                    buildStepExecutionPrompt(stepContent, stepNumber, totalSteps, dynamicContext), dynamicContext);
+            int step = dynamicContext.getStep();
+            String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
+                    ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "执行步骤";
+            String executionResult = streamLlmWithMetrics(executorChatClient,
+                    buildStepExecutionPrompt(stepContent, stepNumber, totalSteps, dynamicContext),
+                    dynamicContext,
+                    sessionId,
+                    step,
+                    stepName,
+                    "execution_process");
 
             assert executionResult != null;
             log.info("步骤 {} 执行结果: {}", stepNumber, executionResult.substring(0, Math.min(150, executionResult.length())));

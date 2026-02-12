@@ -74,12 +74,19 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
             // 获取对话客户端 - 使用任务分析客户端进行总结
             ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
             
-            String summaryResult = chatClient
-                    .prompt(summaryPrompt)
-                    .advisors(a -> a
-                            .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
-                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50))
-                    .call().content();
+            // 流式调用 LLM，前端实时看到输出
+            int step = dynamicContext.getStep();
+            String stepName = "执行总结";
+            String summaryResult = streamLlmWithMetrics(
+                    chatClient,
+                    summaryPrompt,
+                    dynamicContext,
+                    requestParameter.getSessionId(),
+                    step,
+                    stepName,
+                    "summary_overview",
+                    a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
+                            .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50));
 
             assert summaryResult != null;
             logFinalReport(dynamicContext, summaryResult, requestParameter.getSessionId());

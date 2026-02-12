@@ -36,20 +36,23 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         
         String planningPrompt = buildStructuredPlanningPrompt(userRequest, mcpToolsAnalysis);
 
-        String planningResult = callLlmWithMetrics(planningChatClient, planningPrompt, dynamicContext);
+        // 流式调用 LLM，前端实时看到输出
+        int step = dynamicContext.getStep();
+        String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
+                ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "执行规划";
+        String planningResult = streamLlmWithMetrics(
+                planningChatClient,
+                planningPrompt,
+                dynamicContext,
+                requestParameter.getSessionId(),
+                step,
+                stepName,
+                "analysis_strategy");
         
         log.info("执行步骤规划结果: {}", planningResult);
         
         // 保存规划结果到上下文
         dynamicContext.setValue("planningResult", planningResult);
-        
-        // 发送SSE结果
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createAnalysisSubResult(
-                dynamicContext.getStep(), 
-                "analysis_strategy", 
-                planningResult, 
-                requestParameter.getSessionId());
-        sendSseResult(dynamicContext, result);
         
         // 更新步骤
         dynamicContext.setStep(dynamicContext.getStep() + 1);

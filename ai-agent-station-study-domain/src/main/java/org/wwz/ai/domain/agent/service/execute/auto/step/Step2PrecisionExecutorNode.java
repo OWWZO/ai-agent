@@ -36,12 +36,19 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
         // 获取对话客户端
         ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
-        String executionResult = chatClient
-                .prompt(executionPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+        // 流式调用 LLM，前端实时看到输出
+        int step = dynamicContext.getStep();
+        String stepName = "精准执行";
+        String executionResult = streamLlmWithMetrics(
+                chatClient,
+                executionPrompt,
+                dynamicContext,
+                requestParameter.getSessionId(),
+                step,
+                stepName,
+                "execution_target",
+                a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
 
         assert executionResult != null;
         parseExecutionResult(dynamicContext, executionResult, requestParameter.getSessionId());

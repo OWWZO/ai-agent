@@ -41,12 +41,19 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
 
         ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
-        String analysisResult = chatClient
-                .prompt(analysisPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+        // 流式调用 LLM，前端实时看到输出
+        int step = dynamicContext.getStep();
+        String stepName = "任务分析";
+        String analysisResult = streamLlmWithMetrics(
+                chatClient,
+                analysisPrompt,
+                dynamicContext,
+                requestParameter.getSessionId(),
+                step,
+                stepName,
+                "analysis_status",
+                a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
 
         parseAnalysisResult(dynamicContext, analysisResult, requestParameter.getSessionId());
         

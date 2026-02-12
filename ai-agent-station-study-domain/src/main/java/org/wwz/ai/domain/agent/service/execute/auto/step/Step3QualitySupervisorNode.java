@@ -37,12 +37,19 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
         // 获取对话客户端
         ChatClient chatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
-        String supervisionResult = chatClient
-                .prompt(supervisionPrompt)
-                .advisors(a -> a
-                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024))
-                .call().content();
+        // 流式调用 LLM，前端实时看到输出
+        int step = dynamicContext.getStep();
+        String stepName = "质量监督";
+        String supervisionResult = streamLlmWithMetrics(
+                chatClient,
+                supervisionPrompt,
+                dynamicContext,
+                requestParameter.getSessionId(),
+                step,
+                stepName,
+                "assessment",
+                a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
 
         assert supervisionResult != null;
         var reflectMeta = parseSupervisionResult(dynamicContext, supervisionResult, requestParameter.getSessionId());
