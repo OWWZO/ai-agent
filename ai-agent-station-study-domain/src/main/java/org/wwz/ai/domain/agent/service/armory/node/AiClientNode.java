@@ -14,6 +14,7 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,10 +66,13 @@ public class AiClientNode extends AbstractArmorySupport {
             for (String advisorBeanName : advisorBeanNameList) {
                 advisors.add(getBean(advisorBeanName));
             }
+            
+            // 5. 添加 MetricsAdvisor（自动统计 token 用量，优先级较低，在其他 Advisor 之后执行）
+            advisors.add(new MetricsAdvisor());
 
             Advisor[] advisorArray = advisors.toArray(new Advisor[]{});
 
-            // 5. 构建对话客户端
+            // 6. 构建对话客户端
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
                     .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))

@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.service.execute.auto.step.factory;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.service.execute.auto.step.RootNode;
+import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -46,7 +47,7 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         private StringBuilder executionHistory;
 
-        private String currentTask;
+        private StringBuilder currentTask;
 
         boolean isCompleted = false;
 
@@ -54,8 +55,9 @@ public class DefaultAutoAgentExecuteStrategyFactory {
 
         private Map<String, Object> dataObjects = new HashMap<>();
 
-        /** Reflect 阶段输出，供下一轮 Plan 修订计划时使用 */
-        private String reflectFeedback;
+
+        /** 本次会话 LLM 指标采集器 */
+        private LlmMetricsCollector llmMetricsCollector = new LlmMetricsCollector();
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);

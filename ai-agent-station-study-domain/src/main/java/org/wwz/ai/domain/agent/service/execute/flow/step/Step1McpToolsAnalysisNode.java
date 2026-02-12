@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
@@ -37,13 +37,14 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
                         
                         ## 重要说明
                         **注意：本阶段仅进行MCP工具能力分析，不执行用户的实际请求。**\s
+                         先根据mcp工具的名称或者用途进行过滤 快速筛选掉用户请求完全用不到的mcp工具 严禁过度分析完全用不到的mcp工具的信息 影响执行效率 然后再基于上述实际能用的MCP工具信息，针对用户请求进行详细的工具能力分析（仅分析，不执行
                         这是一个纯分析阶段，目的是评估可用工具的能力和适用性，为后续的执行规划提供依据。
                         
                         ## 用户请求
                         %s
                         
                         ## 分析要求
-                        请基于上述实际的MCP工具信息，针对用户请求进行详细的工具能力分析（仅分析，不执行）：
+）：
                         
                         ### 1. 工具匹配分析
                         - 分析每个可用工具的核心功能和适用场景
@@ -76,8 +77,9 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
 
         // 流式调用 LLM，前端实时看到输出
         int step = dynamicContext.getStep();
-        String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
-                ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "MCP工具分析";
+        String stepName = (step >= 1 && step < AgentExecuteResultEntity.STEP_NAMES.length)
+                ? AgentExecuteResultEntity.STEP_NAMES[step] : "MCP工具分析";
+
         String mcpToolsAnalysis = streamLlmWithMetrics(
                 mcpToolsChatClient,
                 mcpAnalysisPrompt,
@@ -85,7 +87,7 @@ public class Step1McpToolsAnalysisNode extends AbstractExecuteSupport {
                 requestParameter.getSessionId(),
                 step,
                 stepName,
-                "analysis_tools");
+                "MCP分析");
         
         log.info("步骤一 MCP工具分析结果: {}", mcpToolsAnalysis);
         

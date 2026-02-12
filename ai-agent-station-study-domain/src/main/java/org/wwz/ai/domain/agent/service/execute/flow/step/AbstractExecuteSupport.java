@@ -1,9 +1,10 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
+import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
 import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
@@ -18,14 +19,12 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.util.function.Consumer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 /**
  * 抽象类
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/8/24 14:28
  */
 public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategyRouter<ExecuteCommandEntity, DefaultFlowAgentExecuteStrategyFactory.DynamicContext, String> {
 
@@ -54,30 +53,28 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     /**
-     * 调用 LLM 并采集 token 用量
-     * 仅调用 chatResponse() 一次，从中提取 content，避免 chatResponse()+content() 重复触发导致 Advisor 链消耗
-     * @return 模型返回的文本内容
+     * 统一注入 MetricsCollector 到本次请求的 advisor context。
+     * 业务侧只需要传入自身需要的 advisor 配置（如 chat memory），指标采集参数在这里统一追加。
      */
-    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
-                                       DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
-        ChatResponse response = chatClient.prompt().user(userMessage).call().chatResponse();
-        if (response != null) {
+    protected Consumer<ChatClient.AdvisorSpec> withMetrics(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                                          Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        return a -> {
+            if (advisorConfig != null) {
+                advisorConfig.accept(a);
+            }
             LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
             if (collector != null) {
-                collector.accumulate(response);
+                a.param(MetricsAdvisor.CONTEXT_KEY_LLM_METRICS_COLLECTOR, collector);
             }
-            var result = response.getResult();
-            if (result != null && result.getOutput() != null) {
-                String text = result.getOutput().getText();
-                return text != null ? text : "";
-            }
-        }
-        return "";
+        };
     }
 
+
     /**
-     * 流式调用 LLM：通过 SSE 将模型输出逐块推送到前端，并采集 token 用量
-     * 类似 chatClient.stream(new Prompt(message)) 的效果，每块通过 sendSseStreamDelta 发送
+     * 流式调用 LLM：通过 SSE 将模型输出逐块推送到前端，并自动采集 token 用量
+     * 
+     * <p>通过 MetricsAdvisor 自动统计 token，无需手动调用 accumulate
+     * 流式调用时，MetricsAdvisor 会自动在最后一个包含 usage 的 chunk 上统计
      *
      * @param sessionId  会话 ID，用于 SSE 事件
      * @param step       当前步骤
@@ -90,35 +87,33 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
                                           String sessionId, int step, String stepName, String subType) {
         final String sessionIdFinal = sessionId != null ? sessionId : "";
 
-        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-        if (emitter == null) {
-            return callLlmWithMetrics(chatClient, userMessage, dynamicContext);
-        }
-
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+        //建立前端消息占位
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
 
         StringBuilder fullText = new StringBuilder();
-        LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
 
         try {
-            Flux<ChatResponse> flux = chatClient.prompt().user(userMessage).stream().chatResponse();
+            var promptBuilder = chatClient.prompt()
+                    .user(userMessage)
+                    .advisors(withMetrics(dynamicContext, null));
+            
+            Flux<ChatResponse> flux = promptBuilder.stream().chatResponse();
             flux.doOnNext(cr -> {
                 if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
                     String text = cr.getResult().getOutput().getText();
                     if (text != null && !text.isEmpty()) {
                         fullText.append(text);
-                        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
+                        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
                     }
                 }
-                if (collector != null && cr != null) {
-                    collector.accumulate(cr);
-                }
+                // MetricsAdvisor 会自动统计 token，这里不再手动 accumulate
             }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
         } catch (Exception e) {
             log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
         }
 
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        //结束当前流式 形成md格式展示
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
         return fullText.toString();
     }
 
@@ -128,7 +123,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      * @param result 要发送的结果实体
      */
     protected void sendSseResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
-                                AutoAgentExecuteResultEntity result) {
+                                AgentExecuteResultEntity result) {
         try {
             ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
             if (emitter != null) {

@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
@@ -41,20 +41,11 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             
             // 按顺序执行规划步骤
             executeStepsInOrder(executorChatClient, stepsMap, dynamicContext, request);
+
             
-            // 发送SSE结果
-            AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createExecutionResult(
-                    dynamicContext.getStep(),
-                    "已完成所有规划步骤的执行",
-                    request.getSessionId()
-            );
-            sendSseResult(dynamicContext, result);
-            
-            // 发送总结结果到【最终执行结果】区域
+            // 发送ai回答结果到【最终执行结果】区域
             sendSummaryResult(dynamicContext, request.getSessionId());
-            
-            // 发送完成标识
-            sendCompleteResult(dynamicContext, request.getSessionId());
+
             
             // 更新步骤
             dynamicContext.setStep(dynamicContext.getStep() + 1);
@@ -138,8 +129,9 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             Map<String, String> stepsMap = dynamicContext.getValue("stepsMap");
             int totalSteps = stepsMap != null ? stepsMap.size() : 1;
             int step = dynamicContext.getStep();
-            String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
-                    ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "执行步骤";
+            String stepName = (step >= 1 && step < AgentExecuteResultEntity.STEP_NAMES.length)
+                    ? AgentExecuteResultEntity.STEP_NAMES[step] : "执行步骤";
+
             String executionResult = streamLlmWithMetrics(executorChatClient,
                     buildStepExecutionPrompt(stepContent, stepNumber, totalSteps, dynamicContext),
                     dynamicContext,
@@ -148,7 +140,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
                     stepName,
                     "execution_process");
 
-            assert executionResult != null;
+
             log.info("步骤 {} 执行结果: {}", stepNumber, executionResult.substring(0, Math.min(150, executionResult.length())));
 
             // 保存执行结果（不向前端发送每个子步骤，用户只需知道大步骤进度）
@@ -199,20 +191,24 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
 
         StringBuilder sb = new StringBuilder();
         sb.append("执行以下步骤，完成用户请求。\n\n");
+
         sb.append("**步骤内容:**\n").append(stepContent).append("\n\n");
+
         sb.append("**用户请求:**\n").append(dynamicContext.getCurrentTask()).append("\n\n");
+
         if (prevResult != null && !prevResult.trim().isEmpty()) {
             sb.append("**前一步结果（可引用）:**\n").append(prevResult.substring(0, Math.min(1500, prevResult.length()))).append("\n\n");
         }
+
         sb.append("**输出格式（严格遵守）:**\n");
+
         if (isLastStep) {
             sb.append("本步为最后一步，【用户回答】内必须给出面向用户的完整回复，直接解决用户请求。简洁或详细取决于请求。\n");
-        } else {
-            sb.append("本步为中间步骤，【用户回答】内写「本步为中间步骤」。\n");
+            sb.append("【用户回答】\n");
+            sb.append( "[此处写用户可见的回复]\n");
+            sb.append("【/用户回答】\n\n");
         }
-        sb.append("【用户回答】\n");
-        sb.append(isLastStep ? "[此处写用户可见的回复]\n" : "本步为中间步骤\n");
-        sb.append("【/用户回答】\n\n");
+
         sb.append("不要输出执行报告、JSON、API结构等内部细节。请执行并输出。");
         return sb.toString();
     }
@@ -260,9 +256,10 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
         }
 
 
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSummaryResult(
+        AgentExecuteResultEntity result = AgentExecuteResultEntity.createSummaryResult(
                 summaryContent.toString(), sessionId);
         sendSseResult(dynamicContext, result);
+
         log.info("已发送总结结果到【最终执行结果】区域，含 AI 最终回答");
     }
     
@@ -272,7 +269,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
     private void sendCompleteResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
         var collector = dynamicContext.getLlmMetricsCollector();
         var metrics = collector != null ? collector.build() : null;
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
+        AgentExecuteResultEntity result = AgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
         sendSseResult(dynamicContext, result);
         if (metrics != null) {
             log.info("✅ 已发送完成标识 | 总Token: {} | 预估成本: {} 元 | 耗时: {} ms",

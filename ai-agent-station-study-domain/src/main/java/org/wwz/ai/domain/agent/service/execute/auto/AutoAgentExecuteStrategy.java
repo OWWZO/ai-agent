@@ -28,12 +28,13 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
         dynamicContext.setMaxStep(executeCommandEntity.getMaxStep() != null ? executeCommandEntity.getMaxStep() : 3);
         dynamicContext.setExecutionHistory(new StringBuilder());
-        dynamicContext.setCurrentTask(executeCommandEntity.getMessage());
+        dynamicContext.setCurrentTask(new StringBuilder());
+        dynamicContext.getCurrentTask().append(executeCommandEntity.getMessage());
         dynamicContext.setValue("emitter", emitter);
         
         String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
+
         log.info("测试结果:{}", apply);
-        // 完成标识由 Step4 统一发送，此处不再重复发送
     }
 
 }

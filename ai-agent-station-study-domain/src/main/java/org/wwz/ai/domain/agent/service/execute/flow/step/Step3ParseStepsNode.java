@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
@@ -53,11 +53,12 @@ public class Step3ParseStepsNode extends AbstractExecuteSupport {
         }
         
         // 发送SSE结果
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createAnalysisSubResult(
+        AgentExecuteResultEntity result = AgentExecuteResultEntity.createAnalysisSubResult(
                 dynamicContext.getStep(), 
                 "analysis_progress", 
                 parseResult.toString(), 
                 requestParameter.getSessionId());
+
         sendSseResult(dynamicContext, result);
         
         // 更新步骤

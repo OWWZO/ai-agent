@@ -13,8 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Plan-Act-Reflect 思考架构（动态、带反思、可修正）
- * Plan → Act → Reflect → Plan(修订) → Act → Reflect → ... → 完成
+ * Plan-Act-Reflect 思考架构
  */
 @Slf4j
 @Service("executeRootNode")
@@ -37,7 +36,8 @@ public class RootNode extends AbstractExecuteSupport {
         // 上下文信息
         dynamicContext.setExecutionHistory(new StringBuilder());
         // 当前任务信息
-        dynamicContext.setCurrentTask(requestParameter.getMessage());
+        dynamicContext.setCurrentTask(new StringBuilder());
+        dynamicContext.getCurrentTask().append(requestParameter.getMessage());
         // 最大任务步骤
         dynamicContext.setMaxStep(requestParameter.getMaxStep());
 

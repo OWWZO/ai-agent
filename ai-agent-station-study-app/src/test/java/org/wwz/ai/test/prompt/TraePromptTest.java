@@ -63,7 +63,7 @@ public class TraePromptTest {
                 .build();
 
         var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
-                .requestTimeout(Duration.ofSeconds(10)).build();
+                .requestTimeout(Duration.ofMinutes(180)).build();
 
         var init = mcpClient.initialize();
 
@@ -965,6 +965,7 @@ public class TraePromptTest {
         public void setAnalysisResult(String analysisResult) { this.analysisResult = analysisResult; }
         
         public String getImprovementSuggestions() { return improvementSuggestions; }
+
         public void setImprovementSuggestions(String improvementSuggestions) { this.improvementSuggestions = improvementSuggestions; }
     }
 

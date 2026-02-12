@@ -1,20 +1,39 @@
 package org.wwz.ai.domain.agent.service.execute.flow.metrics;
 
 import org.springframework.ai.chat.model.ChatResponse;
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity.LlmMetrics;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity.LlmMetrics;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
  * LLM 调用指标采集器，用于统计 token 用量和估算成本
+ * 
+ * <p>设计说明：
+ * <ul>
+ *   <li>线程安全：使用 volatile + synchronized 确保并发安全</li>
+ *   <li>自动统计：通过 MetricsAdvisor 自动从 ChatResponse.metadata.usage 提取 token</li>
+ *   <li>成本估算：基于输入/输出 token 数量估算调用成本</li>
+ * </ul>
+ * 
+ * <p>使用方式：
+ * <pre>{@code
+ * LlmMetricsCollector collector = new LlmMetricsCollector();
+ * chatClient.prompt()
+ *     .user(message)
+ *     .advisors(a -> a.param("llmMetricsCollector", collector))
+ *     .call();
+ * LlmMetrics metrics = collector.build();
+ * }</pre>
+ * 
+ * @author WWZ
  */
 public class LlmMetricsCollector {
 
-    private long inputTokens;
-    private long outputTokens;
-    private int callCount;
-    private long startTimeMs;
+    private volatile long inputTokens;
+    private volatile long outputTokens;
+    private volatile int callCount;
+    private final long startTimeMs;
 
     public LlmMetricsCollector() {
         this.startTimeMs = System.currentTimeMillis();
@@ -22,22 +41,39 @@ public class LlmMetricsCollector {
 
     /**
      * 从 ChatResponse 累积 token 用量
+     * 
+     * <p>线程安全：使用 synchronized 确保并发安全
+     * 
+     * @param response ChatResponse 对象，包含 metadata.usage
      */
-    public void accumulate(ChatResponse response) {
-        if (response == null) return;
+    public synchronized void accumulate(ChatResponse response) {
+        if (response == null) {
+            return;
+        }
+        
         var metadata = response.getMetadata();
-        if (metadata == null) return;
+        if (metadata == null) {
+            return;
+        }
+        
         try {
             var usage = metadata.getUsage();
             if (usage != null) {
                 Number prompt = usage.getPromptTokens();
                 Number completion = usage.getCompletionTokens();
-                if (prompt != null) inputTokens += prompt.longValue();
-                if (completion != null) outputTokens += completion.longValue();
+                
+                if (prompt != null && prompt.longValue() > 0) {
+                    inputTokens += prompt.longValue();
+                }
+                if (completion != null && completion.longValue() > 0) {
+                    outputTokens += completion.longValue();
+                }
             }
-        } catch (Exception ignored) {
-            // 部分模型可能不返回 usage
+        } catch (Exception e) {
+            // 部分模型可能不返回 usage，忽略异常不影响业务
+            // 日志级别较低，避免噪音
         }
+        
         callCount++;
     }
 

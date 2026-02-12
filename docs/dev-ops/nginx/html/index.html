@@ -1018,12 +1018,12 @@
 
     // 子类型映射
     const subTypeMap = {
-        'analysis_status': '任务状态',
+        'analysis_status': '用户请求分析',
         'analysis_history': '历史评估',
-        'analysis_strategy': '执行策略',
-        'analysis_progress': '完成度',
+        'analysis_strategy': '生成执行计划',
+        'analysis_progress': '执行步骤拆分',
         'analysis_task_status': '任务状态',
-        'execution_target': '执行目标',
+        'execution_target': '执行任务',
         'execution_process': '执行过程',
         'execution_result': '执行结果',
         'execution_quality': '质量检查',
@@ -1035,7 +1035,7 @@
         'completed_work': '已完成工作',
         'incomplete_reasons': '未完成原因',
         'evaluation': '效果评估',
-        'summary_overview': '总结概览'
+        'summary_overview': '生成最终回复'
     };
 
     // 发送消息
@@ -1243,10 +1243,11 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = 'flex items-start gap-3 message streaming-message';
         messageDiv.setAttribute('data-stream-key', key);
-        const stageInfo = stageTypeMap['analysis'] || { name: '分析阶段', icon: '🎯', class: 'stage-analysis' };
-        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
-        if (stepName) indicators += `<span class="sub-type-indicator">${stepName}</span>`;
-        if (subType) indicators += `<span class="sub-type-indicator">${subTypeMap[subType] || subType}</span>`;
+        // 仅展示后端传来的子类型含义，不再展示“分析阶段”等固定前缀
+        let indicators = '';
+        if (subType) {
+            indicators = `<span class="sub-type-indicator">${subTypeMap[subType] || subType}</span>`;
+        }
         messageDiv.innerHTML = `
             <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center flex-shrink-0">
                 <span class="text-white text-sm font-semibold">AI</span>
@@ -1326,15 +1327,10 @@
         const stageInfo = stageTypeMap[type] || { name: type, icon: '📝', class: 'stage-analysis' };
         const subTypeName = subType ? subTypeMap[subType] || subType : '';
 
-        // 构建标识标签：优先使用 stepName（如 MCP工具分析），其次 step（第1步）
-        let indicators = `<span class="stage-indicator ${stageInfo.class}">${stageInfo.icon} ${stageInfo.name}</span>`;
-        if (stepName) {
-            indicators += `<span class="sub-type-indicator">${stepName}</span>`;
-        } else if (step) {
-            indicators += `<span class="sub-type-indicator">第${step}步</span>`;
-        }
+        // 构建标识标签：仅展示后端传来的子类型含义，不再展示“分析阶段”等固定前缀
+        let indicators = '';
         if (subTypeName && type !== 'complete') {
-            indicators += `<span class="sub-type-indicator">${subTypeName}</span>`;
+            indicators = `<span class="sub-type-indicator">${subTypeName}</span>`;
         }
 
         // 渲染内容

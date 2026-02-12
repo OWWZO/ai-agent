@@ -1,10 +1,12 @@
 package org.wwz.ai.domain.agent.service.execute.auto.step;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
+import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
@@ -17,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.util.function.Consumer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
@@ -56,7 +59,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      * @param result 要发送的结果实体
      */
     protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
-                                AutoAgentExecuteResultEntity result) {
+                                AgentExecuteResultEntity result) {
         try {
             ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
             if (emitter != null) {
@@ -70,56 +73,51 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     /**
-     * 流式调用 LLM：通过 SSE 将模型输出逐块推送到前端
-     * 支持带 advisors 的调用
-     *
-     * @param sessionId  会话 ID，用于 SSE 事件
-     * @param step       当前步骤
-     * @param stepName   步骤名称
-     * @param subType    子类型
-     * @return 模型返回的完整文本内容
+     * 统一注入 MetricsCollector 到本次请求的 advisor context。
+     * 业务侧只需要传入自身需要的 advisor 配置（如 chat memory），指标采集参数在这里统一追加。
      */
-    protected String streamLlmWithMetrics(ChatClient chatClient, String userMessage,
-                                         DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                         String sessionId, int step, String stepName, String subType) {
-        final String sessionIdFinal = sessionId != null ? sessionId : "";
-
-        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-        if (emitter == null) {
-            // 如果没有 emitter，回退到普通调用
-            ChatResponse response = chatClient.prompt().user(userMessage).call().chatResponse();
-            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
-                String text = response.getResult().getOutput().getText();
-                return text != null ? text : "";
+    protected Consumer<ChatClient.AdvisorSpec> withMetrics(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                                          Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        return a -> {
+            if (advisorConfig != null) {
+                advisorConfig.accept(a);
             }
-            return "";
-        }
-
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
-
-        StringBuilder fullText = new StringBuilder();
-
-        try {
-            Flux<ChatResponse> flux = chatClient.prompt().user(userMessage).stream().chatResponse();
-            flux.doOnNext(cr -> {
-                if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
-                    String text = cr.getResult().getOutput().getText();
-                    if (text != null && !text.isEmpty()) {
-                        fullText.append(text);
-                        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
-                    }
-                }
-            }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
-        } catch (Exception e) {
-            log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
-        }
-
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
-        return fullText.toString();
+            LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
+            if (collector != null) {
+                a.param(MetricsAdvisor.CONTEXT_KEY_LLM_METRICS_COLLECTOR, collector);
+            }
+        };
     }
 
     /**
-     * 流式调用 LLM（带 advisors）：通过 SSE 将模型输出逐块推送到前端
+     * 调用 LLM（自动采集 token 用量）
+     * 
+     * <p>通过 MetricsAdvisor 自动统计 token，无需手动调用 accumulate
+     * 
+     * @param advisorConfig advisor 配置函数（如 ChatMemory 等）
+     * @return 模型返回的文本内容
+     */
+    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                       java.util.function.Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        var promptBuilder = chatClient.prompt()
+                .user(userMessage)
+                .advisors(withMetrics(dynamicContext, advisorConfig));
+        
+        ChatResponse response = promptBuilder.call().chatResponse();
+        if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+            String text = response.getResult().getOutput().getText();
+            return text != null ? text : "";
+        }
+        return "";
+    }
+
+
+    /**
+     * 流式调用 LLM（带 advisors）：通过 SSE 将模型输出逐块推送到前端，并自动采集 token 用量
+     * 
+     * <p>通过 MetricsAdvisor 自动统计 token，无需手动调用 accumulate
+     * 流式调用时，MetricsAdvisor 会自动在最后一个包含 usage 的 chunk 上统计
      *
      * @param sessionId  会话 ID，用于 SSE 事件
      * @param step       当前步骤
@@ -134,45 +132,32 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
                                          java.util.function.Consumer<ChatClient.AdvisorSpec> advisorConfig) {
         final String sessionIdFinal = sessionId != null ? sessionId : "";
 
-        ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
-        if (emitter == null) {
-            // 如果没有 emitter，回退到普通调用
-            var promptBuilder = chatClient.prompt().user(userMessage);
-            if (advisorConfig != null) {
-                promptBuilder = promptBuilder.advisors(advisorConfig);
-            }
-            ChatResponse response = promptBuilder.call().chatResponse();
-            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
-                String text = response.getResult().getOutput().getText();
-                return text != null ? text : "";
-            }
-            return "";
-        }
-
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+        //前端先将消息对话框打印处出来
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
 
         StringBuilder fullText = new StringBuilder();
 
         try {
-            var promptBuilder = chatClient.prompt().user(userMessage);
-            if (advisorConfig != null) {
-                promptBuilder = promptBuilder.advisors(advisorConfig);
-            }
+            var promptBuilder = chatClient.prompt()
+                    .user(userMessage)
+                    .advisors(withMetrics(dynamicContext, advisorConfig));
+            
             Flux<ChatResponse> flux = promptBuilder.stream().chatResponse();
             flux.doOnNext(cr -> {
                 if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
                     String text = cr.getResult().getOutput().getText();
                     if (text != null && !text.isEmpty()) {
                         fullText.append(text);
-                        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
+                        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
                     }
                 }
+                // MetricsAdvisor 会自动统计 token，这里不再手动 accumulate
             }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
         } catch (Exception e) {
             log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
         }
 
-        sendSseResult(dynamicContext, AutoAgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
         return fullText.toString();
     }
 

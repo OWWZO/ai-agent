@@ -16,9 +16,6 @@ import java.util.Map;
 
 /**
  * 流程执行策略工厂类
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/8/24 14:28
  */
 @Service
 public class DefaultFlowAgentExecuteStrategyFactory {

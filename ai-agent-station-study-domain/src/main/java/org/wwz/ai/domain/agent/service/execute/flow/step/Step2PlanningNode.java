@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
@@ -38,8 +38,9 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
 
         // 流式调用 LLM，前端实时看到输出
         int step = dynamicContext.getStep();
-        String stepName = (step >= 1 && step < AutoAgentExecuteResultEntity.STEP_NAMES.length)
-                ? AutoAgentExecuteResultEntity.STEP_NAMES[step] : "执行规划";
+        String stepName = (step >= 1 && step < AgentExecuteResultEntity.STEP_NAMES.length)
+                ? AgentExecuteResultEntity.STEP_NAMES[step] : "执行规划";
+
         String planningResult = streamLlmWithMetrics(
                 planningChatClient,
                 planningPrompt,

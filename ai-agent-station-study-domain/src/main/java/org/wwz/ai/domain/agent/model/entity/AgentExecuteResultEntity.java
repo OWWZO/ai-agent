@@ -9,14 +9,12 @@ import java.math.BigDecimal;
 
 /**
  * AutoAgent 执行结果实体
- *
- * @author xiaofuge bugstack.cn @小傅哥
  */
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class AutoAgentExecuteResultEntity {
+public class AgentExecuteResultEntity {
 
     /**
      * 数据类型：analysis(分析阶段), execution(执行阶段), supervision(监督阶段), summary(总结阶段), error(错误信息), complete(完成标识)
@@ -106,8 +104,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建分析阶段结果
      */
-    public static AutoAgentExecuteResultEntity createAnalysisResult(Integer step, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createAnalysisResult(Integer step, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("analysis")
                 .step(step)
                 .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
@@ -121,8 +119,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建分析阶段细分结果
      */
-    public static AutoAgentExecuteResultEntity createAnalysisSubResult(Integer step, String subType, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createAnalysisSubResult(Integer step, String subType, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("analysis")
                 .subType(subType)
                 .step(step)
@@ -137,8 +135,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建执行阶段结果
      */
-    public static AutoAgentExecuteResultEntity createExecutionResult(Integer step, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createExecutionResult(Integer step, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("execution")
                 .step(step)
                 .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
@@ -152,8 +150,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建执行阶段细分结果
      */
-    public static AutoAgentExecuteResultEntity createExecutionSubResult(Integer step, String subType, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createExecutionSubResult(Integer step, String subType, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("execution")
                 .subType(subType)
                 .step(step)
@@ -167,8 +165,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建监督阶段结果
      */
-    public static AutoAgentExecuteResultEntity createSupervisionResult(Integer step, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createSupervisionResult(Integer step, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("supervision")
                 .step(step)
                 .content(content)
@@ -181,8 +179,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建监督阶段细分结果
      */
-    public static AutoAgentExecuteResultEntity createSupervisionSubResult(Integer step, String subType, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createSupervisionSubResult(Integer step, String subType, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("supervision")
                 .subType(subType)
                 .step(step)
@@ -196,8 +194,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建总结阶段细分的结果
      */
-    public static AutoAgentExecuteResultEntity createSummarySubResult(String subType, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createSummarySubResult(String subType, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("summary")
                 .subType(subType)
                 .step(4)
@@ -211,8 +209,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建总结阶段结果
      */
-    public static AutoAgentExecuteResultEntity createSummaryResult(String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createSummaryResult(String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("summary")
                 .step(null)
                 .content(content)
@@ -225,8 +223,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建错误结果
      */
-    public static AutoAgentExecuteResultEntity createErrorResult(String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createErrorResult(String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("error")
                 .step(null)
                 .content(content)
@@ -239,8 +237,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建完成标识（无指标）
      */
-    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createCompleteResult(String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("complete")
                 .step(null)
                 .content(null)
@@ -253,8 +251,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 创建完成标识（带指标）
      */
-    public static AutoAgentExecuteResultEntity createCompleteResult(String sessionId, LlmMetrics metrics) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createCompleteResult(String sessionId, LlmMetrics metrics) {
+        return AgentExecuteResultEntity.builder()
                 .type("complete")
                 .step(null)
                 .content(null)
@@ -268,9 +266,9 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 流式开始：前端创建新消息占位
      */
-    public static AutoAgentExecuteResultEntity createStreamStart(Integer step, String stepName, String subType, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
-                .type("analysis")
+    public static AgentExecuteResultEntity createStreamStart(Integer step, String stepName, String subType, String sessionId) {
+        return AgentExecuteResultEntity.builder()
+                .type("分析")
                 .subType(subType)
                 .step(step)
                 .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)
@@ -284,8 +282,8 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 流式增量：前端追加 content 到当前消息
      */
-    public static AutoAgentExecuteResultEntity createStreamDelta(Integer step, String stepName, String subType, String content, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
+    public static AgentExecuteResultEntity createStreamDelta(Integer step, String stepName, String subType, String content, String sessionId) {
+        return AgentExecuteResultEntity.builder()
                 .type("analysis")
                 .subType(subType)
                 .step(step)
@@ -300,9 +298,9 @@ public class AutoAgentExecuteResultEntity {
     /**
      * 流式结束：前端结束当前流式消息
      */
-    public static AutoAgentExecuteResultEntity createStreamEnd(Integer step, String stepName, String subType, String sessionId) {
-        return AutoAgentExecuteResultEntity.builder()
-                .type("analysis")
+    public static AgentExecuteResultEntity createStreamEnd(Integer step, String stepName, String subType, String sessionId) {
+        return AgentExecuteResultEntity.builder()
+                .type("分析")
                 .subType(subType)
                 .step(step)
                 .stepName(step != null && step >= 1 && step < STEP_NAMES.length ? STEP_NAMES[step] : null)

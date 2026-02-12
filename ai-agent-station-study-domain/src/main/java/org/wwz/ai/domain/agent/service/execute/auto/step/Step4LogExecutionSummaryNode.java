@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto.step;
 
-import org.wwz.ai.domain.agent.model.entity.AutoAgentExecuteResultEntity;
+import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
@@ -19,16 +19,15 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("\n📊 === 执行第 {} 步 ===", dynamicContext.getStep());
+        log.info("\n=== 执行第 {} 步 ===", dynamicContext.getStep());
 
         // 第四阶段：执行总结
-        log.info("\n📊 阶段4: 执行总结分析");
+        log.info("\n阶段4: 执行总结分析");
 
-        
         // 生成最终总结报告（无论任务是否完成都需要生成）
         generateFinalReport(requestParameter, dynamicContext);
         
-        log.info("\n🏁 === 动态多轮执行结束 ====");
+        log.info("\n=== 动态多轮执行结束 ====");
         
         return "ai agent execution summary completed!";
     }
@@ -65,6 +64,7 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
     private void generateFinalReport(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         try {
             boolean isCompleted = dynamicContext.isCompleted();
+
             log.info("\n--- 生成{}任务的最终答案 ---", isCompleted ? "已完成" : "未完成");
 
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.RESPONSE_ASSISTANT.getCode());
@@ -88,9 +88,9 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
                     a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId() + "-summary")
                             .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 50));
 
-            assert summaryResult != null;
+            //面向用户结果
             logFinalReport(dynamicContext, summaryResult, requestParameter.getSessionId());
-            
+
             // 将总结结果保存到动态上下文中
             dynamicContext.setValue("finalSummary", summaryResult);
             
@@ -134,26 +134,11 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
      */
     private void logFinalReport(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String summaryResult, String sessionId) {
         boolean isCompleted = dynamicContext.isCompleted();
-        log.info("\n📋 === {}任务最终总结报告 ===", isCompleted ? "已完成" : "未完成");
-
-        for (String line : summaryResult.split("\n")) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            if (line.contains("已完成") || line.contains("完成的工作")) {
-                log.info("✅ {}", line);
-            } else if (line.contains("未完成") || line.contains("原因")) {
-                log.info("❌ {}", line);
-            } else if (line.contains("建议") || line.contains("推荐")) {
-                log.info("💡 {}", line);
-            } else if (line.contains("评估") || line.contains("效果")) {
-                log.info("📊 {}", line);
-            } else {
-                log.info("📝 {}", line);
-            }
-        }
+        log.info("\n  === {}任务最终总结报告 ===", isCompleted ? "已完成" : "未完成");
         
         // 仅发送一次完整总结，面向用户
         sendSummaryResult(dynamicContext, summaryResult, sessionId);
+
     }
     
     /**
@@ -161,10 +146,25 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
      */
     private void sendSummaryResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
                                  String summaryResult, String sessionId) {
-        AutoAgentExecuteResultEntity result = AutoAgentExecuteResultEntity.createSummaryResult(
+        AgentExecuteResultEntity result = AgentExecuteResultEntity.createSummaryResult(
                  summaryResult, sessionId);
         sendSseResult(dynamicContext, result);
     }
     
+    /**
+     * 发送完成标识到流式输出（携带 token/成本 等指标）
+     */
+    private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
+        var collector = dynamicContext.getLlmMetricsCollector();
+        var metrics = collector != null ? collector.build() : null;
+        AgentExecuteResultEntity result = AgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
+        sendSseResult(dynamicContext, result);
+        if (metrics != null) {
+            log.info("✅ 已发送完成标识 | 总Token: {} | 预估成本: {} 元 | 耗时: {} ms",
+                    metrics.getTotalTokens(), metrics.getEstimatedCost(), metrics.getTotalDurationMs());
+        } else {
+            log.info("✅ 已发送完成标识");
+        }
+    }
 
 }
