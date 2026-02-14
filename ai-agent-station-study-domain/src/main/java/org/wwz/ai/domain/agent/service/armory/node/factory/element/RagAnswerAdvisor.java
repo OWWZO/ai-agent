@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.service.armory.node.factory.element;
 
 import com.alibaba.fastjson.JSON;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class RagAnswerAdvisor implements BaseAdvisor {
 
     /** 向量存储库核心对象，用于执行文档的相似性检索（Spring AI封装的向量库操作接口，适配PGVector/Chroma等） */
@@ -64,6 +66,7 @@ public class RagAnswerAdvisor implements BaseAdvisor {
      */
     @Override
     public ChatClientRequest before(ChatClientRequest chatClientRequest, AdvisorChain advisorChain) {
+        log.info("RagAnswerAdvisor.before 已触发，将进行向量检索");
         // 1. 获取原始请求的上下文（用于传递自定义过滤条件、业务参数等）
         HashMap<String, Object> context = new HashMap<>(chatClientRequest.context());
 

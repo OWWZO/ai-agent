@@ -35,8 +35,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.concurrent.CountDownLatch;
 
-
-//TODO 测试微信公众号推送
 @Slf4j
 @RunWith(SpringRunner.class)
 @SpringBootTest
@@ -57,7 +55,7 @@ public class AiAgentTest {
 
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
-                .apiKey("sk-ad51211fe54e482aa4bf13feee209f74")
+                .apiKey("sk-95e5d430617f428181f089aef88036cc")
                 .embeddingsPath("v1/embeddings")
                 .build();
 

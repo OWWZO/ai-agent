@@ -130,34 +130,35 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         prompt.append("- **MCP分析依据**: [引用具体的MCP工具分析结论]\n\n");
         prompt.append("```\n\n");
 
-        // 5. 动态规划指导原则
-        prompt.append("### 规划指导原则\n");
-        prompt.append("请根据用户详细请求和可用工具能力，动态生成合适的执行步骤：\n");
-        prompt.append("- **需求完整性原则**: 确保用户请求中的所有详细信息都被完整保留和传递\n");
-        prompt.append("- **步骤分离原则**: 每个步骤应该专注于单一功能，避免混合不同类型的操作\n");
-        prompt.append("- **参数传递原则**: 确保用户的详细要求能够准确传递到工具参数中\n");
-        prompt.append("- **依赖关系原则**: 合理安排步骤顺序，确保前置条件得到满足\n");
-        prompt.append("- **结果输出原则**: 每个步骤都应有明确的输出结果和成功标准\n\n");
+//        // 5. 动态规划指导原则
+//        prompt.append("### 规划指导原则\n");
+//        prompt.append("请根据用户详细请求和可用工具能力，动态生成合适的执行步骤：\n");
+//        prompt.append("- **需求完整性原则**: 确保用户请求中的所有详细信息都被完整保留和传递\n");
+//        prompt.append("- **步骤分离原则**: 每个步骤应该专注于单一功能，避免混合不同类型的操作\n");
+//        prompt.append("- **参数传递原则**: 确保用户的详细要求能够准确传递到工具参数中\n");
+//        prompt.append("- **依赖关系原则**: 合理安排步骤顺序，确保前置条件得到满足\n");
+//        prompt.append("- **结果输出原则**: 每个步骤都应有明确的输出结果和成功标准\n\n");
 
 
-        // 7. 执行要求
-        prompt.append("### 执行要求\n");
-        prompt.append("1. **步骤编号**: 使用第1步、第2步、第3步...格式\n");
-        prompt.append("2. **Markdown格式**: 严格按照上述Markdown格式输出\n");
-        prompt.append("3. **步骤描述**: 每个步骤描述要清晰、具体、可执行\n");
-        prompt.append("4. **优先级**: 根据步骤重要性和紧急程度设定\n");
-        prompt.append("5. **时长估算**: 基于步骤复杂度合理估算\n");
-        prompt.append("6. **工具选择**: 从可用工具中选择最适合的，必须使用完整的函数名称\n");
-        prompt.append("7. **依赖关系**: 明确步骤间的先后顺序\n");
-        prompt.append("8. **执行细节**: 提供具体可操作的方法，包含详细的参数说明和用户需求传递\n");
-        prompt.append("9. **需求传递**: 确保用户的所有详细要求都能准确传递到相应的执行步骤中\n");
-        prompt.append("10. **功能独立**: 确保每个步骤功能独立，避免混合不同类型的操作\n");
-        prompt.append("11. **工具映射**: 每个步骤必须明确指定使用的MCP工具函数名称\n");
-        prompt.append("12. **质量标准**: 设定明确的完成标准\n\n");
+//        // 7. 执行要求
+//        prompt.append("### 执行要求\n");
+//        prompt.append("1. **步骤编号**: 使用第1步、第2步、第3步...格式\n");
+//        prompt.append("2. **Markdown格式**: 严格按照上述Markdown格式输出\n");
+//        prompt.append("3. **步骤描述**: 每个步骤描述要清晰、具体、可执行\n");
+//        prompt.append("4. **优先级**: 根据步骤重要性和紧急程度设定\n");
+//        prompt.append("5. **时长估算**: 基于步骤复杂度合理估算\n");
+//        prompt.append("6. **工具选择**: 从可用工具中选择最适合的，必须使用完整的函数名称\n");
+//        prompt.append("7. **依赖关系**: 明确步骤间的先后顺序\n");
+//        prompt.append("8. **执行细节**: 提供具体可操作的方法，包含详细的参数说明和用户需求传递\n");
+//        prompt.append("9. **需求传递**: 确保用户的所有详细要求都能准确传递到相应的执行步骤中\n");
+//        prompt.append("10. **功能独立**: 确保每个步骤功能独立，避免混合不同类型的操作\n");
+//        prompt.append("11. **工具映射**: 每个步骤必须明确指定使用的MCP工具函数名称\n");
+//        prompt.append("12. **质量标准**: 设定明确的完成标准\n\n");
 
         // 8. 质量检查
         prompt.append("### 质量检查清单\n");
         prompt.append("生成计划后请确认：\n");
+        prompt.append("- [ ] 该计划是否步骤有多余 比如上下文已经有答案能回答 但仍然进行信息的搜索\n");
         prompt.append("- [ ] 每个步骤都有明确的序号和描述\n");
         prompt.append("- [ ] 使用了正确的Markdown格式\n");
         prompt.append("- [ ] 步骤描述清晰具体\n");

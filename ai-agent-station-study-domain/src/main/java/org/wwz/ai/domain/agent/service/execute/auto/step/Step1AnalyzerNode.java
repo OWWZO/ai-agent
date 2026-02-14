@@ -48,7 +48,7 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
                 stepName,
                 "analysis_status",
                 a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1536));
 
         // 将分析结果保存到动态上下文中，供下一步使用
         dynamicContext.setValue("analysisResult", analysisResult);

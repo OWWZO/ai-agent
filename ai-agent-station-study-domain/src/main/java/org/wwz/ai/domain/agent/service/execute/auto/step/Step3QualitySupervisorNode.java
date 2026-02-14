@@ -97,38 +97,5 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
         // 否则返回到Step1AnalyzerNode进行下一轮分析
         return getBean("step1AnalyzerNode");
     }
-    
-    /** Reflect 阶段解析出的元数据，供 Plan 修订与重跑决策 */
-    @Data
-    private static class ReflectMeta {
-        String feedback;      // 供下一轮 Plan 的反馈（质量评估+问题+建议+计划修订建议）
-        String revisionHint;  // 计划修订建议，用于 setCurrentTask
-        String nextDecision;  // CONTINUE_AND_REVISE / REEXECUTE_CURRENT / COMPLETE
-    }
-
-
-    
-    /**
-     * 发送监督结果到流式输出
-     */
-    private void sendSupervisionResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
-                                     String supervisionResult, String sessionId) {
-        AgentExecuteResultEntity result = AgentExecuteResultEntity.createSupervisionResult(
-                dynamicContext.getStep(), supervisionResult, sessionId);
-        sendSseResult(dynamicContext, result);
-    }
-    
-    /**
-     * 发送监督子结果到流式输出（细粒度标识）
-     * 跳过 score、pass 等机械项，减少思考过程噪音
-     */
-    private void sendSupervisionSubResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                        String section, String content, String sessionId) {
-        if (content.isEmpty() || section.isEmpty()) return;
-        if ("score".equals(section) || "pass".equals(section)) return; // 质量评分、检查结果不单独展示
-        AgentExecuteResultEntity result = AgentExecuteResultEntity.createSupervisionSubResult(
-                dynamicContext.getStep(), section, content, sessionId);
-        sendSseResult(dynamicContext, result);
-    }
 
 }

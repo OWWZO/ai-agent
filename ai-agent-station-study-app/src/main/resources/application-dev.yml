@@ -43,7 +43,16 @@ spring:
   ai:
     openai:
       base-url: https://dashscope.aliyuncs.com/compatible-mode
-      api-key: sk-ad51211fe54e482aa4bf13feee209f74
+      api-key:  sk-95e5d430617f428181f089aef88036cc
+    ollama:
+      base-url: http://192.168.1.109:11434
+      embedding:
+        options:
+          num-batch: 512
+        model: nomic-embed-text
+    rag:
+        embed: nomic-embed-text
+
     agent:
       auto-config:
         enabled: true

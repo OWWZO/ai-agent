@@ -16,19 +16,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Configuration
 public class AiAgentConfig {
 
+
     /**
-     * -- 删除旧的表（如果存在）
-     * DROP TABLE IF EXISTS public.vector_store_openai;
-     * <p>
-     * -- 创建新的表，使用UUID作为主键
-     * CREATE TABLE public.vector_store_openai (
-     * id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-     * content TEXT NOT NULL,
-     * metadata JSONB,
-     * embedding VECTOR(1536)
-     * );
-     * <p>
-     * SELECT * FROM vector_store_openai
+     将向量数据库和嵌入模型强绑定
      */
     @Bean("vectorStore")
     public PgVectorStore pgVectorStore(@Value("${spring.ai.openai.base-url}") String baseUrl,
@@ -37,7 +27,7 @@ public class AiAgentConfig {
 
         OpenAiApi openAiApi = OpenAiApi.builder()
                 .baseUrl(baseUrl)
-                .apiKey(apiKey)
+                .apiKey("sk-95e5d430617f428181f089aef88036cc")
                 .build();
 
         // 阿里云 DashScope text-embedding-v4，dimensions 1536 与 PgVector 表 VECTOR(1536) 一致
@@ -50,6 +40,7 @@ public class AiAgentConfig {
                 MetadataMode.EMBED,
                 embeddingOptions,
                 RetryUtils.DEFAULT_RETRY_TEMPLATE);
+
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
                 .vectorTableName("vector_store_openai")
                 .build();

@@ -14,6 +14,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 import java.util.Objects;
 
+/**
+ * 根据dev的参数 进行mysql 向量数据库的模板创建
+ */
 @Configuration
 public class DataSourceConfig {
 

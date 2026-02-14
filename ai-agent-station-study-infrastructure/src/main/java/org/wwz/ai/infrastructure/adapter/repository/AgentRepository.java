@@ -596,6 +596,10 @@ public class AgentRepository implements IAgentRepository {
         aiRagOrder.setRagName(aiRagOrderVO.getRagName());
         aiRagOrder.setKnowledgeTag(aiRagOrderVO.getKnowledgeTag());
         aiRagOrder.setStatus(1);
+        Random random = new Random();
+        // 生成int随机数
+        Integer randomInt = random.nextInt();
+        aiRagOrder.setRagId(randomInt.toString());
         aiClientRagOrderDao.insert(aiRagOrder);
     }
 

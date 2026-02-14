@@ -16,6 +16,7 @@ import java.util.List;
 
 /**
  * 知识库服务
+ * 提供知识库的上传功能
  */
 @Slf4j
 @Service

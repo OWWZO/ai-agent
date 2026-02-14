@@ -44,7 +44,7 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
                 stepName,
                 "execution_target",
                 a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
-                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1024));
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 1536));
 
         // 将执行结果保存到动态上下文中，供下一步使用
         dynamicContext.setValue("executionResult", executionResult);
