@@ -4,9 +4,8 @@ import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
-import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
+
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
-import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
@@ -24,7 +23,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 /**
- * @author xiaofuge bugstack.cn @小傅哥
  * 2025/7/27 16:48
  */
 public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategyRouter<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> {
@@ -38,6 +36,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     protected IAgentRepository repository;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
+
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
 
     @Override
@@ -82,34 +81,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             if (advisorConfig != null) {
                 advisorConfig.accept(a);
             }
-            LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
-            if (collector != null) {
-                a.param(MetricsAdvisor.CONTEXT_KEY_LLM_METRICS_COLLECTOR, collector);
-            }
         };
-    }
-
-    /**
-     * 调用 LLM（自动采集 token 用量）
-     * 
-     * <p>通过 MetricsAdvisor 自动统计 token，无需手动调用 accumulate
-     * 
-     * @param advisorConfig advisor 配置函数（如 ChatMemory 等）
-     * @return 模型返回的文本内容
-     */
-    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
-                                       DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext,
-                                       java.util.function.Consumer<ChatClient.AdvisorSpec> advisorConfig) {
-        var promptBuilder = chatClient.prompt()
-                .user(userMessage)
-                .advisors(withMetrics(dynamicContext, advisorConfig));
-        
-        ChatResponse response = promptBuilder.call().chatResponse();
-        if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
-            String text = response.getResult().getOutput().getText();
-            return text != null ? text : "";
-        }
-        return "";
     }
 
 

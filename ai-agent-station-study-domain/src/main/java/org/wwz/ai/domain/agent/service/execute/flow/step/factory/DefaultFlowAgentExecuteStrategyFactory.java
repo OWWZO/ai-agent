@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.service.execute.flow.step.factory;
 
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
-import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
+
 import org.wwz.ai.domain.agent.service.execute.flow.step.RootNode;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.AllArgsConstructor;
@@ -10,8 +10,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.wwz.ai.domain.agent.model.entity.ExecutionPlanStep;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -50,10 +53,16 @@ public class DefaultFlowAgentExecuteStrategyFactory {
 
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
-        private Map<String, Object> dataObjects = new HashMap<>();
+        // SSE emitter（用于将结果流式推送到前端，避免通过 magic key 在 Map 中传递）
+        private ResponseBodyEmitter emitter;
 
-        /** 本次会话 LLM 指标采集器 */
-        private LlmMetricsCollector llmMetricsCollector = new LlmMetricsCollector();
+        // 结构化执行计划（贯穿 Flow 全流程，避免 JSON↔文本↔正则的反复转换）
+        private List<ExecutionPlanStep> executionPlan;
+
+        // 规划阶段原始输出（仅用于日志/排错/前端展示，不参与执行编排）
+        private String planningResultRaw;
+
+        private Map<String, Object> dataObjects = new HashMap<>();
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);

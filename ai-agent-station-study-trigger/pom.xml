@@ -49,6 +49,11 @@
             <groupId>cn.bugstack.ai</groupId>
             <artifactId>ai-agent-station-study-infrastructure</artifactId>
         </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

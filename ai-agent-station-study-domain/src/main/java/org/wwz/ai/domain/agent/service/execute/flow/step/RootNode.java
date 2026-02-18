@@ -16,7 +16,7 @@ import java.util.Map;
 public class RootNode extends AbstractExecuteSupport {
 
     @Resource
-    private Step1McpToolsAnalysisNode step1McpToolsAnalysisNode;
+    private Step2PlanningNode step2PlanningNode;
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -33,15 +33,15 @@ public class RootNode extends AbstractExecuteSupport {
         dynamicContext.setExecutionHistory(new StringBuilder());
         // 当前任务信息
         dynamicContext.setCurrentTask(requestParameter.getMessage());
-        // 最大任务步骤
-        dynamicContext.setMaxStep(requestParameter.getMaxStep());
+        // 最大任务步骤：若请求未传，则使用默认值，避免 int 自动拆箱 NPE
+        dynamicContext.setMaxStep(requestParameter.getMaxStep() != null ? requestParameter.getMaxStep() : dynamicContext.getMaxStep());
 
         return router(requestParameter, dynamicContext);
     }
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultFlowAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        return step1McpToolsAnalysisNode;
+        return step2PlanningNode;
     }
 
 }

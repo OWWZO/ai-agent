@@ -1,0 +1,42 @@
+.loadingDot{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 16px;
+  width: 30px;
+  padding: 12px 0px;
+}
+
+.dot{
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #acbdff;
+  animation: dot-pulse 1.2s infinite ease-in-out;
+}
+
+.dot_0{
+  animation-delay: 0s;
+}
+
+.dot_1{
+  animation-delay: 0.4s;
+}
+
+.dot_2{
+  animation-delay: 0.8s;
+}
+
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    background-color: #acbdff;
+  }
+  50% {
+    transform: scale(1.5); /* 4px * 1.5 = 6px */
+    background-color: #4040ff;
+  }
+}

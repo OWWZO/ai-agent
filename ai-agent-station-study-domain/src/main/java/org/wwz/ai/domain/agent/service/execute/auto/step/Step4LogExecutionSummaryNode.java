@@ -151,20 +151,6 @@ public class Step4LogExecutionSummaryNode extends AbstractExecuteSupport {
         sendSseResult(dynamicContext, result);
     }
     
-    /**
-     * 发送完成标识到流式输出（携带 token/成本 等指标）
-     */
-    private void sendCompleteResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, String sessionId) {
-        var collector = dynamicContext.getLlmMetricsCollector();
-        var metrics = collector != null ? collector.build() : null;
-        AgentExecuteResultEntity result = AgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
-        sendSseResult(dynamicContext, result);
-        if (metrics != null) {
-            log.info("✅ 已发送完成标识 | 总Token: {} | 预估成本: {} 元 | 耗时: {} ms",
-                    metrics.getTotalTokens(), metrics.getEstimatedCost(), metrics.getTotalDurationMs());
-        } else {
-            log.info("✅ 已发送完成标识");
-        }
-    }
+
 
 }

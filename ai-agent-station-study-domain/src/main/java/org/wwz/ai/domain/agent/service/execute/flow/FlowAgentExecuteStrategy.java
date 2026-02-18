@@ -24,11 +24,10 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
         StrategyHandler<ExecuteCommandEntity, DefaultFlowAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultFlowAgentExecuteStrategyFactory.armoryStrategyHandler();
         
-        // 创建动态上下文并初始化必要字段
+        // 创建动态上下文并注入 SSE emitter（业务上下文初始化统一下沉到 RootNode）
         DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext = new DefaultFlowAgentExecuteStrategyFactory.DynamicContext();
-        dynamicContext.setMaxStep(executeCommandEntity.getMaxStep() != null ? executeCommandEntity.getMaxStep() : 4);
-        dynamicContext.setExecutionHistory(new StringBuilder());
-        dynamicContext.setCurrentTask(executeCommandEntity.getMessage());
+        dynamicContext.setEmitter(emitter);
+        // 兼容老代码：部分节点仍通过 magic key 取 emitter，这里保留一份
         dynamicContext.setValue("emitter", emitter);
         
         String apply = executeHandler.apply(executeCommandEntity, dynamicContext);

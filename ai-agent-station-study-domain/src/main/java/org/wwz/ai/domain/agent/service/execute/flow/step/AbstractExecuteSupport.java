@@ -4,8 +4,7 @@ import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
-import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
-import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
+
 import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
@@ -62,10 +61,6 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             if (advisorConfig != null) {
                 advisorConfig.accept(a);
             }
-            LlmMetricsCollector collector = dynamicContext.getLlmMetricsCollector();
-            if (collector != null) {
-                a.param(MetricsAdvisor.CONTEXT_KEY_LLM_METRICS_COLLECTOR, collector);
-            }
         };
     }
 
@@ -118,14 +113,100 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     /**
+     * 流式调用 LLM（支持传入 advisorConfig）：用于注入 ChatMemory/RAG 等顾问能力，同时保持 metrics 采集一致
+     */
+    protected String streamLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                          DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                          String sessionId, int step, String stepName, String subType,
+                                          Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        final String sessionIdFinal = sessionId != null ? sessionId : "";
+
+        // 建立前端消息占位，保持与无 advisorConfig 重载一致的 SSE 协议
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+
+        StringBuilder fullText = new StringBuilder();
+        try {
+            var promptBuilder = chatClient.prompt()
+                    .user(userMessage)
+                    .advisors(withMetrics(dynamicContext, advisorConfig));
+
+            Flux<ChatResponse> flux = promptBuilder.stream().chatResponse();
+            flux.doOnNext(cr -> {
+                if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
+                    String text = cr.getResult().getOutput().getText();
+                    if (text != null && !text.isEmpty()) {
+                        fullText.append(text);
+                        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamDelta(step, stepName, subType, text, sessionIdFinal));
+                    }
+                }
+            }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
+        } catch (Exception e) {
+            log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
+        }
+
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        return fullText.toString();
+    }
+
+    /**
+     * 非流式调用 LLM（支持 Tool Calling）：使用 call() 触发工具调用链路，再将最终文本按 chunk 形式推送到 SSE
+     */
+    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                        DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                        String sessionId, int step, String stepName, String subType,
+                                        Consumer<ChatClient.AdvisorSpec> advisorConfig) {
+        final String sessionIdFinal = sessionId != null ? sessionId : "";
+
+
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamStart(step, stepName, subType, sessionIdFinal));
+
+        String content = "";
+        try {
+            ChatResponse response = chatClient.prompt()
+                    .user(userMessage)
+                    .advisors(withMetrics(dynamicContext, advisorConfig))
+                    .call()
+                    .chatResponse();
+            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+                content = response.getResult().getOutput().getText();
+            }
+        } catch (Exception e) {
+            log.error("非流式调用 LLM 异常: {}", e.getMessage(), e);
+        }
+
+        if (content == null) {
+            content = "";
+        }
+
+        // 将完整内容按固定 chunk 推送，保持前端“流式体验”
+        int chunkSize = 64;
+        for (int i = 0; i < content.length(); i += chunkSize) {
+            String chunk = content.substring(i, Math.min(content.length(), i + chunkSize));
+            if (!chunk.isEmpty()) {
+                sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamDelta(step, stepName, subType, chunk, sessionIdFinal));
+            }
+        }
+
+        sendSseResult(dynamicContext, AgentExecuteResultEntity.createStreamEnd(step, stepName, subType, sessionIdFinal));
+        return content;
+    }
+
+    protected String callLlmWithMetrics(ChatClient chatClient, String userMessage,
+                                        DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                        String sessionId, int step, String stepName, String subType) {
+        return callLlmWithMetrics(chatClient, userMessage, dynamicContext, sessionId, step, stepName, subType, null);
+    }
+
+    /**
      * 通用的SSE结果发送方法
      * @param dynamicContext 动态上下文
      * @param result 要发送的结果实体
      */
     protected void sendSseResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
-                                AgentExecuteResultEntity result) {
+                                Object result) {
         try {
-            ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+            // 优先使用强类型 emitter 字段，兼容老逻辑从 Map 中获取
+            ResponseBodyEmitter emitter = dynamicContext.getEmitter() != null ? dynamicContext.getEmitter() : dynamicContext.getValue("emitter");
             if (emitter != null) {
                 // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";

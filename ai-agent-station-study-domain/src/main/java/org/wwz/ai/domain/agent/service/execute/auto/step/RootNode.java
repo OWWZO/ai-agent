@@ -46,6 +46,9 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        if (dynamicContext.getMaxStep() <= 1) {
+            return getBean("stepReactNode");
+        }
         return step1AnalyzerNode;
     }
 

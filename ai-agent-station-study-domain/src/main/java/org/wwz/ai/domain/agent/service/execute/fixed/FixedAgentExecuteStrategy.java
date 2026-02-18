@@ -13,8 +13,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
-import org.wwz.ai.domain.agent.service.armory.node.factory.element.MetricsAdvisor;
-import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
+
+
 import reactor.core.publisher.Flux;
 
 import javax.annotation.Resource;
@@ -46,8 +46,7 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
         String content = "";
         final String sessionId = requestParameter.getSessionId() != null ? requestParameter.getSessionId() : "";
         
-        // 创建 metrics collector（可选，用于统计 token 用量）
-        LlmMetricsCollector collector = new LlmMetricsCollector();
+
 
         for (AiAgentClientFlowConfigVO config : aiAgentClientList) {
             ChatClient chatClient = getChatClientByClientId(config.getClientId());
@@ -64,7 +63,7 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
                         .advisors(a -> a
                                 .param(CHAT_MEMORY_CONVERSATION_ID_KEY, requestParameter.getSessionId())
                                 .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 100)
-                                .param(MetricsAdvisor.CONTEXT_KEY_LLM_METRICS_COLLECTOR, collector)) // 通过 MetricsAdvisor 自动统计
+                                ) // 通过 MetricsAdvisor 自动统计
                         .stream().chatResponse();
 
                 flux.doOnNext(cr -> {
@@ -87,9 +86,8 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
         }
 
         log.info("智能体对话请求，结果 {} {}", requestParameter.getAiAgentId(), content);
-        
-        // 发送完成标识（携带 token/成本 等指标）
-        sendCompleteResult(emitter, sessionId, collector);
+
+
     }
 
     private ChatClient getChatClientByClientId(String clientId) {
@@ -142,21 +140,6 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
     /**
      * 发送完成标识到流式输出（携带 token/成本 等指标）
      */
-    private void sendCompleteResult(ResponseBodyEmitter emitter, String sessionId, LlmMetricsCollector collector) {
-        try {
-            var metrics = collector != null ? collector.build() : null;
-            AgentExecuteResultEntity result = AgentExecuteResultEntity.createCompleteResult(sessionId, metrics);
-            String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
-            emitter.send(sseData);
-            if (metrics != null) {
-                log.info("✅ 已发送完成标识 | 总Token: {} | 预估成本: {} 元 | 耗时: {} ms",
-                        metrics.getTotalTokens(), metrics.getEstimatedCost(), metrics.getTotalDurationMs());
-            } else {
-                log.info("✅ 已发送完成标识");
-            }
-        } catch (Exception e) {
-            log.error("发送完成标识失败：{}", e.getMessage(), e);
-        }
-    }
+
 
 }

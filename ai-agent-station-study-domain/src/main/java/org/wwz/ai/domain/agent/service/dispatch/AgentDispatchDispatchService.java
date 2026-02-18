@@ -16,8 +16,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * Agent 服务接口
- *
- * @author xiaofuge bugstack.cn @小傅哥
  * 2025/9/6 06:55
  */
 @Slf4j
@@ -35,9 +33,12 @@ public class AgentDispatchDispatchService implements IAgentDispatchService {
 
     @Override
     public void dispatch(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception {
-        AiAgentVO aiAgentVO = repository.queryAiAgentByAgentId(requestParameter.getAiAgentId());
+        String strategy = requestParameter.getStrategy();
+        if (null == strategy || strategy.isEmpty()) {
+            AiAgentVO aiAgentVO = repository.queryAiAgentByAgentId(requestParameter.getAiAgentId());
+            strategy = aiAgentVO.getStrategy();
+        }
 
-        String strategy = aiAgentVO.getStrategy();
         IExecuteStrategy executeStrategy = executeStrategyMap.get(strategy);
         if (null == executeStrategy) {
             throw new BizException("不存在的执行策略类型 strategy:" + strategy);

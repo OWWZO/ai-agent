@@ -3,7 +3,6 @@ package org.wwz.ai.domain.agent.service.execute.auto.step.factory;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.service.execute.auto.step.RootNode;
-import org.wwz.ai.domain.agent.service.execute.flow.metrics.LlmMetricsCollector;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,8 +15,6 @@ import java.util.Map;
 
 /**
  * 工厂类
- *
- * @author xiaofuge bugstack.cn @小傅哥
  * 2025/7/27 16:34
  */
 @Service
@@ -54,10 +51,6 @@ public class DefaultAutoAgentExecuteStrategyFactory {
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
         private Map<String, Object> dataObjects = new HashMap<>();
-
-
-        /** 本次会话 LLM 指标采集器 */
-        private LlmMetricsCollector llmMetricsCollector = new LlmMetricsCollector();
 
         public <T> void setValue(String key, T value) {
             dataObjects.put(key, value);
