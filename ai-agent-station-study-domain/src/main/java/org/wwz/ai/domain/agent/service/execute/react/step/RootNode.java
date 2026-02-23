@@ -11,19 +11,22 @@ import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.genie.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.genie.agent.tool.common.*;
 import org.wwz.ai.domain.agent.genie.agent.tool.mcp.McpTool;
+import org.wwz.ai.domain.agent.genie.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.genie.service.AgentHandlerService;
-import org.wwz.ai.domain.agent.genie.service.impl.AgentHandlerFactory;
-import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
+import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
+import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.AbstractExecuteSupport;
+import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
- * React Agent 执行根节点
- * 负责组装工具、调用 Genie 核心 Handler
+ * React 逻辑树 - 步骤1：准备上下文与工具（AgentContext、AgentRequest、ToolCollection）
  */
 @Slf4j
 @Service("reactRootNode")
@@ -33,63 +36,57 @@ public class RootNode extends AbstractExecuteSupport {
     private GenieConfig genieConfig;
 
     @Resource
-    private AgentHandlerFactory agentHandlerFactory;
+    private RunReactNode step2RunReactNode;
 
     @Override
-    protected String doApply(ExecuteCommandEntity requestParameter, AgentContext dynamicContext) throws Exception {
-        log.info("ReactRootNode start executing for requestId: {}", requestParameter.getRequestId());
+    protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        log.info("React Step1: Prepare context and tools for requestId: {}", request.getRequestId());
 
-        // 1. 构建 AgentRequest
-        AgentRequest agentRequest = buildAgentRequest(requestParameter, dynamicContext);
+        dynamicContext.setStep(0);
+        Printer printer = new SSEPrinter(
+                (SseEmitter) dynamicContext.getEmitter(),
+                request,
+                request.getAgentType()
+        );
 
-        // 2. 构建工具列表
-        dynamicContext.setToolCollection(buildToolCollection(dynamicContext, agentRequest));
+        AgentContext agentContext = AgentContext.builder()
+                .requestId(request.getRequestId())
+                .sessionId(request.getRequestId())
+                .printer(printer)
+                .query(request.getQuery())
+                .task("")
+                .dateInfo(DateUtil.CurrentDateInfo())
+                .productFiles(new ArrayList<>())
+                .taskProductFiles(new ArrayList<>())
+                .sopPrompt(request.getSopPrompt())
+                .basePrompt(request.getBasePrompt())
+                .agentType(request.getAgentType())
+                .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
+                .templateType("dataAgent".equals(request.getOutputStyle()) ? "fix" : "empty")
+                .build();
 
-        // 3. 获取 Handler
-        AgentHandlerService handler = agentHandlerFactory.getHandler(dynamicContext, agentRequest);
+        agentContext.setToolCollection(buildToolCollection(agentContext, request));
+        dynamicContext.setAgentContext(agentContext);
+        dynamicContext.setStep(1);
 
-        // 4. 执行 Handler
-        handler.handle(dynamicContext, agentRequest);
-
-        return "success";
+        return router(request, dynamicContext);
     }
 
-    private AgentRequest buildAgentRequest(ExecuteCommandEntity entity, AgentContext context) {
-        AgentRequest request = new AgentRequest();
-        request.setRequestId(entity.getRequestId());
-        request.setQuery(context.getQuery()); // 使用 Context 中处理过的 query
-        request.setAgentType(entity.getAgentType());
-        request.setOutputStyle(entity.getOutputStyle());
-        request.setIsStream(entity.getIsStream());
-        request.setSopPrompt(entity.getSopPrompt());
-        request.setBasePrompt(entity.getBasePrompt());
-        // Erp/User mapping if needed
-        return request;
-    }
-
-    /**
-     * 构建工具列表 (复用 GenieController 逻辑)
-     */
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
-
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
 
-        // data agent
         if ("dataAgent".equals(request.getOutputStyle())) {
             ReportTool htmlTool = new ReportTool();
             htmlTool.setAgentContext(agentContext);
             toolCollection.addTool(htmlTool);
-
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             dataAnalysisTool.setAgentContext(agentContext);
             toolCollection.addTool(dataAnalysisTool);
         } else {
-            // file
             FileTool fileTool = new FileTool();
             fileTool.setAgentContext(agentContext);
             toolCollection.addTool(fileTool);
-            // default tool
             List<String> agentToolList = Arrays.asList(genieConfig.getMultiAgentToolListMap()
                     .getOrDefault("default", "search,code,report").split(","));
             if (!agentToolList.isEmpty()) {
@@ -116,7 +113,6 @@ public class RootNode extends AbstractExecuteSupport {
             }
         }
 
-        // mcp tool
         try {
             McpTool mcpTool = new McpTool();
             mcpTool.setAgentContext(agentContext);
@@ -126,36 +122,33 @@ public class RootNode extends AbstractExecuteSupport {
                     log.error("{} mcp server {} invalid", agentContext.getRequestId(), mcpServer);
                     continue;
                 }
-
                 JSONObject resp = JSON.parseObject(listToolResult);
                 if (resp.getIntValue("code") != 200) {
-                    log.error("{} mcp serve {} code: {}, message: {}", agentContext.getRequestId(), mcpServer,
-                            resp.getIntValue("code"), resp.getString("message"));
+                    log.error("{} mcp server {} code: {}", agentContext.getRequestId(), mcpServer, resp.getIntValue("code"));
                     continue;
                 }
                 JSONArray data = resp.getJSONArray("data");
-                if (data.isEmpty()) {
-                    log.error("{} mcp serve {} code: {}, message: {}", agentContext.getRequestId(), mcpServer,
-                            resp.getIntValue("code"), resp.getString("message"));
-                    continue;
-                }
+                if (data == null || data.isEmpty()) continue;
                 for (int i = 0; i < data.size(); i++) {
                     JSONObject tool = data.getJSONObject(i);
-                    String method = tool.getString("name");
-                    String description = tool.getString("description");
-                    String inputSchema = tool.getString("inputSchema");
-                    toolCollection.addMcpTool(method, description, inputSchema, mcpServer);
+                    toolCollection.addMcpTool(
+                            tool.getString("name"),
+                            tool.getString("description"),
+                            tool.getString("inputSchema"),
+                            mcpServer
+                    );
                 }
             }
         } catch (Exception e) {
             log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
         }
-
         return toolCollection;
     }
 
     @Override
-    public StrategyHandler<ExecuteCommandEntity, AgentContext, String> get(ExecuteCommandEntity requestParameter, AgentContext dynamicContext) throws Exception {
-        return null;
+    public StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
+            AgentRequest requestParameter,
+            DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        return step2RunReactNode;
     }
 }

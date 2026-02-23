@@ -1,8 +1,5 @@
 package org.wwz.ai.trigger.http;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -12,19 +9,11 @@ import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
 import org.wwz.ai.api.dto.ArmoryApiRequestDTO;
 import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
-import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
-import org.wwz.ai.domain.agent.genie.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.genie.agent.tool.common.*;
-import org.wwz.ai.domain.agent.genie.agent.tool.mcp.McpTool;
-import org.wwz.ai.domain.agent.genie.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.genie.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.genie.service.AgentHandlerService;
-import org.wwz.ai.domain.agent.genie.service.impl.AgentHandlerFactory;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
+import org.wwz.ai.domain.agent.service.execute.react.step.ReactAgentExecuteStrategy;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.service.IAgentDispatchService;
 import org.wwz.ai.domain.agent.service.IArmoryService;
@@ -62,8 +51,8 @@ public class AiAgentController implements IAiAgentService {
     @Autowired
     protected GenieConfig genieConfig;
 
-    @Autowired
-    private AgentHandlerFactory agentHandlerFactory;
+    @Resource
+    private ReactAgentExecuteStrategy reactAgentExecuteStrategy;
 
     @Resource
     private IAgentDispatchService agentDispatchService;
@@ -139,150 +128,27 @@ public class AiAgentController implements IAiAgentService {
         ScheduledFuture<?> heartbeatFuture = startHeartbeat(emitter, request.getRequestId());
         // 监听SSE事件
         registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
-        // 拼接输出类型
-        request.setQuery(handleOutputStyle(request));
-        // 执行调度引擎
+
+        //TODO 根据类型来选择ExecuteStrategy
+
+        // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
         ThreadUtil.execute(() -> {
             try {
-                Printer printer = new SSEPrinter(emitter, request, request.getAgentType());
-                AgentContext agentContext = AgentContext.builder()
-                        .requestId(request.getRequestId())
-                        .sessionId(request.getRequestId())
-                        .printer(printer)
-                        .query(request.getQuery())
-                        .task("")
-                        .dateInfo(DateUtil.CurrentDateInfo())
-                        .productFiles(new ArrayList<>())
-                        .taskProductFiles(new ArrayList<>())
-                        .sopPrompt(request.getSopPrompt())
-                        .basePrompt(request.getBasePrompt())
-                        .agentType(request.getAgentType())
-                        .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
-                        .templateType("dataAgent".equals(request.getOutputStyle()) ? "fix" : "empty")
-                        .build();
-                // 构建工具列表
-                agentContext.setToolCollection(buildToolCollection(agentContext, request));
-                // 根据数据类型获取对应的处理器
-                AgentHandlerService handler = agentHandlerFactory.getHandler(agentContext, request);
-                // 执行处理逻辑
-                handler.handle(agentContext, request);
-                // 关闭连接
+                reactAgentExecuteStrategy.execute(request, emitter);
                 emitter.complete();
-
             } catch (Exception e) {
                 log.error("{} auto agent error", request.getRequestId(), e);
+                try {
+                    emitter.completeWithError(e);
+                } catch (Exception ex) {
+                    log.warn("{} emitter completeWithError failed", request.getRequestId(), ex);
+                }
             }
         });
 
         return emitter;
     }
 
-
-    /**
-     * html模式： query+以 html展示
-     * docs模式：query+以 markdown展示
-     * table 模式: query+以 excel 展示
-     */
-    private String handleOutputStyle(AgentRequest request) {
-        String query = request.getQuery();
-        Map<String, String> outputStyleMap = genieConfig.getOutputStylePrompts();
-        if (!StringUtils.isEmpty(request.getOutputStyle())) {
-            query += outputStyleMap.computeIfAbsent(request.getOutputStyle(), k -> "");
-        }
-        return query;
-    }
-
-
-    /**
-     * 构建工具列表
-     *
-     * @param agentContext
-     * @param request
-     * @return
-     */
-    private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
-
-        ToolCollection toolCollection = new ToolCollection();
-        toolCollection.setAgentContext(agentContext);
-
-        // data agent
-        if ("dataAgent".equals(request.getOutputStyle())) {
-            ReportTool htmlTool = new ReportTool();
-            htmlTool.setAgentContext(agentContext);
-            toolCollection.addTool(htmlTool);
-
-            DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-            dataAnalysisTool.setAgentContext(agentContext);
-            toolCollection.addTool(dataAnalysisTool);
-        } else {
-            // file
-            FileTool fileTool = new FileTool();
-            fileTool.setAgentContext(agentContext);
-            toolCollection.addTool(fileTool);
-            // default tool
-            List<String> agentToolList = Arrays.asList(genieConfig.getMultiAgentToolListMap()
-                    .getOrDefault("default", "search,code,report").split(","));
-            if (!agentToolList.isEmpty()) {
-                if (agentToolList.contains("code")) {
-                    CodeInterpreterTool codeTool = new CodeInterpreterTool();
-                    codeTool.setAgentContext(agentContext);
-                    toolCollection.addTool(codeTool);
-                }
-                if (agentToolList.contains("report")) {
-                    ReportTool htmlTool = new ReportTool();
-                    htmlTool.setAgentContext(agentContext);
-                    toolCollection.addTool(htmlTool);
-                }
-                if (agentToolList.contains("search")) {
-                    DeepSearchTool deepSearchTool = new DeepSearchTool();
-                    deepSearchTool.setAgentContext(agentContext);
-                    toolCollection.addTool(deepSearchTool);
-                }
-                if (agentToolList.contains("data_analysis")) {
-                    DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-                    dataAnalysisTool.setAgentContext(agentContext);
-                    toolCollection.addTool(dataAnalysisTool);
-                }
-            }
-        }
-
-        // mcp tool
-        try {
-            McpTool mcpTool = new McpTool();
-            mcpTool.setAgentContext(agentContext);
-            for (String mcpServer : genieConfig.getMcpServerUrlArr()) {
-                String listToolResult = mcpTool.listTool(mcpServer);
-                if (listToolResult.isEmpty()) {
-                    log.error("{} mcp server {} invalid", agentContext.getRequestId(), mcpServer);
-                    continue;
-                }
-
-                JSONObject resp = JSON.parseObject(listToolResult);
-                if (resp.getIntValue("code") != 200) {
-                    log.error("{} mcp serve {} code: {}, message: {}", agentContext.getRequestId(), mcpServer,
-                            resp.getIntValue("code"), resp.getString("message"));
-                    continue;
-                }
-                JSONArray data = resp.getJSONArray("data");
-                if (data.isEmpty()) {
-                    log.error("{} mcp serve {} code: {}, message: {}", agentContext.getRequestId(), mcpServer,
-                            resp.getIntValue("code"), resp.getString("message"));
-                    continue;
-                }
-                for (int i = 0; i < data.size(); i++) {
-                    JSONObject tool = data.getJSONObject(i);
-                    String method = tool.getString("name");
-                    String description = tool.getString("description");
-                    String inputSchema = tool.getString("inputSchema");
-                    toolCollection.addMcpTool(method, description, inputSchema, mcpServer);
-                }
-            }
-        } catch (Exception e) {
-            log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
-        }
-
-        return toolCollection;
-    }
 
     /**
      * 探活接口
