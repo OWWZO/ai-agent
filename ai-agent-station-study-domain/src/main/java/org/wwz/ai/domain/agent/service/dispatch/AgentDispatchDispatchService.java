@@ -1,6 +1,8 @@
 package org.wwz.ai.domain.agent.service.dispatch;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
+import org.wwz.ai.domain.agent.genie.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.service.IAgentDispatchService;
@@ -32,11 +34,25 @@ public class AgentDispatchDispatchService implements IAgentDispatchService {
     private ThreadPoolExecutor threadPoolExecutor;
 
     @Override
-    public void dispatch(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception {
-        String strategy = requestParameter.getStrategy();
+    public void dispatch(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+
+        String strategy = null;
+
+        if (request.getAgentType() != null) {
+            if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
+                // 规划-执行模式（深度研究开启时使用）
+                strategy = "planSolveAgentExecuteStrategy";
+            } else if (AgentType.REACT.getValue().equals(request.getAgentType())) {
+                // React 模式
+                strategy = "reactAgentExecuteStrategy";
+            }
+        }
+
         if (null == strategy || strategy.isEmpty()) {
-            AiAgentVO aiAgentVO = repository.queryAiAgentByAgentId(requestParameter.getAiAgentId());
-            strategy = aiAgentVO.getStrategy();
+            // 如果无法从 agentType 确定策略，可以根据业务需求抛出异常或者设定默认策略
+            // AgentRequest 中通常没有 aiAgentId，所以这里无法查表回退，除非有默认值
+            // 假设默认走 React 模式
+            strategy = "reactAgentExecuteStrategy";
         }
 
         IExecuteStrategy executeStrategy = executeStrategyMap.get(strategy);
@@ -44,26 +60,39 @@ public class AgentDispatchDispatchService implements IAgentDispatchService {
             throw new BizException("不存在的执行策略类型 strategy:" + strategy);
         }
 
-        // 3. 异步执行AutoAgent
-        threadPoolExecutor.execute(() -> {
-            try {
-                executeStrategy.execute(requestParameter, emitter);
-            } catch (Exception e) {
-                log.error("AutoAgent执行异常：{}", e.getMessage(), e);
-                try {
-                    emitter.send("执行异常：" + e.getMessage());
-                } catch (Exception ex) {
-                    log.error("发送异常信息失败：{}", ex.getMessage(), ex);
-                }
-            } finally {
-                try {
-                    emitter.complete();
-                } catch (Exception e) {
-                    log.error("完成流式输出失败：{}", e.getMessage(), e);
-                }
-            }
-        });
-
+        executeStrategy.execute(request, emitter);
     }
+
+//    @Override
+//    public void dispatch(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception {
+//        String strategy = requestParameter.getStrategy();
+//
+//        // 根据 agentType 动态选择策略
+//        if (requestParameter.getAgentType() != null) {
+//            if (requestParameter.getAgentType() == 3) {
+//                // 规划-执行模式（深度研究开启时使用）
+//                strategy = "flowAgentExecuteStrategy";
+//            } else if (requestParameter.getAgentType() == 5) {
+//                // React 模式
+//                strategy = "reactAgentExecuteStrategy";
+//            }
+//        }
+//
+//        if (null == strategy || strategy.isEmpty()) {
+//            AiAgentVO aiAgentVO = repository.queryAiAgentByAgentId(requestParameter.getAiAgentId());
+//            if (aiAgentVO != null) {
+//                strategy = aiAgentVO.getStrategy();
+//            }
+//        }
+//
+//        IExecuteStrategy executeStrategy = executeStrategyMap.get(strategy);
+//        if (null == executeStrategy) {
+//            throw new BizException("不存在的执行策略类型 strategy:" + strategy);
+//        }
+//
+//        // 3. 执行策略
+//        executeStrategy.execute(requestParameter, emitter);
+//
+//    }
 
 }

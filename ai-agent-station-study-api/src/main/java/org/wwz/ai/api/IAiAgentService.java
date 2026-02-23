@@ -13,7 +13,7 @@ import java.util.List;
 
 public interface IAiAgentService {
 
-    ResponseBodyEmitter autoAgent(AutoAgentRequestDTO request, HttpServletResponse response);
+//    ResponseBodyEmitter autoAgent(AutoAgentRequestDTO request, HttpServletResponse response);
 
     /**
      * 装配智能体

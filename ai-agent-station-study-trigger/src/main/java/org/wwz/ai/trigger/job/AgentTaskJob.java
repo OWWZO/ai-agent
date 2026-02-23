@@ -16,8 +16,7 @@ import java.util.List;
 
 /**
  * 智能体任务
- *
- * @author xiaofuge bugstack.cn @小傅哥
+
  * 2025/9/13 15:52
  */
 @Slf4j
@@ -40,19 +39,22 @@ public class AgentTaskJob implements ITaskDataProvider {
             taskScheduleVO.setDescription(aiAgentTaskScheduleVO.getDescription());
             taskScheduleVO.setCronExpression(aiAgentTaskScheduleVO.getCronExpression());
             taskScheduleVO.setTaskParam(aiAgentTaskScheduleVO.getTaskParam());
-            taskScheduleVO.setTaskLogic(() -> {
-                try {
-                    dispatchService.dispatch(
-                            ExecuteCommandEntity.builder()
-                                    .aiAgentId(aiAgentTaskScheduleVO.getAgentId())
-                                    .sessionId(String.valueOf(System.nanoTime()))
-                                    .maxStep(1)
-                                    .build(), new ResponseBodyEmitter());
-                } catch (Exception e) {
-                    log.error("任务执行失败", e);
-                }
 
-            });
+            //TODO分发逻辑改变导致的
+
+//            taskScheduleVO.setTaskLogic(() -> {
+//                try {
+//                    dispatchService.dispatch(
+//                            ExecuteCommandEntity.builder()
+//                                    .aiAgentId(aiAgentTaskScheduleVO.getAgentId())
+//                                    .sessionId(String.valueOf(System.nanoTime()))
+//                                    .maxStep(1)
+//                                    .build(), new ResponseBodyEmitter());
+//                } catch (Exception e) {
+//                    log.error("任务执行失败", e);
+//                }
+//
+//            });
 
             result.add(taskScheduleVO);
         }

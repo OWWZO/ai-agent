@@ -1,4 +1,4 @@
-package org.wwz.ai.domain.agent.service.execute.react.step;
+package org.wwz.ai.domain.agent.service.execute.planexecute.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
@@ -7,17 +7,19 @@ import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.genie.agent.dto.SopRecallResponse;
+import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
+import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.genie.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.genie.agent.tool.common.*;
 import org.wwz.ai.domain.agent.genie.agent.tool.mcp.McpTool;
 import org.wwz.ai.domain.agent.genie.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
-import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.genie.service.SopRecallService;
+import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,29 +27,30 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * React 逻辑树 - 步骤1：准备上下文与工具（AgentContext、AgentRequest、ToolCollection）
+ * PlanSolve 逻辑树 - 步骤1：SOP召回 + 准备 AgentContext 与工具
  */
 @Slf4j
-@Service("reactRootNode")
-public class RootNode extends AbstractExecuteSupport {
+@Service
+public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
 
     @Resource
     private GenieConfig genieConfig;
 
     @Resource
-    private RunReactNode step2RunReactNode;
+    private SopRecallService sopRecallService;
+
+    @Resource
+    private Step2PlanExecuteNode step2PlanExecuteNode;
 
     @Override
-    protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("React Step1: Prepare context and tools for requestId: {}", request.getRequestId());
+    protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        log.info("PlanSolve Step1: SOP recall and prepare for requestId: {}", request.getRequestId());
 
-        dynamicContext.setStep(0);
         Printer printer = new SSEPrinter(
                 (SseEmitter) dynamicContext.getEmitter(),
                 request,
                 request.getAgentType()
         );
-
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
                 .sessionId(request.getRequestId())
@@ -65,10 +68,32 @@ public class RootNode extends AbstractExecuteSupport {
                 .build();
 
         agentContext.setToolCollection(buildToolCollection(agentContext, request));
+        handleSopRecall(agentContext, request);
+
         dynamicContext.setAgentContext(agentContext);
         dynamicContext.setStep(1);
 
         return router(request, dynamicContext);
+    }
+
+    private void handleSopRecall(AgentContext agentContext, AgentRequest request) {
+        try {
+            log.info("{} 开始执行SOP召回", request.getRequestId());
+            SopRecallResponse sopResponse = sopRecallService.sopRecall(request.getRequestId(), request.getQuery());
+            if (sopRecallService.isValidSopResult(sopResponse)) {
+                String sopContent = sopResponse.getData().getChoosed_sop_string();
+                String sopMode = sopResponse.getData().getSop_mode();
+                log.info("{} SOP召回成功，模式：{}，内容长度：{}", request.getRequestId(), sopMode, sopContent.length());
+                if (agentContext.getSopPrompt() != null) {
+                    String sopPrompt = agentContext.getSopPrompt().replace("{{sop}}", sopContent);
+                    agentContext.setSopPrompt(sopPrompt);
+                }
+            } else {
+                log.warn("{} SOP召回失败或结果无效", request.getRequestId());
+            }
+        } catch (Exception e) {
+            log.error("{} SOP召回处理异常", request.getRequestId(), e);
+        }
     }
 
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
@@ -117,15 +142,9 @@ public class RootNode extends AbstractExecuteSupport {
             mcpTool.setAgentContext(agentContext);
             for (String mcpServer : genieConfig.getMcpServerUrlArr()) {
                 String listToolResult = mcpTool.listTool(mcpServer);
-                if (listToolResult.isEmpty()) {
-                    log.error("{} mcp server {} invalid", agentContext.getRequestId(), mcpServer);
-                    continue;
-                }
+                if (listToolResult.isEmpty()) continue;
                 JSONObject resp = JSON.parseObject(listToolResult);
-                if (resp.getIntValue("code") != 200) {
-                    log.error("{} mcp server {} code: {}", agentContext.getRequestId(), mcpServer, resp.getIntValue("code"));
-                    continue;
-                }
+                if (resp.getIntValue("code") != 200) continue;
                 JSONArray data = resp.getJSONArray("data");
                 if (data == null || data.isEmpty()) continue;
                 for (int i = 0; i < data.size(); i++) {
@@ -145,9 +164,9 @@ public class RootNode extends AbstractExecuteSupport {
     }
 
     @Override
-    public StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> get(
+    public StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
             AgentRequest requestParameter,
-            DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        return step2RunReactNode;
+            DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        return step2PlanExecuteNode;
     }
 }

@@ -1,4 +1,4 @@
-package org.wwz.ai.domain.agent.service.execute.react.step;
+package org.wwz.ai.domain.agent.service.execute.react;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
@@ -30,20 +30,12 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     /**
      * 主入口：直接使用 AgentRequest，无转换（AutoAgent 等 Genie 入口调用）
      */
+    @Override
     public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
         applyOutputStyle(request);
         doExecute(request, emitter);
     }
 
-    /**
-     * 实现 IExecuteStrategy：dispatch 路径需将 ExecuteCommandEntity 转为 AgentRequest
-     */
-    @Override
-    public void execute(ExecuteCommandEntity executeCommandEntity, ResponseBodyEmitter emitter) throws Exception {
-        AgentRequest request = toAgentRequest(executeCommandEntity);
-        applyOutputStyle(request);
-        doExecute(request, emitter);
-    }
 
     private void doExecute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
 

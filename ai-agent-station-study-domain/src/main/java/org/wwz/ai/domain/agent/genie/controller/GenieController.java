@@ -117,8 +117,8 @@ public class GenieController {
                     .strategy("reactAgentExecuteStrategy") // Use React strategy
                     .build();
 
-            // Dispatch
-            agentDispatchService.dispatch(entity, emitter);
+//            // Dispatch
+//            agentDispatchService.dispatch(entity, emitter);
 
         } catch (Exception e) {
             log.error("{} auto agent error", request.getRequestId(), e);

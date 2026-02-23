@@ -1,0 +1,45 @@
+package org.wwz.ai.domain.agent.service.execute.planexecute.step.factory;
+
+import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.genie.agent.agent.ExecutorAgent;
+import org.wwz.ai.domain.agent.genie.agent.agent.PlanningAgent;
+import org.wwz.ai.domain.agent.genie.agent.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.service.execute.planexecute.step.RootNode;
+
+/**
+ * PlanSolve 执行策略工厂，与 react 同构
+ */
+@Service
+public class DefaultPlanSolveAgentExecuteStrategyFactory {
+
+    private final RootNode planSolveRootNode;
+
+    public DefaultPlanSolveAgentExecuteStrategyFactory(RootNode planSolveRootNode) {
+        this.planSolveRootNode = planSolveRootNode;
+    }
+
+    public StrategyHandler<AgentRequest, DynamicContext, String> armoryStrategyHandler() {
+        return planSolveRootNode;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class DynamicContext {
+        private ResponseBodyEmitter emitter;
+        private AgentContext agentContext;
+        private PlanningAgent planning;
+        private ExecutorAgent executor;
+        private SummaryAgent summary;
+        private int step;
+    }
+}

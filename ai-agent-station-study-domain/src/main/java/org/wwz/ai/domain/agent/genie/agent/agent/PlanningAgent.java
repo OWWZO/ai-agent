@@ -184,7 +184,7 @@ public class PlanningAgent extends ReActAgent {
                     getMemory().getMessages(),
                     Message.systemMessage(getSystemPrompt(), null),
                     availableTools,
-                    ToolChoice.AUTO, null, context.getIsStream(), 300
+                    ToolChoice.AUTO, null, context.getIsStream(), 3000
             );
 
             // 6. 同步获取异步结果（阻塞等待大模型响应）
@@ -235,6 +235,11 @@ public class PlanningAgent extends ReActAgent {
             if (Objects.nonNull(planningTool.getPlan())) {
                 return getNextTask();
             }
+        }
+
+        if (toolCalls.isEmpty()) {
+            setState(AgentState.FINISHED);
+            return getMemory().getLastMessage().toString();
         }
 
         // 2. 初始化工具执行结果列表

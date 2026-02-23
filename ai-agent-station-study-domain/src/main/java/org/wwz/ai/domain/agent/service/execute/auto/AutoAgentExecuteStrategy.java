@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto;
 
+import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
@@ -19,22 +20,27 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
     @Resource
     private DefaultAutoAgentExecuteStrategyFactory defaultAutoAgentExecuteStrategyFactory;
 
-    @Override
-    public void execute(ExecuteCommandEntity executeCommandEntity, ResponseBodyEmitter emitter) throws Exception {
-        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
-                = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
-        
-        // 创建动态上下文并初始化必要字段
-        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
-        dynamicContext.setMaxStep(executeCommandEntity.getMaxStep() != null ? executeCommandEntity.getMaxStep() : 3);
-        dynamicContext.setExecutionHistory(new StringBuilder());
-        dynamicContext.setCurrentTask(new StringBuilder());
-        dynamicContext.getCurrentTask().append(executeCommandEntity.getMessage());
-        dynamicContext.setValue("emitter", emitter);
-        
-        String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
+//    @Override
+//    public void execute(ExecuteCommandEntity executeCommandEntity, ResponseBodyEmitter emitter) throws Exception {
+//        StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
+//                = defaultAutoAgentExecuteStrategyFactory.armoryStrategyHandler();
+//
+//        // 创建动态上下文并初始化必要字段
+//        DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext = new DefaultAutoAgentExecuteStrategyFactory.DynamicContext();
+//        dynamicContext.setMaxStep(executeCommandEntity.getMaxStep() != null ? executeCommandEntity.getMaxStep() : 3);
+//        dynamicContext.setExecutionHistory(new StringBuilder());
+//        dynamicContext.setCurrentTask(new StringBuilder());
+//        dynamicContext.getCurrentTask().append(executeCommandEntity.getMessage());
+//        dynamicContext.setValue("emitter", emitter);
+//
+//        String apply = executeHandler.apply(executeCommandEntity, dynamicContext);
+//
+//        log.info("测试结果:{}", apply);
+//    }
 
-        log.info("测试结果:{}", apply);
+    @Override
+    public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+
     }
 
 }

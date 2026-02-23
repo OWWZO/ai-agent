@@ -9,7 +9,6 @@ import org.wwz.ai.domain.agent.genie.agent.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.genie.agent.dto.File;
 import org.wwz.ai.domain.agent.genie.agent.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.service.execute.react.AbstractExecuteSupport;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.Collections;

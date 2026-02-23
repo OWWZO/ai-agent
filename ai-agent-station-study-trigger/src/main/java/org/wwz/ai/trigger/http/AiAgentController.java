@@ -13,7 +13,6 @@ import org.wwz.ai.domain.agent.genie.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
-import org.wwz.ai.domain.agent.service.execute.react.step.ReactAgentExecuteStrategy;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.service.IAgentDispatchService;
 import org.wwz.ai.domain.agent.service.IArmoryService;
@@ -50,9 +49,6 @@ public class AiAgentController implements IAiAgentService {
 
     @Autowired
     protected GenieConfig genieConfig;
-
-    @Resource
-    private ReactAgentExecuteStrategy reactAgentExecuteStrategy;
 
     @Resource
     private IAgentDispatchService agentDispatchService;
@@ -129,12 +125,12 @@ public class AiAgentController implements IAiAgentService {
         // 监听SSE事件
         registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
 
-        //TODO 根据类型来选择ExecuteStrategy
-
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
         ThreadUtil.execute(() -> {
             try {
-                reactAgentExecuteStrategy.execute(request, emitter);
+                // 使用 IAgentDispatchService 进行策略调度
+                // AgentRequest 直接传入，避免不必要的转换
+                agentDispatchService.dispatch(request, emitter);
                 emitter.complete();
             } catch (Exception e) {
                 log.error("{} auto agent error", request.getRequestId(), e);
@@ -171,45 +167,45 @@ public class AiAgentController implements IAiAgentService {
         return gptProcessService.queryMultiAgentIncrStream(params);
     }
 
-    @RequestMapping(value = "auto_agent1", method = RequestMethod.POST)
-    public ResponseBodyEmitter autoAgent(@RequestBody AutoAgentRequestDTO request, HttpServletResponse response) {
-        log.info("AutoAgent流式执行请求开始，请求信息：{}", JSON.toJSONString(request));
-
-        try {
-            // 设置SSE响应头
-            response.setContentType("text/event-stream");
-            response.setCharacterEncoding("UTF-8");
-            response.setHeader("Cache-Control", "no-cache");
-            response.setHeader("Connection", "keep-alive");
-
-            // 1. 创建流式输出对象
-            ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
-
-            // 2. 构建执行命令实体
-            ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
-                    .aiAgentId(request.getAiAgentId())
-                    .message(request.getMessage())
-                    .sessionId(request.getSessionId())
-                    .maxStep(request.getMaxStep())
-                    .build();
-
-            // 3. 调度处理
-            agentDispatchService.dispatch(executeCommandEntity, emitter);
-
-            return emitter;
-
-        } catch (Exception e) {
-            log.error("AutoAgent请求处理异常：{}", e.getMessage(), e);
-            ResponseBodyEmitter errorEmitter = new ResponseBodyEmitter();
-            try {
-                errorEmitter.send("请求处理异常：" + e.getMessage());
-                errorEmitter.complete();
-            } catch (Exception ex) {
-                log.error("发送错误信息失败：{}", ex.getMessage(), ex);
-            }
-            return errorEmitter;
-        }
-    }
+//    @RequestMapping(value = "auto_agent1", method = RequestMethod.POST)
+//    public ResponseBodyEmitter autoAgent(@RequestBody AutoAgentRequestDTO request, HttpServletResponse response) {
+//        log.info("AutoAgent流式执行请求开始，请求信息：{}", JSON.toJSONString(request));
+//
+//        try {
+//            // 设置SSE响应头
+//            response.setContentType("text/event-stream");
+//            response.setCharacterEncoding("UTF-8");
+//            response.setHeader("Cache-Control", "no-cache");
+//            response.setHeader("Connection", "keep-alive");
+//
+//            // 1. 创建流式输出对象
+//            ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
+//
+//            // 2. 构建执行命令实体
+//            ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
+//                    .aiAgentId(request.getAiAgentId())
+//                    .message(request.getMessage())
+//                    .sessionId(request.getSessionId())
+//                    .maxStep(request.getMaxStep())
+//                    .build();
+//
+////            // 3. 调度处理
+////            agentDispatchService.dispatch(executeCommandEntity, emitter);
+//
+//            return emitter;
+//
+//        } catch (Exception e) {
+//            log.error("AutoAgent请求处理异常：{}", e.getMessage(), e);
+//            ResponseBodyEmitter errorEmitter = new ResponseBodyEmitter();
+//            try {
+//                errorEmitter.send("请求处理异常：" + e.getMessage());
+//                errorEmitter.complete();
+//            } catch (Exception ex) {
+//                log.error("发送错误信息失败：{}", ex.getMessage(), ex);
+//            }
+//            return errorEmitter;
+//        }
+//    }
 
 
     @RequestMapping(value = "armory_agent", method = RequestMethod.POST)
