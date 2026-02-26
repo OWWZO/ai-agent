@@ -8,6 +8,10 @@ import com.alibaba.fastjson.TypeReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.genie.agent.dto.Message;
 import org.wwz.ai.domain.agent.genie.agent.dto.tool.McpToolInfo;
@@ -18,6 +22,7 @@ import org.wwz.ai.domain.agent.genie.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.genie.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.genie.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
+import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -332,80 +337,71 @@ public class LLM {
             boolean stream,
             Double temperature
     ) {
+        // 渐进改造版本：优先使用 Spring AI 的 ChatClient 调用大模型，
+        // 仅用于非流式 summarize / 生成场景（当前调用点都是 stream=false）。
         try {
-            // ===================== 步骤1：消息格式化（适配模型格式） =====================
-            List<Map<String, Object>> formattedMessages;
-            if (systemMsgs != null && !systemMsgs.isEmpty()) {
-                // 1.1 格式化系统消息（系统消息默认按GPT格式，后续拼接用户消息时自动适配Claude）
-                List<Map<String, Object>> formattedSystemMsgs = formatMessages(systemMsgs, false);
-                formattedMessages = new ArrayList<>(formattedSystemMsgs);
-                // 1.2 拼接用户消息（自动判断模型是否为Claude，适配对应格式）
-                formattedMessages.addAll(formatMessages(messages, model.contains("claude")));
-            } else {
-                // 无系统消息时，直接格式化用户消息
-                formattedMessages = formatMessages(messages, model.contains("claude"));
-            }
-
-            // ===================== 步骤2：组装请求参数（模型通用参数） =====================
-            Map<String, Object> params = new HashMap<>();
-            params.put("model", model); // 模型标识（如gpt-4o、claude-3-5-sonnet）
-            // ERP标识：非空时添加（用于多租户/多业务线隔离、计费统计）
-            if (StringUtils.isNotEmpty(llmErp)) {
-                params.put("erp", llmErp);
-            }
-            params.put("messages", formattedMessages); // 格式化后的完整消息列表
-
-            // 核心生成参数配置
-            params.put("max_tokens", maxTokens); // 单次响应最大生成Token数
-            // 温度系数：优先使用自定义值，无则使用实例默认值（控制输出随机性）
-            params.put("temperature", temperature != null ? temperature : this.temperature);
-            // 扩展参数：合并实例初始化的扩展参数（如top_p、frequency_penalty等）
-            if (Objects.nonNull(extParams)) {
-                params.putAll(extParams);
-            }
-
-            // 日志：记录请求参数（便于链路追踪和问题排查）
-            log.info("{} call llm ask request {}", context.getRequestId(), JSONObject.toJSONString(params));
-
-            // ===================== 步骤3：处理非流式请求（一次性返回完整响应） =====================
-            if (!stream) {
-                params.put("stream", false); // 显式指定非流式
-
-                // 调用OpenAI兼容的API（实际实现可能适配不同模型平台）
-                CompletableFuture<String> future = callOpenAI(params);
-
-                // 响应解析：异步处理返回结果，提取核心消息内容
-                return future.thenApply(response -> {
-                    try {
-                        // 日志：记录原始响应（便于问题排查）
-                        log.info("{} call llm response {}", context.getRequestId(), response);
-                        // 解析JSON响应
-                        JsonNode jsonResponse = objectMapper.readTree(response);
-                        JsonNode choices = jsonResponse.get("choices");
-
-                        // 校验响应合法性：choices为空/无message/content则抛出异常
-                        if (choices == null || choices.isEmpty() || choices.get(0).get("message").get("content") == null) {
-                            throw new IllegalArgumentException("Empty or invalid response from LLM");
-                        }
-
-                        // 提取核心响应文本（第一个choice的message.content）
-                        return choices.get(0).get("message").get("content").asText();
-                    } catch (Exception e) {
-                        // 包装为CompletionException，兼容CompletableFuture异常处理逻辑
-                        throw new CompletionException(e);
-                    }
-                });
-            } else {
-                // ===================== 步骤4：处理流式请求（逐段返回响应） =====================
-                params.put("stream", true); // 显式指定流式
-                // 调用流式API（返回流式响应的聚合结果，具体逻辑由callOpenAIStream实现）
+            if (stream) {
+                // 目前暂不改造流式路径，仍旧走原有 HTTP 流式实现
+                Map<String, Object> params = new HashMap<>();
+                params.put("model", model);
+                if (StringUtils.isNotEmpty(llmErp)) {
+                    params.put("erp", llmErp);
+                }
+                params.put("messages", formatMessages(messages, model.contains("claude")));
                 return callOpenAIStream(params);
             }
+
+            // 1. 将 systemMsgs + messages 的 content 简单拼接为一个 prompt 文本
+            StringBuilder promptBuilder = new StringBuilder();
+            if (systemMsgs != null) {
+                for (Message sys : systemMsgs) {
+                    if (sys != null && sys.getContent() != null) {
+                        promptBuilder.append(sys.getContent()).append("\n");
+                    }
+                }
+            }
+            if (messages != null) {
+                for (Message msg : messages) {
+                    if (msg != null && msg.getContent() != null) {
+                        promptBuilder.append(msg.getContent()).append("\n");
+                    }
+                }
+            }
+            String prompt = promptBuilder.toString().trim();
+            if (prompt.isEmpty()) {
+                CompletableFuture<String> future = new CompletableFuture<>();
+                future.complete("");
+                return future;
+            }
+
+            // 2. 通过 SpringContextHolder 获取 Spring AI 的 ChatClient
+            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
+            // 这里按照你的说明，先写死使用 clientId=2102 对应的 ChatClient
+            String beanName = AiAgentEnumVO.AI_CLIENT.getBeanName("2102");
+            ChatClient chatClient = applicationContext.getBean(beanName, ChatClient.class);
+
+            log.info("{} call llm ask via ChatClient, beanName:{}, prompt length:{}",
+                    context.getRequestId(), beanName, prompt.length());
+
+            // 3. 使用 ChatClient 进行非流式调用（温度暂时依赖 ChatClient 默认配置）
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    var spec = chatClient.prompt().user(prompt);
+                    String content = spec
+                            .call()
+                            .chatResponse()
+                            .getResult()
+                            .getOutput()
+                            .getText();
+                    return content != null ? content : "";
+                } catch (Exception e) {
+                    throw new CompletionException(e);
+                }
+            });
         } catch (Exception e) {
-            // 全局异常捕获：保证异步调用不抛出未捕获异常，统一包装为CompletableFuture异常
-            log.error("{} Unexpected error in ask: {}", context.getRequestId(), e.getMessage(), e);
+            log.error("{} Unexpected error in ask (ChatClient): {}", context.getRequestId(), e.getMessage(), e);
             CompletableFuture<String> future = new CompletableFuture<>();
-            future.completeExceptionally(e); // 标记Future为异常完成状态
+            future.completeExceptionally(e);
             return future;
         }
     }
@@ -572,6 +568,11 @@ public class LLM {
             int timeout
     ) {
         try {
+            // 渐进改造：优先用 Spring AI 处理非流式 + struct_parse 的工具调用
+            if (!stream && "struct_parse".equals(functionCallType)) {
+                return askToolWithChatClientStructParse(context, messages, systemMsgs, tools, toolChoice, temperature);
+            }
+
             // 校验工具选择策略的合法性，非法值直接抛出参数异常
             if (!ToolChoice.isValid(toolChoice)) {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
@@ -784,6 +785,165 @@ public class LLM {
             future.completeExceptionally(e);
             return future;
         }
+    }
+
+    /**
+     * 使用 Spring AI ChatClient 处理 struct_parse 模式下的非流式工具调用
+     * 仅替换原来的 HTTP 非流式分支，流式与 function_call 模式仍暂时保留原实现
+     */
+    private CompletableFuture<ToolCallResponse> askToolWithChatClientStructParse(
+            AgentContext context,
+            List<Message> messages,
+            Message systemMsgs,
+            ToolCollection tools,
+            ToolChoice toolChoice,
+            Double temperature
+    ) {
+        try {
+            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
+            GenieConfig genieConfig = applicationContext.getBean(GenieConfig.class);
+
+            // 1. 构造工具描述提示词（复用 struct_parse 思路，但简化为纯文本）
+            StringBuilder promptBuilder = new StringBuilder();
+            // 全局 struct_parse 工具系统提示词
+            promptBuilder.append(genieConfig.getStructParseToolSystemPrompt()).append("\n\n");
+            promptBuilder.append("下面是可用工具的列表和参数定义，请根据用户问题选择合适的工具并输出 JSON：\n");
+
+            // BaseTool
+            for (BaseTool tool : tools.getToolMap().values()) {
+                Map<String, Object> functionMap = new HashMap<>();
+                functionMap.put("name", tool.getName());
+                functionMap.put("description", tool.getDescription());
+                functionMap.put("parameters", addFunctionNameParam(tool.toParams(), tool.getName()));
+                promptBuilder.append(String.format(
+                        "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
+                        tool.getName(), tool.getDescription(), JSON.toJSONString(functionMap)
+                ));
+            }
+
+            // McpTool
+            for (McpToolInfo tool : tools.getMcpToolMap().values()) {
+                Map<String, Object> parameters = JSON.parseObject(tool.getParameters(),
+                        new TypeReference<Map<String, Object>>() {});
+                Map<String, Object> functionMap = new HashMap<>();
+                functionMap.put("name", tool.getName());
+                functionMap.put("description", tool.getDesc());
+                functionMap.put("parameters", addFunctionNameParam(parameters, tool.getName()));
+                promptBuilder.append(String.format(
+                        "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
+                        tool.getName(), tool.getDesc(), JSON.toJSONString(functionMap)
+                ));
+            }
+
+            promptBuilder.append("\n==== 对话历史 ====\n");
+            if (systemMsgs != null && StringUtils.isNotEmpty(systemMsgs.getContent())) {
+                promptBuilder.append("【系统提示】").append(systemMsgs.getContent()).append("\n");
+            }
+            if (messages != null) {
+                for (Message msg : messages) {
+                    if (msg != null && msg.getContent() != null) {
+                        promptBuilder.append("role:").append(msg.getRole())
+                                .append(" content:").append(msg.getContent()).append("\n");
+                    }
+                }
+            }
+
+            // 2. 使用 BeanOutputConverter 约束工具调用计划的 JSON 结构
+            BeanOutputConverter<List<ToolPlan>> converter =
+                    new BeanOutputConverter<>(new ParameterizedTypeReference<>() {});
+
+            String format = converter.getFormat();
+
+            promptBuilder.append("""
+
+接下来你需要根据上述工具列表和对话历史，规划本轮要调用的工具列表。
+请严格按照下面 JSON 结构输出（不要增加额外字段，不要包裹在 ```json ``` 代码块中）：
+""");
+            promptBuilder.append(format).append("\n\n");
+            promptBuilder.append("""
+约束要求：
+1. 如果需要调用一个或多个工具，逐个在数组中列出，每个元素对应一次调用。
+2. 每个元素的 functionName 对应具体工具名（如 "file_tool"），arguments 是该工具的参数对象。
+3. 如果本轮不需要调用任何工具，请输出一个空数组 []。
+""");
+
+            String prompt = promptBuilder.toString();
+
+            // 3. 获取 ChatClient（先写死使用 clientId=2102）
+            String beanName = AiAgentEnumVO.AI_CLIENT.getBeanName("2102");
+            ChatClient chatClient = applicationContext.getBean(beanName, ChatClient.class);
+
+            log.info("{} call llm askTool via ChatClient, beanName:{}, prompt length:{}",
+                    context.getRequestId(), beanName, prompt.length());
+
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    var spec = chatClient.prompt().user(prompt);
+                    // 暂不在此处单独配置 temperature，沿用 ChatClient 默认或模型级配置
+                    String content = spec
+                            .call()
+                            .chatResponse()
+                            .getResult()
+                            .getOutput()
+                            .getText();
+                    if (content == null) {
+                        content = "";
+                    }
+
+                    // 4. 使用 BeanOutputConverter 将内容解析为结构化的 ToolPlan 列表
+                    List<ToolPlan> plans = converter.convert(content);
+                    if (plans == null) {
+                        plans = Collections.emptyList();
+                    }
+
+                    List<ToolCall> toolCalls = new ArrayList<>();
+                    for (ToolPlan plan : plans) {
+                        if (plan == null || plan.getFunctionName() == null || plan.getFunctionName().isEmpty()) {
+                            continue;
+                        }
+                        // 将 arguments Map 转回 JSON 字符串，兼容现有 ToolCall 结构
+                        String argsJson = plan.getArguments() != null
+                                ? JSON.toJSONString(plan.getArguments())
+                                : "{}";
+                        toolCalls.add(ToolCall.builder()
+                                .id(StringUtil.getUUID())
+                                .type("function")
+                                .function(ToolCall.Function.builder()
+                                        .name(plan.getFunctionName())
+                                        .arguments(argsJson)
+                                        .build())
+                                .build());
+                    }
+
+                    // 暂时将完整 content 作为可见内容返回（不再截掉 JSON 部分）
+                    return new ToolCallResponse(content, toolCalls, "stop", null, 0L);
+                } catch (Exception e) {
+                    throw new CompletionException(e);
+                }
+            });
+        } catch (Exception e) {
+            log.error("{} Unexpected error in askToolWithChatClientStructParse: {}", context.getRequestId(), e.getMessage(), e);
+            CompletableFuture<ToolCallResponse> future = new CompletableFuture<>();
+            future.completeExceptionally(e);
+            return future;
+        }
+    }
+
+    /**
+     * 用于 BeanOutputConverter 约束工具调用计划 JSON 结构的中间类型
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ToolPlan {
+        /**
+         * 工具名称，如 "file_tool"、"code_interpreter" 等
+         */
+        private String functionName;
+        /**
+         * 该工具调用的参数对象，键值对形式
+         */
+        private Map<String, Object> arguments;
     }
 
     /**

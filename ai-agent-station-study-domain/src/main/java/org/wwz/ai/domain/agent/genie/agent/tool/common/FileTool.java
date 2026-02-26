@@ -51,7 +51,7 @@ public class FileTool implements BaseTool {
 
         Map<String, Object> fileName = new HashMap<>();
         fileName.put("type", "string");
-        fileName.put("description", "文件名");
+        fileName.put("description", "文件名。纯文本内容请优先使用 Markdown 保存，文件名必须带后缀，例如：`xxx.md`（不要省略后缀，也不要使用 .txt）");
 
         Map<String, Object> fileDesc = new HashMap<>();
         fileDesc.put("type", "string");
@@ -111,11 +111,37 @@ public class FileTool implements BaseTool {
         fileRequest.setRequestId(agentContext.getSessionId());
         // 清理文件名中的特殊字符
         fileRequest.setFileName(StringUtil.removeSpecialChars(fileRequest.getFileName()));
-        if (fileRequest.getFileName().isEmpty()) {
+
+        // 如果清洗后文件名为空，但有内容/描述，则自动生成一个合理的 Markdown 文件名，避免无效调用反复失败
+        if ((fileRequest.getFileName() == null || fileRequest.getFileName().isEmpty())
+                && ((fileRequest.getContent() != null && !fileRequest.getContent().isEmpty())
+                || (fileRequest.getDescription() != null && !fileRequest.getDescription().isEmpty()))) {
+            String baseName = Optional.ofNullable(fileRequest.getDescription())
+                    .filter(desc -> !desc.isEmpty())
+                    .orElse("autogen_file");
+            // 只保留英文数字和下划线，避免再次被 removeSpecialChars 清空
+            baseName = baseName.replaceAll("[^a-zA-Z0-9_]", "");
+            if (baseName.isEmpty()) {
+                baseName = "autogen_file";
+            }
+            fileRequest.setFileName(baseName + ".md");
+        }
+
+        // 再做一次 trim
+        if (fileRequest.getFileName() != null) {
+            fileRequest.setFileName(fileRequest.getFileName().trim());
+        }
+
+        if (fileRequest.getFileName() == null || fileRequest.getFileName().isEmpty()) {
             String errorMessage = "上传文件失败 文件名为空";
 
             log.error("{} {}", agentContext.getRequestId(), errorMessage);
             return null;
+        }
+
+        // 如果文件名没有任何后缀，但已经非空，则自动补一个 .md 后缀，满足下游服务的约束
+        if (!fileRequest.getFileName().contains(".")) {
+            fileRequest.setFileName(fileRequest.getFileName() + ".md");
         }
         RequestBody body = RequestBody.create(JSON.toJSONString(fileRequest), mediaType);
         Request request = new Request.Builder()

@@ -113,6 +113,7 @@ public abstract class BaseAgent {
                 // 打印日志：标记请求ID、Agent名称、当前步数/最大步数（便于排查问题）
                 log.info("{} {} Executing step {}/{}", context.getRequestId(), getName(), currentStep, maxSteps);
                 // 调用子类实现的step()方法，执行单个步骤并获取结果
+                //think给出工具调用参数 由act多线程执行然后返回结果
                 String stepResult = step();
                 // 将当前步骤结果加入列表
                 results.add(stepResult);

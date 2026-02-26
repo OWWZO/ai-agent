@@ -236,11 +236,11 @@ public class PlanningAgent extends ReActAgent {
                 return getNextTask();
             }
         }
-
-        if (toolCalls.isEmpty()) {
-            setState(AgentState.FINISHED);
-            return getMemory().getLastMessage().toString();
-        }
+//
+//        if (toolCalls.isEmpty()) {
+//            setState(AgentState.FINISHED);
+//            return getMemory().getLastMessage().toString();
+//        }
 
         // 2. 初始化工具执行结果列表
         List<String> results = new ArrayList<>();

@@ -158,6 +158,7 @@ public class ExecutorAgent extends ReActAgent {
         }
 
         Map<String, String> toolResults = executeTools(toolCalls);
+
         List<String> results = new ArrayList<>();
         for (ToolCall command : toolCalls) {
             String result = toolResults.get(command.getId());

@@ -4,14 +4,23 @@ package org.wwz.ai.domain.agent.genie.config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.genie.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.genie.config.data.DataAgentConstants;
+import org.wwz.ai.domain.agent.genie.config.data.DbConfig;
 import org.wwz.ai.domain.agent.genie.config.data.EsConfig;
 import org.wwz.ai.domain.agent.genie.config.data.QdrantConfig;
+
+import org.wwz.ai.domain.agent.genie.data.jdbc.connection.JdbcConnectionFactory;
 import org.wwz.ai.domain.agent.genie.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.genie.service.ColumnValueSyncService;
 import org.wwz.ai.domain.agent.genie.service.QdrantService;
+import org.wwz.ai.domain.agent.genie.util.JdbcUtils;
+
+import java.sql.Connection;
+import java.util.Collections;
 
 @Slf4j
 @Component
@@ -32,7 +41,6 @@ public class DataAgentInitRunner implements CommandLineRunner {
         log.info("dataAgent config:{}", dataAgentConfig);
         
         // H2数据库初始化：如果配置为H2且存在初始化脚本，则执行初始化
-        /*
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
         if (dbConfig != null && "h2".equalsIgnoreCase(dbConfig.getType())) {
             try (Connection connection = JdbcConnectionFactory.getConnection(JdbcUtils.parseJdbcConnectionConfig(dbConfig)).getConnection()) {
@@ -49,7 +57,12 @@ public class DataAgentInitRunner implements CommandLineRunner {
                 // 不抛出异常，避免影响主流程，但可能会导致后续查询失败
             }
         }
-        */
+
+        try {
+            chatModelInfoService.initModelInfo(dataAgentConfig);
+        } catch (Exception e) {
+            log.error("Failed to init model info", e);
+        }
 
         QdrantConfig qdrantConfig = dataAgentConfig.getQdrantConfig();
         if (qdrantConfig.getEnable()) {
@@ -61,6 +74,5 @@ public class DataAgentInitRunner implements CommandLineRunner {
             columnValueSyncService.initColumnValueIndex();
             log.info("column value es index init success");
         }
-        // chatModelInfoService.initModelInfo(dataAgentConfig);
     }
 }

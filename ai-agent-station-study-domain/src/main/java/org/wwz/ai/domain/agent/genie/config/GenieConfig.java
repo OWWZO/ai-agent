@@ -169,7 +169,7 @@ public class GenieConfig {
     @Value("${autobots.autoagent.planner.close_update:1}")
     private String planningCloseUpdate;
 
-    @Value("${autobots.autoagent.deep_search_page_count:5}")
+    @Value("${autobots.autoagent.deep_search_page_count:3}")
     private String deepSearchPageCount;
 
     private Map<String, String> multiAgentToolListMap = new HashMap<>();
