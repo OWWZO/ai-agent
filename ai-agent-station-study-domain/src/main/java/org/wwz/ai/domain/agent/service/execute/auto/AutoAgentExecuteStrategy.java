@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
@@ -39,7 +40,7 @@ public class AutoAgentExecuteStrategy implements IExecuteStrategy {
 //    }
 
     @Override
-    public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
 
     }
 

@@ -4,7 +4,7 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
@@ -23,7 +23,8 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
     /**
      * 执行 PlanSolve 逻辑树
      */
-    public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    @Override
+    public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
         StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultPlanSolveAgentExecuteStrategyFactory.armoryStrategyHandler();
         DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext = DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext.builder()

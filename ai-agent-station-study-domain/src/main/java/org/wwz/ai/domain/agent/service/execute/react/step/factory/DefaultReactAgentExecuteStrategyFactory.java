@@ -10,7 +10,7 @@ import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.genie.agent.agent.ReActAgent;
 import org.wwz.ai.domain.agent.genie.agent.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.step.RootNode;
 
 /**
@@ -38,7 +38,7 @@ public class DefaultReactAgentExecuteStrategyFactory {
     @NoArgsConstructor
     public static class DynamicContext {
 
-        private ResponseBodyEmitter emitter;
+        private SseEmitter emitter;
         /** 由 Step1 构建并放入，Step2 使用；AgentRequest 由 requestParameter 贯穿传递 */
         private AgentContext agentContext;
         /** 由 Step2 放入，Step3 用于生成总结 */

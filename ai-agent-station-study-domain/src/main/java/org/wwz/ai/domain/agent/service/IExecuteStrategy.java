@@ -1,8 +1,8 @@
 package org.wwz.ai.domain.agent.service;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 执行策略接口
@@ -10,8 +10,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
  */
 public interface IExecuteStrategy {
 
-//    void execute(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception;
-
-    void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception;
+    void execute(AgentRequest request, SseEmitter emitter) throws Exception;
 
 }

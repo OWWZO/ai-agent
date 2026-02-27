@@ -181,7 +181,7 @@ public class SummaryAgent extends BaseAgent {
                     Collections.singletonList(userMessage),
                     Collections.emptyList(),
                     false,
-                    0.01);
+                    0.1);
 
             // 5. 等待LLM响应并获取结果：阻塞当前线程，直到异步调用完成
             String llmResponse = summaryFuture.get();

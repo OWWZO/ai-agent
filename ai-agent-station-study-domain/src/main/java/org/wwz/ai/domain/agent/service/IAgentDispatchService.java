@@ -1,8 +1,10 @@
 package org.wwz.ai.domain.agent.service;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.yaml.snakeyaml.emitter.Emitter;
 
 /**
  * Agent 策略调度器接口
@@ -10,8 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
  */
 public interface IAgentDispatchService {
 
-//    void dispatch(ExecuteCommandEntity requestParameter, ResponseBodyEmitter emitter) throws Exception;
 
-    void dispatch(AgentRequest request, ResponseBodyEmitter emitter) throws Exception;
+    void dispatch(AgentRequest request, SseEmitter emitter) throws Exception;
 
 }

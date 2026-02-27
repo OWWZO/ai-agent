@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.genie.agent.agent.ExecutorAgent;
 import org.wwz.ai.domain.agent.genie.agent.agent.PlanningAgent;
@@ -35,7 +35,7 @@ public class DefaultPlanSolveAgentExecuteStrategyFactory {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class DynamicContext {
-        private ResponseBodyEmitter emitter;
+        private SseEmitter emitter;
         private AgentContext agentContext;
         private PlanningAgent planning;
         private ExecutorAgent executor;

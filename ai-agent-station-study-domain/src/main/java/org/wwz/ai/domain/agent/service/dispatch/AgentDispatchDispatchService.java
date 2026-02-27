@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.dispatch;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.genie.agent.enums.AgentType;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
@@ -10,7 +11,6 @@ import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.types.exception.BizException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import javax.annotation.Resource;
 import java.util.Map;
@@ -34,12 +34,15 @@ public class AgentDispatchDispatchService implements IAgentDispatchService {
     private ThreadPoolExecutor threadPoolExecutor;
 
     @Override
-    public void dispatch(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    public void dispatch(AgentRequest request, SseEmitter emitter) throws Exception {
 
         String strategy = null;
 
         if (request.getAgentType() != null) {
-            if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
+            if (AgentType.WORKFLOW.getValue().equals(request.getAgentType())) {
+                // 聊天模式：固定策略（无深度研究）
+                strategy = "fixedAgentExecuteStrategy";
+            } else if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
                 // 规划-执行模式（深度研究开启时使用）
                 strategy = "planSolveAgentExecuteStrategy";
             } else if (AgentType.REACT.getValue().equals(request.getAgentType())) {

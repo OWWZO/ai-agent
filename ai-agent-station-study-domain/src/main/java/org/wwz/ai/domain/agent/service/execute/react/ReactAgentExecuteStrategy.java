@@ -5,7 +5,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.config.GenieConfig;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
@@ -31,13 +31,13 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
      * 主入口：直接使用 AgentRequest，无转换（AutoAgent 等 Genie 入口调用）
      */
     @Override
-    public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
         applyOutputStyle(request);
         doExecute(request, emitter);
     }
 
 
-    private void doExecute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    private void doExecute(AgentRequest request, SseEmitter emitter) throws Exception {
 
         StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultReactAgentExecuteStrategyFactory.armoryStrategyHandler();

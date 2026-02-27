@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
@@ -8,7 +9,6 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 流程执行策略
@@ -21,7 +21,7 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
     private DefaultFlowAgentExecuteStrategyFactory defaultFlowAgentExecuteStrategyFactory;
 
     @Override
-    public void execute(AgentRequest request, ResponseBodyEmitter emitter) throws Exception {
+    public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
         ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
                 .requestId(request.getRequestId())
                 .message(request.getQuery())

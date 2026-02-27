@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
@@ -206,7 +206,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
                                 Object result) {
         try {
             // 优先使用强类型 emitter 字段，兼容老逻辑从 Map 中获取
-            ResponseBodyEmitter emitter = dynamicContext.getEmitter() != null ? dynamicContext.getEmitter() : dynamicContext.getValue("emitter");
+            SseEmitter emitter = dynamicContext.getEmitter() != null ? dynamicContext.getEmitter() : dynamicContext.getValue("emitter");
             if (emitter != null) {
                 // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";

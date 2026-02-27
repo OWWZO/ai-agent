@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto.step;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
@@ -14,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.context.ApplicationContext;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
@@ -60,7 +60,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
                                 AgentExecuteResultEntity result) {
         try {
-            ResponseBodyEmitter emitter = dynamicContext.getValue("emitter");
+            SseEmitter emitter = dynamicContext.getValue("emitter");
             if (emitter != null) {
                 // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";

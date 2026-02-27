@@ -24,6 +24,9 @@ public class AgentHandlerConfig {
                 map.put(AgentType.PLAN_SOLVE, handler);
             } else if (handler instanceof ReactAgentResponseHandler) {
                 map.put(AgentType.REACT, handler);
+                // 默认使用 React 处理器处理 WORKFLOW / COMPREHENSIVE 模式的流式输出
+                map.put(AgentType.WORKFLOW, handler);
+                map.put(AgentType.COMPREHENSIVE, handler);
             }
             // 可扩展更多 handler
         }

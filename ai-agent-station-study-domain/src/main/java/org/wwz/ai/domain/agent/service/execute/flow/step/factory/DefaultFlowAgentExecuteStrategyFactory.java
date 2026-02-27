@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.flow.step.factory;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 
@@ -10,7 +11,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.wwz.ai.domain.agent.model.entity.ExecutionPlanStep;
 
 import java.util.HashMap;
@@ -54,7 +54,7 @@ public class DefaultFlowAgentExecuteStrategyFactory {
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
         // SSE emitter（用于将结果流式推送到前端，避免通过 magic key 在 Map 中传递）
-        private ResponseBodyEmitter emitter;
+        private SseEmitter emitter;
 
         // 结构化执行计划（贯穿 Flow 全流程，避免 JSON↔文本↔正则的反复转换）
         private List<ExecutionPlanStep> executionPlan;

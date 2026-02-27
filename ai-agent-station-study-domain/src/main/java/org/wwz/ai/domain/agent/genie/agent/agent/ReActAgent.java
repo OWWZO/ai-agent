@@ -102,7 +102,7 @@ public abstract class ReActAgent extends BaseAgent {
                     Collections.singletonList(userMessage), // 仅传入当前用户消息
                     Collections.emptyList(),                // 无额外系统消息
                     false,                                   // 非流式调用
-                    0.01);                                   // 温度系数：越低结果越确定
+                    0.1);                                   // 温度系数：越低结果越确定
 
             // 5. 同步获取异步结果（阻塞等待LLM响应，可根据业务调整为非阻塞）
             String llmResponse = summaryFuture.get();

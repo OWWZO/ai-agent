@@ -166,6 +166,12 @@ public class MultiAgentServiceImpl implements IMultiAgentService {
                         AgentType agentType = AgentType.fromCode(autoReq.getAgentType());
                         // 根据智能体类型获取对应的处理器（策略模式：不同类型智能体用不同处理器）
                         AgentResponseHandler handler = handlerMap.get(agentType);
+                        if (handler == null) {
+                            log.error("{} no AgentResponseHandler found for agentType: {}", autoReq.getRequestId(), agentType);
+                            GptProcessResult result = buildDefaultAutobotsResult(autoReq, "unsupported agentType: " + agentType);
+                            sseEmitter.send(result);
+                            continue;
+                        }
                         // 调用处理器处理响应数据，返回需要推送给客户端的结果
                         GptProcessResult result = handler.handle(autoReq, agentResponse, agentRespList, eventResult);
                         // 通过SSE发射器向客户端推送业务处理结果
@@ -221,9 +227,23 @@ public class MultiAgentServiceImpl implements IMultiAgentService {
         request.setRequestId(req.getTraceId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
-        request.setAgentType(req.getDeepThink() == 0 ? 5: 3);
-        request.setSopPrompt(request.getAgentType() == 3 ? genieConfig.getGenieSopPrompt(): "");
-        request.setBasePrompt(request.getAgentType() == 5 ? genieConfig.getGenieBasePrompt() : "");
+
+        // 根据前端选择的产品形态 + 深度研究，统一用 AgentType 枚举标识
+        // 聊天模式：COMPREHENSIVE -> FixedAgentExecuteStrategy
+        if ("chat".equalsIgnoreCase(req.getOutputStyle())) {
+            request.setAgentType(AgentType.WORKFLOW.getValue());
+//            request.setBasePrompt(genieConfig.getGenieBasePrompt());
+            request.setSopPrompt("");
+        } else {
+            // 非聊天：沿用原有 deepThink=0 -> REACT，deepThink=1 -> PLAN_SOLVE
+            Integer agentType = (req.getDeepThink() == null || req.getDeepThink() == 0)
+                    ? AgentType.REACT.getValue()
+                    : AgentType.PLAN_SOLVE.getValue();
+            request.setAgentType(agentType);
+            request.setSopPrompt(agentType.equals(AgentType.PLAN_SOLVE.getValue()) ? genieConfig.getGenieSopPrompt() : "");
+            request.setBasePrompt(agentType.equals(AgentType.REACT.getValue()) ? genieConfig.getGenieBasePrompt() : "");
+        }
+
         request.setIsStream(true);
         request.setOutputStyle(req.getOutputStyle());
 

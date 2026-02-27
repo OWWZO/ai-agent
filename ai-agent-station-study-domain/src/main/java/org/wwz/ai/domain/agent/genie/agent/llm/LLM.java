@@ -568,10 +568,10 @@ public class LLM {
             int timeout
     ) {
         try {
-            // 渐进改造：优先用 Spring AI 处理非流式 + struct_parse 的工具调用
-            if (!stream && "struct_parse".equals(functionCallType)) {
-                return askToolWithChatClientStructParse(context, messages, systemMsgs, tools, toolChoice, temperature);
-            }
+//            // 渐进改造：所有非流式工具调用（无论 functionCallType）统一走 Spring AI + BeanOutputConverter
+//            if (!stream) {
+//                return askToolWithChatClientStructParse(context, messages, systemMsgs, tools, toolChoice, temperature);
+//            }
 
             // 校验工具选择策略的合法性，非法值直接抛出参数异常
             if (!ToolChoice.isValid(toolChoice)) {
@@ -871,6 +871,7 @@ public class LLM {
 
             // 3. 获取 ChatClient（先写死使用 clientId=2102）
             String beanName = AiAgentEnumVO.AI_CLIENT.getBeanName("2102");
+
             ChatClient chatClient = applicationContext.getBean(beanName, ChatClient.class);
 
             log.info("{} call llm askTool via ChatClient, beanName:{}, prompt length:{}",
