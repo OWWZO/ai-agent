@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+
+# Virtual environments
+.venv/
+
+# IDE
+.idea/
+.vscode/
+.joycoder/
+
+# Logs
+Logs/
+logs/
+*.log

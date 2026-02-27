@@ -1,0 +1,10 @@
+[project]
+name = "genie-client"
+version = "0.1.0"
+description = "FastAPI-based web service client for Model Context Protocol (MCP) servers"
+readme = "README.md"
+requires-python = ">=3.10,<=3.13"
+dependencies = [
+    "fastapi>=0.115.12",
+    "mcp==1.9.4",
+]

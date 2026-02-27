@@ -1,0 +1,91 @@
+@import 'tailwindcss';
+/* 项目特殊样式 */
+@import './assets/styles/common.css';
+@import './assets/styles/RelayIcon.css';
+@import './assets/styles/github-markdown.css';
+
+
+@config '../tailwind.config.js';
+
+@theme {
+  --spacing: 1px; 
+  --default-transition-duration: 0.3s;
+  @keyframes dot-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      background-color: #acbdff;
+    }
+    50% {
+      transform: scale(1.5); /* 4px * 1.5 = 6px */
+      background-color: #4040ff;
+    }
+  }
+}
+
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  height: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: bold;
+}
+
+a {
+  color: #007bff;
+  text-decoration: none;
+
+  &:hover {
+    color: #0056b3;
+  }
+}
+
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#root{
+  height: 100%;
+}
+
+.no-scrollbar::-webkit-scrollbar { 
+  display: none; 
+} 
+ 
+/* 为 IE、Edge 和 Firefox 提供支持 */ 
+.no-scrollbar { 
+  -ms-overflow-style: none;  /* IE 和 Edge */ 
+  scrollbar-width: none;  /* Firefox */ 
+} 
+
+.delay-400ms {
+  animation-delay: 0.4s !important;
+}
+
+.delay-0ms {
+  animation-delay: 0s !important;
+}
+.delay-800ms {
+  animation-delay: 0.8s !important;
+}
+
+.lottie{
+  height: 80px !important;
+}

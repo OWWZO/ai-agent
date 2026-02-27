@@ -1,0 +1,36 @@
+[project]
+name = "python"
+version = "0.1.0"
+description = "Genie Tools"
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "aiosqlite>=0.21.0",
+    "asyncio>=4.0.0",
+    "beautifulsoup4>=4.13.4",
+    "elasticsearch==7.17.12",
+    "fastapi>=0.115.14",
+    "greenlet>=3.2.3",
+    "jieba>=0.42.1",
+    "jinja2>=3.1.6",
+    "json-repair>=0.47.6",
+    "litellm>=1.74.0.post1",
+    "loguru>=0.7.3",
+    "matplotlib>=3.10.3",
+    "openai>=1.93.0",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.0",
+    "pydantic>=2.11.7",
+    "pyfiglet>=1.0.3",
+    "python-multipart>=0.0.20",
+    "qdrant-client==1.5",
+    "scikit-learn>=1.7.1",
+    "scipy>=1.16.1",
+    "smolagents>=1.19.0",
+    "sqlmodel>=0.0.24",
+    "sqlparse>=0.5.3",
+    "sse-starlette>=2.4.1",
+    "statsmodels>=0.14.5",
+    "tabulate>=0.9.0",
+    "uvicorn>=0.35.0",
+]

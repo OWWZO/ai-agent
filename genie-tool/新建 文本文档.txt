@@ -1,0 +1,3 @@
+.venv\Scripts\activate.bat
+
+uv run python server.py
