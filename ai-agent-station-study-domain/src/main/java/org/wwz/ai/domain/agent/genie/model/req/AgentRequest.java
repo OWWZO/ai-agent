@@ -18,6 +18,10 @@ import java.util.List;
 @AllArgsConstructor
 public class AgentRequest {
     private String requestId;
+    /**
+     * 会话ID，用于多轮对话上下文复用
+     */
+    private String sessionId;
     private String erp;
     private String query;
     private Integer agentType;

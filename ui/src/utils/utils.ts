@@ -136,6 +136,20 @@ export function formatSecondsToMinutes(seconds: number): string {
 }
 
 export const getSessionId = () => {
+  // Same tab/session should reuse a single sessionId.
+  // sessionStorage is scoped to the current browser tab and cleared when the tab closes.
+  const storageKey = "reactor.sessionId";
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const existing = window.sessionStorage.getItem(storageKey);
+      if (existing) return existing;
+      const created = `session-${getUniqId()}`;
+      window.sessionStorage.setItem(storageKey, created);
+      return created;
+    }
+  } catch {
+    // ignore storage access errors and fall back to generating
+  }
   return `session-${getUniqId()}`;
 };
 

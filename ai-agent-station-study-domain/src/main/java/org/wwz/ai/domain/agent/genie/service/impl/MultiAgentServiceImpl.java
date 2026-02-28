@@ -224,7 +224,10 @@ public class MultiAgentServiceImpl implements IMultiAgentService {
 
     private AgentRequest buildAgentRequest(GptQueryReq req) {
         AgentRequest request = new AgentRequest();
+        // requestId 继续使用 traceId 作为单次请求唯一标识
         request.setRequestId(req.getTraceId());
+        // 会话维度的 sessionId，前端已保证同一会话内复用
+        request.setSessionId(req.getSessionId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
 

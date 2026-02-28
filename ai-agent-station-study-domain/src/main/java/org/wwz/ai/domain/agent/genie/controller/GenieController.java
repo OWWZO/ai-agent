@@ -106,8 +106,10 @@ public class GenieController {
         try {
             // Build ExecuteCommandEntity
             ExecuteCommandEntity entity = ExecuteCommandEntity.builder()
+                    // 单次请求追踪ID
                     .requestId(request.getRequestId())
-                    .sessionId(request.getRequestId())
+                    // 会话ID：使用前端与多智能体统一的 sessionId
+                    .sessionId(request.getSessionId())
                     .message(request.getQuery())
                     .agentType(request.getAgentType())
                     .outputStyle(request.getOutputStyle())

@@ -58,15 +58,5 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
-    private AgentRequest toAgentRequest(ExecuteCommandEntity e) {
-        AgentRequest r = new AgentRequest();
-        r.setRequestId(e.getRequestId());
-        r.setQuery(e.getMessage());
-        r.setAgentType(e.getAgentType());
-        r.setOutputStyle(e.getOutputStyle());
-        r.setIsStream(e.getIsStream());
-        r.setSopPrompt(e.getSopPrompt());
-        r.setBasePrompt(e.getBasePrompt());
-        return r;
-    }
+
 }

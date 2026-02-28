@@ -21,6 +21,7 @@ import reactor.core.publisher.Flux;
 
 import javax.annotation.Resource;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -55,7 +56,8 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
         Printer printer = new SSEPrinter(emitter, request, request.getAgentType());
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
-                .sessionId(request.getRequestId())
+                // 会话级 ID：统一使用 AgentRequest.sessionId
+                .sessionId(request.getSessionId())
                 .printer(printer)
                 .query(request.getQuery())
                 .task("")
@@ -74,7 +76,7 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
                 repository.queryAiAgentClientsByAgentId("1");
 
         String content = "";
-        final String sessionId = request.getRequestId();
+        final String sessionId = request.getSessionId();
 
         // 2. 循环执行客户端（流式输出），保持原有 for (config : aiAgentClientList) 逻辑不变
         for (AiAgentClientFlowConfigVO config : aiAgentClientList) {
@@ -82,8 +84,10 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
 
             StringBuilder fullText = new StringBuilder();
             try {
-                Flux<org.springframework.ai.chat.model.ChatResponse> flux = chatClient.prompt(request.getQuery() + "，" + content+"，"+config.getStepPrompt())
-                        .system(s -> s.param("current_date", LocalDate.now().toString()))
+                // 用户输入 + 历史内容作为 user 内容，提示词作为 system 提示，避免系统提示词被模型原样复述给用户
+                Flux<org.springframework.ai.chat.model.ChatResponse> flux = chatClient
+                        .prompt(request.getQuery() + "，" + content)
+                        .system(config.getStepPrompt() + " current_date_time:" + LocalDateTime.now())
                         .advisors(a -> a
                                 .param(CHAT_MEMORY_CONVERSATION_ID_KEY, sessionId)
                                 .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 100)
