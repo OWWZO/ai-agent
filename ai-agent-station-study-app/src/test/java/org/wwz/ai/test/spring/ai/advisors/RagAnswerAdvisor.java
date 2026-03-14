@@ -40,6 +40,13 @@ public class RagAnswerAdvisor implements BaseAdvisor {
         this.userTextAdvise = "\nContext information is below, surrounded by ---------------------\n\n---------------------\n{question_answer_context}\n---------------------\n\nGiven the context and provided history information and not prior knowledge,\nreply to the user comment. If the answer is not in the context, inform\nthe user that you can't answer the question.\n";
     }
 
+
+    /**
+     * 前置增强方法：在大模型请求发送前执行（核心RAG检索逻辑）
+     * @param chatClientRequest 原始的ChatClient请求（包含用户提问、上下文等）
+     * @param advisorChain 增强器链（用于执行后续增强器，此处未直接使用）
+     * @return 增强后的ChatClientRequest（注入了检索到的法规文档上下文）
+     */
     @Override
     public ChatClientRequest before(ChatClientRequest chatClientRequest, AdvisorChain advisorChain) {
         HashMap<String, Object> context = new HashMap(chatClientRequest.context());
@@ -49,6 +56,11 @@ public class RagAnswerAdvisor implements BaseAdvisor {
 
         String query = userText; // 直接使用用户文本作为查询，避免模板解析错误
 
+        // 4. 构建最终的向量检索请求
+        // - 复用预设的SearchRequest（基础参数）
+        // - 设置检索关键词为用户提问
+        // - 追加动态过滤表达式（如按地区/年份/部门过滤法规文档）
+        // - 构建完整检索请求
         SearchRequest searchRequestToUse = SearchRequest.from(this.searchRequest).query(query).filterExpression(this.doGetFilterExpression(context)).build();
         List<Document> documents = this.vectorStore.similaritySearch(searchRequestToUse);
         context.put("qa_retrieved_documents", documents);
@@ -66,6 +78,7 @@ public class RagAnswerAdvisor implements BaseAdvisor {
     @Override
     public ChatClientResponse after(ChatClientResponse chatClientResponse, AdvisorChain advisorChain) {
         ChatResponse.Builder chatResponseBuilder = ChatResponse.builder().from(chatClientResponse.chatResponse());
+        //拼入文档的元数据
         chatResponseBuilder.metadata("qa_retrieved_documents", chatClientResponse.context().get("qa_retrieved_documents"));
         ChatResponse chatResponse = chatResponseBuilder.build();
 

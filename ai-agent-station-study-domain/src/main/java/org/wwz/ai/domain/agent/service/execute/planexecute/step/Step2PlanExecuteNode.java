@@ -126,9 +126,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
             stepIdx++;
         }
-
-        dynamicContext.setStep(2);
-        return "success";
+        return "";
     }
 
     private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, Message planResult, AgentRequest request) {

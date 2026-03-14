@@ -47,7 +47,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         log.info("PlanSolve Step1: SOP recall and prepare for requestId: {}", request.getRequestId());
 
         Printer printer = new SSEPrinter(
-                (SseEmitter) dynamicContext.getEmitter(),
+                dynamicContext.getEmitter(),
                 request,
                 request.getAgentType()
         );

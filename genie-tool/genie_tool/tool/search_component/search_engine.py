@@ -32,6 +32,8 @@ class SearchBase(ABC):
     def __init__(self):
         self._count = int(os.getenv("SEARCH_COUNT", 10))
         self._timeout = int(os.getenv("SEARCH_TIMEOUT", 99999))
+        # 单 URL 抓取超时（秒），过大会导致墙内访问 Reddit/Threads/X 等长时间挂起后卡死
+        self._parser_timeout = int(os.getenv("SEARCH_PARSER_TIMEOUT", 15))
         self._use_jd_gateway = os.getenv("USE_JD_SEARCH_GATEWAY", "true") == "true"
 
     @abstractmethod
@@ -41,11 +43,13 @@ class SearchBase(ABC):
 
     @staticmethod
     @timer()
-    async def parser(docs: List[Doc], timeout: int=99999, **kwargs) -> List[Doc]:
+    async def parser(docs: List[Doc], timeout: int = 15, **kwargs) -> List[Doc]:
         async def _parser(source_url, timeout):
+            # connect 超时短一些，墙内无法访问的站点会快速失败
+            client_timeout = aiohttp.ClientTimeout(connect=5, total=timeout)
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.get(source_url, timeout=timeout) as response:
+                    async with session.get(source_url, timeout=client_timeout) as response:
                         if response.content_type.lower() in [
                                 "text/html", "text/plain", "text/xml", "application/json", "application/xml", "application/octet-stream"]:
                             return await response.text()
@@ -62,7 +66,7 @@ class SearchBase(ABC):
             tasks = [tg.create_task(_parser(doc.link, timeout)) for doc in docs]
         results = [BeautifulSoup(task.result(), "html.parser") for task in tasks]
         results = [soup.get_text() if soup.get_text() and len(soup.get_text().strip()) > 50 else str(soup.text) for soup in results]
-        for doc, result in zip(tasks, results):
+        for doc, result in zip(docs, results):
             if result:
                 doc.content = result
         return docs
@@ -82,7 +86,7 @@ class SearchBase(ABC):
         except aiohttp.client_exceptions.InvalidUrlClientError as e:
             logger.warning(f"Search skipped (invalid URL): {e}")
             return []
-        docs = await self.parser(docs=docs)
+        docs = await self.parser(docs=docs, timeout=self._parser_timeout)
 
         seen_docs = set()
         deduped_docs = []

@@ -162,23 +162,56 @@ def get_new_file_by_path(output_dir):
 
 def _ci_model_id_and_litellm_kwargs():
     """
-    获取 code_interpreter 使用的 model_id，并对 qwen 系列自动补全 DashScope 的 api_base / api_key / custom_llm_provider，
-    避免 litellm 报错 LLM Provider NOT provided。
+    获取 code_interpreter 使用的 model_id，并根据模型前缀补全对应的
+    api_base / api_key / custom_llm_provider，避免 litellm 报错
+    `LLM Provider NOT provided`。
+
+    支持：
+    - qwen* / dashscope/*  → 走阿里 DashScope 兼容接口
+    - glm-* / zhipuai/glm-* → 走智谱 OpenAI 兼容接口
     """
-    model_id = (os.getenv("CODE_INTEPRETER_MODEL") or "gpt-4.1").strip()
-    use_dashscope = model_id.startswith("qwen") or model_id.startswith("dashscope/")
-    if not use_dashscope:
-        return model_id, {}
-    api_base = os.getenv("DASHSCOPE_API_BASE") or os.getenv("OPENAI_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    if not api_base.rstrip("/").endswith("/v1"):
-        api_base = api_base.rstrip("/") + "/v1"
-    api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
-    final_model = model_id.split("/", 1)[1] if model_id.startswith("dashscope/") else model_id
-    return final_model, {
-        "api_base": api_base,
-        "api_key": api_key,
-        "custom_llm_provider": "openai",
-    }
+    model_id = (os.getenv("CODE_INTEPRETER_MODEL") or os.getenv("DEFAULT_MODEL") or "gpt-4.1").strip()
+
+    # 1) Qwen / DashScope
+    if model_id.startswith("qwen") or model_id.startswith("dashscope/"):
+        api_base = (
+            os.getenv("DASHSCOPE_API_BASE")
+            or os.getenv("OPENAI_BASE_URL")
+            or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        api_base = api_base.rstrip("/")
+        if not api_base.endswith("/v1"):
+            api_base = api_base + "/v1"
+        api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+        final_model = model_id.split("/", 1)[1] if model_id.startswith("dashscope/") else model_id
+        return final_model, {
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": "openai",
+        }
+
+    # 2) Zhipu GLM（与 deepsearch 保持一致）
+    if model_id.startswith("zhipuai/") or model_id.startswith("glm-"):
+        # 标准化模型名：zhipuai/glm-4-flash -> glm-4-flash
+        final_model = model_id.split("/", 1)[1] if "/" in model_id else model_id
+
+        api_base_raw = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        if not api_base_raw:
+            api_base_raw = "https://open.bigmodel.cn/api/paas/v4"
+        api_base_raw = api_base_raw.rstrip("/")
+        if api_base_raw.endswith("/chat/completions"):
+            api_base_raw = api_base_raw[: -len("/chat/completions")]
+        api_base = api_base_raw
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        return final_model, {
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": "openai",
+        }
+
+    # 3) 其他模型：直接交给 litellm 自己判断
+    return model_id, {}
 
 
 def create_ci_agent(

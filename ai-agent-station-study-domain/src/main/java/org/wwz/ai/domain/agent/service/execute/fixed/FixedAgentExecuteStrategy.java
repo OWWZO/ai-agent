@@ -51,7 +51,6 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
     @Override
     public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
         log.info("{} fixed agent request: {}", request.getRequestId(), request);
-
         // 构建 AgentContext
         Printer printer = new SSEPrinter(emitter, request, request.getAgentType());
         AgentContext agentContext = AgentContext.builder()

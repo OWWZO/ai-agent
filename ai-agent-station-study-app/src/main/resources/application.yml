@@ -3,3 +3,9 @@ spring:
     name: ai-agent-station-study-app
   profiles:
     active: dev
+  # 通用文件上传配置：为所有环境提供默认的上传大小限制，可在具体环境覆盖
+  servlet:
+    multipart:
+      enabled: true        # 启用文件上传
+      max-file-size: 200MB # 默认单文件上限
+      max-request-size: 300MB # 默认请求总大小上限

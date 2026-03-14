@@ -112,6 +112,41 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
             **kwargs,
         }
 
+    # ===== Zhipu (glm-*) 走 OpenAI 兼容路径 =====
+    # 适配智谱的 OpenAI 兼容接口：OPENAI_API_KEY + OPENAI_BASE_URL
+    # 只要模型名是 zhipuai/glm-* 或 glm-*，就强制走 openai provider，避免 LiteLLM 去解析 provider=zhipuai 报错。
+    if model.startswith("zhipuai/") or model.startswith("glm-"):
+        # 1. 处理模型名：zhipuai/glm-4-flash -> glm-4-flash
+        final_model = model.split("/", 1)[1] if "/" in model else model
+
+        # 2. 处理 api_base：
+        #    - 优先使用环境变量 OPENAI_BASE_URL / OPENAI_API_BASE
+        #    - 若未配置，则回退为智谱官方 OpenAI 兼容地址根路径（不拼 /v1）
+        api_base_raw = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        if not api_base_raw:
+            api_base_raw = "https://open.bigmodel.cn/api/paas/v4"
+        api_base_raw = api_base_raw.rstrip("/")
+        # 对于 bigmodel.cn，litellm 会自己在后面拼接 /chat/completions，
+        # 若用户配置的是 .../chat/completions，则去掉该尾缀，避免路径重复。
+        if "bigmodel.cn" in api_base_raw:
+            if api_base_raw.endswith("/chat/completions"):
+                api_base_raw = api_base_raw[: -len("/chat/completions")]
+            api_base = api_base_raw
+        else:
+            api_base = _normalize_api_base(api_base_raw)
+
+        # 3. 处理 api_key：从显式参数或环境变量 OPENAI_API_KEY 获取
+        api_key = kwargs.pop("api_key", None) or os.getenv("OPENAI_API_KEY")
+        kwargs.pop("api_base", None)
+
+        return {
+            "model": final_model,
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": "openai",
+            **kwargs,
+        }
+
     return {"model": model, **kwargs}
 
 
