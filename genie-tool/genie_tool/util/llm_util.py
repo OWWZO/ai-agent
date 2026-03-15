@@ -5,65 +5,241 @@
 # Author: liumin.423
 # Date:   2025/7/8
 # =====================
+import asyncio
 import json
 import os
-import asyncio
-from typing import List, Any, Optional
+from types import SimpleNamespace
+from typing import Any, List, Optional
 
+import httpx
 from litellm import acompletion
 from loguru import logger
-from genie_tool.util.log_util import timer, AsyncTimer
+
+from genie_tool.model.context import LLMModelInfoFactory
+from genie_tool.util.log_util import AsyncTimer, timer
 from genie_tool.util.sensitive_detection import SensitiveWordsReplace
 
-# 裸模型名 -> 用于显示的 provider/model 标识（仅用于判断是否为 dashscope）
+# model aliases that should route to DashScope OpenAI-compatible endpoint
 _LITELLM_DASHSCOPE_MODELS = {
-    "qwen-flash", "qwen-plus", "qwen-turbo",
-    "qwen-max-latest", "qwen-plus-latest", "qwen-turbo-latest",
-    "qwen-vl-plus", "qwen-vl-max",
-    "qwen3.5-plus", "qwen3.5-turbo", "qwen3.5-flash",  # Qwen3.5 系列
+    "qwen-flash",
+    "qwen-plus",
+    "qwen-turbo",
+    "qwen-max-latest",
+    "qwen-plus-latest",
+    "qwen-turbo-latest",
+    "qwen-vl-plus",
+    "qwen-vl-max",
+    "qwen3.5-plus",
+    "qwen3.5-turbo",
+    "qwen3.5-flash",
 }
 
-# 部分 litellm 版本的 LlmProviders 枚举中不包含 dashscope，传 model=dashscope/qwen-max 仍会报
-# LLM Provider NOT provided。此时改用 OpenAI 兼容路径：api_base + api_key + custom_llm_provider="openai"。
 DASHSCOPE_API_BASE_DEFAULT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 def _normalize_api_base(api_base: str) -> str:
-    """确保 api_base 以 /v1 结尾（litellm 会在其后追加 /chat/completions）。"""
+    """Ensure api_base ends with /v1 for chat-completions style endpoints."""
     if not api_base:
         return api_base
-    api_base = api_base.rstrip("/")
-    if not api_base.endswith("/v1"):
+    api_base = api_base.strip().rstrip("/")
+    if not api_base.lower().endswith("/v1"):
         api_base = f"{api_base}/v1"
     return api_base
 
 
+def _normalize_openai_compat_api_base(api_base: str) -> str:
+    """
+    Normalize OpenAI-compatible gateway base url.
+    - strip endpoint tails like /chat/completions or /responses
+    - normalize to /v1 (except bigmodel.cn style base path)
+    """
+    if not api_base:
+        return api_base
+
+    normalized = api_base.strip().rstrip("/")
+    suffixes = (
+        "/v1/chat/completions",
+        "/chat/completions",
+        "/v1/completions",
+        "/completions",
+        "/v1/responses",
+        "/responses",
+    )
+
+    lower = normalized.lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes:
+            if lower.endswith(suffix):
+                normalized = normalized[: -len(suffix)].rstrip("/")
+                lower = normalized.lower()
+                changed = True
+                break
+
+    # zhipu bigmodel style base is not /v1 based
+    if "bigmodel.cn" in lower:
+        return normalized
+
+    return _normalize_api_base(normalized)
+
+
 def _is_dashscope_api_base(api_base: str) -> bool:
-    """判断 api_base 是否指向 DashScope（兼容接口）。"""
-    return api_base and "dashscope" in api_base.lower()
+    return bool(api_base) and "dashscope" in api_base.lower()
+
+
+def _is_official_openai_api_base(api_base: str) -> bool:
+    return bool(api_base) and "api.openai.com" in api_base.lower()
+
+
+def _is_permission_or_policy_block_error(err: Exception) -> bool:
+    err_text = str(err).lower()
+    signals = (
+        "your request was blocked",
+        "permissiondenied",
+        "permission denied",
+        "forbidden",
+        "access denied",
+    )
+    return any(signal in err_text for signal in signals)
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return float(text)
+    except Exception:
+        return None
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return int(text)
+    except Exception:
+        return None
+
+
+def _build_chat_completions_url(api_base: str) -> str:
+    base = (api_base or "").rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def _payload_from_litellm_params(messages: List[Any], stream: bool, params: dict) -> dict:
+    payload = {"messages": messages, "stream": stream}
+    for k, v in params.items():
+        if k in {"api_base", "api_key", "custom_llm_provider", "timeout", "extra_headers"}:
+            continue
+        payload[k] = v
+    return payload
+
+
+def _timeout_to_seconds(timeout: Any) -> float:
+    value = _safe_float(timeout)
+    if value is None:
+        return 600.0
+    # project uses ms-style timeout env by default (e.g. 600000)
+    if value > 10000:
+        return value / 1000.0
+    return value
+
+
+def _to_attr_obj(value: Any) -> Any:
+    if isinstance(value, dict):
+        return SimpleNamespace(**{k: _to_attr_obj(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return [_to_attr_obj(item) for item in value]
+    return value
+
+
+async def _raw_openai_like_request(
+    messages: List[Any],
+    params: dict,
+    stream: bool,
+    only_content: bool,
+):
+    api_base = params.get("api_base")
+    api_key = params.get("api_key")
+    if not api_base or not api_key:
+        raise RuntimeError("raw_openai_like_request missing api_base/api_key")
+
+    url = _build_chat_completions_url(str(api_base))
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream" if stream else "application/json",
+    }
+    if isinstance(params.get("extra_headers"), dict):
+        # Keep caller-provided headers highest priority.
+        headers.update(params.get("extra_headers"))
+
+    payload = _payload_from_litellm_params(messages=messages, stream=stream, params=params)
+    timeout_s = _timeout_to_seconds(params.get("timeout"))
+
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        if stream:
+            async with client.stream("POST", url, headers=headers, json=payload) as resp:
+                if resp.status_code >= 400:
+                    text = (await resp.aread()).decode("utf-8", errors="ignore")
+                    raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={text[:500]}")
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk_obj = json.loads(data)
+                    except Exception:
+                        continue
+                    if only_content:
+                        delta = ((chunk_obj.get("choices") or [{}])[0].get("delta") or {})
+                        text = delta.get("content")
+                        if text:
+                            yield text
+                    else:
+                        yield _to_attr_obj(chunk_obj)
+        else:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code >= 400:
+                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={resp.text[:500]}")
+            obj = resp.json()
+            if only_content:
+                content = (((obj.get("choices") or [{}])[0].get("message") or {}).get("content"))
+                if content is None:
+                    content = ""
+                yield content
+            else:
+                yield _to_attr_obj(obj)
 
 
 def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     """
-    统一处理 model / api_base / api_key / custom_llm_provider，兼容 dashscope 等
-    在旧版 litellm 中不在 provider_list 的 provider。
-    
-    处理逻辑：
-    1. model=dashscope/qwen-max → 使用 DashScope
-    2. model=qwen-max（qwen 系列） → 使用 DashScope
-    3. model=qwen-max（或其他）+ OPENAI_BASE_URL 指向 dashscope → 使用 DashScope
+    Normalize model/api_base/api_key/custom_llm_provider for:
+    1) DashScope compatibility endpoint
+    2) Zhipu OpenAI-compatible endpoint
+    3) Generic OpenAI-compatible gateways
     """
     model = (model or "").strip()
     if not model:
         return {"model": model, **kwargs}
 
-    # 检查环境变量和显式传入的 api_base
     explicit_api_base = kwargs.get("api_base")
     env_api_base = os.getenv("DASHSCOPE_API_BASE") or os.getenv("OPENAI_BASE_URL")
+
+    # ===== DashScope =====
     use_dashscope = False
     api_base_raw = None
-
-    # 情况1: model 是 dashscope/qwen-max 格式
     if "/" in model:
         prefix, rest = model.split("/", 1)
         if prefix == "dashscope" and rest:
@@ -77,33 +253,26 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
             api_base_raw = env_api_base
         else:
             return {"model": model, **kwargs}
-    # 情况2: model 是 qwen 系列裸模型名（含 qwen3.5-plus 等）
     elif model in _LITELLM_DASHSCOPE_MODELS or model.startswith("qwen"):
         use_dashscope = True
         api_base_raw = explicit_api_base or env_api_base or DASHSCOPE_API_BASE_DEFAULT
-    # 情况3: 其他模型名，但 OPENAI_BASE_URL 指向 dashscope（用户想用 DashScope 兼容接口调用任意模型）
     elif env_api_base and _is_dashscope_api_base(env_api_base) and not explicit_api_base:
         use_dashscope = True
         api_base_raw = env_api_base
 
     if use_dashscope and api_base_raw:
-        # 移除 kwargs 中可能存在的 api_base 和 api_key（我们将使用处理后的值）
         kwargs.pop("api_base", None)
         api_base = _normalize_api_base(api_base_raw)
         api_key = kwargs.pop("api_key", None) or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        # 如果是 dashscope/qwen-max 格式，model 使用 rest（qwen-max）
         final_model = rest if "/" in model and model.split("/", 1)[0] == "dashscope" else model
-        
-        # DashScope 只支持 Qwen 系列模型，非 Qwen 模型（如 gpt-4o-mini）自动映射到 qwen-turbo
+
         if final_model not in _LITELLM_DASHSCOPE_MODELS and not final_model.startswith("qwen"):
-            from genie_tool.util.log_util import logger
             mapped_model = os.getenv("DASHSCOPE_FALLBACK_MODEL", "qwen3.5-plus")
             logger.warning(
-                f"[ask_llm] DashScope 不支持模型 '{final_model}'（仅支持 Qwen 系列），"
-                f"自动映射为 {mapped_model}。可通过 DASHSCOPE_FALLBACK_MODEL 环境变量自定义。"
+                f"[ask_llm] DashScope does not support model '{final_model}', fallback to {mapped_model}."
             )
             final_model = mapped_model
-        
+
         return {
             "model": final_model,
             "api_base": api_base,
@@ -112,38 +281,44 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
             **kwargs,
         }
 
-    # ===== Zhipu (glm-*) 走 OpenAI 兼容路径 =====
-    # 适配智谱的 OpenAI 兼容接口：OPENAI_API_KEY + OPENAI_BASE_URL
-    # 只要模型名是 zhipuai/glm-* 或 glm-*，就强制走 openai provider，避免 LiteLLM 去解析 provider=zhipuai 报错。
+    # ===== Zhipu (glm-*) via OpenAI-compatible endpoint =====
     if model.startswith("zhipuai/") or model.startswith("glm-"):
-        # 1. 处理模型名：zhipuai/glm-4-flash -> glm-4-flash
         final_model = model.split("/", 1)[1] if "/" in model else model
 
-        # 2. 处理 api_base：
-        #    - 优先使用环境变量 OPENAI_BASE_URL / OPENAI_API_BASE
-        #    - 若未配置，则回退为智谱官方 OpenAI 兼容地址根路径（不拼 /v1）
-        api_base_raw = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        api_base_raw = kwargs.pop("api_base", None) or os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
         if not api_base_raw:
             api_base_raw = "https://open.bigmodel.cn/api/paas/v4"
         api_base_raw = api_base_raw.rstrip("/")
-        # 对于 bigmodel.cn，litellm 会自己在后面拼接 /chat/completions，
-        # 若用户配置的是 .../chat/completions，则去掉该尾缀，避免路径重复。
-        if "bigmodel.cn" in api_base_raw:
-            if api_base_raw.endswith("/chat/completions"):
+
+        if "bigmodel.cn" in api_base_raw.lower():
+            if api_base_raw.lower().endswith("/chat/completions"):
                 api_base_raw = api_base_raw[: -len("/chat/completions")]
             api_base = api_base_raw
         else:
             api_base = _normalize_api_base(api_base_raw)
 
-        # 3. 处理 api_key：从显式参数或环境变量 OPENAI_API_KEY 获取
         api_key = kwargs.pop("api_key", None) or os.getenv("OPENAI_API_KEY")
-        kwargs.pop("api_base", None)
-
         return {
             "model": final_model,
             "api_base": api_base,
             "api_key": api_key,
             "custom_llm_provider": "openai",
+            **kwargs,
+        }
+
+    # ===== Generic OpenAI-compatible gateways =====
+    # example: OPENAI_BASE_URL=https://your-gateway/v1/chat/completions
+    openai_env_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+    openai_compat_base = kwargs.pop("api_base", None) or openai_env_base
+    if openai_compat_base and not _is_dashscope_api_base(openai_compat_base):
+        api_base = _normalize_openai_compat_api_base(openai_compat_base)
+        api_key = kwargs.pop("api_key", None) or os.getenv("OPENAI_API_KEY")
+        provider = "openai" if _is_official_openai_api_base(api_base) else "openai_like"
+        return {
+            "model": model,
+            "api_base": api_base,
+            "api_key": api_key,
+            "custom_llm_provider": provider,
             **kwargs,
         }
 
@@ -152,58 +327,115 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
 
 @timer(key="enter")
 async def ask_llm(
-        messages: str | List[Any],
-        model: str,
-        temperature: float = None,
-        top_p: float = None,
-        stream: bool = False,
-
-        # 自定义字段
-        only_content: bool = False,     # 只返回内容
-
-        extra_headers: Optional[dict] = None,
-        timeout: Optional[int] = None,  # 添加 timeout 参数
-        **kwargs,
+    messages: str | List[Any],
+    model: str,
+    temperature: float = None,
+    top_p: float = None,
+    stream: bool = False,
+    only_content: bool = False,
+    extra_headers: Optional[dict] = None,
+    timeout: Optional[int] = None,
+    **kwargs,
 ):
     if isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
+
     if os.getenv("SENSITIVE_WORD_REPLACE", "false") == "true":
         for message in messages:
             if isinstance(message.get("content"), str):
                 message["content"] = SensitiveWordsReplace.replace(message["content"])
             else:
                 message["content"] = json.loads(
-                    SensitiveWordsReplace.replace(json.dumps(message["content"], ensure_ascii=False)))
+                    SensitiveWordsReplace.replace(json.dumps(message["content"], ensure_ascii=False))
+                )
+
     params = _prepare_litellm_params(model, extra_headers=extra_headers, **kwargs)
-    
-    # 优先使用传入的 timeout，其次使用环境变量，默认 600s
+
     if timeout is None:
         timeout = int(os.getenv("LLM_TIMEOUT", 600000))
     params["timeout"] = timeout
 
-    # 调试日志：确认实际使用的参数（特别是 dashscope 的 api_base）
-    if params.get("custom_llm_provider") == "openai" and params.get("api_base"):
-        logger.info(f"[ask_llm] DashScope 兼容模式: model={params.get('model')}, api_base={params.get('api_base')}, has_api_key={bool(params.get('api_key'))}, timeout={timeout}")
-    
-    # 重试逻辑
+    if params.get("custom_llm_provider") in {"openai", "openai_like"} and params.get("api_base"):
+        logger.info(
+            f"[ask_llm] OpenAI-compatible mode: provider={params.get('custom_llm_provider')}, "
+            f"model={params.get('model')}, api_base={params.get('api_base')}, "
+            f"has_api_key={bool(params.get('api_key'))}, timeout={timeout}"
+        )
+
+    # Align key request fields with Java-side behavior, while honoring existing python settings.
+    # temperature: function arg > existing params > env > default(0.0)
+    if temperature is not None:
+        params["temperature"] = temperature
+    elif params.get("temperature") is None:
+        params["temperature"] = _safe_float(os.getenv("LLM_TEMPERATURE"))
+        if params["temperature"] is None:
+            params["temperature"] = 0.0
+
+    # top_p: only set when explicitly passed
+    if top_p is not None:
+        params["top_p"] = top_p
+
+    # max_tokens: existing params > env > model registry default
+    auto_max_tokens_from_model = False
+    if params.get("max_tokens") is None and params.get("max_completion_tokens") is None:
+        env_max_tokens = _safe_int(os.getenv("LLM_MAX_TOKENS") or os.getenv("MAX_TOKENS"))
+        if env_max_tokens is not None and env_max_tokens > 0:
+            params["max_tokens"] = env_max_tokens
+        else:
+            auto_max_tokens_from_model = True
+            effective_model = str(params.get("model") or model)
+            params["max_tokens"] = int(LLMModelInfoFactory.get_max_output(effective_model, default=32000))
+
+    # Header alignment: Java stream uses Accept: text/event-stream.
+    merged_headers = {}
+    if isinstance(params.get("extra_headers"), dict):
+        merged_headers.update(params.get("extra_headers"))
+    if isinstance(extra_headers, dict):
+        merged_headers.update(extra_headers)
+    lower_header_keys = {str(k).lower() for k in merged_headers.keys()}
+    if "content-type" not in lower_header_keys:
+        merged_headers["Content-Type"] = "application/json"
+    if "accept" not in lower_header_keys:
+        merged_headers["Accept"] = "text/event-stream" if stream else "application/json"
+    params["extra_headers"] = merged_headers
+
     max_retries = 1
-    response = None
+    fallback_model = (
+        os.getenv("OPENAI_COMPAT_FALLBACK_MODEL")
+        or os.getenv("OPENAI_FALLBACK_MODEL")
+        or "gpt-4"
+    ).strip()
+    openai_like_primary = params.get("custom_llm_provider") == "openai_like"
+    fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
         try:
-            response = await acompletion(
-                messages=messages,
-                temperature=temperature,
-                top_p=top_p,
-                stream=stream,
-                **params
-            )
-            
-            async with AsyncTimer(key=f"exec ask_llm"):
+            if openai_like_primary:
+                logger.info("[ask_llm] openai_like path: using raw HTTP as primary transport.")
+                async with AsyncTimer(key="exec ask_llm"):
+                    async for raw_chunk in _raw_openai_like_request(
+                        messages=messages,
+                        params=params,
+                        stream=stream,
+                        only_content=only_content,
+                    ):
+                        if stream and only_content and isinstance(raw_chunk, str):
+                            buffered_chunks.append(raw_chunk)
+                        yield raw_chunk
+                return
+
+            response = await acompletion(messages=messages, stream=stream, **params)
+
+            async with AsyncTimer(key="exec ask_llm"):
                 if stream:
                     async for chunk in response:
                         if only_content:
-                            if chunk.choices and chunk.choices[0] and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                            if (
+                                chunk.choices
+                                and chunk.choices[0]
+                                and chunk.choices[0].delta
+                                and chunk.choices[0].delta.content
+                            ):
                                 text = chunk.choices[0].delta.content
                                 buffered_chunks.append(text)
                                 yield text
@@ -211,12 +443,9 @@ async def ask_llm(
                             yield chunk
                 else:
                     yield response.choices[0].message.content if only_content else response
-            return # 成功执行后返回
-
+            return
         except asyncio.CancelledError as e:
             logger.warning(f"[ask_llm] Request cancelled (attempt {attempt + 1}/{max_retries + 1}): {e}")
-            # 若任务被上层取消，继续任何 await 都可能再次抛 CancelledError。
-            # 优先返回已缓冲的内容，避免业务完全中断。
             if stream and only_content and buffered_chunks:
                 try:
                     yield "".join(buffered_chunks)
@@ -224,15 +453,12 @@ async def ask_llm(
                 except Exception:
                     pass
             if attempt < max_retries:
-                # 回退方案：切换为非流式一次性获取，避免中途被 cancel scope 终止
                 try:
                     fallback = await asyncio.shield(
                         acompletion(
                             messages=messages,
-                            temperature=temperature,
-                            top_p=top_p,
                             stream=False,
-                            **params
+                            **params,
                         )
                     )
                     yield fallback.choices[0].message.content if only_content else fallback
@@ -240,18 +466,34 @@ async def ask_llm(
                 except Exception as ex:
                     logger.warning(f"[ask_llm] Fallback non-stream failed: {ex}")
                     continue
-            # 达到最大重试仍被取消，则向上抛出
             raise e
         except Exception as e:
+            current_model = params.get("model")
+            can_switch = (
+                not fallback_switched
+                and params.get("custom_llm_provider") in {"openai", "openai_like"}
+                and fallback_model
+                and fallback_model != current_model
+                and _is_permission_or_policy_block_error(e)
+            )
+            if can_switch:
+                logger.warning(
+                    f"[ask_llm] Model '{current_model}' was blocked by provider policy, "
+                    f"retrying with fallback model '{fallback_model}'."
+                )
+                params["model"] = fallback_model
+                if auto_max_tokens_from_model:
+                    params["max_tokens"] = int(LLMModelInfoFactory.get_max_output(fallback_model, default=32000))
+                fallback_switched = True
+                continue
+
             if attempt == max_retries:
                 logger.error(f"[ask_llm] Request failed after {max_retries + 1} attempts: {e}")
                 raise e
             logger.warning(f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
-            # 轻量退避，避免瞬时重试打满
             try:
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
-                # 若上层取消，直接结束
                 raise
 
 

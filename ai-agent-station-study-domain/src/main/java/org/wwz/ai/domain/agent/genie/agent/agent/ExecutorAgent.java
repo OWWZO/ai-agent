@@ -166,7 +166,7 @@ public class ExecutorAgent extends ReActAgent {
                 String toolName = command.getFunction().getName();
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                                 .toolName(toolName)
-                                .toolParam(JSON.parseObject(command.getFunction().getArguments(), Map.class))
+                                .toolParam(parseToolParam(command))
                                 .toolResult(result)
                                 .build(), null);
             }
@@ -189,6 +189,16 @@ public class ExecutorAgent extends ReActAgent {
             results.add(result);
         }
         return String.join("\n\n", results);
+    }
+
+    private Map<String, Object> parseToolParam(ToolCall command) {
+        try {
+            return JSON.parseObject(command.getFunction().getArguments(), Map.class);
+        } catch (Exception e) {
+            log.warn("{} invalid tool arguments, fallback empty map. tool={}, args={}",
+                    context.getRequestId(), command.getFunction().getName(), command.getFunction().getArguments());
+            return Map.of();
+        }
     }
 
     @Override

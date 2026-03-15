@@ -241,7 +241,7 @@ public class ReactImplAgent extends ReActAgent {
                 // 推送工具结果到客户端：包含工具名、参数、执行结果
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                         .toolName(command.getFunction().getName())
-                        .toolParam(JSON.parseObject(command.getFunction().getArguments(), Map.class))
+                        .toolParam(parseToolParam(command))
                         .toolResult(result)
                         .build(), null);
             }
@@ -272,6 +272,16 @@ public class ReactImplAgent extends ReActAgent {
 
         // 步骤4：聚合所有工具结果（换行分隔），返回给上层流程
         return String.join("\n\n", results);
+    }
+
+    private Map<String, Object> parseToolParam(ToolCall command) {
+        try {
+            return JSON.parseObject(command.getFunction().getArguments(), Map.class);
+        } catch (Exception e) {
+            log.warn("{} invalid tool arguments, fallback empty map. tool={}, args={}",
+                    context.getRequestId(), command.getFunction().getName(), command.getFunction().getArguments());
+            return Map.of();
+        }
     }
 
     /**

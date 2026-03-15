@@ -179,7 +179,9 @@ public abstract class BaseAgent {
      */
     public String executeTool(ToolCall command) {
         // 校验工具调用命令格式：命令/函数/函数名称为空 → 返回格式错误提示
-        if (command == null || command.getFunction() == null || command.getFunction().getName() == null) {
+        if (command == null || command.getFunction() == null
+                || command.getFunction().getName() == null
+                || command.getFunction().getName().isBlank()) {
             return "Error: Invalid function call format";
         }
 

@@ -166,8 +166,8 @@ public class LLM {
 
                 // 构建文本内容（注：此处代码存在小问题，复用了outerMap导致图片字段被覆盖，注释保留原逻辑）
                 Map<String, Object> contentMap = new HashMap<>();
-                outerMap.put("type", "text"); // 内容类型：文本
-                outerMap.put("text", message.getContent());
+                contentMap.put("type", "text"); // 内容类型：文本
+                contentMap.put("text", message.getContent());
                 multimodalContent.add(contentMap);
 
                 // 封装角色和多模态内容
@@ -355,9 +355,6 @@ public class LLM {
             Map<String, Object> params = new HashMap<>();
             params.put("model", model); // 模型标识（如gpt-4o、claude-3-5-sonnet）
             // ERP标识：非空时添加（用于多租户/多业务线隔离、计费统计）
-            if (StringUtils.isNotEmpty(llmErp)) {
-                params.put("erp", llmErp);
-            }
             params.put("messages", formattedMessages); // 格式化后的完整消息列表
 
             // 核心生成参数配置
@@ -610,7 +607,7 @@ public class LLM {
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDescription());
                     // 为参数补充工具名称字段，方便结构化解析时识别
-                    functionMap.put("parameters", addFunctionNameParam(tool.toParams(), tool.getName()));
+                    functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams()), tool.getName()));
                     // 按"工具名+JSON格式参数"的格式拼接，让模型输出标准化JSON
                     stringBuilder.append(String.format("- `%s`\n```json %s ```\n", tool.getName(), JSON.toJSONString(functionMap)));
                 }
@@ -622,7 +619,7 @@ public class LLM {
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDesc());
-                    functionMap.put("parameters", addFunctionNameParam(parameters, tool.getName()));
+                    functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(parameters), tool.getName()));
                     stringBuilder.append(String.format("- `%s`\n```json %s ```\n", tool.getName(), JSON.toJSONString(functionMap)));
                 }
 
@@ -632,7 +629,7 @@ public class LLM {
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDescription());
-                    functionMap.put("parameters", tool.toParams());
+                    functionMap.put("parameters", normalizeToolParameters(tool.toParams()));
                     Map<String, Object> toolMap = new HashMap<>();
                     toolMap.put("type", "function"); // 固定类型：function
                     toolMap.put("function", functionMap);
@@ -645,7 +642,7 @@ public class LLM {
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDesc());
-                    functionMap.put("parameters", parameters);
+                    functionMap.put("parameters", normalizeToolParameters(parameters));
                     Map<String, Object> toolMap = new HashMap<>();
                     toolMap.put("type", "function");
                     toolMap.put("function", functionMap);
@@ -680,9 +677,6 @@ public class LLM {
             // ========== 设置通用请求参数 ==========
             params.put("model", model); // 指定调用的模型名称
             // 设置ERP标识（如有），用于模型权限/计费等管控
-            if (StringUtils.isNotEmpty(llmErp)) {
-                params.put("erp", llmErp);
-            }
             params.put("messages", formattedMessages); // 格式化后的消息列表
 
             // function_call模式：添加工具列表和工具选择策略参数
@@ -755,8 +749,13 @@ public class LLM {
 
                                     // 提取函数信息：名称、参数JSON字符串
                                     JsonNode functionNode = toolCall.get("function");
-                                    String name = functionNode.get("name").asText();
-                                    String arguments = functionNode.get("arguments").asText();
+                                    String name = functionNode != null && functionNode.has("name")
+                                            ? functionNode.get("name").asText() : null;
+                                    if (StringUtils.isBlank(name)) {
+                                        log.warn("{} skip invalid tool call from response: {}", context.getRequestId(), toolCall);
+                                        continue;
+                                    }
+                                    String arguments = normalizeToolArguments(extractToolArguments(functionNode));
                                     // 封装为ToolCall对象
                                     toolCalls.add(new ToolCall(id, type, new ToolCall.Function(name, arguments)));
                                 }
@@ -823,7 +822,7 @@ public class LLM {
                 Map<String, Object> functionMap = new HashMap<>();
                 functionMap.put("name", tool.getName());
                 functionMap.put("description", tool.getDescription());
-                functionMap.put("parameters", addFunctionNameParam(tool.toParams(), tool.getName()));
+                functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams()), tool.getName()));
                 promptBuilder.append(String.format(
                         "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
                         tool.getName(), tool.getDescription(), JSON.toJSONString(functionMap)
@@ -837,7 +836,7 @@ public class LLM {
                 Map<String, Object> functionMap = new HashMap<>();
                 functionMap.put("name", tool.getName());
                 functionMap.put("description", tool.getDesc());
-                functionMap.put("parameters", addFunctionNameParam(parameters, tool.getName()));
+                functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(parameters), tool.getName()));
                 promptBuilder.append(String.format(
                         "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
                         tool.getName(), tool.getDesc(), JSON.toJSONString(functionMap)
@@ -980,7 +979,7 @@ public class LLM {
 
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
-                    objectMapper.writeValueAsString(params)
+                    objectMapper.writeValueAsBytes(params)
             );
 
             Request.Builder requestBuilder = new Request.Builder()
@@ -989,6 +988,8 @@ public class LLM {
 
             // 添加适当的认证头
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+            requestBuilder.addHeader("Content-Type", "application/json");
+            requestBuilder.addHeader("Accept", "application/json");
 
             Request request = requestBuilder.build();
 
@@ -1002,8 +1003,10 @@ public class LLM {
                 public void onResponse(Call call, Response response) throws IOException {
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful()) {
+                            String errorBody = responseBody != null ? responseBody.string() : null;
                             future.completeExceptionally(
-                                    new IOException("Unexpected response code: " + response)
+                                    new IOException("Unexpected response code: " + response
+                                            + (errorBody != null ? ", body=" + errorBody : ""))
                             );
                         } else {
                             future.complete(responseBody.string());
@@ -1033,13 +1036,15 @@ public class LLM {
             String apiEndpoint = baseUrl + interfaceUrl;
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
-                    objectMapper.writeValueAsString(params)
+                    objectMapper.writeValueAsBytes(params)
             );
             Request.Builder requestBuilder = new Request.Builder()
                     .url(apiEndpoint)
                     .post(body);
             // 添加适当的认证头
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+            requestBuilder.addHeader("Content-Type", "application/json");
+            requestBuilder.addHeader("Accept", "text/event-stream");
             Request request = requestBuilder.build();
 
             GenieConfig genieConfig = SpringContextHolder.getApplicationContext().getBean(GenieConfig.class);
@@ -1059,8 +1064,17 @@ public class LLM {
                     boolean isContent = true;
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful() || responseBody == null) {
-                            log.error("{} ask tool stream response error or empty", context.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            String errorBody = null;
+                            if (responseBody != null) {
+                                try {
+                                    errorBody = responseBody.string();
+                                } catch (Exception ignore) {
+                                }
+                            }
+                            log.error("{} ask tool stream response error, code={}, message={}, body={}",
+                                    context.getRequestId(), response.code(), response.message(), errorBody);
+                            future.completeExceptionally(new IOException("Unexpected response code: " + response
+                                    + (errorBody != null ? ", body=" + errorBody : "")));
                             return;
                         }
 
@@ -1086,10 +1100,13 @@ public class LLM {
                                     JsonNode chunk = objectMapper.readTree(data);
                                     if (chunk.has("choices") && !chunk.get("choices").isEmpty()) {
                                         for (JsonNode element : chunk.get("choices")) {
-                                            OpenAIChoice choice = objectMapper.convertValue(element, OpenAIChoice.class);
+                                            JsonNode deltaNode = element.get("delta");
+                                            if (deltaNode == null || deltaNode.isNull()) {
+                                                continue;
+                                            }
                                             // content
-                                            if (Objects.nonNull(choice.delta.content)) {
-                                                String content = choice.delta.content;
+                                            if (deltaNode.has("content") && !deltaNode.get("content").isNull()) {
+                                                String content = deltaNode.get("content").asText();
                                                 // log.info("{} recv content data: >>{}<<", context.getRequestId(), content);
                                                 if (!isContent) { // 忽略json内容
                                                     stringBuilderAll.append(content);
@@ -1109,30 +1126,74 @@ public class LLM {
                                                 index++;
                                             }
                                             // tool call
-                                            if (Objects.nonNull(choice.delta.tool_calls)) {
-                                                List<OpenAIToolCall> openAIToolCalls = choice.delta.tool_calls;
+                                            if (deltaNode.has("tool_calls") && deltaNode.get("tool_calls").isArray()) {
+                                                JsonNode openAIToolCalls = deltaNode.get("tool_calls");
                                                 // log.info("{} recv tool call data: {}", context.getRequestId(), openAIToolCalls);
-                                                for (OpenAIToolCall toolCall : openAIToolCalls) {
-                                                    OpenAIToolCall currentToolCall = openToolCallsMap.get(toolCall.index);
+                                                for (JsonNode toolCallNode : openAIToolCalls) {
+                                                    int toolIndex = toolCallNode.has("index") ? toolCallNode.get("index").asInt() : 0;
+                                                    OpenAIToolCall currentToolCall = openToolCallsMap.get(toolIndex);
                                                     if (Objects.isNull(currentToolCall)) {
                                                         currentToolCall = new OpenAIToolCall();
+                                                        currentToolCall.index = toolIndex;
+                                                        currentToolCall.function = new OpenAIFunction();
+                                                        currentToolCall.function.arguments = "";
                                                     }
-                                                    // [{"index":0,"id":"call_j74R8JMFWTC4rW5wHJ0TtmNU","type":"function","function":{"name":"planning","arguments":""}}]
-                                                    if (Objects.nonNull(toolCall.id)) {
-                                                        currentToolCall.id = toolCall.id;
+                                                    // [{"index":0,"id":"call_xxx","type":"function","function":{"name":"planning","arguments":""}}]
+                                                    if (toolCallNode.has("id") && !toolCallNode.get("id").isNull()) {
+                                                        currentToolCall.id = toolCallNode.get("id").asText();
                                                     }
-                                                    if (Objects.nonNull(toolCall.type)) {
-                                                        currentToolCall.type = toolCall.type;
+                                                    if (toolCallNode.has("type") && !toolCallNode.get("type").isNull()) {
+                                                        currentToolCall.type = toolCallNode.get("type").asText();
                                                     }
-                                                    if (Objects.nonNull(toolCall.function)) {
-                                                        if (Objects.nonNull(toolCall.function.name)) {
-                                                            currentToolCall.function = toolCall.function;
+                                                    JsonNode functionNode = toolCallNode.get("function");
+                                                    if (functionNode != null && functionNode.isObject()) {
+                                                        if (functionNode.has("name") && !functionNode.get("name").isNull()) {
+                                                            String functionName = functionNode.get("name").asText();
+                                                            if (StringUtils.isNotBlank(functionName)) {
+                                                                currentToolCall.function.name = functionName;
+                                                            }
                                                         }
-                                                        if (Objects.nonNull(toolCall.function.arguments)) {
-                                                            currentToolCall.function.arguments += toolCall.function.arguments;
+                                                        if (functionNode.has("arguments") && !functionNode.get("arguments").isNull()) {
+                                                            String argPiece = getToolArgumentsChunk(functionNode.get("arguments"));
+                                                            if (currentToolCall.function.arguments == null) {
+                                                                currentToolCall.function.arguments = "";
+                                                            }
+                                                            currentToolCall.function.arguments += argPiece;
                                                         }
                                                     }
-                                                    openToolCallsMap.put(toolCall.index, currentToolCall);
+                                                    openToolCallsMap.put(toolIndex, currentToolCall);
+                                                }
+                                            }
+
+                                            // Some OpenAI-compatible gateways return complete tool_calls in message instead of delta.
+                                            JsonNode messageNode = element.get("message");
+                                            if (messageNode != null && messageNode.has("tool_calls") && messageNode.get("tool_calls").isArray()) {
+                                                for (JsonNode toolCallNode : messageNode.get("tool_calls")) {
+                                                    int toolIndex = toolCallNode.has("index") ? toolCallNode.get("index").asInt() : 0;
+                                                    OpenAIToolCall currentToolCall = openToolCallsMap.get(toolIndex);
+                                                    if (Objects.isNull(currentToolCall)) {
+                                                        currentToolCall = new OpenAIToolCall();
+                                                        currentToolCall.index = toolIndex;
+                                                        currentToolCall.function = new OpenAIFunction();
+                                                    }
+                                                    if (toolCallNode.has("id") && !toolCallNode.get("id").isNull()) {
+                                                        currentToolCall.id = toolCallNode.get("id").asText();
+                                                    }
+                                                    if (toolCallNode.has("type") && !toolCallNode.get("type").isNull()) {
+                                                        currentToolCall.type = toolCallNode.get("type").asText();
+                                                    }
+                                                    JsonNode functionNode = toolCallNode.get("function");
+                                                    if (functionNode != null && functionNode.isObject()) {
+                                                        if (functionNode.has("name") && !functionNode.get("name").isNull()) {
+                                                            String functionName = functionNode.get("name").asText();
+                                                            if (StringUtils.isNotBlank(functionName)) {
+                                                                currentToolCall.function.name = functionName;
+                                                            }
+                                                        }
+                                                        currentToolCall.function.arguments =
+                                                                normalizeToolArguments(extractToolArguments(functionNode));
+                                                    }
+                                                    openToolCallsMap.put(toolIndex, currentToolCall);
                                                 }
                                             }
                                         }
@@ -1176,12 +1237,16 @@ public class LLM {
                             }
                         } else { // function call
                             for (OpenAIToolCall toolCall : openToolCallsMap.values()) {
+                                if (toolCall == null || toolCall.function == null || StringUtils.isBlank(toolCall.function.name)) {
+                                    log.warn("{} skip invalid tool call from stream: {}", context.getRequestId(), JSON.toJSONString(toolCall));
+                                    continue;
+                                }
                                 toolCalls.add(ToolCall.builder()
-                                        .id(toolCall.id)
-                                        .type(toolCall.type)
+                                        .id(StringUtils.isNotBlank(toolCall.id) ? toolCall.id : StringUtil.getUUID())
+                                        .type(StringUtils.isNotBlank(toolCall.type) ? toolCall.type : "function")
                                         .function(ToolCall.Function.builder()
                                                 .name(toolCall.function.name)
-                                                .arguments(toolCall.function.arguments)
+                                                .arguments(normalizeToolArguments(toolCall.function.arguments))
                                                 .build())
                                         .build());
                             }
@@ -1225,13 +1290,15 @@ public class LLM {
             String apiEndpoint = baseUrl + interfaceUrl;
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
-                    objectMapper.writeValueAsString(params)
+                    objectMapper.writeValueAsBytes(params)
             );
             Request.Builder requestBuilder = new Request.Builder()
                     .url(apiEndpoint)
                     .post(body);
             // 添加适当的认证头
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+            requestBuilder.addHeader("Content-Type", "application/json");
+            requestBuilder.addHeader("Accept", "text/event-stream");
             Request request = requestBuilder.build();
 
             GenieConfig genieConfig = SpringContextHolder.getApplicationContext().getBean(GenieConfig.class);
@@ -1251,8 +1318,17 @@ public class LLM {
                     boolean isContent = true;
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful() || responseBody == null) {
-                            log.error("{} ask tool stream response error or empty", context.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            String errorBody = null;
+                            if (responseBody != null) {
+                                try {
+                                    errorBody = responseBody.string();
+                                } catch (Exception ignore) {
+                                }
+                            }
+                            log.error("{} ask tool stream response error, code={}, message={}, body={}",
+                                    context.getRequestId(), response.code(), response.message(), errorBody);
+                            future.completeExceptionally(new IOException("Unexpected response code: " + response
+                                    + (errorBody != null ? ", body=" + errorBody : "")));
                             return;
                         }
 
@@ -1419,7 +1495,7 @@ public class LLM {
 
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
-                    objectMapper.writeValueAsString(params)
+                    objectMapper.writeValueAsBytes(params)
             );
 
             Request.Builder requestBuilder = new Request.Builder()
@@ -1428,6 +1504,8 @@ public class LLM {
 
             // 添加适当的认证头
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+            requestBuilder.addHeader("Content-Type", "application/json");
+            requestBuilder.addHeader("Accept", "text/event-stream");
 
             Request request = requestBuilder.build();
 
@@ -1534,6 +1612,83 @@ public class LLM {
             log.error("{} parse tool call error {}", context.getRequestId(), jsonContent);
         }
         return null;
+    }
+
+    /**
+     * Normalize tool JSON schema for stricter OpenAI-compatible gateways.
+     */
+    private Map<String, Object> normalizeToolParameters(Map<String, Object> rawParameters) {
+        Map<String, Object> normalized = deepCopy(rawParameters);
+        removeUnsupportedSchemaFields(normalized);
+        return normalized;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeUnsupportedSchemaFields(Object node) {
+        if (node instanceof Map<?, ?> mapNode) {
+            Map<String, Object> objectMap = (Map<String, Object>) mapNode;
+            objectMap.remove("$schema");
+            objectMap.remove("additionalProperties");
+            for (Object value : objectMap.values()) {
+                removeUnsupportedSchemaFields(value);
+            }
+            return;
+        }
+        if (node instanceof List<?> listNode) {
+            for (Object value : listNode) {
+                removeUnsupportedSchemaFields(value);
+            }
+        }
+    }
+
+    /**
+     * Extract arguments from function node. Compatible with both string/object argument formats.
+     */
+    private String extractToolArguments(JsonNode functionNode) {
+        if (functionNode == null || !functionNode.has("arguments") || functionNode.get("arguments").isNull()) {
+            return "{}";
+        }
+        return getToolArgumentsChunk(functionNode.get("arguments"));
+    }
+
+    /**
+     * Convert tool argument chunk node to string.
+     */
+    private String getToolArgumentsChunk(JsonNode argumentsNode) {
+        if (argumentsNode == null || argumentsNode.isNull()) {
+            return "";
+        }
+        return argumentsNode.isTextual() ? argumentsNode.asText() : argumentsNode.toString();
+    }
+
+    /**
+     * Ensure tool arguments become a valid JSON object string.
+     */
+    private String normalizeToolArguments(String arguments) {
+        if (StringUtils.isBlank(arguments)) {
+            return "{}";
+        }
+        String normalized = arguments.trim();
+        if (normalized.startsWith("\"") && normalized.endsWith("\"")) {
+            try {
+                normalized = objectMapper.readValue(normalized, String.class);
+            } catch (Exception ignore) {
+            }
+        }
+        if (StringUtils.isBlank(normalized)) {
+            return "{}";
+        }
+        normalized = normalized.trim();
+        if ((normalized.startsWith("{") && normalized.endsWith("}"))
+                || (normalized.startsWith("[") && normalized.endsWith("]"))) {
+            return normalized;
+        }
+        try {
+            JsonNode parsed = objectMapper.readTree(normalized);
+            return parsed.toString();
+        } catch (Exception ignore) {
+            return "{}";
+        }
     }
 
     /**
