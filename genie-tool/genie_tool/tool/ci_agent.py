@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import re
@@ -39,6 +40,42 @@ from genie_tool.model.code import CodeOuput
 from genie_tool.tool.final_answer_check import FinalAnswerCheck
 from genie_tool.util.file_util import generate_data_id
 from genie_tool.util.log_util import timer
+
+
+BLOCKED_IMPORT_MODULES = {
+    "ctypes",
+    "os",
+    "pickle",
+    "shutil",
+    "subprocess",
+    "xlrd",
+}
+BLOCKED_FUNCTION_CALLS = {"eval", "exec"}
+
+
+def _scan_unsafe_code(code: str) -> list[str]:
+    issues: list[str] = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return issues
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root_module = alias.name.split(".")[0]
+                if root_module in BLOCKED_IMPORT_MODULES:
+                    issues.append(f"import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            root_module = module.split(".")[0]
+            if root_module in BLOCKED_IMPORT_MODULES:
+                issues.append(f"from {module} import ...")
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in BLOCKED_FUNCTION_CALLS:
+                issues.append(f"call {node.func.id}()")
+
+    return sorted(set(issues))
 
 
 class CIAgent(CodeAgent):
@@ -154,6 +191,15 @@ class CIAgent(CodeAgent):
         self.logger.log_code(
             title="Executing parsed code:", content=code_action, level=LogLevel.INFO
         )
+
+        unsafe_issues = _scan_unsafe_code(code_action)
+        if unsafe_issues:
+            raise AgentExecutionError(
+                "Unsafe code blocked: "
+                + ", ".join(unsafe_issues)
+                + ". Disallowed imports: os, shutil, subprocess, pickle, xlrd, ctypes; disallowed calls: eval, exec.",
+                self.logger,
+            )
 
         try:
             _, execution_logs, _ = self.python_executor(code_action)
