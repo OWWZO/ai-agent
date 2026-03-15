@@ -7,15 +7,24 @@
 # =====================
 import asyncio
 import importlib
+import json
 import os
 import shutil
 import tempfile
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import pandas as pd
 import yaml
 from jinja2 import Template
-from smolagents import LiteLLMModel, FinalAnswerStep, PythonInterpreterTool, ChatMessageStreamDelta
+from loguru import logger
+from smolagents import (
+    ChatMessage,
+    LiteLLMModel,
+    OpenAIServerModel,
+    FinalAnswerStep,
+    PythonInterpreterTool,
+    ChatMessageStreamDelta,
+)
 
 from genie_tool.tool.ci_agent import CIAgent
 from genie_tool.util.file_util import download_all_files_in_path, upload_file, upload_file_by_path
@@ -23,6 +32,185 @@ from genie_tool.util.log_util import timer
 from genie_tool.util.prompt_util import get_prompt
 import requests
 from genie_tool.model.code import ActionOutput, CodeOuput
+
+
+def _normalize_openai_compat_api_base(api_base: str) -> str:
+    if not api_base:
+        return api_base
+    normalized = api_base.strip().rstrip("/")
+    suffixes = (
+        "/v1/chat/completions",
+        "/chat/completions",
+        "/v1/completions",
+        "/completions",
+        "/v1/responses",
+        "/responses",
+    )
+    lower = normalized.lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes:
+            if lower.endswith(suffix):
+                normalized = normalized[: -len(suffix)].rstrip("/")
+                lower = normalized.lower()
+                changed = True
+                break
+    if "bigmodel.cn" not in lower and not lower.endswith("/v1"):
+        normalized = normalized + "/v1"
+    return normalized
+
+
+def _build_chat_completions_url(api_base: str) -> str:
+    base = (api_base or "").rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _timeout_to_seconds(value: Any) -> float:
+    try:
+        timeout_value = float(value)
+    except Exception:
+        timeout_value = 600000.0
+    if timeout_value > 10000:
+        return timeout_value / 1000.0
+    return timeout_value
+
+
+def _decode_utf8(content: bytes) -> str:
+    try:
+        return content.decode("utf-8")
+    except Exception:
+        return content.decode("utf-8", errors="replace")
+
+
+class RawOpenAICompatHTTPModel(OpenAIServerModel):
+    """
+    HTTP-first OpenAI-compatible model.
+    Align request url/headers/payload with deepsearch raw HTTP strategy.
+    """
+
+    def _request_headers(self, stream: bool, extra_headers: Optional[dict]) -> dict:
+        headers = {
+            "Authorization": f"Bearer {self.client_kwargs.get('api_key')}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream" if stream else "application/json",
+        }
+        if isinstance(extra_headers, dict):
+            headers.update(extra_headers)
+        return headers
+
+    def generate_stream(
+        self,
+        messages: list[ChatMessage],
+        stop_sequences: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools_to_call_from=None,
+        **kwargs,
+    ):
+        completion_kwargs = self._prepare_completion_kwargs(
+            messages=messages,
+            stop_sequences=stop_sequences,
+            response_format=response_format,
+            tools_to_call_from=tools_to_call_from,
+            model=self.model_id,
+            custom_role_conversions=self.custom_role_conversions,
+            convert_images_to_image_urls=True,
+            **kwargs,
+        )
+        extra_headers = completion_kwargs.pop("extra_headers", None)
+        completion_kwargs["stream"] = True
+        url = _build_chat_completions_url(str(self.client_kwargs.get("base_url") or ""))
+        headers = self._request_headers(stream=True, extra_headers=extra_headers)
+        timeout_seconds = _timeout_to_seconds(self.kwargs.get("timeout") or os.getenv("LLM_TIMEOUT", 600000))
+        logger.info(f"[code_interpreter] raw HTTP stream request: model={self.model_id}, url={url}")
+
+        with requests.post(
+            url, headers=headers, json=completion_kwargs, stream=True, timeout=timeout_seconds
+        ) as resp:
+            if resp.status_code >= 400:
+                text = _decode_utf8(resp.content)[:500]
+                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={text}")
+
+            for raw_line in resp.iter_lines(decode_unicode=False):
+                if not raw_line:
+                    continue
+                line = _decode_utf8(raw_line) if isinstance(raw_line, (bytes, bytearray)) else str(raw_line)
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(data)
+                except Exception:
+                    continue
+
+                usage = obj.get("usage") or {}
+                in_tokens = _safe_int(usage.get("prompt_tokens"))
+                out_tokens = _safe_int(usage.get("completion_tokens"))
+                if in_tokens is not None:
+                    self._last_input_token_count = in_tokens
+                if out_tokens is not None:
+                    self._last_output_token_count = out_tokens
+
+                choice = (obj.get("choices") or [{}])[0]
+                delta = choice.get("delta") or {}
+                content = delta.get("content")
+                if content is not None:
+                    yield ChatMessageStreamDelta(content=content)
+
+    def generate(
+        self,
+        messages: list[ChatMessage],
+        stop_sequences: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools_to_call_from=None,
+        **kwargs,
+    ) -> ChatMessage:
+        completion_kwargs = self._prepare_completion_kwargs(
+            messages=messages,
+            stop_sequences=stop_sequences,
+            response_format=response_format,
+            tools_to_call_from=tools_to_call_from,
+            model=self.model_id,
+            custom_role_conversions=self.custom_role_conversions,
+            convert_images_to_image_urls=True,
+            **kwargs,
+        )
+        extra_headers = completion_kwargs.pop("extra_headers", None)
+        completion_kwargs["stream"] = False
+        url = _build_chat_completions_url(str(self.client_kwargs.get("base_url") or ""))
+        headers = self._request_headers(stream=False, extra_headers=extra_headers)
+        timeout_seconds = _timeout_to_seconds(self.kwargs.get("timeout") or os.getenv("LLM_TIMEOUT", 600000))
+        logger.info(f"[code_interpreter] raw HTTP request: model={self.model_id}, url={url}")
+
+        resp = requests.post(url, headers=headers, json=completion_kwargs, timeout=timeout_seconds)
+        if resp.status_code >= 400:
+            body = _decode_utf8(resp.content)[:500]
+            raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={body}")
+
+        obj = json.loads(_decode_utf8(resp.content))
+        usage = obj.get("usage") or {}
+        in_tokens = _safe_int(usage.get("prompt_tokens"))
+        out_tokens = _safe_int(usage.get("completion_tokens"))
+        if in_tokens is not None:
+            self._last_input_token_count = in_tokens
+        if out_tokens is not None:
+            self._last_output_token_count = out_tokens
+
+        message = ((obj.get("choices") or [{}])[0].get("message") or {})
+        if not message:
+            message = {"role": "assistant", "content": ""}
+        return ChatMessage.from_dict(message, raw=obj)
 
 @timer()
 async def code_interpreter_agent(
@@ -210,7 +398,17 @@ def _ci_model_id_and_litellm_kwargs():
             "custom_llm_provider": "openai",
         }
 
-    # 3) 其他模型：直接交给 litellm 自己判断
+    # 3) Generic OpenAI-compatible gateways: HTTP-first
+    openai_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+    if openai_base:
+        openai_base = _normalize_openai_compat_api_base(openai_base)
+        return model_id, {
+            "api_base": openai_base,
+            "api_key": os.getenv("OPENAI_API_KEY"),
+            "custom_llm_provider": "openai",
+        }
+
+    # 4) Others: fallback to LiteLLM
     return model_id, {}
 
 
@@ -221,13 +419,24 @@ def create_ci_agent(
     output_dir: str = "",
 ) -> CIAgent:
     model_id, litellm_extra = _ci_model_id_and_litellm_kwargs()
-    model = LiteLLMModel(
-        max_tokens=max_tokens,
-        model_id=model_id,
-        api_base=litellm_extra.get("api_base"),
-        api_key=litellm_extra.get("api_key"),
-        **{k: v for k, v in litellm_extra.items() if k not in ("api_base", "api_key")},
-    )
+    api_base = litellm_extra.get("api_base")
+    api_key = litellm_extra.get("api_key")
+    if api_base and api_key:
+        # HTTP-first for OpenAI-compatible providers.
+        model = RawOpenAICompatHTTPModel(
+            max_tokens=max_tokens,
+            model_id=model_id,
+            api_base=api_base,
+            api_key=api_key,
+        )
+    else:
+        model = LiteLLMModel(
+            max_tokens=max_tokens,
+            model_id=model_id,
+            api_base=api_base,
+            api_key=api_key,
+            **{k: v for k, v in litellm_extra.items() if k not in ("api_base", "api_key")},
+        )
 
     return CIAgent(
         model=model,

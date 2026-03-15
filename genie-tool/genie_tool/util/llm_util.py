@@ -405,24 +405,35 @@ async def ask_llm(
         or os.getenv("OPENAI_FALLBACK_MODEL")
         or "gpt-4"
     ).strip()
-    openai_like_primary = params.get("custom_llm_provider") == "openai_like"
+    openai_compat_http_primary = (
+        params.get("custom_llm_provider") in {"openai", "openai_like"}
+        and bool(params.get("api_base"))
+        and bool(params.get("api_key"))
+    )
     fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
         try:
-            if openai_like_primary:
-                logger.info("[ask_llm] openai_like path: using raw HTTP as primary transport.")
-                async with AsyncTimer(key="exec ask_llm"):
-                    async for raw_chunk in _raw_openai_like_request(
-                        messages=messages,
-                        params=params,
-                        stream=stream,
-                        only_content=only_content,
-                    ):
-                        if stream and only_content and isinstance(raw_chunk, str):
-                            buffered_chunks.append(raw_chunk)
-                        yield raw_chunk
-                return
+            if openai_compat_http_primary:
+                provider = params.get("custom_llm_provider")
+                logger.info(f"[ask_llm] {provider} path: using raw HTTP as primary transport.")
+                try:
+                    async with AsyncTimer(key="exec ask_llm"):
+                        async for raw_chunk in _raw_openai_like_request(
+                            messages=messages,
+                            params=params,
+                            stream=stream,
+                            only_content=only_content,
+                        ):
+                            if stream and only_content and isinstance(raw_chunk, str):
+                                buffered_chunks.append(raw_chunk)
+                            yield raw_chunk
+                    return
+                except Exception as raw_err:
+                    logger.warning(
+                        f"[ask_llm] raw HTTP primary failed, fallback to LiteLLM. "
+                        f"provider={provider}, model={params.get('model')}, error={raw_err}"
+                    )
 
             response = await acompletion(messages=messages, stream=stream, **params)
 
@@ -454,15 +465,25 @@ async def ask_llm(
                     pass
             if attempt < max_retries:
                 try:
-                    fallback = await asyncio.shield(
-                        acompletion(
+                    if openai_compat_http_primary:
+                        async for fallback_chunk in _raw_openai_like_request(
                             messages=messages,
+                            params=params,
                             stream=False,
-                            **params,
+                            only_content=only_content,
+                        ):
+                            yield fallback_chunk
+                            return
+                    else:
+                        fallback = await asyncio.shield(
+                            acompletion(
+                                messages=messages,
+                                stream=False,
+                                **params,
+                            )
                         )
-                    )
-                    yield fallback.choices[0].message.content if only_content else fallback
-                    return
+                        yield fallback.choices[0].message.content if only_content else fallback
+                        return
                 except Exception as ex:
                     logger.warning(f"[ask_llm] Fallback non-stream failed: {ex}")
                     continue
