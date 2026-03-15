@@ -174,53 +174,82 @@ async def _raw_openai_like_request(
         raise RuntimeError("raw_openai_like_request missing api_base/api_key")
 
     url = _build_chat_completions_url(str(api_base))
+    transport_stream = True
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Accept": "text/event-stream" if stream else "application/json",
+        "Accept": "text/event-stream",
     }
     if isinstance(params.get("extra_headers"), dict):
-        # Keep caller-provided headers highest priority.
+        # Merge caller-provided headers, then enforce SSE accept for compat gateways.
         headers.update(params.get("extra_headers"))
+    headers["Accept"] = "text/event-stream"
 
-    payload = _payload_from_litellm_params(messages=messages, stream=stream, params=params)
+    payload = _payload_from_litellm_params(messages=messages, stream=transport_stream, params=params)
     timeout_s = _timeout_to_seconds(params.get("timeout"))
 
     async with httpx.AsyncClient(timeout=timeout_s) as client:
-        if stream:
-            async with client.stream("POST", url, headers=headers, json=payload) as resp:
-                if resp.status_code >= 400:
-                    text = (await resp.aread()).decode("utf-8", errors="ignore")
-                    raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={text[:500]}")
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if not data or data == "[DONE]":
-                        continue
-                    try:
-                        chunk_obj = json.loads(data)
-                    except Exception:
-                        continue
+        async with client.stream("POST", url, headers=headers, json=payload) as resp:
+            if resp.status_code >= 400:
+                text = (await resp.aread()).decode("utf-8", errors="ignore")
+                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={text[:500]}")
+
+            buffered_text_parts: list[str] = []
+            last_obj: dict = {}
+            saw_chunk = False
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data:
+                    continue
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk_obj = json.loads(data)
+                except Exception:
+                    continue
+
+                saw_chunk = True
+                last_obj = chunk_obj
+                choice = (chunk_obj.get("choices") or [{}])[0]
+                delta = choice.get("delta") or {}
+                message = choice.get("message") or {}
+
+                piece = None
+                if isinstance(delta.get("content"), str):
+                    piece = delta.get("content")
+                elif isinstance(message.get("content"), str):
+                    piece = message.get("content")
+
+                if stream:
                     if only_content:
-                        delta = ((chunk_obj.get("choices") or [{}])[0].get("delta") or {})
-                        text = delta.get("content")
-                        if text:
-                            yield text
+                        if piece:
+                            yield piece
                     else:
                         yield _to_attr_obj(chunk_obj)
-        else:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code >= 400:
-                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={resp.text[:500]}")
-            obj = resp.json()
-            if only_content:
-                content = (((obj.get("choices") or [{}])[0].get("message") or {}).get("content"))
-                if content is None:
-                    content = ""
-                yield content
-            else:
-                yield _to_attr_obj(obj)
+                else:
+                    if piece:
+                        buffered_text_parts.append(piece)
+
+            if not stream:
+                merged_content = "".join(buffered_text_parts)
+                if only_content:
+                    yield merged_content
+                else:
+                    if not saw_chunk:
+                        yield _to_attr_obj({
+                            "choices": [{"message": {"role": "assistant", "content": ""}}],
+                        })
+                        return
+                    merged_obj = dict(last_obj) if isinstance(last_obj, dict) else {}
+                    choices = merged_obj.get("choices") or [{}]
+                    first_choice = choices[0] if isinstance(choices, list) and choices else {}
+                    first_choice = dict(first_choice) if isinstance(first_choice, dict) else {}
+                    first_choice["message"] = {"role": "assistant", "content": merged_content}
+                    first_choice.pop("delta", None)
+                    merged_obj["choices"] = [first_choice]
+                    yield _to_attr_obj(merged_obj)
 
 
 def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:

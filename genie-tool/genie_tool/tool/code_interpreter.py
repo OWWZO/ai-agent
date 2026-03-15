@@ -106,6 +106,9 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
         }
         if isinstance(extra_headers, dict):
             headers.update(extra_headers)
+        if stream:
+            # Some OpenAI-compatible gateways are strict about SSE accept header.
+            headers["Accept"] = "text/event-stream"
         return headers
 
     def generate_stream(
@@ -187,30 +190,64 @@ class RawOpenAICompatHTTPModel(OpenAIServerModel):
             **kwargs,
         )
         extra_headers = completion_kwargs.pop("extra_headers", None)
-        completion_kwargs["stream"] = False
+        # Some OpenAI-compatible gateways require stream=true.
+        # Keep a non-stream return contract by aggregating streamed deltas locally.
+        completion_kwargs["stream"] = True
         url = _build_chat_completions_url(str(self.client_kwargs.get("base_url") or ""))
-        headers = self._request_headers(stream=False, extra_headers=extra_headers)
+        headers = self._request_headers(stream=True, extra_headers=extra_headers)
         timeout_seconds = _timeout_to_seconds(self.kwargs.get("timeout") or os.getenv("LLM_TIMEOUT", 600000))
-        logger.info(f"[code_interpreter] raw HTTP request: model={self.model_id}, url={url}")
+        logger.info(f"[code_interpreter] raw HTTP stream-aggregate request: model={self.model_id}, url={url}")
 
-        resp = requests.post(url, headers=headers, json=completion_kwargs, timeout=timeout_seconds)
-        if resp.status_code >= 400:
-            body = _decode_utf8(resp.content)[:500]
-            raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={body}")
+        final_obj = None
+        content_parts: list[str] = []
 
-        obj = json.loads(_decode_utf8(resp.content))
-        usage = obj.get("usage") or {}
-        in_tokens = _safe_int(usage.get("prompt_tokens"))
-        out_tokens = _safe_int(usage.get("completion_tokens"))
-        if in_tokens is not None:
-            self._last_input_token_count = in_tokens
-        if out_tokens is not None:
-            self._last_output_token_count = out_tokens
+        with requests.post(
+            url, headers=headers, json=completion_kwargs, stream=True, timeout=timeout_seconds
+        ) as resp:
+            if resp.status_code >= 400:
+                body = _decode_utf8(resp.content)[:500]
+                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={body}")
 
-        message = ((obj.get("choices") or [{}])[0].get("message") or {})
-        if not message:
-            message = {"role": "assistant", "content": ""}
-        return ChatMessage.from_dict(message, raw=obj)
+            for raw_line in resp.iter_lines(decode_unicode=False):
+                if not raw_line:
+                    continue
+                line = _decode_utf8(raw_line) if isinstance(raw_line, (bytes, bytearray)) else str(raw_line)
+                if not line.startswith("data:"):
+                    continue
+
+                data = line[5:].strip()
+                if not data:
+                    continue
+                if data == "[DONE]":
+                    break
+
+                try:
+                    obj = json.loads(data)
+                except Exception:
+                    continue
+
+                final_obj = obj
+                usage = obj.get("usage") or {}
+                in_tokens = _safe_int(usage.get("prompt_tokens"))
+                out_tokens = _safe_int(usage.get("completion_tokens"))
+                if in_tokens is not None:
+                    self._last_input_token_count = in_tokens
+                if out_tokens is not None:
+                    self._last_output_token_count = out_tokens
+
+                choice = (obj.get("choices") or [{}])[0]
+                delta = choice.get("delta") or {}
+                if isinstance(delta.get("content"), str):
+                    content_parts.append(delta["content"])
+                    continue
+                message = choice.get("message") or {}
+                if isinstance(message.get("content"), str):
+                    content_parts.append(message["content"])
+
+        return ChatMessage.from_dict(
+            {"role": "assistant", "content": "".join(content_parts)},
+            raw=final_obj or {},
+        )
 
 @timer()
 async def code_interpreter_agent(
