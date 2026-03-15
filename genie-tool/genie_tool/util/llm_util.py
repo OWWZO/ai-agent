@@ -410,6 +410,9 @@ async def ask_llm(
         and bool(params.get("api_base"))
         and bool(params.get("api_key"))
     )
+    allow_litellm_fallback_for_openai_compat = (
+        os.getenv("OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK", "false").strip().lower() == "true"
+    )
     fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
@@ -430,10 +433,17 @@ async def ask_llm(
                             yield raw_chunk
                     return
                 except Exception as raw_err:
-                    logger.warning(
-                        f"[ask_llm] raw HTTP primary failed, fallback to LiteLLM. "
-                        f"provider={provider}, model={params.get('model')}, error={raw_err}"
-                    )
+                    if allow_litellm_fallback_for_openai_compat:
+                        logger.warning(
+                            f"[ask_llm] raw HTTP primary failed, fallback to LiteLLM is enabled. "
+                            f"provider={provider}, model={params.get('model')}, error={raw_err}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[ask_llm] raw HTTP primary failed, LiteLLM fallback disabled. "
+                            f"provider={provider}, model={params.get('model')}, error={raw_err}"
+                        )
+                        raise raw_err
 
             response = await acompletion(messages=messages, stream=stream, **params)
 
