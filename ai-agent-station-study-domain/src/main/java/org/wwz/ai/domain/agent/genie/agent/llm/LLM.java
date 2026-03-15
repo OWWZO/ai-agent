@@ -401,7 +401,7 @@ public class LLM {
                 // ===================== 步骤4：处理流式请求（逐段返回响应） =====================
                 params.put("stream", true); // 显式指定流式
                 // 调用流式API（返回流式响应的聚合结果，具体逻辑由callOpenAIStream实现）
-                return callOpenAIStream(params);
+                return callOpenAIStream(context, params);
             }
         } catch (Exception e) {
             // 全局异常捕获：保证异步调用不抛出未捕获异常，统一包装为CompletableFuture异常
@@ -1479,8 +1479,7 @@ public class LLM {
     /**
      * 调用 OpenAI 流式 API（抽象方法，实际实现需要在子类中提供）
      */
-    protected CompletableFuture<String> callOpenAIStream(Map<String, Object> params) {
-        // 这里是一个简化的流式请求实现示例
+    protected CompletableFuture<String> callOpenAIStream(AgentContext context, Map<String, Object> params) {
         CompletableFuture<String> future = new CompletableFuture<>();
         StringBuilder collectedMessages = new StringBuilder();
 
@@ -1502,12 +1501,24 @@ public class LLM {
                     .url(apiEndpoint)
                     .post(body);
 
-            // 添加适当的认证头
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
             requestBuilder.addHeader("Content-Type", "application/json");
             requestBuilder.addHeader("Accept", "text/event-stream");
 
             Request request = requestBuilder.build();
+
+            GenieConfig genieConfig = SpringContextHolder.getApplicationContext().getBean(GenieConfig.class);
+            int firstInterval = 1;
+            int sendInterval = 3;
+            try {
+                String[] interval = genieConfig.getMessageInterval().getOrDefault("llm", "1,3").split(",");
+                firstInterval = Math.max(1, Integer.parseInt(interval[0]));
+                sendInterval = Math.max(1, Integer.parseInt(interval[1]));
+            } catch (Exception ignore) {
+            }
+
+            final int finalFirstInterval = firstInterval;
+            final int finalSendInterval = sendInterval;
 
             client.newCall(request).enqueue(new Callback() {
                 @Override
@@ -1516,59 +1527,95 @@ public class LLM {
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
+                public void onResponse(Call call, Response response) {
                     try (ResponseBody responseBody = response.body()) {
-                        if (!response.isSuccessful()) {
+                        if (!response.isSuccessful() || responseBody == null) {
+                            String errorBody = null;
+                            if (responseBody != null) {
+                                try {
+                                    errorBody = responseBody.string();
+                                } catch (Exception ignore) {
+                                }
+                            }
                             future.completeExceptionally(
-                                    new IOException("Unexpected response code: " + response)
+                                    new IOException("Unexpected response code: " + response
+                                            + (errorBody != null ? ", body=" + errorBody : ""))
                             );
                             return;
                         }
 
-                        if (responseBody != null) {
-                            String line;
+                        BufferedReader reader = new BufferedReader(
+                                new InputStreamReader(responseBody.byteStream())
+                        );
 
-                            BufferedReader reader = new BufferedReader(
-                                    new InputStreamReader(responseBody.byteStream())
-                            );
+                        boolean shouldPushStream = context != null
+                                && Boolean.TRUE.equals(context.getIsStream())
+                                && context.getPrinter() != null
+                                && StringUtils.isNotBlank(context.getStreamMessageType());
+                        String messageId = shouldPushStream ? StringUtil.getUUID() : null;
+                        StringBuilder streamBuffer = new StringBuilder();
+                        int tokenIndex = 1;
 
-                            while ((line = reader.readLine()) != null) {
-                                if (line.startsWith("data: ")) {
-                                    String data = line.substring(6);
-                                    if (data.equals("[DONE]")) {
-                                        break;
-                                    }
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (!line.startsWith("data: ")) {
+                                continue;
+                            }
+                            String data = line.substring(6);
+                            if ("[DONE]".equals(data)) {
+                                break;
+                            }
 
-                                    try {
-                                        JsonNode chunk = objectMapper.readTree(data);
-                                        if (chunk.has("choices") && !chunk.get("choices").isEmpty()) {
-                                            JsonNode choice = chunk.get("choices").get(0);
-                                            if (choice.has("delta") && choice.get("delta").has("content")) {
-                                                String content = choice.get("delta").get("content").asText();
-                                                collectedMessages.append(content);
-                                                log.info("recv data: {}", content);
-                                            }
-                                        }
-                                    } catch (Exception e) {
-                                        // 忽略非 JSON 数据
-                                    }
+                            try {
+                                JsonNode chunk = objectMapper.readTree(data);
+                                if (!chunk.has("choices") || chunk.get("choices").isEmpty()) {
+                                    continue;
                                 }
-                            }
+                                JsonNode choice = chunk.get("choices").get(0);
+                                String content = "";
+                                if (choice.has("delta")
+                                        && choice.get("delta").has("content")
+                                        && !choice.get("delta").get("content").isNull()) {
+                                    content = choice.get("delta").get("content").asText();
+                                } else if (choice.has("message")
+                                        && choice.get("message").has("content")
+                                        && !choice.get("message").get("content").isNull()) {
+                                    content = choice.get("message").get("content").asText();
+                                }
 
-                            String fullResponse = collectedMessages.toString().trim();
+                                if (StringUtils.isBlank(content)) {
+                                    continue;
+                                }
 
-                            if (fullResponse.isEmpty()) {
-                                future.completeExceptionally(
-                                        new IllegalArgumentException("Empty response from streaming LLM")
-                                );
-                            } else {
-                                future.complete(fullResponse);
+                                collectedMessages.append(content);
+
+                                if (shouldPushStream) {
+                                    streamBuffer.append(content);
+                                    if (tokenIndex == finalFirstInterval || tokenIndex % finalSendInterval == 0) {
+                                        context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
+                                        streamBuffer.setLength(0);
+                                    }
+                                    tokenIndex++;
+                                }
+                            } catch (Exception ignore) {
+                                // ignore malformed stream chunk
                             }
-                        } else {
-                            future.completeExceptionally(
-                                    new IOException("Empty response body")
-                            );
                         }
+
+                        if (shouldPushStream && streamBuffer.length() > 0) {
+                            context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
+                        }
+
+                        String fullResponse = collectedMessages.toString().trim();
+                        if (fullResponse.isEmpty()) {
+                            future.completeExceptionally(
+                                    new IllegalArgumentException("Empty response from streaming LLM")
+                            );
+                        } else {
+                            future.complete(fullResponse);
+                        }
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
                     }
                 }
             });

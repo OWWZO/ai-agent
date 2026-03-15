@@ -176,15 +176,26 @@ public class SummaryAgent extends BaseAgent {
             // - Collections.emptyList()：无图片等多模态内容
             // - false：不启用流式返回
             // - 0.01：LLM温度参数（越低结果越固定，适合总结类场景）
-            CompletableFuture<String> summaryFuture = getLlm().ask(
-                    context,
-                    Collections.singletonList(userMessage),
-                    Collections.emptyList(),
-                    false,
-                    0.1);
+            boolean enableSummaryStreamPush = Boolean.TRUE.equals(context.getIsStream());
+            String previousStreamMessageType = context.getStreamMessageType();
+            if (enableSummaryStreamPush) {
+                context.setStreamMessageType("agent_stream");
+            }
 
-            // 5. 等待LLM响应并获取结果：阻塞当前线程，直到异步调用完成
-            String llmResponse = summaryFuture.get();
+            String llmResponse;
+            try {
+                CompletableFuture<String> summaryFuture = getLlm().ask(
+                        context,
+                        Collections.singletonList(userMessage),
+                        Collections.emptyList(),
+                        true,
+                        0.1);
+                llmResponse = summaryFuture.get();
+            } finally {
+                if (enableSummaryStreamPush) {
+                    context.setStreamMessageType(previousStreamMessageType);
+                }
+            }
             log.info("requestId: {} summaryTaskResult: {}", requestId, llmResponse);
 
             // 6. 解析LLM响应：将LLM返回的文本转为结构化的TaskSummaryResult对象（如提取总结文本、文件列表）

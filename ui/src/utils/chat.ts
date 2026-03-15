@@ -109,6 +109,9 @@ function handleTaskMessageByType(
   );
 
   switch (messageType) {
+    case "agent_stream":
+      handleAgentStreamMessage(eventData, currentChat);
+      break;
     case "tool_thought":
       handleToolThoughtMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
@@ -125,6 +128,46 @@ function handleTaskMessageByType(
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
   }
+}
+
+/**
+ * 处理总结阶段的流式增量文本（agent_stream）。
+ * 多智能体模式下先写入临时 conclusion，等待最终 result 覆盖。
+ */
+function handleAgentStreamMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+) {
+  const chunk = eventData.resultMap?.result || "";
+  if (!chunk) {
+    return;
+  }
+
+  const streamConclusion = currentChat.conclusion;
+  if (!streamConclusion || streamConclusion.messageType !== "agent_stream") {
+    currentChat.conclusion = {
+      taskId: eventData.taskId,
+      messageId: eventData.messageId,
+      messageType: "agent_stream",
+      messageTime: eventData.resultMap?.messageTime || String(Date.now()),
+      requestId: eventData.resultMap?.requestId || "",
+      finish: false,
+      isFinal: false,
+      id: eventData.messageId || String(Date.now()),
+      result: chunk,
+      resultMap: {
+        taskSummary: chunk,
+        fileList: [],
+      },
+    } as unknown as CHAT.Task;
+    return;
+  }
+
+  streamConclusion.result = `${streamConclusion.result || ""}${chunk}`;
+  if (!streamConclusion.resultMap) {
+    streamConclusion.resultMap = {} as any;
+  }
+  streamConclusion.resultMap.taskSummary = `${streamConclusion.resultMap.taskSummary || ""}${chunk}`;
 }
 
 /**
@@ -582,9 +625,14 @@ export const handleTaskData = (
     });
   });
 
+  const streamConclusion =
+    currentChat.conclusion?.messageType === "agent_stream"
+      ? currentChat.conclusion
+      : undefined;
+
   currentChat.tasks = chatList;
   currentChat.plan = plan;
-  currentChat.conclusion = conclusion;
+  currentChat.conclusion = conclusion || streamConclusion;
   currentChat.planList = plan?.stages?.reduce(
     (result: CHAT.PlanItem[], stage: string, index: number) => {
       const group = result.find((item) => item.name === stage);
