@@ -8,7 +8,7 @@
 @config '../tailwind.config.js';
 
 @theme {
-  --spacing: 1px; 
+  --spacing: 1px;
   --default-transition-duration: 0.3s;
   @keyframes dot-pulse {
     0%,
@@ -65,15 +65,15 @@ ol {
   height: 100%;
 }
 
-.no-scrollbar::-webkit-scrollbar { 
-  display: none; 
-} 
- 
-/* 为 IE、Edge 和 Firefox 提供支持 */ 
-.no-scrollbar { 
-  -ms-overflow-style: none;  /* IE 和 Edge */ 
-  scrollbar-width: none;  /* Firefox */ 
-} 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 为 IE、Edge 和 Firefox 提供支持 */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE 和 Edge */
+  scrollbar-width: none;  /* Firefox */
+}
 
 .delay-400ms {
   animation-delay: 0.4s !important;
