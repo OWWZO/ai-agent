@@ -276,6 +276,16 @@ const ChatView: GenieType.FC<Props> = (props) => {
     }
   }, [inputInfoProp, sendMessage]);
 
+  const handleRegenerate = useMemoizedFn(() => {
+    const last = chatList.current[chatList.current.length - 1];
+    if (!last || loading) return;
+    sendMessage({
+      message: last.query,
+      outputStyle: product?.type,
+      deepThink: inputInfoProp.deepThink,
+    });
+  });
+
   const renderMultAgent = () => {
     return (
       <div className="h-full w-full flex justify-center">
@@ -309,6 +319,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
                     changeTask={changeTask}
                     changeFile={changeFile}
                     changePlan={changePlan}
+                    onRegenerate={handleRegenerate}
                   />
                 </div>
               ))}

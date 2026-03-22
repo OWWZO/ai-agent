@@ -15,12 +15,11 @@ const DataDrawer: FC<Props> = (props) => {
   const [curHover, setCurHover] = useState<string>("");
 
   useEffect(() => {
+    if (!show) return;
     agentApi.allModels().then((res) => {
       setDbList(Array.isArray(res) ? res : []);
-
-      console.log(res);
     });
-  }, []);
+  }, [show]);
 
   return (
     <Drawer title="相关知识库" width={800} onClose={() => dbsShow(false)} open={show}>

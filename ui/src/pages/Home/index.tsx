@@ -18,6 +18,62 @@ const tagColorMap: Record<string, string> = {
   竞品调研: "bg-[rgba(245,158,11,0.08)] text-[#d97706]",
 };
 
+type CaseCardProps = {
+  title: string;
+  description: string;
+  tag: string;
+  image: string;
+  url: string;
+  videoUrl: string;
+  videoModalOpen: any;
+  onOpenVideo: (url: string) => void;
+  onCloseVideo: () => void;
+};
+
+const CaseCard = memo(({ title, description, tag, image, url, videoUrl, videoModalOpen, onOpenVideo, onCloseVideo }: CaseCardProps) => {
+  const tagColor = tagColorMap[tag] ?? "bg-gray-100 text-gray-500";
+  return (
+    <div className="group flex flex-col rounded-2xl bg-white shadow-[0_2px_16px_rgba(64,64,255,0.06)] hover:shadow-[0_12px_36px_rgba(64,64,255,0.14)] hover:-translate-y-[6px] transition-all duration-300 ease-in-out cursor-pointer w-[210px] shrink-0 border border-[rgba(233,233,240,0.9)] overflow-hidden">
+      <div className="relative overflow-hidden h-[148px]">
+        <img src={image} className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-500 ease" />
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-transparent group-hover:bg-[rgba(0,0,0,0.45)] transition-all duration-300"
+          onClick={() => onOpenVideo(videoUrl)}
+        >
+          <div className="opacity-0 group-hover:opacity-100 w-[44px] h-[44px] rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/50 transition-all duration-300 scale-75 group-hover:scale-100">
+            <i className="font_family icon-bofang text-[#fff] text-[18px] ml-[2px]"></i>
+          </div>
+        </div>
+        <Image
+          style={{ display: "none" }}
+          preview={{
+            visible: videoModalOpen === videoUrl,
+            destroyOnHidden: true,
+            imageRender: () => <video muted width="80%" controls autoPlay src={videoUrl} />,
+            toolbarRender: () => null,
+            onVisibleChange: onCloseVideo,
+          }}
+          src={image}
+        />
+      </div>
+      <div className="p-[16px] flex flex-col gap-[8px]">
+        <div className="flex items-center justify-between gap-[8px]">
+          <div className="text-[14px] font-bold text-[#18181b] truncate">{title}</div>
+          <span className={`shrink-0 inline-block px-[8px] leading-[22px] text-[11px] rounded-[6px] font-medium ${tagColor}`}>{tag}</span>
+        </div>
+        <div className="text-[12px] text-[#71717a] line-clamp-2 leading-[20px]">{description}</div>
+        <div
+          className="text-[#4040ff] group-hover:text-[#656cff] text-[12px] flex items-center gap-[3px] cursor-pointer transition-colors duration-200 pt-[2px]"
+          onClick={() => window.open(url)}
+        >
+          <span>查看报告</span>
+          <i className="font_family icon-xinjianjiantou text-[10px]"></i>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // 输出模式：网页 / 文档 / PPT / 表格 合并为一个下拉组
 const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 
@@ -35,7 +91,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     deepThink: false,
   });
   const [product, setProduct] = useState(() => productList.find((p) => p.type === "html") ?? defaultProduct);
-  const [videoModalOpen, setVideoModalOpen] = useState();
+  const [videoModalOpen, setVideoModalOpen] = useState<string>();
   const [dbsShow, setDbsShow] = useState(false);
   const [dataShow, setDataShow] = useState(false);
   const [outputMenuOpen, setOutputMenuOpen] = useState(false);
@@ -77,60 +133,20 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     setDataShow(true);
   }, []);
 
+  const handleOpenVideo = useCallback((url: string) => {
+    setVideoModalOpen(url);
+  }, []);
+
+  const handleCloseVideo = useCallback(() => {
+    setVideoModalOpen(undefined);
+  }, []);
+
   // 主要按钮（聊天 + 智能问数）
   const primaryProducts = productList.filter((p) => !OUTPUT_TYPES.includes(p.type));
   // 输出模式列表
   const outputProducts = productList.filter((p) => OUTPUT_TYPES.includes(p.type));
   // 当前 product 是否与显示的输出模式一致（激活态）
   const isOutputActive = product.type === displayOutput.type;
-
-  const CaseCard = ({ title, description, tag, image, url, videoUrl }: any) => {
-    const tagColor = tagColorMap[tag] ?? "bg-gray-100 text-gray-500";
-    return (
-      <div className="group flex flex-col rounded-2xl bg-white shadow-[0_2px_16px_rgba(64,64,255,0.06)] hover:shadow-[0_12px_36px_rgba(64,64,255,0.14)] hover:-translate-y-[6px] transition-all duration-300 ease-in-out cursor-pointer w-[210px] shrink-0 border border-[rgba(233,233,240,0.9)] overflow-hidden">
-        {/* 预览图 - 顶部 */}
-        <div className="relative overflow-hidden h-[148px]">
-          <img src={image} className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-500 ease" />
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-transparent group-hover:bg-[rgba(0,0,0,0.45)] transition-all duration-300"
-            onClick={() => setVideoModalOpen(videoUrl)}
-          >
-            <div className="opacity-0 group-hover:opacity-100 w-[44px] h-[44px] rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/50 transition-all duration-300 scale-75 group-hover:scale-100">
-              <i className="font_family icon-bofang text-[#fff] text-[18px] ml-[2px]"></i>
-            </div>
-          </div>
-          <Image
-            style={{ display: "none" }}
-            preview={{
-              visible: videoModalOpen === videoUrl,
-              destroyOnHidden: true,
-              imageRender: () => <video muted width="80%" controls autoPlay src={videoUrl} />,
-              toolbarRender: () => null,
-              onVisibleChange: () => {
-                setVideoModalOpen(undefined);
-              },
-            }}
-            src={image}
-          />
-        </div>
-        {/* 卡片内容 */}
-        <div className="p-[16px] flex flex-col gap-[8px]">
-          <div className="flex items-center justify-between gap-[8px]">
-            <div className="text-[14px] font-bold text-[#18181b] truncate">{title}</div>
-            <span className={`shrink-0 inline-block px-[8px] leading-[22px] text-[11px] rounded-[6px] font-medium ${tagColor}`}>{tag}</span>
-          </div>
-          <div className="text-[12px] text-[#71717a] line-clamp-2 leading-[20px]">{description}</div>
-          <div
-            className="text-[#4040ff] group-hover:text-[#656cff] text-[12px] flex items-center gap-[3px] cursor-pointer transition-colors duration-200 pt-[2px]"
-            onClick={() => window.open(url)}
-          >
-            <span>查看报告</span>
-            <i className="font_family icon-xinjianjiantou text-[10px]"></i>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const renderContent = () => {
     if (inputInfo.message.length === 0) {
@@ -291,7 +307,13 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             {/* 案例卡片 */}
             <div className="flex gap-[20px]">
               {demoList.map((demo, i) => (
-                <CaseCard key={i} {...demo} />
+                <CaseCard
+                  key={i}
+                  {...demo}
+                  videoModalOpen={videoModalOpen}
+                  onOpenVideo={handleOpenVideo}
+                  onCloseVideo={handleCloseVideo}
+                />
               ))}
             </div>
           </div>

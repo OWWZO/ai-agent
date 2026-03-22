@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useState, useCallback } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingDot from "@/components/LoadingDot";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -7,6 +7,8 @@ import {
   Message,
   MessageContent,
   MessageResponse,
+  MessageActions,
+  MessageAction,
 } from "@/components/ai-elements/message";
 import {
   Reasoning,
@@ -19,6 +21,13 @@ import {
   TaskContent,
   TaskItem,
 } from "@/components/ai-elements/task";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CopyIcon, CheckIcon, RefreshCwIcon, MoreHorizontalIcon } from "lucide-react";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -26,6 +35,7 @@ type Props = {
   changeTask?: (task: CHAT.Task) => void;
   changeFile?: (file: CHAT.TFile) => void;
   changePlan?: () => void;
+  onRegenerate?: () => void;
 };
 
 const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
@@ -236,12 +246,21 @@ const ConclusionSection: FC<{
 };
 
 const Dialogue: FC<Props> = (props) => {
-  const { chat, deepThink, changeTask, changeFile, changePlan } = props;
+  const { chat, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
   const isReactType = !deepThink;
+  const [copied, setCopied] = useState(false);
 
   const changeActiveChat = (task: CHAT.Task) => {
     changeTask?.(task);
   };
+
+  const handleCopy = useCallback(() => {
+    if (!chat.response) return;
+    navigator.clipboard.writeText(chat.response).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [chat.response]);
 
   return (
     <div className="h-full text-[14px] font-normal flex flex-col text-[#27272a]">
@@ -275,6 +294,28 @@ const Dialogue: FC<Props> = (props) => {
             <MessageContent>
               <MessageResponse>{chat.response}</MessageResponse>
             </MessageContent>
+            {!chat.loading ? (
+              <MessageActions className="ml-1 mt-1">
+                <MessageAction tooltip="复制" onClick={handleCopy}>
+                  {copied
+                    ? <CheckIcon className="size-4" />
+                    : <CopyIcon className="size-4" />}
+                </MessageAction>
+                <MessageAction tooltip="重新生成" onClick={onRegenerate} disabled={!onRegenerate}>
+                  <RefreshCwIcon className="size-4" />
+                </MessageAction>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <MessageAction tooltip="更多">
+                      <MoreHorizontalIcon className="size-4" />
+                    </MessageAction>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={handleCopy}>复制原文</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </MessageActions>
+            ) : null}
           </Message>
         </div>
       ) : null}
