@@ -1,10 +1,27 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Input, Button, Tooltip } from "antd";
-import classNames from "classnames";
-import { TextAreaRef } from "antd/es/input/TextArea";
-import { getOS } from "@/utils";
+import { ArrowUpIcon, BookOpenIcon, BrainIcon } from "lucide-react";
 
-const { TextArea } = Input;
+import {
+  AI_CHAT_FLOATING_CLASS,
+} from "@/components/ai-elements/ai-chat-surface";
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputButton,
+  PromptInputFooter,
+  PromptInputHeader,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from "@/components/ai-elements/prompt-input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { getOS } from "@/utils";
 
 type Props = {
   placeholder: string;
@@ -17,23 +34,14 @@ type Props = {
 };
 
 const GeneralInput: GenieType.FC<Props> = (props) => {
-  const { placeholder, showBtn, disabled, product, send, dbsShow } = props;
-  const [question, setQuestion] = useState<string>("");
-  const [deepThink, setDeepThink] = useState<boolean>(false);
+  const { placeholder, showBtn, disabled, size, product, send, dbsShow } =
+    props;
+  const [question, setQuestion] = useState("");
+  const [deepThink, setDeepThink] = useState(false);
   const isChatMode = product?.type === "chat";
-  const textareaRef = useRef<TextAreaRef>(null);
   const tempData = useRef<{
-    cmdPress?: boolean;
     compositing?: boolean;
   }>({});
-
-  const questionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setQuestion(e.target.value);
-  };
-
-  const changeThinkStatus = () => {
-    setDeepThink(!deepThink);
-  };
 
   useEffect(() => {
     if (isChatMode && deepThink) {
@@ -41,129 +49,183 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
     }
   }, [isChatMode, deepThink]);
 
-  const pressEnter: React.KeyboardEventHandler<HTMLTextAreaElement> = () => {
-    if (tempData.current.compositing) {
-      return;
-    }
-    // 按住command 回车换行逻辑
-    if (tempData.current.cmdPress) {
-      const textareaDom = textareaRef.current?.resizableTextArea?.textArea;
-      if (!textareaDom) {
-        return;
-      }
-      const { selectionStart, selectionEnd } = textareaDom || {};
-      const newValue =
-        question.substring(0, selectionStart) +
-        "\n" + // 插入换行符
-        question.substring(selectionEnd!);
+  const enterTip = useMemo(() => {
+    return `Enter 发送，${getOS() === "Mac" ? "Command" : "Ctrl"} + Enter 换行`;
+  }, []);
 
-      setQuestion(newValue);
-      setTimeout(() => {
-        textareaDom.selectionStart = selectionStart! + 1;
-        textareaDom.selectionEnd = selectionStart! + 1;
-        textareaDom.focus();
-      }, 20);
+  const canSend = Boolean(question) && !disabled;
+
+  const handleSubmit = ({ text }: { text: string }) => {
+    if (!text || disabled) {
       return;
     }
-    // 屏蔽状态，不发
-    if (!question || disabled) {
-      return;
-    }
+
     send({
-      message: question,
+      message: text,
       outputStyle: product?.type,
       deepThink: isChatMode ? false : deepThink,
     });
 
-    setTimeout(() => {
-      setQuestion("");
-    });
-  };
-
-  const sendMessage = () => {
-    send({
-      message: question,
-      outputStyle: product?.type,
-      deepThink: isChatMode ? false : deepThink,
-    });
     setQuestion("");
   };
 
-  const enterTip = useMemo(() => {
-    return `⏎发送，${getOS() === "Mac" ? "⌘" : "^"} + ⏎ 换行`;
-  }, []);
+  const handleKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (
+    event
+  ) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    if (tempData.current.compositing || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      const textarea = event.currentTarget;
+      const { selectionStart, selectionEnd } = textarea;
+      const nextValue =
+        question.slice(0, selectionStart) +
+        "\n" +
+        question.slice(selectionEnd);
+
+      setQuestion(nextValue);
+
+      requestAnimationFrame(() => {
+        textarea.selectionStart = selectionStart + 1;
+        textarea.selectionEnd = selectionStart + 1;
+        textarea.focus();
+      });
+      return;
+    }
+
+    if (!canSend) {
+      event.preventDefault();
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  };
 
   return (
-    <div>
-      <div className="rounded-[12px] border border-[#E9E9F0] overflow-hidden p-[12px] bg-[#fff]">
-        <div className="relative">
-          <TextArea
-            ref={textareaRef}
-            value={question}
-            placeholder={placeholder}
-            className={classNames("h-62 no-border-textarea border-0 resize-none p-[0px] focus:border-0 bg-[#fff]", showBtn && product ? "indent-86" : "")}
-            onChange={questionChange}
-            onPressEnter={pressEnter}
-            onKeyDown={(event) => {
-              tempData.current.cmdPress = event.metaKey || event.ctrlKey;
-            }}
-            onKeyUp={() => {
-              tempData.current.cmdPress = false;
-            }}
-            onCompositionStart={() => {
-              tempData.current.compositing = true;
-            }}
-            onCompositionEnd={() => {
-              tempData.current.compositing = false;
-            }}
-          />
+    <TooltipProvider>
+      <div className="w-full">
+        <PromptInput onSubmit={handleSubmit}>
           {showBtn && product ? (
-            <div className="h-[24px] w-[80px] absolute top-0 left-0 flex items-center justify-center rounded-[6px] bg-[#f4f4f9] text-[12px] ">
-              <i className={`font_family ${product.img} ${product.color} text-14`}></i>
-              <div className="ml-[6px]">{product.name}</div>
-            </div>
-          ) : null}
-        </div>
-        <div className="h-30 flex justify-between items-center mt-[6px]">
-          {showBtn ? (
-            <div>
-              {!isChatMode && (
-                <Button
-                  color={deepThink ? "primary" : "default"}
-                  variant="outlined"
-                  className={classNames(
-                    `text-[12px] p-[8px] h-[28px] transition-all hover:bg-[rgba(64,64,255,0.02)] hover:border-[rgba(64,64,255,0.2)] ${deepThink ? "hover:text-#4040ffb2" : "hover:text-[#333]"}`
-                  )}
-                  onClick={changeThinkStatus}
-                >
-                  <i className="font_family icon-shendusikao"></i>
-                  <span className="ml-[-4px]">深度研究</span>
-                </Button>
-              )}
-              {product?.type === "dataAgent" && (
-                <Tooltip placement="right" title="查看知识库">
+            <PromptInputHeader className="border-b border-border/50 px-3 pt-3 pb-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/60 px-3 py-1 text-foreground text-xs">
                 <i
-                  className="font_family icon-zhishiku cursor-pointer text-[#4040ffb2] text-[18px] ml-[8px] border border-[#4040ffb2] rounded-tr-lg rounded-bl-lg p-[3px]"
-                  onClick={() => dbsShow && dbsShow(true)}
-                ></i>
-                </Tooltip>
+                  className={cn(
+                    "font_family text-[14px]",
+                    product.img,
+                    product.color
+                  )}
+                />
+                <span className="font-medium">{product.name}</span>
+              </div>
+            </PromptInputHeader>
+          ) : null}
+
+          <PromptInputBody>
+            <PromptInputTextarea
+              className={cn(
+                "px-3 text-sm leading-6",
+                size === "big" ? "min-h-28 pt-3 text-[15px]" : "min-h-20"
               )}
-            </div>
-          ) : (
-            <div></div>
-          )}
-          <div className="flex items-center">
-            <span className="text-[12px] text-gray-300 mr-8 flex items-center">{enterTip}</span>
-            <Tooltip title="发送">
-              <i
-                className={`font_family icon-fasongtianchong ${!question || disabled ? "cursor-not-allowed text-[#ccc] pointer-events-none" : "cursor-pointer"}`}
-                onClick={sendMessage}
-              ></i>
-            </Tooltip>
-          </div>
-        </div>
+              disabled={disabled}
+              onChange={(event) => setQuestion(event.target.value)}
+              onCompositionEnd={() => {
+                tempData.current.compositing = false;
+              }}
+              onCompositionStart={() => {
+                tempData.current.compositing = true;
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              value={question}
+            />
+          </PromptInputBody>
+
+          <PromptInputFooter className="justify-between gap-3 border-t border-border/50 px-3 pt-2 pb-3">
+            {showBtn ? (
+              <PromptInputTools className="flex-wrap gap-2">
+                {!isChatMode ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <PromptInputButton
+                        aria-pressed={deepThink}
+                        className={cn(
+                          "rounded-full px-3",
+                          deepThink &&
+                            "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                        )}
+                        disabled={disabled}
+                        onClick={() => setDeepThink((value) => !value)}
+                        size="sm"
+                        variant={deepThink ? "secondary" : "ghost"}
+                      >
+                        <BrainIcon className="size-4" />
+                        深度研究
+                      </PromptInputButton>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      className={AI_CHAT_FLOATING_CLASS}
+                      side="top"
+                    >
+                      切换深度研究模式
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+
+                {product?.type === "dataAgent" ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <PromptInputButton
+                        className="rounded-full px-3"
+                        disabled={disabled}
+                        onClick={() => dbsShow?.(true)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <BookOpenIcon className="size-4" />
+                        知识库
+                      </PromptInputButton>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      className={AI_CHAT_FLOATING_CLASS}
+                      side="top"
+                    >
+                      查看知识库
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </PromptInputTools>
+            ) : (
+              <div />
+            )}
+
+            <PromptInputTools className="shrink-0 gap-2">
+              <span className="text-muted-foreground text-xs">{enterTip}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PromptInputSubmit
+                    className="rounded-full"
+                    disabled={!canSend}
+                    variant="default"
+                  >
+                    <ArrowUpIcon className="size-4" />
+                  </PromptInputSubmit>
+                </TooltipTrigger>
+                <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
+                  发送
+                </TooltipContent>
+              </Tooltip>
+            </PromptInputTools>
+          </PromptInputFooter>
+        </PromptInput>
       </div>
-    </div>
+    </TooltipProvider>
   );
 };
 

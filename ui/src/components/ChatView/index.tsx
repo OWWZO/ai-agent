@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import {
   getUniqId,
-  scrollToTop,
   ActionViewItemEnum,
   getSessionId,
 } from "@/utils";
@@ -16,6 +15,11 @@ import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import Logo from "../Logo";
 import { Modal } from "antd";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
 
 type Props = {
   inputInfo: CHAT.TInputInfo;
@@ -33,9 +37,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
   const [plan, setPlan] = useState<CHAT.Plan>();
   const [showAction, setShowAction] = useState(false);
   const [loading, setLoading] = useState(false);
-  // 用于强制刷新聊天列表（聊天模式下仅依赖 response 流式更新）
-  const [chatVersion, setChatVersion] = useState(0);
-  const chatRef = useRef<HTMLInputElement>(null);
+  const [, setChatVersion] = useState(0);
   const actionViewRef = ActionView.useActionView();
   const sessionId = useMemo(() => getSessionId(), []);
   const [modal, contextHolder] = Modal.useModal();
@@ -93,12 +95,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
         );
         currentChat.loading = false;
         setLoading(false);
-
         setTaskList(taskData.taskList);
         return;
       }
       if (packageType !== "heartbeat") {
-        // 聊天模式下，只展示单一大模型的对话流，不展示思考过程 / 工具调用
         if (isChatMode) {
           requestAnimationFrame(() => {
             const eventData: any = resultMap?.eventData;
@@ -110,7 +110,6 @@ const ChatView: GenieType.FC<Props> = (props) => {
                 currentChat.response = (currentChat.response || "") + text;
               }
             } else if (innerType === "result") {
-              // 结束包只用于兜底和结束标记，避免重复追加完整内容
               if (!currentChat.response) {
                 currentChat.response = inner?.result || "";
               }
@@ -120,7 +119,6 @@ const ChatView: GenieType.FC<Props> = (props) => {
               const newChatList = [...chatList.current];
               newChatList.splice(newChatList.length - 1, 1, currentChat);
               chatList.current = newChatList;
-              // 每次增量都触发一次重新渲染，实现前端真正的流式展示
               setChatVersion((v) => v + 1);
             }
 
@@ -129,11 +127,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
               setLoading(false);
             }
           });
-          scrollToTop(chatRef.current!);
           return;
         }
 
-        // 多智能体 / 深度研究模式：按原有逻辑解析 eventData，驱动任务流和工具面板
         requestAnimationFrame(() => {
           if (resultMap?.eventData) {
             currentChat = combineData(resultMap.eventData || {}, currentChat);
@@ -155,7 +151,6 @@ const ChatView: GenieType.FC<Props> = (props) => {
             chatList.current = newChatList;
           }
         });
-        scrollToTop(chatRef.current!);
       }
     };
 
@@ -227,14 +222,11 @@ const ChatView: GenieType.FC<Props> = (props) => {
       chartData: undefined,
       error: "",
     };
-    setDataChatList([...dataChatList, currentChat]);
-    scrollToTop(chatRef.current!);
-
+    setDataChatList((prev) => [...prev, currentChat]);
     setChatTitle(inputInfo.message);
     setLoading(true);
 
     const handleMessage = (data: any) => {
-      // currentChat.loading = false;
       switch (data.eventType) {
         case "THINK":
           currentChat.think = data.data;
@@ -252,11 +244,11 @@ const ChatView: GenieType.FC<Props> = (props) => {
           setLoading(false);
           break;
       }
-      const newChatList = [...dataChatList];
-      newChatList.splice(newChatList.length, 1, currentChat);
-      setDataChatList(newChatList);
-      // 滚动到顶部
-      scrollToTop(chatRef.current!);
+      setDataChatList((prev) => {
+        const newList = [...prev];
+        newList.splice(newList.length - 1, 1, currentChat);
+        return newList;
+      });
     };
     const handleError = (error: unknown) => {
       throw error;
@@ -307,12 +299,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
               )}
             </div>
           </div>
-          <div
-            className="w-full flex-1 overflow-auto no-scrollbar mb-[36px]"
-            ref={chatRef}
-          >
-            {chatList.current.map((chat) => {
-              return (
+          <Conversation className="flex-1 mb-[36px]">
+            <ConversationContent>
+              {chatList.current.map((chat) => (
                 <div key={chat.requestId}>
                   <Dialogue
                     chat={chat}
@@ -322,9 +311,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
                     changePlan={changePlan}
                   />
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
           <GeneralInput
             placeholder={
               loading ? "任务进行中" : "希望 Genie 为你做哪些任务呢？"
@@ -333,7 +323,6 @@ const ChatView: GenieType.FC<Props> = (props) => {
             size="medium"
             disabled={loading}
             product={product}
-            // 多轮问答也不支持切换deepThink，使用传进来的
             send={(info) =>
               sendMessage({
                 ...info,
@@ -374,18 +363,16 @@ const ChatView: GenieType.FC<Props> = (props) => {
             </div>
           </div>
         </div>
-        <div
-          className="w-full flex-1 overflow-auto no-scrollbar mb-[36px]"
-          ref={chatRef}
-        >
-          {dataChatList.map((chat, index) => {
-            return (
+        <Conversation className="flex-1 mb-[36px]">
+          <ConversationContent>
+            {dataChatList.map((chat, index) => (
               <div key={index}>
                 <DataDialogue chat={chat} />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
         <GeneralInput
           placeholder={loading ? "任务进行中" : "希望 Genie 为你做哪些任务呢？"}
           showBtn={false}

@@ -1,8 +1,24 @@
-﻿import { FC } from "react";
+import { FC } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingDot from "@/components/LoadingDot";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon, buildAttachment } from "@/utils/chat";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/ai-elements/reasoning";
+import {
+  Task,
+  TaskTrigger,
+  TaskContent,
+  TaskItem,
+} from "@/components/ai-elements/task";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -60,14 +76,13 @@ const ToolItem: FC<{
     }
     case "tool_thought": {
       return (
-        <div className="rounded-[12px] bg-[#F2F3F7] px-12 py-8 mt-[8px]">
-          <div className="mb-[4px]">
-            <i className="font_family icon-juli"></i>
-            <span className="ml-[4px]">思考过程</span>
-          </div>
-          <div className="text-[#2029459E] text-[13px] leading-[20px]">
-            {tool.toolThought}
-          </div>
+        <div className="mt-[8px]">
+          <Task>
+            <TaskTrigger title="思考过程" />
+            <TaskContent>
+              <TaskItem>{tool.toolThought}</TaskItem>
+            </TaskContent>
+          </Task>
         </div>
       );
     }
@@ -230,38 +245,58 @@ const Dialogue: FC<Props> = (props) => {
 
   return (
     <div className="h-full text-[14px] font-normal flex flex-col text-[#27272a]">
+      {/* 附件 */}
       {(chat.files || []).length ? (
         <div className="w-full mt-[24px] justify-end">
           <AttachmentList files={chat.files} preview={false} />
         </div>
       ) : null}
+
+      {/* 用户消息 */}
       {chat.query ? (
         <div className="w-full mt-[24px] flex justify-end">
-          <div className="max-w-[80%] bg-[#4040FFB2] text-[#fff] px-12 py-8 rounded-[12px] rounded-tr-[12px] rounded-br-[4px] rounded-bl-[12px] ">
-            {chat.query}
-          </div>
+          <Message from="user" className="max-w-[80%]">
+            <MessageContent className="group-[.is-user]:bg-[#4040FFB2] group-[.is-user]:text-white">
+              {chat.query}
+            </MessageContent>
+          </Message>
         </div>
       ) : null}
+
+      {/* 提示 */}
       {chat.tip ? (
         <div className="w-full rounded-[12px] mt-[24px]">{chat.tip}</div>
       ) : null}
+
+      {/* AI 回复（Markdown） */}
       {chat.response ? (
         <div className="w-full mt-[24px] flex justify-start">
-          <div className="max-w-[80%] bg-[#F2F3F7] text-[#27272a] px-12 py-8 rounded-[12px] rounded-tl-[4px] rounded-tr-[12px] rounded-bl-[12px]">
-            {chat.response}
-          </div>
+          <Message from="assistant" className="max-w-[80%]">
+            <MessageContent>
+              <MessageResponse>{chat.response}</MessageResponse>
+            </MessageContent>
+          </Message>
         </div>
       ) : null}
+
+      {/* 思考过程（深度研究模式） */}
       {!isReactType && chat.thought ? (
-        <div className="w-full px-12 py-8 bg-[#F2F3F7] rounded-[12px] mt-[24px]">
-          <div>{chat.thought}</div>
+        <div className="w-full mt-[24px]">
+          <Reasoning isStreaming={chat.loading && !chat.response}>
+            <ReasoningTrigger />
+            <ReasoningContent>{chat.thought}</ReasoningContent>
+          </Reasoning>
         </div>
       ) : null}
+
+      {/* 任务计划 */}
       {!isReactType && chat.planList?.length ? (
         <div className="w-full px-12 py-8 rounded-[12px] mt-[24px] bg-[#F2F3F7]">
           <PlanSection plan={chat.planList} />
         </div>
       ) : null}
+
+      {/* 任务时间线 */}
       {chat.tasks.length ? (
         <div className="w-full mt-[24px]">
           <TimeLine
@@ -273,11 +308,15 @@ const Dialogue: FC<Props> = (props) => {
           />
         </div>
       ) : null}
+
+      {/* 结论 */}
       {chat.conclusion ? (
         <div className="w-full">
           <ConclusionSection chat={chat} changeFile={changeFile} />
         </div>
       ) : null}
+
+      {/* 加载中 */}
       {chat.loading ? <LoadingDot /> : null}
     </div>
   );

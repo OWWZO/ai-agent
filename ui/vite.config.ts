@@ -17,6 +17,15 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     css: {preprocessorOptions: {less: {javascriptEnabled: true},},},
+    optimizeDeps: {
+      exclude: [
+        'clsx',
+        'nanoid',
+        'radix-ui',
+        'lucide-react',
+        'tailwind-merge',
+      ],
+    },
     server: {
       // 修改为监听所有接口，而不是特定主机名
       host: '0.0.0.0',

@@ -1,0 +1,174 @@
+@import "@fontsource-variable/geist";
+
+.ai-chat-surface {
+  font-family:
+    "Geist Variable",
+    "Geist",
+    "SF Pro Display",
+    "Segoe UI",
+    sans-serif;
+}
+
+.ai-chat-floating {
+  font-family:
+    "Geist Variable",
+    "Geist",
+    "SF Pro Display",
+    "Segoe UI",
+    sans-serif;
+  color: var(--foreground);
+}
+
+.ai-chat-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle at top,
+      color-mix(in oklch, var(--primary) 10%, transparent) 0%,
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--background) 96%, white) 0%,
+      color-mix(in oklch, var(--background) 100%, black) 100%
+    );
+  pointer-events: none;
+}
+
+.ai-chat-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 75%, transparent),
+    inset 0 -1px 0 color-mix(in oklch, black 6%, transparent);
+  pointer-events: none;
+}
+
+.ai-chat-surface :where(button, input, textarea, select) {
+  font: inherit;
+}
+
+.ai-chat-surface :where(h1, h2, h3, h4, h5, h6, p) {
+  margin: 0;
+}
+
+.ai-chat-markdown {
+  color: inherit;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.ai-chat-markdown > * + * {
+  margin-top: 0.9rem;
+}
+
+.ai-chat-markdown :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--foreground);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.ai-chat-markdown :where(h1) {
+  font-size: 1.5rem;
+}
+
+.ai-chat-markdown :where(h2) {
+  font-size: 1.25rem;
+}
+
+.ai-chat-markdown :where(h3) {
+  font-size: 1.1rem;
+}
+
+.ai-chat-markdown :where(a) {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  transition: color 0.2s ease;
+}
+
+.ai-chat-markdown :where(a:hover) {
+  color: color-mix(in oklch, var(--primary) 82%, black);
+}
+
+.ai-chat-markdown :where(ul, ol) {
+  margin: 0.9rem 0;
+  padding-left: 1.3rem;
+}
+
+.ai-chat-markdown :where(ul) {
+  list-style: disc;
+}
+
+.ai-chat-markdown :where(ol) {
+  list-style: decimal;
+}
+
+.ai-chat-markdown :where(li + li) {
+  margin-top: 0.35rem;
+}
+
+.ai-chat-markdown :where(blockquote) {
+  margin: 1rem 0;
+  border-left: 3px solid color-mix(in oklch, var(--border) 88%, var(--primary));
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+}
+
+.ai-chat-markdown :where(hr) {
+  margin: 1rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.ai-chat-markdown :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.ai-chat-markdown :where(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ai-chat-markdown :where(th) {
+  background: color-mix(in oklch, var(--muted) 82%, transparent);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.ai-chat-markdown :where(code):not(pre code) {
+  border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+  border-radius: calc(var(--radius) - 5px);
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+  padding: 0.15rem 0.35rem;
+  font-family:
+    "SFMono-Regular",
+    "JetBrains Mono",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 0.9em;
+}
+
+.ai-chat-markdown :where(pre) {
+  margin: 1rem 0;
+}
+
+.ai-chat-markdown :where(img) {
+  max-width: 100%;
+  border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+  border-radius: calc(var(--radius) - 2px);
+}
