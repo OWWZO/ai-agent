@@ -1,16 +1,12 @@
-import { useEffect, useState, useRef, useMemo } from "react";
-import {
-  getUniqId,
-  ActionViewItemEnum,
-  getSessionId,
-} from "@/utils";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { handleTaskData, combineData } from "@/utils/chat";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
-import { RESULT_TYPES } from "@/utils/constants";
+import { RESULT_TYPES, productList, defaultProduct } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import Logo from "../Logo";
@@ -24,23 +20,57 @@ import {
 type Props = {
   inputInfo: CHAT.TInputInfo;
   product?: CHAT.Product;
+  conversation: CHAT.ConversationHistory;
+  onConversationChange: (
+    conversationId: string,
+    nextConversation: CHAT.ConversationHistory
+  ) => void;
+  onInputConsumed?: () => void;
+};
+
+const getProductByType = (type?: string) => {
+  return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
 const ChatView: GenieType.FC<Props> = (props) => {
-  const { inputInfo: inputInfoProp, product } = props;
+  const {
+    inputInfo: inputInfoProp,
+    product,
+    conversation,
+    onConversationChange,
+    onInputConsumed,
+  } = props;
 
-  const [chatTitle, setChatTitle] = useState("");
   const [taskList, setTaskList] = useState<MESSAGE.Task[]>([]);
-  const chatList = useRef<CHAT.ChatItem[]>([]);
-  const [dataChatList, setDataChatList] = useState<Record<string, any>[]>([]);
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
   const [plan, setPlan] = useState<CHAT.Plan>();
   const [showAction, setShowAction] = useState(false);
   const [loading, setLoading] = useState(false);
   const [, setChatVersion] = useState(0);
   const actionViewRef = ActionView.useActionView();
-  const sessionId = useMemo(() => getSessionId(), []);
   const [modal, contextHolder] = Modal.useModal();
+  const conversationRef = useRef(conversation);
+
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
+
+  useEffect(() => {
+    setTaskList([]);
+    setActiveTask(undefined);
+    setPlan(undefined);
+    setShowAction(false);
+    setLoading(false);
+  }, [conversation.id]);
+
+  const commitConversation = useMemoizedFn(
+    (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
+      onConversationChange(conversationId, {
+        ...nextConversation,
+        updatedAt: Date.now(),
+      });
+    }
+  );
 
   const combineCurrentChat = (
     inputInfo: CHAT.TInputInfo,
@@ -59,28 +89,42 @@ const ChatView: GenieType.FC<Props> = (props) => {
       thought: "",
       response: "",
       taskStatus: 0,
-      tip: "已接收到你的任务，将立即开始处理...",
+      tip: "已接收到你的任务，将立刻开始处理...",
       multiAgent: { tasks: [] },
     };
   };
 
   const sendMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
+    const baseConversation = conversationRef.current;
+    const conversationId = baseConversation.id;
     const { message, deepThink, outputStyle } = inputInfo;
     const requestId = getUniqId();
-    let currentChat = combineCurrentChat(inputInfo, sessionId, requestId);
-    chatList.current = [...chatList.current, currentChat];
-    if (!chatTitle) {
-      setChatTitle(message!);
-    }
-    setLoading(true);
+    let currentChat = combineCurrentChat(inputInfo, baseConversation.sessionId, requestId);
     const isChatMode = outputStyle === "chat";
-    const params = {
-      sessionId: sessionId,
-      requestId: requestId,
-      query: message,
-      deepThink: isChatMode ? 0 : deepThink ? 1 : 0,
-      outputStyle,
+    const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
+    let runningConversation: CHAT.ConversationHistory = {
+      ...baseConversation,
+      chatTitle: baseConversation.chatTitle || message || "",
+      title:
+        baseConversation.title === "新对话" && message
+          ? message.slice(0, 30)
+          : baseConversation.title,
+      productType: outputStyle || baseConversation.productType,
+      deepThink: normalizedDeepThink,
+      chatList: [...baseConversation.chatList, currentChat],
     };
+
+    commitConversation(conversationId, runningConversation);
+    setLoading(true);
+
+    const params = {
+      sessionId: baseConversation.sessionId,
+      requestId,
+      query: message,
+      deepThink: normalizedDeepThink ? 1 : 0,
+      outputStyle: outputStyle || baseConversation.productType,
+    };
+
     const handleMessage = (data: MESSAGE.Answer) => {
       const { finished, resultMap, packageType, status } = data;
       if (status === "tokenUseUp") {
@@ -90,12 +134,19 @@ const ChatView: GenieType.FC<Props> = (props) => {
         });
         const taskData = handleTaskData(
           currentChat,
-          deepThink,
+          normalizedDeepThink,
           currentChat.multiAgent
         );
         currentChat.loading = false;
         setLoading(false);
         setTaskList(taskData.taskList);
+        runningConversation = {
+          ...runningConversation,
+          chatList: runningConversation.chatList.map((chat) =>
+            chat.requestId === currentChat.requestId ? currentChat : chat
+          ),
+        };
+        commitConversation(conversationId, runningConversation);
         return;
       }
       if (packageType !== "heartbeat") {
@@ -116,15 +167,26 @@ const ChatView: GenieType.FC<Props> = (props) => {
             }
 
             if (innerType) {
-              const newChatList = [...chatList.current];
+              const newChatList = [...runningConversation.chatList];
               newChatList.splice(newChatList.length - 1, 1, currentChat);
-              chatList.current = newChatList;
+              runningConversation = {
+                ...runningConversation,
+                chatList: newChatList,
+              };
+              commitConversation(conversationId, runningConversation);
               setChatVersion((v) => v + 1);
             }
 
             if (innerType && (inner?.finish || finished)) {
               currentChat.loading = false;
               setLoading(false);
+              const newChatList = [...runningConversation.chatList];
+              newChatList.splice(newChatList.length - 1, 1, currentChat);
+              runningConversation = {
+                ...runningConversation,
+                chatList: newChatList,
+              };
+              commitConversation(conversationId, runningConversation);
             }
           });
           return;
@@ -135,7 +197,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
             currentChat = combineData(resultMap.eventData || {}, currentChat);
             const taskData = handleTaskData(
               currentChat,
-              deepThink,
+              normalizedDeepThink,
               currentChat.multiAgent
             );
             setTaskList(taskData.taskList);
@@ -146,18 +208,20 @@ const ChatView: GenieType.FC<Props> = (props) => {
               currentChat.loading = false;
               setLoading(false);
             }
-            const newChatList = [...chatList.current];
+            const newChatList = [...runningConversation.chatList];
             newChatList.splice(newChatList.length - 1, 1, currentChat);
-            chatList.current = newChatList;
+            runningConversation = {
+              ...runningConversation,
+              chatList: newChatList,
+            };
+            commitConversation(conversationId, runningConversation);
           }
         });
       }
     };
 
-    const openAction = (taskList: MESSAGE.Task[]) => {
-      if (
-        taskList.filter((t) => !RESULT_TYPES.includes(t.messageType)).length
-      ) {
+    const openAction = (tasks: MESSAGE.Task[]) => {
+      if (tasks.filter((item) => !RESULT_TYPES.includes(item.messageType)).length) {
         setShowAction(true);
       }
     };
@@ -167,21 +231,19 @@ const ChatView: GenieType.FC<Props> = (props) => {
     };
 
     const handleClose = () => {
-      console.log("🚀 ~ close");
+      console.log("close");
     };
 
-    querySSE(
-      {
-        body: params,
-        handleMessage,
-        handleError,
-        handleClose,
-      }
-    );
+    querySSE({
+      body: params,
+      handleMessage,
+      handleError,
+      handleClose,
+    });
   });
 
-  const temporaryChangeTask = (taskList: MESSAGE.Task[]) => {
-    const task = taskList[taskList.length - 1] as CHAT.Task;
+  const temporaryChangeTask = (tasks: MESSAGE.Task[]) => {
+    const task = tasks[tasks.length - 1] as CHAT.Task;
     if (!["task_summary", "result"].includes(task?.messageType)) {
       setActiveTask(task);
     }
@@ -193,8 +255,8 @@ const ChatView: GenieType.FC<Props> = (props) => {
     setActiveTask(task);
   };
 
-  const updatePlan = (plan: CHAT.Plan) => {
-    setPlan(plan);
+  const updatePlan = (currentPlan: CHAT.Plan) => {
+    setPlan(currentPlan);
   };
 
   const changeFile = (file: CHAT.TFile) => {
@@ -211,7 +273,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
     setShowAction(status);
   };
 
-  const sendDataMessage = (inputInfo: any) => {
+  const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
+    const baseConversation = conversationRef.current;
+    const conversationId = baseConversation.id;
     const params = {
       content: inputInfo.message,
     };
@@ -222,8 +286,18 @@ const ChatView: GenieType.FC<Props> = (props) => {
       chartData: undefined,
       error: "",
     };
-    setDataChatList((prev) => [...prev, currentChat]);
-    setChatTitle(inputInfo.message);
+    let runningConversation: CHAT.ConversationHistory = {
+      ...baseConversation,
+      chatTitle: baseConversation.chatTitle || inputInfo.message || "",
+      title:
+        baseConversation.title === "新对话" && inputInfo.message
+          ? inputInfo.message.slice(0, 30)
+          : baseConversation.title,
+      productType: "dataAgent",
+      deepThink: false,
+      dataChatList: [...baseConversation.dataChatList, currentChat],
+    };
+    commitConversation(conversationId, runningConversation);
     setLoading(true);
 
     const handleMessage = (data: any) => {
@@ -243,19 +317,23 @@ const ChatView: GenieType.FC<Props> = (props) => {
           currentChat.loading = false;
           setLoading(false);
           break;
+        default:
+          break;
       }
-      setDataChatList((prev) => {
-        const newList = [...prev];
-        newList.splice(newList.length - 1, 1, currentChat);
-        return newList;
-      });
+      const newDataChatList = [...runningConversation.dataChatList];
+      newDataChatList.splice(newDataChatList.length - 1, 1, currentChat);
+      runningConversation = {
+        ...runningConversation,
+        dataChatList: newDataChatList,
+      };
+      commitConversation(conversationId, runningConversation);
     };
     const handleError = (error: unknown) => {
       throw error;
     };
 
     const handleClose = () => {
-      console.log("🚀 ~ close");
+      console.log("close");
     };
     querySSE(
       {
@@ -266,87 +344,104 @@ const ChatView: GenieType.FC<Props> = (props) => {
       },
       `${SERVICE_BASE_URL}/data/chatQuery`
     );
-  };
+  });
 
   useEffect(() => {
     if (inputInfoProp.message?.length !== 0) {
-      product?.type === "dataAgent" && !inputInfoProp.deepThink
-        ? sendDataMessage(inputInfoProp)
-        : sendMessage(inputInfoProp);
+      const targetOutput =
+        inputInfoProp.outputStyle || conversationRef.current.productType;
+      if (targetOutput === "dataAgent" && !inputInfoProp.deepThink) {
+        sendDataMessage(inputInfoProp);
+      } else {
+        sendMessage(inputInfoProp);
+      }
+      onInputConsumed?.();
     }
-  }, [inputInfoProp, sendMessage]);
+  }, [inputInfoProp, onInputConsumed, sendDataMessage, sendMessage]);
 
   const handleRegenerate = useMemoizedFn(() => {
-    const last = chatList.current[chatList.current.length - 1];
+    const last = conversation.chatList[conversation.chatList.length - 1];
     if (!last || loading) return;
     sendMessage({
       message: last.query,
-      outputStyle: product?.type,
-      deepThink: inputInfoProp.deepThink,
+      outputStyle: conversation.productType,
+      deepThink: conversation.deepThink,
     });
   });
 
+  const currentProduct = useMemo(() => {
+    return getProductByType(conversation.productType || product?.type);
+  }, [conversation.productType, product?.type]);
+
+  const headerTitle = conversation.chatTitle || conversation.title;
+
   const renderMultAgent = () => {
     return (
-      <div className="h-full w-full flex justify-center">
+      <div className="h-full w-full flex items-stretch gap-4 px-4 md:px-6 pb-4">
         <div
-          className={classNames("p-24 flex flex-col flex-1 w-0", {
-            "max-w-[1200px]": !showAction,
+          className={classNames("min-w-0 flex flex-col flex-1 rounded-[14px] bg-transparent", {
+            "max-w-[980px] mx-auto": !showAction,
+            "basis-[58%]": showAction,
           })}
           id="chat-view"
         >
-          <div className="w-full flex justify-between">
-            <div className="w-full flex items-center pb-8">
-              <Logo />
-              <div className="overflow-hidden whitespace-nowrap text-ellipsis text-[16px] font-[500] text-[#27272A] mr-8">
-                {chatTitle}
-              </div>
-              {inputInfoProp.deepThink && (
-                <div className="rounded-[4px] px-6 border-1 border-solid border-gray-300 flex items-center shrink-0">
-                  <i className="font_family icon-shendusikao mr-6 text-[12px]"></i>
-                  <span className="ml-[-4px]">深度研究</span>
+          <div className="px-3 md:px-5 pt-6 md:pt-8">
+            <div className="w-full flex justify-between">
+              <div className="w-full flex items-center pb-6">
+                <Logo />
+                <div className="overflow-hidden whitespace-nowrap text-ellipsis text-[16px] font-[500] text-[#27272A] mr-8">
+                  {headerTitle}
                 </div>
-              )}
+                {conversation.deepThink && (
+                  <div className="rounded-[4px] px-6 border-1 border-solid border-gray-300 flex items-center shrink-0">
+                    <i className="font_family icon-shendusikao mr-6 text-[12px]"></i>
+                    <span className="ml-[-4px]">深度研究</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <Conversation className="flex-1 mb-[36px]">
-            <ConversationContent>
-              {chatList.current.map((chat) => (
-                <div key={chat.requestId}>
-                  <Dialogue
-                    chat={chat}
-                    deepThink={inputInfoProp.deepThink}
-                    changeTask={changeTask}
-                    changeFile={changeFile}
-                    changePlan={changePlan}
-                    onRegenerate={handleRegenerate}
-                  />
-                </div>
-              ))}
-            </ConversationContent>
-            <ConversationScrollButton />
-          </Conversation>
-          <GeneralInput
-            placeholder={
-              loading ? "任务进行中" : "希望 Genie 为你做哪些任务呢？"
-            }
-            showBtn={false}
-            size="medium"
-            disabled={loading}
-            product={product}
-            send={(info) =>
-              sendMessage({
-                ...info,
-                deepThink: inputInfoProp.deepThink,
-              })
-            }
-          />
+
+          <div className="px-3 md:px-5 min-h-0 flex-1 flex flex-col">
+            <Conversation className="flex-1 mb-[20px]">
+              <ConversationContent>
+                {conversation.chatList.map((chat) => (
+                  <div key={chat.requestId}>
+                    <Dialogue
+                      chat={chat}
+                      deepThink={conversation.deepThink}
+                      changeTask={changeTask}
+                      changeFile={changeFile}
+                      changePlan={changePlan}
+                      onRegenerate={handleRegenerate}
+                    />
+                  </div>
+                ))}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
+            <GeneralInput
+              placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+              showBtn={false}
+              size="medium"
+              disabled={loading}
+              product={currentProduct}
+              send={(info) =>
+                sendMessage({
+                  ...info,
+                  outputStyle: conversation.productType,
+                  deepThink: conversation.deepThink,
+                })
+              }
+            />
+          </div>
         </div>
         {contextHolder}
         <div
-          className={classNames("transition-all w-0", {
+          className={classNames("transition-all min-w-0", {
             "opacity-0 overflow-hidden": !showAction,
-            "flex-1": showAction,
+            "w-0": !showAction,
+            "w-[460px] min-w-[400px] max-w-[560px]": showAction,
           })}
         >
           <ActionView
@@ -364,20 +459,22 @@ const ChatView: GenieType.FC<Props> = (props) => {
   const renderDataAgent = () => {
     return (
       <div
-        className={classNames("p-24 flex flex-col flex-1 w-0 max-w-[1200px]")}
+        className={classNames(
+          "flex flex-col flex-1 w-0 max-w-[980px] mx-auto px-4 md:px-6 pt-6 md:pt-8 pb-4"
+        )}
       >
         <div className="w-full flex justify-between">
-          <div className="w-full flex items-center pb-8">
+          <div className="w-full flex items-center pb-6">
             <Logo />
             <div className="overflow-hidden whitespace-nowrap text-ellipsis text-[16px] font-[500] text-[#27272A] mr-8">
-              {chatTitle}
+              {headerTitle}
             </div>
           </div>
         </div>
-        <Conversation className="flex-1 mb-[36px]">
+        <Conversation className="flex-1 mb-[20px]">
           <ConversationContent>
-            {dataChatList.map((chat, index) => (
-              <div key={index}>
+            {conversation.dataChatList.map((chat, index) => (
+              <div key={`${conversation.id}-${index}`}>
                 <DataDialogue chat={chat} />
               </div>
             ))}
@@ -385,14 +482,16 @@ const ChatView: GenieType.FC<Props> = (props) => {
           <ConversationScrollButton />
         </Conversation>
         <GeneralInput
-          placeholder={loading ? "任务进行中" : "希望 Genie 为你做哪些任务呢？"}
+          placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
           showBtn={false}
           size="medium"
           disabled={loading}
-          product={product}
+          product={currentProduct}
           send={(info) =>
             sendDataMessage({
               ...info,
+              outputStyle: "dataAgent",
+              deepThink: false,
             })
           }
         />
@@ -400,11 +499,12 @@ const ChatView: GenieType.FC<Props> = (props) => {
     );
   };
 
+  const isDataConversation =
+    conversation.productType === "dataAgent" && !conversation.deepThink;
+
   return (
     <div className="h-full w-full flex justify-center">
-      {product?.type === "dataAgent" && !inputInfoProp.deepThink
-        ? renderDataAgent()
-        : renderMultAgent()}
+      {isDataConversation ? renderDataAgent() : renderMultAgent()}
     </div>
   );
 };

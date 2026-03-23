@@ -62,7 +62,7 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
     };
   });
   return (
-    <div className={classNames("p-24 pt-8 pb-24 w-full h-full flex flex-col", className)}>
+    <div className={classNames("px-16 pt-8 pb-16 w-full h-full flex flex-col", className)}>
       <Title onClose={onClose}>{title || '工作空间'}</Title>
       <Tabs value={activeActionView} onChange={setActiveActionView} options={actionViewOptions} />
       {/* 展示区域 */}

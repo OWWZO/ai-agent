@@ -88,6 +88,24 @@ declare global {
       color: string;
     };
 
+    export type ConversationHistory = {
+      id: string;
+      sessionId: string;
+      title: string;
+      productType: string;
+      deepThink: boolean;
+      createdAt: number;
+      updatedAt: number;
+      chatTitle: string;
+      chatList: ChatItem[];
+      dataChatList: Record<string, any>[];
+    };
+
+    export type ConversationHistoryStore = {
+      version: number;
+      conversations: ConversationHistory[];
+    };
+
     export type ModelInfo = {
       modelName: string;
       modelCode: string;

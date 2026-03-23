@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowUpIcon, BookOpenIcon, BrainIcon, PlusIcon } from "lucide-react";
 import type { FileUIPart } from "ai";
 
@@ -10,7 +10,6 @@ import {
   PromptInputBody,
   PromptInputButton,
   PromptInputFooter,
-  PromptInputHeader,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
@@ -28,7 +27,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { getOS } from "@/utils";
 
 type Props = {
   placeholder: string;
@@ -52,10 +50,6 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
       setDeepThink(false);
     }
   }, [isChatMode, deepThink]);
-
-  const enterTip = useMemo(() => {
-    return `Enter 发送，${getOS() === "Mac" ? "Command" : "Ctrl"} + Enter 换行`;
-  }, []);
 
   const canSend = Boolean(question) && !disabled;
 
@@ -115,26 +109,16 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
           multiple
           onSubmit={handleSubmit}
         >
-          {/* 顶部模式标签（仅首页 showBtn=true 时显示） */}
-          {showBtn && product ? (
-            <PromptInputHeader className="border-b border-border/50 px-3 pt-3 pb-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/60 px-3 py-1 text-foreground text-xs">
-                <i className={cn("font_family text-[14px]", product.img, product.color)} />
-                <span className="font-medium">{product.name}</span>
-              </div>
-            </PromptInputHeader>
-          ) : null}
-
           <PromptInputBody>
             {/* 已选附件列表 */}
-            <PromptInputAttachments className="px-3 pt-2">
+            <PromptInputAttachments className="px-4 pt-3">
               {(file) => <PromptInputAttachment key={file.id} data={file} />}
             </PromptInputAttachments>
 
             <PromptInputTextarea
               className={cn(
-                "px-3 text-sm leading-6",
-                size === "big" ? "min-h-28 pt-3 text-[15px]" : "min-h-20"
+                "px-4 text-sm leading-6 placeholder:text-muted-foreground/60",
+                size === "big" ? "min-h-28 pt-4 text-[15px]" : "min-h-20 pt-3"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}
@@ -146,14 +130,19 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
             />
           </PromptInputBody>
 
-          <PromptInputFooter className="justify-between gap-3 border-t border-border/50 px-3 pt-2 pb-3">
+          <PromptInputFooter className="justify-between gap-3 px-4 pb-4 pt-1">
             {/* 左侧：+ 按钮 + 深度研究 + 知识库 */}
             <PromptInputTools className="flex-wrap gap-2">
               {/* + 附件按钮（始终显示） */}
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger>
-                  <PromptInputButton size="icon-sm" variant="ghost" disabled={disabled}>
-                    <PlusIcon className="size-4" />
+                  <PromptInputButton
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    className="rounded-full hover:bg-muted"
+                  >
+                    <PlusIcon className="size-5" />
                   </PromptInputButton>
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent>
@@ -208,17 +197,16 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
               ) : null}
             </PromptInputTools>
 
-            {/* 右侧：enter 提示 + 发送按钮 */}
+            {/* 右侧：发送按钮 */}
             <PromptInputTools className="shrink-0 gap-2">
-              <span className="text-muted-foreground text-xs">{enterTip}</span>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
-                    className="rounded-full"
+                    className="rounded-full size-9 shadow-sm"
                     disabled={!canSend}
                     variant="default"
                   >
-                    <ArrowUpIcon className="size-4" />
+                    <ArrowUpIcon className="size-5" />
                   </PromptInputSubmit>
                 </TooltipTrigger>
                 <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
