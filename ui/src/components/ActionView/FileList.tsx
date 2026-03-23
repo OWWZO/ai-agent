@@ -2,11 +2,22 @@ import { copyText, downloadFile, formatTimestamp, showMessage } from "@/utils";
 import { keyBy } from "lodash";
 import React, { useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
-import classNames from "classnames";
 import { FileRenderer, HTMLRenderer, PanelItemType, TableRenderer } from "../ActionPanel";
-import { Empty, Tooltip } from "antd";
 import { useBoolean, useMemoizedFn } from "ahooks";
 import LoadingSpinner from "../LoadingSpinner";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  FileText,
+  Download,
+  Copy,
+  ChevronRight,
+  FileSpreadsheet,
+  FileCode,
+  FileIcon,
+} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type FileItem = {
   name: string;
@@ -18,22 +29,40 @@ type FileItem = {
 
 const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis'];
 
-const FileList: GenieType.FC<{
+const getFileIcon = (type: string) => {
+  switch (type) {
+    case 'csv':
+    case 'xlsx':
+    case 'xls':
+      return <FileSpreadsheet className="h-4 w-4 text-emerald-500" />;
+    case 'html':
+    case 'code':
+      return <FileCode className="h-4 w-4 text-blue-500" />;
+    case 'md':
+    case 'markdown':
+    case 'txt':
+      return <FileText className="h-4 w-4 text-gray-500" />;
+    default:
+      return <FileIcon className="h-4 w-4 text-gray-400" />;
+  }
+};
+
+const FileList: React.FC<{
   taskList?: PanelItemType[];
   activeFile?: CHAT.TFile;
   clearActiveFile?: () => void;
 }> = (props) => {
   const { taskList, clearActiveFile, activeFile } = props;
 
-  const [ activeItem, setActiveItem ] = useState<string | undefined>();
-  const [ copying, { setFalse: stopCopying, setTrue: startCopying } ] = useBoolean(false);
+  const [activeItem, setActiveItem] = useState<string | undefined>();
+  const [copying, { setFalse: stopCopying, setTrue: startCopying }] = useBoolean(false);
 
   const clearActive = useMemoizedFn(() => {
     clearActiveFile?.();
     setActiveItem(undefined);
   });
 
-  const {list: fileList, map: fileMap } = useMemo(() => {
+  const { list: fileList, map: fileMap } = useMemo(() => {
     let map: Record<string, FileItem> = {};
     const list = (taskList || []).reduce<FileItem[]>((pre, task) => {
       const { resultMap } = task;
@@ -50,109 +79,150 @@ const FileList: GenieType.FC<{
           };
         });
         pre.push(...fileInfo.filter((item) => !map[item.name]));
-
-        map = keyBy(pre, 'fileName');
+        map = keyBy(pre, 'name');
       }
       return pre;
     }, []);
-    return {
-      list,
-      map
-    };
+    return { list, map };
   }, [taskList]);
-  // 当前选中的文件
+
   const fileItem = activeFile || (activeItem ? fileMap[activeItem] : undefined);
-  const generateQuery = (name?: string, noHover?: boolean, click?: () => void) => {
-    return <div className="flex-1 flex items-center w-0 h-full">
-      <span
-        className={classNames("cursor-pointer text-ellipsis whitespace-nowrap overflow-hidden", {'hover:font-medium': !noHover})}
-        onClick={click || (() => setActiveItem(name))}
-      >
-        {name}
-      </span>
-    </div>;
-  };
 
-  let content: React.ReactNode = fileList.map((item) => (
-    <div key={item.name} className="flex items-center pb-[16px]">
-      <i className="font_family icon-rizhi mr-6"></i>
-      {generateQuery(item.name)}
-      <div className="text-[12px] text-[#8d8da5]">
-        { item.messageTime}
+  const copy = useMemoizedFn(async () => {
+    if (!fileItem?.url) return;
+    startCopying();
+    try {
+      const response = await fetch(fileItem.url);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const data = await response.text();
+      copyText(data);
+      showMessage()?.success('复制成功');
+    } finally {
+      stopCopying();
+    }
+  });
+
+  // File List View
+  if (!fileItem) {
+    if (!fileList?.length) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <Card className="w-64 border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
+                <FileText className="h-5 w-5 text-[#86868b]" />
+              </div>
+              <p className="text-sm font-medium text-[#1d1d1f]">暂无文件</p>
+              <p className="mt-1 text-xs text-[#86868b]">任务生成的文件将在这里显示</p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-full overflow-auto p-4">
+        <div className="space-y-2">
+          {fileList.map((item) => (
+            <Card
+              key={item.name}
+              className="group cursor-pointer border-[#e8e8ed] bg-white/80 transition-all duration-200 hover:border-[#d2d2d7] hover:bg-white hover:shadow-sm"
+              onClick={() => setActiveItem(item.name)}
+            >
+              <CardContent className="flex items-center gap-3 p-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f5f7]">
+                  {getFileIcon(item.type)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-[#1d1d1f]">
+                    {item.name}
+                  </p>
+                  <p className="text-xs text-[#86868b]">{item.messageTime}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
-    </div>
-  ));
-
-  if (!fileList?.length) {
-    content = <Empty />;
+    );
   }
 
-  if (fileItem) {
+  // File Detail View
+  const renderContent = () => {
     switch (fileItem.type) {
       case 'ppt':
       case 'html':
-        content = <HTMLRenderer htmlUrl={fileItem.url} className="h-full" />;
-        break;
+        return <HTMLRenderer htmlUrl={fileItem.url} className="h-full" />;
       case 'csv':
       case 'xlsx':
-        content = <TableRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
-        break;
+        return <TableRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
       default:
-        content = <FileRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
-        break;
+        return <FileRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
     }
-  }
+  };
 
-  const copy = useMemoizedFn(async () => {
-    if (!fileItem?.url) {
-      return;
-    }
-    startCopying();
-    const response = await fetch(fileItem.url);
-    if (!response.ok) {
-      stopCopying();
-      throw new Error('Network response was not ok');
-    }
-    const data = await response.text();
+  return (
+    <ActionViewFrame
+      className="bg-white/50"
+      titleNode={
+        <div className="flex items-center gap-2 min-w-0">
+          {getFileIcon(fileItem.type)}
+          <span className="truncate">{fileItem.name}</span>
+        </div>
+      }
+      onClickTitle={clearActive}
+    >
+      <TooltipProvider>
+        <div className="flex items-center justify-end gap-1 px-4 py-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
+                onClick={() => downloadFile(fileItem.url.replace('preview', 'download'), fileItem.name)}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>下载</p>
+            </TooltipContent>
+          </Tooltip>
 
-    const copyData = data;
+          {!['xlsx', 'xls'].includes(fileItem.type) && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
+                  onClick={copy}
+                  disabled={copying}
+                >
+                  {copying ? (
+                    <LoadingSpinner className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>复制</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </TooltipProvider>
 
-    // const parts = fileItem.name?.split('.');
-    // const suffix = parts[parts.length - 1];
-    // this.activeFileContent = data
-    // const copyData = suffix === 'md' || suffix === 'txt' ? data : `\`\`\`${suffix}\n${data}\n\`\`\``;
-    // this.markDownContent = this.md.render(
-    //   suffix === 'md' || suffix === 'txt'
-    //     ? data
-    //     : `\`\`\`${suffix}\n${data}\n\`\`\``
-    // )
-    copyText(copyData);
-    stopCopying();
-    showMessage()?.success('复制成功');
-  });
+      <Separator className="bg-[#e8e8ed]" />
 
-  return <ActionViewFrame
-    className="p-16 overflow-y-auto"
-    titleNode={fileItem && <>
-      {generateQuery(fileItem?.name, true, clearActive)}
-      <div className="flex items-center">
-        <Tooltip title="下载">
-          <i
-            className="font_family rounded-[4px] size-20 flex items-center justify-center icon-xiazai mr-6 cursor-pointer hover:bg-gray-200"
-            onClick={() => downloadFile(fileItem?.url.replace('preview', 'download'), fileItem.name)}
-          ></i>
-        </Tooltip>
-        {/* excel文件不支持复制 */}
-        {!['xlsx', 'xls'].includes(fileItem.type) && <Tooltip title="复制" placement="top">
-          {copying ? <LoadingSpinner /> : <i className="font_family rounded-[4px] size-20 flex items-center justify-center icon-fuzhi cursor-pointer hover:bg-gray-200" onClick={copy}></i>}
-        </Tooltip>}
+      <div className="flex-1 overflow-auto p-4">
+        {renderContent()}
       </div>
-    </>}
-    onClickTitle={() => clearActive()}
-  >
-    {content}
-  </ActionViewFrame>;
+    </ActionViewFrame>
+  );
 };
 
 export default FileList;
-

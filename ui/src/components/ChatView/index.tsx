@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { handleTaskData, combineData } from "@/utils/chat";
@@ -9,13 +9,13 @@ import ActionView from "@/components/ActionView";
 import { RESULT_TYPES, productList, defaultProduct } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
-import Logo from "../Logo";
 import { Modal } from "antd";
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { PanelLeftClose, PanelRightClose } from "lucide-react";
 
 type Props = {
   inputInfo: CHAT.TInputInfo;
@@ -89,7 +89,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
       thought: "",
       response: "",
       taskStatus: 0,
-      tip: "已接收到你的任务，将立刻开始处理...",
+      tip: "",
       multiAgent: { tasks: [] },
     };
   };
@@ -375,51 +375,324 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
   const headerTitle = conversation.chatTitle || conversation.title;
 
+  // 50/50 布局拖拽调整大小功能
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50); // 百分比
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(50);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartXRef.current = e.clientX;
+    dragStartWidthRef.current = leftPanelWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [leftPanelWidth]);
+
+  useEffect(() => {
+    const handleDragMove = (e: MouseEvent) => {
+      if (!isDragging || !containerRef.current) return;
+      const containerWidth = containerRef.current.offsetWidth;
+      const deltaPixels = e.clientX - dragStartXRef.current;
+      const deltaPercent = (deltaPixels / containerWidth) * 100;
+      const newWidth = Math.max(30, Math.min(70, dragStartWidthRef.current + deltaPercent));
+      setLeftPanelWidth(newWidth);
+    };
+
+    const handleDragEnd = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+
+    if (isDragging) {
+      document.addEventListener("mousemove", handleDragMove);
+      document.addEventListener("mouseup", handleDragEnd);
+    }
+
+    return () => {
+      document.removeEventListener("mousemove", handleDragMove);
+      document.removeEventListener("mouseup", handleDragEnd);
+    };
+  }, [isDragging]);
+
+  // 切换左右面板显示/隐藏
+  const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
+  const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+
+  const toggleLeftPanel = useCallback(() => {
+    setIsLeftCollapsed((prev) => !prev);
+    if (isLeftCollapsed) {
+      setLeftPanelWidth(50);
+    }
+  }, [isLeftCollapsed]);
+
+  const toggleRightPanel = useCallback(() => {
+    setIsRightCollapsed((prev) => !prev);
+    if (isRightCollapsed) {
+      setShowAction(true);
+    } else {
+      setShowAction(false);
+    }
+  }, [isRightCollapsed]);
+
   const renderMultAgent = () => {
-    return (
-      <div className="h-full w-full flex items-stretch gap-4 px-4 md:px-6 pb-4">
-        <div
-          className={classNames("min-w-0 flex flex-col flex-1 rounded-[14px] bg-transparent", {
-            "max-w-[980px] mx-auto": !showAction,
-            "basis-[58%]": showAction,
-          })}
-          id="chat-view"
-        >
-          <div className="px-3 md:px-5 pt-6 md:pt-8">
-            <div className="w-full flex justify-between">
-              <div className="w-full flex items-center pb-6">
-                <Logo />
-                <div className="overflow-hidden whitespace-nowrap text-ellipsis text-[16px] font-[500] text-[#27272A] mr-8">
+    // 如果没有工作空间内容，显示单面板
+    if (!showAction) {
+      return (
+        <div className="flex h-full w-full justify-center p-4 lg:p-6">
+          <div
+            className="flex min-h-0 w-full max-w-[1200px] flex-col overflow-hidden rounded-[28px] border border-[#e8e8ed] bg-white/80 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl"
+            id="chat-view"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#e8e8ed] px-6 py-5">
+              <div className="flex min-w-0 items-center gap-4">
+                <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
                   {headerTitle}
-                </div>
+                </h2>
                 {conversation.deepThink && (
-                  <div className="rounded-[4px] px-6 border-1 border-solid border-gray-300 flex items-center shrink-0">
-                    <i className="font_family icon-shendusikao mr-6 text-[12px]"></i>
-                    <span className="ml-[-4px]">深度研究</span>
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#1d1d1f] px-3 py-1.5 text-[13px] font-medium text-white shadow-sm">
+                    <i className="font_family icon-shendusikao text-[12px]"></i>
+                    <span>深度研究</span>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Messages */}
+            <div className="flex min-h-0 flex-1 flex-col px-6 pt-6">
+              <Conversation className="chat-fade-bottom mb-6 flex-1">
+                <ConversationContent className="space-y-6">
+                  {conversation.chatList.map((chat) => (
+                    <div key={chat.requestId} className="animate-fade-in">
+                      <Dialogue
+                        chat={chat}
+                        deepThink={conversation.deepThink}
+                        changeTask={changeTask}
+                        changeFile={changeFile}
+                        changePlan={changePlan}
+                        onRegenerate={handleRegenerate}
+                      />
+                    </div>
+                  ))}
+                </ConversationContent>
+                <ConversationScrollButton />
+              </Conversation>
+
+              {/* Input */}
+              <div className="pb-6">
+                <GeneralInput
+                  placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+                  showBtn={false}
+                  size="medium"
+                  disabled={loading}
+                  product={currentProduct}
+                  send={(info) =>
+                    sendMessage({
+                      ...info,
+                      outputStyle: conversation.productType,
+                      deepThink: conversation.deepThink,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 50/50 双面板布局
+    return (
+      <div
+        ref={containerRef}
+        className="flex h-full w-full gap-0.5 p-2"
+      >
+        {/* Left Panel - Chat Area */}
+        <div
+          className={classNames(
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300",
+            isLeftCollapsed && "w-14 min-w-14",
+            !isLeftCollapsed && "flex-1"
+          )}
+          style={!isLeftCollapsed ? { flex: `0 0 ${leftPanelWidth}%` } : undefined}
+        >
+          {isLeftCollapsed ? (
+            // 折叠状态
+            <div className="flex h-full flex-col items-center py-4">
+              <button
+                onClick={toggleLeftPanel}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+                title="展开聊天区"
+              >
+                <PanelRightClose className="h-5 w-5" />
+              </button>
+            </div>
+          ) : (
+            // 展开状态
+            <>
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[#e8e8ed] px-5 py-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+                    {headerTitle}
+                  </h2>
+                  {conversation.deepThink && (
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#1d1d1f] px-3 py-1 text-[12px] font-medium text-white">
+                      <i className="font_family icon-shendusikao text-[11px]"></i>
+                      <span>深度研究</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={toggleLeftPanel}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+                  title="收起聊天区"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Messages */}
+              <div className="flex min-h-0 flex-1 flex-col px-5 pt-5">
+                <Conversation className="chat-fade-bottom mb-5 flex-1">
+                  <ConversationContent className="space-y-5">
+                    {conversation.chatList.map((chat) => (
+                      <div key={chat.requestId} className="animate-fade-in">
+                        <Dialogue
+                          chat={chat}
+                          deepThink={conversation.deepThink}
+                          changeTask={changeTask}
+                          changeFile={changeFile}
+                          changePlan={changePlan}
+                          onRegenerate={handleRegenerate}
+                        />
+                      </div>
+                    ))}
+                  </ConversationContent>
+                  <ConversationScrollButton />
+                </Conversation>
+
+                {/* Input */}
+                <div className="pb-5">
+                  <GeneralInput
+                    placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+                    showBtn={false}
+                    size="medium"
+                    disabled={loading}
+                    product={currentProduct}
+                    send={(info) =>
+                      sendMessage({
+                        ...info,
+                        outputStyle: conversation.productType,
+                        deepThink: conversation.deepThink,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Drag Handle */}
+        {!isLeftCollapsed && !isRightCollapsed && (
+          <div
+            onMouseDown={handleDragStart}
+            className={classNames(
+              "relative flex w-1 cursor-col-resize items-center justify-center transition-colors",
+              "hover:bg-[#0071e3]/10",
+              isDragging && "bg-[#0071e3]/20"
+            )}
+          >
+            {/* Drag Indicator - 极小设计 */}
+            <div
+              className={classNames(
+                "h-8 w-0.5 rounded-full transition-all duration-200",
+                isDragging
+                  ? "bg-[#0071e3]"
+                  : "bg-[#e8e8ed] hover:bg-[#86868b]"
+              )}
+            />
+          </div>
+        )}
+
+        {/* Right Panel - Action/Workspace Area */}
+        <div
+          className={classNames(
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300",
+            isRightCollapsed && "w-14 min-w-14",
+            !isRightCollapsed && "flex-1"
+          )}
+          style={!isRightCollapsed ? { flex: `0 0 ${100 - leftPanelWidth - (isLeftCollapsed ? 0 : 0)}%` } : undefined}
+        >
+          {isRightCollapsed ? (
+            // 折叠状态
+            <div className="flex h-full flex-col items-center py-4">
+              <button
+                onClick={toggleRightPanel}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+                title="展开工作空间"
+              >
+                <PanelLeftClose className="h-5 w-5" />
+              </button>
+            </div>
+          ) : (
+            // 展开状态 - 工作空间
+            <ActionView
+              activeTask={activeTask}
+              taskList={taskList}
+              plan={plan}
+              ref={actionViewRef}
+              onClose={() => {
+                changeActionStatus(false);
+                setIsRightCollapsed(true);
+              }}
+            />
+          )}
+        </div>
+
+        {contextHolder}
+      </div>
+    );
+  };
+
+  const renderDataAgent = () => {
+    return (
+      <div className="mx-auto flex h-full w-full max-w-[1600px] p-6">
+        <div
+          className={classNames(
+            "mx-auto flex min-h-0 w-full max-w-[1000px] flex-1 flex-col overflow-hidden rounded-[28px] border border-[#e8e8ed] bg-white/80 px-6 pt-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl"
+          )}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-[#e8e8ed] pb-5">
+            <div className="flex min-w-0 items-center gap-4">
+              <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+                {headerTitle}
+              </h2>
+            </div>
           </div>
 
-          <div className="px-3 md:px-5 min-h-0 flex-1 flex flex-col">
-            <Conversation className="flex-1 mb-[20px]">
-              <ConversationContent>
-                {conversation.chatList.map((chat) => (
-                  <div key={chat.requestId}>
-                    <Dialogue
-                      chat={chat}
-                      deepThink={conversation.deepThink}
-                      changeTask={changeTask}
-                      changeFile={changeFile}
-                      changePlan={changePlan}
-                      onRegenerate={handleRegenerate}
-                    />
-                  </div>
-                ))}
-              </ConversationContent>
-              <ConversationScrollButton />
-            </Conversation>
+          {/* Messages */}
+          <Conversation className="chat-fade-bottom mb-6 mt-6 flex-1">
+            <ConversationContent className="space-y-6">
+              {conversation.dataChatList.map((chat, index) => (
+                <div key={`${conversation.id}-${index}`} className="animate-fade-in">
+                  <DataDialogue chat={chat} />
+                </div>
+              ))}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+
+          {/* Input */}
+          <div className="pb-6">
             <GeneralInput
               placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
               showBtn={false}
@@ -427,74 +700,15 @@ const ChatView: GenieType.FC<Props> = (props) => {
               disabled={loading}
               product={currentProduct}
               send={(info) =>
-                sendMessage({
+                sendDataMessage({
                   ...info,
-                  outputStyle: conversation.productType,
-                  deepThink: conversation.deepThink,
+                  outputStyle: "dataAgent",
+                  deepThink: false,
                 })
               }
             />
           </div>
         </div>
-        {contextHolder}
-        <div
-          className={classNames("transition-all min-w-0", {
-            "opacity-0 overflow-hidden": !showAction,
-            "w-0": !showAction,
-            "w-[460px] min-w-[400px] max-w-[560px]": showAction,
-          })}
-        >
-          <ActionView
-            activeTask={activeTask}
-            taskList={taskList}
-            plan={plan}
-            ref={actionViewRef}
-            onClose={() => changeActionStatus(false)}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const renderDataAgent = () => {
-    return (
-      <div
-        className={classNames(
-          "flex flex-col flex-1 w-0 max-w-[980px] mx-auto px-4 md:px-6 pt-6 md:pt-8 pb-4"
-        )}
-      >
-        <div className="w-full flex justify-between">
-          <div className="w-full flex items-center pb-6">
-            <Logo />
-            <div className="overflow-hidden whitespace-nowrap text-ellipsis text-[16px] font-[500] text-[#27272A] mr-8">
-              {headerTitle}
-            </div>
-          </div>
-        </div>
-        <Conversation className="flex-1 mb-[20px]">
-          <ConversationContent>
-            {conversation.dataChatList.map((chat, index) => (
-              <div key={`${conversation.id}-${index}`}>
-                <DataDialogue chat={chat} />
-              </div>
-            ))}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-        <GeneralInput
-          placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
-          showBtn={false}
-          size="medium"
-          disabled={loading}
-          product={currentProduct}
-          send={(info) =>
-            sendDataMessage({
-              ...info,
-              outputStyle: "dataAgent",
-              deepThink: false,
-            })
-          }
-        />
       </div>
     );
   };
@@ -503,7 +717,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
     conversation.productType === "dataAgent" && !conversation.deepThink;
 
   return (
-    <div className="h-full w-full flex justify-center">
+    <div className="flex h-full w-full justify-center">
       {isDataConversation ? renderDataAgent() : renderMultAgent()}
     </div>
   );

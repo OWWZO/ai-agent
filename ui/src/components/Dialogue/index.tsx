@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CopyIcon, CheckIcon, RefreshCwIcon, MoreHorizontalIcon } from "lucide-react";
+import MessageSkeleton from "./MessageSkeleton";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -39,18 +40,18 @@ type Props = {
 };
 
 const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
-  <div>
-    <div className="text-[16px] font-[600] mb-[8px]">任务计划</div>
+  <div className="space-y-4">
+    <div className="text-[15px] font-semibold text-[#1d1d1f]">任务计划</div>
     {plan.map((p, i) => (
-      <div key={i} className="mb-[8px]">
-        <div className="h-[22px] text-[#2029459E] text-[15px] font-[500] flex items-center mb-[5px]">
-          <div className="w-[6px] h-[6px] rounded-[50%] bg-[#27272a] mx-8"></div>
+      <div key={i} className="rounded-[16px] bg-white/50 p-4">
+        <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-[#1d1d1f]">
+          <div className="h-2 w-2 rounded-full bg-[#0071e3]"></div>
           {p.name}
         </div>
-        <div className="ml-[22px] text-[15px]">
+        <div className="space-y-2 pl-5">
           {p.list.map((step, j) => (
-            <div key={j} className="leading-[22px]">
-              {j + 1}.{step}
+            <div key={j} className="text-[14px] text-[#86868b]">
+              {j + 1}. {step}
             </div>
           ))}
         </div>
@@ -71,15 +72,15 @@ const ToolItem: FC<{
       const completedIndex = tool.plan?.stepStatus.lastIndexOf("completed") || 0;
       return (
         <div
-          className="mt-[8px] flex items-center px-10 py-6 bg-[#F2F3F7] w-fit rounded-[16px] cursor-pointer overflow-hidden  max-w-full"
+          className="mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
           onClick={() => changePlan?.()}
         >
-          <i className={`font_family ${getIcon(tool.messageType)}`}></i>
-          <div className="px-8 flex items-center overflow-hidden">
-            <div className="shrink-1">已完成</div>
-            <div className="text-[#2029459E] text-[13px] flex-1 overflow-hidden whitespace-nowrap text-ellipsis ml-[8px]">
+          <i className={`font_family ${getIcon(tool.messageType)} text-[#0071e3]`}></i>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="shrink-0 text-[14px] font-medium text-[#1d1d1f]">已完成</span>
+            <span className="truncate text-[13px] text-[#86868b]">
               {tool.plan?.steps[completedIndex]}
-            </div>
+            </span>
           </div>
         </div>
       );
@@ -135,11 +136,11 @@ const ToolItem: FC<{
           loadingType.includes(tool.messageType));
       return (
         <div
-          className="mt-[8px] flex items-center px-10 py-6 bg-[#F2F3F7] w-fit rounded-[16px] cursor-pointer overflow-hidden max-w-full"
+          className="mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
           onClick={() => changeActiveChat(tool)}
         >
           {loading ? (
-            <LoadingSpinner color="#F2F3F7"/>
+            <LoadingSpinner color="#0071e3"/>
           ) : (
             <i
               className={`font_family ${getIcon(
@@ -147,14 +148,14 @@ const ToolItem: FC<{
                   tool.resultMap.messageType === "report"
                   ? "file"
                   : tool.messageType
-              )}`}
+              )} text-[#0071e3]`}
             ></i>
           )}
-          <div className="px-8 flex items-center overflow-hidden">
-            <div className="shrink-0">{actionInfo.action}</div>
-            <div className="text-[#2029459E] text-[13px] overflow-hidden whitespace-nowrap text-ellipsis flex-1 ml-[8px]">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="shrink-0 text-[14px] font-medium text-[#1d1d1f]">{actionInfo.action}</span>
+            <span className="truncate text-[13px] text-[#86868b]">
               {actionInfo.name}
-            </div>
+            </span>
           </div>
         </div>
       );
@@ -199,18 +200,18 @@ const TimeLine: FC<{
     {chat.tasks.map((t, i) => {
       const lastTask = i === chat.tasks.length - 1;
       return (
-        <div className="w-full flex" key={i}>
+        <div className="flex w-full" key={i}>
           {!isReactType ? (
-            <div className="w-[30px] mt-[2px] mb-[8px] relative shrink-0 overflow-hidden">
+            <div className="relative mb-2 mt-1 w-8 shrink-0 overflow-hidden">
               {lastTask && chat.loading ? (
                 <LoadingSpinner/>
               ) : (
-                <i className="font_family icon-yiwanchengtianchong text-[#4040ff] text-[16px] absolute top-[-4px] left-0"></i>
+                <i className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[#0071e3]"></i>
               )}
-              <div className="h-full w-[1px] border-dashed border-l-[1px] border-[#e0e0e9] ml-[7px] "></div>
+              <div className="ml-[7px] h-full border-l border-dashed border-[#e8e8ed]"></div>
             </div>
           ) : null}
-          <div className="flex-1 mb-[8px] overflow-hidden">
+          <div className="mb-2 flex-1 overflow-hidden">
             <TimeLineContent
               tasks={t}
               isReactType={isReactType}
@@ -263,19 +264,19 @@ const Dialogue: FC<Props> = (props) => {
   }, [chat.response]);
 
   return (
-    <div className="h-full text-[14px] font-normal flex flex-col text-[#27272a]">
+    <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
       {/* 附件 */}
       {(chat.files || []).length ? (
-        <div className="w-full mt-[24px] justify-end">
+        <div className="mt-6 flex w-full justify-end">
           <AttachmentList files={chat.files} preview={false} />
         </div>
       ) : null}
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="w-full mt-[24px] flex justify-end">
-          <Message from="user" className="max-w-[80%]">
-            <MessageContent className="group-[.is-user]:bg-[#4040FFB2] group-[.is-user]:text-white">
+        <div className="mt-6 flex w-full justify-end">
+          <Message from="user" className="max-w-[82%]">
+            <MessageContent>
               {chat.query}
             </MessageContent>
           </Message>
@@ -284,18 +285,20 @@ const Dialogue: FC<Props> = (props) => {
 
       {/* 提示 */}
       {chat.tip ? (
-        <div className="w-full rounded-[12px] mt-[24px]">{chat.tip}</div>
+        <div className="mt-5 w-full rounded-[16px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 text-[14px] text-[#86868b]">
+          {chat.tip}
+        </div>
       ) : null}
 
       {/* AI 回复（Markdown） */}
       {chat.response ? (
-        <div className="w-full mt-[24px] flex justify-start">
-          <Message from="assistant" className="max-w-[80%]">
+        <div className="mt-6 flex w-full justify-start">
+          <Message from="assistant" className="w-full max-w-full">
             <MessageContent>
-              <MessageResponse>{chat.response}</MessageResponse>
+              <MessageResponse isStreaming={chat.loading}>{chat.response}</MessageResponse>
             </MessageContent>
             {!chat.loading ? (
-              <MessageActions className="ml-1 mt-1">
+              <MessageActions className="mt-2">
                 <MessageAction tooltip="复制" onClick={handleCopy}>
                   {copied
                     ? <CheckIcon className="size-4" />
@@ -322,7 +325,7 @@ const Dialogue: FC<Props> = (props) => {
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && chat.thought ? (
-        <div className="w-full mt-[24px]">
+        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <Reasoning isStreaming={chat.loading && !chat.response}>
             <ReasoningTrigger />
             <ReasoningContent>{chat.thought}</ReasoningContent>
@@ -332,14 +335,14 @@ const Dialogue: FC<Props> = (props) => {
 
       {/* 任务计划 */}
       {!isReactType && chat.planList?.length ? (
-        <div className="w-full px-12 py-8 rounded-[12px] mt-[24px] bg-[#F2F3F7]">
+        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-6 py-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <PlanSection plan={chat.planList} />
         </div>
       ) : null}
 
       {/* 任务时间线 */}
       {chat.tasks.length ? (
-        <div className="w-full mt-[24px]">
+        <div className="mt-6 w-full">
           <TimeLine
             chat={chat}
             isReactType={isReactType}
@@ -358,7 +361,11 @@ const Dialogue: FC<Props> = (props) => {
       ) : null}
 
       {/* 加载中 */}
-      {chat.loading ? <LoadingDot /> : null}
+      {chat.loading ? (
+        <div className="mt-4 flex w-full justify-start">
+          {chat.response ? <LoadingDot /> : <MessageSkeleton />}
+        </div>
+      ) : null}
     </div>
   );
 };

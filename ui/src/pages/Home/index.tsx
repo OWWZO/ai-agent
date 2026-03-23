@@ -1,14 +1,15 @@
-import { useState, useCallback, memo, useRef, useEffect, useMemo } from "react";
-import GeneralInput from "@/components/GeneralInput";
+﻿import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Drawer, Image } from "antd";
+import classNames from "classnames";
+
 import ChatView from "@/components/ChatView";
+import GeneralInput from "@/components/GeneralInput";
 import DataListDrawer from "@/components/DataListDrawer";
 import ColsAndDataDrawer from "@/components/DataListDrawer/ColsAndDataDrawer";
-import {
-  productList,
-  defaultProduct,
-  chatQustions,
-  demoList,
-} from "@/utils/constants";
+import ResizableSidebar from "@/components/ResizableSidebar";
+import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
+import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
+import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
 import {
   CHAT_HISTORY_VERSION,
   createConversation,
@@ -16,31 +17,13 @@ import {
   pruneHistory,
   saveHistory,
 } from "@/utils/chatHistory";
-import { Drawer, Image } from "antd";
-import classNames from "classnames";
-import { MenuIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 
 type HomeProps = Record<string, never>;
 
-const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
-const EMPTY_INPUT: CHAT.TInputInfo = {
-  message: "",
-  deepThink: false,
-};
-
-const outputDescMap: Record<string, string> = {
-  html: "生成可交互的 HTML 网页报告",
-  docs: "以 Markdown 格式输出结构化文档",
-  ppt: "自动生成可演示的 PPT 文档",
-  table: "以结构化表格形式呈现结论",
-};
-
-const tagColorMap: Record<string, string> = {
-  专业研究: "bg-[rgba(64,64,255,0.08)] text-[#4040ff]",
-  数据分析: "bg-[rgba(16,185,129,0.08)] text-[#059669]",
-  竞品调研: "bg-[rgba(245,158,11,0.08)] text-[#d97706]",
+type InitialState = {
+  conversations: CHAT.ConversationHistory[];
+  currentConversationId: string;
+  productType: string;
 };
 
 type CaseCardProps = {
@@ -55,88 +38,23 @@ type CaseCardProps = {
   onCloseVideo: () => void;
 };
 
-const CaseCard = memo(
-  ({
-    title,
-    description,
-    tag,
-    image,
-    url,
-    videoUrl,
-    videoModalOpen,
-    onOpenVideo,
-    onCloseVideo,
-  }: CaseCardProps) => {
-    const tagColor = tagColorMap[tag] ?? "bg-gray-100 text-gray-500";
-    return (
-      <div className="group flex flex-col rounded-2xl bg-white shadow-[0_2px_16px_rgba(64,64,255,0.06)] hover:shadow-[0_12px_36px_rgba(64,64,255,0.14)] hover:-translate-y-[6px] transition-all duration-300 ease-in-out cursor-pointer w-[210px] shrink-0 border border-[rgba(233,233,240,0.9)] overflow-hidden">
-        <div className="relative overflow-hidden h-[148px]">
-          <img
-            src={image}
-            className="w-full h-full object-cover group-hover:scale-[1.06] transition-transform duration-500 ease"
-          />
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-transparent group-hover:bg-[rgba(0,0,0,0.45)] transition-all duration-300"
-            onClick={() => onOpenVideo(videoUrl)}
-          >
-            <div className="opacity-0 group-hover:opacity-100 w-[44px] h-[44px] rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/50 transition-all duration-300 scale-75 group-hover:scale-100">
-              <i className="font_family icon-bofang text-[#fff] text-[18px] ml-[2px]"></i>
-            </div>
-          </div>
-          <Image
-            style={{ display: "none" }}
-            preview={{
-              visible: videoModalOpen === videoUrl,
-              destroyOnHidden: true,
-              imageRender: () => <video muted width="80%" controls autoPlay src={videoUrl} />,
-              toolbarRender: () => null,
-              onVisibleChange: onCloseVideo,
-            }}
-            src={image}
-          />
-        </div>
-        <div className="p-[16px] flex flex-col gap-[8px]">
-          <div className="flex items-center justify-between gap-[8px]">
-            <div className="text-[14px] font-bold text-[#18181b] truncate">{title}</div>
-            <span
-              className={`shrink-0 inline-block px-[8px] leading-[22px] text-[11px] rounded-[6px] font-medium ${tagColor}`}
-            >
-              {tag}
-            </span>
-          </div>
-          <div className="text-[12px] text-[#71717a] line-clamp-2 leading-[20px]">{description}</div>
-          <div
-            className="text-[#4040ff] group-hover:text-[#656cff] text-[12px] flex items-center gap-[3px] cursor-pointer transition-colors duration-200 pt-[2px]"
-            onClick={() => window.open(url)}
-          >
-            <span>查看报告</span>
-            <i className="font_family icon-xinjianjiantou text-[10px]"></i>
-          </div>
-        </div>
-      </div>
-    );
-  }
-);
-
-type InitialState = {
-  conversations: CHAT.ConversationHistory[];
-  currentConversationId: string;
-  productType: string;
+const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
+const EMPTY_INPUT: CHAT.TInputInfo = {
+  message: "",
+  deepThink: false,
 };
 
-const createInitialState = (): InitialState => {
-  const initialProduct = productList.find((item) => item.type === "html") ?? defaultProduct;
-  const loaded = loadHistory().conversations;
-  const seeded =
-    loaded.length > 0
-      ? pruneHistory(loaded)
-      : [createConversation({ productType: initialProduct.type, deepThink: false })];
-  const latest = [...seeded].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  return {
-    conversations: seeded,
-    currentConversationId: latest.id,
-    productType: latest.productType || initialProduct.type,
-  };
+const outputDescMap: Record<string, string> = {
+  html: "Generate interactive HTML report",
+  docs: "Output structured markdown document",
+  ppt: "Generate PPT-style presentation",
+  table: "Output structured table results",
+};
+
+const tagColorMap: Record<string, string> = {
+  专业研究: "bg-[#f3f4f6] text-[#374151]",
+  数据分析: "bg-[#ecfeff] text-[#0f766e]",
+  竞品调研: "bg-[#fff7ed] text-[#c2410c]",
 };
 
 const getModeName = (type: string) => {
@@ -156,52 +74,127 @@ const formatHistoryTime = (timestamp: number) => {
   }
 };
 
+const createInitialState = (): InitialState => {
+  const initialProduct = productList.find((item) => item.type === "html") ?? defaultProduct;
+  const loaded = loadHistory().conversations;
+  const seeded =
+    loaded.length > 0
+      ? pruneHistory(loaded)
+      : [createConversation({ productType: initialProduct.type, deepThink: false })];
+  const latest = [...seeded].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return {
+    conversations: seeded,
+    currentConversationId: latest.id,
+    productType: latest.productType || initialProduct.type,
+  };
+};
+
+const CaseCard = memo((props: CaseCardProps) => {
+  const { title, description, tag, image, url, videoUrl, videoModalOpen, onOpenVideo, onCloseVideo } = props;
+  const tagColor = tagColorMap[tag] ?? "bg-[#f5f5f7] text-[#86868b]";
+
+  return (
+    <div className="group relative flex w-[260px] shrink-0 cursor-pointer flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.02)] transition-all duration-500 ease-out hover:shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] hover:-translate-y-1">
+      {/* Image Container */}
+      <div className="relative h-[160px] overflow-hidden">
+        <img
+          src={image}
+          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+          alt={title}
+        />
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all duration-300 group-hover:bg-black/20"
+          onClick={() => onOpenVideo(videoUrl)}
+        >
+          <div className="flex h-[48px] w-[48px] scale-75 items-center justify-center rounded-full bg-white/90 opacity-0 backdrop-blur-sm shadow-lg transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 hover:bg-white hover:scale-105">
+            <i className="font_family icon-bofang ml-[2px] text-[18px] text-[#1d1d1f]"></i>
+          </div>
+        </div>
+        <Image
+          style={{ display: "none" }}
+          preview={{
+            visible: videoModalOpen === videoUrl,
+            destroyOnHidden: true,
+            imageRender: () => <video muted width="80%" controls autoPlay src={videoUrl} />,
+            toolbarRender: () => null,
+            onVisibleChange: onCloseVideo,
+          }}
+          src={image}
+        />
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-col gap-3 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-[15px] font-semibold leading-tight text-[#1d1d1f] line-clamp-1">{title}</h3>
+          <span className={`inline-block shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${tagColor}`}>{tag}</span>
+        </div>
+        <p className="line-clamp-2 text-[13px] leading-[1.6] text-[#86868b]">{description}</p>
+        <div
+          className="flex cursor-pointer items-center gap-1.5 pt-1 text-[13px] font-medium text-[#0071e3] transition-colors duration-200 hover:text-[#0077ed]"
+          onClick={() => window.open(url)}
+        >
+          <span>查看报告</span>
+          <i className="font_family icon-xinjianjiantou text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const Home: GenieType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
+
   const [conversations, setConversations] = useState<CHAT.ConversationHistory[]>(
     initialRef.current.conversations
   );
   const [currentConversationId, setCurrentConversationId] = useState(
     initialRef.current.currentConversationId
   );
+
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(
-    () =>
-      productList.find((item) => item.type === initialRef.current.productType) ??
-      defaultProduct
+    () => productList.find((item) => item.type === initialRef.current.productType) ?? defaultProduct
   );
+  const [displayOutput, setDisplayOutput] = useState(
+    () => productList.find((item) => item.type === "html") ?? defaultProduct
+  );
+
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
   const [dbsShow, setDbsShow] = useState(false);
   const [dataShow, setDataShow] = useState(false);
   const [outputMenuOpen, setOutputMenuOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
-  const [displayOutput, setDisplayOutput] = useState(
-    () => productList.find((item) => item.type === "html") ?? defaultProduct
-  );
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [curModel, setCurModel] = useState<CHAT.ModelInfo>({
     modelName: "",
     modelCode: "",
     schemaList: [],
   });
+
   const outputMenuRef = useRef<HTMLDivElement>(null);
 
-  const currentConversation = useMemo(() => {
-    return (
-      conversations.find((item) => item.id === currentConversationId) || conversations[0]
-    );
-  }, [conversations, currentConversationId]);
+  const currentConversation = useMemo(
+    () => conversations.find((item) => item.id === currentConversationId) || conversations[0],
+    [conversations, currentConversationId]
+  );
 
-  const sortedConversations = useMemo(() => {
-    return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [conversations]);
+  const sortedConversations = useMemo(
+    () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+    [conversations]
+  );
 
   const hasConversationContent = useMemo(() => {
     if (!currentConversation) return false;
-    return (
-      currentConversation.chatList.length > 0 ||
-      currentConversation.dataChatList.length > 0
-    );
+    return currentConversation.chatList.length > 0 || currentConversation.dataChatList.length > 0;
   }, [currentConversation]);
+
+  // 自动折叠侧边栏：进入对话后自动折叠
+  useEffect(() => {
+    if (hasConversationContent) {
+      setIsSidebarCollapsed(true);
+    }
+  }, [hasConversationContent]);
 
   useEffect(() => {
     if (!currentConversation) return;
@@ -224,17 +217,14 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      saveHistory({
-        version: CHAT_HISTORY_VERSION,
-        conversations,
-      });
+      saveHistory({ version: CHAT_HISTORY_VERSION, conversations });
     }, 700);
     return () => window.clearTimeout(timer);
   }, [conversations]);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (outputMenuRef.current && !outputMenuRef.current.contains(e.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (outputMenuRef.current && !outputMenuRef.current.contains(event.target as Node)) {
         setOutputMenuOpen(false);
       }
     };
@@ -277,10 +267,8 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
       setHistoryDrawerOpen(false);
       return;
     }
-    const next = createConversation({
-      productType: product.type,
-      deepThink: false,
-    });
+
+    const next = createConversation({ productType: product.type, deepThink: false });
     setConversations((prev) => pruneHistory([next, ...prev]));
     setCurrentConversationId(next.id);
     setInputInfo({ ...EMPTY_INPUT });
@@ -297,15 +285,13 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
       const outputStyle = info.outputStyle || product.type;
       const isChatMode = outputStyle === "chat";
       const deepThink = isChatMode ? false : info.deepThink;
+
       updateCurrentConversationMeta({
         productType: outputStyle,
         deepThink,
       });
-      setInputInfo({
-        ...info,
-        outputStyle,
-        deepThink,
-      });
+
+      setInputInfo({ ...info, outputStyle, deepThink });
     },
     [currentConversation, product.type, updateCurrentConversationMeta]
   );
@@ -320,19 +306,6 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     },
     [changeInputInfo]
   );
-
-  const showDetail = useCallback((modelInfo: CHAT.ModelInfo) => {
-    setCurModel(modelInfo);
-    setDataShow(true);
-  }, []);
-
-  const handleOpenVideo = useCallback((url: string) => {
-    setVideoModalOpen(url);
-  }, []);
-
-  const handleCloseVideo = useCallback(() => {
-    setVideoModalOpen(undefined);
-  }, []);
 
   const handleSelectConversation = useCallback((conversationId: string) => {
     setCurrentConversationId(conversationId);
@@ -352,10 +325,8 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           }
           return filtered;
         }
-        const fallback = createConversation({
-          productType: product.type,
-          deepThink: false,
-        });
+
+        const fallback = createConversation({ productType: product.type, deepThink: false });
         setCurrentConversationId(fallback.id);
         setInputInfo({ ...EMPTY_INPUT });
         return [fallback];
@@ -379,6 +350,19 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     [currentConversation, updateCurrentConversationMeta]
   );
 
+  const threadListItems = useMemo<LocalThreadListItem[]>(
+    () =>
+      sortedConversations.map((item) => ({
+        id: item.id,
+        title: item.chatTitle || item.title || "新对话",
+        subtitle: getModeName(item.productType),
+        timestamp: formatHistoryTime(item.updatedAt),
+        updatedAt: item.updatedAt,
+        isActive: item.id === currentConversationId,
+      })),
+    [currentConversationId, sortedConversations]
+  );
+
   const primaryProducts = useMemo(
     () => productList.filter((item) => !OUTPUT_TYPES.includes(item.type)),
     []
@@ -387,325 +371,255 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     () => productList.filter((item) => OUTPUT_TYPES.includes(item.type)),
     []
   );
-  const isOutputActive = product.type === displayOutput.type;
 
-  const renderHistoryList = (isMobile = false) => {
-    return (
-      <div className={classNames("h-full flex flex-col", isMobile ? "p-0" : "p-12")}>
-        <Button
-          variant="outline"
-          className="w-full h-[40px] mb-12 text-[#4040ff] border-[#E9E9F0] hover:bg-[#f7f7fb] hover:text-[#4040ff]"
-          onClick={createNewChat}
-        >
-          <PlusIcon size={14} />
-          新建对话
-        </Button>
-        <div className="flex-1 overflow-y-auto no-scrollbar pr-[2px]">
-          {sortedConversations.map((item) => {
-            const isActive = item.id === currentConversationId;
-            const title = item.chatTitle || item.title || "新对话";
-            return (
-              <Card
-                key={item.id}
-                className={classNames(
-                  "mb-8 cursor-pointer transition-all rounded-[12px] bg-white py-0",
-                  isActive
-                    ? "ring-[#cfd0ff] bg-[rgba(64,64,255,0.05)]"
-                    : "ring-[#ececf2] hover:ring-[#d9daf8] hover:bg-[#fafafe]"
-                )}
-                onClick={() => handleSelectConversation(item.id)}
-              >
-                <CardContent className="px-10 py-8">
-                  <div className="flex items-start gap-8">
-                    <div className="text-[13px] text-[#18181b] font-medium truncate flex-1 min-w-0">
-                      {title}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="shrink-0 text-[#a1a1aa] hover:text-[#ef4444] hover:bg-[#fff1f2]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteConversation(item.id);
-                      }}
-                      title="删除会话"
-                      aria-label="删除会话"
-                    >
-                      <Trash2Icon size={13} />
-                    </Button>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between gap-8">
-                    <span className="text-[11px] text-[#72727d] truncate">
-                      {getModeName(item.productType)}
-                    </span>
-                    <span className="text-[11px] text-[#a1a1aa] shrink-0">
-                      {formatHistoryTime(item.updatedAt)}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  const isOutputActive = product.type === displayOutput.type;
 
   const renderWelcome = () => {
     return (
       <div
-        className="pt-[80px] px-16 flex flex-col items-center w-full min-h-full overflow-y-auto"
+        className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24"
         style={{
-          background:
-            "radial-gradient(ellipse 80% 40% at 50% 0%, rgba(196,196,255,0.18) 0%, transparent 70%)",
+          background: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 113, 227, 0.05), transparent 60%)",
         }}
       >
-        <div className="flex flex-col items-center">
-          <h1
-            className="mb-[14px] text-[58px] font-black tracking-[-1.5px] leading-none select-none"
-            style={{
-              background: "linear-gradient(130deg, #4040ff 0%, #a855f7 50%, #06b6d4 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              WebkitFontSmoothing: "antialiased",
-              MozOsxFontSmoothing: "grayscale",
-            }}
-          >
-            Reactor
-          </h1>
-          <p className="text-[15px] text-[#71717a] text-center max-w-[420px] leading-[1.75] mb-[32px]">
-            AI 智能体平台，一句话完成数据分析、研究调查和内容创作
-          </p>
-        </div>
-
-        <div className="w-full max-w-[760px] rounded-xl shadow-[0_18px_39px_0_rgba(198,202,240,0.1)]">
-          <GeneralInput
-            placeholder={product.placeholder}
-            showBtn={true}
-            size="big"
-            disabled={false}
-            product={product}
-            send={changeInputInfo}
-            dbsShow={setDbsShow}
-          />
-        </div>
-
-        <div className="w-full max-w-[760px] flex items-center gap-[8px] mt-[12px]">
-          <div className="relative" ref={outputMenuRef}>
-            <div
-              className={classNames(
-                "h-[36px] px-[16px] cursor-pointer flex items-center gap-[6px] border rounded-[8px] text-[13px] font-medium transition-all duration-200 select-none whitespace-nowrap",
-                isOutputActive
-                  ? "border-[#4040ff] bg-[rgba(64,64,255,0.07)] text-[#4040ff] shadow-[0_0_0_1px_rgba(64,64,255,0.08)]"
-                  : "border-[#E9E9F0] text-[#52525b] hover:border-[#c5c5ff] hover:text-[#4040ff] hover:bg-[rgba(64,64,255,0.02)]",
-                outputMenuOpen &&
-                  !isOutputActive &&
-                  "border-[#c5c5ff] text-[#4040ff] bg-[rgba(64,64,255,0.02)]"
-              )}
-              onClick={() => {
-                if (!isOutputActive) handleSelectProduct(displayOutput);
-                setOutputMenuOpen((v) => !v);
-              }}
+        <div className="mx-auto flex w-full max-w-[960px] flex-col items-center">
+          {/* Hero Section */}
+          <div className="mb-8 text-center">
+            <h1
+              className="mb-4 text-[48px] font-semibold leading-none tracking-[-0.025em] text-[#1d1d1f] md:text-[64px] lg:text-[72px]"
+              style={{ fontFamily: "var(--font-brand)" }}
             >
-              <i className={`font_family ${displayOutput.img} ${displayOutput.color} text-[14px]`}></i>
-              <span>{displayOutput.name}</span>
-              <svg
-                className={classNames("w-[12px] h-[12px] ml-[1px] transition-transform duration-200", {
-                  "rotate-180": outputMenuOpen,
-                })}
-                viewBox="0 0 12 12"
-                fill="none"
-              >
-                <path
-                  d="M2.5 4.5L6 8L9.5 4.5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-
-            {outputMenuOpen && (
-              <div className="absolute left-0 top-[42px] z-50 w-[220px] bg-white rounded-[12px] border border-[#E9E9F0] shadow-[0_8px_32px_rgba(0,0,0,0.10)] p-[6px] animate-in fade-in slide-in-from-top-1 duration-150">
-                {outputProducts.map((item) => {
-                  const isSelected = product.type === item.type;
-                  return (
-                    <div
-                      key={item.type}
-                      className={classNames(
-                        "flex items-start gap-[10px] px-[10px] py-[9px] rounded-[8px] cursor-pointer transition-all duration-150 group/item",
-                        isSelected ? "bg-[rgba(64,64,255,0.06)]" : "hover:bg-[#f7f7fb]"
-                      )}
-                      onClick={() => {
-                        handleSelectProduct(item);
-                        setOutputMenuOpen(false);
-                      }}
-                    >
-                      <div
-                        className={classNames(
-                          "w-[28px] h-[28px] rounded-[7px] flex items-center justify-center shrink-0 mt-[1px]",
-                          isSelected
-                            ? "bg-[rgba(64,64,255,0.1)]"
-                            : "bg-[#f4f4f9] group-hover/item:bg-[rgba(64,64,255,0.06)]"
-                        )}
-                      >
-                        <i className={`font_family ${item.img} ${item.color} text-[14px]`}></i>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className={classNames(
-                            "text-[13px] font-medium leading-[20px]",
-                            isSelected ? "text-[#4040ff]" : "text-[#18181b]"
-                          )}
-                        >
-                          {item.name}
-                        </div>
-                        <div className="text-[11px] text-[#a1a1aa] leading-[17px] mt-[1px]">
-                          {outputDescMap[item.type]}
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <svg
-                          className="w-[14px] h-[14px] shrink-0 mt-[6px] text-[#4040ff]"
-                          viewBox="0 0 14 14"
-                          fill="none"
-                        >
-                          <path
-                            d="M2.5 7L5.5 10L11.5 4"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+              Reactor
+            </h1>
+            <p className="mx-auto max-w-[480px] text-[17px] leading-[1.6] text-[#86868b] md:text-[19px]">
+              AI 智能体平台，一句话完成数据分析、研究调查和内容创作
+            </p>
           </div>
 
-          {primaryProducts.map((item) => (
-            <div
-              key={item.type}
-              className={classNames(
-                "h-[36px] px-[16px] cursor-pointer flex items-center justify-center gap-[5px] border rounded-[8px] text-[13px] font-medium transition-all duration-200 select-none whitespace-nowrap",
-                item.type === product.type
-                  ? "border-[#4040ff] bg-[rgba(64,64,255,0.07)] text-[#4040ff] shadow-[0_0_0_1px_rgba(64,64,255,0.08)]"
-                  : "border-[#E9E9F0] text-[#52525b] hover:border-[#c5c5ff] hover:text-[#4040ff] hover:bg-[rgba(64,64,255,0.02)]"
-              )}
-              onClick={() => handleSelectProduct(item)}
-            >
-              <i className={`font_family ${item.img} ${item.color} text-[14px]`}></i>
-              <span>{item.name}</span>
-            </div>
-          ))}
-        </div>
+          {/* Input Section */}
+          <div className="mb-6 w-full max-w-[800px]">
+            <AiChatSurface className="w-full rounded-[28px] bg-white/80 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+              <GeneralInput
+                placeholder={product.placeholder}
+                showBtn={true}
+                size="big"
+                disabled={false}
+                product={product}
+                send={changeInputInfo}
+                dbsShow={setDbsShow}
+              />
+            </AiChatSurface>
+          </div>
 
-        <div className="mt-[52px] mb-[80px] relative w-full flex flex-col items-center">
+          {/* Mode Selector */}
+          <div className="mb-16 flex w-full max-w-[800px] flex-wrap items-center justify-center gap-2.5">
+            <div className="relative" ref={outputMenuRef}>
+              <div
+                className={classNames(
+                  "h-[36px] px-4 cursor-pointer flex items-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-200 select-none",
+                  isOutputActive
+                    ? "border-transparent bg-[#1d1d1f] text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
+                    : "border-[#e8e8ed] bg-white text-[#86868b] hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+                )}
+                onClick={() => {
+                  if (!isOutputActive) handleSelectProduct(displayOutput);
+                  setOutputMenuOpen((v) => !v);
+                }}
+              >
+                <i className={`font_family ${displayOutput.img} ${isOutputActive ? "text-white" : displayOutput.color} text-[14px]`} />
+                <span>{displayOutput.name}</span>
+                <svg
+                  className={classNames("w-3.5 h-3.5 ml-0.5 transition-transform duration-200", {
+                    "rotate-180": outputMenuOpen,
+                  })}
+                  viewBox="0 0 12 12"
+                  fill="none"
+                >
+                  <path
+                    d="M2.5 4.5L6 8L9.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+
+              {outputMenuOpen && (
+                <div className="absolute left-0 top-[44px] z-50 w-[240px] rounded-[18px] border border-[#e8e8ed] bg-white/98 p-2 shadow-[0_20px_48px_rgba(0,0,0,0.12)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200">
+                  {outputProducts.map((item) => {
+                    const isSelected = product.type === item.type;
+                    return (
+                      <div
+                        key={item.type}
+                        className={classNames(
+                          "group/item flex cursor-pointer items-start gap-3 rounded-[14px] px-3 py-2.5 transition-all duration-150",
+                          isSelected ? "bg-[#f5f5f7]" : "hover:bg-[#f5f5f7]"
+                        )}
+                        onClick={() => {
+                          handleSelectProduct(item);
+                          setOutputMenuOpen(false);
+                        }}
+                      >
+                        <div
+                          className={classNames(
+                            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                            isSelected ? "bg-white shadow-sm" : "bg-[#f5f5f7] group-hover/item:bg-white"
+                          )}
+                        >
+                          <i className={`font_family ${item.img} ${item.color} text-[14px]`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className={classNames("text-[13px] font-medium", isSelected ? "text-[#1d1d1f]" : "text-[#1d1d1f]")}>{item.name}</div>
+                          <div className="mt-0.5 text-[12px] leading-[1.4] text-[#86868b]">{outputDescMap[item.type]}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {primaryProducts.map((item) => (
+              <div
+                key={item.type}
+                className={classNames(
+                  "h-[36px] px-4 cursor-pointer flex items-center justify-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-200 select-none",
+                  item.type === product.type
+                    ? "border-transparent bg-[#1d1d1f] text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
+                    : "border-[#e8e8ed] bg-white text-[#86868b] hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+                )}
+                onClick={() => handleSelectProduct(item)}
+              >
+                <i className={`font_family ${item.img} ${item.type === product.type ? "text-white" : item.color} text-[14px]`} />
+                <span>{item.name}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Suggested Questions - Only for dataAgent */}
           <div
             className={classNames(
-              "p-0 w-full overflow-hidden transition-all duration-400 opacity-0 max-h-0",
-              {
-                "opacity-100 max-h-[60px] mb-[16px]": product.type === "dataAgent",
-              }
+              "w-full overflow-hidden transition-all duration-500",
+              product.type === "dataAgent" ? "opacity-100 max-h-[100px] mb-10" : "opacity-0 max-h-0 mb-0"
             )}
           >
-            <div className="flex gap-x-[10px] justify-center flex-wrap">
-              {chatQustions.map((item, i) => (
+            <div className="flex flex-wrap justify-center gap-2.5">
+              {chatQustions.map((item, index) => (
                 <div
-                  key={i}
-                  className="text-[#52525B] cursor-pointer border border-[#E9E9F0] rounded-[20px] px-[14px] py-[5px] text-[13px] whitespace-nowrap flex items-center gap-[4px] hover:border-[#4040ff] hover:text-[#4040ff] hover:bg-[rgba(64,64,255,0.04)] transition-all duration-200"
+                  key={index}
+                  className="flex cursor-pointer items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-4 py-2 text-[13px] text-[#86868b] transition-all duration-200 hover:border-[#d2d2d7] hover:text-[#1d1d1f] hover:shadow-sm"
                   onClick={() => toSendMessage(item)}
                 >
-                  {item.type === 2 && <i className="font_family icon-shendusikao text-[12px]"></i>}
+                  {item.type === 2 && <i className="font_family icon-shendusikao text-[12px] text-[#0071e3]" />}
                   {item.label}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="text-center mb-[28px]">
-            <div className="flex items-center justify-center gap-[12px] mb-[6px]">
-              <div className="w-[40px] h-[1px] bg-gradient-to-r from-transparent to-[rgba(64,64,255,0.25)]"></div>
-              <h2 className="text-[20px] font-bold text-[#18181b] tracking-wide">精选案例</h2>
-              <div className="w-[40px] h-[1px] bg-gradient-to-l from-transparent to-[rgba(64,64,255,0.25)]"></div>
+          {/* Cases Section */}
+          <div className="w-full pb-20">
+            <div className="mb-8 text-center">
+              <h2 className="mb-2 text-[22px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">精选案例</h2>
+              <p className="text-[14px] text-[#86868b]">和 Genie 一起，让效率飞起来</p>
             </div>
-            <p className="text-[13px] text-[#a1a1aa]">和 Genie 一起，让效率飞起来</p>
-          </div>
 
-          <div className="flex gap-[20px] flex-wrap justify-center">
-            {demoList.map((demo, i) => (
-              <CaseCard
-                key={i}
-                {...demo}
-                videoModalOpen={videoModalOpen}
-                onOpenVideo={handleOpenVideo}
-                onCloseVideo={handleCloseVideo}
-              />
-            ))}
+            <div className="flex flex-wrap justify-center gap-6">
+              {demoList.map((demo, index) => (
+                <CaseCard
+                  key={index}
+                  {...demo}
+                  videoModalOpen={videoModalOpen}
+                  onOpenVideo={setVideoModalOpen}
+                  onCloseVideo={() => setVideoModalOpen(undefined)}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        <DataListDrawer show={dbsShow} dbsShow={setDbsShow} showDetail={showDetail}></DataListDrawer>
+        <DataListDrawer show={dbsShow} dbsShow={setDbsShow} showDetail={(modelInfo) => {
+          setCurModel(modelInfo);
+          setDataShow(true);
+        }} />
         {dataShow && (
           <ColsAndDataDrawer
             show={dataShow}
             dataShow={setDataShow}
             modelInfo={curModel}
-          ></ColsAndDataDrawer>
+          />
         )}
       </div>
     );
   };
 
-  if (!currentConversation) {
-    return null;
-  }
+  if (!currentConversation) return null;
 
   return (
-    <div className="h-full w-full flex bg-[#fafafd]">
-      <aside className="hidden md:flex w-[300px] shrink-0 border-r border-[#ececf2] bg-[#f6f7fb]">
-        {renderHistoryList()}
-      </aside>
-
-      <Drawer
-        title="对话历史"
-        placement="left"
-        open={historyDrawerOpen}
-        onClose={() => setHistoryDrawerOpen(false)}
-        width={300}
-        rootClassName="md:hidden"
-      >
-        {renderHistoryList(true)}
-      </Drawer>
-
-      <div className="flex-1 min-w-0 h-full flex flex-col">
-        <div className="md:hidden px-12 pt-12 pb-4">
-          <button
-            className="h-[36px] px-10 rounded-[8px] border border-[#E9E9F0] bg-white text-[#52525b] text-[13px] flex items-center gap-[6px]"
-            onClick={() => setHistoryDrawerOpen(true)}
-          >
-            <MenuIcon size={14} />
-            历史
-          </button>
+    <div className="h-full w-full bg-[var(--page-shell)] text-foreground">
+      <div className="flex h-full w-full">
+        {/* Desktop Sidebar - Resizable and Collapsible */}
+        <div className="hidden h-full shrink-0 lg:block">
+          <ResizableSidebar
+            items={threadListItems}
+            onCreate={createNewChat}
+            onSelect={handleSelectConversation}
+            onDelete={handleDeleteConversation}
+            isCollapsed={isSidebarCollapsed}
+            onCollapsedChange={setIsSidebarCollapsed}
+            defaultWidth={280}
+            minWidth={240}
+            maxWidth={400}
+          />
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto">
-          {!hasConversationContent && inputInfo.message.length === 0 ? (
-            renderWelcome()
-          ) : (
-            <ChatView
-              inputInfo={inputInfo}
-              product={product}
-              conversation={currentConversation}
-              onConversationChange={updateConversation}
-              onInputConsumed={onInputConsumed}
-            />
-          )}
+        {/* Mobile Drawer */}
+        <Drawer
+          title={null}
+          placement="left"
+          open={historyDrawerOpen}
+          onClose={() => setHistoryDrawerOpen(false)}
+          width={320}
+          rootClassName="lg:hidden"
+          className="[&_.ant-drawer-body]:p-0 [&_.ant-drawer-content]:bg-[#f5f5f7]"
+        >
+          <ResizableSidebar
+            items={threadListItems}
+            onCreate={createNewChat}
+            onSelect={handleSelectConversation}
+            onDelete={handleDeleteConversation}
+            isCollapsed={false}
+            onCollapsedChange={() => {}}
+          />
+        </Drawer>
+
+        {/* Main Content Area */}
+        <div className="flex h-full min-w-0 flex-1 flex-col bg-transparent">
+          {/* Mobile Header - Only show when sidebar is collapsed or on mobile */}
+          <div className="flex items-center justify-between px-4 pb-3 pt-4 lg:hidden">
+            <button
+              className="flex h-9 items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-3 text-[13px] text-[#86868b] shadow-sm transition-all duration-200 hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+              onClick={() => setHistoryDrawerOpen(true)}
+            >
+              <span>历史对话</span>
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="min-h-0 flex-1 overflow-auto">
+            {!hasConversationContent && inputInfo.message.length === 0 ? (
+              renderWelcome()
+            ) : (
+              <ChatView
+                inputInfo={inputInfo}
+                product={product}
+                conversation={currentConversation}
+                onConversationChange={updateConversation}
+                onInputConsumed={onInputConsumed}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

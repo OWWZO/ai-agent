@@ -43,23 +43,23 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
     return (
       <div
         key={index}
-        className={`group w-200 h-56 rounded-xl border border-[#E9E9F0] p-[8px] box-border flex items-center relative ${preview ? "cursor-pointer" : "cursor-default"}`}
+        className={`group w-160 h-40 rounded-lg border border-[#E9E9F0] p-[6px] box-border flex items-center relative ${preview ? "cursor-pointer" : "cursor-default"}`}
         onClick={() => reviewFile(f)}
       >
-        <img src={combinIcon(f)} alt={f.name} className="w-32 h-32 shrink" />
-        <div className="flex-1 ml-[4px] overflow-hidden">
+        <img src={combinIcon(f)} alt={f.name} className="w-20 h-20 shrink-0 object-contain" />
+        <div className="flex-1 ml-[6px] overflow-hidden">
           <Tooltip title={f.name}>
-            <div className="w-full overflow-hidden whitespace-nowrap text-ellipsis text-[14px] text-[#27272A] leading-[20px]">
+            <div className="w-full overflow-hidden whitespace-nowrap text-ellipsis text-[13px] text-[#27272A] leading-[18px]">
               {f.name}
             </div>
           </Tooltip>
-          <div className="w-full text-[12px] text-[#9E9FA3] leading-[18px]">
+          <div className="w-full text-[11px] text-[#9E9FA3] leading-[16px]">
             {formatSize(f.size)}
           </div>
         </div>
         {!preview ? (
           <i
-            className="font_family icon-jia-1 absolute top-[10px] right-[8px] cursor-pointer hidden group-hover:block"
+            className="font_family icon-jia-1 absolute top-[6px] right-[6px] cursor-pointer hidden group-hover:block text-[12px]"
             onClick={() => removeFile(index)}
           ></i>
         ) : null}

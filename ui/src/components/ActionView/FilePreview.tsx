@@ -1,101 +1,43 @@
 import classNames from "classnames";
 import { useEffect, useMemo, useState } from "react";
 import ActionPanel, { PanelItemType, useMsgTypes } from "../ActionPanel";
-import { useBoolean, useMemoizedFn } from "ahooks";
-import { Modal, Slider } from "antd";
-import ActionViewFrame from "./ActionViewFrame";
+import { useMemoizedFn } from "ahooks";
 import dayjs from "dayjs";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  FileText,
+  Maximize2,
+} from "lucide-react";
 
-const STEP_CLASS = 'flex items-center justify-center rounded-[4px] size-16 font_family icon-fanhui cursor-pointer hover:bg-gray-300';
-
-const Title: GenieType.FC<{
-  taskItem?: PanelItemType;
-}> = (props) => {
-  const { taskItem } = props;
-
-  const [ overlay, { setFalse: closeOverlay, setTrue: openOverlay } ] = useBoolean(false);
-
-  const title = useMemo(() => {
-    if (!taskItem) {
-      return '';
-    }
-    const { messageType, resultMap } = taskItem;
-    if (messageType === 'tool_result') {
-      return taskItem.toolResult?.toolName;
-    }
-    if (messageType === 'file' || messageType === 'html') {
-      const [fileInfo] = resultMap?.fileInfo || [];
-      return fileInfo?.fileName || messageType;
-    }
-    if (messageType === 'deep_search' && resultMap.messageType === 'report') {
-      return resultMap?.query;
-    }
-    return messageType;
-  }, [taskItem]);
-
-  const { useHtml, useExcel } = useMsgTypes(taskItem) || {};
-
-  return <>
-    <div
-      className={classNames(
-        'h-34 w-full border-b-[#e9e9f0] border-b-1 border-solid pl-[16px] pr-[16px] flex items-center justify-center text-[12px] font-semibold',
-        (useHtml || useExcel) ? 'hover:text-primary cursor-pointer' : ''
-      )}
-      onClick={(useHtml || useExcel) ? openOverlay : undefined}
-    >
-      {title}
-    </div>
-    <Modal
-      destroyOnHidden
-      open={overlay}
-      onCancel={closeOverlay}
-      footer={null} // 如果不需要底部按钮，可以设置为 null
-      styles={{
-        body: {
-          height: '100vh',
-          boxSizing: 'border-box'
-        },
-        content: {
-          borderRadius: 0,
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
-          top: 0,
-          left: 0,
-          padding: 0,
-        }
-      }}
-      className="top-0 m-0 h-[100vh] overflow-hidden max-w-[100vw] rounded-none"
-      width="100vw" // 使 Modal 宽度为 100%
-    >
-      <ActionPanel className="flex-1 h-full" taskItem={taskItem} noPadding />;
-    </Modal>
-  </>;
-};
-
-const FilePreview: GenieType.FC<{
-  /**
-   * 文件信息
-   */
+const FilePreview: React.FC<{
   taskItem?: CHAT.Task;
-  taskList?: PanelItemType[]
-}> = (props) => {
-  const { taskItem: defaultTaskItem, className, taskList: taskListProp } = props;
-
+  taskList?: PanelItemType[];
+  className?: string;
+}> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp }) => {
   const taskList = useMemo(() => {
-    return taskListProp?.filter((item) => ![ 'task_summary', 'result' ].includes(item.messageType));
+    return taskListProp?.filter(
+      (item) => !["task_summary", "result"].includes(item.messageType)
+    );
   }, [taskListProp]);
 
-  const [curActiveTaskIndex, setCurActiveTaskIndex] = useState<number>();
+  const [curActiveTaskIndex, setCurActiveTaskIndex] = useState<number | undefined>();
 
-  let taskItem = typeof curActiveTaskIndex === 'number' ? (taskList?.[curActiveTaskIndex] || defaultTaskItem) : (defaultTaskItem);
+  let taskItem =
+    typeof curActiveTaskIndex === "number"
+      ? taskList?.[curActiveTaskIndex] || defaultTaskItem
+      : defaultTaskItem;
 
   if (!taskItem) {
     taskItem = taskList?.[taskList.length - 1];
   }
 
   useEffect(() => {
-    // 变化之后重新归为，选择的状态
     if (defaultTaskItem) {
       setCurActiveTaskIndex(undefined);
     }
@@ -116,35 +58,126 @@ const FilePreview: GenieType.FC<{
     setCurActiveTaskIndex(Math.max(0, realActiveTaskIndex - 1));
   });
 
-  const slideMaxVal = taskLength - 1;
+  const { useHtml, useExcel } = useMsgTypes(taskItem) || {};
+
+  const title = useMemo(() => {
+    if (!taskItem) return "";
+    const { messageType, resultMap } = taskItem;
+    if (messageType === "tool_result") {
+      return taskItem.toolResult?.toolName || "工具执行";
+    }
+    if (messageType === "file" || messageType === "html") {
+      const [fileInfo] = resultMap?.fileInfo || [];
+      return fileInfo?.fileName || messageType;
+    }
+    if (messageType === "deep_search" && resultMap?.messageType === "report") {
+      return resultMap?.query || "深度搜索";
+    }
+    return messageType;
+  }, [taskItem]);
+
+  const canPreview = useHtml || useExcel;
+
+  // Empty State
+  if (!taskItem) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Card className="w-64 border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
+              <Clock className="h-5 w-5 text-[#86868b]" />
+            </div>
+            <p className="text-sm font-medium text-[#1d1d1f]">实时跟随</p>
+            <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <ActionViewFrame
-      className={classNames('h-full', className)}
-    >
-      <Title taskItem={taskItem} />
-      <ActionPanel className="flex-1 h-0 my-8 overflow-y-auto" taskItem={taskItem} allowShowToolBar />
-      {!!taskLength && <div className="w-full border-t-[#e9e9f0] border-t-1 border-solid flex items-center h-[38px] px-16">
-        <i className={STEP_CLASS} onClick={pre}></i>
-        <i className={classNames(STEP_CLASS, 'rotate-180')} onClick={next}></i>
-        <Slider
-          className="flex-1 text-primary"
-          styles={{ track: { background: '#4040FFB2' } }}
-          step={1}
-          onChange={setCurActiveTaskIndex}
-          // slider 的value和max都为0的时候会显示在最左边，所以这里给个默认值1
-          value={slideMaxVal ? realActiveTaskIndex : 1}
-          min={0}
-          max={slideMaxVal || 1}
-          tooltip={{
-            formatter: () => {
-              const { messageTime } = taskList?.[realActiveTaskIndex] || {};
-              return dayjs((+messageTime!)).format('YYYY-MM-DD HH:mm');
-            },
-          }}
+    <div className={classNames("flex h-full flex-col", className)}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <FileText className="h-4 w-4 shrink-0 text-[#86868b]" />
+          <span
+            className={classNames(
+              "truncate text-[13px] font-medium",
+              canPreview ? "cursor-pointer text-[#0071e3] hover:underline" : "text-[#1d1d1f]"
+            )}
+          >
+            {title}
+          </span>
+          {canPreview && (
+            <Badge variant="secondary" className="ml-2 h-4 shrink-0 text-[10px]">
+              可预览
+            </Badge>
+          )}
+        </div>
+        {canPreview && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-[#86868b] hover:text-[#1d1d1f]"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      <Separator className="bg-[#e8e8ed]" />
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        <ActionPanel
+          className="h-full"
+          taskItem={taskItem}
+          allowShowToolBar
         />
-      </div>}
-    </ActionViewFrame>
+      </div>
+
+      {/* Footer Navigation */}
+      {!!taskLength && taskLength > 1 && (
+        <>
+          <Separator className="bg-[#e8e8ed]" />
+          <div className="flex items-center justify-between px-4 py-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[13px] text-[#86868b] hover:text-[#1d1d1f] disabled:opacity-30"
+              onClick={pre}
+              disabled={realActiveTaskIndex <= 0}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              上一个
+            </Button>
+
+            <div className="flex items-center gap-2 text-xs text-[#86868b]">
+              <Clock className="h-3 w-3" />
+              <span>
+                {dayjs(+(taskList?.[realActiveTaskIndex]?.messageTime || 0)).format(
+                  "HH:mm:ss"
+                )}
+              </span>
+              <span className="mx-1 text-[#e8e8ed]">|</span>
+              <span>{realActiveTaskIndex + 1} / {taskLength}</span>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[13px] text-[#86868b] hover:text-[#1d1d1f] disabled:opacity-30"
+              onClick={next}
+              disabled={realActiveTaskIndex >= taskLength - 1}
+            >
+              下一个
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 };
 

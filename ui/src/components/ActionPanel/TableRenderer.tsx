@@ -6,6 +6,8 @@ import * as XLSX from 'xlsx';
 import Loading from './Loading';
 import { parseCSVData } from '@/utils';
 
+const ERROR_CLASS = "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
+
 /**
  * Table 组件
  */
@@ -126,7 +128,7 @@ const TableRenderer: GenieType.FC<{
         message="加载失败"
         description={error.message}
         showIcon
-        className='m-24'
+        className={ERROR_CLASS}
       />
     );
   }
@@ -139,7 +141,7 @@ const TableRenderer: GenieType.FC<{
         message="解析失败"
         description="文件格式有误，无法解析。"
         showIcon
-        className='m-24'
+        className={ERROR_CLASS}
       />
     );
   }

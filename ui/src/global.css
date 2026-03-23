@@ -1,53 +1,143 @@
+@import "@fontsource-variable/geist";
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.75rem;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Apple-inspired Color System - 更柔和的灰度 */
+  --background: #fafafa;
+  --foreground: #1d1d1f;
+  --card: rgba(255, 255, 255, 0.72);
+  --card-foreground: #1d1d1f;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: #1d1d1f;
+  --primary: #0071e3;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f7;
+  --secondary-foreground: #1d1d1f;
+  --muted: #f5f5f7;
+  --muted-foreground: #86868b;
+  --accent: #06c;
+  --accent-foreground: #ffffff;
+  --destructive: #ff3b30;
+  --destructive-foreground: #ffffff;
+  --success: #34c759;
+  --warning: #ff9500;
+
+  /* Apple-style Borders - 更细腻 */
+  --border: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.1);
+  --input: rgba(255, 255, 255, 0.85);
+  --ring: rgba(0, 113, 227, 0.3);
+
+  /* Apple-inspired Radius - 更大更柔和 */
+  --radius: 1.25rem;
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  --radius-full: 9999px;
+
+  /* Chat System Colors */
+  --chat-bg: #fafafa;
+  --chat-panel: rgba(255, 255, 255, 0.65);
+  --chat-panel-strong: rgba(255, 255, 255, 0.95);
+  --chat-surface: #ffffff;
+  --chat-surface-soft: #f5f5f7;
+  --chat-surface-muted: #e8e8ed;
+  --chat-text: #1d1d1f;
+  --chat-text-soft: #86868b;
+  --chat-text-muted: #a1a1a6;
+  --chat-border: rgba(0, 0, 0, 0.05);
+  --chat-border-strong: rgba(0, 0, 0, 0.08);
+
+  /* Apple-style Shadows - 多层柔和阴影 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.12), 0 6px 20px rgba(0, 0, 0, 0.06);
+  --shadow-glow: 0 0 0 4px rgba(0, 113, 227, 0.15);
+
+  /* Layout */
+  --chat-sidebar-width: 280px;
+  --chat-content-width: 900px;
+  --header-height: 64px;
+  --input-height: 72px;
+
+  /* Typography */
+  --font-sans:
+    "Geist Variable",
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Helvetica Neue",
+    sans-serif;
+  --font-brand:
+    "Geist Variable",
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    sans-serif;
+  --font-mono:
+    "SF Mono",
+    SFMono-Regular,
+    ui-monospace,
+    Menlo,
+    monospace;
+
+  /* Page Background - 苹果风格渐变 */
+  --page-shell:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 113, 227, 0.03), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(0, 113, 227, 0.02), transparent),
+    linear-gradient(180deg, #ffffff 0%, #fafafa 50%, #f5f5f7 100%);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: rgba(30, 30, 30, 0.72);
+  --card-foreground: #f5f5f7;
+  --popover: rgba(44, 44, 46, 0.98);
+  --popover-foreground: #f5f5f7;
+  --primary: #0a84ff;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1c1e;
+  --secondary-foreground: #f5f5f7;
+  --muted: #2c2c2e;
+  --muted-foreground: #8e8e93;
+  --accent: #0a84ff;
+  --accent-foreground: #ffffff;
+  --destructive: #ff453a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --input: rgba(44, 44, 46, 0.85);
+  --ring: rgba(10, 132, 255, 0.3);
+
+  --chat-bg: #000000;
+  --chat-panel: rgba(30, 30, 30, 0.65);
+  --chat-panel-strong: rgba(44, 44, 46, 0.95);
+  --chat-surface: #1c1c1e;
+  --chat-surface-soft: #2c2c2e;
+  --chat-surface-muted: #3a3a3c;
+  --chat-text: #f5f5f7;
+  --chat-text-soft: #8e8e93;
+  --chat-border: rgba(255, 255, 255, 0.06);
+  --chat-border-strong: rgba(255, 255, 255, 0.1);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.7), 0 6px 20px rgba(0, 0, 0, 0.4);
+
+  --page-shell:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(10, 132, 255, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(10, 132, 255, 0.04), transparent),
+    linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #0f0f0f 100%);
 }
 
 @theme inline {
@@ -73,15 +163,37 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
 }
 
 @layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    color: var(--chat-text);
+    background: var(--chat-bg);
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   * {
     @apply border-border;
+    box-sizing: border-box;
   }
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    min-height: 100%;
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    background: var(--page-shell);
+    background-attachment: fixed;
+    color: var(--chat-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 /* 项目特殊样式 */
@@ -110,12 +222,6 @@
 
 html,
 body {
-  margin: 0;
-  padding: 0;
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #333;
   height: 100%;
 }
 
@@ -149,27 +255,238 @@ ol {
   height: 100%;
 }
 
+::selection {
+  background: rgba(0, 113, 227, 0.2);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(134, 134, 139, 0.3);
+  border-radius: 100px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(134, 134, 139, 0.5);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 
-/* 为 IE、Edge 和 Firefox 提供支持 */
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE 和 Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-.delay-400ms {
-  animation-delay: 0.4s !important;
+.scrollbar-hover::-webkit-scrollbar-thumb {
+  visibility: hidden;
 }
 
-.delay-0ms {
-  animation-delay: 0s !important;
-}
-.delay-800ms {
-  animation-delay: 0.8s !important;
+.scrollbar-hover:hover::-webkit-scrollbar-thumb,
+.scrollbar-hover:focus-within::-webkit-scrollbar-thumb,
+.scrollbar-hover:active::-webkit-scrollbar-thumb {
+  visibility: visible;
 }
 
-.lottie{
+.chat-fade-bottom {
+  mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent 100%);
+}
+
+.ai-stream-cursor {
+  display: inline-flex;
+  width: 2px;
+  height: 1.1em;
+  margin-top: 0.1rem;
+  border-radius: 999px;
+  background: var(--primary);
+  animation: ai-stream-caret 0.8s ease-in-out infinite;
+  vertical-align: middle;
+  will-change: opacity;
+}
+
+@keyframes ai-stream-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Apple-style Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Stagger delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* Legacy */
+.delay-0ms { animation-delay: 0s !important; }
+.delay-400ms { animation-delay: 0.4s !important; }
+.delay-800ms { animation-delay: 0.8s !important; }
+
+.lottie {
   height: 80px !important;
+}
+
+/* Apple-style Glass Effect */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.glass-dark {
+  background: rgba(30, 30, 30, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Apple-style Focus States */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-glow);
+}
+
+/* Smooth transitions */
+.transition-apple {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Typography utilities */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* AI Input Components - Apple Style Overrides */
+[data-slot="prompt-input-body"] {
+  background: white !important;
+  border-radius: 24px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid #e8e8ed !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+[data-slot="prompt-input-body"]:focus-within {
+  box-shadow: 0 4px 20px rgba(0, 113, 227, 0.1), 0 0 0 1px rgba(0, 113, 227, 0.2) !important;
+  border-color: rgba(0, 113, 227, 0.3) !important;
+}
+
+[data-slot="prompt-input-textarea"] {
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+  color: #1d1d1f !important;
+}
+
+[data-slot="prompt-input-textarea"]::placeholder {
+  color: #86868b !important;
+}
+
+[data-slot="prompt-input-button"] {
+  border-radius: 9999px !important;
+  border-color: #e8e8ed !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-slot="prompt-input-button"]:hover {
+  background: #f5f5f7 !important;
+  border-color: #d2d2d7 !important;
+}
+
+[data-slot="prompt-input-submit"] {
+  background: linear-gradient(135deg, #0071e3 0%, #0077ed 100%) !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.35) !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-slot="prompt-input-submit"]:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0077ed 0%, #0080ff 100%) !important;
+  box-shadow: 0 6px 20px rgba(0, 113, 227, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+[data-slot="prompt-input-submit"]:disabled {
+  background: #e8e8ed !important;
+  box-shadow: none !important;
+}
+
+/* Size variants for input */
+.ai-input-big [data-slot="prompt-input-body"] {
+  border-radius: 28px !important;
+}
+
+.ai-input-medium [data-slot="prompt-input-body"] {
+  border-radius: 22px !important;
 }

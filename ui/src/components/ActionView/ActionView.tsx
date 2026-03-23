@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
+﻿import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
 import Title from "./Title";
 import { GetProps } from "antd";
@@ -14,27 +14,18 @@ import { PlanView, PlanViewAction } from "../PlanView";
 import { PanelItemType } from "../ActionPanel";
 
 type ActionViewRef = PlanViewAction & {
-  /**
-   * 显示文件
-   * @param file 文件
-   * @returns
-   */
   setFilePreview: (file?: CHAT.TFile) => void;
-  /**
-   * 改变现实的面板
-   */
   changeActionView: (item: ActionViewItemEnum) => void;
 };
 
 const useActionView = () => {
   const ref = useRef<ActionViewRef>(null);
-
   return ref;
 };
 
 type ActionViewProps = {
   title?: React.ReactNode;
-  taskList?: (PanelItemType)[];
+  taskList?: PanelItemType[];
   activeTask?: CHAT.Task;
   plan?: CHAT.Plan;
   ref?: React.Ref<ActionViewRef>;
@@ -44,11 +35,8 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
   const { className, onClose, title, activeTask, taskList, plan } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();
-
   const planRef = useRef<PlanViewAction>(null);
-
   const { defaultActiveActionView, actionViewOptions } = useConstants();
-
   const [activeActionView, setActiveActionView] = useSafeState(defaultActiveActionView);
 
   useImperativeHandle(ref, () => {
@@ -58,26 +46,44 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
         setActiveActionView(ActionViewItemEnum.file);
         setCurFileItem(file);
       },
-      changeActionView: setActiveActionView
+      changeActionView: setActiveActionView,
     };
   });
+
   return (
-    <div className={classNames("px-16 pt-8 pb-16 w-full h-full flex flex-col", className)}>
-      <Title onClose={onClose}>{title || '工作空间'}</Title>
-      <Tabs value={activeActionView} onChange={setActiveActionView} options={actionViewOptions} />
-      {/* 展示区域 */}
-      <div className='mt-12 flex-1 h-0 flex flex-col'>
-        <FilePreview taskItem={activeTask} taskList={taskList} className={classNames({ 'hidden': activeActionView !== ActionViewItemEnum.follow })} />
-        {activeActionView === ActionViewItemEnum.browser && <BrowserList taskList={taskList} />}
-        {activeActionView === ActionViewItemEnum.file && <FileList
-          taskList={taskList}
-          activeFile={curFileItem}
-          clearActiveFile={() => {
-            setCurFileItem(undefined);
-          }}
-        />}
+    <div className={classNames("flex h-full w-full flex-col bg-white/50", className)}>
+      {/* Header Section */}
+      <div className="flex flex-col gap-3 border-b border-[#e8e8ed] px-5 py-4">
+        <Title onClose={onClose}>{title || "工作空间"}</Title>
+        <Tabs
+          value={activeActionView}
+          onChange={setActiveActionView}
+          options={actionViewOptions}
+          className="min-h-[36px]"
+        />
       </div>
-      <PlanView plan={plan} ref={planRef} />
+
+      {/* Content Area */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto p-5">
+          <FilePreview
+            taskItem={activeTask}
+            taskList={taskList}
+            className={classNames({ hidden: activeActionView !== ActionViewItemEnum.follow })}
+          />
+          {activeActionView === ActionViewItemEnum.browser && <BrowserList taskList={taskList} />}
+          {activeActionView === ActionViewItemEnum.file && (
+            <FileList
+              taskList={taskList}
+              activeFile={curFileItem}
+              clearActiveFile={() => {
+                setCurFileItem(undefined);
+              }}
+            />
+          )}
+        </div>
+        <PlanView plan={plan} ref={planRef} />
+      </div>
     </div>
   );
 });
@@ -85,7 +91,7 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
 const ActionView: typeof ActionViewComp & {
-  useActionView: typeof useActionView
+  useActionView: typeof useActionView;
 } = ActionViewComp;
 ActionView.useActionView = useActionView;
 

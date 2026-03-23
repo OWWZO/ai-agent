@@ -106,6 +106,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
       <div className="w-full">
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
+          className="w-full"
           multiple
           onSubmit={handleSubmit}
         >
@@ -117,8 +118,8 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "px-4 text-sm leading-6 placeholder:text-muted-foreground/60",
-                size === "big" ? "min-h-28 pt-4 text-[15px]" : "min-h-20 pt-3"
+                "px-4 text-[14px] leading-7 text-foreground placeholder:text-muted-foreground/70",
+                size === "big" ? "min-h-32 pt-4 text-[15px]" : "min-h-24 pt-3.5"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}
@@ -132,7 +133,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
 
           <PromptInputFooter className="justify-between gap-3 px-4 pb-4 pt-1">
             {/* 左侧：+ 按钮 + 深度研究 + 知识库 */}
-            <PromptInputTools className="flex-wrap gap-2">
+            <PromptInputTools className="flex-wrap gap-1.5">
               {/* + 附件按钮（始终显示） */}
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger>
@@ -140,7 +141,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                     size="icon-sm"
                     variant="ghost"
                     disabled={disabled}
-                    className="rounded-full hover:bg-muted"
+                    className="rounded-full border border-transparent text-[#4b5563] hover:border-black/5 hover:bg-black/5 hover:text-[#111827]"
                   >
                     <PlusIcon className="size-5" />
                   </PromptInputButton>
@@ -157,13 +158,15 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                     <PromptInputButton
                       aria-pressed={deepThink}
                       className={cn(
-                        "rounded-full px-3",
-                        deepThink && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                        "rounded-full border px-3 text-[13px]",
+                        deepThink
+                          ? "border-black/10 bg-black text-white hover:bg-black/92 hover:text-white"
+                          : "border-transparent bg-transparent text-[#4b5563] hover:border-black/5 hover:bg-black/5 hover:text-[#111827]"
                       )}
                       disabled={disabled}
                       onClick={() => setDeepThink((v) => !v)}
                       size="sm"
-                      variant={deepThink ? "secondary" : "ghost"}
+                      variant="ghost"
                     >
                       <BrainIcon className="size-4" />
                       深度研究
@@ -180,7 +183,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PromptInputButton
-                      className="rounded-full px-3"
+                      className="rounded-full border border-transparent px-3 text-[13px] text-[#4b5563] hover:border-black/5 hover:bg-black/5 hover:text-[#111827]"
                       disabled={disabled}
                       onClick={() => dbsShow?.(true)}
                       size="sm"
@@ -202,7 +205,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
-                    className="rounded-full size-9 shadow-sm"
+                    className="size-9 rounded-full bg-[#111827] text-white shadow-[0_12px_28px_-18px_rgba(15,23,42,0.7)] transition-transform duration-150 hover:translate-y-[-1px] hover:bg-[#1f2937] disabled:bg-[#d1d5db] disabled:text-white disabled:shadow-none"
                     disabled={!canSend}
                     variant="default"
                   >

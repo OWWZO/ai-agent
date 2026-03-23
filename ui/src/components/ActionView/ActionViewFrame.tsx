@@ -1,30 +1,56 @@
-import { LeftOutlined } from "@ant-design/icons";
-import classNames from "classnames";
+import { ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
-const ActionViewFrame: GenieType.FC<{
+interface ActionViewFrameProps {
   titleNode?: React.ReactNode;
-  onClickTitle?: React.MouseEventHandler<HTMLDivElement>;
+  onClickTitle?: () => void;
   footer?: React.ReactNode;
-}> = (props) => {
-  const { children, className, titleNode, footer, onClickTitle } = props;
+  children: React.ReactNode;
+  className?: string;
+}
 
-  return <>
-    {titleNode && <div
-      className={classNames("py-8 flex items-center")}
-    >
-      <LeftOutlined
-        className={classNames("mr-4", {'cursor-pointer': onClickTitle})}
-        onClick={onClickTitle}
-      />
-      {titleNode}
-    </div>}
-    <div
-      className={classNames('w-full rounded-[12px] border-1 border-solid border-[#e9e9f0] flex flex-col box-border flex-1 h-0 overflow-y-auto', className)}
-    >
-      {children}
+const ActionViewFrame: React.FC<ActionViewFrameProps> = ({
+  children,
+  className,
+  titleNode,
+  footer,
+  onClickTitle,
+}) => {
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      {titleNode && (
+        <>
+          <div className="flex items-center gap-2 px-4 py-3">
+            <button
+              onClick={onClickTitle}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-all duration-200 hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div className="flex-1 min-w-0 text-[13px] font-medium text-[#1d1d1f]">
+              {titleNode}
+            </div>
+          </div>
+          <Separator className="bg-[#e8e8ed]" />
+        </>
+      )}
+
+      {/* Content */}
+      <div
+        className={cn(
+          "flex-1 overflow-auto",
+          className
+        )}
+      >
+        {children}
+      </div>
+
+      {/* Footer */}
+      {footer}
     </div>
-    {footer}
-  </>;
+  );
 };
 
 export default ActionViewFrame;

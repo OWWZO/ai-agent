@@ -5,7 +5,7 @@ import MarkdownRenderer from "./MarkdownRenderer";
 import Loading from "./Loading";
 
 const LOADING_CLASS = 'mr-32';
-const ERROR_CLASS = 'm-24';
+const ERROR_CLASS = "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
 
 interface FileRendererProps {
   /** 文件路径 */

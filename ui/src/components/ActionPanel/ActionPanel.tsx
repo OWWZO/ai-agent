@@ -111,7 +111,7 @@ const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
     scrollToBottom,
   }}>
     <div
-      className={classNames('w-full px-16', className)}
+      className={classNames('w-full px-16 overflow-auto', className)}
       ref={ref}
     >
       { panelNode }

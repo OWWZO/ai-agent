@@ -20,7 +20,7 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -30,8 +30,8 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
-      from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+      "group flex w-full max-w-full flex-col gap-2",
+      from === "user" ? "is-user ml-auto items-end justify-end" : "is-assistant items-start",
       className
     )}
     {...props}
@@ -47,9 +47,9 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
-      "group-[.is-assistant]:text-foreground",
+      "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-[14px] leading-7",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[28px] group-[.is-user]:border group-[.is-user]:border-black/5 group-[.is-user]:bg-[#f3f4f6] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#111827] group-[.is-user]:shadow-[0_10px_30px_-24px_rgba(15,23,42,0.38)]",
+      "group-[.is-assistant]:w-full group-[.is-assistant]:rounded-none group-[.is-assistant]:border-0 group-[.is-assistant]:bg-transparent group-[.is-assistant]:px-0 group-[.is-assistant]:py-0 group-[.is-assistant]:text-foreground group-[.is-assistant]:shadow-none",
       className
     )}
     {...props}
@@ -65,7 +65,13 @@ export const MessageActions = ({
   children,
   ...props
 }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-1", className)} {...props}>
+  <div
+    className={cn(
+      "flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100",
+      className
+    )}
+    {...props}
+  >
     {children}
   </div>
 );
@@ -304,19 +310,110 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  isStreaming?: boolean;
+};
+
+const useStreamingText = (text: string, isStreaming: boolean) => {
+  const [displayedText, setDisplayedText] = useState(text);
+  const displayedRef = useRef(text);
+  const targetRef = useRef(text);
+  const frameRef = useRef<number | null>(null);
+  const lastUpdateRef = useRef<number>(0);
+
+  useEffect(() => {
+    targetRef.current = text;
+
+    if (!isStreaming) {
+      displayedRef.current = text;
+      setDisplayedText(text);
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      return;
+    }
+
+    if (displayedRef.current.length > text.length) {
+      displayedRef.current = text;
+      setDisplayedText(text);
+    }
+
+    const tick = (timestamp: number) => {
+      // 控制更新频率，每16ms最多一次 (~60fps)
+      if (timestamp - lastUpdateRef.current < 16) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastUpdateRef.current = timestamp;
+
+      const currentValue = displayedRef.current;
+      const targetValue = targetRef.current;
+
+      if (currentValue === targetValue) {
+        frameRef.current = null;
+        return;
+      }
+
+      const remaining = targetValue.length - currentValue.length;
+      // 动态计算块大小：小文本时精细渲染，大文本时快速追赶
+      const chunkSize = Math.max(
+        1,
+        Math.min(
+          remaining < 20 ? 1 : remaining < 100 ? 3 : 8,
+          Math.ceil(remaining / 30)
+        )
+      );
+      const nextValue = targetValue.slice(0, currentValue.length + chunkSize);
+
+      displayedRef.current = nextValue;
+      setDisplayedText(nextValue);
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    if (!frameRef.current) {
+      frameRef.current = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [isStreaming, text]);
+
+  return displayedText;
+};
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      {...props}
-    />
-  ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  ({ className, isStreaming = false, children, ...props }: MessageResponseProps) => {
+    const sourceText =
+      typeof children === "string"
+        ? children
+        : children == null
+          ? ""
+          : String(children);
+    const renderedText = useStreamingText(sourceText, isStreaming);
+
+    return (
+      <div className="size-full">
+        <Streamdown
+          className={cn(
+            "ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+            className
+          )}
+          {...props}
+        >
+          {renderedText}
+        </Streamdown>
+        {isStreaming ? <span aria-hidden className="ai-stream-cursor" /> : null}
+      </div>
+    );
+  },
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.isStreaming === nextProps.isStreaming
 );
 
 MessageResponse.displayName = "MessageResponse";

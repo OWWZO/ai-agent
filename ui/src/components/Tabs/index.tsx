@@ -9,25 +9,17 @@ const Tabs = <V extends string | number>(props: GenieType.ControlProps<V> & {
   const { value, onChange, className, options } = props;
 
   const wrapRef = useRef<HTMLDivElement>(null);
-
   const slideRef = useRef<HTMLDivElement>(null);
 
   const adjustSlide = useMemoizedFn(() => {
-    if (!wrapRef.current) {
-      return;
-    }
+    if (!wrapRef.current) return;
     const activeTab = wrapRef.current.querySelector<HTMLDivElement>(`[item-key="${value}"]`);
-    if (!activeTab) {
-      return;
-    }
+    if (!activeTab) return;
 
     const { width } = activeTab.getBoundingClientRect();
-
     const left = activeTab.offsetLeft;
 
-    if (!slideRef.current) {
-      return;
-    }
+    if (!slideRef.current) return;
 
     slideRef.current.style.width = `${width}px`;
     slideRef.current.style.transform = `translateX(${left}px)`;
@@ -44,24 +36,38 @@ const Tabs = <V extends string | number>(props: GenieType.ControlProps<V> & {
     };
   }, [adjustSlide, value]);
 
-  return <div className={classNames(className, "flex items-center relative box-border gap-4")} ref={wrapRef}>
-    {options.map(item => {
-      return <React.Fragment key={item.value}>
-        <div
-          key={item.value}
-          className={classNames('pl-16 pr-16 h-32 rounded-[16px] cursor-pointer flex items-center', 'sed-item')}
-          item-key={item.value}
-          onClick={() => onChange?.(item.value as V)}
-        >
-          <span>{item.label}</span>
-        </div>
-        {
-          item.split && <div className="m-[8px] mt-0 mb-0 bg-[#dcdfe6] w-1 h-[1em]"></div>
-        }
-      </React.Fragment>;
-    })}
-    <div ref={slideRef} className="h-full rounded-[16px] bg-[#f4f4f9] absolute left-0 top-0 transition-all -z-1"></div>
-  </div>;
+  return (
+    <div
+      className={classNames(
+        className,
+        "relative flex items-center gap-1 rounded-xl bg-[#f5f5f7] p-1.5 w-fit"
+      )}
+      ref={wrapRef}
+    >
+      {options.map((item) => (
+        <React.Fragment key={item.value}>
+          <div
+            key={item.value}
+            className={classNames(
+              "relative z-10 px-4 h-8 rounded-lg cursor-pointer flex items-center justify-center shrink-0 whitespace-nowrap text-[13px] font-medium transition-colors duration-200",
+              value === item.value ? "text-[#1d1d1f]" : "text-[#86868b] hover:text-[#1d1d1f]"
+            )}
+            item-key={item.value}
+            onClick={() => onChange?.(item.value as V)}
+          >
+            <span>{item.label}</span>
+          </div>
+          {item.split && <div className="mx-1 bg-[#e8e8ed] w-px h-4 shrink-0" />}
+        </React.Fragment>
+      ))}
+      {/* Active Background Slide */}
+      <div
+        ref={slideRef}
+        className="absolute h-8 rounded-lg bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] transition-all duration-200 ease-out"
+        style={{ top: "6px" }}
+      />
+    </div>
+  );
 };
 
 export default Tabs;
