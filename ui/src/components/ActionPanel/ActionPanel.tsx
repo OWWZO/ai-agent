@@ -1,5 +1,6 @@
 import React, { useMemo, useRef } from "react";
 import classNames from "classnames";
+import { motion, AnimatePresence } from "framer-motion";
 import { useMsgTypes } from "./useMsgTypes";
 import HTMLRenderer from "./HTMLRenderer";
 import useContent from "./useContent";
@@ -18,6 +19,40 @@ interface ActionPanelProps {
   className?: string;
   noPadding?: boolean;
 }
+
+// 内容包装动画组件
+const ContentWrapper = ({ children, key }: { children: React.ReactNode; key?: string }) => (
+  <motion.div
+    key={key}
+    initial={{ opacity: 0, y: 20, scale: 0.98 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: -10, scale: 0.98 }}
+    transition={{
+      duration: 0.4,
+      ease: [0.25, 0.46, 0.45, 0.94],
+    }}
+    className="h-full"
+  >
+    {children}
+  </motion.div>
+);
+
+// Markdown 流式内容动画包装
+const StreamingMarkdownWrapper = ({ content }: { content: string }) => {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <motion.div
+      ref={contentRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="h-full"
+    >
+      <MarkdownRenderer markDownContent={content} />
+    </motion.div>
+  );
+};
 
 const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
   const { taskItem, className, allowShowToolBar } = props;
@@ -38,47 +73,67 @@ const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
       const { useHtml, useCode, useFile, isHtml, useExcel, useJSON, searchList, usePpt } = msgTypes || {};
 
       if (searchList?.length) {
-        return <SearchListRenderer list={searchList} />;
+        return (
+          <ContentWrapper key="search">
+            <SearchListRenderer list={searchList} />
+          </ContentWrapper>
+        );
       }
 
       if (useHtml || usePpt) {
         return (
-          <HTMLRenderer
-            htmlUrl={htmlUrl}
-            className="h-full"
-            downloadUrl={downloadHtmlUrl}
-            outputCode={codeOutput}
-            showToolBar={allowShowToolBar && resultMap?.isFinal}
-          />
+          <ContentWrapper key="html">
+            <HTMLRenderer
+              htmlUrl={htmlUrl}
+              className="h-full"
+              downloadUrl={downloadHtmlUrl}
+              outputCode={codeOutput}
+              showToolBar={allowShowToolBar && resultMap?.isFinal}
+            />
+          </ContentWrapper>
         );
       }
 
       if (useCode && isHtml) {
         return (
-          <HTMLRenderer
-            htmlUrl={`data:text/html;charset=utf-8,${encodeURIComponent(toolResult?.toolResult || '')}`}
-          />
+          <ContentWrapper key="code">
+            <HTMLRenderer
+              htmlUrl={`data:text/html;charset=utf-8,${encodeURIComponent(toolResult?.toolResult || '')}`}
+            />
+          </ContentWrapper>
         );
       }
 
       if (useExcel) {
-        return <TableRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />;
+        return (
+          <ContentWrapper key="excel">
+            <TableRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />
+          </ContentWrapper>
+        );
       }
 
       if (useFile) {
-        return <FileRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />;
+        return (
+          <ContentWrapper key="file">
+            <FileRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />
+          </ContentWrapper>
+        );
       }
 
       if (useJSON) {
         return (
-          <ReactJsonPretty
-            data={JSON.parse(toolResult?.toolResult || '{}')}
-            style={{ backgroundColor: '#000' }}
-          />
+          <ContentWrapper key="json">
+            <ReactJsonPretty
+              data={JSON.parse(toolResult?.toolResult || '{}')}
+              style={{ backgroundColor: '#000' }}
+            />
+          </ContentWrapper>
         );
       }
 
-      return <MarkdownRenderer markDownContent={markDownContent} />;
+      return (
+        <StreamingMarkdownWrapper content={markDownContent} />
+      );
     };
 
     return renderContent();
@@ -106,17 +161,24 @@ const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
     }, 100);
   });
 
-  return <PanelProvider value={{
-    wrapRef: ref,
-    scrollToBottom,
-  }}>
-    <div
-      className={classNames('w-full px-16 overflow-auto', className)}
-      ref={ref}
-    >
-      { panelNode }
-    </div>
-  </PanelProvider>;
+  return (
+    <PanelProvider value={{
+      wrapRef: ref,
+      scrollToBottom,
+    }}>
+      <motion.div
+        className={classNames('w-full px-16 overflow-auto', className)}
+        ref={ref}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
+        <AnimatePresence mode="wait">
+          {panelNode}
+        </AnimatePresence>
+      </motion.div>
+    </PanelProvider>
+  );
 });
 
 ActionPanel.displayName = 'ActionPanel';

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { handleTaskData, combineData } from "@/utils/chat";
@@ -467,19 +468,31 @@ const ChatView: GenieType.FC<Props> = (props) => {
             {/* Messages */}
             <div className="flex min-h-0 flex-1 flex-col px-6 pt-6">
               <Conversation className="chat-fade-bottom mb-6 flex-1">
-                <ConversationContent className="space-y-6">
-                  {conversation.chatList.map((chat) => (
-                    <div key={chat.requestId} className="animate-fade-in">
-                      <Dialogue
-                        chat={chat}
-                        deepThink={conversation.deepThink}
-                        changeTask={changeTask}
-                        changeFile={changeFile}
-                        changePlan={changePlan}
-                        onRegenerate={handleRegenerate}
-                      />
-                    </div>
-                  ))}
+                <ConversationContent>
+                  <AnimatePresence mode="popLayout">
+                    {conversation.chatList.map((chat) => (
+                      <motion.div
+                        key={chat.requestId}
+                        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                        transition={{
+                          duration: 0.4,
+                          ease: [0.25, 0.46, 0.45, 0.94],
+                        }}
+                        layout
+                      >
+                        <Dialogue
+                          chat={chat}
+                          deepThink={conversation.deepThink}
+                          changeTask={changeTask}
+                          changeFile={changeFile}
+                          changePlan={changePlan}
+                          onRegenerate={handleRegenerate}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </ConversationContent>
                 <ConversationScrollButton />
               </Conversation>
@@ -561,19 +574,31 @@ const ChatView: GenieType.FC<Props> = (props) => {
               {/* Messages */}
               <div className="flex min-h-0 flex-1 flex-col px-5 pt-5">
                 <Conversation className="chat-fade-bottom mb-5 flex-1">
-                  <ConversationContent className="space-y-5">
-                    {conversation.chatList.map((chat) => (
-                      <div key={chat.requestId} className="animate-fade-in">
-                        <Dialogue
-                          chat={chat}
-                          deepThink={conversation.deepThink}
-                          changeTask={changeTask}
-                          changeFile={changeFile}
-                          changePlan={changePlan}
-                          onRegenerate={handleRegenerate}
-                        />
-                      </div>
-                    ))}
+                  <ConversationContent>
+                    <AnimatePresence mode="popLayout">
+                      {conversation.chatList.map((chat) => (
+                        <motion.div
+                          key={chat.requestId}
+                          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                          transition={{
+                            duration: 0.4,
+                            ease: [0.25, 0.46, 0.45, 0.94],
+                          }}
+                          layout
+                        >
+                          <Dialogue
+                            chat={chat}
+                            deepThink={conversation.deepThink}
+                            changeTask={changeTask}
+                            changeFile={changeFile}
+                            changePlan={changePlan}
+                            onRegenerate={handleRegenerate}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </ConversationContent>
                   <ConversationScrollButton />
                 </Conversation>
@@ -681,12 +706,24 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
           {/* Messages */}
           <Conversation className="chat-fade-bottom mb-6 mt-6 flex-1">
-            <ConversationContent className="space-y-6">
-              {conversation.dataChatList.map((chat, index) => (
-                <div key={`${conversation.id}-${index}`} className="animate-fade-in">
-                  <DataDialogue chat={chat} />
-                </div>
-              ))}
+            <ConversationContent>
+              <AnimatePresence mode="popLayout">
+                {conversation.dataChatList.map((chat, idx) => (
+                  <motion.div
+                    key={`${conversation.id}-${idx}`}
+                    initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                    }}
+                    layout
+                  >
+                    <DataDialogue chat={chat} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>

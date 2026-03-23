@@ -490,3 +490,154 @@ ol {
 .ai-input-medium [data-slot="prompt-input-body"] {
   border-radius: 22px !important;
 }
+
+/* Framer Motion Performance Optimizations */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-opacity {
+  will-change: opacity;
+}
+
+/* Smooth content transitions */
+.content-enter {
+  animation: contentEnter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes contentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Streaming text optimizations */
+.streaming-text {
+  contain: layout style;
+}
+
+/* Prevent layout shift during streaming */
+.streaming-container {
+  min-height: 1em;
+}
+
+/* Enhanced cursor animation */
+.ai-stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  background: linear-gradient(180deg, #0071e3 0%, #4040ff 100%);
+  border-radius: 1px;
+  vertical-align: middle;
+  will-change: opacity;
+}
+
+/* Loading state animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 113, 227, 0.1) 0%,
+    rgba(0, 113, 227, 0.2) 50%,
+    rgba(0, 113, 227, 0.1) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Smooth panel transitions */
+.panel-transition {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Message appear animation */
+.message-appear {
+  animation: messageAppear 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Thinking pulse animation */
+.thinking-pulse {
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Workspace content fade */
+.workspace-fade-enter {
+  animation: workspaceFadeIn 0.4s ease forwards;
+}
+
+@keyframes workspaceFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tab switch animation */
+.tab-content-enter {
+  animation: tabContentEnter 0.3s ease forwards;
+}
+
+@keyframes tabContentEnter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .ai-stream-cursor {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}

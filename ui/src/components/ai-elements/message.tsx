@@ -22,6 +22,7 @@ import {
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
+import { motion, useSpring, useMotionValue } from "framer-motion";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -310,6 +311,8 @@ export const MessageBranchPage = ({
   );
 };
 
+// ... existing code ...
+
 export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
   isStreaming?: boolean;
 };
@@ -340,8 +343,8 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
     }
 
     const tick = (timestamp: number) => {
-      // 控制更新频率，每16ms最多一次 (~60fps)
-      if (timestamp - lastUpdateRef.current < 16) {
+      // 优化：使用更短的间隔以获得更流畅的动画
+      if (timestamp - lastUpdateRef.current < 12) {
         frameRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -356,12 +359,12 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
       }
 
       const remaining = targetValue.length - currentValue.length;
-      // 动态计算块大小：小文本时精细渲染，大文本时快速追赶
+      // 优化：动态调整块大小，小文本时更精细，大文本时更流畅
       const chunkSize = Math.max(
         1,
         Math.min(
-          remaining < 20 ? 1 : remaining < 100 ? 3 : 8,
-          Math.ceil(remaining / 30)
+          remaining < 10 ? 1 : remaining < 50 ? 2 : remaining < 200 ? 4 : 8,
+          Math.ceil(remaining / 20)
         )
       );
       const nextValue = targetValue.slice(0, currentValue.length + chunkSize);
@@ -386,6 +389,30 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
   return displayedText;
 };
 
+// 流式光标组件
+const StreamingCursor = memo(() => {
+  const opacity = useMotionValue(1);
+  const smoothOpacity = useSpring(opacity, { stiffness: 300, damping: 30 });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      opacity.set(opacity.get() === 1 ? 0.3 : 1);
+    }, 530);
+
+    return () => clearInterval(interval);
+  }, [opacity]);
+
+  return (
+    <motion.span
+      aria-hidden
+      className="ai-stream-cursor"
+      style={{ opacity: smoothOpacity }}
+    />
+  );
+});
+
+StreamingCursor.displayName = "StreamingCursor";
+
 export const MessageResponse = memo(
   ({ className, isStreaming = false, children, ...props }: MessageResponseProps) => {
     const sourceText =
@@ -395,9 +422,35 @@ export const MessageResponse = memo(
           ? ""
           : String(children);
     const renderedText = useStreamingText(sourceText, isStreaming);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // 平滑滚动到底部
+    useEffect(() => {
+      if (!isStreaming || !containerRef.current) return;
+
+      const container = containerRef.current;
+      const parent = container.parentElement?.parentElement;
+      if (!parent) return;
+
+      const scrollThreshold = 150;
+      const isNearBottom =
+        parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
+
+      if (isNearBottom) {
+        parent.scrollTo({
+          top: parent.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    }, [renderedText, isStreaming]);
 
     return (
-      <div className="size-full">
+      <motion.div
+        ref={containerRef}
+        className="size-full"
+        initial={false}
+        animate={isStreaming ? { opacity: 1 } : { opacity: 1 }}
+      >
         <Streamdown
           className={cn(
             "ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
@@ -407,8 +460,8 @@ export const MessageResponse = memo(
         >
           {renderedText}
         </Streamdown>
-        {isStreaming ? <span aria-hidden className="ai-stream-cursor" /> : null}
-      </div>
+        {isStreaming && <StreamingCursor />}
+      </motion.div>
     );
   },
   (prevProps, nextProps) =>

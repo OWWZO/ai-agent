@@ -1,5 +1,6 @@
 ﻿import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
+import { motion, AnimatePresence } from "framer-motion";
 import Title from "./Title";
 import { GetProps } from "antd";
 import Tabs from "../Tabs";
@@ -51,9 +52,19 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
   });
 
   return (
-    <div className={classNames("flex h-full w-full flex-col bg-white/50", className)}>
+    <motion.div
+      className={classNames("flex h-full w-full flex-col bg-white/50", className)}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+    >
       {/* Header Section */}
-      <div className="flex flex-col gap-3 border-b border-[#e8e8ed] px-5 py-4">
+      <motion.div
+        className="flex flex-col gap-3 border-b border-[#e8e8ed] px-5 py-4"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      >
         <Title onClose={onClose}>{title || "工作空间"}</Title>
         <Tabs
           value={activeActionView}
@@ -61,30 +72,68 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
           options={actionViewOptions}
           className="min-h-[36px]"
         />
-      </div>
+      </motion.div>
 
       {/* Content Area */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto p-5">
-          <FilePreview
-            taskItem={activeTask}
-            taskList={taskList}
-            className={classNames({ hidden: activeActionView !== ActionViewItemEnum.follow })}
-          />
-          {activeActionView === ActionViewItemEnum.browser && <BrowserList taskList={taskList} />}
-          {activeActionView === ActionViewItemEnum.file && (
-            <FileList
-              taskList={taskList}
-              activeFile={curFileItem}
-              clearActiveFile={() => {
-                setCurFileItem(undefined);
-              }}
-            />
-          )}
-        </div>
+        <motion.div
+          className="flex-1 overflow-auto p-5"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          <AnimatePresence mode="wait">
+            {activeActionView === ActionViewItemEnum.follow && (
+              <motion.div
+                key="follow"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                <FilePreview
+                  taskItem={activeTask}
+                  taskList={taskList}
+                  className="h-full"
+                />
+              </motion.div>
+            )}
+            {activeActionView === ActionViewItemEnum.browser && (
+              <motion.div
+                key="browser"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                <BrowserList taskList={taskList} />
+              </motion.div>
+            )}
+            {activeActionView === ActionViewItemEnum.file && (
+              <motion.div
+                key="file"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                <FileList
+                  taskList={taskList}
+                  activeFile={curFileItem}
+                  clearActiveFile={() => {
+                    setCurFileItem(undefined);
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
         <PlanView plan={plan} ref={planRef} />
       </div>
-    </div>
+    </motion.div>
   );
 });
 
