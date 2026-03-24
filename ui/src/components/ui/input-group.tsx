@@ -12,7 +12,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="input-group"
       role="group"
       className={cn(
-        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-[30px] border border-border/80 bg-background/80 shadow-[0_20px_45px_-28px_rgba(15,23,42,0.34)] backdrop-blur-xl transition-[border-color,box-shadow,background-color,transform] duration-200 outline-none hover:border-border hover:bg-background/90 hover:shadow-[0_24px_52px_-30px_rgba(15,23,42,0.38)] focus-within:border-foreground/12 focus-within:bg-background/96 focus-within:shadow-[0_28px_64px_-32px_rgba(15,23,42,0.42)] has-disabled:bg-muted/30 has-disabled:opacity-50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
+        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-[30px] border-0 border-transparent bg-background/80 shadow-[0_20px_45px_-28px_rgba(15,23,42,0.34)] backdrop-blur-xl transition-[box-shadow,background-color,transform] duration-200 outline-none hover:bg-background/90 hover:shadow-[0_24px_52px_-30px_rgba(15,23,42,0.38)] focus-within:bg-background/96 focus-within:shadow-[0_28px_64px_-32px_rgba(15,23,42,0.42)] has-disabled:bg-muted/30 has-disabled:opacity-50 has-[[data-slot][aria-invalid=true]]:border-transparent has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
         className
       )}
       {...props}
@@ -120,7 +120,7 @@ function InputGroupInput({
     <Input
       data-slot="input-group-control"
       className={cn(
-        "flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        "flex-1 rounded-none border-0 border-transparent bg-transparent shadow-none ring-0 focus-visible:ring-0 focus-visible:border-transparent disabled:bg-transparent aria-invalid:ring-0 aria-invalid:border-transparent dark:bg-transparent dark:disabled:bg-transparent",
         className
       )}
       {...props}
@@ -136,7 +136,7 @@ function InputGroupTextarea({
     <Textarea
       data-slot="input-group-control"
       className={cn(
-        "flex-1 resize-none rounded-none border-0 bg-transparent py-2.5 shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        "flex-1 resize-none rounded-none border-0 border-transparent bg-transparent py-2.5 shadow-none ring-0 focus-visible:ring-0 focus-visible:border-transparent disabled:bg-transparent aria-invalid:ring-0 aria-invalid:border-transparent dark:bg-transparent dark:disabled:bg-transparent",
         className
       )}
       {...props}

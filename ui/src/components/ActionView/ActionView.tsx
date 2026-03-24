@@ -1,6 +1,6 @@
 ﻿import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import Title from "./Title";
 import { GetProps } from "antd";
 import Tabs from "../Tabs";

@@ -1,6 +1,6 @@
 import classNames from "classnames";
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import ActionPanel, { PanelItemType, useMsgTypes } from "../ActionPanel";
 import { useMemoizedFn } from "ahooks";
 import dayjs from "dayjs";

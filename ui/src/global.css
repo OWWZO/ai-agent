@@ -447,18 +447,19 @@ ol {
   text-wrap: balance;
 }
 
-/* AI Input Components - Apple Style Overrides */
+/* AI Input Components - Clean Single Shadow Style */
 [data-slot="prompt-input-body"] {
   background: white !important;
   border-radius: 24px !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04) !important;
-  border: 1px solid #e8e8ed !important;
+  box-shadow: 0 4px 24px oklch(0 0 0 / 0.06) !important;
+  border: none !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 [data-slot="prompt-input-body"]:focus-within {
-  box-shadow: 0 4px 20px rgba(0, 113, 227, 0.1), 0 0 0 1px rgba(0, 113, 227, 0.2) !important;
-  border-color: rgba(0, 113, 227, 0.3) !important;
+  box-shadow:
+    0 8px 32px oklch(0.55 0.18 260 / 0.12),
+    0 0 0 2px oklch(0.55 0.18 260 / 0.15) !important;
 }
 
 [data-slot="prompt-input-textarea"] {
@@ -473,30 +474,31 @@ ol {
 
 [data-slot="prompt-input-button"] {
   border-radius: 9999px !important;
-  border-color: #e8e8ed !important;
+  border: none !important;
+  background: oklch(0.94 0.003 90) !important;
   transition: all 0.2s ease !important;
 }
 
 [data-slot="prompt-input-button"]:hover {
-  background: #f5f5f7 !important;
-  border-color: #d2d2d7 !important;
+  background: oklch(0.88 0.008 90) !important;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.06) !important;
 }
 
 [data-slot="prompt-input-submit"] {
-  background: linear-gradient(135deg, #0071e3 0%, #0077ed 100%) !important;
+  background: linear-gradient(135deg, oklch(0.55 0.18 260) 0%, oklch(0.6 0.15 270) 100%) !important;
   border-radius: 9999px !important;
-  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.35) !important;
+  box-shadow: 0 4px 14px oklch(0.55 0.18 260 / 0.35) !important;
   transition: all 0.2s ease !important;
 }
 
 [data-slot="prompt-input-submit"]:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0077ed 0%, #0080ff 100%) !important;
-  box-shadow: 0 6px 20px rgba(0, 113, 227, 0.45) !important;
+  background: linear-gradient(135deg, oklch(0.6 0.15 260) 0%, oklch(0.65 0.12 270) 100%) !important;
+  box-shadow: 0 6px 20px oklch(0.55 0.18 260 / 0.45) !important;
   transform: translateY(-1px);
 }
 
 [data-slot="prompt-input-submit"]:disabled {
-  background: #e8e8ed !important;
+  background: oklch(0.9 0.005 90) !important;
   box-shadow: none !important;
 }
 
@@ -786,44 +788,35 @@ ol {
   background: oklch(1 0 0 / 0.7);
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid oklch(0.9 0.005 90 / 0.5);
+  box-shadow:
+    0 2px 8px oklch(0 0 0 / 0.04),
+    0 0 0 1px oklch(0.9 0.005 90 / 0.4);
 }
 
 .dark .glass-editorial {
   background: oklch(0.12 0.01 90 / 0.7);
-  border-color: oklch(0.25 0.015 90 / 0.3);
+  box-shadow:
+    0 2px 8px oklch(0 0 0 / 0.2),
+    0 0 0 1px oklch(1 0 0 / 0.08);
 }
 
 /* Card Hover Effect */
 .card-editorial {
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  border: 1px solid var(--chat-border);
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.03);
 }
 
 .card-editorial:hover {
-  border-color: var(--chat-border-strong);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow:
+    0 8px 32px oklch(0 0 0 / 0.06),
+    0 0 0 1px oklch(0.9 0.005 90 / 0.5);
 }
 
 /* Focus Ring - Editorial */
 .focus-ring-editorial:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px oklch(0.55 0.18 260 / 0.2);
-}
-
-/* Subtle Grid Background */
-.grid-bg {
-  background-image:
-    linear-gradient(to right, oklch(0 0 0 / 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0 0 0 / 0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
-}
-
-.dark .grid-bg {
-  background-image:
-    linear-gradient(to right, oklch(1 0 0 / 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(1 0 0 / 0.03) 1px, transparent 1px);
 }
 
 /* Pulsing Glow */

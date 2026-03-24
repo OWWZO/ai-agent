@@ -544,12 +544,15 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
           {/* Suggested Questions - Only for dataAgent */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: product.type === "dataAgent" ? 1 : 0 }}
-            transition={{ duration: 0.5 }}
+            initial={false}
+            animate={{
+              opacity: product.type === "dataAgent" ? 1 : 0,
+              y: product.type === "dataAgent" ? 0 : -10,
+            }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className={classNames(
-              "w-full overflow-hidden transition-all duration-500",
-              product.type === "dataAgent" ? "max-h-[100px] mb-12" : "max-h-0 mb-0"
+              "w-full overflow-hidden",
+              product.type === "dataAgent" ? "max-h-[100px] mb-12 pointer-events-auto" : "max-h-0 mb-0 pointer-events-none"
             )}
           >
             <div className="flex flex-wrap justify-center gap-3">

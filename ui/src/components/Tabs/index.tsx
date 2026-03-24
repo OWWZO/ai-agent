@@ -63,7 +63,7 @@ const Tabs = <V extends string | number>(props: GenieType.ControlProps<V> & {
       {/* Active Background Slide */}
       <div
         ref={slideRef}
-        className="absolute h-8 rounded-lg bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] transition-all duration-200 ease-out"
+        className="absolute h-8 rounded-lg bg-white shadow-[0_1px_3px_rgba(0,0,0,0.1)] transition-[width,transform] duration-200 ease-out will-change-transform"
         style={{ top: "6px" }}
       />
     </div>

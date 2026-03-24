@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { handleTaskData, combineData } from "@/utils/chat";
@@ -469,7 +469,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
             <div className="flex min-h-0 flex-1 flex-col px-6 pt-6">
               <Conversation className="chat-fade-bottom mb-6 flex-1">
                 <ConversationContent>
-                  <AnimatePresence mode="popLayout">
+                  <AnimatePresence mode="popLayout" initial={false}>
                     {conversation.chatList.map((chat) => (
                       <motion.div
                         key={chat.requestId}
@@ -477,10 +477,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.98 }}
                         transition={{
-                          duration: 0.4,
+                          duration: 0.35,
                           ease: [0.25, 0.46, 0.45, 0.94],
                         }}
-                        layout
                       >
                         <Dialogue
                           chat={chat}
@@ -575,7 +574,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
               <div className="flex min-h-0 flex-1 flex-col px-5 pt-5">
                 <Conversation className="chat-fade-bottom mb-5 flex-1">
                   <ConversationContent>
-                    <AnimatePresence mode="popLayout">
+                    <AnimatePresence mode="popLayout" initial={false}>
                       {conversation.chatList.map((chat) => (
                         <motion.div
                           key={chat.requestId}
@@ -583,10 +582,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.98 }}
                           transition={{
-                            duration: 0.4,
+                            duration: 0.35,
                             ease: [0.25, 0.46, 0.45, 0.94],
                           }}
-                          layout
                         >
                           <Dialogue
                             chat={chat}
@@ -707,7 +705,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
           {/* Messages */}
           <Conversation className="chat-fade-bottom mb-6 mt-6 flex-1">
             <ConversationContent>
-              <AnimatePresence mode="popLayout">
+              <AnimatePresence mode="popLayout" initial={false}>
                 {conversation.dataChatList.map((chat, idx) => (
                   <motion.div
                     key={`${conversation.id}-${idx}`}
@@ -715,10 +713,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.98 }}
                     transition={{
-                      duration: 0.4,
+                      duration: 0.35,
                       ease: [0.25, 0.46, 0.45, 0.94],
                     }}
-                    layout
                   >
                     <DataDialogue chat={chat} />
                   </motion.div>

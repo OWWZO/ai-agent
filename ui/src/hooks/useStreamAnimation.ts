@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useSpring, useMotionValue, animate } from "framer-motion";
+import { useSpring, useMotionValue, animate } from "motion/react";
 
 export interface StreamAnimationOptions {
   /** 是否启用流式动画 */

@@ -14,6 +14,14 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@': path.resolve(__dirname, 'src'),
         crypto: 'crypto-browserify',
+        'use-sync-external-store/shim': path.resolve(
+          __dirname,
+          'src/shims/use-sync-external-store/shim.ts'
+        ),
+        'use-sync-external-store/shim/with-selector': path.resolve(
+          __dirname,
+          'src/shims/use-sync-external-store/with-selector.ts'
+        ),
       },
     },
     css: {preprocessorOptions: {less: {javascriptEnabled: true},},},

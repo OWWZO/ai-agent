@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
+import { motion, AnimatePresence, useSpring, useMotionValue } from "motion/react";
 import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { memo, useEffect, useRef, useState, useMemo } from "react";

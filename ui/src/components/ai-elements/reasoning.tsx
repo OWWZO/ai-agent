@@ -11,7 +11,7 @@ import { BrainIcon, ChevronDownIcon, SparklesIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState, useRef } from "react";
 import { Streamdown } from "streamdown";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 
 type ReasoningContextValue = {
   isStreaming: boolean;

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef } from "react";
 import classNames from "classnames";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { useMsgTypes } from "./useMsgTypes";
 import HTMLRenderer from "./HTMLRenderer";
 import useContent from "./useContent";

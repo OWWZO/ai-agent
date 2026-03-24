@@ -142,7 +142,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                     size="icon-sm"
                     variant="ghost"
                     disabled={disabled}
-                    className="rounded-full border border-[var(--chat-border)] text-[var(--chat-text-soft)] transition-all duration-300 hover:border-[var(--chat-border-strong)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)] hover:scale-105"
+                    className="rounded-full bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md hover:scale-105"
                   >
                     <PlusIcon className="size-5" />
                   </PromptInputButton>
@@ -159,11 +159,11 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                     <PromptInputButton
                       aria-pressed={deepThink}
                       className={cn(
-                        "rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-all duration-300",
+                        "rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all duration-300",
                         "flex items-center gap-1.5",
                         deepThink
-                          ? "border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm shadow-[var(--primary)]/20 hover:bg-[var(--primary)]/90"
-                          : "border-[var(--chat-border)] bg-transparent text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+                          ? "bg-[var(--primary)] text-white shadow-md shadow-[var(--primary)]/20 hover:bg-[var(--primary)]/90"
+                          : "bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md"
                       )}
                       disabled={disabled}
                       onClick={() => setDeepThink((v) => !v)}
@@ -185,7 +185,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PromptInputButton
-                      className="rounded-full border border-[var(--chat-border)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition-all duration-300 hover:border-[var(--chat-border-strong)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)] flex items-center gap-1.5"
+                      className="rounded-full bg-[var(--chat-surface-muted)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md flex items-center gap-1.5"
                       disabled={disabled}
                       onClick={() => dbsShow?.(true)}
                       size="sm"

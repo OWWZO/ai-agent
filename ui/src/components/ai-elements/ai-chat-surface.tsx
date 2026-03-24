@@ -12,7 +12,7 @@ function AiChatSurface({ className, ...props }: AiChatSurfaceProps) {
   return (
     <section
       className={cn(
-        "ai-chat-surface relative isolate flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/95 text-foreground shadow-[0_24px_80px_-32px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/80",
+        "ai-chat-surface relative isolate flex min-h-0 flex-col overflow-hidden rounded-[28px] bg-background/95 text-foreground shadow-[0_24px_80px_-32px_rgba(15,23,42,0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/80",
         className
       )}
       data-slot="ai-chat-surface"
