@@ -1,6 +1,7 @@
-﻿import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, Image } from "antd";
 import classNames from "classnames";
+import { motion } from "motion/react";
 
 import ChatView from "@/components/ChatView";
 import GeneralInput from "@/components/GeneralInput";
@@ -36,6 +37,7 @@ type CaseCardProps = {
   videoModalOpen: string | undefined;
   onOpenVideo: (url: string) => void;
   onCloseVideo: () => void;
+  index: number;
 };
 
 const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
@@ -52,9 +54,9 @@ const outputDescMap: Record<string, string> = {
 };
 
 const tagColorMap: Record<string, string> = {
-  专业研究: "bg-[#f3f4f6] text-[#374151]",
-  数据分析: "bg-[#ecfeff] text-[#0f766e]",
-  竞品调研: "bg-[#fff7ed] text-[#c2410c]",
+  专业研究: "bg-[var(--secondary)] text-[var(--secondary-foreground)]",
+  数据分析: "bg-[oklch(0.95_0.05_200)] text-[oklch(0.5_0.1_200)]",
+  竞品调研: "bg-[oklch(0.95_0.05_50)] text-[oklch(0.5_0.12_50)]",
 };
 
 const getModeName = (type: string) => {
@@ -89,25 +91,57 @@ const createInitialState = (): InitialState => {
   };
 };
 
+// Character reveal animation component
+const RevealTitle = ({ text, className }: { text: string; className?: string }) => {
+  return (
+    <span className={classNames("inline-flex", className)}>
+      {text.split("").map((char, i) => (
+        <motion.span
+          key={i}
+          initial={{ opacity: 0, y: 20, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{
+            duration: 0.5,
+            delay: i * 0.05,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className="inline-block"
+        >
+          {char}
+        </motion.span>
+      ))}
+    </span>
+  );
+};
+
 const CaseCard = memo((props: CaseCardProps) => {
-  const { title, description, tag, image, url, videoUrl, videoModalOpen, onOpenVideo, onCloseVideo } = props;
-  const tagColor = tagColorMap[tag] ?? "bg-[#f5f5f7] text-[#86868b]";
+  const { title, description, tag, image, url, videoUrl, videoModalOpen, onOpenVideo, onCloseVideo, index } = props;
+  const tagColor = tagColorMap[tag] ?? "bg-[var(--muted)] text-[var(--muted-foreground)]";
 
   return (
-    <div className="group relative flex w-[260px] shrink-0 cursor-pointer flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.02)] transition-all duration-500 ease-out hover:shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] hover:-translate-y-1">
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.7,
+        delay: 0.8 + index * 0.1,
+        ease: [0.16, 1, 0.3, 1],
+      }}
+      className="group relative flex w-[280px] shrink-0 cursor-pointer flex-col overflow-hidden rounded-[24px] bg-[var(--card)] shadow-[var(--shadow-sm)] transition-all duration-500 ease-out hover:shadow-[var(--shadow-lg)] hover:-translate-y-1 hover:border-[var(--border-strong)] border border-transparent"
+    >
       {/* Image Container */}
-      <div className="relative h-[160px] overflow-hidden">
+      <div className="relative h-[170px] overflow-hidden">
         <img
           src={image}
           className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
           alt={title}
         />
         <div
-          className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all duration-300 group-hover:bg-black/20"
+          className="absolute inset-0 flex items-center justify-center bg-[var(--foreground)]/0 transition-all duration-300 group-hover:bg-[var(--foreground)]/15"
           onClick={() => onOpenVideo(videoUrl)}
         >
-          <div className="flex h-[48px] w-[48px] scale-75 items-center justify-center rounded-full bg-white/90 opacity-0 backdrop-blur-sm shadow-lg transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 hover:bg-white hover:scale-105">
-            <i className="font_family icon-bofang ml-[2px] text-[18px] text-[#1d1d1f]"></i>
+          <div className="flex h-[48px] w-[48px] scale-75 items-center justify-center rounded-full bg-white/95 opacity-0 backdrop-blur-sm shadow-lg transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 hover:bg-white hover:scale-105">
+            <i className="font_family icon-bofang ml-[2px] text-[18px] text-[var(--foreground)]"></i>
           </div>
         </div>
         <Image
@@ -126,19 +160,19 @@ const CaseCard = memo((props: CaseCardProps) => {
       {/* Content */}
       <div className="flex flex-col gap-3 p-5">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="text-[15px] font-semibold leading-tight text-[#1d1d1f] line-clamp-1">{title}</h3>
+          <h3 className="text-[16px] font-medium leading-tight text-[var(--chat-text)] line-clamp-1 font-[var(--font-sans)]">{title}</h3>
           <span className={`inline-block shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${tagColor}`}>{tag}</span>
         </div>
-        <p className="line-clamp-2 text-[13px] leading-[1.6] text-[#86868b]">{description}</p>
+        <p className="line-clamp-2 text-[13px] leading-[1.6] text-[var(--chat-text-soft)]">{description}</p>
         <div
-          className="flex cursor-pointer items-center gap-1.5 pt-1 text-[13px] font-medium text-[#0071e3] transition-colors duration-200 hover:text-[#0077ed]"
+          className="flex cursor-pointer items-center gap-1.5 pt-1 text-[13px] font-medium text-[var(--primary)] transition-colors duration-200 hover:text-[var(--accent)]"
           onClick={() => window.open(url)}
         >
           <span>查看报告</span>
           <i className="font_family icon-xinjianjiantou text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 });
 
@@ -376,29 +410,35 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
   const renderWelcome = () => {
     return (
-      <div
-        className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24"
-        style={{
-          background: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 113, 227, 0.05), transparent 60%)",
-        }}
-      >
-        <div className="mx-auto flex w-full max-w-[960px] flex-col items-center">
+      <div className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24 noise-overlay">
+        <div className="mx-auto flex w-full max-w-[1000px] flex-col items-center">
           {/* Hero Section */}
-          <div className="mb-8 text-center">
+          <div className="mb-10 text-center">
             <h1
-              className="mb-4 text-[48px] font-semibold leading-none tracking-[-0.025em] text-[#1d1d1f] md:text-[64px] lg:text-[72px]"
-              style={{ fontFamily: "var(--font-brand)" }}
+              className="mb-5 text-[52px] font-normal leading-none tracking-[-0.03em] text-[var(--chat-text)] md:text-[72px] lg:text-[84px]"
+              style={{ fontFamily: "var(--font-display)" }}
             >
-              Reactor
+              <RevealTitle text="Reactor" />
             </h1>
-            <p className="mx-auto max-w-[480px] text-[17px] leading-[1.6] text-[#86868b] md:text-[19px]">
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="mx-auto max-w-[520px] text-[17px] leading-[1.7] text-[var(--chat-text-soft)] md:text-[19px]"
+              style={{ fontFamily: "var(--font-sans)" }}
+            >
               AI 智能体平台，一句话完成数据分析、研究调查和内容创作
-            </p>
+            </motion.p>
           </div>
 
           {/* Input Section */}
-          <div className="mb-6 w-full max-w-[800px]">
-            <AiChatSurface className="w-full rounded-[28px] bg-white/80 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-8 w-full max-w-[820px]"
+          >
+            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-4 shadow-[var(--shadow-md)] backdrop-blur-xl border border-[var(--chat-border)]">
               <GeneralInput
                 placeholder={product.placeholder}
                 showBtn={true}
@@ -409,25 +449,30 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
                 dbsShow={setDbsShow}
               />
             </AiChatSurface>
-          </div>
+          </motion.div>
 
           {/* Mode Selector */}
-          <div className="mb-16 flex w-full max-w-[800px] flex-wrap items-center justify-center gap-2.5">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.65, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-20 flex w-full max-w-[800px] flex-wrap items-center justify-center gap-3"
+          >
             <div className="relative" ref={outputMenuRef}>
               <div
                 className={classNames(
-                  "h-[36px] px-4 cursor-pointer flex items-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-200 select-none",
+                  "h-[40px] px-5 cursor-pointer flex items-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-300 select-none",
                   isOutputActive
-                    ? "border-transparent bg-[#1d1d1f] text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
-                    : "border-[#e8e8ed] bg-white text-[#86868b] hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+                    ? "border-transparent bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-[var(--shadow-md)]"
+                    : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
                 )}
                 onClick={() => {
                   if (!isOutputActive) handleSelectProduct(displayOutput);
                   setOutputMenuOpen((v) => !v);
                 }}
               >
-                <i className={`font_family ${displayOutput.img} ${isOutputActive ? "text-white" : displayOutput.color} text-[14px]`} />
-                <span>{displayOutput.name}</span>
+                <i className={`font_family ${displayOutput.img} ${isOutputActive ? "text-[var(--chat-surface)]" : displayOutput.color} text-[14px]`} />
+                <span style={{ fontFamily: "var(--font-sans)" }}>{displayOutput.name}</span>
                 <svg
                   className={classNames("w-3.5 h-3.5 ml-0.5 transition-transform duration-200", {
                     "rotate-180": outputMenuOpen,
@@ -446,15 +491,15 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
               </div>
 
               {outputMenuOpen && (
-                <div className="absolute left-0 top-[44px] z-50 w-[240px] rounded-[18px] border border-[#e8e8ed] bg-white/98 p-2 shadow-[0_20px_48px_rgba(0,0,0,0.12)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="absolute left-0 top-[48px] z-50 w-[260px] rounded-[20px] border border-[var(--chat-border)] bg-[var(--chat-surface)]/98 p-2 shadow-[var(--shadow-xl)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200">
                   {outputProducts.map((item) => {
                     const isSelected = product.type === item.type;
                     return (
                       <div
                         key={item.type}
                         className={classNames(
-                          "group/item flex cursor-pointer items-start gap-3 rounded-[14px] px-3 py-2.5 transition-all duration-150",
-                          isSelected ? "bg-[#f5f5f7]" : "hover:bg-[#f5f5f7]"
+                          "group/item flex cursor-pointer items-start gap-3 rounded-[16px] px-3 py-3 transition-all duration-200",
+                          isSelected ? "bg-[var(--chat-surface-soft)]" : "hover:bg-[var(--chat-surface-soft)]"
                         )}
                         onClick={() => {
                           handleSelectProduct(item);
@@ -463,15 +508,15 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
                       >
                         <div
                           className={classNames(
-                            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                            isSelected ? "bg-white shadow-sm" : "bg-[#f5f5f7] group-hover/item:bg-white"
+                            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                            isSelected ? "bg-[var(--chat-surface)] shadow-sm" : "bg-[var(--chat-surface-soft)] group-hover/item:bg-[var(--chat-surface)]"
                           )}
                         >
                           <i className={`font_family ${item.img} ${item.color} text-[14px]`} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className={classNames("text-[13px] font-medium", isSelected ? "text-[#1d1d1f]" : "text-[#1d1d1f]")}>{item.name}</div>
-                          <div className="mt-0.5 text-[12px] leading-[1.4] text-[#86868b]">{outputDescMap[item.type]}</div>
+                          <div className={classNames("text-[14px] font-medium", isSelected ? "text-[var(--chat-text)]" : "text-[var(--chat-text)]")}>{item.name}</div>
+                          <div className="mt-0.5 text-[12px] leading-[1.4] text-[var(--chat-text-soft)]">{outputDescMap[item.type]}</div>
                         </div>
                       </div>
                     );
@@ -484,52 +529,61 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
               <div
                 key={item.type}
                 className={classNames(
-                  "h-[36px] px-4 cursor-pointer flex items-center justify-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-200 select-none",
+                  "h-[40px] px-5 cursor-pointer flex items-center justify-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-300 select-none",
                   item.type === product.type
-                    ? "border-transparent bg-[#1d1d1f] text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
-                    : "border-[#e8e8ed] bg-white text-[#86868b] hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+                    ? "border-transparent bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-[var(--shadow-md)]"
+                    : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
                 )}
                 onClick={() => handleSelectProduct(item)}
               >
-                <i className={`font_family ${item.img} ${item.type === product.type ? "text-white" : item.color} text-[14px]`} />
-                <span>{item.name}</span>
+                <i className={`font_family ${item.img} ${item.type === product.type ? "text-[var(--chat-surface)]" : item.color} text-[14px]`} />
+                <span style={{ fontFamily: "var(--font-sans)" }}>{item.name}</span>
               </div>
             ))}
-          </div>
+          </motion.div>
 
           {/* Suggested Questions - Only for dataAgent */}
-          <div
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: product.type === "dataAgent" ? 1 : 0 }}
+            transition={{ duration: 0.5 }}
             className={classNames(
               "w-full overflow-hidden transition-all duration-500",
-              product.type === "dataAgent" ? "opacity-100 max-h-[100px] mb-10" : "opacity-0 max-h-0 mb-0"
+              product.type === "dataAgent" ? "max-h-[100px] mb-12" : "max-h-0 mb-0"
             )}
           >
-            <div className="flex flex-wrap justify-center gap-2.5">
+            <div className="flex flex-wrap justify-center gap-3">
               {chatQustions.map((item, index) => (
                 <div
                   key={index}
-                  className="flex cursor-pointer items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-4 py-2 text-[13px] text-[#86868b] transition-all duration-200 hover:border-[#d2d2d7] hover:text-[#1d1d1f] hover:shadow-sm"
+                  className="flex cursor-pointer items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-2.5 text-[13px] text-[var(--chat-text-soft)] transition-all duration-300 hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)] hover:shadow-[var(--shadow-sm)]"
                   onClick={() => toSendMessage(item)}
                 >
-                  {item.type === 2 && <i className="font_family icon-shendusikao text-[12px] text-[#0071e3]" />}
+                  {item.type === 2 && <i className="font_family icon-shendusikao text-[12px] text-[var(--primary)]" />}
                   {item.label}
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
 
           {/* Cases Section */}
-          <div className="w-full pb-20">
-            <div className="mb-8 text-center">
-              <h2 className="mb-2 text-[22px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">精选案例</h2>
-              <p className="text-[14px] text-[#86868b]">和 Genie 一起，让效率飞起来</p>
-            </div>
+          <div className="w-full pb-24">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-10 text-center"
+            >
+              <h2 className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]" style={{ fontFamily: "var(--font-display)" }}>精选案例</h2>
+              <p className="text-[15px] text-[var(--chat-text-soft)]" style={{ fontFamily: "var(--font-sans)" }}>和 Genie 一起，让效率飞起来</p>
+            </motion.div>
 
             <div className="flex flex-wrap justify-center gap-6">
               {demoList.map((demo, index) => (
                 <CaseCard
                   key={index}
                   {...demo}
+                  index={index}
                   videoModalOpen={videoModalOpen}
                   onOpenVideo={setVideoModalOpen}
                   onCloseVideo={() => setVideoModalOpen(undefined)}
@@ -557,7 +611,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
   if (!currentConversation) return null;
 
   return (
-    <div className="h-full w-full bg-[var(--page-shell)] text-foreground">
+    <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
       <div className="flex h-full w-full">
         {/* Desktop Sidebar - Resizable and Collapsible */}
         <div className="hidden h-full shrink-0 lg:block">
@@ -568,9 +622,9 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             onDelete={handleDeleteConversation}
             isCollapsed={isSidebarCollapsed}
             onCollapsedChange={setIsSidebarCollapsed}
-            defaultWidth={280}
+            defaultWidth={300}
             minWidth={240}
-            maxWidth={400}
+            maxWidth={420}
           />
         </div>
 
@@ -582,7 +636,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           onClose={() => setHistoryDrawerOpen(false)}
           width={320}
           rootClassName="lg:hidden"
-          className="[&_.ant-drawer-body]:p-0 [&_.ant-drawer-content]:bg-[#f5f5f7]"
+          className="[&_.ant-drawer-body]:p-0 [&_.ant-drawer-content]:bg-[var(--chat-surface-soft)]"
         >
           <ResizableSidebar
             items={threadListItems}
@@ -599,7 +653,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           {/* Mobile Header - Only show when sidebar is collapsed or on mobile */}
           <div className="flex items-center justify-between px-4 pb-3 pt-4 lg:hidden">
             <button
-              className="flex h-9 items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-3 text-[13px] text-[#86868b] shadow-sm transition-all duration-200 hover:border-[#d2d2d7] hover:text-[#1d1d1f]"
+              className="flex h-9 items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 text-[13px] text-[var(--chat-text-soft)] shadow-sm transition-all duration-300 hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
               onClick={() => setHistoryDrawerOpen(true)}
             >
               <span>历史对话</span>
