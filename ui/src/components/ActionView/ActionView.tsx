@@ -1,4 +1,4 @@
-﻿import React, { forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
 import { motion, AnimatePresence } from "motion/react";
 import Title from "./Title";
@@ -28,12 +28,13 @@ type ActionViewProps = {
   title?: React.ReactNode;
   taskList?: PanelItemType[];
   activeTask?: CHAT.Task;
+  streamTask?: CHAT.Task;
   plan?: CHAT.Plan;
   ref?: React.Ref<ActionViewRef>;
 } & GetProps<typeof Title>;
 
 const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) => {
-  const { className, onClose, title, activeTask, taskList, plan } = props;
+  const { className, onClose, title, activeTask, streamTask, taskList, plan } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();
   const planRef = useRef<PlanViewAction>(null);
@@ -93,7 +94,7 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
                 className="h-full"
               >
                 <FilePreview
-                  taskItem={activeTask}
+                  taskItem={activeTask || streamTask}
                   taskList={taskList}
                   className="h-full"
                 />

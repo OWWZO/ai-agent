@@ -33,6 +33,21 @@ const getProductByType = (type?: string) => {
   return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
+const RESULT_MESSAGE_TYPES = new Set(["task_summary", "result"]);
+
+const getLatestRenderableTask = (chat: CHAT.ChatItem): CHAT.Task | undefined => {
+  const groups = chat.multiAgent?.tasks || [];
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const group = groups[i] || [];
+    for (let j = group.length - 1; j >= 0; j -= 1) {
+      const item = group[j] as CHAT.Task | undefined;
+      if (!item || RESULT_MESSAGE_TYPES.has(item.messageType)) continue;
+      return item;
+    }
+  }
+  return undefined;
+};
+
 const ChatView: GenieType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
@@ -44,13 +59,27 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
   const [taskList, setTaskList] = useState<MESSAGE.Task[]>([]);
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
+  const [workspaceStreamTask, setWorkspaceStreamTask] = useState<CHAT.Task>();
   const [plan, setPlan] = useState<CHAT.Plan>();
   const [showAction, setShowAction] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [streamingThoughtMap, setStreamingThoughtMap] = useState<Record<string, string>>({});
   const [, setChatVersion] = useState(0);
   const actionViewRef = ActionView.useActionView();
   const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
+
+  const updateStreamingActiveTask = useMemoizedFn((chat: CHAT.ChatItem) => {
+    const latestTask = getLatestRenderableTask(chat);
+    if (!latestTask) return;
+    // Keep realtime-follow content in an isolated high-frequency state.
+    const nextTask = {
+      ...latestTask,
+      resultMap: latestTask.resultMap ? { ...latestTask.resultMap } : latestTask.resultMap,
+    } as CHAT.Task;
+    setWorkspaceStreamTask(nextTask);
+    setActiveTask(nextTask);
+  });
 
   useEffect(() => {
     conversationRef.current = conversation;
@@ -59,9 +88,11 @@ const ChatView: GenieType.FC<Props> = (props) => {
   useEffect(() => {
     setTaskList([]);
     setActiveTask(undefined);
+    setWorkspaceStreamTask(undefined);
     setPlan(undefined);
     setShowAction(false);
     setLoading(false);
+    setStreamingThoughtMap({});
   }, [conversation.id]);
 
   const commitConversation = useMemoizedFn(
@@ -103,6 +134,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
     let currentChat = combineCurrentChat(inputInfo, baseConversation.sessionId, requestId);
     const isChatMode = outputStyle === "chat";
     const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
+    if (!isChatMode && normalizedDeepThink) {
+      setStreamingThoughtMap((prev) => ({ ...prev, [requestId]: "" }));
+    }
     let runningConversation: CHAT.ConversationHistory = {
       ...baseConversation,
       chatTitle: baseConversation.chatTitle || message || "",
@@ -181,7 +215,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
       pendingFlushFrame = requestAnimationFrame(() => {
         pendingFlushFrame = null;
         flushNonChatUpdates(false);
-        if (pendingConversation || pendingTaskData) {
+        if (pendingConversation || pendingTaskData || taskDataDirty) {
           scheduleNonChatFlush(false);
         }
       });
@@ -255,11 +289,25 @@ const ChatView: GenieType.FC<Props> = (props) => {
         }
 
         if (resultMap?.eventData) {
-          currentChat = combineData(resultMap.eventData || {}, currentChat);
+          const eventData = resultMap.eventData;
+          currentChat = combineData(eventData || {}, currentChat);
+          updateStreamingActiveTask(currentChat);
+          if (normalizedDeepThink && eventData?.messageType === "plan_thought") {
+            const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
+            setStreamingThoughtMap((prev) =>
+              prev[currentChat.requestId] === latestThought
+                ? prev
+                : { ...prev, [currentChat.requestId]: latestThought }
+            );
+          }
           taskDataDirty = true;
           if (finished) {
             currentChat.loading = false;
             setLoading(false);
+            if (normalizedDeepThink) {
+              const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
+              setStreamingThoughtMap((prev) => ({ ...prev, [currentChat.requestId]: finalThought }));
+            }
           }
           const newChatList = [...runningConversation.chatList];
           newChatList.splice(newChatList.length - 1, 1, currentChat);
@@ -530,6 +578,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
                     >
                       <Dialogue
                         chat={chat}
+                        streamingThought={streamingThoughtMap[chat.requestId]}
                         deepThink={conversation.deepThink}
                         changeTask={changeTask}
                         changeFile={changeFile}
@@ -635,6 +684,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
                         >
                           <Dialogue
                             chat={chat}
+                            streamingThought={streamingThoughtMap[chat.requestId]}
                             deepThink={conversation.deepThink}
                             changeTask={changeTask}
                             changeFile={changeFile}
@@ -717,6 +767,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
             // 展开状态 - 工作空间
             <ActionView
               activeTask={activeTask}
+              streamTask={workspaceStreamTask}
               taskList={taskList}
               plan={plan}
               ref={actionViewRef}

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, Image } from "antd";
 import classNames from "classnames";
 import { motion } from "motion/react";
+import { Edit3Icon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
 
 import ChatView from "@/components/ChatView";
 import GeneralInput from "@/components/GeneralInput";
@@ -199,6 +200,8 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
   const [dataShow, setDataShow] = useState(false);
   const [outputMenuOpen, setOutputMenuOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [curModel, setCurModel] = useState<CHAT.ModelInfo>({
     modelName: "",
@@ -222,13 +225,6 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     if (!currentConversation) return false;
     return currentConversation.chatList.length > 0 || currentConversation.dataChatList.length > 0;
   }, [currentConversation]);
-
-  // 自动折叠侧边栏：进入对话后自动折叠
-  useEffect(() => {
-    if (hasConversationContent) {
-      setIsSidebarCollapsed(true);
-    }
-  }, [hasConversationContent]);
 
   useEffect(() => {
     if (!currentConversation) return;
@@ -397,6 +393,31 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     [currentConversationId, sortedConversations]
   );
 
+  const filteredThreadItems = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    if (!keyword) return threadListItems;
+    return threadListItems.filter((item) => {
+      const title = item.title.toLowerCase();
+      const subtitle = item.subtitle.toLowerCase();
+      return title.includes(keyword) || subtitle.includes(keyword);
+    });
+  }, [searchQuery, threadListItems]);
+
+  const todayFilteredItems = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return filteredThreadItems.filter((item) => item.updatedAt >= today.getTime()).slice(0, 20);
+  }, [filteredThreadItems]);
+
+  const openSearchPanel = useCallback(() => {
+    setSearchPanelOpen(true);
+    setSearchQuery("");
+  }, []);
+
+  const closeSearchPanel = useCallback(() => {
+    setSearchPanelOpen(false);
+  }, []);
+
   const primaryProducts = useMemo(
     () => productList.filter((item) => !OUTPUT_TYPES.includes(item.type)),
     []
@@ -415,20 +436,11 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           {/* Hero Section */}
           <div className="mb-10 text-center">
             <h1
-              className="mb-5 text-[52px] font-normal leading-none tracking-[-0.03em] text-[var(--chat-text)] md:text-[72px] lg:text-[84px]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              <RevealTitle text="Reactor" />
-            </h1>
-            <motion.p
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              className="mx-auto max-w-[520px] text-[17px] leading-[1.7] text-[var(--chat-text-soft)] md:text-[19px]"
+              className="mb-3 text-[34px] font-medium leading-[1.05] tracking-normal text-[var(--chat-text)] md:text-[46px] lg:text-[52px]"
               style={{ fontFamily: "var(--font-sans)" }}
             >
-              AI 智能体平台，一句话完成数据分析、研究调查和内容创作
-            </motion.p>
+              {"Let's build"}
+            </h1>
           </div>
 
           {/* Input Section */}
@@ -615,17 +627,86 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
+      {searchPanelOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-start justify-center bg-black/12 px-4 pt-6 sm:px-8 sm:pt-10"
+          onClick={closeSearchPanel}
+        >
+          <div
+            className="w-full max-w-[980px] overflow-hidden rounded-[22px] border border-[var(--chat-border)] bg-[var(--chat-surface)] shadow-[0_24px_80px_-36px_rgba(15,23,42,0.5)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center border-b border-[var(--chat-border)] px-6 py-4">
+              <div className="flex min-w-0 flex-1 items-center gap-3 text-[var(--chat-text-soft)]">
+                <SearchIcon className="h-6 w-6 shrink-0" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                  placeholder="搜索聊天..."
+                  className="w-full border-none bg-transparent text-[16px] leading-none tracking-tight text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
+                />
+              </div>
+              <button
+                onClick={closeSearchPanel}
+                className="ml-4 flex h-9 w-9 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+              >
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  createNewChat();
+                  closeSearchPanel();
+                }}
+                className="mb-4 flex h-14 w-full items-center gap-3 rounded-[14px] bg-[var(--chat-surface-soft)] px-5 text-left font-medium text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-surface-muted)]"
+              >
+                <Edit3Icon className="h-6 w-6 shrink-0 text-[var(--chat-text-soft)]" />
+                <span className="text-[16px] leading-none tracking-tight">新聊天</span>
+              </button>
+
+              <div className="mb-3 px-2 text-[16px] leading-none text-[var(--chat-text-muted)]">今天</div>
+              {todayFilteredItems.length ? (
+                <div className="space-y-1">
+                  {todayFilteredItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        handleSelectConversation(item.id);
+                        closeSearchPanel();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-[12px] px-3 py-3 text-left text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-surface-soft)]"
+                    >
+                      <MessageCircleIcon className="h-6 w-6 shrink-0 text-[var(--chat-text-soft)]" />
+                      <span className="truncate text-[16px] leading-none tracking-tight">{item.title}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[12px] border border-dashed border-[var(--chat-border)] px-4 py-6 text-[16px] text-[var(--chat-text-muted)]">
+                  未找到匹配的历史对话
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex h-full w-full">
         {/* Desktop Sidebar - Resizable and Collapsible */}
         <div className="hidden h-full shrink-0 lg:block">
           <ResizableSidebar
             items={threadListItems}
             onCreate={createNewChat}
+            onSearchOpen={openSearchPanel}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={isSidebarCollapsed}
             onCollapsedChange={setIsSidebarCollapsed}
-            defaultWidth={300}
+            defaultWidth={240}
             minWidth={240}
             maxWidth={420}
           />
@@ -637,13 +718,14 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           placement="left"
           open={historyDrawerOpen}
           onClose={() => setHistoryDrawerOpen(false)}
-          width={320}
+          width={240}
           rootClassName="lg:hidden"
           className="[&_.ant-drawer-body]:p-0 [&_.ant-drawer-content]:bg-[var(--chat-surface-soft)]"
         >
           <ResizableSidebar
             items={threadListItems}
             onCreate={createNewChat}
+            onSearchOpen={openSearchPanel}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={false}

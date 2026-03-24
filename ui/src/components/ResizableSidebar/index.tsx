@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 interface ResizableSidebarProps {
   items: LocalThreadListItem[];
   onCreate: () => void;
+  onSearchOpen?: () => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   isCollapsed: boolean;
@@ -48,8 +49,9 @@ const folders = [
 const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
   items,
   onCreate,
+  onSearchOpen,
   onSelect,
-  onDelete,
+  onDelete: _onDelete,
   isCollapsed,
   onCollapsedChange,
   defaultWidth = 300,
@@ -147,7 +149,13 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={item.action === "create" ? onCreate : undefined}
+                    onClick={
+                      item.action === "create"
+                        ? onCreate
+                        : item.key === "search"
+                          ? onSearchOpen
+                          : undefined
+                    }
                     className={classNames(
                       "h-10 w-10 rounded-xl transition-colors",
                       item.action === "create"
@@ -204,7 +212,13 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
           <button
             key={item.key}
             type="button"
-            onClick={item.action === "create" ? onCreate : undefined}
+            onClick={
+              item.action === "create"
+                ? onCreate
+                : item.key === "search"
+                  ? onSearchOpen
+                  : undefined
+            }
             className={classNames(
               "mb-1.5 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[14px] text-[var(--chat-text-soft)] transition-colors",
               item.action === "create"

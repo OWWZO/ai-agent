@@ -16,22 +16,16 @@ import {
   ReasoningContent,
 } from "@/components/ai-elements/reasoning";
 import {
-  Task,
-  TaskTrigger,
-  TaskContent,
-  TaskItem,
-} from "@/components/ai-elements/task";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CopyIcon, CheckIcon, RefreshCwIcon, MoreHorizontalIcon } from "lucide-react";
-import MessageSkeleton from "./MessageSkeleton";
 
 type Props = {
   chat: CHAT.ChatItem;
+  streamingThought?: string;
   deepThink: boolean;
   changeTask?: (task: CHAT.Task) => void;
   changeFile?: (file: CHAT.TFile) => void;
@@ -40,23 +34,28 @@ type Props = {
 };
 
 const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
-  <div className="space-y-4">
-    <div className="text-[15px] font-semibold text-[#1d1d1f]">任务计划</div>
-    {plan.map((p, i) => (
-      <div key={i} className="rounded-[16px] bg-white/50 p-4">
-        <div className="mb-3 flex items-center gap-3 text-[14px] font-medium text-[#1d1d1f]">
-          <div className="h-2 w-2 rounded-full bg-[#0071e3]"></div>
-          {p.name}
+  <div className="space-y-2">
+    <div className="flex items-center gap-2 rounded-lg p-2 text-sm text-muted-foreground">
+      <i className="font_family icon-renwu text-[13px] text-primary"></i>
+      <span>任务计划</span>
+    </div>
+    <div className="mt-1 space-y-3 border-l-2 border-muted pl-4">
+      {plan.map((p, i) => (
+        <div key={i} className="space-y-1.5">
+          <div className="flex items-center gap-2 text-[14px] font-medium text-[#1d1d1f]">
+            <div className="h-1.5 w-1.5 rounded-full bg-primary"></div>
+            {p.name}
+          </div>
+          <div className="space-y-1 pl-3">
+            {p.list.map((step, j) => (
+              <div key={j} className="text-[13px] leading-6 text-[#6b7280]">
+                {j + 1}. {step}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="space-y-2 pl-5">
-          {p.list.map((step, j) => (
-            <div key={j} className="text-[14px] text-[#86868b]">
-              {j + 1}. {step}
-            </div>
-          ))}
-        </div>
-      </div>
-    ))}
+      ))}
+    </div>
   </div>
 );
 
@@ -86,14 +85,13 @@ const ToolItem: FC<{
       );
     }
     case "tool_thought": {
+      const streamingThought = !tool.resultMap?.isFinal;
       return (
         <div className="mt-[8px]">
-          <Task>
-            <TaskTrigger title="思考过程" />
-            <TaskContent>
-              <TaskItem>{tool.toolThought}</TaskItem>
-            </TaskContent>
-          </Task>
+          <Reasoning isStreaming={streamingThought} defaultOpen>
+            <ReasoningTrigger />
+            <ReasoningContent>{tool.toolThought || ""}</ReasoningContent>
+          </Reasoning>
         </div>
       );
     }
@@ -251,8 +249,9 @@ const ConclusionSection: FC<{
 };
 
 const DialogueComponent: FC<Props> = (props) => {
-  const { chat, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
+  const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
   const isReactType = !deepThink;
+  const thoughtText = streamingThought ?? chat.thought ?? "";
   const [copied, setCopied] = useState(false);
 
   const changeActiveChat = (task: CHAT.Task) => {
@@ -328,18 +327,18 @@ const DialogueComponent: FC<Props> = (props) => {
       ) : null}
 
       {/* 思考过程（深度研究模式） */}
-      {!isReactType && chat.thought ? (
+      {!isReactType && thoughtText ? (
         <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <Reasoning isStreaming={chat.loading}>
             <ReasoningTrigger />
-            <ReasoningContent>{chat.thought}</ReasoningContent>
+            <ReasoningContent>{thoughtText}</ReasoningContent>
           </Reasoning>
         </div>
       ) : null}
 
       {/* 任务计划 */}
       {!isReactType && chat.planList?.length ? (
-        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-6 py-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           <PlanSection plan={chat.planList} />
         </div>
       ) : null}
@@ -367,7 +366,7 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* 加载中 */}
       {chat.loading ? (
         <div className="mt-4 flex w-full justify-start">
-          {chat.response ? <LoadingDot /> : <MessageSkeleton />}
+          {chat.response ? <LoadingDot /> : null}
         </div>
       ) : null}
     </div>
@@ -379,6 +378,7 @@ const Dialogue = memo(
   (prev, next) =>
     prev.chat === next.chat &&
     prev.deepThink === next.deepThink &&
+    prev.streamingThought === next.streamingThought &&
     prev.changeTask === next.changeTask &&
     prev.changeFile === next.changeFile &&
     prev.changePlan === next.changePlan &&

@@ -153,6 +153,16 @@ const FilePreview: React.FC<{
   }, [taskItem]);
 
   const canPreview = useHtml || useExcel;
+  const taskRenderKey = useMemo(() => {
+    if (!taskItem) {
+      return "empty";
+    }
+    return (
+      taskItem.id ||
+      taskItem.messageId ||
+      `${taskItem.taskId || "task"}:${taskItem.messageTime || "time"}`
+    );
+  }, [taskItem]);
 
   // Empty State
   if (!taskItem) {
@@ -168,9 +178,9 @@ const FilePreview: React.FC<{
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="sync">
+        <AnimatePresence mode="sync" initial={false}>
           <motion.div
-            key={taskItem?.id || "empty"}
+            key={taskRenderKey}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}

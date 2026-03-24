@@ -102,27 +102,28 @@ export const CodeBlock = ({
     <CodeBlockContext.Provider value={{ code }}>
       <div
         className={cn(
-          "group relative w-full overflow-hidden rounded-md border bg-background text-foreground",
+          "group w-full overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] text-foreground",
           className
         )}
         {...props}
       >
+        <div className="flex items-center justify-between border-b border-[var(--chat-border)]/80 bg-[var(--chat-surface-soft)]/70 px-3 py-2">
+          <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--chat-text-soft)]">
+            {language}
+          </span>
+          {children && <div className="flex items-center gap-1.5">{children}</div>}
+        </div>
         <div className="relative">
           <div
-            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="overflow-auto rounded-b-xl dark:hidden [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: html }}
           />
           <div
-            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="hidden overflow-auto rounded-b-xl dark:block [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />
-          {children && (
-            <div className="absolute top-2 right-2 flex items-center gap-2">
-              {children}
-            </div>
-          )}
         </div>
       </div>
     </CodeBlockContext.Provider>
@@ -166,9 +167,12 @@ export const CodeBlockCopyButton = ({
 
   return (
     <Button
-      className={cn("shrink-0", className)}
+      className={cn(
+        "h-8 w-8 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
+        className
+      )}
       onClick={copyToClipboard}
-      size="icon"
+      size="icon-sm"
       variant="ghost"
       {...props}
     >

@@ -49,7 +49,7 @@ export const MessageContent = ({
   <div
     className={cn(
       "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-[14px] leading-7",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[28px] group-[.is-user]:border group-[.is-user]:border-black/5 group-[.is-user]:bg-[#f3f4f6] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#111827] group-[.is-user]:shadow-[0_10px_30px_-24px_rgba(15,23,42,0.38)]",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[18px] group-[.is-user]:border group-[.is-user]:border-[#e5e7eb] group-[.is-user]:bg-[#f7f7f8] group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-[#111827] group-[.is-user]:shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
       "group-[.is-assistant]:w-full group-[.is-assistant]:rounded-none group-[.is-assistant]:border-0 group-[.is-assistant]:bg-transparent group-[.is-assistant]:px-0 group-[.is-assistant]:py-0 group-[.is-assistant]:text-foreground group-[.is-assistant]:shadow-none",
       className
     )}
@@ -316,6 +316,7 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
   isStreaming?: boolean;
   animateByChars?: boolean;
+  showStreamingCursor?: boolean;
 };
 
 const useStreamingText = (text: string, isStreaming: boolean) => {
@@ -446,6 +447,7 @@ export const MessageResponse = memo(
     className,
     isStreaming = false,
     animateByChars = true,
+    showStreamingCursor = true,
     children,
     ...props
   }: MessageResponseProps) => {
@@ -473,14 +475,15 @@ export const MessageResponse = memo(
         >
           {renderedText}
         </Streamdown>
-        {isStreaming && <StreamingCursor />}
+        {isStreaming && showStreamingCursor && <StreamingCursor />}
       </div>
     );
   },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     prevProps.isStreaming === nextProps.isStreaming &&
-    prevProps.animateByChars === nextProps.animateByChars
+    prevProps.animateByChars === nextProps.animateByChars &&
+    prevProps.showStreamingCursor === nextProps.showStreamingCursor
 );
 
 MessageResponse.displayName = "MessageResponse";

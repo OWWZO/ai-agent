@@ -557,7 +557,7 @@ export const handleTaskData = (
 
   currentChat.thought = planThought || "";
 
-  let conclusion;
+  let conclusion: MESSAGE.Task | CHAT.Task | undefined;
   let plan = fullPlan;
   const taskList: MESSAGE.Task[] = [];
 
@@ -642,7 +642,7 @@ export const handleTaskData = (
 
   currentChat.tasks = chatList;
   currentChat.plan = plan;
-  currentChat.conclusion = conclusion || streamConclusion;
+  currentChat.conclusion = (conclusion as CHAT.Task | undefined) || streamConclusion;
   currentChat.planList = plan?.stages?.reduce(
     (result: CHAT.PlanItem[], stage: string, index: number) => {
       const group = result.find((item) => item.name === stage);

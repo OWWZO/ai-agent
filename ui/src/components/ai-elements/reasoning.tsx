@@ -202,7 +202,11 @@ export const ReasoningContent = memo(
         {...props}
       >
         <div className="mt-4 text-sm text-muted-foreground">
-          <MessageResponse isStreaming={isStreaming} animateByChars={false}>
+          <MessageResponse
+            isStreaming={isStreaming}
+            animateByChars={false}
+            showStreamingCursor={false}
+          >
             {children}
           </MessageResponse>
         </div>

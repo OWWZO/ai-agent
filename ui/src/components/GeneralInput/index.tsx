@@ -107,8 +107,8 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
           className={cn(
-            "w-full rounded-[28px] bg-[var(--chat-surface)]/95 shadow-[var(--shadow-sm)] transition-all duration-300 focus-within:shadow-[var(--shadow-md)]",
-            size === "big" ? "rounded-[30px]" : "rounded-[24px]"
+            "w-full rounded-[24px] bg-[var(--chat-surface)]/95 shadow-[var(--shadow-sm)] transition-all duration-300 focus-within:shadow-[var(--shadow-md)]",
+            size === "big" ? "rounded-[24px]" : "rounded-[20px]"
           )}
           multiple
           onSubmit={handleSubmit}
@@ -121,9 +121,9 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "px-5 text-[15px] leading-7 text-[var(--chat-text)] placeholder:text-[var(--chat-text-muted)] placeholder:italic",
+                "px-4 text-[14px] leading-6 text-[var(--chat-text)] placeholder:text-[var(--chat-text-muted)] placeholder:italic",
                 "focus:placeholder:text-[var(--chat-text-soft)]/50",
-                size === "big" ? "min-h-28 pt-5 text-[16px]" : "min-h-16 pt-4"
+                size === "big" ? "min-h-20 pt-3.5 text-[15px]" : "min-h-14 pt-3"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}
@@ -135,7 +135,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
             />
           </PromptInputBody>
 
-          <PromptInputFooter className="justify-between gap-3 px-4 pb-4 pt-1">
+          <PromptInputFooter className="justify-between gap-2.5 px-3.5 pb-3 pt-0.5">
             {/* 左侧：+ 按钮 + 深度研究 + 知识库 */}
             <PromptInputTools className="flex-wrap gap-1.5">
               {/* + 附件按钮（始终显示） */}
@@ -162,7 +162,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                     <PromptInputButton
                       aria-pressed={deepThink}
                       className={cn(
-                        "rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all duration-300",
+                        "rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-300",
                         "flex items-center gap-1.5",
                         deepThink
                           ? "bg-[var(--primary)] text-white shadow-md shadow-[var(--primary)]/20 hover:bg-[var(--primary)]/90"
@@ -188,7 +188,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PromptInputButton
-                      className="rounded-full bg-[var(--chat-surface-muted)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md flex items-center gap-1.5"
+                      className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md flex items-center gap-1.5"
                       disabled={disabled}
                       onClick={() => dbsShow?.(true)}
                       size="sm"
@@ -210,7 +210,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
-                    className="size-10 rounded-full bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-md transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[var(--primary)]/15 disabled:bg-[var(--chat-surface-muted)] disabled:text-[var(--chat-text-muted)] disabled:shadow-none disabled:scale-100"
+                    className="size-9 rounded-full bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-md transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[var(--primary)]/15 disabled:bg-[var(--chat-surface-muted)] disabled:text-[var(--chat-text-muted)] disabled:shadow-none disabled:scale-100"
                     disabled={!canSend}
                     variant="default"
                   >
