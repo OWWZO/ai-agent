@@ -25,17 +25,7 @@
   inset: 0;
   z-index: -2;
   border-radius: inherit;
-  background:
-    radial-gradient(
-      circle at top,
-      color-mix(in oklch, var(--primary) 10%, transparent) 0%,
-      transparent 55%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--background) 96%, white) 0%,
-      color-mix(in oklch, var(--background) 100%, black) 100%
-    );
+  background: transparent;
   pointer-events: none;
 }
 

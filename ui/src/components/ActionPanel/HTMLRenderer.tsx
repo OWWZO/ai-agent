@@ -31,12 +31,13 @@ interface HTMLRendererProps {
   downloadUrl?: string;
   showToolBar?: boolean;
   outputCode?: string;
+  isStreaming?: boolean;
 }
 
 const TOOLBAR_CLASS = "absolute bottom-8 right-0 py-0 px-16 bg-[#fbfbff] h-[36px] rounded-[18px] flex items-center border-[#52649113] border-solid border-1 gap-12 text-primary";
 
 const HTMLRenderer: GenieType.FC<HTMLRendererProps> = memo((props) => {
-  const { htmlUrl, className, downloadUrl, showToolBar, outputCode } = props;
+  const { htmlUrl, className, downloadUrl, showToolBar, outputCode, isStreaming = false } = props;
 
   const [loading, { setTrue: startLoading, setFalse: stopLoading }] = useBoolean(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +81,7 @@ const HTMLRenderer: GenieType.FC<HTMLRendererProps> = memo((props) => {
   }, [error, htmlUrl, stopLoading]);
 
   if (!htmlUrl && outputCode) {
-    return <MarkdownRenderer markDownContent={outputCode} />;
+    return <MarkdownRenderer markDownContent={outputCode} isStreaming={isStreaming} />;
   }
 
   return (

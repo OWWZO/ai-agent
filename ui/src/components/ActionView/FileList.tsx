@@ -121,25 +121,25 @@ const FileList: React.FC<{
     }
 
     return (
-      <div className="h-full overflow-auto p-4">
-        <div className="space-y-2">
+      <div className="h-full overflow-auto p-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {fileList.map((item) => (
             <Card
               key={item.name}
               className="group cursor-pointer border-[#e8e8ed] bg-white/80 transition-all duration-200 hover:border-[#d2d2d7] hover:bg-white hover:shadow-sm"
               onClick={() => setActiveItem(item.name)}
             >
-              <CardContent className="flex items-center gap-3 p-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f5f7]">
+              <CardContent className="flex items-center gap-2.5 p-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
                   {getFileIcon(item.type)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-[#1d1d1f]">
+                  <p className="truncate text-[12px] font-medium leading-5 text-[#1d1d1f]">
                     {item.name}
                   </p>
                   <p className="text-xs text-[#86868b]">{item.messageTime}</p>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
               </CardContent>
             </Card>
           ))}

@@ -18,12 +18,7 @@ import {
 
 // 空状态动画组件
 const EmptyState = () => (
-  <motion.div
-    className="flex h-full items-center justify-center"
-    initial={{ opacity: 0, scale: 0.95 }}
-    animate={{ opacity: 1, scale: 1 }}
-    transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-  >
+  <div className="flex h-full items-center justify-center">
     <Card className="w-64 border-dashed">
       <CardContent className="flex flex-col items-center justify-center py-8 text-center">
         <motion.div
@@ -44,7 +39,7 @@ const EmptyState = () => (
         <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
       </CardContent>
     </Card>
-  </motion.div>
+  </div>
 );
 
 // 头部动画组件
@@ -55,31 +50,19 @@ const Header = ({
   title: string;
   canPreview?: boolean;
 }) => (
-  <motion.div
-    className="flex items-center justify-between px-4 py-3"
-    initial={{ opacity: 0, y: -10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.3, delay: 0.1 }}
-  >
+  <div className="flex items-center justify-between px-4 py-3">
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <motion.div
-        initial={{ rotate: -10, opacity: 0 }}
-        animate={{ rotate: 0, opacity: 1 }}
-        transition={{ duration: 0.3, delay: 0.15 }}
-      >
+      <div>
         <FileText className="h-4 w-4 shrink-0 text-[#86868b]" />
-      </motion.div>
-      <motion.span
+      </div>
+      <span
         className={classNames(
           "truncate text-[13px] font-medium",
           canPreview ? "cursor-pointer text-[#0071e3] hover:underline" : "text-[#1d1d1f]"
         )}
-        initial={{ opacity: 0, x: -5 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
       >
         {title}
-      </motion.span>
+      </span>
       <AnimatePresence>
         {canPreview && (
           <motion.div
@@ -95,11 +78,7 @@ const Header = ({
       </AnimatePresence>
     </div>
     {canPreview && (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-      >
+      <div>
         <Button
           variant="ghost"
           size="icon"
@@ -107,9 +86,9 @@ const Header = ({
         >
           <Maximize2 className="h-4 w-4" />
         </Button>
-      </motion.div>
+      </div>
     )}
-  </motion.div>
+  </div>
 );
 
 const FilePreview: React.FC<{
@@ -181,31 +160,21 @@ const FilePreview: React.FC<{
   }
 
   return (
-    <motion.div
-      className={classNames("flex h-full flex-col", className)}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-    >
+    <div className={classNames("flex h-full flex-col", className)}>
       {/* Header */}
       <Header title={title} canPreview={canPreview} />
 
       <Separator className="bg-[#e8e8ed]" />
 
       {/* Content */}
-      <motion.div
-        className="flex-1 overflow-hidden"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-      >
-        <AnimatePresence mode="wait">
+      <div className="flex-1 overflow-hidden">
+        <AnimatePresence mode="sync">
           <motion.div
             key={taskItem?.id || "empty"}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
             className="h-full"
           >
             <ActionPanel
@@ -215,7 +184,7 @@ const FilePreview: React.FC<{
             />
           </motion.div>
         </AnimatePresence>
-      </motion.div>
+      </div>
 
       {/* Footer Navigation */}
       <AnimatePresence>
@@ -269,7 +238,7 @@ const FilePreview: React.FC<{
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 

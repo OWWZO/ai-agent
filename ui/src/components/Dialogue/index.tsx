@@ -1,4 +1,4 @@
-import { FC, useState, useCallback } from "react";
+import { FC, useState, useCallback, memo } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingDot from "@/components/LoadingDot";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -234,9 +234,13 @@ const ConclusionSection: FC<{
     chat.conclusion?.resultMap?.taskSummary ||
     chat.conclusion?.result ||
     "任务已完成";
+  const summaryStreaming =
+    !!chat.loading && chat.conclusion?.messageType === "agent_stream";
   return (
     <div className="mb-[8px]">
-      <div className="mb-[8px]">{summary}</div>
+      <div className="mb-[8px]">
+        <MessageResponse isStreaming={summaryStreaming}>{summary}</MessageResponse>
+      </div>
       <AttachmentList
         files={buildAttachment(chat.conclusion?.resultMap.fileList || [])}
         preview={true}
@@ -246,7 +250,7 @@ const ConclusionSection: FC<{
   );
 };
 
-const Dialogue: FC<Props> = (props) => {
+const DialogueComponent: FC<Props> = (props) => {
   const { chat, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
   const isReactType = !deepThink;
   const [copied, setCopied] = useState(false);
@@ -326,7 +330,7 @@ const Dialogue: FC<Props> = (props) => {
       {/* 思考过程（深度研究模式） */}
       {!isReactType && chat.thought ? (
         <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
-          <Reasoning isStreaming={chat.loading && !chat.response}>
+          <Reasoning isStreaming={chat.loading}>
             <ReasoningTrigger />
             <ReasoningContent>{chat.thought}</ReasoningContent>
           </Reasoning>
@@ -369,5 +373,16 @@ const Dialogue: FC<Props> = (props) => {
     </div>
   );
 };
+
+const Dialogue = memo(
+  DialogueComponent,
+  (prev, next) =>
+    prev.chat === next.chat &&
+    prev.deepThink === next.deepThink &&
+    prev.changeTask === next.changeTask &&
+    prev.changeFile === next.changeFile &&
+    prev.changePlan === next.changePlan &&
+    prev.onRegenerate === next.onRegenerate
+);
 
 export default Dialogue;

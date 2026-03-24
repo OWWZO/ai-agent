@@ -98,11 +98,11 @@ const RevealTitle = ({ text, className }: { text: string; className?: string }) 
       {text.split("").map((char, i) => (
         <motion.span
           key={i}
-          initial={{ opacity: 0, y: 20, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{
-            duration: 0.5,
-            delay: i * 0.05,
+            duration: 0.35,
+            delay: i * 0.03,
             ease: [0.16, 1, 0.3, 1],
           }}
           className="inline-block"
@@ -410,7 +410,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
   const renderWelcome = () => {
     return (
-      <div className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24 noise-overlay">
+      <div className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24">
         <div className="mx-auto flex w-full max-w-[1000px] flex-col items-center">
           {/* Hero Section */}
           <div className="mb-10 text-center">
@@ -438,7 +438,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="mb-8 w-full max-w-[820px]"
           >
-            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-4 shadow-[var(--shadow-md)] backdrop-blur-xl border border-[var(--chat-border)]">
+            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-4 shadow-none">
               <GeneralInput
                 placeholder={product.placeholder}
                 showBtn={true}

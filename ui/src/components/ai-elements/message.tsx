@@ -315,6 +315,7 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
   isStreaming?: boolean;
+  animateByChars?: boolean;
 };
 
 const useStreamingText = (text: string, isStreaming: boolean) => {
@@ -389,6 +390,33 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
   return displayedText;
 };
 
+const useNearBottomAutoScroll = (enabled: boolean, trigger: string) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastScrollRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || !containerRef.current) return;
+
+    const now = Date.now();
+    if (now - lastScrollRef.current < 80) return;
+    lastScrollRef.current = now;
+
+    const container = containerRef.current;
+    const parent = container.parentElement?.parentElement;
+    if (!parent) return;
+
+    const scrollThreshold = 140;
+    const isNearBottom =
+      parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
+
+    if (isNearBottom) {
+      parent.scrollTop = parent.scrollHeight;
+    }
+  }, [enabled, trigger]);
+
+  return containerRef;
+};
+
 // 流式光标组件
 const StreamingCursor = memo(() => {
   const opacity = useMotionValue(1);
@@ -414,42 +442,27 @@ const StreamingCursor = memo(() => {
 StreamingCursor.displayName = "StreamingCursor";
 
 export const MessageResponse = memo(
-  ({ className, isStreaming = false, children, ...props }: MessageResponseProps) => {
+  ({
+    className,
+    isStreaming = false,
+    animateByChars = true,
+    children,
+    ...props
+  }: MessageResponseProps) => {
     const sourceText =
       typeof children === "string"
         ? children
         : children == null
           ? ""
           : String(children);
-    const renderedText = useStreamingText(sourceText, isStreaming);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    // 平滑滚动到底部
-    useEffect(() => {
-      if (!isStreaming || !containerRef.current) return;
-
-      const container = containerRef.current;
-      const parent = container.parentElement?.parentElement;
-      if (!parent) return;
-
-      const scrollThreshold = 150;
-      const isNearBottom =
-        parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
-
-      if (isNearBottom) {
-        parent.scrollTo({
-          top: parent.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    }, [renderedText, isStreaming]);
+    const animatedText = useStreamingText(sourceText, isStreaming && animateByChars);
+    const renderedText = animateByChars ? animatedText : sourceText;
+    const containerRef = useNearBottomAutoScroll(isStreaming, renderedText);
 
     return (
-      <motion.div
+      <div
         ref={containerRef}
         className="size-full"
-        initial={false}
-        animate={isStreaming ? { opacity: 1 } : { opacity: 1 }}
       >
         <Streamdown
           className={cn(
@@ -461,12 +474,13 @@ export const MessageResponse = memo(
           {renderedText}
         </Streamdown>
         {isStreaming && <StreamingCursor />}
-      </motion.div>
+      </div>
     );
   },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
-    prevProps.isStreaming === nextProps.isStreaming
+    prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.animateByChars === nextProps.animateByChars
 );
 
 MessageResponse.displayName = "MessageResponse";

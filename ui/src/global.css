@@ -11,19 +11,19 @@
 :root {
   /* Editorial Tech Color System - oklch warm grays */
   --background: oklch(0.985 0.002 90);
-  --foreground: oklch(0.15 0.01 60);
+  --foreground: oklch(0.12 0.01 60);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.01 60);
   --popover: oklch(0.99 0.001 90);
   --popover-foreground: oklch(0.15 0.01 60);
-  --primary: oklch(0.55 0.18 260);
-  --primary-foreground: oklch(0.99 0 0);
+  --primary: oklch(0.12 0.01 60);
+  --primary-foreground: oklch(0.985 0.002 90);
   --secondary: oklch(0.96 0.005 90);
   --secondary-foreground: oklch(0.25 0.02 60);
   --muted: oklch(0.94 0.003 90);
   --muted-foreground: oklch(0.5 0.015 60);
-  --accent: oklch(0.65 0.15 200);
-  --accent-foreground: oklch(0.99 0 0);
+  --accent: oklch(0.92 0.01 90);
+  --accent-foreground: oklch(0.12 0.01 60);
   --destructive: oklch(0.6 0.2 25);
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.65 0.15 145);
@@ -36,12 +36,12 @@
   --ring: oklch(0.55 0.18 260 / 0.3);
 
   /* Radius - larger, softer */
-  --radius: 1.25rem;
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1.25rem;
-  --radius-xl: 1.75rem;
-  --radius-2xl: 2.25rem;
+  --radius: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
   --radius-full: 9999px;
 
   /* Chat System Colors - oklch */
@@ -59,10 +59,10 @@
 
   /* Editorial Shadows - refined depth */
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.02);
-  --shadow-sm: 0 2px 8px oklch(0 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.02);
-  --shadow-md: 0 4px 20px oklch(0 0 0 / 0.05), 0 2px 8px oklch(0 0 0 / 0.03);
-  --shadow-lg: 0 8px 32px oklch(0 0 0 / 0.06), 0 4px 12px oklch(0 0 0 / 0.03);
-  --shadow-xl: 0 12px 48px oklch(0 0 0 / 0.08), 0 6px 20px oklch(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 6px oklch(0 0 0 / 0.035), 0 1px 2px oklch(0 0 0 / 0.02);
+  --shadow-md: 0 2px 12px oklch(0 0 0 / 0.045), 0 1px 4px oklch(0 0 0 / 0.025);
+  --shadow-lg: 0 6px 24px oklch(0 0 0 / 0.055), 0 2px 8px oklch(0 0 0 / 0.03);
+  --shadow-xl: 0 10px 36px oklch(0 0 0 / 0.07), 0 4px 12px oklch(0 0 0 / 0.035);
   --shadow-glow: 0 0 0 3px oklch(0.55 0.18 260 / 0.15);
   --shadow-elevated: 0 20px 60px oklch(0 0 0 / 0.1), 0 8px 24px oklch(0 0 0 / 0.06);
 
@@ -196,7 +196,7 @@
     font-family: var(--font-sans);
     line-height: 1.6;
     background: var(--page-gradient);
-    background-attachment: fixed;
+    background-attachment: scroll;
     color: var(--chat-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -321,8 +321,8 @@ ol {
 }
 
 .chat-fade-bottom {
-  mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent 100%);
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 
 .ai-stream-cursor {
@@ -440,6 +440,17 @@ ol {
 /* Smooth transitions */
 .transition-apple {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Typography utilities */
@@ -657,8 +668,8 @@ ol {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.035;
+  background-image: none;
+  opacity: 0;
   pointer-events: none;
   z-index: 1;
   mix-blend-mode: overlay;

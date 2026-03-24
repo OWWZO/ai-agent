@@ -55,6 +55,9 @@ function handlePlanThoughtMessage(
   } else {
     currentChat.multiAgent.plan_thought += eventData.resultMap.planThought;
   }
+  // Keep thought in sync immediately so streaming UI can update
+  // without waiting for heavy task aggregation.
+  currentChat.thought = currentChat.multiAgent.plan_thought;
 }
 
 /**
@@ -547,7 +550,6 @@ export const handleTaskData = (
     "knowledge",
     "result",
     "deep_search",
-    "task_summary",
     "markdown",
     "ppt",
     "data_analysis",
@@ -586,6 +588,7 @@ export const handleTaskData = (
       const isDeepSearchExtend =
         task?.messageType === "deep_search" &&
         task.resultMap.messageType === "extend";
+      const isTaskSummary = task?.messageType === "task_summary";
 
       let processedInfo: any = [];
 
@@ -607,11 +610,16 @@ export const handleTaskData = (
           hidden: false,
           children: [],
         });
-      } else if (task?.messageType !== "result" && !isCodeOutputOnly) {
+      } else if (task?.messageType !== "result" && !isCodeOutputOnly && !isTaskSummary) {
         chatList[groupIndex]?.at(-1)?.children.push(...processedInfo);
       }
 
-      if (TOOL_TYPES.includes(task?.messageType) && !isCodeOutputOnly && !isDeepSearchExtend) {
+      if (
+        TOOL_TYPES.includes(task?.messageType) &&
+        !isCodeOutputOnly &&
+        !isDeepSearchExtend &&
+        !isTaskSummary
+      ) {
         taskList.push(...processedInfo);
       }
 
@@ -620,6 +628,8 @@ export const handleTaskData = (
       }
 
       if (task?.messageType === "result") {
+        conclusion = task;
+      } else if (task?.messageType === "task_summary" && !conclusion) {
         conclusion = task;
       }
     });

@@ -9,9 +9,9 @@ import {
 import { cn } from "@/lib/utils";
 import { BrainIcon, ChevronDownIcon, SparklesIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { createContext, memo, useContext, useEffect, useState, useRef } from "react";
-import { Streamdown } from "streamdown";
-import { motion, AnimatePresence } from "motion/react";
+import { createContext, memo, useContext, useEffect, useState } from "react";
+import { motion } from "motion/react";
+import { MessageResponse } from "./message";
 
 type ReasoningContextValue = {
   isStreaming: boolean;
@@ -123,31 +123,14 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 // 动态思考指示器组件
 const ThinkingIndicator = memo(() => {
   return (
-    <motion.div
-      className="flex items-center gap-1.5"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
+    <div className="flex items-center gap-1.5">
       <span className="text-xs text-muted-foreground">思考中</span>
-      <div className="flex gap-0.5">
-        {[0, 1, 2].map((i) => (
-          <motion.span
-            key={i}
-            className="w-1 h-1 rounded-full bg-primary"
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.4, 1, 0.4],
-            }}
-            transition={{
-              duration: 1,
-              repeat: Infinity,
-              delay: i * 0.15,
-              ease: "easeInOut",
-            }}
-          />
-        ))}
+      <div className="flex items-center gap-0.5" aria-hidden>
+        <span className="h-1 w-1 rounded-full bg-primary/60" />
+        <span className="h-1 w-1 rounded-full bg-primary/80" />
+        <span className="h-1 w-1 rounded-full bg-primary" />
       </div>
-    </motion.div>
+    </div>
   );
 });
 
@@ -160,16 +143,7 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (duration === undefined) {
     return <span className="text-xs text-muted-foreground">思考完成</span>;
   }
-  return (
-    <motion.span
-      className="text-xs text-muted-foreground"
-      initial={{ opacity: 0, x: -5 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      已思考 {duration} 秒
-    </motion.span>
-  );
+  return <span className="text-xs text-muted-foreground">已思考 {duration} 秒</span>;
 };
 
 export const ReasoningTrigger = memo(
@@ -186,23 +160,13 @@ export const ReasoningTrigger = memo(
       >
         {children ?? (
           <>
-            <motion.div
-              animate={isStreaming ? {
-                rotate: [0, 10, -10, 0],
-                scale: [1, 1.1, 1],
-              } : {}}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-            >
+            <div>
               {isStreaming ? (
                 <SparklesIcon className="size-4 text-primary" />
               ) : (
                 <BrainIcon className="size-4" />
               )}
-            </motion.div>
+            </div>
             <div className="flex-1 text-left">
               {getThinkingMessage(isStreaming, duration)}
             </div>
@@ -219,61 +183,6 @@ export const ReasoningTrigger = memo(
   }
 );
 
-// 流式思考内容组件
-const StreamingReasoningContent = memo(({ content }: { content: string }) => {
-  const [displayContent, setDisplayContent] = useState(content);
-  const contentRef = useRef(content);
-  const rafRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    const prevContent = contentRef.current;
-    const newContent = content;
-
-    if (newContent.length < prevContent.length) {
-      setDisplayContent(newContent);
-      contentRef.current = newContent;
-      return;
-    }
-
-    const diff = newContent.slice(prevContent.length);
-    if (diff.length === 0) return;
-
-    let charsAdded = 0;
-    const addChars = () => {
-      if (charsAdded < diff.length) {
-        const chunkSize = Math.min(2, diff.length - charsAdded);
-        setDisplayContent(() => prevContent + diff.slice(0, charsAdded + chunkSize));
-        charsAdded += chunkSize;
-        rafRef.current = requestAnimationFrame(addChars);
-      } else {
-        contentRef.current = newContent;
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(addChars);
-
-    return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-    };
-  }, [content]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="relative"
-    >
-      <Streamdown className="ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-        {displayContent}
-      </Streamdown>
-    </motion.div>
-  );
-});
-
-StreamingReasoningContent.displayName = "StreamingReasoningContent";
-
 export type ReasoningContentProps = ComponentProps<
   typeof CollapsibleContent
 > & {
@@ -285,34 +194,19 @@ export const ReasoningContent = memo(
     const { isStreaming } = useReasoning();
 
     return (
-      <AnimatePresence>
-        <CollapsibleContent
-          className={cn(
-            "overflow-hidden",
-            className
-          )}
-          {...props}
-        >
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{
-              duration: 0.3,
-              ease: [0.25, 0.46, 0.45, 0.94],
-            }}
-            className="mt-4 text-sm text-muted-foreground"
-          >
-            {isStreaming ? (
-              <StreamingReasoningContent content={children} />
-            ) : (
-              <Streamdown className="ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                {children}
-              </Streamdown>
-            )}
-          </motion.div>
-        </CollapsibleContent>
-      </AnimatePresence>
+      <CollapsibleContent
+        className={cn(
+          "overflow-hidden",
+          className
+        )}
+        {...props}
+      >
+        <div className="mt-4 text-sm text-muted-foreground">
+          <MessageResponse isStreaming={isStreaming} animateByChars={false}>
+            {children}
+          </MessageResponse>
+        </div>
+      </CollapsibleContent>
     );
   }
 );

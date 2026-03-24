@@ -106,7 +106,10 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
       <div className="w-full">
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
-          className="w-full"
+          className={cn(
+            "w-full rounded-[28px] bg-[var(--chat-surface)]/95 shadow-[var(--shadow-sm)] transition-all duration-300 focus-within:shadow-[var(--shadow-md)]",
+            size === "big" ? "rounded-[30px]" : "rounded-[24px]"
+          )}
           multiple
           onSubmit={handleSubmit}
         >
@@ -120,7 +123,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
               className={cn(
                 "px-5 text-[15px] leading-7 text-[var(--chat-text)] placeholder:text-[var(--chat-text-muted)] placeholder:italic",
                 "focus:placeholder:text-[var(--chat-text-soft)]/50",
-                size === "big" ? "min-h-32 pt-5 text-[16px]" : "min-h-24 pt-4"
+                size === "big" ? "min-h-28 pt-5 text-[16px]" : "min-h-16 pt-4"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}

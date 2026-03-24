@@ -125,6 +125,67 @@ const ChatView: GenieType.FC<Props> = (props) => {
       deepThink: normalizedDeepThink ? 1 : 0,
       outputStyle: outputStyle || baseConversation.productType,
     };
+    let pendingConversation: CHAT.ConversationHistory | null = null;
+    let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;
+    let taskDataDirty = false;
+    let pendingFlushFrame: number | null = null;
+    let lastConversationFlushAt = 0;
+    let lastTaskFlushAt = 0;
+    const CONVERSATION_FLUSH_INTERVAL = 16;
+    const TASK_FLUSH_INTERVAL = 96;
+
+    const flushNonChatUpdates = (force = false) => {
+      if (!pendingConversation && !pendingTaskData && !taskDataDirty) return;
+      const now = performance.now();
+      if (taskDataDirty && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL)) {
+        pendingTaskData = handleTaskData(
+          currentChat,
+          normalizedDeepThink,
+          currentChat.multiAgent
+        );
+        taskDataDirty = false;
+      }
+      const shouldFlushConversation =
+        !!pendingConversation &&
+        (force || now - lastConversationFlushAt >= CONVERSATION_FLUSH_INTERVAL);
+      const shouldFlushTask =
+        !!pendingTaskData && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL);
+
+      if (shouldFlushTask && pendingTaskData) {
+        setTaskList(pendingTaskData.taskList);
+        temporaryChangeTask(pendingTaskData.taskList);
+        updatePlan(pendingTaskData.plan!);
+        openAction(pendingTaskData.taskList);
+        pendingTaskData = null;
+        lastTaskFlushAt = now;
+      }
+
+      if (shouldFlushConversation && pendingConversation) {
+        commitConversation(conversationId, pendingConversation);
+        pendingConversation = null;
+        lastConversationFlushAt = now;
+      }
+    };
+
+    const scheduleNonChatFlush = (force = false) => {
+      if (force) {
+        if (pendingFlushFrame) {
+          cancelAnimationFrame(pendingFlushFrame);
+          pendingFlushFrame = null;
+        }
+        flushNonChatUpdates(true);
+        return;
+      }
+
+      if (pendingFlushFrame) return;
+      pendingFlushFrame = requestAnimationFrame(() => {
+        pendingFlushFrame = null;
+        flushNonChatUpdates(false);
+        if (pendingConversation || pendingTaskData) {
+          scheduleNonChatFlush(false);
+        }
+      });
+    };
 
     const handleMessage = (data: MESSAGE.Answer) => {
       const { finished, resultMap, packageType, status } = data;
@@ -193,31 +254,22 @@ const ChatView: GenieType.FC<Props> = (props) => {
           return;
         }
 
-        requestAnimationFrame(() => {
-          if (resultMap?.eventData) {
-            currentChat = combineData(resultMap.eventData || {}, currentChat);
-            const taskData = handleTaskData(
-              currentChat,
-              normalizedDeepThink,
-              currentChat.multiAgent
-            );
-            setTaskList(taskData.taskList);
-            temporaryChangeTask(taskData.taskList);
-            updatePlan(taskData.plan!);
-            openAction(taskData.taskList);
-            if (finished) {
-              currentChat.loading = false;
-              setLoading(false);
-            }
-            const newChatList = [...runningConversation.chatList];
-            newChatList.splice(newChatList.length - 1, 1, currentChat);
-            runningConversation = {
-              ...runningConversation,
-              chatList: newChatList,
-            };
-            commitConversation(conversationId, runningConversation);
+        if (resultMap?.eventData) {
+          currentChat = combineData(resultMap.eventData || {}, currentChat);
+          taskDataDirty = true;
+          if (finished) {
+            currentChat.loading = false;
+            setLoading(false);
           }
-        });
+          const newChatList = [...runningConversation.chatList];
+          newChatList.splice(newChatList.length - 1, 1, currentChat);
+          runningConversation = {
+            ...runningConversation,
+            chatList: newChatList,
+          };
+          pendingConversation = runningConversation;
+          scheduleNonChatFlush(finished);
+        }
       }
     };
 
@@ -232,6 +284,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
     };
 
     const handleClose = () => {
+      scheduleNonChatFlush(true);
       console.log("close");
     };
 
@@ -445,59 +498,53 @@ const ChatView: GenieType.FC<Props> = (props) => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction) {
       return (
-        <div className="flex h-full w-full justify-center p-4 lg:p-6">
-          <div
-            className="flex min-h-0 w-full max-w-[1200px] flex-col overflow-hidden rounded-[28px] border border-[#e8e8ed] bg-white/80 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl"
-            id="chat-view"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#e8e8ed] px-6 py-5">
-              <div className="flex min-w-0 items-center gap-4">
-                <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+        <div className="flex h-full w-full justify-center px-4 pt-4 md:px-6">
+          <div className="flex min-h-0 w-full max-w-[980px] flex-col" id="chat-view">
+            <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
+              <div className="flex min-w-0 items-center gap-3">
+                <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
                   {headerTitle}
                 </h2>
                 {conversation.deepThink && (
-                  <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#1d1d1f] px-3 py-1.5 text-[13px] font-medium text-white shadow-sm">
-                    <i className="font_family icon-shendusikao text-[12px]"></i>
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+                    <i className="font_family icon-shendusikao text-[11px]"></i>
                     <span>深度研究</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex min-h-0 flex-1 flex-col px-6 pt-6">
-              <Conversation className="chat-fade-bottom mb-6 flex-1">
-                <ConversationContent>
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {conversation.chatList.map((chat) => (
-                      <motion.div
-                        key={chat.requestId}
-                        initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                        transition={{
-                          duration: 0.35,
-                          ease: [0.25, 0.46, 0.45, 0.94],
-                        }}
-                      >
-                        <Dialogue
-                          chat={chat}
-                          deepThink={conversation.deepThink}
-                          changeTask={changeTask}
-                          changeFile={changeFile}
-                          changePlan={changePlan}
-                          onRegenerate={handleRegenerate}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
+            <Conversation className="chat-fade-bottom min-h-0 flex-1">
+              <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
+                <AnimatePresence mode="sync" initial={false}>
+                  {conversation.chatList.map((chat) => (
+                    <motion.div
+                      key={chat.requestId}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{
+                        duration: 0.22,
+                        ease: [0.25, 0.46, 0.45, 0.94],
+                      }}
+                    >
+                      <Dialogue
+                        chat={chat}
+                        deepThink={conversation.deepThink}
+                        changeTask={changeTask}
+                        changeFile={changeFile}
+                        changePlan={changePlan}
+                        onRegenerate={handleRegenerate}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
 
-              {/* Input */}
-              <div className="pb-6">
+            <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+              <div className="mx-auto w-full max-w-[860px]">
                 <GeneralInput
                   placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
                   showBtn={false}
@@ -528,7 +575,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
         {/* Left Panel - Chat Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] transition-all duration-300",
             isLeftCollapsed && "w-14 min-w-14",
             !isLeftCollapsed && "flex-1"
           )}
@@ -571,18 +618,18 @@ const ChatView: GenieType.FC<Props> = (props) => {
               </div>
 
               {/* Messages */}
-              <div className="flex min-h-0 flex-1 flex-col px-5 pt-5">
-                <Conversation className="chat-fade-bottom mb-5 flex-1">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <Conversation className="chat-fade-bottom min-h-0 flex-1 px-5 pt-5">
                   <ConversationContent>
-                    <AnimatePresence mode="popLayout" initial={false}>
+                    <AnimatePresence mode="sync" initial={false}>
                       {conversation.chatList.map((chat) => (
                         <motion.div
                           key={chat.requestId}
-                          initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
                           transition={{
-                            duration: 0.35,
+                            duration: 0.22,
                             ease: [0.25, 0.46, 0.45, 0.94],
                           }}
                         >
@@ -602,7 +649,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
                 </Conversation>
 
                 {/* Input */}
-                <div className="pb-5">
+                <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
                   <GeneralInput
                     placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
                     showBtn={false}
@@ -628,18 +675,19 @@ const ChatView: GenieType.FC<Props> = (props) => {
           <div
             onMouseDown={handleDragStart}
             className={classNames(
-              "relative flex w-1 cursor-col-resize items-center justify-center transition-colors",
-              "hover:bg-[#0071e3]/10",
-              isDragging && "bg-[#0071e3]/20"
+              "group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center transition-colors",
+              "hover:bg-[#0071e3]/8",
+              isDragging && "bg-[#0071e3]/16"
             )}
+            title="拖拽调整左右区域宽度"
           >
-            {/* Drag Indicator - 极小设计 */}
+            {/* Wider hit area with slim visual indicator */}
             <div
               className={classNames(
-                "h-8 w-0.5 rounded-full transition-all duration-200",
+                "h-10 w-0.5 rounded-full transition-all duration-200",
                 isDragging
                   ? "bg-[#0071e3]"
-                  : "bg-[#e8e8ed] hover:bg-[#86868b]"
+                  : "bg-[#d2d2d7] group-hover:bg-[#86868b]"
               )}
             />
           </div>
@@ -648,7 +696,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] transition-all duration-300",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
@@ -687,10 +735,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="mx-auto flex h-full w-full max-w-[1600px] p-6">
+      <div className="mx-auto flex h-full w-full max-w-[1600px] px-4 pt-4 md:px-6">
         <div
           className={classNames(
-            "mx-auto flex min-h-0 w-full max-w-[1000px] flex-1 flex-col overflow-hidden rounded-[28px] border border-[#e8e8ed] bg-white/80 px-6 pt-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl"
+            "mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/80 px-5 pt-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] md:px-6"
           )}
         >
           {/* Header */}
@@ -703,17 +751,17 @@ const ChatView: GenieType.FC<Props> = (props) => {
           </div>
 
           {/* Messages */}
-          <Conversation className="chat-fade-bottom mb-6 mt-6 flex-1">
+          <Conversation className="chat-fade-bottom mb-2 mt-4 min-h-0 flex-1">
             <ConversationContent>
-              <AnimatePresence mode="popLayout" initial={false}>
+              <AnimatePresence mode="sync" initial={false}>
                 {conversation.dataChatList.map((chat, idx) => (
                   <motion.div
                     key={`${conversation.id}-${idx}`}
-                    initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
                     transition={{
-                      duration: 0.35,
+                      duration: 0.22,
                       ease: [0.25, 0.46, 0.45, 0.94],
                     }}
                   >
@@ -726,7 +774,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
           </Conversation>
 
           {/* Input */}
-          <div className="pb-6">
+          <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent pb-5 pt-3">
             <GeneralInput
               placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
               showBtn={false}
