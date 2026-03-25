@@ -10,6 +10,7 @@ import {
   MessageActions,
   MessageAction,
 } from "@/components/ai-elements/message";
+import { TerminalStreamText } from "@/components/ai-elements/terminal-stream";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -274,7 +275,11 @@ const ConclusionSection: FC<{
   return (
     <div className="mb-[8px]">
       <div className="mb-[8px]">
-        <MessageResponse isStreaming={summaryStreaming}>{summary}</MessageResponse>
+        {summaryStreaming ? (
+          <TerminalStreamText text={summary} isStreaming={summaryStreaming} />
+        ) : (
+          <MessageResponse isStreaming={false}>{summary}</MessageResponse>
+        )}
       </div>
       <AttachmentList
         files={buildAttachment(chat.conclusion?.resultMap.fileList || [])}

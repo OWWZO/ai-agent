@@ -95,29 +95,6 @@ const createInitialState = (): InitialState => {
   };
 };
 
-// Character reveal animation component
-const RevealTitle = ({ text, className }: { text: string; className?: string }) => {
-  return (
-    <span className={classNames("inline-flex", className)}>
-      {text.split("").map((char, i) => (
-        <motion.span
-          key={i}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            duration: 0.35,
-            delay: i * 0.03,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="inline-block"
-        >
-          {char}
-        </motion.span>
-      ))}
-    </span>
-  );
-};
-
 const CaseCard = memo((props: CaseCardProps) => {
   const { title, description, tag, image, url, videoUrl, videoModalOpen, onOpenVideo, onCloseVideo, index } = props;
   const tagColor = tagColorMap[tag] ?? "bg-[var(--muted)] text-[var(--muted-foreground)]";

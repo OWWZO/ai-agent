@@ -5,7 +5,7 @@ import { Empty } from 'antd';
 import classNames from 'classnames';
 import { usePanelContext } from './PanelProvider';
 import mermaid from 'mermaid';
-import { Streamdown } from 'streamdown';
+import { TerminalStreamText } from "@/components/ai-elements/terminal-stream";
 import {
   CodeBlock as ShadcnCodeBlock,
   CodeBlockCopyButton,
@@ -76,11 +76,13 @@ const MarkdownRenderer: GenieType.FC<{
 
   if (isStreaming) {
     return (
-      <div className={classNames('w-full markdown-body', className)}>
-        <Streamdown className="ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-          {markDownContent}
-        </Streamdown>
-      </div>
+      // During streaming, avoid markdown parsing/re-layout costs.
+      // We only need terminal-like incremental reveal for perceived speed.
+      <TerminalStreamText
+        className={classNames("w-full", className)}
+        text={markDownContent}
+        isStreaming={true}
+      />
     );
   }
 
