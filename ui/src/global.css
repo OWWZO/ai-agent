@@ -569,6 +569,22 @@ ol {
   will-change: opacity;
 }
 
+/* Cursor blink used by typewriter hero effect */
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
 /* Loading state animations */
 @keyframes shimmer {
   0% {

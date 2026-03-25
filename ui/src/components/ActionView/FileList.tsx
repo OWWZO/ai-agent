@@ -218,7 +218,8 @@ const FileList: React.FC<{
 
       <Separator className="bg-[#e8e8ed]" />
 
-      <div className="flex-1 overflow-auto p-4">
+      {/* ActionViewFrame 本身已提供 flex 高度，这里不要再用 flex-1，避免高度失效导致 iframe 只显示一小段 */}
+      <div className="h-full overflow-auto p-4">
         {renderContent()}
       </div>
     </ActionViewFrame>

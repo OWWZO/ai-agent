@@ -10,6 +10,7 @@ import DataListDrawer from "@/components/DataListDrawer";
 import ColsAndDataDrawer from "@/components/DataListDrawer/ColsAndDataDrawer";
 import ResizableSidebar from "@/components/ResizableSidebar";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
+import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
 import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
 import {
@@ -46,6 +47,8 @@ const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
   deepThink: false,
 };
+
+const HERO_TYPEWRITER_TEXTS = ["Let's build", "Let's create", "Hello! How can I help?", "Let's analyze","Let's research","Welcome back!","Awaiting your instructions"];
 
 const outputDescMap: Record<string, string> = {
   html: "Generate interactive HTML report",
@@ -439,7 +442,13 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
               className="mb-3 text-[34px] font-medium leading-[1.05] tracking-normal text-[var(--chat-text)] md:text-[46px] lg:text-[52px]"
               style={{ fontFamily: "var(--font-sans)" }}
             >
-              {"Let's build"}
+              <KeyboardTypewriter
+                texts={HERO_TYPEWRITER_TEXTS}
+                speed={80}
+                eraseSpeed={45}
+                holdMs={10000}
+                pauseMs={550}
+              />
             </h1>
           </div>
 
@@ -563,7 +572,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className={classNames(
-              "w-full overflow-hidden",
+              "w-full max-w-[800px] mx-auto overflow-hidden",
               product.type === "dataAgent" ? "max-h-[100px] mb-12 pointer-events-auto" : "max-h-0 mb-0 pointer-events-none"
             )}
           >
@@ -582,7 +591,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           </motion.div>
 
           {/* Cases Section */}
-          <div className="w-full pb-24">
+          <div className="w-full max-w-[1000px] mx-auto pb-24 mt-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

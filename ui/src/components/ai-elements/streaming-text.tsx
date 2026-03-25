@@ -188,10 +188,23 @@ interface TypewriterProps {
   text: string;
   speed?: number;
   className?: string;
+  cursorClassName?: string;
+  /** Cursor blink duration in seconds. */
+  cursorBlinkDuration?: number;
+  /** Hide cursor when completed. Default true. */
+  hideCursorOnComplete?: boolean;
   onComplete?: () => void;
 }
 
-const TypewriterComponent = ({ text, speed = 50, className, onComplete }: TypewriterProps) => {
+const TypewriterComponent = ({
+  text,
+  speed = 50,
+  className,
+  cursorClassName,
+  cursorBlinkDuration = 0.72,
+  hideCursorOnComplete = true,
+  onComplete,
+}: TypewriterProps) => {
   const [displayText, setDisplayText] = useState("");
   const [isComplete, setIsComplete] = useState(false);
   const indexRef = useRef(0);
@@ -218,11 +231,14 @@ const TypewriterComponent = ({ text, speed = 50, className, onComplete }: Typewr
   return (
     <span className={className}>
       {displayText}
-      {!isComplete && (
+      {(!isComplete || !hideCursorOnComplete) && (
         <motion.span
-          className="inline-block w-0.5 h-4 bg-primary ml-0.5 align-middle"
-          animate={{ opacity: [1, 0] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
+          className={cn(
+            "inline-block align-middle ml-[0.18em] w-[0.1em] h-[0.85em] rounded-full bg-current/55 blur-[0.2px]",
+            cursorClassName
+          )}
+          animate={{ opacity: [1, 0.25, 1] }}
+          transition={{ duration: cursorBlinkDuration, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
     </span>
