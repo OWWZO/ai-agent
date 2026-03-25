@@ -21,7 +21,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CopyIcon, CheckIcon, RefreshCwIcon, MoreHorizontalIcon } from "lucide-react";
+import {
+  CopyIcon,
+  CheckIcon,
+  RefreshCwIcon,
+  MoreHorizontalIcon,
+  LoaderCircleIcon,
+  FileTextIcon,
+  SearchIcon,
+} from "lucide-react";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -132,13 +140,33 @@ const ToolItem: FC<{
           (tool.resultMap.messageType === "extend" ||
             tool.resultMap.messageType === "report")) ||
           loadingType.includes(tool.messageType));
+      const isSearching =
+        tool.messageType === "deep_search" &&
+        !tool.resultMap?.isFinal &&
+        tool.resultMap?.messageType !== "report";
+      const isSummarizing = tool.messageType === "deep_search" && tool.resultMap?.messageType === "report";
+      const isDeepSearchInline = isSearching || isSummarizing;
       return (
         <div
-          className="mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
+          className={
+            isDeepSearchInline
+              ? "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
+              : "mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
+          }
           onClick={() => changeActiveChat(tool)}
         >
-          {loading ? (
-            <LoadingSpinner color="#0071e3"/>
+          {isDeepSearchInline ? (
+            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              {loading ? (
+                <LoaderCircleIcon className="size-3.5 animate-spin" />
+              ) : isSearching ? (
+                <SearchIcon className="size-3.5" />
+              ) : (
+                <FileTextIcon className="size-3.5" />
+              )}
+            </div>
+          ) : loading ? (
+            <LoadingSpinner color="#0071e3" />
           ) : (
             <i
               className={`font_family ${getIcon(
@@ -149,9 +177,23 @@ const ToolItem: FC<{
               )} text-[#0071e3]`}
             ></i>
           )}
-          <div className="flex items-center gap-2 overflow-hidden">
-            <span className="shrink-0 text-[14px] font-medium text-[#1d1d1f]">{actionInfo.action}</span>
-            <span className="truncate text-[13px] text-[#86868b]">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <span
+              className={
+                isDeepSearchInline
+                  ? "shrink-0 text-[14px] font-medium text-foreground"
+                  : "shrink-0 text-[14px] font-medium text-[#1d1d1f]"
+              }
+            >
+              {actionInfo.action}
+            </span>
+            <span
+              className={
+                isDeepSearchInline
+                  ? "truncate text-[13px] text-muted-foreground"
+                  : "truncate text-[13px] text-[#86868b]"
+              }
+            >
               {actionInfo.name}
             </span>
           </div>
@@ -328,7 +370,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
-        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+        <div className="mt-6 w-full">
           <Reasoning isStreaming={chat.loading}>
             <ReasoningTrigger />
             <ReasoningContent>{thoughtText}</ReasoningContent>
@@ -338,7 +380,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 任务计划 */}
       {!isReactType && chat.planList?.length ? (
-        <div className="mt-6 w-full rounded-[20px] border border-[#e8e8ed] bg-white/60 px-5 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+        <div className="mt-6 w-full">
           <PlanSection plan={chat.planList} />
         </div>
       ) : null}
