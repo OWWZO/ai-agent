@@ -43,24 +43,34 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
     return (
       <div
         key={index}
-        className={`group w-160 h-40 rounded-lg border border-[#E9E9F0] p-[6px] box-border flex items-center relative ${preview ? "cursor-pointer" : "cursor-default"}`}
+        className={`group relative box-border flex w-full max-w-sm items-center gap-2 rounded-lg px-1 py-1 transition-colors ${
+          preview ? "cursor-pointer hover:bg-muted/35" : "cursor-default"
+        }`}
         onClick={() => reviewFile(f)}
       >
-        <img src={combinIcon(f)} alt={f.name} className="w-20 h-20 shrink-0 object-contain" />
-        <div className="flex-1 ml-[6px] overflow-hidden">
-          <Tooltip title={f.name}>
-            <div className="w-full overflow-hidden whitespace-nowrap text-ellipsis text-[13px] text-[#27272A] leading-[18px]">
-              {f.name}
-            </div>
-          </Tooltip>
-          <div className="w-full text-[11px] text-[#9E9FA3] leading-[16px]">
-            {formatSize(f.size)}
+        <img src={combinIcon(f)} alt={f.name} className="h-9 w-9 shrink-0 object-contain" />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Tooltip title={f.name}>
+              <div className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-snug text-[#27272A]">
+                {f.name}
+              </div>
+            </Tooltip>
+            <span className="shrink-0 text-[11px] leading-snug text-[#C4C4C8]" aria-hidden>
+              ·
+            </span>
+            <span className="shrink-0 tabular-nums text-[11px] leading-snug text-[#9E9FA3]">
+              {formatSize(f.size)}
+            </span>
           </div>
         </div>
         {!preview ? (
           <i
-            className="font_family icon-jia-1 absolute top-[6px] right-[6px] cursor-pointer hidden group-hover:block text-[12px]"
-            onClick={() => removeFile(index)}
+            className="font_family icon-jia-1 absolute right-2 top-2 hidden cursor-pointer text-[12px] group-hover:block"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeFile(index);
+            }}
           ></i>
         ) : null}
       </div>

@@ -79,13 +79,15 @@ const ToolItem: FC<{
       const completedIndex = tool.plan?.stepStatus.lastIndexOf("completed") || 0;
       return (
         <div
-          className="mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
+          className="mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
           onClick={() => changePlan?.()}
         >
-          <i className={`font_family ${getIcon(tool.messageType)} text-[#0071e3]`}></i>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <span className="shrink-0 text-[14px] font-medium text-[#1d1d1f]">已完成</span>
-            <span className="truncate text-[13px] text-[#86868b]">
+          <div className="flex size-7 shrink-0 items-center justify-center text-[#0071e3] [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
+            <i className={`font_family ${getIcon(tool.messageType)} text-[17px] leading-none [text-shadow:none]`}></i>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <span className="shrink-0 text-[14px] font-medium text-foreground">已完成</span>
+            <span className="truncate text-[13px] text-muted-foreground">
               {tool.plan?.steps[completedIndex]}
             </span>
           </div>
@@ -149,51 +151,44 @@ const ToolItem: FC<{
       return (
         <div
           className={
-            isDeepSearchInline
-              ? "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
-              : "mt-3 flex w-fit max-w-full cursor-pointer items-center gap-3 overflow-hidden rounded-[20px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-[#d2d2d7]"
+            "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
           }
           onClick={() => changeActiveChat(tool)}
         >
           {isDeepSearchInline ? (
-            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <div className="flex size-7 shrink-0 items-center justify-center text-primary [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
               {loading ? (
-                <LoaderCircleIcon className="size-3.5 animate-spin" />
+                <LoaderCircleIcon className="size-4 animate-spin" />
               ) : isSearching ? (
-                <SearchIcon className="size-3.5" />
+                <SearchIcon className="size-4" />
               ) : (
-                <FileTextIcon className="size-3.5" />
+                <FileTextIcon className="size-4" />
               )}
             </div>
           ) : loading ? (
-            <LoadingSpinner color="#0071e3" />
+            <div className="flex size-7 shrink-0 items-center justify-center text-primary [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
+              <LoaderCircleIcon className="size-4 animate-spin" />
+            </div>
           ) : (
-            <i
-              className={`font_family ${getIcon(
-                tool.messageType === "deep_search" &&
-                  tool.resultMap.messageType === "report"
-                  ? "file"
-                  : tool.messageType
-              )} text-[#0071e3]`}
-            ></i>
+            <div
+              className="flex size-7 shrink-0 items-center justify-center [&_svg]:drop-shadow-none [&_svg]:[filter:none]"
+              style={{ color: tool.messageType === "code" ? "#111827" : "#0071e3" }}
+            >
+              <i
+                className={`font_family ${getIcon(
+                  tool.messageType === "deep_search" &&
+                    tool.resultMap.messageType === "report"
+                    ? "file"
+                    : tool.messageType
+                )} text-[17px] leading-none [text-shadow:none]`}
+              ></i>
+            </div>
           )}
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span
-              className={
-                isDeepSearchInline
-                  ? "shrink-0 text-[14px] font-medium text-foreground"
-                  : "shrink-0 text-[14px] font-medium text-[#1d1d1f]"
-              }
-            >
+            <span className="shrink-0 text-[14px] font-medium text-foreground">
               {actionInfo.action}
             </span>
-            <span
-              className={
-                isDeepSearchInline
-                  ? "truncate text-[13px] text-muted-foreground"
-                  : "truncate text-[13px] text-[#86868b]"
-              }
-            >
+            <span className="truncate text-[13px] text-muted-foreground">
               {actionInfo.name}
             </span>
           </div>
@@ -330,7 +325,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 提示 */}
       {chat.tip ? (
-        <div className="mt-5 w-full rounded-[16px] border border-[#e8e8ed] bg-[#f5f5f7] px-4 py-3 text-[14px] text-[#86868b]">
+        <div className="mt-5 w-full text-[14px] text-muted-foreground">
           {chat.tip}
         </div>
       ) : null}

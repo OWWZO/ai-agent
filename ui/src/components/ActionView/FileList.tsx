@@ -107,8 +107,8 @@ const FileList: React.FC<{
     if (!fileList?.length) {
       return (
         <div className="flex h-full items-center justify-center">
-          <Card className="w-64 border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+          <Card className="w-64 bg-muted/15 py-8 shadow-none ring-0">
+            <CardContent className="flex flex-col items-center justify-center py-0 text-center">
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
                 <FileText className="h-5 w-5 text-[#86868b]" />
               </div>
@@ -126,7 +126,7 @@ const FileList: React.FC<{
           {fileList.map((item) => (
             <Card
               key={item.name}
-              className="group cursor-pointer border-[#e8e8ed] bg-white/80 transition-all duration-200 hover:border-[#d2d2d7] hover:bg-white hover:shadow-sm"
+              className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
               onClick={() => setActiveItem(item.name)}
             >
               <CardContent className="flex items-center gap-2.5 p-2.5">

@@ -61,7 +61,7 @@ const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) =>
     >
       {/* Header Section */}
       <motion.div
-        className="flex flex-col gap-3 border-b border-[#e8e8ed] px-5 py-4"
+        className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-4"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}

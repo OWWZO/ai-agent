@@ -624,7 +624,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
         {/* Left Panel - Chat Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] transition-all duration-300",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90 transition-all duration-300",
             isLeftCollapsed && "w-14 min-w-14",
             !isLeftCollapsed && "flex-1"
           )}
@@ -645,7 +645,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
             // 展开状态
             <>
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-[#e8e8ed] px-5 py-4">
+              <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
                     {headerTitle}
@@ -746,7 +746,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.04)] transition-all duration-300",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90 transition-all duration-300",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
@@ -789,11 +789,11 @@ const ChatView: GenieType.FC<Props> = (props) => {
       <div className="mx-auto flex h-full w-full max-w-[1600px] px-4 pt-4 md:px-6">
         <div
           className={classNames(
-            "mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[24px] border border-[#e8e8ed] bg-white/80 px-5 pt-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] md:px-6"
+            "mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[24px] bg-white/80 px-5 pt-4 md:px-6"
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-[#e8e8ed] pb-5">
+          <div className="flex items-center justify-between border-b border-black/[0.06] pb-5">
             <div className="flex min-w-0 items-center gap-4">
               <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
                 {headerTitle}

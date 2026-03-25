@@ -15,6 +15,13 @@
     font-style: normal;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-shadow: none;
+    filter: none;
+  }
+
+  .font_family::before {
+    text-shadow: none;
+    filter: none;
   }
   
   .icon-shenpi::before {
