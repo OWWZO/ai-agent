@@ -98,9 +98,9 @@ export const Reasoning = memo(
         value={{ isStreaming, isOpen, setIsOpen, duration }}
       >
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0.9, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+          transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
           <Collapsible
             className={cn("not-prose mb-4", className)}

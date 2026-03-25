@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
@@ -68,6 +68,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
   const actionViewRef = ActionView.useActionView();
   const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
+  const [isConversationSwitching, setIsConversationSwitching] = useState(false);
 
   const updateStreamingActiveTask = useMemoizedFn((chat: CHAT.ChatItem) => {
     const latestTask = getLatestRenderableTask(chat);
@@ -93,6 +94,13 @@ const ChatView: GenieType.FC<Props> = (props) => {
     setShowAction(false);
     setLoading(false);
     setStreamingThoughtMap({});
+  }, [conversation.id]);
+
+  // Ensure fade-in starts before the browser paints after conversation switch.
+  useLayoutEffect(() => {
+    setIsConversationSwitching(true);
+    const timer = setTimeout(() => setIsConversationSwitching(false), 220);
+    return () => clearTimeout(timer);
   }, [conversation.id]);
 
   const commitConversation = useMemoizedFn(
@@ -542,6 +550,95 @@ const ChatView: GenieType.FC<Props> = (props) => {
     }
   }, [isRightCollapsed]);
 
+  const renderChatDialogues = () => {
+    if (isConversationSwitching) {
+      return (
+        <motion.div
+          key={`switch-${conversation.id}`}
+          initial={{ opacity: 0.9, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.14, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          {conversation.chatList.map((chat) => (
+            <Dialogue
+              key={chat.requestId}
+              chat={chat}
+              streamingThought={streamingThoughtMap[chat.requestId]}
+              deepThink={conversation.deepThink}
+              changeTask={changeTask}
+              changeFile={changeFile}
+              changePlan={changePlan}
+              onRegenerate={handleRegenerate}
+            />
+          ))}
+        </motion.div>
+      );
+    }
+
+    return (
+      <AnimatePresence mode="popLayout" initial={false}>
+        {conversation.chatList.map((chat) => (
+          <motion.div
+            key={chat.requestId}
+            initial={{ opacity: 0.9, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0.85, y: -4 }}
+            transition={{
+              duration: 0.14,
+              ease: [0.25, 0.46, 0.45, 0.94],
+            }}
+          >
+            <Dialogue
+              chat={chat}
+              streamingThought={streamingThoughtMap[chat.requestId]}
+              deepThink={conversation.deepThink}
+              changeTask={changeTask}
+              changeFile={changeFile}
+              changePlan={changePlan}
+              onRegenerate={handleRegenerate}
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    );
+  };
+
+  const renderDataDialogues = () => {
+    if (isConversationSwitching) {
+      return (
+        <motion.div
+          key={`switch-data-${conversation.id}`}
+          initial={{ opacity: 0.9, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.14, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          {conversation.dataChatList.map((chat, idx) => (
+            <DataDialogue key={`${conversation.id}-${idx}`} chat={chat} />
+          ))}
+        </motion.div>
+      );
+    }
+
+    return (
+      <AnimatePresence mode="popLayout" initial={false}>
+        {conversation.dataChatList.map((chat, idx) => (
+          <motion.div
+            key={`${conversation.id}-${idx}`}
+            initial={{ opacity: 0.9, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0.85, y: -4 }}
+            transition={{
+              duration: 0.14,
+              ease: [0.25, 0.46, 0.45, 0.94],
+            }}
+          >
+            <DataDialogue chat={chat} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    );
+  };
+
   const renderMultAgent = () => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction) {
@@ -564,30 +661,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
             <Conversation className="chat-fade-bottom min-h-0 flex-1">
               <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
-                <AnimatePresence mode="sync" initial={false}>
-                  {conversation.chatList.map((chat) => (
-                    <motion.div
-                      key={chat.requestId}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{
-                        duration: 0.22,
-                        ease: [0.25, 0.46, 0.45, 0.94],
-                      }}
-                    >
-                      <Dialogue
-                        chat={chat}
-                        streamingThought={streamingThoughtMap[chat.requestId]}
-                        deepThink={conversation.deepThink}
-                        changeTask={changeTask}
-                        changeFile={changeFile}
-                        changePlan={changePlan}
-                        onRegenerate={handleRegenerate}
-                      />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                {renderChatDialogues()}
               </ConversationContent>
               <ConversationScrollButton />
             </Conversation>
@@ -670,30 +744,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
               <div className="flex min-h-0 flex-1 flex-col">
                 <Conversation className="chat-fade-bottom min-h-0 flex-1 px-5 pt-5">
                   <ConversationContent>
-                    <AnimatePresence mode="sync" initial={false}>
-                      {conversation.chatList.map((chat) => (
-                        <motion.div
-                          key={chat.requestId}
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -8 }}
-                          transition={{
-                            duration: 0.22,
-                            ease: [0.25, 0.46, 0.45, 0.94],
-                          }}
-                        >
-                          <Dialogue
-                            chat={chat}
-                            streamingThought={streamingThoughtMap[chat.requestId]}
-                            deepThink={conversation.deepThink}
-                            changeTask={changeTask}
-                            changeFile={changeFile}
-                            changePlan={changePlan}
-                            onRegenerate={handleRegenerate}
-                          />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                    {renderChatDialogues()}
                   </ConversationContent>
                   <ConversationScrollButton />
                 </Conversation>
@@ -804,22 +855,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
           {/* Messages */}
           <Conversation className="chat-fade-bottom mb-2 mt-4 min-h-0 flex-1">
             <ConversationContent>
-              <AnimatePresence mode="sync" initial={false}>
-                {conversation.dataChatList.map((chat, idx) => (
-                  <motion.div
-                    key={`${conversation.id}-${idx}`}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{
-                      duration: 0.22,
-                      ease: [0.25, 0.46, 0.45, 0.94],
-                    }}
-                  >
-                    <DataDialogue chat={chat} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+              {renderDataDialogues()}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
