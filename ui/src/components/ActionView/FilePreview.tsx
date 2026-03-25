@@ -16,6 +16,22 @@ import {
   Maximize2,
 } from "lucide-react";
 
+const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
+  if (!taskItem) {
+    return "empty";
+  }
+
+  // 优先使用流式前后都稳定不变的标识，避免同一任务被误判为新内容导致面板闪烁。
+  return (
+    taskItem.messageId ||
+    (taskItem.taskId && taskItem.messageTime
+      ? `${taskItem.taskId}:${taskItem.messageTime}`
+      : undefined) ||
+    taskItem.id ||
+    "empty"
+  );
+};
+
 // 空状态动画组件
 const EmptyState = () => (
   <div className="flex h-full items-center justify-center">
@@ -153,16 +169,7 @@ const FilePreview: React.FC<{
   }, [taskItem]);
 
   const canPreview = useHtml || useExcel;
-  const taskRenderKey = useMemo(() => {
-    if (!taskItem) {
-      return "empty";
-    }
-    return (
-      taskItem.id ||
-      taskItem.messageId ||
-      `${taskItem.taskId || "task"}:${taskItem.messageTime || "time"}`
-    );
-  }, [taskItem]);
+  const taskRenderKey = useMemo(() => getStableTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State
   if (!taskItem) {

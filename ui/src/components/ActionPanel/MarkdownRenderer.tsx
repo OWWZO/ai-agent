@@ -1,11 +1,11 @@
 import ReactMarkdown from 'react-markdown';
 import gfm from 'remark-gfm';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Empty } from 'antd';
 import classNames from 'classnames';
 import { usePanelContext } from './PanelProvider';
 import mermaid from 'mermaid';
-import { TerminalStreamText } from "@/components/ai-elements/terminal-stream";
+import { Streamdown } from 'streamdown';
 import {
   CodeBlock as ShadcnCodeBlock,
   CodeBlockCopyButton,
@@ -64,11 +64,13 @@ const MarkdownRenderer: GenieType.FC<{
 
   const { scrollToBottom } = usePanelContext() || {};
 
+  const renderedText = useStreamingText(markDownContent || '', Boolean(isStreaming));
+
   useEffect(() => {
-    if (markDownContent) {
+    if (renderedText) {
       scrollToBottom?.();
     }
-  }, [markDownContent, scrollToBottom]);
+  }, [renderedText, scrollToBottom]);
 
   if (!markDownContent) {
     return <Empty description="暂无内容" className='mx-auto mt-32' />;
@@ -76,13 +78,11 @@ const MarkdownRenderer: GenieType.FC<{
 
   if (isStreaming) {
     return (
-      // During streaming, avoid markdown parsing/re-layout costs.
-      // We only need terminal-like incremental reveal for perceived speed.
-      <TerminalStreamText
-        className={classNames("w-full", className)}
-        text={markDownContent}
-        isStreaming={true}
-      />
+      <div className={classNames('w-full markdown-body', className)}>
+        <Streamdown className="ai-chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          {renderedText}
+        </Streamdown>
+      </div>
     );
   }
 
@@ -96,3 +96,79 @@ const MarkdownRenderer: GenieType.FC<{
 };
 
 export default MarkdownRenderer;
+
+/**
+ * Streaming text hook (same idea as `MessageResponse`):
+ * throttle updates using requestAnimationFrame + time gate,
+ * so markdown parsing doesn't run on every chunk.
+ */
+function useStreamingText(text: string, isStreaming: boolean) {
+  const [displayedText, setDisplayedText] = useState(text);
+  const displayedRef = useRef(text);
+  const targetRef = useRef(text);
+  const frameRef = useRef<number | null>(null);
+  const lastUpdateRef = useRef<number>(0);
+
+  useEffect(() => {
+    targetRef.current = text;
+
+    if (!isStreaming) {
+      displayedRef.current = text;
+      setDisplayedText(text);
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      return;
+    }
+
+    if (displayedRef.current.length > text.length) {
+      displayedRef.current = text;
+      setDisplayedText(text);
+      return;
+    }
+
+    const tick = (timestamp: number) => {
+      if (timestamp - lastUpdateRef.current < 12) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastUpdateRef.current = timestamp;
+
+      const currentValue = displayedRef.current;
+      const targetValue = targetRef.current;
+
+      if (currentValue === targetValue) {
+        frameRef.current = null;
+        return;
+      }
+
+      const remaining = targetValue.length - currentValue.length;
+      const chunkSize = Math.max(
+        1,
+        Math.min(
+          remaining < 10 ? 1 : remaining < 50 ? 2 : remaining < 200 ? 4 : 8,
+          Math.ceil(remaining / 20)
+        )
+      );
+      const nextValue = targetValue.slice(0, currentValue.length + chunkSize);
+      displayedRef.current = nextValue;
+      setDisplayedText(nextValue);
+
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    if (!frameRef.current) {
+      frameRef.current = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [isStreaming, text]);
+
+  return displayedText;
+}

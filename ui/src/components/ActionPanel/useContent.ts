@@ -19,6 +19,10 @@ const useContent =  (taskItem?: PanelItemType) => {
     case 'tool_result':
       markDownContent = toolResult?.toolResult || '';
       break;
+    case 'tool_thought':
+      // 兜底支持思考内容，避免异常状态下工作区出现“有标题但无内容”的空白面板。
+      markDownContent = taskItem.toolThought || '';
+      break;
     case 'code':
       if (resultMap?.code || (resultMap?.codeOutput && resultMap?.isFinal)) {
         const text = resultMap?.code || resultMap?.codeOutput;

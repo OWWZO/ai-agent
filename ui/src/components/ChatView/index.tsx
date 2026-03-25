@@ -33,7 +33,27 @@ const getProductByType = (type?: string) => {
   return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
-const RESULT_MESSAGE_TYPES = new Set(["task_summary", "result"]);
+const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set(["task_summary", "result", "tool_thought"]);
+
+const shouldRefreshWorkspaceTask = (eventData?: MESSAGE.EventData) => {
+  if (!eventData) {
+    return false;
+  }
+
+  // 最终总结流和思考流不属于右侧工作区内容，不要触发工作区跟随刷新。
+  if (eventData.messageType === "plan_thought") {
+    return false;
+  }
+
+  if (
+    eventData.messageType === "task" &&
+    ["agent_stream", "tool_thought"].includes(eventData.resultMap?.messageType || "")
+  ) {
+    return false;
+  }
+
+  return true;
+};
 
 const getLatestRenderableTask = (chat: CHAT.ChatItem): CHAT.Task | undefined => {
   const groups = chat.multiAgent?.tasks || [];
@@ -41,7 +61,10 @@ const getLatestRenderableTask = (chat: CHAT.ChatItem): CHAT.Task | undefined => 
     const group = groups[i] || [];
     for (let j = group.length - 1; j >= 0; j -= 1) {
       const item = group[j] as CHAT.Task | undefined;
-      if (!item || RESULT_MESSAGE_TYPES.has(item.messageType)) continue;
+      // 工作区只跟随真正可预览的任务，思考过程留在左侧时间线展示。
+      if (!item || WORKSPACE_HIDDEN_MESSAGE_TYPES.has(item.messageType)) {
+        continue;
+      }
       return item;
     }
   }
@@ -299,7 +322,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
         if (resultMap?.eventData) {
           const eventData = resultMap.eventData;
           currentChat = combineData(eventData || {}, currentChat);
-          updateStreamingActiveTask(currentChat);
+          if (shouldRefreshWorkspaceTask(eventData)) {
+            updateStreamingActiveTask(currentChat);
+          }
           if (normalizedDeepThink && eventData?.messageType === "plan_thought") {
             const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
             setStreamingThoughtMap((prev) =>

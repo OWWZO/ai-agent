@@ -458,8 +458,11 @@ export const MessageResponse = memo(
         : children == null
           ? ""
           : String(children);
-    const animatedText = useStreamingText(sourceText, isStreaming && animateByChars);
-    const renderedText = animateByChars ? animatedText : sourceText;
+    // Performance: even when `animateByChars=false` (e.g. reasoning content),
+    // still throttle updates during streaming so markdown doesn't re-render on every token.
+    const shouldStreamThrottle = isStreaming;
+    const animatedText = useStreamingText(sourceText, shouldStreamThrottle);
+    const renderedText = animateByChars ? animatedText : shouldStreamThrottle ? animatedText : sourceText;
     const containerRef = useNearBottomAutoScroll(isStreaming, renderedText);
 
     return (
