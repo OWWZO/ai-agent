@@ -436,7 +436,26 @@ function updateExistingTaskTool(
   targetTool.resultMap.isFinal = resultMap?.isFinal;
   targetTool.resultMap.messageType = resultMap?.messageType;
   updateSearchResult(targetTool.resultMap, resultMap?.searchResult);
-  targetTool.resultMap.answer += resultMap?.answer || "";
+  const nextAnswer = resultMap?.answer || "";
+
+  // 总结阶段的最终包通常会带完整 answer，不能继续追加，否则会把整段总结再拼一遍。
+  if (!nextAnswer) {
+    return;
+  }
+
+  if (resultMap?.isFinal) {
+    const currentAnswer = targetTool.resultMap.answer || "";
+    if (nextAnswer === currentAnswer) {
+      return;
+    }
+
+    targetTool.resultMap.answer = nextAnswer.startsWith(currentAnswer)
+      ? nextAnswer
+      : `${currentAnswer}${nextAnswer}`;
+    return;
+  }
+
+  targetTool.resultMap.answer += nextAnswer;
 }
 
 /**

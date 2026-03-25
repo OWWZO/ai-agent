@@ -12,7 +12,12 @@ export const getSearchList = (taskItem?: PanelItemType) => {
   if (messageType === 'tool_result') {
     if (toolName === 'internal_search' || toolName === 'web_search') {
       const toolResult = taskItem.toolResult?.toolResult;
-      const tool = JSON.parse(toolResult || "{}");
+      let tool: any = {};
+      try {
+        tool = JSON.parse(toolResult || "{}");
+      } catch {
+        tool = {};
+      }
       const list = tool?.data || tool || [];
       return isValidJSON(toolResult) && list
         ? list?.map((item: MESSAGE.ToolResultDataType) => ({
@@ -36,12 +41,15 @@ export const getSearchList = (taskItem?: PanelItemType) => {
     const list = resultMap?.searchResult?.docs || [];
     return list.map(item => {
       const ele = Array.isArray(item) ? item[0] : item;
+      if (!ele) {
+        return null;
+      }
       return {
-        name: ele.title,
-        pageContent: ele.content,
-        url: ele.link
+        name: ele.title || ele.link || '搜索结果',
+        pageContent: ele.content || '',
+        url: ele.link || ''
       };
-    });
+    }).filter((item): item is SearchListItem => Boolean(item));
   }
   return [];
 };
@@ -58,7 +66,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     }
     const [fileInfo] = taskItem.resultMap?.fileInfo || [];
     const { messageType, toolResult, resultMap } = taskItem;
-    const { fileName } = fileInfo || {};
+    const fileName = fileInfo?.fileName || '';
 
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {
