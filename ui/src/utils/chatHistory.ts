@@ -1,7 +1,6 @@
 import { getUniqId } from "@/utils/utils";
 
 export const CHAT_HISTORY_STORAGE_KEY = "reactor.chat.history.v1";
-export const CHAT_HISTORY_BACKUP_STORAGE_KEY = "reactor.chat.history.v1.backup";
 export const CHAT_HISTORY_VERSION = 1;
 export const CHAT_HISTORY_MAX_COUNT = 20;
 
@@ -57,26 +56,15 @@ export const loadHistory = (): CHAT.ConversationHistoryStore => {
     if (typeof window === "undefined" || !window.localStorage) {
       return fallback;
     }
-    const parseStore = (raw: string | null): CHAT.ConversationHistoryStore | null => {
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as Partial<CHAT.ConversationHistoryStore>;
-      if (!parsed || !Array.isArray(parsed.conversations)) {
-        return null;
-      }
-      return {
-        version: CHAT_HISTORY_VERSION,
-        conversations: pruneHistory(
-          parsed.conversations.map((item) => normalizeConversation(item))
-        ),
-      };
+    const raw = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<CHAT.ConversationHistoryStore>;
+    if (!parsed || !Array.isArray(parsed.conversations)) return fallback;
+    const conversations = pruneHistory(parsed.conversations.map((item) => normalizeConversation(item)));
+    return {
+      version: CHAT_HISTORY_VERSION,
+      conversations,
     };
-
-    // 主存储异常时回退到备份，避免一次异常写入后整段历史直接丢失。
-    return (
-      parseStore(window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY)) ||
-      parseStore(window.localStorage.getItem(CHAT_HISTORY_BACKUP_STORAGE_KEY)) ||
-      fallback
-    );
   } catch {
     return fallback;
   }
@@ -93,10 +81,6 @@ export const saveHistory = (store: CHAT.ConversationHistoryStore): CHAT.Conversa
       return normalizedStore;
     }
 
-    const previousRaw =
-      window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY) ||
-      window.localStorage.getItem(CHAT_HISTORY_BACKUP_STORAGE_KEY);
-
     let candidates = normalizedStore.conversations;
     while (candidates.length > 0) {
       try {
@@ -104,33 +88,18 @@ export const saveHistory = (store: CHAT.ConversationHistoryStore): CHAT.Conversa
           version: CHAT_HISTORY_VERSION,
           conversations: candidates,
         };
-        const serializedPayload = JSON.stringify(payload);
-        window.localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, serializedPayload);
-        window.localStorage.setItem(CHAT_HISTORY_BACKUP_STORAGE_KEY, serializedPayload);
+        window.localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(payload));
         return payload;
       } catch {
         candidates = candidates.slice(0, -1);
       }
     }
 
-    // 即使本次保存失败，也保留之前已成功落盘的历史，不做破坏性清空。
-    if (previousRaw) {
-      try {
-        const parsed = JSON.parse(previousRaw) as Partial<CHAT.ConversationHistoryStore>;
-        if (parsed && Array.isArray(parsed.conversations)) {
-          return {
-            version: CHAT_HISTORY_VERSION,
-            conversations: pruneHistory(
-              parsed.conversations.map((item) => normalizeConversation(item))
-            ),
-          };
-        }
-      } catch {
-        return normalizedStore;
-      }
-    }
-
-    return normalizedStore;
+    window.localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+    return {
+      version: CHAT_HISTORY_VERSION,
+      conversations: [],
+    };
   } catch {
     return normalizedStore;
   }
