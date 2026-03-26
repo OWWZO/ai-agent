@@ -199,6 +199,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
     }
   );
 
+  const isActiveConversation = useMemoizedFn((conversationId: string) => {
+    return conversationRef.current.id === conversationId;
+  });
+
   const combineCurrentChat = (
     inputInfo: CHAT.TInputInfo,
     sessionId: string,
@@ -265,6 +269,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
 
     const flushNonChatUpdates = (force = false) => {
       if (!pendingConversation && !pendingTaskData && !taskDataDirty) return;
+      const canUpdateLocalState = isActiveConversation(conversationId);
       const now = performance.now();
       if (taskDataDirty && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL)) {
         pendingTaskData = handleTaskData(
@@ -278,7 +283,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
         !!pendingConversation &&
         (force || now - lastConversationFlushAt >= CONVERSATION_FLUSH_INTERVAL);
       const shouldFlushTask =
-        !!pendingTaskData && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL);
+        canUpdateLocalState &&
+        !!pendingTaskData &&
+        (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL);
 
       if (shouldFlushTask && pendingTaskData) {
         setTaskList(pendingTaskData.taskList);
@@ -329,8 +336,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
           currentChat.multiAgent
         );
         currentChat.loading = false;
-        setLoading(false);
-        setTaskList(taskData.taskList);
+        if (isActiveConversation(conversationId)) {
+          setLoading(false);
+          setTaskList(taskData.taskList);
+        }
         runningConversation = {
           ...runningConversation,
           chatList: runningConversation.chatList.map((chat) =>
@@ -343,6 +352,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
       if (packageType !== "heartbeat") {
         if (isChatMode) {
           requestAnimationFrame(() => {
+            const canUpdateLocalState = isActiveConversation(conversationId);
             const eventData: any = resultMap?.eventData;
             const inner = eventData?.resultMap;
             const innerType = inner?.messageType;
@@ -365,12 +375,16 @@ const ChatView: GenieType.FC<Props> = (props) => {
                 chatList: newChatList,
               };
               commitConversation(conversationId, runningConversation);
-              setChatVersion((v) => v + 1);
+              if (canUpdateLocalState) {
+                setChatVersion((v) => v + 1);
+              }
             }
 
             if (innerType && (inner?.finish || finished)) {
               currentChat.loading = false;
-              setLoading(false);
+              if (canUpdateLocalState) {
+                setLoading(false);
+              }
               const newChatList = [...runningConversation.chatList];
               newChatList.splice(newChatList.length - 1, 1, currentChat);
               runningConversation = {
@@ -384,12 +398,13 @@ const ChatView: GenieType.FC<Props> = (props) => {
         }
 
         if (resultMap?.eventData) {
+          const canUpdateLocalState = isActiveConversation(conversationId);
           const eventData = resultMap.eventData;
           currentChat = combineData(eventData || {}, currentChat);
-          if (shouldRefreshWorkspaceTask(eventData)) {
+          if (canUpdateLocalState && shouldRefreshWorkspaceTask(eventData)) {
             scheduleWorkspaceStreamTask(currentChat, finished);
           }
-          if (normalizedDeepThink && eventData?.messageType === "plan_thought") {
+          if (canUpdateLocalState && normalizedDeepThink && eventData?.messageType === "plan_thought") {
             const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
             setStreamingThoughtMap((prev) =>
               prev[currentChat.requestId] === latestThought
@@ -400,8 +415,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
           taskDataDirty = true;
           if (finished) {
             currentChat.loading = false;
-            setLoading(false);
-            if (normalizedDeepThink) {
+            if (canUpdateLocalState) {
+              setLoading(false);
+            }
+            if (canUpdateLocalState && normalizedDeepThink) {
               const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
               setStreamingThoughtMap((prev) => ({ ...prev, [currentChat.requestId]: finalThought }));
             }
@@ -419,7 +436,10 @@ const ChatView: GenieType.FC<Props> = (props) => {
     };
 
     const openAction = (tasks: MESSAGE.Task[]) => {
-      if (tasks.filter((item) => !RESULT_TYPES.includes(item.messageType)).length) {
+      if (
+        isActiveConversation(conversationId) &&
+        tasks.filter((item) => !RESULT_TYPES.includes(item.messageType)).length
+      ) {
         setShowAction(true);
       }
     };
@@ -446,29 +466,35 @@ const ChatView: GenieType.FC<Props> = (props) => {
     return tasks;
   };
 
-  const changeTask = (task: CHAT.Task) => {
+  const openWorkspace = useMemoizedFn(() => {
+    setShowAction(true);
+    setIsRightCollapsed(false);
+  });
+
+  const closeWorkspace = useMemoizedFn(() => {
+    setShowAction(false);
+    setIsRightCollapsed(true);
+  });
+
+  const changeTask = useMemoizedFn((task: CHAT.Task) => {
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
-    changeActionStatus(true);
+    openWorkspace();
     setActiveTask(task);
-  };
+  });
 
   const updatePlan = (currentPlan: CHAT.Plan) => {
     setPlan(currentPlan);
   };
 
-  const changeFile = (file: CHAT.TFile) => {
-    changeActionStatus(true);
+  const changeFile = useMemoizedFn((file: CHAT.TFile) => {
+    openWorkspace();
     actionViewRef.current?.setFilePreview(file);
-  };
+  });
 
-  const changePlan = () => {
-    changeActionStatus(true);
+  const changePlan = useMemoizedFn(() => {
+    openWorkspace();
     actionViewRef.current?.openPlanView();
-  };
-
-  const changeActionStatus = (status: boolean) => {
-    setShowAction(status);
-  };
+  });
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     const baseConversation = conversationRef.current;
@@ -498,6 +524,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
     setLoading(true);
 
     const handleMessage = (data: any) => {
+      const canUpdateLocalState = isActiveConversation(conversationId);
       switch (data.eventType) {
         case "THINK":
           currentChat.think = data.data;
@@ -508,11 +535,15 @@ const ChatView: GenieType.FC<Props> = (props) => {
         case "ERROR":
           currentChat.error = data.data;
           currentChat.loading = false;
-          setLoading(false);
+          if (canUpdateLocalState) {
+            setLoading(false);
+          }
           break;
         case "READY":
           currentChat.loading = false;
-          setLoading(false);
+          if (canUpdateLocalState) {
+            setLoading(false);
+          }
           break;
         default:
           break;
@@ -629,13 +660,12 @@ const ChatView: GenieType.FC<Props> = (props) => {
   }, [isLeftCollapsed]);
 
   const toggleRightPanel = useCallback(() => {
-    setIsRightCollapsed((prev) => !prev);
-    if (isRightCollapsed) {
-      setShowAction(true);
-    } else {
-      setShowAction(false);
-    }
-  }, [isRightCollapsed]);
+    setIsRightCollapsed((prev) => {
+      const next = !prev;
+      setShowAction(!next);
+      return next;
+    });
+  }, []);
 
   const renderChatDialogues = () => {
     if (isConversationSwitching) {
@@ -909,10 +939,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
               taskList={taskList}
               plan={plan}
               ref={actionViewRef}
-              onClose={() => {
-                changeActionStatus(false);
-                setIsRightCollapsed(true);
-              }}
+              onClose={closeWorkspace}
             />
           )}
         </div>
