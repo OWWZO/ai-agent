@@ -8,6 +8,7 @@
 import asyncio
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from typing import List, AsyncGenerator, Tuple
@@ -62,93 +63,144 @@ class DeepSearch:
     ) -> AsyncGenerator[str, None]:
         """深度搜索回复（流式）"""
 
+        total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "300"))
+        deadline = time.monotonic() + total_timeout_seconds
+
+        def _remaining_timeout() -> float:
+            return max(0.1, deadline - time.monotonic())
+
         current_loop = 1
-        # 执行深度搜索循环
-        while current_loop <= max_loop:
-            logger.info(f"{request_id} 第 {current_loop} 轮深度搜索...")
-            # 查询分解
-            sub_queries = await query_decompose(query=query)
+        try:
+            # 执行深度搜索循环
+            while current_loop <= max_loop:
+                logger.info(f"{request_id} 第 {current_loop} 轮深度搜索...")
+                # 查询分解
+                sub_queries = await asyncio.wait_for(
+                    query_decompose(query=query),
+                    timeout=_remaining_timeout(),
+                )
 
-            yield json.dumps({
-                "requestId": request_id,
-                "query": query,
-                "searchResult": {"query": sub_queries, "docs": [[]] * len(sub_queries)},
-                "isFinal": False,
-                "messageType": "extend"
-            }, ensure_ascii=False)
-
-            await asyncio.sleep(0.1)
-
-            # 去除已经检索过的query
-            sub_queries = [sub_query for sub_query in sub_queries
-                           if sub_query not in self.searched_queries]
-            # 并行搜索并去重
-            searched_docs, docs_list = await self._search_queries_and_dedup(
-                queries=sub_queries,
-                request_id=request_id,
-            )
-
-            truncate_len = int(os.getenv("SINGLE_PAGE_MAX_SIZE", 200))
-            yield json.dumps(
-                {
+                yield json.dumps({
                     "requestId": request_id,
                     "query": query,
-                    "searchResult": {
-                        "query": sub_queries,
-                        "docs": [[d.to_dict(truncate_len=truncate_len) for d in docs_l] for docs_l in docs_list]
-                    },
+                    "searchResult": {"query": sub_queries, "docs": [[]] * len(sub_queries)},
                     "isFinal": False,
-                    "messageType": "search"
+                    "messageType": "extend"
                 }, ensure_ascii=False)
 
-            # 更新上下文
-            self.current_docs.extend(searched_docs)
-            self.searched_queries.extend(sub_queries)
+                await asyncio.sleep(0.1)
 
-            # 如果是最后一轮，直接跳出
-            if current_loop == max_loop:
-                break
+                # 去除已经检索过的query
+                sub_queries = [sub_query for sub_query in sub_queries
+                               if sub_query not in self.searched_queries]
+                # 并行搜索并去重
+                searched_docs, docs_list = await asyncio.wait_for(
+                    self._search_queries_and_dedup(
+                        queries=sub_queries,
+                        request_id=request_id,
+                    ),
+                    timeout=_remaining_timeout(),
+                )
 
-            # 推理验证是否需要继续搜索
-            reasoning_result = search_reasoning(
-                request_id=request_id,
-                query=query,
-                content=self.search_docs_str(os.getenv("SEARCH_REASONING_MODEL")),
-            )
-
-            # 如果推理判断已经可以回答，跳出循环
-            if reasoning_result.get("is_verify", "1") in ["1", 1]:
-                logger.info(f"{request_id} reasoning 判断没有得到新的查询，流程结束")
-                break
-
-            current_loop += 1
-
-        # 生成最终答案
-        answer = ""
-        acc_content = ""
-        acc_token = 0
-        async for chunk in answer_question(
-                query=query, search_content=self.search_docs_str(os.getenv("SEARCH_ANSWER_MODEL"))
-        ):
-            if stream:
-                if acc_token >= stream_mode.token:
-                    yield json.dumps({
+                truncate_len = int(os.getenv("SINGLE_PAGE_MAX_SIZE", 200))
+                yield json.dumps(
+                    {
                         "requestId": request_id,
                         "query": query,
                         "searchResult": {
-                            "query": [],
-                            "docs": [],
+                            "query": sub_queries,
+                            "docs": [[d.to_dict(truncate_len=truncate_len) for d in docs_l] for docs_l in docs_list]
                         },
-                        "answer": acc_content,
                         "isFinal": False,
-                        "messageType": "report"
+                        "messageType": "search"
                     }, ensure_ascii=False)
-                    acc_content = ""
-                    acc_token = 0
-                acc_content += chunk
-                acc_token += 1
-            answer += chunk
-        if stream and acc_content:
+
+                # 更新上下文
+                self.current_docs.extend(searched_docs)
+                self.searched_queries.extend(sub_queries)
+
+                # 如果是最后一轮，直接跳出
+                if current_loop == max_loop:
+                    break
+
+                # 推理验证是否需要继续搜索
+                reasoning_result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        search_reasoning,
+                        request_id=request_id,
+                        query=query,
+                        content=self.search_docs_str(os.getenv("SEARCH_REASONING_MODEL")),
+                    ),
+                    timeout=_remaining_timeout(),
+                )
+
+                # 如果推理判断已经可以回答，跳出循环
+                if reasoning_result.get("is_verify", "1") in ["1", 1]:
+                    logger.info(f"{request_id} reasoning 判断没有得到新的查询，流程结束")
+                    break
+
+                current_loop += 1
+
+            # 生成最终答案
+            answer = ""
+            acc_content = ""
+            acc_token = 0
+            answer_stream = answer_question(
+                query=query, search_content=self.search_docs_str(os.getenv("SEARCH_ANSWER_MODEL"))
+            )
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        answer_stream.__anext__(),
+                        timeout=_remaining_timeout(),
+                    )
+                except StopAsyncIteration:
+                    break
+
+                if stream:
+                    if acc_token >= stream_mode.token:
+                        yield json.dumps({
+                            "requestId": request_id,
+                            "query": query,
+                            "searchResult": {
+                                "query": [],
+                                "docs": [],
+                            },
+                            "answer": acc_content,
+                            "isFinal": False,
+                            "messageType": "report"
+                        }, ensure_ascii=False)
+                        acc_content = ""
+                        acc_token = 0
+                    acc_content += chunk
+                    acc_token += 1
+                answer += chunk
+            if stream and acc_content:
+                yield json.dumps({
+                    "requestId": request_id,
+                    "query": query,
+                    "searchResult": {
+                        "query": [],
+                        "docs": [],
+                    },
+                    "answer": acc_content,
+                    "isFinal": False,
+                    "messageType": "report"
+                }, ensure_ascii=False)
+            yield json.dumps({
+                    "requestId": request_id,
+                    "query": query,
+                    "searchResult": {
+                        "query": [],
+                        "docs": [],
+                    },
+                    "answer": "" if stream else answer,
+                    "isFinal": True,
+                    "messageType": "report"
+                }, ensure_ascii=False)
+        except asyncio.TimeoutError:
+            logger.warning(f"{request_id} deepsearch total timeout after {total_timeout_seconds}s")
+            fallback_answer = "深度搜索超时，已返回当前可用结果，请基于已有搜索内容继续处理。"
             yield json.dumps({
                 "requestId": request_id,
                 "query": query,
@@ -156,18 +208,7 @@ class DeepSearch:
                     "query": [],
                     "docs": [],
                 },
-                "answer": acc_content,
-                "isFinal": False,
-                "messageType": "report"
-            }, ensure_ascii=False)
-        yield json.dumps({
-                "requestId": request_id,
-                "query": query,
-                "searchResult": {
-                    "query": [],
-                    "docs": [],
-                },
-                "answer": "" if stream else answer,
+                "answer": fallback_answer,
                 "isFinal": True,
                 "messageType": "report"
             }, ensure_ascii=False)

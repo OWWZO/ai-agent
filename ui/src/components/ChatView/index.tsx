@@ -71,6 +71,13 @@ const getLatestRenderableTask = (chat: CHAT.ChatItem): CHAT.Task | undefined => 
   return undefined;
 };
 
+const cloneWorkspaceTask = (task: CHAT.Task): CHAT.Task => {
+  return {
+    ...task,
+    resultMap: task.resultMap ? { ...task.resultMap } : task.resultMap,
+  } as CHAT.Task;
+};
+
 const ChatView: GenieType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
@@ -92,17 +99,65 @@ const ChatView: GenieType.FC<Props> = (props) => {
   const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
   const [isConversationSwitching, setIsConversationSwitching] = useState(false);
+  const workspaceStreamFrameRef = useRef<number | null>(null);
+  const workspaceStreamPendingRef = useRef<CHAT.Task | undefined>(undefined);
+  const workspaceStreamLastFlushAtRef = useRef(0);
+  const WORKSPACE_STREAM_FLUSH_INTERVAL = 32;
 
-  const updateStreamingActiveTask = useMemoizedFn((chat: CHAT.ChatItem) => {
+  const cancelWorkspaceStreamFrame = useMemoizedFn(() => {
+    if (workspaceStreamFrameRef.current !== null) {
+      cancelAnimationFrame(workspaceStreamFrameRef.current);
+      workspaceStreamFrameRef.current = null;
+    }
+  });
+
+  const flushWorkspaceStreamTask = useMemoizedFn((force = false) => {
+    const nextTask = workspaceStreamPendingRef.current;
+    if (!nextTask) return;
+
+    const now = performance.now();
+    if (!force && now - workspaceStreamLastFlushAtRef.current < WORKSPACE_STREAM_FLUSH_INTERVAL) {
+      return;
+    }
+
+    workspaceStreamLastFlushAtRef.current = now;
+    workspaceStreamPendingRef.current = undefined;
+    setWorkspaceStreamTask(nextTask);
+  });
+
+  const scheduleWorkspaceStreamTask = useMemoizedFn((chat: CHAT.ChatItem, force = false) => {
     const latestTask = getLatestRenderableTask(chat);
     if (!latestTask) return;
-    // Keep realtime-follow content in an isolated high-frequency state.
-    const nextTask = {
-      ...latestTask,
-      resultMap: latestTask.resultMap ? { ...latestTask.resultMap } : latestTask.resultMap,
-    } as CHAT.Task;
-    setWorkspaceStreamTask(nextTask);
-    setActiveTask(nextTask);
+
+    workspaceStreamPendingRef.current = cloneWorkspaceTask(latestTask);
+
+    if (force) {
+      cancelWorkspaceStreamFrame();
+      flushWorkspaceStreamTask(true);
+      return;
+    }
+
+    if (workspaceStreamFrameRef.current !== null) {
+      return;
+    }
+
+    const requestNextFrame = () => {
+      workspaceStreamFrameRef.current = requestAnimationFrame(() => {
+        workspaceStreamFrameRef.current = null;
+        const pendingTask = workspaceStreamPendingRef.current;
+        if (!pendingTask) return;
+
+        const now = performance.now();
+        if (now - workspaceStreamLastFlushAtRef.current < WORKSPACE_STREAM_FLUSH_INTERVAL) {
+          requestNextFrame();
+          return;
+        }
+
+        flushWorkspaceStreamTask(true);
+      });
+    };
+
+    requestNextFrame();
   });
 
   useEffect(() => {
@@ -110,6 +165,9 @@ const ChatView: GenieType.FC<Props> = (props) => {
   }, [conversation]);
 
   useEffect(() => {
+    cancelWorkspaceStreamFrame();
+    workspaceStreamPendingRef.current = undefined;
+    workspaceStreamLastFlushAtRef.current = 0;
     setTaskList([]);
     setActiveTask(undefined);
     setWorkspaceStreamTask(undefined);
@@ -117,7 +175,13 @@ const ChatView: GenieType.FC<Props> = (props) => {
     setShowAction(false);
     setLoading(false);
     setStreamingThoughtMap({});
-  }, [conversation.id]);
+  }, [cancelWorkspaceStreamFrame, conversation.id]);
+
+  useEffect(() => {
+    return () => {
+      cancelWorkspaceStreamFrame();
+    };
+  }, [cancelWorkspaceStreamFrame]);
 
   // Ensure fade-in starts before the browser paints after conversation switch.
   useLayoutEffect(() => {
@@ -323,7 +387,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
           const eventData = resultMap.eventData;
           currentChat = combineData(eventData || {}, currentChat);
           if (shouldRefreshWorkspaceTask(eventData)) {
-            updateStreamingActiveTask(currentChat);
+            scheduleWorkspaceStreamTask(currentChat, finished);
           }
           if (normalizedDeepThink && eventData?.messageType === "plan_thought") {
             const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
@@ -378,10 +442,8 @@ const ChatView: GenieType.FC<Props> = (props) => {
   });
 
   const temporaryChangeTask = (tasks: MESSAGE.Task[]) => {
-    const task = tasks[tasks.length - 1] as CHAT.Task;
-    if (!["task_summary", "result"].includes(task?.messageType)) {
-      setActiveTask(task);
-    }
+    // 工作区默认通过 streamTask / taskList 自动跟随，避免流式阶段频繁改 activeTask 导致整块预览抖动和掉帧。
+    return tasks;
   };
 
   const changeTask = (task: CHAT.Task) => {

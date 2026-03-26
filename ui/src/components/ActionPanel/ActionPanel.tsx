@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { memo, useEffect, useMemo, useRef } from "react";
 import classNames from "classnames";
 import { motion } from "motion/react";
 import { useMsgTypes } from "./useMsgTypes";
@@ -38,21 +38,35 @@ const ContentWrapper = ({ children, key }: { children: React.ReactNode; key?: st
 );
 
 // Markdown 流式内容动画包装
-const StreamingMarkdownWrapper = ({ content }: { content: string }) => {
-  const contentRef = useRef<HTMLDivElement>(null);
-
+const StreamingMarkdownWrapper = memo(({
+  content,
+  isStreaming,
+}: {
+  content: string;
+  isStreaming: boolean;
+}) => {
   return (
-    <motion.div
-      ref={contentRef}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="h-full"
+    <div
+      className="flex min-h-full flex-col"
     >
-      <MarkdownRenderer markDownContent={content} isStreaming />
-    </motion.div>
+      <MarkdownRenderer markDownContent={content} isStreaming={isStreaming} />
+      <div
+        aria-hidden
+        className="shrink-0 transition-[height] duration-300 ease-out"
+        style={{
+          height: isStreaming ? "clamp(180px, 34vh, 320px)" : "24px",
+        }}
+      />
+    </div>
   );
-};
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.content === nextProps.content &&
+    prevProps.isStreaming === nextProps.isStreaming
+  );
+});
+
+StreamingMarkdownWrapper.displayName = "StreamingMarkdownWrapper";
 
 const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
   const { taskItem, className, allowShowToolBar } = props;
@@ -133,7 +147,10 @@ const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
       }
 
       return (
-        <StreamingMarkdownWrapper content={markDownContent} />
+        <StreamingMarkdownWrapper
+          content={markDownContent}
+          isStreaming={!resultMap?.isFinal}
+        />
       );
     };
 
@@ -152,16 +169,97 @@ const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
   ]);
 
   const ref = useRef<HTMLDivElement>(null);
+  const shouldAutoFollowRef = useRef(true);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const autoScrollTargetRef = useRef(0);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const updateAutoFollowState = () => {
+      const distanceToBottom =
+        element.scrollHeight - element.scrollTop - element.clientHeight;
+      // 只有用户明确滚离底部较远时才停止跟随，避免流式内容快速增长时误判。
+      shouldAutoFollowRef.current = distanceToBottom < 240;
+    };
+
+    updateAutoFollowState();
+    element.addEventListener("scroll", updateAutoFollowState, { passive: true });
+
+    return () => {
+      element.removeEventListener("scroll", updateAutoFollowState);
+    };
+  }, []);
+
+  const cancelAutoScrollFrame = useMemoizedFn(() => {
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+  });
+
+  const animateAutoScroll = useMemoizedFn(() => {
+    if (autoScrollFrameRef.current !== null) {
+      return;
+    }
+
+    const step = () => {
+      autoScrollFrameRef.current = requestAnimationFrame(() => {
+        autoScrollFrameRef.current = null;
+        const element = ref.current;
+        if (!element || !shouldAutoFollowRef.current) {
+          return;
+        }
+
+        const target = autoScrollTargetRef.current;
+        const current = element.scrollTop;
+        const delta = target - current;
+
+        if (Math.abs(delta) <= 0.5) {
+          element.scrollTop = target;
+          return;
+        }
+
+        // 使用缓动追踪目标位，让工作区流式跟随更像自然滚动而不是生硬跳变。
+        const nextScrollTop = current + delta * 0.18;
+        element.scrollTop = nextScrollTop;
+        step();
+      });
+    };
+
+    step();
+  });
+
+  const scrollToFollowTarget = useMemoizedFn((immediate = false) => {
+    const element = ref.current;
+    if (!element || !shouldAutoFollowRef.current) return;
+
+    autoScrollTargetRef.current = Math.max(0, element.scrollHeight - element.clientHeight);
+
+    if (immediate) {
+      cancelAutoScrollFrame();
+      element.scrollTop = autoScrollTargetRef.current;
+      return;
+    }
+
+    animateAutoScroll();
+  });
 
   const scrollToBottom = useMemoizedFn(() => {
-    if (!ref.current) return;
-    const element = ref.current;
-    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 240;
-    if (!nearBottom) return;
-    requestAnimationFrame(() => {
-      element.scrollTop = element.scrollHeight;
-    });
+    scrollToFollowTarget(false);
   });
+
+  useEffect(() => {
+    if (!taskItem || !shouldAutoFollowRef.current) return;
+    scrollToFollowTarget(true);
+  }, [scrollToFollowTarget, taskItem?.id, taskItem?.messageId, taskItem?.messageTime]);
+
+  useEffect(() => {
+    return () => {
+      cancelAutoScrollFrame();
+    };
+  }, [cancelAutoScrollFrame]);
 
   return (
     <PanelProvider value={{

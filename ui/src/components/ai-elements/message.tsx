@@ -318,6 +318,7 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
   isStreaming?: boolean;
   animateByChars?: boolean;
   showStreamingCursor?: boolean;
+  disableAutoScroll?: boolean;
 };
 
 const useStreamingText = (text: string, isStreaming: boolean) => {
@@ -449,6 +450,7 @@ export const MessageResponse = memo(
     isStreaming = false,
     animateByChars = true,
     showStreamingCursor = true,
+    disableAutoScroll = false,
     children,
     ...props
   }: MessageResponseProps) => {
@@ -463,7 +465,10 @@ export const MessageResponse = memo(
     const shouldStreamThrottle = isStreaming;
     const animatedText = useStreamingText(sourceText, shouldStreamThrottle);
     const renderedText = animateByChars ? animatedText : shouldStreamThrottle ? animatedText : sourceText;
-    const containerRef = useNearBottomAutoScroll(isStreaming, renderedText);
+    const containerRef = useNearBottomAutoScroll(
+      isStreaming && !disableAutoScroll,
+      renderedText
+    );
 
     return (
       <div
@@ -487,7 +492,8 @@ export const MessageResponse = memo(
     prevProps.children === nextProps.children &&
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.animateByChars === nextProps.animateByChars &&
-    prevProps.showStreamingCursor === nextProps.showStreamingCursor
+    prevProps.showStreamingCursor === nextProps.showStreamingCursor &&
+    prevProps.disableAutoScroll === nextProps.disableAutoScroll
 );
 
 MessageResponse.displayName = "MessageResponse";

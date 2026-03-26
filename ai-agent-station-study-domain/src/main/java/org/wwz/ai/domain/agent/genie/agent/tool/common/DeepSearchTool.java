@@ -25,13 +25,31 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Data
 
 public class DeepSearchTool implements BaseTool {
 
+    /**
+     * deep_search 保底超时时间，避免外部流式接口异常时导致 future.get() 长时间阻塞。
+     */
+    private static final long DEEP_SEARCH_TIMEOUT_MINUTES = 5L;
+    /**
+     * deep_search HTTP 连接超时时间。
+     */
+    private static final long DEEP_SEARCH_CONNECT_TIMEOUT_SECONDS = 30L;
+    /**
+     * deep_search HTTP 读写超时时间。
+     */
+    private static final long DEEP_SEARCH_IO_TIMEOUT_MINUTES = 5L;
+
     private AgentContext agentContext;
+    /**
+     * 当前正在执行的 deep_search HTTP 调用，用于超时后主动取消。
+     */
+    private volatile Call activeCall;
 
     @Override
     public String getName() {
@@ -90,13 +108,21 @@ public class DeepSearchTool implements BaseTool {
                     .build();
 
             // 调用流式 API
-            Future future = callDeepSearchStream(request);
-            Object object = future.get();
+            Future<String> future = callDeepSearchStream(request);
+            Object object = future.get(DEEP_SEARCH_TIMEOUT_MINUTES, TimeUnit.MINUTES);
 
             return object;
+        } catch (TimeoutException e) {
+            if (activeCall != null && !activeCall.isCanceled()) {
+                activeCall.cancel();
+            }
+            log.error("{} deep_search timeout after {} minutes", agentContext.getRequestId(), DEEP_SEARCH_TIMEOUT_MINUTES, e);
+            return "deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。";
         } catch (Exception e) {
 
             log.error("{} deep_search agent error", agentContext.getRequestId(), e);
+        } finally {
+            activeCall = null;
         }
         return null;
     }
@@ -108,10 +134,10 @@ public class DeepSearchTool implements BaseTool {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
-                    .readTimeout(30000, TimeUnit.SECONDS)    // 设置读取超时时间为 300 秒
-                    .writeTimeout(30000, TimeUnit.SECONDS)   // 设置写入超时时间为 300 秒
-                    .callTimeout(30000, TimeUnit.SECONDS)    // 设置调用超时时间为 300 秒
+                    .connectTimeout(DEEP_SEARCH_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .readTimeout(DEEP_SEARCH_IO_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                    .writeTimeout(DEEP_SEARCH_IO_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                    .callTimeout(DEEP_SEARCH_IO_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                     .build();
 
             ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
@@ -132,7 +158,9 @@ public class DeepSearchTool implements BaseTool {
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
 
-            client.newCall(request).enqueue(new Callback() {
+            Call call = client.newCall(request);
+            activeCall = call;
+            call.enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} deep_search on failure", agentContext.getRequestId(), e);
@@ -234,10 +262,13 @@ public class DeepSearchTool implements BaseTool {
                             }
                         }
                         future.complete(result);
+                        activeCall = null;
 
                     } catch (Exception e) {
                         log.error("{} deep_search request error", agentContext.getRequestId(), e);
                         future.completeExceptionally(e);
+                    } finally {
+                        activeCall = null;
                     }
                 }
             });

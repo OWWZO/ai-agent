@@ -875,8 +875,11 @@ export const buildAction = (task: CHAT.Task) => {
    */
   function handleDeepSearchTask(task: any) {
     const isReport = task.resultMap.messageType === "report";
+    const searchFinished = Boolean(task?.resultMap?.searchFinish || task?.resultMap?.isFinal);
     return {
-      action: isReport ? "正在总结" : "正在搜索",
+      action: isReport
+        ? (task?.resultMap?.isFinal ? "总结完成" : "正在总结")
+        : (searchFinished ? "搜索完成" : "正在搜索"),
       tool: "深度搜索",
       name: isReport
         ? task?.resultMap?.query || ""
