@@ -6,8 +6,6 @@ import { Edit3Icon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
 
 import ChatView from "@/components/ChatView";
 import GeneralInput from "@/components/GeneralInput";
-import DataListDrawer from "@/components/DataListDrawer";
-import ColsAndDataDrawer from "@/components/DataListDrawer/ColsAndDataDrawer";
 import ResizableSidebar from "@/components/ResizableSidebar";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
@@ -49,13 +47,6 @@ const EMPTY_INPUT: CHAT.TInputInfo = {
 };
 
 const HERO_TYPEWRITER_TEXTS = ["Let's build", "Let's create", "Hello! How can I help?", "Let's analyze","Let's research","Welcome back!","Awaiting your instructions"];
-
-const outputDescMap: Record<string, string> = {
-  html: "Generate interactive HTML report",
-  docs: "Output structured markdown document",
-  ppt: "Generate PPT-style presentation",
-  table: "Output structured table results",
-};
 
 const tagColorMap: Record<string, string> = {
   专业研究: "bg-[var(--secondary)] text-[var(--secondary-foreground)]",
@@ -176,20 +167,10 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
   );
 
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
-  const [dbsShow, setDbsShow] = useState(false);
-  const [dataShow, setDataShow] = useState(false);
-  const [outputMenuOpen, setOutputMenuOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [curModel, setCurModel] = useState<CHAT.ModelInfo>({
-    modelName: "",
-    modelCode: "",
-    schemaList: [],
-  });
-
-  const outputMenuRef = useRef<HTMLDivElement>(null);
 
   const currentConversation = useMemo(
     () => conversations.find((item) => item.id === currentConversationId) || conversations[0],
@@ -231,16 +212,6 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     }, 700);
     return () => window.clearTimeout(timer);
   }, [conversations]);
-
-  useEffect(() => {
-    const handler = (event: MouseEvent) => {
-      if (outputMenuRef.current && !outputMenuRef.current.contains(event.target as Node)) {
-        setOutputMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const updateConversation = useCallback(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -345,8 +316,8 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     [currentConversationId, product.type]
   );
 
-  const handleSelectProduct = useCallback(
-    (nextProduct: CHAT.Product) => {
+  const handleInputSelectionChange = useCallback(
+    ({ product: nextProduct, deepThink: nextDeepThink }: { product: CHAT.Product; deepThink: boolean }) => {
       setProduct(nextProduct);
       if (OUTPUT_TYPES.includes(nextProduct.type)) {
         setDisplayOutput(nextProduct);
@@ -354,7 +325,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
       if (!currentConversation) return;
       updateCurrentConversationMeta({
         productType: nextProduct.type,
-        deepThink: nextProduct.type === "chat" ? false : currentConversation.deepThink,
+        deepThink: nextProduct.type === "chat" || nextProduct.type === "dataAgent" ? false : nextDeepThink,
       });
     },
     [currentConversation, updateCurrentConversationMeta]
@@ -398,17 +369,6 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
     setSearchPanelOpen(false);
   }, []);
 
-  const primaryProducts = useMemo(
-    () => productList.filter((item) => !OUTPUT_TYPES.includes(item.type)),
-    []
-  );
-  const outputProducts = useMemo(
-    () => productList.filter((item) => OUTPUT_TYPES.includes(item.type)),
-    []
-  );
-
-  const isOutputActive = product.type === displayOutput.type;
-
   const renderWelcome = () => {
     return (
       <div className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24">
@@ -434,110 +394,21 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="mb-8 w-full max-w-[820px]"
+            className="mb-12 w-full max-w-[920px]"
           >
-            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-4 shadow-none">
+            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
               <GeneralInput
                 placeholder={product.placeholder}
                 showBtn={true}
                 size="big"
                 disabled={false}
                 product={product}
+                deepThink={currentConversation.deepThink}
+                displayOutput={displayOutput}
                 send={changeInputInfo}
-                dbsShow={setDbsShow}
+                onSelectionChange={handleInputSelectionChange}
               />
             </AiChatSurface>
-          </motion.div>
-
-          {/* Mode Selector */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.65, ease: [0.16, 1, 0.3, 1] }}
-            className="mb-20 flex w-full max-w-[800px] flex-wrap items-center justify-center gap-3"
-          >
-            <div className="relative" ref={outputMenuRef}>
-              <div
-                className={classNames(
-                  "h-[40px] px-5 cursor-pointer flex items-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-300 select-none",
-                  isOutputActive
-                    ? "border-transparent bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-[var(--shadow-md)]"
-                    : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
-                )}
-                onClick={() => {
-                  if (!isOutputActive) handleSelectProduct(displayOutput);
-                  setOutputMenuOpen((v) => !v);
-                }}
-              >
-                <i className={`font_family ${displayOutput.img} ${isOutputActive ? "text-[var(--chat-surface)]" : displayOutput.color} text-[14px]`} />
-                <span style={{ fontFamily: "var(--font-sans)" }}>{displayOutput.name}</span>
-                <svg
-                  className={classNames("w-3.5 h-3.5 ml-0.5 transition-transform duration-200", {
-                    "rotate-180": outputMenuOpen,
-                  })}
-                  viewBox="0 0 12 12"
-                  fill="none"
-                >
-                  <path
-                    d="M2.5 4.5L6 8L9.5 4.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-
-              {outputMenuOpen && (
-                <div className="absolute left-0 top-[48px] z-50 w-[260px] rounded-[20px] border border-[var(--chat-border)] bg-[var(--chat-surface)]/98 p-2 shadow-[var(--shadow-xl)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-200">
-                  {outputProducts.map((item) => {
-                    const isSelected = product.type === item.type;
-                    return (
-                      <div
-                        key={item.type}
-                        className={classNames(
-                          "group/item flex cursor-pointer items-start gap-3 rounded-[16px] px-3 py-3 transition-all duration-200",
-                          isSelected ? "bg-[var(--chat-surface-soft)]" : "hover:bg-[var(--chat-surface-soft)]"
-                        )}
-                        onClick={() => {
-                          handleSelectProduct(item);
-                          setOutputMenuOpen(false);
-                        }}
-                      >
-                        <div
-                          className={classNames(
-                            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                            isSelected ? "bg-[var(--chat-surface)] shadow-sm" : "bg-[var(--chat-surface-soft)] group-hover/item:bg-[var(--chat-surface)]"
-                          )}
-                        >
-                          <i className={`font_family ${item.img} ${item.color} text-[14px]`} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className={classNames("text-[14px] font-medium", isSelected ? "text-[var(--chat-text)]" : "text-[var(--chat-text)]")}>{item.name}</div>
-                          <div className="mt-0.5 text-[12px] leading-[1.4] text-[var(--chat-text-soft)]">{outputDescMap[item.type]}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {primaryProducts.map((item) => (
-              <div
-                key={item.type}
-                className={classNames(
-                  "h-[40px] px-5 cursor-pointer flex items-center justify-center gap-2 rounded-full border text-[14px] font-medium transition-all duration-300 select-none",
-                  item.type === product.type
-                    ? "border-transparent bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-[var(--shadow-md)]"
-                    : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
-                )}
-                onClick={() => handleSelectProduct(item)}
-              >
-                <i className={`font_family ${item.img} ${item.type === product.type ? "text-[var(--chat-surface)]" : item.color} text-[14px]`} />
-                <span style={{ fontFamily: "var(--font-sans)" }}>{item.name}</span>
-              </div>
-            ))}
           </motion.div>
 
           {/* Suggested Questions - Only for dataAgent */}
@@ -594,17 +465,6 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
           </div>
         </div>
 
-        <DataListDrawer show={dbsShow} dbsShow={setDbsShow} showDetail={(modelInfo) => {
-          setCurModel(modelInfo);
-          setDataShow(true);
-        }} />
-        {dataShow && (
-          <ColsAndDataDrawer
-            show={dataShow}
-            dataShow={setDataShow}
-            modelInfo={curModel}
-          />
-        )}
       </div>
     );
   };

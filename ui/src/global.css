@@ -480,19 +480,26 @@ ol {
 }
 
 [data-slot="prompt-input-textarea"]::placeholder {
-  color: #86868b !important;
+  color: #4b5563 !important;
+  opacity: 1 !important;
 }
 
 [data-slot="prompt-input-button"] {
   border-radius: 9999px !important;
   border: none !important;
   background: oklch(0.94 0.003 90) !important;
+  box-shadow: none !important;
   transition: all 0.2s ease !important;
 }
 
 [data-slot="prompt-input-button"]:hover {
   background: oklch(0.88 0.008 90) !important;
-  box-shadow: 0 2px 8px oklch(0 0 0 / 0.06) !important;
+  box-shadow: none !important;
+}
+
+[data-slot="prompt-input-button"]:focus-visible,
+[data-slot="prompt-input-button"]:active {
+  box-shadow: none !important;
 }
 
 [data-slot="prompt-input-submit"] {
@@ -520,6 +527,38 @@ ol {
 
 .ai-input-medium [data-slot="prompt-input-body"] {
   border-radius: 22px !important;
+}
+
+/* Flattened shell style for mode/input area */
+.genie-input-flat {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+  box-shadow: 0 3px 10px -8px rgba(15, 23, 42, 0.12) !important;
+}
+
+.genie-input-flat:focus-within {
+  border-color: rgba(0, 0, 0, 0.14) !important;
+  box-shadow: 0 4px 12px -8px rgba(15, 23, 42, 0.14) !important;
+}
+
+.genie-input-flat [data-slot="input-group"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.genie-input-flat [data-slot="input-group"]:focus-within {
+  box-shadow: none !important;
+}
+
+.genie-input-flat [data-slot="prompt-input-body"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.genie-input-flat [data-slot="prompt-input-body"]:focus-within {
+  box-shadow: none !important;
 }
 
 /* Framer Motion Performance Optimizations */

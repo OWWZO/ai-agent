@@ -1,25 +1,33 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ArrowUpIcon, BookOpenIcon, BrainIcon, PlusIcon } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUpIcon,
+  BarChart3Icon,
+  BrainCircuitIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  PlusIcon,
+  SearchIcon,
+  ZapIcon,
+} from "lucide-react";
 import type { FileUIPart } from "ai";
 
-import {
-  AI_CHAT_FLOATING_CLASS,
-} from "@/components/ai-elements/ai-chat-surface";
+import { AI_CHAT_FLOATING_CLASS } from "@/components/ai-elements/ai-chat-surface";
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
+  PromptInputAttachment,
+  PromptInputAttachments,
   PromptInputBody,
   PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
-  PromptInputActionMenu,
-  PromptInputActionMenuTrigger,
-  PromptInputActionMenuContent,
-  PromptInputActionAddAttachments,
-  PromptInputAttachments,
-  PromptInputAttachment,
 } from "@/components/ai-elements/prompt-input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -27,6 +35,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { defaultProduct, productList } from "@/utils/constants";
 
 type Props = {
   placeholder: string;
@@ -34,39 +43,250 @@ type Props = {
   disabled: boolean;
   size: string;
   product?: CHAT.Product;
+  deepThink?: boolean;
+  displayOutput?: CHAT.Product;
   send: (p: CHAT.TInputInfo) => void;
-  dbsShow?: (show: boolean) => void;
+  onSelectionChange?: (selection: { product: CHAT.Product; deepThink: boolean }) => void;
 };
 
+type InputModeKey = "quick" | "think" | "research";
+
+const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
+const OUTPUT_PRODUCTS = productList.filter((item) => OUTPUT_TYPES.includes(item.type)) as CHAT.Product[];
+const CHAT_PRODUCT =
+  (productList.find((item) => item.type === "chat") as CHAT.Product | undefined) ?? defaultProduct;
+const DATA_AGENT_PRODUCT =
+  (productList.find((item) => item.type === "dataAgent") as CHAT.Product | undefined) ?? defaultProduct;
+const DEFAULT_OUTPUT_PRODUCT = (OUTPUT_PRODUCTS[0] ?? defaultProduct) as CHAT.Product;
+
+const MODE_OPTIONS: Array<{
+  key: InputModeKey;
+  label: string;
+  description: string;
+  icon: typeof ZapIcon;
+}> = [
+  {
+    key: "quick",
+    label: "快速",
+    description: "适用于即时提问与简单问答",
+    icon: ZapIcon,
+  },
+  {
+    key: "think",
+    label: "深度思考",
+    description: "适合多步骤分析与结构化输出",
+    icon: BrainCircuitIcon,
+  },
+  {
+    key: "research",
+    label: "深度研究",
+    description: "擅长更长链路的研究型任务",
+    icon: SearchIcon,
+  },
+];
+
+const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
+  if (productType === "chat") {
+    return "quick";
+  }
+  return deepThink ? "research" : "think";
+};
+
+const getOutputProduct = (product?: CHAT.Product, displayOutput?: CHAT.Product) => {
+  if (product && OUTPUT_TYPES.includes(product.type)) {
+    return product;
+  }
+  if (displayOutput && OUTPUT_TYPES.includes(displayOutput.type)) {
+    return displayOutput;
+  }
+  return DEFAULT_OUTPUT_PRODUCT;
+};
+
+const getProductLabel = (name: string) => name.replace("模式", "");
+
+type SelectorTone = {
+  icon: string;
+  iconActive: string;
+  check: string;
+};
+
+const MODE_TONES: Record<InputModeKey, SelectorTone> = {
+  quick: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+  think: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+  research: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+};
+
+const OUTPUT_TONES: Record<string, SelectorTone> = {
+  html: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+  docs: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+  ppt: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+  table: {
+    icon: "text-[#4b5563]",
+    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+    check: "text-[#0a74da]",
+  },
+};
+
+const DATA_AGENT_TONE: SelectorTone = {
+  icon: "text-[#4b5563]",
+  iconActive: "bg-[#e8f2ff] text-[#0a74da]",
+  check: "text-[#0a74da]",
+};
+
+const selectorTrayClassName =
+  "flex min-w-0 flex-1 flex-wrap items-center gap-1 rounded-full bg-transparent p-0.5 sm:flex-none";
+
+const chipButtonClassName = (active: boolean, disabled?: boolean) =>
+  cn(
+    "group inline-flex h-9 max-w-full items-center gap-2 rounded-full border border-transparent px-3 pr-3 text-[14px] font-medium transition-all duration-200",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d9ff] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+    disabled && "cursor-not-allowed opacity-50",
+    !disabled && "hover:bg-white",
+    active
+      ? "bg-[#e8f2ff] text-[#0a74da]"
+      : "bg-transparent text-[#111827]"
+  );
+
+const chipIconWrapClassName = (tone: SelectorTone, active: boolean) =>
+  cn(
+    "flex size-[26px] shrink-0 items-center justify-center rounded-full transition-all duration-200",
+    active
+      ? tone.iconActive
+      : cn("bg-transparent ring-0 group-hover:bg-white/90", tone.icon)
+  );
+
+const menuContentClassName =
+  "rounded-[20px] border-0 bg-white p-2 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.2)]";
+
+const menuTitleClassName =
+  "px-3 pb-1.5 pt-1 text-[11px] font-semibold tracking-[0.08em] text-[#6b7280] uppercase";
+
+const menuItemClassName = (active: boolean) =>
+  cn(
+    "flex w-full gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition-all duration-200",
+    active
+      ? "bg-[#e8f2ff]"
+      : "bg-transparent hover:bg-[#f9fafb]"
+  );
+
+const menuIconWrapClassName = (tone: SelectorTone, active: boolean) =>
+  cn(
+    "flex size-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
+    active
+      ? tone.iconActive
+      : cn("bg-transparent ring-0", tone.icon)
+  );
+
 const GeneralInput: GenieType.FC<Props> = (props) => {
-  const { placeholder, showBtn, disabled, size, product, send, dbsShow } = props;
+  const {
+    placeholder,
+    showBtn,
+    disabled,
+    size,
+    product,
+    deepThink = false,
+    displayOutput,
+    send,
+    onSelectionChange,
+  } = props;
+
   const [question, setQuestion] = useState("");
-  const [deepThink, setDeepThink] = useState(false);
-  const isChatMode = product?.type === "chat";
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [outputMenuOpen, setOutputMenuOpen] = useState(false);
   const tempData = useRef<{ compositing?: boolean }>({});
 
-  useEffect(() => {
-    if (isChatMode && deepThink) {
-      setDeepThink(false);
-    }
-  }, [isChatMode, deepThink]);
+  const currentMode = getModeKey(product?.type, deepThink);
+  const isDataAgent = product?.type === "dataAgent";
+  const resolvedOutputProduct = useMemo(
+    () => getOutputProduct(product, displayOutput),
+    [displayOutput, product]
+  );
 
-  const canSend = Boolean(question) && !disabled;
+  // 记住上一次标准任务模式，切到“智能问数”后仍能保持用户刚才的选择感。
+  const lastStandardModeRef = useRef<InputModeKey>(currentMode === "quick" ? "think" : currentMode);
+  const lastOutputProductRef = useRef<CHAT.Product>(resolvedOutputProduct);
+
+  useEffect(() => {
+    if (product?.type === "dataAgent") {
+      return;
+    }
+
+    lastStandardModeRef.current = currentMode;
+    lastOutputProductRef.current = resolvedOutputProduct;
+  }, [currentMode, product?.type, resolvedOutputProduct]);
+
+  const visibleMode = isDataAgent ? lastStandardModeRef.current : currentMode;
+  const visibleOutputProduct = isDataAgent ? lastOutputProductRef.current : resolvedOutputProduct;
+  const currentModeOption = MODE_OPTIONS.find((item) => item.key === visibleMode) ?? MODE_OPTIONS[0];
+  const CurrentModeIcon = currentModeOption.icon;
+  const currentModeTone = MODE_TONES[currentModeOption.key];
+  const visibleOutputTone = OUTPUT_TONES[visibleOutputProduct.type] ?? OUTPUT_TONES.html;
+  const canSend = Boolean(question.trim()) && !disabled;
+  const showOutputSelector = showBtn && !isDataAgent && visibleMode !== "quick";
+
+  const handleSelectionChange = (nextProduct: CHAT.Product, nextDeepThink: boolean) => {
+    onSelectionChange?.({
+      product: nextProduct,
+      deepThink: nextDeepThink,
+    });
+  };
+
+  const handleModeSelect = (modeKey: InputModeKey) => {
+    if (modeKey === "quick") {
+      handleSelectionChange(CHAT_PRODUCT, false);
+      setModeMenuOpen(false);
+      return;
+    }
+
+    handleSelectionChange(visibleOutputProduct, modeKey === "research");
+    setModeMenuOpen(false);
+  };
+
+  const handleOutputSelect = (nextOutput: CHAT.Product) => {
+    handleSelectionChange(nextOutput, visibleMode === "research");
+    setOutputMenuOpen(false);
+  };
 
   const handleSubmit = ({ text, files }: { text: string; files: FileUIPart[] }) => {
-    if (!text || disabled) return;
+    if (!text.trim() || disabled) return;
 
-    const mappedFiles: CHAT.TFile[] = files.map((f) => ({
-      name: f.filename || "",
-      url: f.url ?? "",
-      type: f.mediaType || "",
+    const mappedFiles: CHAT.TFile[] = files.map((file) => ({
+      name: file.filename || "",
+      url: file.url ?? "",
+      type: file.mediaType || "",
       size: 0,
     }));
 
+    const outputStyle = isDataAgent ? "dataAgent" : visibleMode === "quick" ? "chat" : visibleOutputProduct.type;
+
     send({
-      message: text,
-      outputStyle: product?.type,
-      deepThink: isChatMode ? false : deepThink,
+      message: text.trim(),
+      outputStyle,
+      deepThink: outputStyle !== "chat" && outputStyle !== "dataAgent" ? visibleMode === "research" : false,
       files: mappedFiles.length > 0 ? mappedFiles : undefined,
     });
 
@@ -107,106 +327,194 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
           className={cn(
-            "w-full rounded-[24px] bg-[var(--chat-surface)]/95 shadow-[var(--shadow-sm)] transition-all duration-300 focus-within:shadow-[var(--shadow-md)]",
-            size === "big" ? "rounded-[24px]" : "rounded-[20px]"
+            "genie-input-flat w-full rounded-[24px] transition-all duration-300",
+            size === "big" ? "rounded-[28px]" : "rounded-[22px]"
           )}
           multiple
           onSubmit={handleSubmit}
         >
           <PromptInputBody>
-            {/* 已选附件列表 */}
             <PromptInputAttachments className="px-4 pt-3">
               {(file) => <PromptInputAttachment key={file.id} data={file} />}
             </PromptInputAttachments>
 
             <PromptInputTextarea
               className={cn(
-                "px-4 text-[14px] leading-6 text-[var(--chat-text)] placeholder:text-[var(--chat-text-muted)] placeholder:italic",
+                "px-4 text-[14px] leading-6 text-[var(--chat-text)] placeholder:text-[var(--chat-text-soft)] placeholder:opacity-100",
                 "focus:placeholder:text-[var(--chat-text-soft)]/50",
-                size === "big" ? "min-h-20 pt-3.5 text-[15px]" : "min-h-14 pt-3"
+                size === "big" ? "min-h-24 pt-4 text-[15px]" : "min-h-16 pt-3.5"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}
-              onCompositionEnd={() => { tempData.current.compositing = false; }}
-              onCompositionStart={() => { tempData.current.compositing = true; }}
+              onCompositionEnd={() => {
+                tempData.current.compositing = false;
+              }}
+              onCompositionStart={() => {
+                tempData.current.compositing = true;
+              }}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               value={question}
             />
           </PromptInputBody>
 
-          <PromptInputFooter className="justify-between gap-2.5 px-3.5 pb-3 pt-0.5">
-            {/* 左侧：+ 按钮 + 深度研究 + 知识库 */}
-            <PromptInputTools className="flex-wrap gap-1.5">
-              {/* + 附件按钮（始终显示） */}
+          <PromptInputFooter
+            className={cn(
+              "items-end gap-3 px-3.5 pb-3 pt-1",
+              showBtn ? "flex-col sm:flex-row sm:items-end" : "justify-between gap-2.5"
+            )}
+          >
+            <PromptInputTools
+              className={cn(
+                "w-full flex-wrap items-center gap-2",
+                !showBtn && "w-auto gap-1.5"
+              )}
+            >
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger>
                   <PromptInputButton
                     size="icon-sm"
                     variant="ghost"
                     disabled={disabled}
-                    className="rounded-full bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md hover:scale-105"
+                    className="rounded-full border-0 bg-white text-[#111827] shadow-none ring-0 transition-all duration-200 hover:bg-[#f9fafb] focus-visible:ring-0"
                   >
                     <PlusIcon className="size-5" />
                   </PromptInputButton>
                 </PromptInputActionMenuTrigger>
-                <PromptInputActionMenuContent>
+                <PromptInputActionMenuContent className={cn("min-w-[180px]", menuContentClassName)}>
                   <PromptInputActionAddAttachments label="上传附件" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
 
-              {/* 深度研究（非聊天模式时显示） */}
-              {showBtn && !isChatMode ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PromptInputButton
-                      aria-pressed={deepThink}
-                      className={cn(
-                        "rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-300",
-                        "flex items-center gap-1.5",
-                        deepThink
-                          ? "bg-[var(--primary)] text-white shadow-md shadow-[var(--primary)]/20 hover:bg-[var(--primary)]/90"
-                          : "bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md"
-                      )}
-                      disabled={disabled}
-                      onClick={() => setDeepThink((v) => !v)}
-                      size="sm"
-                      variant="ghost"
+              {showBtn ? (
+                <div className={selectorTrayClassName}>
+                  <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-pressed={!isDataAgent}
+                        disabled={disabled}
+                        className={chipButtonClassName(!isDataAgent, disabled)}
+                      >
+                        <span className={chipIconWrapClassName(currentModeTone, !isDataAgent)}>
+                          <CurrentModeIcon className="size-4" />
+                        </span>
+                        <span className="truncate">{currentModeOption.label}</span>
+                        <ChevronDownIcon
+                          className={cn("size-4 shrink-0 text-[var(--chat-text-muted)] transition-transform", modeMenuOpen && "rotate-180")}
+                        />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      side="bottom"
+                      sideOffset={12}
+                      className={cn("w-[288px]", menuContentClassName)}
                     >
-                      <BrainIcon className="size-4" />
-                      深度研究
-                    </PromptInputButton>
-                  </TooltipTrigger>
-                  <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                    切换深度研究模式
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
+                      <div className={menuTitleClassName}>推理模式</div>
+                      <div className="space-y-1">
+                        {MODE_OPTIONS.map((option) => {
+                          const isActive = option.key === visibleMode && !isDataAgent;
+                          const tone = MODE_TONES[option.key];
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              className={menuItemClassName(isActive)}
+                              onClick={() => handleModeSelect(option.key)}
+                            >
+                              <span className={cn("mt-0.5", menuIconWrapClassName(tone, isActive))}>
+                                <option.icon className="size-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[15px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                                  {option.label}
+                                </span>
+                                <span className="mt-0.5 block text-[12px] leading-5 text-[var(--chat-text-soft)]">
+                                  {option.description}
+                                </span>
+                              </span>
+                              {isActive ? <CheckIcon className={cn("mt-1 size-4 shrink-0", tone.check)} /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-              {/* 知识库（仅首页 dataAgent 模式） */}
-              {showBtn && product?.type === "dataAgent" ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PromptInputButton
-                      className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text-soft)] transition-all duration-300 hover:bg-[var(--chat-surface)] hover:text-[var(--chat-text)] hover:shadow-md flex items-center gap-1.5"
-                      disabled={disabled}
-                      onClick={() => dbsShow?.(true)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      <BookOpenIcon className="size-4" />
-                      知识库
-                    </PromptInputButton>
-                  </TooltipTrigger>
-                  <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                    查看知识库
-                  </TooltipContent>
-                </Tooltip>
+                  {showOutputSelector ? (
+                    <DropdownMenu open={outputMenuOpen} onOpenChange={setOutputMenuOpen}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-pressed={showOutputSelector}
+                          disabled={disabled}
+                          className={chipButtonClassName(showOutputSelector, disabled)}
+                        >
+                          <span className={chipIconWrapClassName(visibleOutputTone, showOutputSelector)}>
+                            <i className={cn("font_family text-[14px]", visibleOutputProduct.img)} />
+                          </span>
+                          <span className="truncate">{getProductLabel(visibleOutputProduct.name)}</span>
+                          <ChevronDownIcon
+                            className={cn("size-4 shrink-0 text-[var(--chat-text-muted)] transition-transform", outputMenuOpen && "rotate-180")}
+                          />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        side="top"
+                        sideOffset={12}
+                        className={cn("w-[272px]", menuContentClassName)}
+                      >
+                        <div className={menuTitleClassName}>输出格式</div>
+                        <div className="space-y-1">
+                          {OUTPUT_PRODUCTS.map((item) => {
+                            const isActive = item.type === visibleOutputProduct.type && !isDataAgent;
+                            const tone = OUTPUT_TONES[item.type] ?? visibleOutputTone;
+                            return (
+                              <button
+                                key={item.type}
+                                type="button"
+                                className={menuItemClassName(isActive)}
+                                onClick={() => handleOutputSelect(item)}
+                              >
+                                <span className={menuIconWrapClassName(tone, isActive)}>
+                                  <i className={cn("font_family text-[14px]", item.img)} />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-[15px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                                    {getProductLabel(item.name)}
+                                  </span>
+                                  <span className="mt-0.5 block text-[12px] leading-5 text-[var(--chat-text-soft)]">
+                                    {item.placeholder}
+                                  </span>
+                                </span>
+                                {isActive ? <CheckIcon className={cn("size-4 shrink-0", tone.check)} /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    aria-pressed={isDataAgent}
+                    disabled={disabled}
+                    className={chipButtonClassName(isDataAgent, disabled)}
+                    onClick={() => handleSelectionChange(DATA_AGENT_PRODUCT, false)}
+                  >
+                    <span className={chipIconWrapClassName(DATA_AGENT_TONE, isDataAgent)}>
+                      <BarChart3Icon className="size-4" />
+                    </span>
+                    <span className="truncate">智能问数</span>
+                  </button>
+                </div>
               ) : null}
             </PromptInputTools>
 
-            {/* 右侧：发送按钮 */}
-            <PromptInputTools className="shrink-0 gap-2">
+            <PromptInputTools className="shrink-0 gap-2 self-end">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
