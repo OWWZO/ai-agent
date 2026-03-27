@@ -7,15 +7,15 @@ import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.genie.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.genie.agent.tool.common.*;
-import org.wwz.ai.domain.agent.genie.agent.tool.mcp.McpTool;
-import org.wwz.ai.domain.agent.genie.agent.util.DateUtil;
-import org.wwz.ai.domain.agent.genie.config.GenieConfig;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
-import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
+import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.*;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.McpTool;
+import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
+import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
@@ -32,7 +32,7 @@ import java.util.Objects;
 public class RootNode extends AbstractExecuteSupport {
 
     @Resource
-    private GenieConfig genieConfig;
+    private ReactorConfig reactorConfig;
 
     @Resource
     private RunReactNode step2RunReactNode;
@@ -86,7 +86,7 @@ public class RootNode extends AbstractExecuteSupport {
             FileTool fileTool = new FileTool();
             fileTool.setAgentContext(agentContext);
             toolCollection.addTool(fileTool);
-            List<String> agentToolList = Arrays.asList(genieConfig.getMultiAgentToolListMap()
+            List<String> agentToolList = Arrays.asList(reactorConfig.getMultiAgentToolListMap()
                     .getOrDefault("default", "search,code,report").split(","));
             if (!agentToolList.isEmpty()) {
                 if (agentToolList.contains("code")) {
@@ -115,7 +115,7 @@ public class RootNode extends AbstractExecuteSupport {
         try {
             McpTool mcpTool = new McpTool();
             mcpTool.setAgentContext(agentContext);
-            for (String mcpServer : genieConfig.getMcpServerUrlArr()) {
+            for (String mcpServer : reactorConfig.getMcpServerUrlArr()) {
                 String listToolResult = mcpTool.listTool(mcpServer);
                 if (listToolResult.isEmpty()) {
                     log.error("{} mcp server {} invalid", agentContext.getRequestId(), mcpServer);

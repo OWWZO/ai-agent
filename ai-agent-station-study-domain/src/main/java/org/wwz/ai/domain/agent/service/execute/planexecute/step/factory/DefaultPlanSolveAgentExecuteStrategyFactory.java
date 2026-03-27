@@ -7,11 +7,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.genie.agent.agent.ExecutorAgent;
-import org.wwz.ai.domain.agent.genie.agent.agent.PlanningAgent;
-import org.wwz.ai.domain.agent.genie.agent.agent.SummaryAgent;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.agent.ExecutorAgent;
+import org.wwz.ai.domain.agent.reactor.agent.agent.PlanningAgent;
+import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.RootNode;
 
 /**

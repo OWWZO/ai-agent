@@ -2,8 +2,8 @@ import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import React, { useEffect, useRef } from "react";
 
-const Tabs = <V extends string | number>(props: GenieType.ControlProps<V> & {
-  options: (GenieType.OptionsType & {split?: boolean})[];
+const Tabs = <V extends string | number>(props: ReactorType.ControlProps<V> & {
+  options: (ReactorType.OptionsType & {split?: boolean})[];
   className?: string;
 }) => {
   const { value, onChange, className, options } = props;

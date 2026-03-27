@@ -18,7 +18,7 @@ const TEXT_CLASS = 'mt-6 text-lg text-gray-700';
  * @param className - 自定义类名
  * @param children - 自定义加载文本
  */
-const Loading: GenieType.FC<LoadingProps> = React.memo(({ loading, className, children }) => {
+const Loading: ReactorType.FC<LoadingProps> = React.memo(({ loading, className, children }) => {
   if (!loading) return null;
 
   return (

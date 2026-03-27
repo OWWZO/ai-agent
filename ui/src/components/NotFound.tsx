@@ -1,7 +1,7 @@
 import { Result, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
-const NotFound: GenieType.FC = () => {
+const NotFound: ReactorType.FC = () => {
   const navigate = useNavigate();
 
   return (

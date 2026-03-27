@@ -4,17 +4,17 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.genie.agent.agent.ExecutorAgent;
-import org.wwz.ai.domain.agent.genie.agent.agent.PlanningAgent;
-import org.wwz.ai.domain.agent.genie.agent.agent.SummaryAgent;
-import org.wwz.ai.domain.agent.genie.agent.dto.File;
-import org.wwz.ai.domain.agent.genie.agent.dto.Message;
-import org.wwz.ai.domain.agent.genie.agent.dto.TaskSummaryResult;
-import org.wwz.ai.domain.agent.genie.agent.enums.AgentState;
-import org.wwz.ai.domain.agent.genie.agent.util.ThreadUtil;
-import org.wwz.ai.domain.agent.genie.config.GenieConfig;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.agent.ExecutorAgent;
+import org.wwz.ai.domain.agent.reactor.agent.agent.PlanningAgent;
+import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.reactor.agent.dto.File;
+import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
+import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
+import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
+import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import jakarta.annotation.Resource;
@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
     @Resource
-    private GenieConfig genieConfig;
+    private ReactorConfig reactorConfig;
 
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -61,7 +61,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 //            return "success";
 //        }
         int stepIdx = 0;
-        int maxStepNum = genieConfig.getPlannerMaxSteps() != null ? genieConfig.getPlannerMaxSteps() : 5;
+        int maxStepNum = reactorConfig.getPlannerMaxSteps() != null ? reactorConfig.getPlannerMaxSteps() : 5;
 
         while (stepIdx <= maxStepNum) {
             List<String> planningResults = Arrays.stream(planningResult.split("<sep>"))

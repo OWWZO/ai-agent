@@ -33,7 +33,7 @@ type ActionViewProps = {
   ref?: React.Ref<ActionViewRef>;
 } & GetProps<typeof Title>;
 
-const ActionViewComp: GenieType.FC<ActionViewProps> = forwardRef((props, ref) => {
+const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
   const { className, onClose, title, activeTask, streamTask, taskList, plan } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();

@@ -5,7 +5,7 @@ export const animationData = {
   "op": 75,
   "w": 400,
   "h": 240,
-  "nm": "genie",
+  "nm": "reactor",
   "ddd": 0,
   "assets": [{
     "id": "comp_0",
@@ -170,7 +170,7 @@ export const animationData = {
     "ddd": 0,
     "ind": 3,
     "ty": 4,
-    "nm": "\"Genie 2\" lunkuo",
+    "nm": "\"Reactor 2\" lunkuo",
     "sr": 1,
     "ks": {
       "o": {

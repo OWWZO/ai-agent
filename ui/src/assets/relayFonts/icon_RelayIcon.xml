@@ -74,7 +74,7 @@
   <string name="icon_wodekongjian">&#xf0f1;</string> <!--我的空间-->
   <string name="icon_fanhuishangyibu">&#xeb13;</string> <!--返回上一步-->
   <string name="icon_juli">&#xe5d6;</string> <!--举例-->
-  <string name="icon_genie">&#xe771;</string> <!--genie-->
+  <string name="icon_reactor">&#xe771;</string> <!--reactor-->
   <string name="icon_pingcejixuanzhong">&#xf04f;</string> <!--评测集(选中)-->
   <string name="icon_zhankai">&#xeaba;</string> <!--展开-->
   <string name="icon_zhankaicelan">&#xf149;</string> <!--展开侧栏-->
@@ -169,7 +169,7 @@
   <string name="icon_jian">&#xf2cc;</string> <!--减-->
   <string name="icon_yuyintianchong">&#xeea0;</string> <!--语音(填充)-->
   <string name="icon_pingcexuanzhong">&#xe373;</string> <!--评测(选中)-->
-  <string name="icon_genietianchong">&#xf11b;</string> <!--genie（填充）-->
+  <string name="icon_reactortianchong">&#xf11b;</string> <!--reactor（填充）-->
   <string name="icon_moxingshangdiantianchong">&#xe5ae;</string> <!--模型商店（填充）-->
   <string name="icon_pingguqixuanzhong">&#xe953;</string> <!--评估器(选中)-->
   <string name="icon_xihuan_tianchong">&#xe1be;</string> <!--喜欢(填充)-->

@@ -253,8 +253,8 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         prompt.append("##执行计划要求\n");
         prompt.append("### 核心要求\n");
         prompt.append("1. **完整保留用户需求**: 必须将用户请求中的所有详细信息完整传递到每个执行步骤中\n");
-        // 仅允许使用 MCP 工具（JDGenie 工具逻辑尚未完善，规划阶段禁止选择/引用）
-        prompt.append("2. **仅使用MCP工具**: 只能选择并调用已接入的 MCP 工具来完成任务，不要选择或引用 JDGenie 相关工具\n");
+        // 仅允许使用 MCP 工具（JDReactor 工具逻辑尚未完善，规划阶段禁止选择/引用）
+        prompt.append("2. **仅使用MCP工具**: 只能选择并调用已接入的 MCP 工具来完成任务，不要选择或引用 JDReactor 相关工具\n");
         prompt.append("3. **精确mcp工具映射**: 仅当 actionType=TOOL 时才填写 toolName，且必须使用确切的函数名称，不允许模糊或错误的工具名\n");
         prompt.append("4. **参数完整性**: 所有工具调用必须包含用户原始需求中的完整参数信息\n");
         prompt.append("5. **依赖关系明确**: 基于MCP的分析安排合理的步骤顺序\n");

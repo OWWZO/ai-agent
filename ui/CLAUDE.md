@@ -1,6 +1,6 @@
-# Genie AI Agent 对话平台前端
+# Reactor AI Agent 对话平台前端
 
-> Genie AI Agent 对话平台前端项目，基于 React + TypeScript + Vite + Ant Design + Tailwind CSS 构建。
+> Reactor AI Agent 对话平台前端项目，基于 React + TypeScript + Vite + Ant Design + Tailwind CSS 构建。
 
 ---
 
@@ -76,7 +76,7 @@ ui/
 │   ├── types/              # TypeScript 类型定义
 │   │   ├── chat.ts         # 对话相关类型（ChatItem、TInputInfo、Task 等）
 │   │   ├── message.ts      # 消息协议类型（SSE 返回的数据结构）
-│   │   └── global.ts       # 全局类型（GenieType 命名空间）
+│   │   └── global.ts       # 全局类型（ReactorType 命名空间）
 │   │
 │   └── assets/             # 静态资源
 │       ├── icon/           # 文件类型图标（pdf、docx、excel 等）

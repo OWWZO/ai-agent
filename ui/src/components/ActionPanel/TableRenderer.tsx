@@ -11,7 +11,7 @@ const ERROR_CLASS = "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w
 /**
  * Table 组件
  */
-const TableRenderer: GenieType.FC<{
+const TableRenderer: ReactorType.FC<{
   /**
    * 文件地址
    */

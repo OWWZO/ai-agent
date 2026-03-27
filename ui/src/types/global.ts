@@ -1,7 +1,7 @@
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace GenieType {
+  namespace ReactorType {
     type FCProps = {
       children?: React.ReactNode;
       /** 类名 */

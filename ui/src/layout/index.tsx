@@ -6,7 +6,7 @@ import * as constants from "@/utils/constants";
 import { setMessage } from '@/utils';
 
 // Layout 组件：应用的主要布局结构
-const Layout: GenieType.FC = memo(() => {
+const Layout: ReactorType.FC = memo(() => {
   const [messageApi, messageContent] = message.useMessage();
 
   useEffect(() => {

@@ -10,7 +10,7 @@ import { useState, useMemo } from "react";
  * @param props
  * @returns
  */
-const TypeBar: GenieType.FC<{ currentType: string; chartCfg: Record<string, any>; onChange?: (val: string) => void }> = (props) => {
+const TypeBar: ReactorType.FC<{ currentType: string; chartCfg: Record<string, any>; onChange?: (val: string) => void }> = (props) => {
   const _chartTypes: Record<string, any>[] = [
     { type: "line", icon: "icon-zhexian" },
     { type: "bar", icon: "icon-zhuzhuang" },
@@ -175,7 +175,7 @@ const TypeBar: GenieType.FC<{ currentType: string; chartCfg: Record<string, any>
   );
 };
 
-const DataChat: GenieType.FC<{
+const DataChat: ReactorType.FC<{
   data?: Record<string, any>;
 }> = (props) => {
   const { data } = props;

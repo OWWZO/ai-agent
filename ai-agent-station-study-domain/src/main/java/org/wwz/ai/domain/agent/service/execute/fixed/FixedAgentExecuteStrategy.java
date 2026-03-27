@@ -1,12 +1,12 @@
 package org.wwz.ai.domain.agent.service.execute.fixed;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
-import org.wwz.ai.domain.agent.genie.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.genie.agent.printer.Printer;
-import org.wwz.ai.domain.agent.genie.agent.printer.SSEPrinter;
-import org.wwz.ai.domain.agent.genie.agent.util.DateUtil;
-import org.wwz.ai.domain.agent.genie.config.GenieConfig;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
+import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
+import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
@@ -40,7 +40,7 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
     protected ApplicationContext applicationContext;
 
     @Resource
-    private GenieConfig genieConfig;
+    private ReactorConfig reactorConfig;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";

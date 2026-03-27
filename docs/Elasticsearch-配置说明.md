@@ -1,12 +1,12 @@
 # Elasticsearch（ES）配置说明
 
-项目中 ES 主要用于 **genie-tool（Python）** 的 table_rag 能力，在 `useElastic=true` 时做表/列召回。Java 端通过 HTTP 调用 genie-tool，不直接连 ES。
+项目中 ES 主要用于 **reactor-tool（Python）** 的 table_rag 能力，在 `useElastic=true` 时做表/列召回。Java 端通过 HTTP 调用 reactor-tool，不直接连 ES。
 
 ---
 
-## 一、Python genie-tool（jd-agent）中的 ES 配置
+## 一、Python reactor-tool（jd-agent）中的 ES 配置
 
-配置位置：**jd-agent/joyagent-jdgenie-data_agent/genie-tool/.env**
+配置位置：**jd-agent/joyagent-jdreactor-data_agent/reactor-tool/.env**
 
 ### 1. 环境变量说明
 
@@ -43,7 +43,7 @@ TR_ES_RECALL_TOP_K=15
 
 ### 3. 不配置 ES 时的行为
 
-- 若 **不配置** 或 `TR_ES_CONFIGS_HOST` 为空：genie-tool 会跳过 ES 客户端初始化，**table_rag 仍可用**（仅不使用 ES 召回）。
+- 若 **不配置** 或 `TR_ES_CONFIGS_HOST` 为空：reactor-tool 会跳过 ES 客户端初始化，**table_rag 仍可用**（仅不使用 ES 召回）。
 - 调用 table_rag 时建议传 `useElastic=false`，避免依赖 ES。
 
 ---
@@ -65,9 +65,9 @@ docker-compose -f docker-compose-elk.yml up -d elasticsearch
 curl http://localhost:9200
 ```
 
-### 3. 与 genie-tool 对接
+### 3. 与 reactor-tool 对接
 
-在 genie-tool 的 `.env` 中配置：
+在 reactor-tool 的 `.env` 中配置：
 
 ```env
 TR_ES_CONFIGS_HOST=localhost:9200
@@ -84,8 +84,8 @@ TR_ES_RECALL_TOP_K=15
 
 ## 三、Java 端（ai-agent）说明
 
-- **ai-agent** 不直接连接 ES；JDGenie 相关能力通过 HTTP 调用 **genie-tool**。
-- 若需在 Java 工程里单独使用 ES（如日志、检索等），可自行增加 Spring Data Elasticsearch 等依赖，并在 `application.yml` 中配置 `spring.elasticsearch.*`，与上述 genie-tool 的 ES 配置互不影响。
+- **ai-agent** 不直接连接 ES；JDReactor 相关能力通过 HTTP 调用 **reactor-tool**。
+- 若需在 Java 工程里单独使用 ES（如日志、检索等），可自行增加 Spring Data Elasticsearch 等依赖，并在 `application.yml` 中配置 `spring.elasticsearch.*`，与上述 reactor-tool 的 ES 配置互不影响。
 
 ---
 
@@ -93,7 +93,7 @@ TR_ES_RECALL_TOP_K=15
 
 | 场景 | 配置位置 | 必填项 |
 |------|----------|--------|
-| genie-tool 使用 ES 做 table_rag | jd-agent/genie-tool/.env | `TR_ES_CONFIGS_HOST`（要启用 ES 时） |
+| reactor-tool 使用 ES 做 table_rag | jd-agent/reactor-tool/.env | `TR_ES_CONFIGS_HOST`（要启用 ES 时） |
 | 本地起 ES 做开发/联调 | docker-compose-elk.yml | - |
 
 不配置或留空 `TR_ES_CONFIGS_HOST` 时，table_rag 仍可正常工作，仅不使用 ES 召回。

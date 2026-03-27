@@ -36,7 +36,7 @@ const formatFileContent = (ext: string | undefined, data: string | undefined): s
   return `\`\`\`${ext}\n${data || ''}\n\`\`\``;
 };
 
-const FileRenderer: GenieType.FC<FileRendererProps> = React.memo((props) => {
+const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
   const { fileUrl, fileName, className } = props;
 
   const ext = useMemo(() => getFileExtension(fileName), [fileName]);

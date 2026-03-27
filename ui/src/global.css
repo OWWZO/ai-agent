@@ -530,34 +530,34 @@ ol {
 }
 
 /* Flattened shell style for mode/input area */
-.genie-input-flat {
+.reactor-input-flat {
   background: rgba(255, 255, 255, 0.94) !important;
   border: 1px solid rgba(0, 0, 0, 0.09) !important;
   box-shadow: 0 3px 10px -8px rgba(15, 23, 42, 0.12) !important;
 }
 
-.genie-input-flat:focus-within {
+.reactor-input-flat:focus-within {
   border-color: rgba(0, 0, 0, 0.14) !important;
   box-shadow: 0 4px 12px -8px rgba(15, 23, 42, 0.14) !important;
 }
 
-.genie-input-flat [data-slot="input-group"] {
+.reactor-input-flat [data-slot="input-group"] {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-.genie-input-flat [data-slot="input-group"]:focus-within {
+.reactor-input-flat [data-slot="input-group"]:focus-within {
   box-shadow: none !important;
 }
 
-.genie-input-flat [data-slot="prompt-input-body"] {
+.reactor-input-flat [data-slot="prompt-input-body"] {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-.genie-input-flat [data-slot="prompt-input-body"]:focus-within {
+.reactor-input-flat [data-slot="prompt-input-body"]:focus-within {
   box-shadow: none !important;
 }
 

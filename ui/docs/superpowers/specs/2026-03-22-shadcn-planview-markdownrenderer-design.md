@@ -84,7 +84,7 @@ const codeString = Array.isArray(children)
 
 **New CodeBlock component:**
 ```tsx
-const CodeBlock: GenieType.FC<{ inline?: boolean }> = ({ inline, className, children }) => {
+const CodeBlock: ReactorType.FC<{ inline?: boolean }> = ({ inline, className, children }) => {
   const match = /language-(\w+)/.exec(className || '');
 
   if (match?.[1] === 'mermaid') {

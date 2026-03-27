@@ -149,7 +149,7 @@ const CaseCard = memo((props: CaseCardProps) => {
   );
 });
 
-const Home: GenieType.FC<HomeProps> = memo(() => {
+const Home: ReactorType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
 
   const [conversations, setConversations] = useState<CHAT.ConversationHistory[]>(
@@ -449,7 +449,7 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
                 className="mb-10 text-center"
               >
                 <h2 className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]" style={{ fontFamily: "var(--font-display)" }}>精选案例</h2>
-                <p className="text-[15px] text-[var(--chat-text-soft)]" style={{ fontFamily: "var(--font-sans)" }}>和 Genie 一起，让效率飞起来</p>
+                <p className="text-[15px] text-[var(--chat-text-soft)]" style={{ fontFamily: "var(--font-sans)" }}>和 Reactor 一起，让效率飞起来</p>
               </motion.div>
 
               <div className="flex flex-wrap justify-center gap-6">

@@ -9,7 +9,7 @@ type Props = {
   review?: (file: CHAT.TFile) => void;
 };
 
-const GeneralInput: GenieType.FC<Props> = (props) => {
+const GeneralInput: ReactorType.FC<Props> = (props) => {
   const { files, preview, remove, review } = props;
 
   const formatSize = (size: number) => {

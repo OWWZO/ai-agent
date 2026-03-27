@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 
-const Title: GenieType.FC<{
+const Title: ReactorType.FC<{
   onClose?: () => void;
 }> = (props) => {
   const { children, onClose } = props;

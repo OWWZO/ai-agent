@@ -73,7 +73,7 @@ export default {
   'icon-wodekongjian': 61681,// 我的空间
   'icon-fanhuishangyibu': 60179,// 返回上一步
   'icon-juli': 58838,// 举例
-  'icon-genie': 59249,// genie
+  'icon-reactor': 59249,// reactor
   'icon-pingcejixuanzhong': 61519,// 评测集(选中)
   'icon-zhankai': 60090,// 展开
   'icon-zhankaicelan': 61769,// 展开侧栏
@@ -168,7 +168,7 @@ export default {
   'icon-jian': 62156,// 减
   'icon-yuyintianchong': 61088,// 语音(填充)
   'icon-pingcexuanzhong': 58227,// 评测(选中)
-  'icon-genietianchong': 61723,// genie（填充）
+  'icon-reactortianchong': 61723,// reactor（填充）
   'icon-moxingshangdiantianchong': 58798,// 模型商店（填充）
   'icon-pingguqixuanzhong': 59731,// 评估器(选中)
   'icon-xihuan-tianchong': 57790,// 喜欢(填充)

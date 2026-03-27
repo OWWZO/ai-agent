@@ -15,7 +15,7 @@ interface SimpleTableProps {
   };
 }
 
-const SimpleTable: GenieType.FC<SimpleTableProps> = ({ data }) => {
+const SimpleTable: ReactorType.FC<SimpleTableProps> = ({ data }) => {
   // 提供默认空数组，避免undefined导致的错误
   const { columnList = [], dataList = [] } = data || {};
   return <Table dataSource={dataList} columns={columnList} size="middle" className="w-full" scroll={{ y: 400 }} />;

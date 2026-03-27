@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.service.execute.planexecute.step;
 
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import java.util.concurrent.ExecutionException;

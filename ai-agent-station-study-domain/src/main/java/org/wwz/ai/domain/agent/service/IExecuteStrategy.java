@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.service;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 
 /**

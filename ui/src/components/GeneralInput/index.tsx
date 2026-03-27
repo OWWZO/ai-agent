@@ -215,7 +215,7 @@ const menuIconWrapClassName = (tone: SelectorTone, active: boolean) =>
       : cn("bg-transparent ring-0", tone.icon)
   );
 
-const GeneralInput: GenieType.FC<Props> = (props) => {
+const GeneralInput: ReactorType.FC<Props> = (props) => {
   const {
     placeholder,
     showBtn,
@@ -341,7 +341,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
           className={cn(
-            "genie-input-flat w-full rounded-[24px] transition-all duration-300",
+            "reactor-input-flat w-full rounded-[24px] transition-all duration-300",
             size === "big" ? "rounded-[28px]" : "rounded-[22px]"
           )}
           multiple

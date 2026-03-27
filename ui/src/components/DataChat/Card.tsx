@@ -1,6 +1,6 @@
 import { JSX, useRef } from "react";
 
-const Card: GenieType.FC<{ data: Record<string, any> }> = (props) => {
+const Card: ReactorType.FC<{ data: Record<string, any> }> = (props) => {
   const { data } = props;
   const { kpiList } = data;
   const dom = useRef(null);

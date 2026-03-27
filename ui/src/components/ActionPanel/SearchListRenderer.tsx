@@ -12,7 +12,7 @@ interface SearchListRendererProps {
   list?: SearchListItem[];
 }
 
-const SearchListItemComponent: GenieType.FC<SearchListItem> = React.memo(({ name, pageContent, url }) => (
+const SearchListItemComponent: ReactorType.FC<SearchListItem> = React.memo(({ name, pageContent, url }) => (
   <div className={ITEM_CLASS}>
     <div
       className={LINK_CLASS}
@@ -36,7 +36,7 @@ SearchListItemComponent.displayName = 'SearchListItemComponent';
  *
  * @param list - 搜索结果列表
  */
-const SearchListRenderer: GenieType.FC<SearchListRendererProps> = React.memo(({ list }) => (
+const SearchListRenderer: ReactorType.FC<SearchListRendererProps> = React.memo(({ list }) => (
   <div className={CONTAINER_CLASS}>
     {list?.map((item) => (
       <SearchListItemComponent key={item.name + item.url} {...item} />

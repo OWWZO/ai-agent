@@ -13,7 +13,7 @@ import { MessageResponse } from '@/components/ai-elements/message';
 import type { BundledLanguage } from 'shiki';
 import { bundledLanguages } from 'shiki';
 
-const Mermaid: GenieType.FC = (props) => {
+const Mermaid: ReactorType.FC = (props) => {
   const { children } = props;
   const ref = useRef(null);
   useEffect(() => {
@@ -28,7 +28,7 @@ const Mermaid: GenieType.FC = (props) => {
   );
 };
 
-const CodeBlock: GenieType.FC<{
+const CodeBlock: ReactorType.FC<{
   inline?: boolean;
 }> = ({ inline, className, children }) => {
   const match = /language-(\w+)/.exec(className || '');
@@ -56,7 +56,7 @@ const CodeBlock: GenieType.FC<{
   return <code className={className}>{children}</code>;
 };
 
-const MarkdownRenderer: GenieType.FC<{
+const MarkdownRenderer: ReactorType.FC<{
   markDownContent?: string;
   isStreaming?: boolean;
 }> = (props) => {

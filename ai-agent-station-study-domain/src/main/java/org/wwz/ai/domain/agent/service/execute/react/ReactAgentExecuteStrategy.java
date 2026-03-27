@@ -6,8 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.genie.config.GenieConfig;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
@@ -25,10 +25,10 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     private DefaultReactAgentExecuteStrategyFactory defaultReactAgentExecuteStrategyFactory;
 
     @Resource
-    private GenieConfig genieConfig;
+    private ReactorConfig reactorConfig;
 
     /**
-     * 主入口：直接使用 AgentRequest，无转换（AutoAgent 等 Genie 入口调用）
+     * 主入口：直接使用 AgentRequest，无转换（AutoAgent 等 Reactor 入口调用）
      */
     @Override
     public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
@@ -51,7 +51,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     }
 
     private void applyOutputStyle(AgentRequest request) {
-        Map<String, String> outputStyleMap = genieConfig.getOutputStylePrompts();
+        Map<String, String> outputStyleMap = reactorConfig.getOutputStylePrompts();
         if (StringUtils.isNotEmpty(request.getOutputStyle())) {
             String append = outputStyleMap.computeIfAbsent(request.getOutputStyle(), k -> "");
             request.setQuery(request.getQuery() + append);

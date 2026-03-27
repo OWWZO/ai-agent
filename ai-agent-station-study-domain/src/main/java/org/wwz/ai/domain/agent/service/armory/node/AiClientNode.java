@@ -74,7 +74,7 @@ public class AiClientNode extends AbstractArmorySupport {
             ChatClient chatClient = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
                     .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
-                    // 仅注册 MCP 工具（JDGenie 工具逻辑尚未完善，避免被模型误调用）
+                    // 仅注册 MCP 工具（JDReactor 工具逻辑尚未完善，避免被模型误调用）
                     .defaultAdvisors(advisorArray)
                     .build();
 

@@ -68,7 +68,7 @@ const StreamingMarkdownWrapper = memo(({
 
 StreamingMarkdownWrapper.displayName = "StreamingMarkdownWrapper";
 
-const ActionPanel: GenieType.FC<ActionPanelProps> = React.memo((props) => {
+const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const { taskItem, className, allowShowToolBar } = props;
 
   const msgTypes = useMsgTypes(taskItem);

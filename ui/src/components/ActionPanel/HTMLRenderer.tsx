@@ -11,7 +11,7 @@ interface ToolItemProps {
   title?: string;
 }
 
-const ToolItem: GenieType.FC<ToolItemProps> = memo((props) => {
+const ToolItem: ReactorType.FC<ToolItemProps> = memo((props) => {
   const { className, children, onClick, title } = props;
   return (
     <div
@@ -36,7 +36,7 @@ interface HTMLRendererProps {
 
 const TOOLBAR_CLASS = "absolute bottom-8 right-0 py-0 px-16 bg-[#fbfbff] h-[36px] rounded-[18px] flex items-center border-[#52649113] border-solid border-1 gap-12 text-primary";
 
-const HTMLRenderer: GenieType.FC<HTMLRendererProps> = memo((props) => {
+const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   const { htmlUrl, className, downloadUrl, showToolBar, outputCode, isStreaming = false } = props;
 
   const [loading, { setTrue: startLoading, setFalse: stopLoading }] = useBoolean(false);

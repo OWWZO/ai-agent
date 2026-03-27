@@ -8,7 +8,7 @@ interface ChartProps {
   };
 }
 
-const Chart: GenieType.FC<ChartProps> = ({ data }) => {
+const Chart: ReactorType.FC<ChartProps> = ({ data }) => {
   const { option } = data;
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.EChartsType | null>(null);

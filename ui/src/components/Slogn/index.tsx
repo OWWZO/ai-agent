@@ -1,7 +1,7 @@
 import Lottie from 'react-lottie';
 import { animationData } from './animation';
 
-const Slogn: GenieType.FC = () => {
+const Slogn: ReactorType.FC = () => {
   const defaultOptions = {
     loop: true,
     autoplay: true,

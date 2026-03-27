@@ -9,9 +9,9 @@ import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
 import org.wwz.ai.api.dto.ArmoryApiRequestDTO;
 import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.domain.agent.genie.agent.util.ThreadUtil;
-import org.wwz.ai.domain.agent.genie.config.GenieConfig;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.service.IAgentDispatchService;
@@ -32,8 +32,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.wwz.ai.domain.agent.genie.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.genie.service.IGptProcessService;
+import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
+import org.wwz.ai.domain.agent.reactor.service.IGptProcessService;
 
 /**
  * AutoAgent 自动智能对话体
@@ -48,7 +48,7 @@ public class AiAgentController implements IAiAgentService {
     private static final long HEARTBEAT_INTERVAL = 10_000L; // 10秒心跳间隔
 
     @Autowired
-    protected GenieConfig genieConfig;
+    protected ReactorConfig reactorConfig;
 
     @Resource
     private IAgentDispatchService agentDispatchService;

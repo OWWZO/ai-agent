@@ -78,7 +78,7 @@ const cloneWorkspaceTask = (task: CHAT.Task): CHAT.Task => {
   } as CHAT.Task;
 };
 
-const ChatView: GenieType.FC<Props> = (props) => {
+const ChatView: ReactorType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
     product,
@@ -756,7 +756,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
             <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
               <div className="mx-auto w-full max-w-[860px]">
                 <GeneralInput
-                  placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+                  placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
                   showBtn={false}
                   size="medium"
                   disabled={loading}
@@ -839,7 +839,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
                 {/* Input */}
                 <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
                   <GeneralInput
-                    placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+                    placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
                     showBtn={false}
                     size="medium"
                     disabled={loading}
@@ -950,7 +950,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
           {/* Input */}
           <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent pb-5 pt-3">
             <GeneralInput
-              placeholder={loading ? "任务进行中..." : "希望 Genie 为你做哪些任务呢？"}
+              placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
               showBtn={false}
               size="medium"
               disabled={loading}

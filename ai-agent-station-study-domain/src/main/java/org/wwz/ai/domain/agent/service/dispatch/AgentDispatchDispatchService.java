@@ -2,8 +2,8 @@ package org.wwz.ai.domain.agent.service.dispatch;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
-import org.wwz.ai.domain.agent.genie.agent.enums.AgentType;
-import org.wwz.ai.domain.agent.genie.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.service.IAgentDispatchService;
