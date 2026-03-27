@@ -1,6 +1,5 @@
 import { FC, useState, useCallback, memo } from "react";
 import AttachmentList from "@/components/AttachmentList";
-import LoadingDot from "@/components/LoadingDot";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon, buildAttachment } from "@/utils/chat";
 import {
@@ -285,10 +284,29 @@ const ConclusionSection: FC<{
   );
 };
 
+const ThinkingMessage: FC = () => (
+  <div className="mt-6 flex w-full justify-start">
+    <Message from="assistant" className="w-full max-w-full">
+      <MessageContent>
+        <div className="flex items-center text-[15px] font-medium text-muted-foreground">
+          <span className="thinking-shimmer text-[15px] font-medium tracking-[0.02em]">Thinking</span>
+        </div>
+      </MessageContent>
+    </Message>
+  </div>
+);
+
 const DialogueComponent: FC<Props> = (props) => {
   const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
   const isReactType = !deepThink;
   const thoughtText = streamingThought ?? chat.thought ?? "";
+  const hasAssistantPayload =
+    !!chat.response ||
+    !!thoughtText ||
+    !!chat.tip ||
+    !!chat.planList?.length ||
+    !!chat.tasks.length ||
+    !!chat.conclusion;
   const [copied, setCopied] = useState(false);
 
   const changeActiveChat = (task: CHAT.Task) => {
@@ -363,6 +381,9 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
+      {/* AI 思考中占位 */}
+      {chat.loading && !hasAssistantPayload ? <ThinkingMessage /> : null}
+
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
         <div className="mt-6 w-full">
@@ -400,12 +421,6 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {/* 加载中 */}
-      {chat.loading ? (
-        <div className="mt-4 flex w-full justify-start">
-          {chat.response ? <LoadingDot /> : null}
-        </div>
-      ) : null}
     </div>
   );
 };

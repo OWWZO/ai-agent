@@ -25,8 +25,9 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = motion.create(
-    Component as keyof JSX.IntrinsicElements
+  const MotionComponent = useMemo(
+    () => motion.create(Component as keyof JSX.IntrinsicElements),
+    [Component]
   );
 
   const dynamicSpread = useMemo(
@@ -36,24 +37,26 @@ const ShimmerComponent = ({
 
   return (
     <MotionComponent
-      animate={{ backgroundPosition: "0% center" }}
+      animate={{ backgroundPosition: ["220% center", "-220% center"] }}
       className={cn(
-        "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
-        "[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-background),#0000_calc(50%+var(--spread)))] [background-repeat:no-repeat,padding-box]",
+        "relative inline-block bg-clip-text text-transparent",
         className
       )}
-      initial={{ backgroundPosition: "100% center" }}
+      initial={false}
       style={
         {
-          "--spread": `${dynamicSpread}px`,
           backgroundImage:
-            "var(--bg), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))",
+            "linear-gradient(90deg, var(--color-muted-foreground) 0%, var(--color-muted-foreground) 42%, rgba(255,255,255,0.98) 50%, var(--color-muted-foreground) 58%, var(--color-muted-foreground) 100%)",
+          backgroundSize: `${Math.max(240, dynamicSpread + 220)}% 100%`,
+          backgroundRepeat: "no-repeat",
+          willChange: "background-position",
         } as CSSProperties
       }
       transition={{
         repeat: Number.POSITIVE_INFINITY,
         duration,
         ease: "linear",
+        repeatType: "loop",
       }}
     >
       {children}

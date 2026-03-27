@@ -1,5 +1,4 @@
 import { FC } from "react";
-import LoadingDot from "@/components/LoadingDot";
 import DataChat from "@/components/DataChat";
 
 type Props = {
@@ -41,7 +40,6 @@ const DataDialogue: FC<Props> = (props) => {
             <span className="font-medium">回答失败，没能理解您的意图。</span>
           </div>
         )}
-        {chat.loading ? <LoadingDot /> : null}
       </div>
     </div>
   );

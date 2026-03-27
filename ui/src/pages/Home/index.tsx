@@ -47,6 +47,7 @@ const EMPTY_INPUT: CHAT.TInputInfo = {
 };
 
 const HERO_TYPEWRITER_TEXTS = ["Let's build", "Let's create", "Hello! How can I help?", "Let's analyze","Let's research","Welcome back!","Awaiting your instructions"];
+const SHOW_FEATURED_CASES = false;
 
 const tagColorMap: Record<string, string> = {
   专业研究: "bg-[var(--secondary)] text-[var(--secondary-foreground)]",
@@ -371,8 +372,8 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
 
   const renderWelcome = () => {
     return (
-      <div className="min-h-full w-full overflow-y-auto px-6 pt-12 md:px-12 md:pt-20 lg:px-16 lg:pt-24">
-        <div className="mx-auto flex w-full max-w-[1000px] flex-col items-center">
+      <div className="h-full w-full px-6 md:px-12 lg:px-16">
+        <div className="mx-auto flex h-full w-full max-w-[1000px] flex-col items-center justify-center py-12">
           {/* Hero Section */}
           <div className="mb-10 text-center">
             <h1
@@ -438,31 +439,33 @@ const Home: GenieType.FC<HomeProps> = memo(() => {
             </div>
           </motion.div>
 
-          {/* Cases Section */}
-          <div className="w-full max-w-[1000px] mx-auto pb-24 mt-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
-              className="mb-10 text-center"
-            >
-              <h2 className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]" style={{ fontFamily: "var(--font-display)" }}>精选案例</h2>
-              <p className="text-[15px] text-[var(--chat-text-soft)]" style={{ fontFamily: "var(--font-sans)" }}>和 Genie 一起，让效率飞起来</p>
-            </motion.div>
+          {/* Cases Section (temporary hidden) */}
+          {SHOW_FEATURED_CASES && (
+            <div className="w-full max-w-[1000px] mx-auto pb-24 mt-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
+                className="mb-10 text-center"
+              >
+                <h2 className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]" style={{ fontFamily: "var(--font-display)" }}>精选案例</h2>
+                <p className="text-[15px] text-[var(--chat-text-soft)]" style={{ fontFamily: "var(--font-sans)" }}>和 Genie 一起，让效率飞起来</p>
+              </motion.div>
 
-            <div className="flex flex-wrap justify-center gap-6">
-              {demoList.map((demo, index) => (
-                <CaseCard
-                  key={index}
-                  {...demo}
-                  index={index}
-                  videoModalOpen={videoModalOpen}
-                  onOpenVideo={setVideoModalOpen}
-                  onCloseVideo={() => setVideoModalOpen(undefined)}
-                />
-              ))}
+              <div className="flex flex-wrap justify-center gap-6">
+                {demoList.map((demo, index) => (
+                  <CaseCard
+                    key={index}
+                    {...demo}
+                    index={index}
+                    videoModalOpen={videoModalOpen}
+                    onOpenVideo={setVideoModalOpen}
+                    onCloseVideo={() => setVideoModalOpen(undefined)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
       </div>

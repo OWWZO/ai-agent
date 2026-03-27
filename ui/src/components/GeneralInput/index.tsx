@@ -68,19 +68,19 @@ const MODE_OPTIONS: Array<{
   {
     key: "quick",
     label: "快速",
-    description: "适用于即时提问与简单问答",
+    description: "即时问答",
     icon: ZapIcon,
   },
   {
     key: "think",
     label: "深度思考",
-    description: "适合多步骤分析与结构化输出",
+    description: "多步分析",
     icon: BrainCircuitIcon,
   },
   {
     key: "research",
     label: "深度研究",
-    description: "擅长更长链路的研究型任务",
+    description: "长链路研究",
     icon: SearchIcon,
   },
 ];
@@ -103,6 +103,20 @@ const getOutputProduct = (product?: CHAT.Product, displayOutput?: CHAT.Product) 
 };
 
 const getProductLabel = (name: string) => name.replace("模式", "");
+const getOutputShortDescription = (type: string) => {
+  switch (type) {
+    case "html":
+      return "网页页面";
+    case "docs":
+      return "文档报告";
+    case "ppt":
+      return "演示文稿";
+    case "table":
+      return "数据表格";
+    default:
+      return "结构化输出";
+  }
+};
 
 type SelectorTone = {
   icon: string;
@@ -180,14 +194,14 @@ const chipIconWrapClassName = (tone: SelectorTone, active: boolean) =>
   );
 
 const menuContentClassName =
-  "rounded-[20px] border-0 bg-white p-2 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.2)]";
+  "rounded-[16px] border-0 bg-white p-0.5 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.2)]";
 
 const menuTitleClassName =
-  "px-3 pb-1.5 pt-1 text-[11px] font-semibold tracking-[0.08em] text-[#6b7280] uppercase";
+  "px-2 pb-1 pt-0.5 text-[10px] font-semibold tracking-[0.06em] text-[#6b7280] uppercase";
 
 const menuItemClassName = (active: boolean) =>
   cn(
-    "flex w-full gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition-all duration-200",
+    "flex w-full gap-1.5 rounded-xl border border-transparent px-1.5 py-2 text-left transition-all duration-200",
     active
       ? "bg-[#e8f2ff]"
       : "bg-transparent hover:bg-[#f9fafb]"
@@ -195,7 +209,7 @@ const menuItemClassName = (active: boolean) =>
 
 const menuIconWrapClassName = (tone: SelectorTone, active: boolean) =>
   cn(
-    "flex size-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
+    "mt-0.5 flex size-6.5 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
     active
       ? tone.iconActive
       : cn("bg-transparent ring-0", tone.icon)
@@ -409,7 +423,7 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                       align="start"
                       side="bottom"
                       sideOffset={12}
-                      className={cn("w-[288px]", menuContentClassName)}
+                      className={cn("w-[190px]", menuContentClassName)}
                     >
                       <div className={menuTitleClassName}>推理模式</div>
                       <div className="space-y-1">
@@ -423,18 +437,18 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                               className={menuItemClassName(isActive)}
                               onClick={() => handleModeSelect(option.key)}
                             >
-                              <span className={cn("mt-0.5", menuIconWrapClassName(tone, isActive))}>
-                                <option.icon className="size-4" />
+                              <span className={menuIconWrapClassName(tone, isActive)}>
+                                <option.icon className="size-3.5" />
                               </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-[15px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                              <span className="min-w-0 flex-1 pr-0.5">
+                                <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
                                   {option.label}
                                 </span>
-                                <span className="mt-0.5 block text-[12px] leading-5 text-[var(--chat-text-soft)]">
+                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
                                   {option.description}
                                 </span>
                               </span>
-                              {isActive ? <CheckIcon className={cn("mt-1 size-4 shrink-0", tone.check)} /> : null}
+                              {isActive ? <CheckIcon className={cn("mt-1 size-3 shrink-0", tone.check)} /> : null}
                             </button>
                           );
                         })}
@@ -462,9 +476,10 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="start"
-                        side="top"
+                        side="bottom"
+                        avoidCollisions={false}
                         sideOffset={12}
-                        className={cn("w-[272px]", menuContentClassName)}
+                        className={cn("w-[186px]", menuContentClassName)}
                       >
                         <div className={menuTitleClassName}>输出格式</div>
                         <div className="space-y-1">
@@ -479,17 +494,17 @@ const GeneralInput: GenieType.FC<Props> = (props) => {
                                 onClick={() => handleOutputSelect(item)}
                               >
                                 <span className={menuIconWrapClassName(tone, isActive)}>
-                                  <i className={cn("font_family text-[14px]", item.img)} />
+                                  <i className={cn("font_family text-[13px]", item.img)} />
                                 </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="block text-[15px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                                <span className="min-w-0 flex-1 pr-0.5">
+                                  <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
                                     {getProductLabel(item.name)}
                                   </span>
-                                  <span className="mt-0.5 block text-[12px] leading-5 text-[var(--chat-text-soft)]">
-                                    {item.placeholder}
+                                  <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
+                                    {getOutputShortDescription(item.type)}
                                   </span>
                                 </span>
-                                {isActive ? <CheckIcon className={cn("size-4 shrink-0", tone.check)} /> : null}
+                                {isActive ? <CheckIcon className={cn("size-3 shrink-0", tone.check)} /> : null}
                               </button>
                             );
                           })}
