@@ -1,4 +1,4 @@
-import { FC, useState, useCallback, memo } from "react";
+import { FC, useState, useCallback, useMemo, memo } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon, buildAttachment } from "@/utils/chat";
@@ -40,7 +40,7 @@ type Props = {
   onRegenerate?: () => void;
 };
 
-const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
+const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = memo(({ plan }) => (
   <div className="space-y-2">
     <div className="flex items-center gap-2 rounded-lg p-2 text-sm text-muted-foreground">
       <i className="font_family icon-renwu text-[13px] text-primary"></i>
@@ -48,7 +48,7 @@ const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
     </div>
     <div className="mt-1 space-y-3 border-l-2 border-muted pl-4">
       {plan.map((p, i) => (
-        <div key={i} className="space-y-1.5">
+        <div key={`${p.name}-${i}`} className="space-y-1.5">
           <div className="flex items-center gap-2 text-[14px] font-medium text-[#1d1d1f]">
             <div className="h-1.5 w-1.5 rounded-full bg-primary"></div>
             {p.name}
@@ -64,15 +64,17 @@ const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = ({ plan }) => (
       ))}
     </div>
   </div>
-);
+));
+
+PlanSection.displayName = "PlanSection";
 
 const ToolItem: FC<{
   tool: CHAT.Task;
   changePlan?: () => void;
   changeActiveChat: (task: CHAT.Task) => void;
   changeFile?: (file: CHAT.TFile) => void;
-}> = ({ tool, changePlan, changeActiveChat, changeFile }) => {
-  const actionInfo = buildAction(tool);
+}> = memo(({ tool, changePlan, changeActiveChat, changeFile }) => {
+  const actionInfo = useMemo(() => buildAction(tool), [tool]);
   switch (tool.messageType) {
     case "plan": {
       const completedIndex = tool.plan?.stepStatus.lastIndexOf("completed") || 0;
@@ -110,7 +112,7 @@ const ToolItem: FC<{
           {tool.resultMap?.steps
             .filter((s) => s.status !== "completed")
             .map((s, idx) => (
-              <div key={idx}>
+              <div key={`${s.goal}-${idx}`}>
                 <i className={`font_family ${getIcon(tool.messageType)}`}></i>
                 <div>
                   <div>{actionInfo.action}</div>
@@ -195,7 +197,14 @@ const ToolItem: FC<{
       );
     }
   }
-};
+}, (prevProps, nextProps) =>
+  prevProps.tool === nextProps.tool &&
+  prevProps.changePlan === nextProps.changePlan &&
+  prevProps.changeActiveChat === nextProps.changeActiveChat &&
+  prevProps.changeFile === nextProps.changeFile
+);
+
+ToolItem.displayName = "ToolItem";
 
 const TimeLineContent: FC<{
   tasks: CHAT.Task[];
@@ -206,10 +215,10 @@ const TimeLineContent: FC<{
 }> = ({ tasks, isReactType, changeActiveChat, changePlan, changeFile }) => (
   <>
     {tasks.map((t, i) => (
-      <div key={i} className="overflow-hidden">
+      <div key={t.id || t.messageId || t.taskId || i} className="overflow-hidden">
         {!isReactType ? <div className="font-[500]">{t.task}</div> : null}
         {(t.children || []).map((tool, j) => (
-          <div key={j}>
+          <div key={tool.id || tool.messageId || tool.taskId || j}>
             <ToolItem
               tool={tool}
               changePlan={changePlan}
@@ -233,8 +242,9 @@ const TimeLine: FC<{
   <>
     {chat.tasks.map((t, i) => {
       const lastTask = i === chat.tasks.length - 1;
+      const groupKey = t[0]?.id || t[0]?.messageId || t[0]?.taskId || i;
       return (
-        <div className="flex w-full" key={i}>
+        <div className="flex w-full" key={groupKey}>
           {!isReactType ? (
             <div className="relative mb-2 mt-1 w-8 shrink-0 overflow-hidden">
               {lastTask && chat.loading ? (
@@ -309,9 +319,9 @@ const DialogueComponent: FC<Props> = (props) => {
     !!chat.conclusion;
   const [copied, setCopied] = useState(false);
 
-  const changeActiveChat = (task: CHAT.Task) => {
+  const changeActiveChat = useCallback((task: CHAT.Task) => {
     changeTask?.(task);
-  };
+  }, [changeTask]);
 
   const handleCopy = useCallback(() => {
     if (!chat.response) return;

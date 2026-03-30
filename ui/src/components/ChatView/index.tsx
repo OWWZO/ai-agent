@@ -87,7 +87,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onInputConsumed,
   } = props;
 
-  const [taskList, setTaskList] = useState<MESSAGE.Task[]>([]);
+  const [taskList, setTaskList] = useState<CHAT.Task[]>([]);
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
   const [workspaceStreamTask, setWorkspaceStreamTask] = useState<CHAT.Task>();
   const [plan, setPlan] = useState<CHAT.Plan>();
@@ -103,6 +103,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const workspaceStreamPendingRef = useRef<CHAT.Task | undefined>(undefined);
   const workspaceStreamLastFlushAtRef = useRef(0);
   const WORKSPACE_STREAM_FLUSH_INTERVAL = 32;
+  const thoughtStreamFrameRef = useRef<number | null>(null);
+  const thoughtStreamPendingRef = useRef<Record<string, string>>({});
+  const thoughtStreamLastFlushAtRef = useRef(0);
+  const THOUGHT_STREAM_FLUSH_INTERVAL = 48;
 
   const cancelWorkspaceStreamFrame = useMemoizedFn(() => {
     if (workspaceStreamFrameRef.current !== null) {
@@ -123,6 +127,75 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     workspaceStreamLastFlushAtRef.current = now;
     workspaceStreamPendingRef.current = undefined;
     setWorkspaceStreamTask(nextTask);
+  });
+
+  const cancelThoughtStreamFrame = useMemoizedFn(() => {
+    if (thoughtStreamFrameRef.current !== null) {
+      cancelAnimationFrame(thoughtStreamFrameRef.current);
+      thoughtStreamFrameRef.current = null;
+    }
+  });
+
+  const flushStreamingThought = useMemoizedFn((force = false) => {
+    const pendingThoughtMap = thoughtStreamPendingRef.current;
+    const pendingEntries = Object.entries(pendingThoughtMap);
+    if (!pendingEntries.length) {
+      return;
+    }
+
+    const now = performance.now();
+    if (!force && now - thoughtStreamLastFlushAtRef.current < THOUGHT_STREAM_FLUSH_INTERVAL) {
+      return;
+    }
+
+    thoughtStreamLastFlushAtRef.current = now;
+    thoughtStreamPendingRef.current = {};
+    setStreamingThoughtMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      pendingEntries.forEach(([requestId, thought]) => {
+        if (next[requestId] !== thought) {
+          next[requestId] = thought;
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  });
+
+  const scheduleStreamingThought = useMemoizedFn((requestId: string, thought: string, force = false) => {
+    thoughtStreamPendingRef.current[requestId] = thought;
+
+    if (force) {
+      cancelThoughtStreamFrame();
+      flushStreamingThought(true);
+      return;
+    }
+
+    if (thoughtStreamFrameRef.current !== null) {
+      return;
+    }
+
+    const requestNextFrame = () => {
+      thoughtStreamFrameRef.current = requestAnimationFrame(() => {
+        thoughtStreamFrameRef.current = null;
+        if (!Object.keys(thoughtStreamPendingRef.current).length) {
+          return;
+        }
+
+        const now = performance.now();
+        if (now - thoughtStreamLastFlushAtRef.current < THOUGHT_STREAM_FLUSH_INTERVAL) {
+          requestNextFrame();
+          return;
+        }
+
+        flushStreamingThought(true);
+      });
+    };
+
+    requestNextFrame();
   });
 
   const scheduleWorkspaceStreamTask = useMemoizedFn((chat: CHAT.ChatItem, force = false) => {
@@ -166,8 +239,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   useEffect(() => {
     cancelWorkspaceStreamFrame();
+    cancelThoughtStreamFrame();
     workspaceStreamPendingRef.current = undefined;
     workspaceStreamLastFlushAtRef.current = 0;
+    thoughtStreamPendingRef.current = {};
+    thoughtStreamLastFlushAtRef.current = 0;
     setTaskList([]);
     setActiveTask(undefined);
     setWorkspaceStreamTask(undefined);
@@ -175,13 +251,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setShowAction(false);
     setLoading(false);
     setStreamingThoughtMap({});
-  }, [cancelWorkspaceStreamFrame, conversation.id]);
+  }, [cancelThoughtStreamFrame, cancelWorkspaceStreamFrame, conversation.id]);
 
   useEffect(() => {
     return () => {
       cancelWorkspaceStreamFrame();
+      cancelThoughtStreamFrame();
     };
-  }, [cancelWorkspaceStreamFrame]);
+  }, [cancelThoughtStreamFrame, cancelWorkspaceStreamFrame]);
 
   // Ensure fade-in starts before the browser paints after conversation switch.
   useLayoutEffect(() => {
@@ -385,25 +462,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         if (resultMap?.eventData) {
           const eventData = resultMap.eventData;
+          const isPlanThoughtEvent = eventData?.messageType === "plan_thought";
+          const isPlanThoughtFinal = Boolean(eventData?.resultMap?.isFinal || finished);
           currentChat = combineData(eventData || {}, currentChat);
           if (shouldRefreshWorkspaceTask(eventData)) {
             scheduleWorkspaceStreamTask(currentChat, finished);
           }
-          if (normalizedDeepThink && eventData?.messageType === "plan_thought") {
+          if (normalizedDeepThink && isPlanThoughtEvent) {
             const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
-            setStreamingThoughtMap((prev) =>
-              prev[currentChat.requestId] === latestThought
-                ? prev
-                : { ...prev, [currentChat.requestId]: latestThought }
-            );
+            scheduleStreamingThought(currentChat.requestId, latestThought, isPlanThoughtFinal);
           }
-          taskDataDirty = true;
+          if (!isPlanThoughtEvent) {
+            taskDataDirty = true;
+          }
           if (finished) {
             currentChat.loading = false;
             setLoading(false);
             if (normalizedDeepThink) {
               const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
-              setStreamingThoughtMap((prev) => ({ ...prev, [currentChat.requestId]: finalThought }));
+              scheduleStreamingThought(currentChat.requestId, finalThought, true);
             }
           }
           const newChatList = [...runningConversation.chatList];
@@ -412,13 +489,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             ...runningConversation,
             chatList: newChatList,
           };
-          pendingConversation = runningConversation;
-          scheduleNonChatFlush(finished);
+          if (!isPlanThoughtEvent || isPlanThoughtFinal) {
+            pendingConversation = runningConversation;
+            scheduleNonChatFlush(finished);
+          }
         }
       }
     };
 
-    const openAction = (tasks: MESSAGE.Task[]) => {
+    const openAction = (tasks: CHAT.Task[]) => {
       if (tasks.filter((item) => !RESULT_TYPES.includes(item.messageType)).length) {
         setShowAction(true);
       }
@@ -441,7 +520,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     });
   });
 
-  const temporaryChangeTask = (tasks: MESSAGE.Task[]) => {
+  const temporaryChangeTask = (tasks: CHAT.Task[]) => {
     // 工作区默认通过 streamTask / taskList 自动跟随，避免流式阶段频繁改 activeTask 导致整块预览抖动和掉帧。
     return tasks;
   };

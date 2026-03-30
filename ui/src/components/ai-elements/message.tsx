@@ -327,9 +327,11 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
   const targetRef = useRef(text);
   const frameRef = useRef<number | null>(null);
   const lastUpdateRef = useRef<number>(0);
+  const lastTargetChangeRef = useRef<number>(0);
 
   useEffect(() => {
     targetRef.current = text;
+    lastTargetChangeRef.current = performance.now();
 
     if (!isStreaming) {
       displayedRef.current = text;
@@ -347,8 +349,9 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
     }
 
     const tick = (timestamp: number) => {
-      // 优化：使用更短的间隔以获得更流畅的动画
-      if (timestamp - lastUpdateRef.current < 12) {
+      // 将流式节奏放慢一些，给后端抖动留出前端缓冲，减少“一下快一下停”的卡顿感。
+      const frameInterval = 32;
+      if (timestamp - lastUpdateRef.current < frameInterval) {
         frameRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -363,14 +366,14 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
       }
 
       const remaining = targetValue.length - currentValue.length;
-      // 优化：动态调整块大小，小文本时更精细，大文本时更流畅
-      const chunkSize = Math.max(
-        1,
-        Math.min(
-          remaining < 10 ? 1 : remaining < 50 ? 2 : remaining < 200 ? 4 : 8,
-          Math.ceil(remaining / 20)
-        )
-      );
+      const keepBuffer =
+        remaining > 6 && timestamp - lastTargetChangeRef.current < 180
+          ? Math.min(18, Math.max(4, Math.floor(remaining * 0.35)))
+          : 0;
+      const readyChars = Math.max(1, remaining - keepBuffer);
+      // 小步消费增量文本，避免前端瞬间追平后又因后端延迟出现明显停顿。
+      const chunkSize =
+        readyChars > 24 ? 3 : readyChars > 8 ? 2 : 1;
       const nextValue = targetValue.slice(0, currentValue.length + chunkSize);
 
       displayedRef.current = nextValue;

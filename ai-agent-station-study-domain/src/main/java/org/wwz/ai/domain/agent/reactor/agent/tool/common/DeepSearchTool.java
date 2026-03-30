@@ -35,7 +35,7 @@ public class DeepSearchTool implements BaseTool {
     /**
      * deep_search 保底超时时间，避免外部流式接口异常时导致 future.get() 长时间阻塞。
      */
-    private static final long DEEP_SEARCH_TIMEOUT_MINUTES = 5L;
+    private static final long DEEP_SEARCH_TIMEOUT_MINUTES = 20L;
     /**
      * deep_search HTTP 连接超时时间。
      */
@@ -43,7 +43,7 @@ public class DeepSearchTool implements BaseTool {
     /**
      * deep_search HTTP 读写超时时间。
      */
-    private static final long DEEP_SEARCH_IO_TIMEOUT_MINUTES = 5L;
+    private static final long DEEP_SEARCH_IO_TIMEOUT_MINUTES = 20L;
 
     private AgentContext agentContext;
     /**

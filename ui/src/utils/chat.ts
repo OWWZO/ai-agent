@@ -21,6 +21,13 @@ export const combineData = (
   return currentChat;
 };
 
+type TaskRenderCacheEntry = {
+  signature: string;
+  items: CHAT.Task[];
+};
+
+const taskRenderCache = new WeakMap<object, TaskRenderCacheEntry>();
+
 /**
  * 处理计划类型的消息
  * @param eventData 事件数据
@@ -578,7 +585,7 @@ export const handleTaskData = (
 
   let conclusion: MESSAGE.Task | CHAT.Task | undefined;
   let plan = fullPlan;
-  const taskList: MESSAGE.Task[] = [];
+  const taskList: CHAT.Task[] = [];
 
   const validTasks: MESSAGE.Task[][] = fullTasks?.filter(
     (item: MESSAGE.Task[]) => item && item?.length > 0
@@ -609,18 +616,7 @@ export const handleTaskData = (
         task.resultMap.messageType === "extend";
       const isTaskSummary = task?.messageType === "task_summary";
 
-      let processedInfo: any = [];
-
-      if (task.messageType === "deep_search") {
-        processedInfo = processDeepSearchTask(task, id);
-      } else {
-        processedInfo = [
-          {
-            ...task,
-            id,
-          },
-        ];
-      }
+      const processedInfo = processTaskForRender(task, id);
 
       if (task.messageType === "task") {
         chatList[groupIndex].push({
@@ -686,45 +682,123 @@ export const handleTaskData = (
   };
 };
 
+function getTaskRenderSignature(task: any, baseId: string): string {
+  const resultMap = task.resultMap || {};
+  const searchResult = resultMap.searchResult;
+  const plan = task.plan;
+  const querySignature = Array.isArray(searchResult?.query)
+    ? searchResult.query.join("||")
+    : "";
+  const docsSignature = Array.isArray(searchResult?.docs)
+    ? searchResult.docs
+      .map((docs: MESSAGE.Doc[] | MESSAGE.Doc) => (Array.isArray(docs) ? docs.length : 0))
+      .join(",")
+    : "";
+
+  return [
+    baseId,
+    task.messageId || "",
+    task.messageType || "",
+    task.messageTime || "",
+    resultMap.messageType || "",
+    resultMap.isFinal ? "1" : "0",
+    resultMap.searchFinish ? "1" : "0",
+    task.toolThought?.length || 0,
+    resultMap.answer?.length || 0,
+    resultMap.codeOutput?.length || 0,
+    resultMap.data?.length || 0,
+    querySignature,
+    docsSignature,
+    Array.isArray(plan?.stepStatus) ? plan.stepStatus.join(",") : "",
+  ].join("|");
+}
+
+function clonePlanForRender(plan?: MESSAGE.Plan) {
+  if (!plan) {
+    return plan;
+  }
+
+  return {
+    ...plan,
+    notes: [...(plan.notes || [])],
+    stages: [...(plan.stages || [])],
+    stepStatus: [...(plan.stepStatus || [])],
+    steps: [...(plan.steps || [])],
+  };
+}
+
+function createRenderTask(
+  task: any,
+  id: string,
+  searchResult?: {
+    query: string;
+    docs: MESSAGE.Doc[];
+  }
+): CHAT.Task {
+  const nextTask = {
+    ...task,
+    id,
+    resultMap: task.resultMap ? { ...task.resultMap } : task.resultMap,
+    plan: clonePlanForRender(task.plan),
+  } as CHAT.Task;
+
+  if (searchResult && nextTask.resultMap) {
+    nextTask.resultMap.searchResult = searchResult as any;
+  }
+
+  return nextTask;
+}
+
+function processTaskForRender(task: any, baseId: string): CHAT.Task[] {
+  const signature = getTaskRenderSignature(task, baseId);
+  const cached = taskRenderCache.get(task);
+  if (cached?.signature === signature) {
+    return cached.items;
+  }
+
+  let items: CHAT.Task[];
+  if (task.messageType === "deep_search") {
+    items = processDeepSearchTask(task, baseId);
+  } else {
+    items = [createRenderTask(task, baseId)];
+  }
+
+  taskRenderCache.set(task, {
+    signature,
+    items,
+  });
+
+  return items;
+}
+
 /**
  * 处理深度搜索任务的辅助函数
  * @param task 深度搜索任务
  * @param baseId 基础ID
  * @returns 处理后的任务信息数组
  */
-function processDeepSearchTask(task: any, baseId: string): any[] {
+function processDeepSearchTask(task: any, baseId: string): CHAT.Task[] {
   const showTypes = ['extend', 'search'];
   if (task.resultMap.messageType === "report") {
     return [
-      {
-        ...task,
-        id: baseId,
-      },
+      createRenderTask(task, baseId),
     ];
   }
 
   if (showTypes.includes(task.resultMap.messageType!)) {
     return task.resultMap.searchResult!.query.map((query: string, index: number) => {
-      const clonedTask = structuredClone({
-        ...task,
-        id: baseId.concat(String(index)),
-      });
-
+      const rawDocs = task.resultMap.searchResult?.docs?.[index];
       const searchResult = {
         query: query,
-        docs: task.resultMap.searchResult?.docs?.[index] ?? [],
+        docs: Array.isArray(rawDocs) ? rawDocs : rawDocs ? [rawDocs] : [],
       };
 
-      clonedTask.resultMap.searchResult = searchResult;
-      return clonedTask;
+      return createRenderTask(task, baseId.concat(String(index)), searchResult);
     });
   }
 
   return [
-    {
-      ...task,
-      id: baseId,
-    },
+    createRenderTask(task, baseId),
   ];
 }
 

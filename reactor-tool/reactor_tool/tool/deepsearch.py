@@ -63,7 +63,8 @@ class DeepSearch:
     ) -> AsyncGenerator[str, None]:
         """深度搜索回复（流式）"""
 
-        total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "300"))
+        # 默认超时时间提升到 20 分钟，避免深度搜索在多轮检索和总结时被过早中断。
+        total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "1200"))
         deadline = time.monotonic() + total_timeout_seconds
 
         def _remaining_timeout() -> float:
