@@ -1,7 +1,8 @@
 package org.wwz.ai.config;
 
+import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.zaxxer.hikari.HikariDataSource;
-import org.mybatis.spring.SqlSessionFactoryBean;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,8 +50,8 @@ public class DataSourceConfig {
     }
 
     @Bean("sqlSessionFactory")
-    public SqlSessionFactoryBean sqlSessionFactory(@Qualifier("mysqlDataSource") DataSource mysqlDataSource) throws Exception {
-        SqlSessionFactoryBean sqlSessionFactoryBean = new SqlSessionFactoryBean();
+    public SqlSessionFactory sqlSessionFactory(@Qualifier("mysqlDataSource") DataSource mysqlDataSource) throws Exception {
+        MybatisSqlSessionFactoryBean sqlSessionFactoryBean = new MybatisSqlSessionFactoryBean();
         sqlSessionFactoryBean.setDataSource(mysqlDataSource);
 
         // 设置MyBatis配置文件位置
@@ -60,12 +61,12 @@ public class DataSourceConfig {
         // 设置Mapper XML文件位置
         sqlSessionFactoryBean.setMapperLocations(resolver.getResources("classpath:/mybatis/mapper/*.xml"));
 
-        return sqlSessionFactoryBean;
+        return Objects.requireNonNull(sqlSessionFactoryBean.getObject());
     }
 
     @Bean("sqlSessionTemplate")
-    public SqlSessionTemplate sqlSessionTemplate(@Qualifier("sqlSessionFactory") SqlSessionFactoryBean sqlSessionFactory) throws Exception {
-        return new SqlSessionTemplate(Objects.requireNonNull(sqlSessionFactory.getObject()));
+    public SqlSessionTemplate sqlSessionTemplate(@Qualifier("sqlSessionFactory") SqlSessionFactory sqlSessionFactory) {
+        return new SqlSessionTemplate(sqlSessionFactory);
     }
 
     @Bean("pgVectorDataSource")

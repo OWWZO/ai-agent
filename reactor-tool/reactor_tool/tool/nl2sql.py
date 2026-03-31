@@ -13,7 +13,7 @@ from loguru import logger
 from typing import Dict, List
 from reactor_tool.model.protocal import NL2SQLRequest
 from reactor_tool.util.prompt_util import get_prompt
-from reactor_tool.util.llm_util import ask_llm
+from reactor_tool.util.llm_util import ask_llm, extract_stream_chunk_text
 from reactor_tool.util.log_util import timer
 from reactor_tool.tool.table_rag.table_column_filter import ColumnFilterModule
 
@@ -95,7 +95,8 @@ class NL2SQLAgent:
             top_p=top_p,
             only_content=False
         ):
-            chunk_content = chunk.choices[0].delta.content
+            # 兼容不同 OpenAI 兼容网关的流式字段，避免 delta 上没有 content 时直接报错
+            chunk_content = extract_stream_chunk_text(chunk, include_reasoning=True)
             if chunk_content is None or chunk_content == "":
                 continue
             think_full += chunk_content

@@ -1,11 +1,14 @@
 package org.wwz.ai.domain.agent.reactor.service;
 
 
-import com.alibaba.fastjson2.JSONObject;
-import com.alibaba.fastjson2.TypeReference;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.qdrant.client.grpc.Points;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +32,6 @@ import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcQueryRequest;
 import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
 import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
 import org.wwz.ai.domain.agent.reactor.mapper.ChatModelInfoMapper;
-import org.wwz.ai.domain.agent.reactor.mapper.ChatModelSchemaMapper;
 import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
 
 import java.sql.SQLException;
@@ -38,10 +40,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import static io.qdrant.client.ConditionFactory.matchKeyword;
+import static io.qdrant.client.ConditionFactory.matchKeywords;
 
 @Slf4j
 @Service
-public class ChatModelInfoService {
+public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatModelInfo> {
 
 
     @Autowired
@@ -53,10 +56,6 @@ public class ChatModelInfoService {
     @Autowired
     ChatModelSchemaService chatModelSchemaService;
     @Autowired
-    ChatModelInfoMapper chatModelInfoMapper;
-    @Autowired
-    ChatModelSchemaMapper chatModelSchemaMapper;
-    @Autowired
     VectorService vectorService;
     @Autowired
     ColumnValueSyncService columnValueSyncService;
@@ -65,11 +64,6 @@ public class ChatModelInfoService {
 
 
     public void initModelInfo(DataAgentConfig dataAgentConfig) throws Exception {
-        // 检查数据库配置是否为空，如果为空则跳过模型初始化
-        if (dataAgentConfig.getDbConfig() == null) {
-            log.warn("DataAgent dbConfig is null, skip initModelInfo");
-            return;
-        }
         List<DataAgentModelConfig> tableList = dataAgentConfig.getModelList();
         if (CollectionUtils.isEmpty(tableList)) {
             log.warn("dataAgent.tableList is empty");
@@ -86,9 +80,6 @@ public class ChatModelInfoService {
         String fewShotSql = getFewShotSql(modelConfig, tableSchema);
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        if (dbConfig == null) {
-            return new HashMap<>();
-        }
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         jdbcQueryRequest.setSql(fewShotSql);
         QueryResult queryResult = jdbcDataProvider.queryData(jdbcQueryRequest);
@@ -138,7 +129,7 @@ public class ChatModelInfoService {
         modelInfo.setType(modelConfig.getType());
         modelInfo.setUsePrompt(modelConfig.getRemark());
         modelInfo.setBusinessPrompt(modelConfig.getBusinessPrompt());
-        chatModelInfoMapper.insert(modelInfo);
+        save(modelInfo);
         log.info("model info save success:{}", modelCode);
         List<ChatModelSchema> chatModelSchemas = chatModelSchemaService.saveModelSchema(modelCode, modelConfig, tableSchema, fewShotMap);
         log.info("model schema save success {},size:{}", modelCode, chatModelSchemas.size());
@@ -223,11 +214,8 @@ public class ChatModelInfoService {
     }
 
     public List<TableColumn> getSqlSchema(DataAgentModelConfig modelConfig) throws SQLException {
-        DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        if (dbConfig == null) {
-            throw new JdbcBizException("Database configuration is missing.");
-        }
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
+        DbConfig dbConfig = dataAgentConfig.getDbConfig();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         jdbcQueryRequest.setSql(modelConfig.getContent());
         jdbcQueryRequest.setLimit(1);
@@ -235,18 +223,15 @@ public class ChatModelInfoService {
     }
 
     public List<TableColumn> getTableSchema(DataAgentModelConfig modelConfig) throws SQLException {
-        DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        if (dbConfig == null) {
-            throw new JdbcBizException("Database configuration is missing.");
-        }
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
+        DbConfig dbConfig = dataAgentConfig.getDbConfig();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         return jdbcDataMetaProvider.queryColumns(jdbcQueryRequest, modelConfig.getContent(), dbConfig.getSchema());
     }
 
     public List<ChatModelInfoDto> queryAllModelsWithSchema() {
-        List<ChatModelInfo> modelList = chatModelInfoMapper.selectAll();
-        List<ChatModelSchema> schemaList = chatModelSchemaMapper.selectAll();
+        List<ChatModelInfo> modelList = list();
+        List<ChatModelSchema> schemaList = chatModelSchemaService.list();
         List<ChatSchemaDto> schemaDtoList = new ArrayList<>();
         for (ChatModelSchema schema : schemaList) {
             ChatSchemaDto dto = new ChatSchemaDto();
@@ -269,12 +254,10 @@ public class ChatModelInfoService {
         return dtoList;
     }
 
-    public List<ChatModelInfo> listAll() {
-        return chatModelInfoMapper.selectAll();
-    }
-
     public QueryResult previewData(String modelCode) throws SQLException {
-        ChatModelInfo modelInfo = chatModelInfoMapper.selectByCode(modelCode);
+        LambdaQueryWrapper<ChatModelInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ChatModelInfo::getCode, modelCode);
+        ChatModelInfo modelInfo = getOne(queryWrapper);
         String sql = "";
         if ("table".equalsIgnoreCase(modelInfo.getType())) {
             sql += "SELECT * FROM " + modelInfo.getContent();
@@ -282,11 +265,8 @@ public class ChatModelInfoService {
             sql += modelInfo.getContent();
         }
         sql += " LIMIT 100";
-        DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        if (dbConfig == null) {
-            throw new JdbcBizException("Database configuration is missing.");
-        }
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
+        DbConfig dbConfig = dataAgentConfig.getDbConfig();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         jdbcQueryRequest.setSql(sql);
         return jdbcDataProvider.queryData(jdbcQueryRequest);

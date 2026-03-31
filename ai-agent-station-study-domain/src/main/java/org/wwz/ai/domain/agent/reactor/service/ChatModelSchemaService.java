@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
 import org.wwz.ai.domain.agent.reactor.data.TableColumn;
 import org.wwz.ai.domain.agent.reactor.data.dto.ChatSchemaDto;
@@ -18,10 +19,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-public class ChatModelSchemaService {
-
-    @Autowired
-    private ChatModelSchemaMapper chatModelSchemaMapper;
+public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, ChatModelSchema> {
     public static String getColumnUuids() {
         List<String> list = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
@@ -85,18 +83,16 @@ public class ChatModelSchemaService {
             saveList.add(schema);
         }
         modelConfig.setSyncValueFields(String.join(",", syncValueFields));
-        for (ChatModelSchema schema : saveList) {
-            chatModelSchemaMapper.insert(schema);
-        }
+        saveBatch(saveList);
         return saveList;
     }
 
     public List<ChatModelSchema> queryDefaultRecallFields() {
-        return chatModelSchemaMapper.selectDefaultRecall();
+        return lambdaQuery().eq(ChatModelSchema::getDefaultRecall, 1).list();
     }
 
     public List<ChatSchemaDto> queryAllSchemaDto() {
-        List<ChatModelSchema> list = chatModelSchemaMapper.selectAll();
+        List<ChatModelSchema> list = list();
         List<ChatSchemaDto> dtoList = new ArrayList<>();
         for (ChatModelSchema schema : list) {
             ChatSchemaDto dto = new ChatSchemaDto();
@@ -139,9 +135,5 @@ public class ChatModelSchemaService {
             return Collections.emptySet();
         }
         return Arrays.stream(syncValueFields.split(",")).collect(Collectors.toSet());
-    }
-
-    public List<ChatModelSchema> listAll() {
-        return chatModelSchemaMapper.selectAll();
     }
 }

@@ -164,6 +164,77 @@ def _to_attr_obj(value: Any) -> Any:
     return value
 
 
+def _get_value(source: Any, key: str, default: Any = None) -> Any:
+    """兼容 dict / SimpleNamespace / LiteLLM 对象的安全取值。"""
+    if source is None:
+        return default
+    if isinstance(source, dict):
+        return source.get(key, default)
+    return getattr(source, key, default)
+
+
+def _extract_text_payload(value: Any) -> str:
+    """提取不同 content 结构中的文本内容。"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        text_parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                text_parts.append(item)
+                continue
+            item_type = _get_value(item, "type", "")
+            if item_type in {"text", "output_text"}:
+                text = _get_value(item, "text") or _get_value(item, "content")
+                if isinstance(text, str) and text:
+                    text_parts.append(text)
+        return "".join(text_parts)
+    return ""
+
+
+def extract_stream_chunk_text(chunk: Any, include_reasoning: bool = False) -> str:
+    """从流式 chunk 中安全提取文本，兼容 content / reasoning_content 等结构。"""
+    choices = _get_value(chunk, "choices", []) or []
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        delta = _get_value(choice, "delta")
+        message = _get_value(choice, "message")
+
+        content = _extract_text_payload(_get_value(delta, "content"))
+        if content:
+            return content
+
+        if include_reasoning:
+            reasoning_content = _extract_text_payload(
+                _get_value(delta, "reasoning_content") or _get_value(delta, "reasoning")
+            )
+            if reasoning_content:
+                return reasoning_content
+
+        message_content = _extract_text_payload(_get_value(message, "content"))
+        if message_content:
+            return message_content
+
+        if include_reasoning:
+            message_reasoning = _extract_text_payload(
+                _get_value(message, "reasoning_content") or _get_value(message, "reasoning")
+            )
+            if message_reasoning:
+                return message_reasoning
+
+        choice_text = _extract_text_payload(_get_value(choice, "text"))
+        if choice_text:
+            return choice_text
+
+    output_text = _extract_text_payload(_get_value(chunk, "output_text"))
+    if output_text:
+        return output_text
+
+    return ""
+
+
 async def _raw_openai_like_request(
     messages: List[Any],
     params: dict,
@@ -214,15 +285,7 @@ async def _raw_openai_like_request(
 
                 saw_chunk = True
                 last_obj = chunk_obj
-                choice = (chunk_obj.get("choices") or [{}])[0]
-                delta = choice.get("delta") or {}
-                message = choice.get("message") or {}
-
-                piece = None
-                if isinstance(delta.get("content"), str):
-                    piece = delta.get("content")
-                elif isinstance(message.get("content"), str):
-                    piece = message.get("content")
+                piece = extract_stream_chunk_text(chunk_obj)
 
                 if stream:
                     if only_content:
@@ -482,13 +545,8 @@ async def ask_llm(
                 if stream:
                     async for chunk in response:
                         if only_content:
-                            if (
-                                chunk.choices
-                                and chunk.choices[0]
-                                and chunk.choices[0].delta
-                                and chunk.choices[0].delta.content
-                            ):
-                                text = chunk.choices[0].delta.content
+                            text = extract_stream_chunk_text(chunk)
+                            if text:
                                 buffered_chunks.append(text)
                                 yield text
                         else:

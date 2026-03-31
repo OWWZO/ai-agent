@@ -1,10 +1,13 @@
 package org.wwz.ai.domain.agent.reactor.entity;
 
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.io.Serializable;
 
 @Data
+@TableName("chat_model_schema")
 public class ChatModelSchema implements Serializable {
     private static final long serialVersionUID = -6284827149526794290L;
     private Long id;
@@ -18,6 +21,7 @@ public class ChatModelSchema implements Serializable {
     private String vectorUuid;
     private int defaultRecall;
     private int analyzeSuggest;
+    @TableLogic
     private Integer yn;
 
 }

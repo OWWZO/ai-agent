@@ -2,6 +2,14 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 
 import com.alibaba.fastjson.JSONObject;
+
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
@@ -17,13 +25,6 @@ import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
 import org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq;
 import org.wwz.ai.domain.agent.reactor.model.response.ChatDataMessage;
 import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -141,7 +142,7 @@ public class DataAgentService {
 
         if (CollectionUtils.isEmpty(recallSchema)) {
             log.warn("{},{} 召回schema为空，读取数据库", baseNl2SqlReq.getTraceId(), baseNl2SqlReq.getRequestId());
-            List<ChatModelSchema> list = chatModelSchemaService.listAll();
+            List<ChatModelSchema> list = chatModelSchemaService.list();
             List<ChatSchemaDto> dtoList = new ArrayList<>();
             for (ChatModelSchema schema : list) {
                 ChatSchemaDto dto = new ChatSchemaDto();
@@ -201,7 +202,7 @@ public class DataAgentService {
                 Locale.CHINA
         );
         nl2SQLReq.setCurrentDateInfo(String.format(nl2SQLReq.getCurrentDateInfo(), LocalDate.now(), week));
-        List<ChatModelInfo> modelList = chatModelInfoService.listAll();
+        List<ChatModelInfo> modelList = chatModelInfoService.list();
         List<String> modelCodeList = new ArrayList<>();
         nl2SQLReq.setModelCodeList(modelCodeList);
         List<ChatModelInfoDto> dtoList = new ArrayList<>();
