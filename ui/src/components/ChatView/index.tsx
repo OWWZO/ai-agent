@@ -1003,45 +1003,44 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="mx-auto flex h-full w-full max-w-[1600px] px-4 pt-4 md:px-6">
-        <div
-          className={classNames(
-            "mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[24px] bg-white/80 px-5 pt-4 md:px-6"
-          )}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-5">
-            <div className="flex min-w-0 items-center gap-4">
-              <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+      <div className="flex h-full w-full justify-center px-4 pt-4 md:px-6">
+        <div className="flex min-h-0 w-full max-w-[980px] flex-col" id="chat-view">
+          <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
+            <div className="flex min-w-0 items-center gap-3">
+              <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
                 {headerTitle}
               </h2>
+              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+                <i className="font_family icon-shendusikao text-[11px]"></i>
+                <span>智能问数</span>
+              </div>
             </div>
           </div>
 
-          {/* Messages */}
-          <Conversation className="chat-fade-bottom mb-2 mt-4 min-h-0 flex-1">
-            <ConversationContent>
+          <Conversation className="chat-fade-bottom min-h-0 flex-1">
+            <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
               {renderDataDialogues()}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
 
-          {/* Input */}
-          <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent pb-5 pt-3">
-            <GeneralInput
-              placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
-              showBtn={false}
-              size="medium"
-              disabled={loading}
-              product={currentProduct}
-              send={(info) =>
-                sendDataMessage({
-                  ...info,
-                  outputStyle: "dataAgent",
-                  deepThink: false,
-                })
-              }
-            />
+          <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+            <div className="mx-auto w-full max-w-[860px]">
+              <GeneralInput
+                placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
+                showBtn={false}
+                size="medium"
+                disabled={loading}
+                product={currentProduct}
+                send={(info) =>
+                  sendDataMessage({
+                    ...info,
+                    outputStyle: "dataAgent",
+                    deepThink: false,
+                  })
+                }
+              />
+            </div>
           </div>
         </div>
       </div>

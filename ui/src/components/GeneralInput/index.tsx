@@ -260,7 +260,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const currentModeTone = MODE_TONES[currentModeOption.key];
   const visibleOutputTone = OUTPUT_TONES[visibleOutputProduct.type] ?? OUTPUT_TONES.html;
   const canSend = Boolean(question.trim()) && !disabled;
-  const showOutputSelector = showBtn && !isDataAgent && visibleMode !== "quick";
+  const showOutputSelector = showBtn && visibleMode !== "quick";
+  const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
 
   const handleSelectionChange = (nextProduct: CHAT.Product, nextDeepThink: boolean) => {
     onSelectionChange?.({
@@ -406,11 +407,11 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        aria-pressed={!isDataAgent}
+                        aria-pressed={true}
                         disabled={disabled}
-                        className={chipButtonClassName(!isDataAgent, disabled)}
+                        className={chipButtonClassName(true, disabled)}
                       >
-                        <span className={chipIconWrapClassName(currentModeTone, !isDataAgent)}>
+                        <span className={chipIconWrapClassName(currentModeTone, true)}>
                           <CurrentModeIcon className="size-4" />
                         </span>
                         <span className="truncate">{currentModeOption.label}</span>
@@ -428,7 +429,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       <div className={menuTitleClassName}>推理模式</div>
                       <div className="space-y-1">
                         {MODE_OPTIONS.map((option) => {
-                          const isActive = option.key === visibleMode && !isDataAgent;
+                          const isActive = option.key === visibleMode;
                           const tone = MODE_TONES[option.key];
                           return (
                             <button
@@ -461,11 +462,11 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          aria-pressed={showOutputSelector}
-                          disabled={disabled}
-                          className={chipButtonClassName(showOutputSelector, disabled)}
+                          aria-pressed={!isDataAgent}
+                          disabled={disabled || isDataAgent}
+                          className={chipButtonClassName(!isDataAgent, disabled || isDataAgent)}
                         >
-                          <span className={chipIconWrapClassName(visibleOutputTone, showOutputSelector)}>
+                          <span className={chipIconWrapClassName(visibleOutputTone, !isDataAgent)}>
                             <i className={cn("font_family text-[14px]", visibleOutputProduct.img)} />
                           </span>
                           <span className="truncate">{getProductLabel(visibleOutputProduct.name)}</span>
@@ -513,18 +514,23 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     </DropdownMenu>
                   ) : null}
 
-                  <button
-                    type="button"
-                    aria-pressed={isDataAgent}
-                    disabled={disabled}
-                    className={chipButtonClassName(isDataAgent, disabled)}
-                    onClick={() => handleSelectionChange(DATA_AGENT_PRODUCT, false)}
-                  >
-                    <span className={chipIconWrapClassName(DATA_AGENT_TONE, isDataAgent)}>
-                      <BarChart3Icon className="size-4" />
-                    </span>
-                    <span className="truncate">智能问数</span>
-                  </button>
+                  {showDataAgentToggle ? (
+                    <button
+                      type="button"
+                      aria-pressed={isDataAgent}
+                      disabled={disabled}
+                      className={chipButtonClassName(isDataAgent, disabled)}
+                      onClick={() => {
+                        if (visibleMode === "quick" && !isDataAgent) return;
+                        handleSelectionChange(DATA_AGENT_PRODUCT, false);
+                      }}
+                    >
+                      <span className={chipIconWrapClassName(DATA_AGENT_TONE, isDataAgent)}>
+                        <BarChart3Icon className="size-4" />
+                      </span>
+                      <span className="truncate">智能问数</span>
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </PromptInputTools>

@@ -397,7 +397,7 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
         <div className="mt-6 w-full">
-          <Reasoning isStreaming={chat.loading}>
+          <Reasoning isStreaming={chat.loading} defaultOpen>
             <ReasoningTrigger />
             <ReasoningContent>{thoughtText}</ReasoningContent>
           </Reasoning>
