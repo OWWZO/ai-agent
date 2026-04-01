@@ -1,9 +1,8 @@
 package org.wwz.ai.domain.agent.reactor.config;
 
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
-import com.alibaba.fastjson2.TypeReference;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,49 +20,49 @@ public class ReactorConfig {
     private Map<String, String> plannerSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.planner.system_prompt:{}}")
     public void setPlannerSystemPromptMap(String list) {
-        plannerSystemPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        plannerSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> plannerNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.planner.next_step_prompt:{}}")
     public void setPlannerNextStepPromptMap(String list) {
-        plannerNextStepPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        plannerNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> executorSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.system_prompt:{}}")
     public void setExecutorSystemPromptMap(String list) {
-        executorSystemPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        executorSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> executorNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.next_step_prompt:{}}")
     public void setExecutorNextStepPromptMap(String list) {
-        executorNextStepPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        executorNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> executorSopPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.sop_prompt:{}}")
     public void setExecutorSopPromptMap(String list) {
-        executorSopPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        executorSopPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> reactSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.react.system_prompt:{}}")
     public void setReactSystemPromptMap(String list) {
-        reactSystemPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        reactSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
     private Map<String, String> reactNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.react.next_step_prompt:{}}")
     public void setReactNextStepPromptMap(String list) {
-        reactNextStepPromptMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        reactNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 
@@ -175,7 +174,7 @@ public class ReactorConfig {
     private Map<String, String> multiAgentToolListMap = new HashMap<>();
     @Value("${autobots.autoagent.tool_list:{}}")
     public void setMultiAgentToolList(String list) {
-        multiAgentToolListMap = JSONObject.parseObject(list, new TypeReference<Map<String, String>>() {
+        multiAgentToolListMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
         });
     }
 

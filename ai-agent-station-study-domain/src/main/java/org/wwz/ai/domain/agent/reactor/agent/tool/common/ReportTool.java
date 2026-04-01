@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.reactor.agent.tool.common;
 
 
-import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;

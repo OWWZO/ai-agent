@@ -5,8 +5,8 @@ package org.wwz.ai.domain.agent.reactor.agent.tool;
  * 工具集合类 - 管理可用的工具
  */
 
-import com.alibaba.fastjson2.JSONObject;
-import com.alibaba.fastjson2.annotation.JSONField;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.annotation.JSONField;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;

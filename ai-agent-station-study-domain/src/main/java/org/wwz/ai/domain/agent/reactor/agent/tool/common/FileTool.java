@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.reactor.agent.tool.common;
 
-import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
@@ -87,7 +87,7 @@ public class FileTool implements BaseTool {
                 return getFile(fileRequest, true);
             }
         } catch (Exception e) {
-            log.error("{} file tool error", agentContext.getRequestId(), e);
+            log.error("{} file tool error, input:{}", agentContext.getRequestId(), JSON.toJSONString(input), e);
         }
         return null;
     }
@@ -143,20 +143,27 @@ public class FileTool implements BaseTool {
         if (!fileRequest.getFileName().contains(".")) {
             fileRequest.setFileName(fileRequest.getFileName() + ".md");
         }
-        RequestBody body = RequestBody.create(JSON.toJSONString(fileRequest), mediaType);
+        String requestJson = JSON.toJSONString(fileRequest);
+        RequestBody body = RequestBody.create(requestJson, mediaType);
         Request request = new Request.Builder()
                 .url(url)
                 .post(body)
                 .addHeader("Content-Type", "application/json")
                 .build();
         try {
-            log.info("{} file tool upload request {}", agentContext.getRequestId(), JSON.toJSONString(fileRequest));
+            log.info("{} file tool upload request {}", agentContext.getRequestId(), requestJson);
             Response response = client.newCall(request).execute();
-            if (!response.isSuccessful() || response.body() == null) {
-                log.error("{} upload file faied", agentContext.getRequestId());
+            String result = response.body() != null ? response.body().string() : null;
+            if (!response.isSuccessful()) {
+                log.error("{} upload file failed, code:{}, request:{}, response:{}",
+                        agentContext.getRequestId(), response.code(), requestJson, result);
                 return null;
             }
-            String result = response.body().string();
+            if (result == null) {
+                log.error("{} upload file failed, empty response body, request:{}",
+                        agentContext.getRequestId(), requestJson);
+                return null;
+            }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool upload response {}", agentContext.getRequestId(), result);
             // 构建前端格式
@@ -222,20 +229,29 @@ public class FileTool implements BaseTool {
                 .build();
         // 适配多轮对话
         getFileRequest.setRequestId(agentContext.getSessionId());
-        RequestBody body = RequestBody.create(JSON.toJSONString(getFileRequest), mediaType);
+        String requestJson = JSON.toJSONString(getFileRequest);
+        RequestBody body = RequestBody.create(requestJson, mediaType);
         Request request = new Request.Builder()
                 .url(url)
                 .post(body)
                 .addHeader("Content-Type", "application/json")
                 .build();
         try {
-            log.info("{} file tool get request {}", agentContext.getRequestId(), JSON.toJSONString(getFileRequest));
+            log.info("{} file tool get request {}", agentContext.getRequestId(), requestJson);
             Response response = client.newCall(request).execute();
-            if (!response.isSuccessful() || response.body() == null) {
+            String result = response.body() != null ? response.body().string() : null;
+            if (!response.isSuccessful()) {
+                log.error("{} get file failed, code:{}, request:{}, response:{}",
+                        agentContext.getRequestId(), response.code(), requestJson, result);
                 String errMessage = "获取文件失败 " + fileRequest.getFileName();
                 return errMessage;
             }
-            String result = response.body().string();
+            if (result == null) {
+                log.error("{} get file failed, empty response body, request:{}",
+                        agentContext.getRequestId(), requestJson);
+                String errMessage = "获取文件失败 " + fileRequest.getFileName();
+                return errMessage;
+            }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool get response {}", agentContext.getRequestId(), result);
             // 构建前端格式
@@ -284,13 +300,13 @@ public class FileTool implements BaseTool {
                 .url(url)
                 .build();
         try (Response response = client.newCall(request).execute()) {
-            if (response.isSuccessful() && response.body() != null) {
-                return response.body().string();
-            } else {
-                String errMsg = String.format("获取文件失败, 状态码:%d", response.code());
-                log.error("{} 获取文件失败 {}", agentContext.getRequestId(), response.code());
-                return null;
+            String responseBody = response.body() != null ? response.body().string() : null;
+            if (response.isSuccessful() && responseBody != null) {
+                return responseBody;
             }
+            log.error("{} 获取文件失败, url:{}, 状态码:{}, 响应体:{}",
+                    agentContext.getRequestId(), url, response.code(), responseBody);
+            return null;
         } catch (IOException e) {
             log.error("{} 获取文件异常", agentContext.getRequestId(), e);
             return null;
