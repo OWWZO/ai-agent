@@ -81,14 +81,12 @@ export const CodeBlock = ({
   ...props
 }: CodeBlockProps) => {
   const [html, setHtml] = useState<string>("");
-  const [darkHtml, setDarkHtml] = useState<string>("");
   const mounted = useRef(false);
 
   useEffect(() => {
-    highlightCode(code, language, showLineNumbers).then(([light, dark]) => {
+    highlightCode(code, language, showLineNumbers).then(([light]) => {
       if (!mounted.current) {
         setHtml(light);
-        setDarkHtml(dark);
         mounted.current = true;
       }
     });
@@ -115,14 +113,9 @@ export const CodeBlock = ({
         </div>
         <div className="relative">
           <div
-            className="overflow-auto rounded-b-xl dark:hidden [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="overflow-auto rounded-b-xl [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: html }}
-          />
-          <div
-            className="hidden overflow-auto rounded-b-xl dark:block [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-            dangerouslySetInnerHTML={{ __html: darkHtml }}
           />
         </div>
       </div>

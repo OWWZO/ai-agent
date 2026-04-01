@@ -38,7 +38,6 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
   duration?: number;
 };
 
-const AUTO_CLOSE_DELAY = 1000;
 const MS_IN_S = 1000;
 
 export const Reasoning = memo(
@@ -62,7 +61,6 @@ export const Reasoning = memo(
       defaultProp: undefined,
     });
 
-    const [hasAutoClosed, setHasAutoClosed] = useState(false);
     const [startTime, setStartTime] = useState<number | null>(null);
 
     // Track duration when streaming starts and ends
@@ -77,18 +75,6 @@ export const Reasoning = memo(
       }
     }, [isStreaming, startTime, setDuration]);
 
-    // Auto-open when streaming starts, auto-close when streaming ends (once only)
-    useEffect(() => {
-      if (defaultOpen && !isStreaming && isOpen && !hasAutoClosed) {
-        const timer = setTimeout(() => {
-          setIsOpen(false);
-          setHasAutoClosed(true);
-        }, AUTO_CLOSE_DELAY);
-
-        return () => clearTimeout(timer);
-      }
-    }, [isStreaming, isOpen, defaultOpen, setIsOpen, hasAutoClosed]);
-
     const handleOpenChange = (newOpen: boolean) => {
       setIsOpen(newOpen);
     };
@@ -98,7 +84,7 @@ export const Reasoning = memo(
         value={{ isStreaming, isOpen, setIsOpen, duration }}
       >
         <motion.div
-          initial={{ opacity: 0.9, y: 3 }}
+          initial={{ opacity: 1, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
@@ -124,7 +110,7 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 const ThinkingIndicator = memo(() => {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">思考中</span>
+      <span className="text-xs text-foreground">思考中</span>
       <div className="flex items-center gap-0.5" aria-hidden>
         <span className="h-1 w-1 rounded-full bg-primary/60" />
         <span className="h-1 w-1 rounded-full bg-primary/80" />
@@ -141,9 +127,9 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
     return <ThinkingIndicator />;
   }
   if (duration === undefined) {
-    return <span className="text-xs text-muted-foreground">思考完成</span>;
+    return <span className="text-xs text-foreground">思考完成</span>;
   }
-  return <span className="text-xs text-muted-foreground">已思考 {duration} 秒</span>;
+  return <span className="text-xs text-foreground">已思考 {duration} 秒</span>;
 };
 
 export const ReasoningTrigger = memo(
@@ -153,7 +139,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground rounded-lg p-2 -m-2 hover:bg-muted/50",
+          "flex w-full items-center gap-2 text-foreground text-sm transition-colors hover:text-foreground rounded-lg p-2 -m-2 hover:bg-muted/50",
           className
         )}
         {...props}
@@ -201,7 +187,7 @@ export const ReasoningContent = memo(
         )}
         {...props}
       >
-        <div className="mt-4 text-sm text-muted-foreground">
+        <div className="mt-4 text-sm text-foreground">
           <MessageResponse
             isStreaming={isStreaming}
             animateByChars={false}

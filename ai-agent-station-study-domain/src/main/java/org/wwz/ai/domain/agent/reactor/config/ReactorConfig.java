@@ -174,7 +174,7 @@ public class ReactorConfig {
     private Map<String, String> multiAgentToolListMap = new HashMap<>();
     @Value("${autobots.autoagent.tool_list:{}}")
     public void setMultiAgentToolList(String list) {
-        multiAgentToolListMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
+        multiAgentToolListMap = JSON.parseObject(list, new TypeReference<>() {
         });
     }
 

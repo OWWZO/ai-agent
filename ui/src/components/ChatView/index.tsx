@@ -78,6 +78,19 @@ const cloneWorkspaceTask = (task: CHAT.Task): CHAT.Task => {
   } as CHAT.Task;
 };
 
+const getTaskStableKey = (task?: CHAT.Task) => {
+  if (!task) {
+    return "";
+  }
+
+  return (
+    task.messageId ||
+    (task.taskId && task.messageTime ? `${task.taskId}:${task.messageTime}` : "") ||
+    task.id ||
+    ""
+  );
+};
+
 const ChatView: ReactorType.FC<Props> = (props) => {
   const {
     inputInfo: inputInfoProp,
@@ -236,6 +249,30 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   useEffect(() => {
     conversationRef.current = conversation;
   }, [conversation]);
+
+  useEffect(() => {
+    setActiveTask((prevActiveTask) => {
+      if (!prevActiveTask) {
+        return prevActiveTask;
+      }
+
+      const activeTaskKey = getTaskStableKey(prevActiveTask);
+      if (!activeTaskKey) {
+        return prevActiveTask;
+      }
+
+      const matchedTask = taskList.find((task) => getTaskStableKey(task) === activeTaskKey);
+      if (matchedTask) {
+        return matchedTask;
+      }
+
+      if (getTaskStableKey(workspaceStreamTask) === activeTaskKey && workspaceStreamTask) {
+        return workspaceStreamTask;
+      }
+
+      return prevActiveTask;
+    });
+  }, [taskList, workspaceStreamTask]);
 
   useEffect(() => {
     cancelWorkspaceStreamFrame();

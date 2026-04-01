@@ -1,5 +1,4 @@
 import classNames from "classnames";
-import { motion } from "motion/react";
 
 interface LoadingSpinnerProps {
   color?: string;
@@ -24,16 +23,11 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
     <div className={classNames("flex items-center gap-2", className)}>
       <div className={classNames("relative shrink-0", sizeMap[size])}>
         {/* 外圈旋转 */}
-        <motion.div
-          className="absolute inset-0 rounded-full"
+        <div
+          className="absolute inset-0 rounded-full animate-spin"
           style={{
             background: `conic-gradient(from 0deg, transparent 0%, #4040ff 50%, transparent 100%)`,
-          }}
-          animate={{ rotate: 360 }}
-          transition={{
-            duration: 1.2,
-            repeat: Infinity,
-            ease: "linear",
+            animationDuration: "1.2s",
           }}
         />
         {/* 内圈背景 */}

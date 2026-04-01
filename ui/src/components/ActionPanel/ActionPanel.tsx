@@ -140,7 +140,13 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
           <ContentWrapper key="json">
             <ReactJsonPretty
               data={JSON.parse(toolResult?.toolResult || '{}')}
-              style={{ backgroundColor: '#000' }}
+              style={{
+                backgroundColor: "var(--chat-surface-soft)",
+                color: "var(--chat-text)",
+                border: "1px solid var(--chat-border)",
+                borderRadius: "12px",
+                padding: "12px 14px",
+              }}
             />
           </ContentWrapper>
         );
@@ -172,25 +178,8 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const shouldAutoFollowRef = useRef(true);
   const autoScrollFrameRef = useRef<number | null>(null);
   const autoScrollTargetRef = useRef(0);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const updateAutoFollowState = () => {
-      const distanceToBottom =
-        element.scrollHeight - element.scrollTop - element.clientHeight;
-      // 只有用户明确滚离底部较远时才停止跟随，避免流式内容快速增长时误判。
-      shouldAutoFollowRef.current = distanceToBottom < 240;
-    };
-
-    updateAutoFollowState();
-    element.addEventListener("scroll", updateAutoFollowState, { passive: true });
-
-    return () => {
-      element.removeEventListener("scroll", updateAutoFollowState);
-    };
-  }, []);
+  const programmaticScrollRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
 
   const cancelAutoScrollFrame = useMemoizedFn(() => {
     if (autoScrollFrameRef.current !== null) {
@@ -198,6 +187,60 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       autoScrollFrameRef.current = null;
     }
   });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const resumeFollowThreshold = 32;
+
+    const updateAutoFollowState = () => {
+      if (programmaticScrollRef.current) {
+        lastScrollTopRef.current = element.scrollTop;
+        return;
+      }
+
+      const currentScrollTop = element.scrollTop;
+      const distanceToBottom =
+        element.scrollHeight - currentScrollTop - element.clientHeight;
+      const isBackToBottom = distanceToBottom <= resumeFollowThreshold;
+      const isUserScrollingUp = currentScrollTop < lastScrollTopRef.current - 1;
+
+      // 用户主动往上翻历史时，立即停止自动跟随。
+      if (isUserScrollingUp) {
+        shouldAutoFollowRef.current = false;
+        cancelAutoScrollFrame();
+      }
+
+      // 用户自己滑回到底部后，恢复自动跟随。
+      if (isBackToBottom) {
+        shouldAutoFollowRef.current = true;
+      }
+
+      lastScrollTopRef.current = currentScrollTop;
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY >= 0) {
+        return;
+      }
+
+      // 滚轮向上说明用户想看更早内容，优先尊重用户操作。
+      shouldAutoFollowRef.current = false;
+      programmaticScrollRef.current = false;
+      cancelAutoScrollFrame();
+    };
+
+    lastScrollTopRef.current = element.scrollTop;
+    updateAutoFollowState();
+    element.addEventListener("wheel", handleWheel, { passive: true });
+    element.addEventListener("scroll", updateAutoFollowState, { passive: true });
+
+    return () => {
+      element.removeEventListener("wheel", handleWheel);
+      element.removeEventListener("scroll", updateAutoFollowState);
+    };
+  }, [cancelAutoScrollFrame]);
 
   const animateAutoScroll = useMemoizedFn(() => {
     if (autoScrollFrameRef.current !== null) {
@@ -209,6 +252,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         autoScrollFrameRef.current = null;
         const element = ref.current;
         if (!element || !shouldAutoFollowRef.current) {
+          programmaticScrollRef.current = false;
           return;
         }
 
@@ -218,6 +262,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
 
         if (Math.abs(delta) <= 0.5) {
           element.scrollTop = target;
+          programmaticScrollRef.current = false;
           return;
         }
 
@@ -236,10 +281,14 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     if (!element || !shouldAutoFollowRef.current) return;
 
     autoScrollTargetRef.current = Math.max(0, element.scrollHeight - element.clientHeight);
+    programmaticScrollRef.current = true;
 
     if (immediate) {
       cancelAutoScrollFrame();
       element.scrollTop = autoScrollTargetRef.current;
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
       return;
     }
 
@@ -258,6 +307,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   useEffect(() => {
     return () => {
       cancelAutoScrollFrame();
+      programmaticScrollRef.current = false;
     };
   }, [cancelAutoScrollFrame]);
 

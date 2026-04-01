@@ -20,11 +20,11 @@ const DataDialogue: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {chat.think ? (
+      {(chat.loading || chat.think) ? (
         <div className="mt-6 w-full">
           <Reasoning isStreaming={chat.loading} defaultOpen>
             <ReasoningTrigger />
-            <ReasoningContent>{chat.think}</ReasoningContent>
+            <ReasoningContent>{chat.think || " "}</ReasoningContent>
           </Reasoning>
         </div>
       ) : null}
@@ -56,17 +56,6 @@ const DataDialogue: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {chat.loading && !chat.think && !chat.chartData && !chat.error ? (
-        <div className="mt-6 flex w-full justify-start">
-          <Message from="assistant" className="w-full max-w-full">
-            <MessageContent>
-              <div className="thinking-shimmer text-[15px] font-medium tracking-[0.02em] text-muted-foreground">
-                Thinking
-              </div>
-            </MessageContent>
-          </Message>
-        </div>
-      ) : null}
     </div>
   );
 };

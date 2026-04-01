@@ -62,13 +62,23 @@ public class McpTool implements BaseTool {
 
     public String listTool(String mcpServerUrl) {
         try {
+
+            //获取reactor配置
             ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+
+            //构建通用mcp客户端请求路径
             String mcpClientUrl = reactorConfig.getMcpClientUrl() + "/v1/tool/list";
+
+            //构建请求参数
             McpToolRequest mcpToolRequest = McpToolRequest.builder()
                     .server_url(mcpServerUrl)
                     .build();
+
+            //发送请求
             String response = OkHttpUtil.postJson(mcpClientUrl, JSON.toJSONString(mcpToolRequest), null, 30L);
+
             log.info("list tool request: {} response: {}", JSON.toJSONString(mcpToolRequest), response);
+
             return response;
         } catch (Exception e) {
             log.error("{} list tool error", agentContext.getRequestId(), e);

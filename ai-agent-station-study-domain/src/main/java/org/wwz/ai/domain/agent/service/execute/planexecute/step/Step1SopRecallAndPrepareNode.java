@@ -96,21 +96,30 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         }
     }
 
+    //TODO 提炼到抽象支持
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
 
+        //智能问数模式
         if ("dataAgent".equals(request.getOutputStyle())) {
+            //报告工具
             ReportTool htmlTool = new ReportTool();
             htmlTool.setAgentContext(agentContext);
             toolCollection.addTool(htmlTool);
+
+            //数据分析工具
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             dataAnalysisTool.setAgentContext(agentContext);
             toolCollection.addTool(dataAnalysisTool);
         } else {
+            //深度思考/深度研究模式
+
+            //文件工具
             FileTool fileTool = new FileTool();
             fileTool.setAgentContext(agentContext);
             toolCollection.addTool(fileTool);
+
             List<String> agentToolList = Arrays.asList(reactorConfig.getMultiAgentToolListMap()
                     .getOrDefault("default", "search,code,report").split(","));
             if (!agentToolList.isEmpty()) {
@@ -147,6 +156,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 if (resp.getIntValue("code") != 200) continue;
                 JSONArray data = resp.getJSONArray("data");
                 if (data == null || data.isEmpty()) continue;
+
+                //逐个加入获取到的mcp工具
                 for (int i = 0; i < data.size(); i++) {
                     JSONObject tool = data.getJSONObject(i);
                     toolCollection.addMcpTool(

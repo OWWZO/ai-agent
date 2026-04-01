@@ -101,21 +101,30 @@ public class OkHttpUtil {
      */
     public static String postJson(String url, String jsonParams, Map<String, String> headers, Long timeout) throws IOException {
         OkHttpClient client = createClient(timeout, timeout, timeout);
+
         RequestBody body = RequestBody.create(jsonParams, JSON);
+
+        //构建请求
         Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
                 .post(body);
+
+        //构建请求的头
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
                 requestBuilder.addHeader(entry.getKey(), entry.getValue());
             }
         }
+
+        //实体化请求
         Request request = requestBuilder.build();
+
         try (Response response = client.newCall(request).execute()) {
             if (response.isSuccessful() && response.body() != null) {
                 return response.body().string();
             }
         }
+
         return null;
     }
 
