@@ -1,5 +1,7 @@
 package org.wwz.ai.config;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -24,14 +26,14 @@ public class DataSourceConfig {
     @Bean("mysqlDataSource")
     @Primary
     public DataSource mysqlDataSource(@Value("${spring.datasource.mysql.driver-class-name}") String driverClassName,
-                                        @Value("${spring.datasource.mysql.url}") String url,
-                                        @Value("${spring.datasource.mysql.username}") String username,
-                                        @Value("${spring.datasource.mysql.password}") String password,
-                                        @Value("${spring.datasource.mysql.hikari.maximum-pool-size:10}") int maximumPoolSize,
-                                        @Value("${spring.datasource.mysql.hikari.minimum-idle:5}") int minimumIdle,
-                                        @Value("${spring.datasource.mysql.hikari.idle-timeout:30000}") long idleTimeout,
-                                        @Value("${spring.datasource.mysql.hikari.connection-timeout:30000}") long connectionTimeout,
-                                        @Value("${spring.datasource.mysql.hikari.max-lifetime:1800000}") long maxLifetime) {
+                                      @Value("${spring.datasource.mysql.url}") String url,
+                                      @Value("${spring.datasource.mysql.username}") String username,
+                                      @Value("${spring.datasource.mysql.password}") String password,
+                                      @Value("${spring.datasource.mysql.hikari.maximum-pool-size:10}") int maximumPoolSize,
+                                      @Value("${spring.datasource.mysql.hikari.minimum-idle:5}") int minimumIdle,
+                                      @Value("${spring.datasource.mysql.hikari.idle-timeout:30000}") long idleTimeout,
+                                      @Value("${spring.datasource.mysql.hikari.connection-timeout:30000}") long connectionTimeout,
+                                      @Value("${spring.datasource.mysql.hikari.max-lifetime:1800000}") long maxLifetime) {
         // 连接池配置
         HikariDataSource dataSource = new HikariDataSource();
         dataSource.setDriverClassName(driverClassName);
@@ -51,8 +53,10 @@ public class DataSourceConfig {
 
     @Bean("sqlSessionFactory")
     public SqlSessionFactory sqlSessionFactory(@Qualifier("mysqlDataSource") DataSource mysqlDataSource) throws Exception {
+        // 使用 MyBatis-Plus 的 SqlSessionFactory，确保 BaseMapper 通用方法能正确注入
         MybatisSqlSessionFactoryBean sqlSessionFactoryBean = new MybatisSqlSessionFactoryBean();
         sqlSessionFactoryBean.setDataSource(mysqlDataSource);
+        sqlSessionFactoryBean.setGlobalConfig(buildMybatisPlusGlobalConfig());
 
         // 设置MyBatis配置文件位置
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
@@ -62,6 +66,20 @@ public class DataSourceConfig {
         sqlSessionFactoryBean.setMapperLocations(resolver.getResources("classpath:/mybatis/mapper/*.xml"));
 
         return Objects.requireNonNull(sqlSessionFactoryBean.getObject());
+    }
+
+    /**
+     * 显式指定 MyBatis-Plus 全局配置，避免逻辑删除默认值与库表约定不一致。
+     */
+    private GlobalConfig buildMybatisPlusGlobalConfig() {
+        GlobalConfig globalConfig = new GlobalConfig();
+        GlobalConfig.DbConfig dbConfig = new GlobalConfig.DbConfig();
+        dbConfig.setIdType(IdType.AUTO);
+        dbConfig.setLogicDeleteField("yn");
+        dbConfig.setLogicDeleteValue("0");
+        dbConfig.setLogicNotDeleteValue("1");
+        globalConfig.setDbConfig(dbConfig);
+        return globalConfig;
     }
 
     @Bean("sqlSessionTemplate")
@@ -104,3 +122,4 @@ public class DataSourceConfig {
     }
 
 }
+

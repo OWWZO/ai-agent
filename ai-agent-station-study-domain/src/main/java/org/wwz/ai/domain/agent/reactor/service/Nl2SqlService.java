@@ -76,7 +76,7 @@ public class Nl2SqlService {
 
     public String replaceFirstMatchedOrThrow(String input, List<String> codeList) {
         if (input == null || codeList == null || codeList.isEmpty()) {
-            throw new IllegalArgumentException("nl2sql返回对象为空");
+            throw new IllegalArgumentException("模型编码列表为空，无法替换 nl2sql 结果中的模型占位符");
         }
 
         List<Pattern> patterns = codeList.stream()

@@ -17,6 +17,6 @@ public class ChatModelInfo implements Serializable {
     private String name;
     private String usePrompt;
     private String businessPrompt;
-    @TableLogic
+    @TableLogic(value = "1", delval = "0")
     private Integer yn;
 }

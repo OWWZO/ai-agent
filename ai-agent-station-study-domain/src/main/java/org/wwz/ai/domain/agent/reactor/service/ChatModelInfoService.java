@@ -67,12 +67,65 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
         List<DataAgentModelConfig> tableList = dataAgentConfig.getModelList();
         if (CollectionUtils.isEmpty(tableList)) {
             log.warn("dataAgent.tableList is empty");
+            return;
+        }
+        if (hasActiveModelMetadata(tableList)) {
+            log.info("检测到问数模型元数据已存在，跳过本次初始化");
+            return;
         }
         for (DataAgentModelConfig modelConfig : tableList) {
             List<TableColumn> tableSchema = getModelSchema(modelConfig);
             Map<String, Set<String>> fewShotMap = queryModelFewShot(modelConfig, tableSchema);
             saveModelInfo(modelConfig, tableSchema, fewShotMap);
         }
+    }
+
+    /**
+     * 检查当前是否已存在完整有效的模型元数据。
+     */
+    private boolean hasActiveModelMetadata(List<DataAgentModelConfig> tableList) {
+        List<ChatModelInfo> modelList = listDistinctModels();
+        if (CollectionUtils.isEmpty(modelList)) {
+            return false;
+        }
+        Map<String, Long> schemaCountMap = chatModelSchemaService.listDistinctSchemas().stream()
+                .collect(Collectors.groupingBy(ChatModelSchema::getModelCode, Collectors.counting()));
+        Map<String, ChatModelInfo> modelMap = modelList.stream()
+                .collect(Collectors.toMap(ChatModelInfo::getCode, model -> model, (left, right) -> left));
+        for (DataAgentModelConfig modelConfig : tableList) {
+            ChatModelInfo modelInfo = modelMap.get(modelConfig.getId());
+            if (modelInfo == null) {
+                return false;
+            }
+            if (schemaCountMap.getOrDefault(modelConfig.getId(), 0L) <= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 按模型编码去重，只保留最新一条有效模型定义。
+     */
+    public List<ChatModelInfo> listDistinctModels() {
+        List<ChatModelInfo> modelList = lambdaQuery()
+                .orderByDesc(ChatModelInfo::getId)
+                .list();
+        Map<String, ChatModelInfo> modelMap = new LinkedHashMap<>();
+        for (ChatModelInfo modelInfo : modelList) {
+            modelMap.putIfAbsent(modelInfo.getCode(), modelInfo);
+        }
+        return new ArrayList<>(modelMap.values());
+    }
+
+    /**
+     * 清理同一模型编码下的历史元数据，避免重复初始化。
+     */
+    public void cleanModelMetadata(String modelCode) {
+        LambdaQueryWrapper<ChatModelInfo> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ChatModelInfo::getCode, modelCode);
+        remove(queryWrapper);
+        chatModelSchemaService.cleanModelSchema(modelCode);
     }
 
 
@@ -123,6 +176,7 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
     public ChatModelInfo saveModelInfo(DataAgentModelConfig modelConfig, List<TableColumn> tableSchema, Map<String, Set<String>> fewShotMap) throws SQLException, ExecutionException, InterruptedException {
         ChatModelInfo modelInfo = new ChatModelInfo();
         String modelCode = modelConfig.getId();
+        cleanModelMetadata(modelCode);
         modelInfo.setCode(modelCode);
         modelInfo.setName(modelConfig.getName());
         modelInfo.setContent(modelConfig.getContent());
@@ -230,8 +284,8 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
     }
 
     public List<ChatModelInfoDto> queryAllModelsWithSchema() {
-        List<ChatModelInfo> modelList = list();
-        List<ChatModelSchema> schemaList = chatModelSchemaService.list();
+        List<ChatModelInfo> modelList = listDistinctModels();
+        List<ChatModelSchema> schemaList = chatModelSchemaService.listDistinctSchemas();
         List<ChatSchemaDto> schemaDtoList = new ArrayList<>();
         for (ChatModelSchema schema : schemaList) {
             ChatSchemaDto dto = new ChatSchemaDto();
@@ -255,9 +309,10 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
     }
 
     public QueryResult previewData(String modelCode) throws SQLException {
-        LambdaQueryWrapper<ChatModelInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ChatModelInfo::getCode, modelCode);
-        ChatModelInfo modelInfo = getOne(queryWrapper);
+        ChatModelInfo modelInfo = listDistinctModels().stream()
+                .filter(item -> StringUtils.equals(item.getCode(), modelCode))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("模型不存在:" + modelCode));
         String sql = "";
         if ("table".equalsIgnoreCase(modelInfo.getType())) {
             sql += "SELECT * FROM " + modelInfo.getContent();

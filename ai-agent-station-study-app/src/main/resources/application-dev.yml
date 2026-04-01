@@ -36,6 +36,15 @@ spring:
         max-lifetime: 1800000 #此属性控制池中连接的最长生命周期，值0表示无限生命周期，默认1800000即30分钟
         connection-timeout: 30000 #数据库连接超时时间,默认30秒，即30000
         connection-test-query: SELECT 1
+    query:
+      # 智能问数专用数据源，独立于业务库 mysqlDataSource
+      type: mysql
+      host: 127.0.0.1
+      port: 3306
+      schema: ai-agent-station
+      username: root
+      password: 123456
+      url: jdbc:mysql://127.0.0.1:3306/ai-agent-station?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai&useSSL=true
     pgvector:
       driver-class-name: org.postgresql.Driver
       username: postgres
@@ -107,6 +116,17 @@ logging:
   level:
     root: info
   config: classpath:logback-spring.xml
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: yn
+      logic-delete-value: 0
+      logic-not-delete-value: 1
 
 llm:
   default:
@@ -384,19 +404,22 @@ Assistant：现在需要在上一步列举出的11、22、33、44、55、66、77
       port: 443
       apiKey: key
     db-config:
-      type: h2
-      host:
-      port: 0
-      schema: reactor
-      username: sa
-      password:
+      # 参考 jd-agent：问数链路通过独立 db-config 连接问数库，不复用业务库 mysqlDataSource
+      type: ${spring.datasource.query.type}
+      url: ${spring.datasource.query.url}
+      host: ${spring.datasource.query.host}
+      port: ${spring.datasource.query.port}
+      schema: ${spring.datasource.query.schema}
+      username: ${spring.datasource.query.username}
+      password: ${spring.datasource.query.password}
+      key: reactor-query-datasource
     model-list:
       - name: 超市销售明细数据
         id: t_qtpbgamccmrctthlurauclckq
         type: table
         content: sales_data
         remark: 超市销售明细数据
-        business-prompt: order_date为日维度数据，如果统计月份要使用FORMATDATETIME(`order_date`, 'yyyy-MM')
+        business-prompt: order_date为日维度数据，如果统计月份要使用DATE_FORMAT(`order_date`, '%Y-%m')
         ignore-fields:
         default-recall-fields:
         analyze-suggest-fields:
@@ -408,7 +431,7 @@ Assistant：现在需要在上一步列举出的11、22、33、44、55、66、77
         type: sql
         content: select  `order_date` as `采购日期`,product_id as `商品ID`,product_name as `商品名称`,category as `商品类型`,sub_category as `商品子类型` , quantity as `采购量` , sales as `采购总价格` from sales_data
         remark: 包含商品采购日期，商品类型，商品子类型，采购数量量以及采购总价格等信息
-        business-prompt: 采购日期为日维度数据，如果统计月份要使用FORMATDATETIME(`采购日期`, 'yyyy-MM')
+        business-prompt: 采购日期为日维度数据，如果统计月份要使用DATE_FORMAT(`采购日期`, '%Y-%m')
         ignore-fields:
         default-recall-fields:
         analyze-suggest-fields:

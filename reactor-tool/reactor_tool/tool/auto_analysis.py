@@ -15,11 +15,12 @@ from jinja2 import Template
 import pandas as pd
 
 from smolagents import PythonInterpreterTool, Tool, ActionStep, ActionOutput, ToolCall, FinalAnswerStep
-from smolagents import CodeAgent, OpenAIServerModel
+from smolagents import CodeAgent
 
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.prompt_util import get_prompt
+from reactor_tool.tool.code_interpreter import RawOpenAICompatHTTPModel
 
 from reactor_tool.model.context import AnalysisContext
 
@@ -157,7 +158,7 @@ def create_agent(
     model = os.getenv("ANALYSIS_MODEL", "gpt-4.1")
     base_url = os.getenv("OPENAI_BASE_URL")
     api_key = os.getenv("OPENAI_API_KEY")
-    _model = OpenAIServerModel(
+    _model = RawOpenAICompatHTTPModel(
         model_id=model,
         api_base=base_url,
         api_key=api_key,

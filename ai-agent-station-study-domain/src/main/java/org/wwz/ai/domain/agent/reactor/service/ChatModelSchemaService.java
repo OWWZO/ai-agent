@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
 import org.wwz.ai.domain.agent.reactor.data.TableColumn;
@@ -88,11 +89,13 @@ public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, C
     }
 
     public List<ChatModelSchema> queryDefaultRecallFields() {
-        return lambdaQuery().eq(ChatModelSchema::getDefaultRecall, 1).list();
+        return listDistinctSchemas().stream()
+                .filter(schema -> schema.getDefaultRecall() == 1)
+                .collect(Collectors.toList());
     }
 
     public List<ChatSchemaDto> queryAllSchemaDto() {
-        List<ChatModelSchema> list = list();
+        List<ChatModelSchema> list = listDistinctSchemas();
         List<ChatSchemaDto> dtoList = new ArrayList<>();
         for (ChatModelSchema schema : list) {
             ChatSchemaDto dto = new ChatSchemaDto();
@@ -100,6 +103,30 @@ public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, C
             dtoList.add(dto);
         }
         return dtoList;
+    }
+
+    /**
+     * 按模型编码清理历史 schema，避免应用每次启动重复初始化后越积越多。
+     */
+    public void cleanModelSchema(String modelCode) {
+        LambdaQueryWrapper<ChatModelSchema> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ChatModelSchema::getModelCode, modelCode);
+        remove(queryWrapper);
+    }
+
+    /**
+     * 按 modelCode + columnId 去重，只保留最新一条有效 schema。
+     */
+    public List<ChatModelSchema> listDistinctSchemas() {
+        List<ChatModelSchema> schemaList = lambdaQuery()
+                .orderByDesc(ChatModelSchema::getId)
+                .list();
+        Map<String, ChatModelSchema> schemaMap = new LinkedHashMap<>();
+        for (ChatModelSchema schema : schemaList) {
+            String key = schema.getModelCode() + "::" + schema.getColumnId();
+            schemaMap.putIfAbsent(key, schema);
+        }
+        return new ArrayList<>(schemaMap.values());
     }
 
     public Set<String> getIgnoreFields(String ignoreFields) {

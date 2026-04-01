@@ -142,7 +142,7 @@ public class DataAgentService {
 
         if (CollectionUtils.isEmpty(recallSchema)) {
             log.warn("{},{} 召回schema为空，读取数据库", baseNl2SqlReq.getTraceId(), baseNl2SqlReq.getRequestId());
-            List<ChatModelSchema> list = chatModelSchemaService.list();
+            List<ChatModelSchema> list = chatModelSchemaService.listDistinctSchemas();
             List<ChatSchemaDto> dtoList = new ArrayList<>();
             for (ChatModelSchema schema : list) {
                 ChatSchemaDto dto = new ChatSchemaDto();
@@ -202,7 +202,10 @@ public class DataAgentService {
                 Locale.CHINA
         );
         nl2SQLReq.setCurrentDateInfo(String.format(nl2SQLReq.getCurrentDateInfo(), LocalDate.now(), week));
-        List<ChatModelInfo> modelList = chatModelInfoService.list();
+        List<ChatModelInfo> modelList = chatModelInfoService.listDistinctModels();
+        if (CollectionUtils.isEmpty(modelList)) {
+            throw new IllegalStateException("问数模型为空，请检查 chat_model_info 表是否存在 yn=1 的有效数据，以及 MyBatis-Plus 逻辑删除配置是否正确");
+        }
         List<String> modelCodeList = new ArrayList<>();
         nl2SQLReq.setModelCodeList(modelCodeList);
         List<ChatModelInfoDto> dtoList = new ArrayList<>();
