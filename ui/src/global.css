@@ -57,6 +57,14 @@
   --chat-border: oklch(0.88 0.008 90);
   --chat-border-strong: oklch(0.8 0.01 90);
 
+  /* JSON viewer — syntax palette (light) */
+  --json-view-inner-bg: oklch(0.98 0.006 95);
+  --json-syntax-fg: oklch(0.32 0.02 60);
+  --json-syntax-key: oklch(0.45 0.15 278);
+  --json-syntax-string: oklch(0.4 0.11 155);
+  --json-syntax-number: oklch(0.5 0.14 55);
+  --json-syntax-boolean: oklch(0.48 0.17 315);
+
   /* Editorial Shadows - refined depth */
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.02);
   --shadow-sm: 0 1px 6px oklch(0 0 0 / 0.035), 0 1px 2px oklch(0 0 0 / 0.02);
@@ -133,6 +141,14 @@
   --chat-text-soft: oklch(0.65 0.01 90);
   --chat-border: oklch(0.2 0.01 90 / 0.1);
   --chat-border-strong: oklch(0.25 0.015 90 / 0.15);
+
+  /* JSON viewer — syntax palette (dark) */
+  --json-view-inner-bg: oklch(0.14 0.02 275);
+  --json-syntax-fg: oklch(0.88 0.01 90);
+  --json-syntax-key: oklch(0.74 0.14 278);
+  --json-syntax-string: oklch(0.73 0.11 160);
+  --json-syntax-number: oklch(0.8 0.12 75);
+  --json-syntax-boolean: oklch(0.75 0.16 320);
 
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.3);
   --shadow-sm: 0 2px 8px oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.2);
@@ -1004,6 +1020,9 @@ ol {
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   color: var(--chat-text);
   background: transparent;
   padding: 0;
@@ -1018,4 +1037,10 @@ ol {
   border: 1px solid var(--chat-border);
   border-radius: 0.45rem;
   padding: 0.12rem 0.35rem;
+}
+
+.ai-chat-markdown,
+.markdown-body {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }

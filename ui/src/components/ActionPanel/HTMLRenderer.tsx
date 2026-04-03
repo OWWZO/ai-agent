@@ -1,30 +1,13 @@
 import { jumpUrl } from "@/utils";
+import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
+import { Button } from "@/components/ui/button";
 import { useBoolean } from "ahooks";
 import classNames from "classnames";
+import { Download, ExternalLink } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useState } from "react";
 import Loading from "./Loading";
 import { Empty } from "antd";
 import MarkdownRenderer from "./MarkdownRenderer";
-
-interface ToolItemProps {
-  onClick?: () => void;
-  title?: string;
-}
-
-const ToolItem: ReactorType.FC<ToolItemProps> = memo((props) => {
-  const { className, children, onClick, title } = props;
-  return (
-    <div
-      className={classNames("cursor-pointer flex w-24 h-24 items-center justify-center rounded-[4px] hover:bg-[#eee]", className)}
-      onClick={onClick}
-      title={title}
-    >
-      {children}
-    </div>
-  );
-});
-
-ToolItem.displayName = 'ToolItem';
 
 interface HTMLRendererProps {
   htmlUrl?: string;
@@ -32,9 +15,8 @@ interface HTMLRendererProps {
   showToolBar?: boolean;
   outputCode?: string;
   isStreaming?: boolean;
+  className?: string;
 }
-
-const TOOLBAR_CLASS = "absolute bottom-8 right-0 py-0 px-16 bg-[#fbfbff] h-[36px] rounded-[18px] flex items-center border-[#52649113] border-solid border-1 gap-12 text-primary";
 
 const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   const { htmlUrl, className, downloadUrl, showToolBar, outputCode, isStreaming = false } = props;
@@ -48,16 +30,37 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     }
   }, [htmlUrl, startLoading]);
 
-  const toolBar = useMemo(() => showToolBar && (
-    <div className={TOOLBAR_CLASS}>
-      <ToolItem onClick={() => jumpUrl(htmlUrl)} title="在新窗口打开">
-        <i className="font_family icon-zhengyan"></i>
-      </ToolItem>
-      <ToolItem onClick={() => jumpUrl(downloadUrl)} title="下载">
-        <i className="font_family icon-xiazai"></i>
-      </ToolItem>
-    </div>
-  ), [showToolBar, htmlUrl, downloadUrl]);
+  const headerActions = useMemo(() => {
+    if (!showToolBar || !htmlUrl) return null;
+    return (
+      <>
+        <Button
+          aria-label="在新窗口打开"
+          className="h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+          onClick={() => jumpUrl(htmlUrl)}
+          size="icon-sm"
+          title="在新窗口打开"
+          type="button"
+          variant="ghost"
+        >
+          <ExternalLink className="size-3.5" />
+        </Button>
+        {downloadUrl ? (
+          <Button
+            aria-label="下载"
+            className="h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+            onClick={() => jumpUrl(downloadUrl)}
+            size="icon-sm"
+            title="下载"
+            type="button"
+            variant="ghost"
+          >
+            <Download className="size-3.5" />
+          </Button>
+        ) : null}
+      </>
+    );
+  }, [showToolBar, htmlUrl, downloadUrl]);
 
   const content = useMemo(() => {
     if (error) {
@@ -66,15 +69,15 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     if (htmlUrl) {
       return (
         <iframe
-          className='w-full h-full'
+          className="block h-[min(60vh,520px)] w-full rounded-lg bg-[var(--chat-surface)]"
           src={htmlUrl}
+          title="HTML preview"
           onLoad={stopLoading}
           onError={() => {
-            setError('加载失败，请检查 URL 是否正确');
+            setError("加载失败，请检查 URL 是否正确");
             stopLoading();
           }}
-        >
-        </iframe>
+        />
       );
     }
     return <Empty description="暂无内容" className="mt-32" />;
@@ -84,15 +87,30 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     return <MarkdownRenderer markDownContent={outputCode} isStreaming={isStreaming} />;
   }
 
+  if (htmlUrl) {
+    return (
+      <ViewerPanelShell
+        bodyClassName="p-2 sm:p-3"
+        className={classNames(className, "relative flex min-h-0 flex-1 flex-col")}
+        headerRight={headerActions}
+        label="HTML"
+        subtitle="Preview"
+      >
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg">
+          <Loading loading={loading} className="absolute left-0 top-0 z-10 h-full w-full" />
+          {content}
+        </div>
+      </ViewerPanelShell>
+    );
+  }
+
   return (
-    <div className={classNames(className, 'relative')}>
-      <Loading loading={!!htmlUrl && loading} className="absolute left-0 top-0 w-full h-full" />
+    <div className={classNames(className, "relative")}>
       {content}
-      {toolBar}
     </div>
   );
 });
 
-HTMLRenderer.displayName = 'HTMLRenderer';
+HTMLRenderer.displayName = "HTMLRenderer";
 
 export default HTMLRenderer;

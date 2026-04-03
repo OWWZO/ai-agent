@@ -7,8 +7,8 @@ import useContent from "./useContent";
 import MarkdownRenderer from "./MarkdownRenderer";
 import TableRenderer from "./TableRenderer";
 import FileRenderer from "./FileRenderer";
-import ReactJsonPretty from "react-json-pretty";
 import SearchListRenderer from "./SearchListRenderer";
+import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
@@ -138,16 +138,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       if (useJSON) {
         return (
           <ContentWrapper key="json">
-            <ReactJsonPretty
-              data={JSON.parse(toolResult?.toolResult || '{}')}
-              style={{
-                backgroundColor: "var(--chat-surface-soft)",
-                color: "var(--chat-text)",
-                border: "1px solid var(--chat-border)",
-                borderRadius: "12px",
-                padding: "12px 14px",
-              }}
-            />
+            <JsonViewer data={JSON.parse(toolResult?.toolResult || "{}")} />
           </ContentWrapper>
         );
       }
