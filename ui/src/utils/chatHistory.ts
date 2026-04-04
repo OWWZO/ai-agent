@@ -47,60 +47,15 @@ export const createConversation = (
 };
 
 export const loadHistory = (): CHAT.ConversationHistoryStore => {
-  const fallback: CHAT.ConversationHistoryStore = {
+  return {
     version: CHAT_HISTORY_VERSION,
     conversations: [],
   };
-
-  try {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return fallback;
-    }
-    const raw = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<CHAT.ConversationHistoryStore>;
-    if (!parsed || !Array.isArray(parsed.conversations)) return fallback;
-    const conversations = pruneHistory(parsed.conversations.map((item) => normalizeConversation(item)));
-    return {
-      version: CHAT_HISTORY_VERSION,
-      conversations,
-    };
-  } catch {
-    return fallback;
-  }
 };
 
 export const saveHistory = (store: CHAT.ConversationHistoryStore): CHAT.ConversationHistoryStore => {
-  const normalizedStore: CHAT.ConversationHistoryStore = {
+  return {
     version: CHAT_HISTORY_VERSION,
     conversations: pruneHistory(store.conversations.map((item) => normalizeConversation(item))),
   };
-
-  try {
-    if (typeof window === "undefined" || !window.localStorage) {
-      return normalizedStore;
-    }
-
-    let candidates = normalizedStore.conversations;
-    while (candidates.length > 0) {
-      try {
-        const payload: CHAT.ConversationHistoryStore = {
-          version: CHAT_HISTORY_VERSION,
-          conversations: candidates,
-        };
-        window.localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(payload));
-        return payload;
-      } catch {
-        candidates = candidates.slice(0, -1);
-      }
-    }
-
-    window.localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
-    return {
-      version: CHAT_HISTORY_VERSION,
-      conversations: [],
-    };
-  } catch {
-    return normalizedStore;
-  }
 };

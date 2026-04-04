@@ -26,6 +26,91 @@ CREATE TABLE IF NOT EXISTS chat_model_schema (
   PRIMARY KEY (id)
 );
 
+-- ========================
+-- 对话历史持久化
+-- ========================
+
+CREATE TABLE IF NOT EXISTS ai_agent_conversation (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id      VARCHAR(64)  NOT NULL COMMENT '前端生成的会话UUID',
+    device_id       VARCHAR(128) NOT NULL COMMENT '匿名设备标识(fingerprint)',
+    user_id         BIGINT       NULL     COMMENT '认证用户ID(匿名时为NULL)',
+    title           VARCHAR(256) NOT NULL DEFAULT '新对话' COMMENT '会话标题',
+    agent_type      TINYINT      NOT NULL COMMENT '0=CHAT, 1=PLAN_SOLVE(深度思考), 2=REACT(深度研究)',
+    product_type    VARCHAR(32)  NOT NULL DEFAULT 'chat' COMMENT '产品形态: chat/html/docs/ppt/table',
+    message_count   INT          NOT NULL DEFAULT 0 COMMENT '消息轮数(冗余字段,避免COUNT)',
+    pinned          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否置顶',
+    last_message_preview VARCHAR(200) NULL COMMENT '最后消息预览',
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除 0:正常 1:已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_session_id (session_id),
+    KEY idx_device_id (device_id, deleted, update_time DESC),
+    KEY idx_user_id (user_id, deleted, update_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 会话表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_message (
+    id               BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    conversation_id  BIGINT       NOT NULL COMMENT 'FK -> ai_agent_conversation.id',
+    session_id       VARCHAR(64)  NOT NULL COMMENT '冗余会话ID,便于前端查询',
+    request_id       VARCHAR(64)  NOT NULL COMMENT '前端请求UUID,每轮唯一',
+    sort_order       INT          NOT NULL DEFAULT 0 COMMENT '轮次序号(0-based)',
+    query            TEXT         NOT NULL COMMENT '用户问题',
+    files_json       JSON         NULL     COMMENT '上传文件列表JSON [{name,url,type,size}]',
+    agent_type       TINYINT      NOT NULL COMMENT '0=CHAT, 1=PLAN_SOLVE, 2=REACT',
+    response         MEDIUMTEXT   NULL     COMMENT 'Chat模式: LLM纯文本回答',
+    thought          MEDIUMTEXT   NULL     COMMENT '深度思考: 推理过程文本(plan_thought)',
+    plan_json        JSON         NULL     COMMENT '深度思考: Plan对象(title/steps/stages)',
+    tasks_json       MEDIUMTEXT   NULL     COMMENT 'Task[][] 二维数组JSON(含resultMap完整数据)',
+    multi_agent_json JSON         NULL     COMMENT 'MultiAgent元数据',
+    conclusion_json  JSON         NULL     COMMENT '最终结论/摘要Task',
+    plan_list_json   JSON         NULL     COMMENT 'PlanItem[]计划列表',
+    render_snapshot_json MEDIUMTEXT NULL   COMMENT '版本化渲染快照',
+    metrics_json     JSON         NULL     COMMENT '执行指标',
+    status           TINYINT      NOT NULL DEFAULT 0 COMMENT '0=流式中,1=完成,2=错误,3=强制停止',
+    force_stop       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否强制停止',
+    started_at       DATETIME     NULL     COMMENT '流开始时间',
+    finished_at      DATETIME     NULL     COMMENT '流结束时间',
+    create_time      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除 0:正常 1:已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_request_id (request_id),
+    KEY idx_conversation_sort (conversation_id, sort_order),
+    KEY idx_session_id (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 消息表(每轮对话一行)';
+
+CREATE TABLE IF NOT EXISTS ai_agent_message_event (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    message_id      BIGINT       NOT NULL COMMENT 'FK -> ai_agent_message.id',
+    conversation_id BIGINT       NOT NULL COMMENT '冗余会话ID',
+    session_id      VARCHAR(64)  NOT NULL COMMENT '冗余sessionId',
+    request_id      VARCHAR(64)  NOT NULL COMMENT '冗余requestId',
+    seq_no          INT          NOT NULL COMMENT '单轮事件顺序',
+    event_type      VARCHAR(32)  NOT NULL COMMENT '事件类型',
+    event_sub_type  VARCHAR(32)  NULL     COMMENT '事件子类型',
+    display_area    VARCHAR(32)  NOT NULL DEFAULT 'timeline' COMMENT '展示区域',
+    task_id         VARCHAR(64)  NULL     COMMENT '关联taskId',
+    task_order      INT          NULL     COMMENT '任务内顺序',
+    message_id_ext  VARCHAR(128) NULL     COMMENT '上游messageId',
+    title           VARCHAR(256) NULL     COMMENT '显示标题',
+    content_text    MEDIUMTEXT   NULL     COMMENT '展示文本',
+    payload_json    JSON         NULL     COMMENT '原始事件负载',
+    artifact_id     BIGINT       NULL     COMMENT '二期关联artifact',
+    is_final        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否最终态',
+    status          VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'completed/partial/error',
+    started_at      DATETIME     NULL     COMMENT '开始时间',
+    ended_at        DATETIME     NULL     COMMENT '结束时间',
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    deleted         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_request_seq (request_id, seq_no),
+    KEY idx_message_id (message_id, seq_no),
+    KEY idx_conversation_id (conversation_id),
+    KEY idx_task_id (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 消息事件表';
+
 CREATE TABLE IF NOT EXISTS sales_data (
     row_id INT PRIMARY KEY COMMENT '行 ID',
     order_id VARCHAR(50) DEFAULT NULL COMMENT '订单 ID',

@@ -1,9 +1,10 @@
 import request from '@/utils/request';
 
 interface ApiResponse<T> {
-  code: number
+  code: number | string
   data: T
-  message: string
+  msg?: string
+  info?: string
 }
 
 export const api = {

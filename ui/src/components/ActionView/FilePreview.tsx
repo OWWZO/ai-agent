@@ -142,7 +142,7 @@ const FilePreview: React.FC<{
 
   const realActiveTaskIndex = useMemo(() => {
     const index = taskList?.findIndex((item) => item.id === taskItem?.id);
-    return index || 0;
+    return index !== undefined && index >= 0 ? index : 0;
   }, [taskItem?.id, taskList]);
 
   const taskLength = taskList?.length || 0;
@@ -173,8 +173,19 @@ const FilePreview: React.FC<{
       }
       if (resultMap?.messageType === "search") {
         const q = resultMap?.searchResult?.query;
-        if (typeof q === "string" && q.trim()) {
-          return `检索：${q.trim()}`;
+        if (Array.isArray(q)) {
+          const queryText = q
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
+            .join(" / ");
+          if (queryText) {
+            return `检索：${queryText}`;
+          }
+        } else if (q != null) {
+          const queryText = String(q).trim();
+          if (queryText) {
+            return `检索：${queryText}`;
+          }
         }
         return "网页检索";
       }

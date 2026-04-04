@@ -18,8 +18,38 @@ declare global {
         response?: string;
         taskStatus?: MESSAGE.MsgItem["taskStatus"];
         planList?: PlanItem[];
+        renderSnapshot?: RenderSnapshotV1;
+        timeline?: TimelineEntry[];
+        metrics?: {
+          event_count?: number;
+          status?: string;
+        };
+        startedAt?: string;
+        finishedAt?: string;
       }
     >;
+
+    export type TimelineEntry = {
+      seq: number;
+      type: string;
+      subType?: string;
+      area: string;
+      title: string;
+      content?: string;
+      taskId?: string;
+      messageIdExt?: string;
+      isFinal: boolean;
+    };
+
+    export type RenderSnapshotV1 = {
+      v: 1;
+      status: string;
+      thought?: string;
+      plan?: MESSAGE.Plan;
+      tasks?: MESSAGE.Task[][];
+      conclusion?: Task;
+      timeline: TimelineEntry[];
+    };
 
     type PlanItem = {
       name: string;

@@ -12,12 +12,10 @@ import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter
 import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
 import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
 import {
-  CHAT_HISTORY_VERSION,
   createConversation,
-  loadHistory,
   pruneHistory,
-  saveHistory,
 } from "@/utils/chatHistory";
+import { useAgentConversation } from "@/hooks/useAgentConversation";
 
 type HomeProps = Record<string, never>;
 
@@ -74,11 +72,7 @@ const formatHistoryTime = (timestamp: number) => {
 
 const createInitialState = (): InitialState => {
   const initialProduct = productList.find((item) => item.type === "html") ?? defaultProduct;
-  const loaded = loadHistory().conversations;
-  const seeded =
-    loaded.length > 0
-      ? pruneHistory(loaded)
-      : [createConversation({ productType: initialProduct.type, deepThink: false })];
+  const seeded = [createConversation({ productType: initialProduct.type, deepThink: false })];
   const latest = [...seeded].sort((a, b) => b.updatedAt - a.updatedAt)[0];
   return {
     conversations: seeded,
@@ -152,6 +146,16 @@ const CaseCard = memo((props: CaseCardProps) => {
 const Home: ReactorType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
 
+  // ---- API 会话管理（渐进式迁移）----
+  const {
+    apiMode,
+    remoteConversations,
+    loadConversationDetail,
+    createRemoteConversation,
+    deleteRemoteConversation,
+  } = useAgentConversation();
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const [conversations, setConversations] = useState<CHAT.ConversationHistory[]>(
     initialRef.current.conversations
   );
@@ -185,8 +189,14 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const hasConversationContent = useMemo(() => {
     if (!currentConversation) return false;
-    return currentConversation.chatList.length > 0 || currentConversation.dataChatList.length > 0;
-  }, [currentConversation]);
+    if (currentConversation.chatList.length > 0 || currentConversation.dataChatList.length > 0) return true;
+    // API模式下通过远程元数据判断是否有消息
+    if (apiMode) {
+      const remote = remoteConversations.find((rc) => rc.sessionId === currentConversation.sessionId);
+      return remote ? remote.messageCount > 0 : false;
+    }
+    return false;
+  }, [currentConversation, apiMode, remoteConversations]);
 
   useEffect(() => {
     if (!currentConversation) return;
@@ -198,6 +208,39 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     }
   }, [currentConversation]);
 
+  // 远程会话列表同步到本地状态
+  useEffect(() => {
+    if (!apiMode || remoteConversations.length === 0) return;
+
+    const converted: CHAT.ConversationHistory[] = remoteConversations.map((rc) => ({
+      id: rc.sessionId,
+      sessionId: rc.sessionId,
+      title: rc.title,
+      chatTitle: rc.title,
+      productType: rc.productType || "chat",
+      deepThink: rc.agentType === 1,
+      createdAt: new Date(rc.createTime).getTime(),
+      updatedAt: new Date(rc.updateTime).getTime(),
+      chatList: [],
+      dataChatList: [],
+    }));
+
+    setConversations((prev) => {
+      const remoteIds = new Set(converted.map((c) => c.sessionId));
+      const existingMap = new Map(prev.map((c) => [c.sessionId, c]));
+      // 保留已加载chatList的会话
+      const merged = converted.map((rc) => {
+        const existing = existingMap.get(rc.sessionId);
+        return existing && existing.chatList.length > 0 ? existing : rc;
+      });
+      // 保留有内容的本地独有会话
+      const localOnly = prev.filter(
+        (c) => !remoteIds.has(c.sessionId) && (c.chatList.length > 0 || c.dataChatList.length > 0)
+      );
+      return pruneHistory([...merged, ...localOnly]);
+    });
+  }, [apiMode, remoteConversations]);
+
   useEffect(() => {
     if (!conversations.length) return;
     const exists = conversations.some((item) => item.id === currentConversationId);
@@ -206,13 +249,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       setCurrentConversationId(latest.id);
     }
   }, [conversations, currentConversationId]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      saveHistory({ version: CHAT_HISTORY_VERSION, conversations });
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [conversations]);
 
   const updateConversation = useCallback(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -251,11 +287,17 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     }
 
     const next = createConversation({ productType: product.type, deepThink: false });
+    if (apiMode) {
+      // API模式下使用sessionId作为id，保持与远程数据一致
+      next.id = next.sessionId;
+      const agentType = product.type === "chat" ? 0 : next.deepThink ? 1 : 2;
+      createRemoteConversation(next.sessionId, agentType, product.type, "新对话");
+    }
     setConversations((prev) => pruneHistory([next, ...prev]));
     setCurrentConversationId(next.id);
     setInputInfo({ ...EMPTY_INPUT });
     setHistoryDrawerOpen(false);
-  }, [product.type, sortedConversations]);
+  }, [product.type, sortedConversations, apiMode, createRemoteConversation]);
 
   const onInputConsumed = useCallback(() => {
     setInputInfo({ ...EMPTY_INPUT });
@@ -289,14 +331,45 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [changeInputInfo]
   );
 
-  const handleSelectConversation = useCallback((conversationId: string) => {
-    setCurrentConversationId(conversationId);
-    setHistoryDrawerOpen(false);
-    setInputInfo({ ...EMPTY_INPUT });
-  }, []);
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      setCurrentConversationId(conversationId);
+      setHistoryDrawerOpen(false);
+      setInputInfo({ ...EMPTY_INPUT });
+
+      // API模式下懒加载会话详情
+      if (apiMode) {
+        const conv = conversations.find((c) => c.id === conversationId);
+        if (conv && conv.chatList.length === 0) {
+          const remote = remoteConversations.find((rc) => rc.sessionId === conv.sessionId);
+          if (remote && remote.messageCount > 0) {
+            setDetailLoading(true);
+            loadConversationDetail(conv.sessionId)
+              .then((chatItems) => {
+                if (chatItems.length > 0) {
+                  setConversations((prev) =>
+                    prev.map((c) =>
+                      c.id === conversationId ? { ...c, chatList: chatItems, updatedAt: Date.now() } : c
+                    )
+                  );
+                }
+              })
+              .finally(() => setDetailLoading(false));
+          }
+        }
+      }
+    },
+    [apiMode, conversations, remoteConversations, loadConversationDetail]
+  );
 
   const handleDeleteConversation = useCallback(
     (conversationId: string) => {
+      // API模式下同步删除远程会话
+      if (apiMode) {
+        const conv = conversations.find((c) => c.id === conversationId);
+        if (conv) deleteRemoteConversation(conv.sessionId);
+      }
+
       setConversations((prev) => {
         const filtered = prev.filter((item) => item.id !== conversationId);
         if (filtered.length > 0) {
@@ -309,12 +382,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         }
 
         const fallback = createConversation({ productType: product.type, deepThink: false });
+        if (apiMode) fallback.id = fallback.sessionId;
         setCurrentConversationId(fallback.id);
         setInputInfo({ ...EMPTY_INPUT });
         return [fallback];
       });
     },
-    [currentConversationId, product.type]
+    [currentConversationId, product.type, apiMode, conversations, deleteRemoteConversation]
   );
 
   const handleInputSelectionChange = useCallback(
@@ -598,6 +672,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           <div className="min-h-0 flex-1 overflow-auto">
             {!hasConversationContent && inputInfo.message.length === 0 ? (
               renderWelcome()
+            ) : detailLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-[14px] text-[var(--chat-text-soft)]">加载对话历史...</div>
+              </div>
             ) : (
               <ChatView
                 inputInfo={inputInfo}

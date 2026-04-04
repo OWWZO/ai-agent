@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { showMessage } from './utils';
+import { getDeviceId } from '@/services/agentConversation';
 
 // 创建axios实例
 const request: AxiosInstance = axios.create({
@@ -11,6 +12,8 @@ const request: AxiosInstance = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
+    // 自动附加设备标识(用于对话历史持久化)
+    config.headers['X-Device-Id'] = getDeviceId();
     return config;
   },
   (error) => {
@@ -34,13 +37,15 @@ request.interceptors.response.use(
 
     if (status === 200) {
       // 根据后端约定的数据结构处理
-      if (data.code === 200) {
+      // 兼容两种响应格式: {code:200, msg, data} 和 {code:"0000", info, data}
+      if (data.code === 200 || data.code === '0000') {
         return data.data;
-      } else if (data.code === 401) {
+      } else if (data.code === 401 || data.code === '0003') {
         noAuth(data.redirectUrl);
       } else {
-        showMessage()?.error(data.msg || '请求失败');
-        return Promise.reject(new Error(data.msg || '请求失败'));
+        const errMsg = data.msg || data.info || '请求失败';
+        showMessage()?.error(errMsg);
+        return Promise.reject(new Error(errMsg));
       }
     }
 

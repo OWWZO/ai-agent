@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao">
+
+    <resultMap id="AgentConversationMap" type="org.wwz.ai.domain.agent.reactor.entity.AgentConversation">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="device_id" property="deviceId"/>
+        <result column="user_id" property="userId"/>
+        <result column="title" property="title"/>
+        <result column="agent_type" property="agentType"/>
+        <result column="product_type" property="productType"/>
+        <result column="message_count" property="messageCount"/>
+        <result column="pinned" property="pinned"/>
+        <result column="last_message_preview" property="lastMessagePreview"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentConversation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_conversation (
+            session_id, device_id, user_id, title, agent_type, product_type,
+            message_count, pinned, create_time, update_time, deleted
+        ) VALUES (
+            #{sessionId}, #{deviceId}, #{userId}, #{title}, #{agentType}, #{productType},
+            #{messageCount}, #{pinned}, now(), now(), 0
+        )
+    </insert>
+
+    <update id="updateById" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentConversation">
+        UPDATE ai_agent_conversation
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="agentType != null">agent_type = #{agentType},</if>
+            <if test="productType != null">product_type = #{productType},</if>
+            <if test="messageCount != null">message_count = #{messageCount},</if>
+            <if test="pinned != null">pinned = #{pinned},</if>
+            <if test="lastMessagePreview != null">last_message_preview = #{lastMessagePreview},</if>
+            <if test="userId != null">user_id = #{userId},</if>
+            update_time = now()
+        </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="incrementMessageCount">
+        UPDATE ai_agent_conversation
+        SET message_count = message_count + 1, update_time = now()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="softDeleteBySessionId">
+        UPDATE ai_agent_conversation
+        SET deleted = 1, update_time = now()
+        WHERE session_id = #{sessionId} AND device_id = #{deviceId} AND deleted = 0
+    </update>
+
+    <select id="queryById" parameterType="java.lang.Long" resultMap="AgentConversationMap">
+        SELECT * FROM ai_agent_conversation WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="queryBySessionId" parameterType="java.lang.String" resultMap="AgentConversationMap">
+        SELECT * FROM ai_agent_conversation WHERE session_id = #{sessionId} AND deleted = 0
+    </select>
+
+    <select id="queryByDeviceId" resultMap="AgentConversationMap">
+        SELECT * FROM ai_agent_conversation
+        WHERE device_id = #{deviceId} AND deleted = 0
+        ORDER BY pinned DESC, update_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByDeviceId" resultType="int">
+        SELECT COUNT(*) FROM ai_agent_conversation
+        WHERE device_id = #{deviceId} AND deleted = 0
+    </select>
+
+    <select id="queryByUserIdOrDeviceId" resultMap="AgentConversationMap">
+        SELECT * FROM ai_agent_conversation
+        WHERE deleted = 0
+          AND (user_id = #{userId} OR device_id = #{deviceId})
+        ORDER BY pinned DESC, update_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByUserIdOrDeviceId" resultType="int">
+        SELECT COUNT(*) FROM ai_agent_conversation
+        WHERE deleted = 0
+          AND (user_id = #{userId} OR device_id = #{deviceId})
+    </select>
+
+    <select id="queryAll" resultMap="AgentConversationMap">
+        SELECT * FROM ai_agent_conversation
+        WHERE deleted = 0
+        ORDER BY pinned DESC, update_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM ai_agent_conversation
+        WHERE deleted = 0
+    </select>
+
+    <update id="migrateDeviceToUser">
+        UPDATE ai_agent_conversation
+        SET user_id = #{userId}, update_time = now()
+        WHERE device_id = #{deviceId} AND user_id IS NULL AND deleted = 0
+    </update>
+
+</mapper>

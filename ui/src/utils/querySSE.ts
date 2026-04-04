@@ -1,13 +1,18 @@
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 
-const customHost = SERVICE_BASE_URL || '';
-const DEFAULT_SSE_URL = `${customHost}/web/api/v1/gpt/queryAgentStreamIncr`;
+import { getDeviceId } from '@/services/agentConversation';
 
-const SSE_HEADERS = {
+const customHost = SERVICE_BASE_URL || '';
+/** 新端点(支持持久化) */
+const PERSIST_SSE_URL = `${customHost}/api/agent/message/send-stream`;
+const DEFAULT_SSE_URL = PERSIST_SSE_URL;
+
+const SSE_HEADERS: Record<string, string> = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-cache',
   'Connection': 'keep-alive',
   'Accept': 'text/event-stream',
+  'X-Device-Id': getDeviceId(),
 };
 
 interface SSEConfig {

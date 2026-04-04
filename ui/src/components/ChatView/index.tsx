@@ -367,6 +367,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       query: message,
       deepThink: normalizedDeepThink ? 1 : 0,
       outputStyle: outputStyle || baseConversation.productType,
+      filesJson: inputInfo.files?.length ? JSON.stringify(inputInfo.files) : undefined,
     };
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;

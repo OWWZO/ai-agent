@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao">
+
+    <resultMap id="AgentMessageEventMap" type="org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent">
+        <id column="id" property="id"/>
+        <result column="message_id" property="messageId"/>
+        <result column="conversation_id" property="conversationId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="event_type" property="eventType"/>
+        <result column="event_sub_type" property="eventSubType"/>
+        <result column="display_area" property="displayArea"/>
+        <result column="task_id" property="taskId"/>
+        <result column="task_order" property="taskOrder"/>
+        <result column="message_id_ext" property="messageIdExt"/>
+        <result column="title" property="title"/>
+        <result column="content_text" property="contentText"/>
+        <result column="payload_json" property="payloadJson"/>
+        <result column="artifact_id" property="artifactId"/>
+        <result column="is_final" property="isFinal"/>
+        <result column="status" property="status"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="ended_at" property="endedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="batchInsert">
+        INSERT INTO ai_agent_message_event (
+            message_id, conversation_id, session_id, request_id, seq_no,
+            event_type, event_sub_type, display_area, task_id, task_order,
+            message_id_ext, title, content_text, payload_json, artifact_id,
+            is_final, status, started_at, ended_at, create_time, deleted
+        ) VALUES
+        <foreach collection="events" item="item" separator=",">
+            (
+                #{item.messageId}, #{item.conversationId}, #{item.sessionId}, #{item.requestId}, #{item.seqNo},
+                #{item.eventType}, #{item.eventSubType}, #{item.displayArea}, #{item.taskId}, #{item.taskOrder},
+                #{item.messageIdExt}, #{item.title}, #{item.contentText}, #{item.payloadJson}, #{item.artifactId},
+                #{item.isFinal}, #{item.status}, #{item.startedAt}, #{item.endedAt}, now(), #{item.deleted}
+            )
+        </foreach>
+    </insert>
+
+    <select id="queryByMessageId" resultMap="AgentMessageEventMap">
+        SELECT * FROM ai_agent_message_event
+        WHERE message_id = #{messageId} AND deleted = 0
+        ORDER BY seq_no ASC
+    </select>
+
+    <select id="queryByRequestId" resultMap="AgentMessageEventMap">
+        SELECT * FROM ai_agent_message_event
+        WHERE request_id = #{requestId} AND deleted = 0
+        ORDER BY seq_no ASC
+    </select>
+
+    <update id="deleteByMessageId">
+        UPDATE ai_agent_message_event
+        SET deleted = 1
+        WHERE message_id = #{messageId} AND deleted = 0
+    </update>
+
+</mapper>
