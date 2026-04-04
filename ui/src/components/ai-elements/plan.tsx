@@ -16,9 +16,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDownIcon } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { ComponentProps } from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Shimmer } from "./shimmer";
 
 type PlanContextValue = {
@@ -35,6 +35,21 @@ const usePlan = () => {
   return context;
 };
 
+/** 每次从非流式重新进入流式时递增，强制 Shimmer 重挂载，避免 motion 第二次循环把字「洗没」 */
+function useShimmerRemountKey(isStreaming: boolean) {
+  const [key, setKey] = useState(0);
+  const wasStreamingRef = useRef(false);
+
+  useEffect(() => {
+    if (isStreaming && !wasStreamingRef.current) {
+      setKey((k) => k + 1);
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  return key;
+}
+
 export type PlanProps = ComponentProps<typeof Collapsible> & {
   isStreaming?: boolean;
 };
@@ -47,7 +62,14 @@ export const Plan = ({
 }: PlanProps) => (
   <PlanContext.Provider value={{ isStreaming }}>
     <Collapsible asChild data-slot="plan" {...props}>
-      <Card className={cn("shadow-none", className)}>{children}</Card>
+      <Card
+        className={cn(
+          "gap-0 rounded-2xl border-0 bg-[var(--chat-surface-soft)]/92 py-0 text-[var(--chat-text)] shadow-[var(--shadow-sm)] ring-0",
+          className
+        )}
+      >
+        {children}
+      </Card>
     </Collapsible>
   </PlanContext.Provider>
 );
@@ -56,7 +78,10 @@ export type PlanHeaderProps = ComponentProps<typeof CardHeader>;
 
 export const PlanHeader = ({ className, ...props }: PlanHeaderProps) => (
   <CardHeader
-    className={cn("flex items-start justify-between", className)}
+    className={cn(
+      "flex flex-row items-center justify-between gap-3 space-y-0 px-5 pb-3 pt-4",
+      className
+    )}
     data-slot="plan-header"
     {...props}
   />
@@ -69,12 +94,26 @@ export type PlanTitleProps = Omit<
   children: string;
 };
 
-export const PlanTitle = ({ children, ...props }: PlanTitleProps) => {
+export const PlanTitle = ({ children, className, ...props }: PlanTitleProps) => {
   const { isStreaming } = usePlan();
+  const shimmerKey = useShimmerRemountKey(isStreaming);
 
   return (
-    <CardTitle data-slot="plan-title" {...props}>
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+    <CardTitle
+      className={cn(
+        "text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]",
+        className
+      )}
+      data-slot="plan-title"
+      {...props}
+    >
+      {isStreaming ? (
+        <Shimmer key={shimmerKey} as="span">
+          {children}
+        </Shimmer>
+      ) : (
+        children
+      )}
     </CardTitle>
   );
 };
@@ -92,6 +131,7 @@ export const PlanDescription = ({
   ...props
 }: PlanDescriptionProps) => {
   const { isStreaming } = usePlan();
+  const shimmerKey = useShimmerRemountKey(isStreaming);
 
   return (
     <CardDescription
@@ -99,7 +139,13 @@ export const PlanDescription = ({
       data-slot="plan-description"
       {...props}
     >
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+      {isStreaming ? (
+        <Shimmer key={shimmerKey} as="span">
+          {children}
+        </Shimmer>
+      ) : (
+        children
+      )}
     </CardDescription>
   );
 };
@@ -112,9 +158,13 @@ export const PlanAction = (props: PlanActionProps) => (
 
 export type PlanContentProps = ComponentProps<typeof CardContent>;
 
-export const PlanContent = (props: PlanContentProps) => (
+export const PlanContent = ({ className, ...props }: PlanContentProps) => (
   <CollapsibleContent asChild>
-    <CardContent data-slot="plan-content" {...props} />
+    <CardContent
+      className={cn("space-y-2 px-5 pb-5 pt-0", className)}
+      data-slot="plan-content"
+      {...props}
+    />
   </CollapsibleContent>
 );
 
@@ -129,14 +179,17 @@ export type PlanTriggerProps = ComponentProps<typeof CollapsibleTrigger>;
 export const PlanTrigger = ({ className, ...props }: PlanTriggerProps) => (
   <CollapsibleTrigger asChild>
     <Button
-      className={cn("size-8", className)}
+      className={cn(
+        "size-9 shrink-0 rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] data-[state=open]:bg-[var(--chat-surface-muted)]/80 [&_svg]:transition-transform data-[state=open]:[&_svg]:rotate-180",
+        className
+      )}
       data-slot="plan-trigger"
       size="icon"
       variant="ghost"
       {...props}
     >
-      <ChevronsUpDownIcon className="size-4" />
-      <span className="sr-only">Toggle plan</span>
+      <ChevronDown className="size-4" strokeWidth={2} />
+      <span className="sr-only">展开或收起任务进度</span>
     </Button>
   </CollapsibleTrigger>
 );

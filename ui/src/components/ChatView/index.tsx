@@ -854,7 +854,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   {headerTitle}
                 </h2>
                 {conversation.deepThink && (
-                  <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
                     <i className="font_family icon-shendusikao text-[11px]"></i>
                     <span>深度研究</span>
                   </div>
@@ -922,7 +922,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             // 展开状态
             <>
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
+              <div className="flex items-center justify-between px-5 py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
                     {headerTitle}
@@ -1047,7 +1047,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
                 {headerTitle}
               </h2>
-              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+              <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
                 <i className="font_family icon-shendusikao text-[11px]"></i>
                 <span>智能问数</span>
               </div>

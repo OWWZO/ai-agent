@@ -154,8 +154,8 @@ export const CodeBlockCopyButton = ({
   return (
     <Button
       className={cn(
-        "h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
-        isCopied && "border-[var(--success)]/40 text-[var(--success)]",
+        "h-7 w-7 shrink-0 rounded-md bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
+        isCopied && "text-[var(--success)]",
         className
       )}
       onClick={copyToClipboard}

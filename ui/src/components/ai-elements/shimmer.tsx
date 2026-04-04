@@ -20,7 +20,7 @@ export type TextShimmerProps = {
 
 const ShimmerComponent = ({
   children,
-  as: Component = "p",
+  as: Component = "span",
   className,
   duration = 2,
   spread = 2,
@@ -35,20 +35,23 @@ const ShimmerComponent = ({
     [children, spread]
   );
 
+  const bgSize = `${Math.max(240, dynamicSpread + 220)}% 100%`;
+
   return (
     <MotionComponent
       animate={{ backgroundPosition: ["220% center", "-220% center"] }}
-      className={cn(
-        "relative inline-block bg-clip-text text-transparent",
-        className
-      )}
-      initial={false}
+      className={cn("relative inline-block align-baseline", className)}
+      initial={{ backgroundPosition: "220% center" }}
       style={
         {
           backgroundImage:
-            "linear-gradient(90deg, var(--color-muted-foreground) 0%, var(--color-muted-foreground) 42%, rgba(255,255,255,0.98) 50%, var(--color-muted-foreground) 58%, var(--color-muted-foreground) 100%)",
-          backgroundSize: `${Math.max(240, dynamicSpread + 220)}% 100%`,
+            "linear-gradient(90deg, var(--color-muted-foreground) 0%, var(--color-muted-foreground) 36%, var(--chat-text) 49.5%, var(--chat-text) 50.5%, var(--color-muted-foreground) 64%, var(--color-muted-foreground) 100%)",
+          backgroundSize: bgSize,
+          backgroundPosition: "220% center",
           backgroundRepeat: "no-repeat",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          color: "transparent",
           willChange: "background-position",
         } as CSSProperties
       }

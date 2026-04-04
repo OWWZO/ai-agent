@@ -29,7 +29,7 @@ export function ViewerPanelShell({
     >
       <div className="flex items-center justify-between gap-3 bg-[var(--chat-surface-soft)]/75 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex items-center rounded-md border border-[var(--chat-border)]/90 bg-[var(--chat-surface)] px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
+          <span className="inline-flex items-center rounded-md bg-[var(--chat-surface)] px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
             {label}
           </span>
           {subtitle ? (

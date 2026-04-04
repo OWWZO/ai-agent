@@ -161,7 +161,6 @@ const TableRenderer: ReactorType.FC<{
       columns={columns}
       dataSource={dataSource}
       scroll={{ x: true }}
-      bordered
       pagination={false}
     />
   );

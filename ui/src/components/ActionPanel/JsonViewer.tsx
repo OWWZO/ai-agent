@@ -43,8 +43,8 @@ const JsonViewerInner = memo(({ data, className }: JsonViewerProps) => {
         <Button
           aria-label={copied ? "Copied" : "Copy JSON"}
           className={cn(
-            "h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
-            copied && "border-[var(--success)]/40 text-[var(--success)]"
+            "h-7 w-7 shrink-0 rounded-md bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
+            copied && "text-[var(--success)]"
           )}
           onClick={copy}
           size="icon-sm"

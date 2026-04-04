@@ -48,7 +48,7 @@ const DataDialogue: FC<Props> = (props) => {
         <div className="mt-6 flex w-full justify-start">
           <Message from="assistant" className="w-full max-w-full">
             <MessageContent>
-              <div className="rounded-xl border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-[13px] leading-6 text-[#991b1b]">
+              <div className="rounded-xl bg-[#fff1f2] px-4 py-3 text-[13px] leading-6 text-[#991b1b]">
                 回答失败，没能理解您的意图。
               </div>
             </MessageContent>

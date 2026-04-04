@@ -36,7 +36,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
       <>
         <Button
           aria-label="在新窗口打开"
-          className="h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+          className="h-7 w-7 shrink-0 rounded-md bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
           onClick={() => jumpUrl(htmlUrl)}
           size="icon-sm"
           title="在新窗口打开"
@@ -48,7 +48,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
         {downloadUrl ? (
           <Button
             aria-label="下载"
-            className="h-7 w-7 shrink-0 rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+            className="h-7 w-7 shrink-0 rounded-md bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
             onClick={() => jumpUrl(downloadUrl)}
             size="icon-sm"
             title="下载"

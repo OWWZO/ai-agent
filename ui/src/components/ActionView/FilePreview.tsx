@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import ActionPanel, { PanelItemType, useMsgTypes } from "../ActionPanel";
 import { useMemoizedFn } from "ahooks";
@@ -14,6 +14,7 @@ import {
   Clock,
   FileText,
   Maximize2,
+  Search,
 } from "lucide-react";
 
 const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
@@ -62,14 +63,18 @@ const EmptyState = () => (
 const Header = ({
   title,
   canPreview,
+  leadingIcon,
 }: {
   title: string;
   canPreview?: boolean;
+  leadingIcon?: ReactNode;
 }) => (
   <div className="flex items-center justify-between px-4 py-3">
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <div>
-        <FileText className="h-4 w-4 shrink-0 text-[#86868b]" />
+        {leadingIcon ?? (
+          <FileText className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />
+        )}
       </div>
       <span
         className={classNames(
@@ -162,10 +167,28 @@ const FilePreview: React.FC<{
       const [fileInfo] = resultMap?.fileInfo || [];
       return fileInfo?.fileName || messageType;
     }
-    if (messageType === "deep_search" && resultMap?.messageType === "report") {
-      return resultMap?.query || "深度搜索";
+    if (messageType === "deep_search") {
+      if (resultMap?.messageType === "report") {
+        return resultMap?.query || "深度搜索";
+      }
+      if (resultMap?.messageType === "search") {
+        const q = resultMap?.searchResult?.query;
+        if (typeof q === "string" && q.trim()) {
+          return `检索：${q.trim()}`;
+        }
+        return "网页检索";
+      }
+      return "深度搜索";
     }
     return messageType;
+  }, [taskItem]);
+
+  const headerLeadingIcon = useMemo(() => {
+    if (!taskItem) return undefined;
+    if (taskItem.messageType === "deep_search" && taskItem.resultMap?.messageType === "search") {
+      return <Search className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />;
+    }
+    return undefined;
   }, [taskItem]);
 
   const canPreview = useHtml || useExcel;
@@ -179,7 +202,7 @@ const FilePreview: React.FC<{
   return (
     <div className={classNames("flex h-full flex-col", className)}>
       {/* Header */}
-      <Header title={title} canPreview={canPreview} />
+      <Header title={title} canPreview={canPreview} leadingIcon={headerLeadingIcon} />
 
       <Separator className="bg-[#e8e8ed]" />
 

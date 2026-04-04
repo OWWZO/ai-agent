@@ -1,4 +1,5 @@
 import { FC, useState, useCallback, useMemo, memo } from "react";
+import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon, buildAttachment } from "@/utils/chat";
@@ -27,6 +28,7 @@ import {
   MoreHorizontalIcon,
   LoaderCircleIcon,
   FileTextIcon,
+  Layers,
   SearchIcon,
 } from "lucide-react";
 
@@ -41,29 +43,68 @@ type Props = {
 };
 
 const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = memo(({ plan }) => (
-  <div className="space-y-2">
-    <div className="flex items-center gap-2 rounded-lg p-2 text-sm text-muted-foreground">
-      <i className="font_family icon-renwu text-[13px] text-primary"></i>
-      <span>任务计划</span>
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
+    className="overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 px-4 py-4 shadow-[var(--shadow-sm)] ring-0"
+  >
+    <div className="mb-4 flex items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/95 text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
+        <Layers className="h-5 w-5" strokeWidth={1.75} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--chat-text-muted)]">
+          研究路线
+        </p>
+        <p
+          className="text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]"
+          style={{ fontFamily: "var(--font-sans)" }}
+        >
+          任务计划
+        </p>
+      </div>
     </div>
-    <div className="mt-1 space-y-3 border-l-2 border-muted pl-4">
+    <div className="space-y-2.5">
       {plan.map((p, i) => (
-        <div key={`${p.name}-${i}`} className="space-y-1.5">
-          <div className="flex items-center gap-2 text-[14px] font-medium text-[#1d1d1f]">
-            <div className="h-1.5 w-1.5 rounded-full bg-primary"></div>
-            {p.name}
-          </div>
-          <div className="space-y-1 pl-3">
-            {p.list.map((step, j) => (
-              <div key={j} className="text-[13px] leading-6 text-[#6b7280]">
-                {j + 1}. {step}
+        <motion.div
+          key={`${p.name}-${i}`}
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{
+            delay: Math.min(i * 0.06, 0.36),
+            duration: 0.22,
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
+          className="rounded-xl bg-[var(--chat-surface)]/75 px-3 py-3 shadow-[var(--shadow-xs)]"
+        >
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-surface-muted)] text-[12px] font-semibold tabular-nums text-[var(--chat-text-soft)]">
+              {i + 1}
+            </span>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
+                {p.name}
               </div>
-            ))}
+              <ul className="space-y-1.5">
+                {p.list.map((step, j) => (
+                  <li
+                    key={j}
+                    className="flex gap-2 text-[13px] leading-relaxed text-[var(--chat-text-soft)]"
+                  >
+                    <span className="w-5 shrink-0 pt-px font-mono text-[11px] tabular-nums text-[var(--chat-text-muted)]">
+                      {j + 1}.
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </div>
+        </motion.div>
       ))}
     </div>
-  </div>
+  </motion.div>
 ));
 
 PlanSection.displayName = "PlanSection";
@@ -252,7 +293,6 @@ const TimeLine: FC<{
               ) : (
                 <i className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[#0071e3]"></i>
               )}
-              <div className="ml-[7px] h-full border-l border-dashed border-[#e8e8ed]"></div>
             </div>
           ) : null}
           <div className="mb-2 flex-1 overflow-hidden">
@@ -396,9 +436,9 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
-        <div className="mt-6 w-full">
-          <Reasoning isStreaming={chat.loading} defaultOpen>
-            <ReasoningTrigger />
+        <div className="mt-6 w-full overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 p-3 shadow-[var(--shadow-sm)] ring-0">
+          <Reasoning isStreaming={chat.loading} defaultOpen className="not-prose mb-0">
+            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
             <ReasoningContent>{thoughtText}</ReasoningContent>
           </Reasoning>
         </div>

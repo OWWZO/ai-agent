@@ -38,17 +38,20 @@ const PlanItem: ReactorType.FC<{
   }, []);
 
   return (
-    <div className={classNames('w-full rounded-[12px] mt-[8px] flex items-center', className)}>
-      <span className="mr-10">
-        {getStatusIcon(status)}
-      </span>
-      { title }
-      {typeof runTime === 'number' && status === 'in_progress' && <span className="text-[12px] ml-8 text-[#848581]">
-        {formatSecondsToMinutes(runTime)}
-        <span className="ml-4">
-          执行中
+    <div
+      className={classNames(
+        "mt-2 flex w-full items-center gap-3 rounded-xl bg-[var(--chat-surface-soft)]/80 px-3 py-2.5",
+        className
+      )}
+    >
+      {getStatusIcon(status)}
+      <div className="min-w-0 flex-1">{title}</div>
+      {typeof runTime === "number" && status === "in_progress" ? (
+        <span className="shrink-0 text-[12px] tabular-nums text-[var(--chat-text-muted)]">
+          {formatSecondsToMinutes(runTime)}
+          <span className="ml-2 text-[var(--chat-text-soft)]">执行中</span>
         </span>
-      </span>}
+      ) : null}
     </div>
   );
 };

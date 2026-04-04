@@ -13,7 +13,7 @@ const MessageSkeleton: FC<MessageSkeletonProps> = ({ className }) => {
   return (
     <div
       className={cn(
-        "w-full max-w-[760px] rounded-[28px] border border-black/5 bg-white/62 px-4 py-4 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.24)] backdrop-blur-sm",
+        "w-full max-w-[760px] rounded-[28px] bg-white/62 px-4 py-4 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.24)] backdrop-blur-sm",
         className
       )}
     >
