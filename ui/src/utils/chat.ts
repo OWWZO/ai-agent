@@ -625,7 +625,9 @@ export const handleTaskData = (
           hidden: false,
           children: [],
         });
-      } else if (task?.messageType !== "result" && !isCodeOutputOnly && !isTaskSummary) {
+      // 实时对话里也展示 task_summary，和历史回放保持一致，
+      // 但仍然不把它当成工作区任务，避免影响现有预览面板切换逻辑。
+      } else if (task?.messageType !== "result" && !isCodeOutputOnly) {
         chatList[groupIndex]?.at(-1)?.children.push(...processedInfo);
       }
 

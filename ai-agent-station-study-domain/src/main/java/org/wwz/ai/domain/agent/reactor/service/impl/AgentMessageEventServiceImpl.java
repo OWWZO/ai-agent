@@ -133,7 +133,7 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
             case "plan_thought":
                 return "思考中";
             case "plan":
-                return "任务计划";
+                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "任务计划"), 50);
             case "task":
                 return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "执行任务"), 50);
             case "deep_search":

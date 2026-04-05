@@ -478,7 +478,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             return "思考中";
         }
         if ("plan".equals(messageType)) {
-            return "任务计划";
+            return resolvePlanTitle(resp.getPlan());
         }
         if ("task".equals(messageType)) {
             return abbreviate(resp.getTask(), 50, "执行任务");
@@ -530,6 +530,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         switch (resp.getMessageType()) {
             case "plan_thought":
                 return resp.getPlanThought();
+            case "plan":
+                return extractPlanContentText(resp.getPlan());
             case "tool_thought":
                 return resp.getToolThought();
             case "task":
@@ -555,6 +557,63 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             default:
                 return null;
         }
+    }
+
+    private String resolvePlanTitle(AgentResponse.Plan plan) {
+        String latestCompletedStep = extractLatestPlanStep(plan, "completed");
+        if (!latestCompletedStep.isBlank()) {
+            return abbreviate(latestCompletedStep, 50, "任务计划");
+        }
+
+        String currentStep = extractLatestPlanStep(plan, "in_progress");
+        if (!currentStep.isBlank()) {
+            return abbreviate(currentStep, 50, "任务计划");
+        }
+
+        if (plan != null) {
+            return abbreviate(plan.getTitle(), 50, "任务计划");
+        }
+        return "任务计划";
+    }
+
+    private String extractPlanContentText(AgentResponse.Plan plan) {
+        String latestCompletedStep = extractLatestPlanStep(plan, "completed");
+        if (!latestCompletedStep.isBlank()) {
+            return latestCompletedStep;
+        }
+
+        String currentStep = extractLatestPlanStep(plan, "in_progress");
+        if (!currentStep.isBlank()) {
+            return currentStep;
+        }
+
+        if (plan == null) {
+            return null;
+        }
+        return abbreviate(plan.getTitle(), 160, "");
+    }
+
+    // 优先提取任务执行阶段里最近一次完成/进行中的步骤，避免历史标题被笼统写成“任务计划”。
+    private String extractLatestPlanStep(AgentResponse.Plan plan, String targetStatus) {
+        if (plan == null || plan.getSteps() == null || plan.getSteps().isEmpty()) {
+            return "";
+        }
+
+        List<String> steps = plan.getSteps();
+        List<String> stepStatus = plan.getStepStatus();
+        if (stepStatus == null || stepStatus.isEmpty()) {
+            return "";
+        }
+
+        int upperBound = Math.min(steps.size(), stepStatus.size());
+        for (int i = upperBound - 1; i >= 0; i--) {
+            String status = stepStatus.get(i);
+            String step = steps.get(i);
+            if (targetStatus.equalsIgnoreCase(status) && step != null && !step.isBlank()) {
+                return step.trim();
+            }
+        }
+        return "";
     }
 
     private String buildDeepSearchText(AgentResponse resp) {

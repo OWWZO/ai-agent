@@ -319,10 +319,43 @@ type TimelineGroup = {
   taskId?: string;
 };
 
+function normalizeTimelineEntries(timeline: CHAT.TimelineEntry[]): CHAT.TimelineEntry[] {
+  if (!timeline.length) {
+    return timeline;
+  }
+
+  const normalized: CHAT.TimelineEntry[] = [];
+
+  for (let index = 0; index < timeline.length; index += 1) {
+    const current = timeline[index];
+    const next = timeline[index + 1];
+
+    const isDuplicatedDeepSearchStage =
+      current.type === "deep_search" &&
+      current.subType === "extend" &&
+      next?.type === "deep_search" &&
+      next.subType === "search" &&
+      current.messageIdExt &&
+      current.messageIdExt === next.messageIdExt &&
+      current.taskId === next.taskId &&
+      (current.content || "") === (next.content || "");
+
+    // 历史回放里同一轮搜索会连续写入 extend/search 两个阶段。
+    // 当两条记录指向同一 messageId 且内容一致时，只保留最终 search，避免界面重复展示。
+    if (isDuplicatedDeepSearchStage) {
+      continue;
+    }
+
+    normalized.push(current);
+  }
+
+  return normalized;
+}
+
 function groupTimelineEntries(timeline: CHAT.TimelineEntry[]): TimelineGroup[] {
   const groups: TimelineGroup[] = [];
 
-  [...timeline]
+  [...normalizeTimelineEntries(timeline)]
     .sort((left, right) => left.seq - right.seq)
     .forEach((entry) => {
     if (entry.type === "plan_thought") {
