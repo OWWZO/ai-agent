@@ -7,11 +7,13 @@ import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategy
 import org.wwz.ai.domain.agent.service.armory.util.McpConnectionDiagnostic;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -213,7 +215,7 @@ public class AiClientToolMcpNode extends AbstractArmorySupport {
                 // 1. 基于STDIO传输层（传入子进程执行参数）创建客户端
                 // 2. 设置请求超时时间：从配置中获取值，单位为【秒】（注意与SSE的分钟区分，配置单位不同）
                 // 3. build()完成客户端基础构建
-                var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams))
+                var mcpClient = McpClient.sync(new StdioClientTransport(stdioParams, new JacksonMcpJsonMapper(new ObjectMapper())))
                         .requestTimeout(Duration.ofSeconds(aiClientToolMcpVO.getRequestTimeout())).build();
                 // 初始化MCP客户端：启动子进程、建立标准输入输出的通信通道
                 try {
