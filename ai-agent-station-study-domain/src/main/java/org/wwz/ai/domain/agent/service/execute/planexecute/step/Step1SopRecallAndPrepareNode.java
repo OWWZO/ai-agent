@@ -1,20 +1,18 @@
 package org.wwz.ai.domain.agent.service.execute.planexecute.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.SopRecallResponse;
+import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.*;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.McpTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -41,6 +39,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
 
     @Resource
     private Step2PlanExecuteNode step2PlanExecuteNode;
+
+    @Resource
+    private McpToolExecutor mcpToolExecutor;
 
     @Override
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -100,6 +101,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
+        toolCollection.setMcpToolExecutor(mcpToolExecutor);
 
         //智能问数模式
         if ("dataAgent".equals(request.getOutputStyle())) {
@@ -147,26 +149,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         }
 
         try {
-            McpTool mcpTool = new McpTool();
-            mcpTool.setAgentContext(agentContext);
-            for (String mcpServer : reactorConfig.getMcpServerUrlArr()) {
-                String listToolResult = mcpTool.listTool(mcpServer);
-                if (listToolResult.isEmpty()) continue;
-                JSONObject resp = JSON.parseObject(listToolResult);
-                if (resp.getIntValue("code") != 200) continue;
-                JSONArray data = resp.getJSONArray("data");
-                if (data == null || data.isEmpty()) continue;
-
-                //逐个加入获取到的mcp工具
-                for (int i = 0; i < data.size(); i++) {
-                    JSONObject tool = data.getJSONObject(i);
-                    toolCollection.addMcpTool(
-                            tool.getString("name"),
-                            tool.getString("description"),
-                            tool.getString("inputSchema"),
-                            mcpServer
-                    );
-                }
+            // 统一走 Java MCP Client 发现工具，不再依赖 Python SSE 中转层。
+            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
+                toolCollection.addMcpTool(toolInfo);
             }
         } catch (Exception e) {
             log.error("{} add mcp tool failed", agentContext.getRequestId(), e);

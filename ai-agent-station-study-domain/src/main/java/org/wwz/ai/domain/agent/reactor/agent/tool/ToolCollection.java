@@ -14,7 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.McpTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -64,6 +65,15 @@ public class ToolCollection {
     private AgentContext agentContext;
 
     /**
+     * MCP 工具统一执行器。
+     * ToolCollection 不是 Spring Bean，因此通过外部注入或懒加载方式获取。
+     */
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @JSONField(serialize = false, deserialize = false)
+    private McpToolExecutor mcpToolExecutor;
+
+    /**
      * 当前执行的任务标识
      * 业务说明：
      * - 非并发场景下，每个task执行时会更新该字段，关联当前任务与数字员工；
@@ -107,19 +117,16 @@ public class ToolCollection {
 
     /**
      * 添加MCP远程工具到集合
-     * @param name 工具名称（唯一标识）
-     * @param desc 工具描述（用于提示词填充，告知LLM工具用途）
-     * @param parameters 工具参数规范（JSON字符串，如"{\"query\":\"查询关键词\"}"）
-     * @param mcpServerUrl MCP服务地址（远程调用的URL，如"http://mcp-server:8080/api/tool"）
-     * 说明：通过Builder模式构建McpToolInfo并加入映射表，重复添加会覆盖原有同名称工具。
+     * @param toolInfo MCP 工具元信息
+     * 说明：直接接收完整 McpToolInfo，重复添加时同名工具会被覆盖。
      */
-    public void addMcpTool(String name, String desc, String parameters, String mcpServerUrl) {
-        mcpToolMap.put(name, McpToolInfo.builder()
-                .name(name)
-                .desc(desc)
-                .parameters(parameters)
-                .mcpServerUrl(mcpServerUrl)
-                .build());
+    public void addMcpTool(McpToolInfo toolInfo) {
+        if (toolInfo == null || StringUtils.isBlank(toolInfo.getName())) {
+            log.warn("requestId:{} addMcpTool skipped, invalid toolInfo: {}",
+                    agentContext != null ? agentContext.getRequestId() : "unknown", toolInfo);
+            return;
+        }
+        mcpToolMap.put(toolInfo.getName(), toolInfo);
     }
 
     /**
@@ -139,23 +146,28 @@ public class ToolCollection {
      * 3. 工具不存在时记录错误日志并返回null。
      * @param name 工具名称（唯一标识）
      * @param toolInput 工具输入参数（Object类型，适配不同工具的参数格式，如String/JSONObject）
-     * @return Object 工具执行结果：
+     * @return String 工具执行结果：
      *         - 基础工具：返回tool.execute()的执行结果；
      *         - MCP工具：返回远程调用的响应结果；
      *         - 工具不存在：返回null。
      */
-    public Object execute(String name, Object toolInput) {
+    public String execute(String name, Object toolInput) {
         // 分支1：执行本地基础工具
         if (toolMap.containsKey(name)) {
             BaseTool tool = getTool(name);
-            return tool.execute(toolInput);
+            Object result = tool.execute(toolInput);
+            return result == null ? null : String.valueOf(result);
         }
         // 分支2：执行远程MCP工具
         else if (mcpToolMap.containsKey(name)) {
             McpToolInfo toolInfo = mcpToolMap.get(name);
-            McpTool mcpTool = new McpTool();
-            mcpTool.setAgentContext(agentContext); // 绑定上下文，支撑远程调用的链路追踪
-            return mcpTool.callTool(toolInfo.getMcpServerUrl(), name, toolInput);
+            McpToolExecutor executor = getOrInitMcpToolExecutor();
+            if (executor == null) {
+                log.error("requestId:{} execute mcp tool {} failed, McpToolExecutor not found",
+                        agentContext != null ? agentContext.getRequestId() : "unknown", name);
+                return "Tool" + name + " Error.";
+            }
+            return executor.executeTool(toolInfo, toolInput);
         }
         // 分支3：工具不存在，记录错误日志
         else {
@@ -195,6 +207,20 @@ public class ToolCollection {
         }
         // 从JSON对象中获取工具对应的数字员工名称
         return (String) digitalEmployees.get(toolName);
+    }
+
+    /**
+     * 懒加载 MCP 执行器，兼容旧代码直接 new ToolCollection 的场景。
+     */
+    private McpToolExecutor getOrInitMcpToolExecutor() {
+        if (mcpToolExecutor != null) {
+            return mcpToolExecutor;
+        }
+        if (SpringContextHolder.getApplicationContext() == null) {
+            return null;
+        }
+        this.mcpToolExecutor = SpringContextHolder.getApplicationContext().getBean(McpToolExecutor.class);
+        return this.mcpToolExecutor;
     }
 
     @Override

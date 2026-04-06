@@ -1,16 +1,14 @@
 package org.wwz.ai.domain.agent.service.execute.react.step;
 
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.*;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.McpTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -36,6 +34,9 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Resource
     private RunReactNode step2RunReactNode;
+
+    @Resource
+    private McpToolExecutor mcpToolExecutor;
 
     @Override
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -74,6 +75,7 @@ public class RootNode extends AbstractExecuteSupport {
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
+        toolCollection.setMcpToolExecutor(mcpToolExecutor);
 
         if ("dataAgent".equals(request.getOutputStyle())) {
             ReportTool htmlTool = new ReportTool();
@@ -113,30 +115,9 @@ public class RootNode extends AbstractExecuteSupport {
         }
 
         try {
-            McpTool mcpTool = new McpTool();
-            mcpTool.setAgentContext(agentContext);
-            for (String mcpServer : reactorConfig.getMcpServerUrlArr()) {
-                String listToolResult = mcpTool.listTool(mcpServer);
-                if (listToolResult.isEmpty()) {
-                    log.error("{} mcp server {} invalid", agentContext.getRequestId(), mcpServer);
-                    continue;
-                }
-                JSONObject resp = JSON.parseObject(listToolResult);
-                if (resp.getIntValue("code") != 200) {
-                    log.error("{} mcp server {} code: {}", agentContext.getRequestId(), mcpServer, resp.getIntValue("code"));
-                    continue;
-                }
-                JSONArray data = resp.getJSONArray("data");
-                if (data == null || data.isEmpty()) continue;
-                for (int i = 0; i < data.size(); i++) {
-                    JSONObject tool = data.getJSONObject(i);
-                    toolCollection.addMcpTool(
-                            tool.getString("name"),
-                            tool.getString("description"),
-                            tool.getString("inputSchema"),
-                            mcpServer
-                    );
-                }
+            // React 与 Plan 两条链路共用同一套 Java MCP Client 发现逻辑。
+            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
+                toolCollection.addMcpTool(toolInfo);
             }
         } catch (Exception e) {
             log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
