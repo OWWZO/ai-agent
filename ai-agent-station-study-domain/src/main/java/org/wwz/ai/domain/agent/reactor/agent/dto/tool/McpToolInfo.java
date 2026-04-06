@@ -15,6 +15,11 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpServerDescripto
 public class McpToolInfo {
 
     /**
+     * MCP 配置主键业务标识。
+     */
+    private String mcpId;
+
+    /**
      * MCP 工具名称。
      */
     private String name;

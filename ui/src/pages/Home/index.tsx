@@ -70,6 +70,16 @@ const formatHistoryTime = (timestamp: number) => {
   }
 };
 
+const hasLocalConversationContent = (conversation: CHAT.ConversationHistory | undefined) => {
+  if (!conversation) return false;
+  return conversation.chatList.length > 0 || conversation.dataChatList.length > 0;
+};
+
+const isDraftConversation = (conversation: CHAT.ConversationHistory | undefined) => {
+  if (!conversation) return false;
+  return !hasLocalConversationContent(conversation);
+};
+
 const createInitialState = (): InitialState => {
   const initialProduct = productList.find((item) => item.type === "html") ?? defaultProduct;
   const seeded = [createConversation({ productType: initialProduct.type, deepThink: false })];
@@ -187,16 +197,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [conversations]
   );
 
+  const remoteMessageCountMap = useMemo(
+    () => new Map(remoteConversations.map((item) => [item.sessionId, item.messageCount])),
+    [remoteConversations]
+  );
+
   const hasConversationContent = useMemo(() => {
-    if (!currentConversation) return false;
-    if (currentConversation.chatList.length > 0 || currentConversation.dataChatList.length > 0) return true;
-    // API模式下通过远程元数据判断是否有消息
-    if (apiMode) {
-      const remote = remoteConversations.find((rc) => rc.sessionId === currentConversation.sessionId);
-      return remote ? remote.messageCount > 0 : false;
-    }
-    return false;
-  }, [currentConversation, apiMode, remoteConversations]);
+    if (hasLocalConversationContent(currentConversation)) return true;
+    if (!currentConversation || !apiMode) return false;
+    return (remoteMessageCountMap.get(currentConversation.sessionId) ?? 0) > 0;
+  }, [currentConversation, apiMode, remoteMessageCountMap]);
 
   useEffect(() => {
     if (!currentConversation) return;
@@ -211,6 +221,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   // 远程会话列表同步到本地状态
   useEffect(() => {
     if (!apiMode || remoteConversations.length === 0) return;
+
+    const remoteMessageCounts = new Map(
+      remoteConversations.map((conversation) => [conversation.sessionId, conversation.messageCount])
+    );
 
     const converted: CHAT.ConversationHistory[] = remoteConversations.map((rc) => ({
       id: rc.sessionId,
@@ -228,27 +242,49 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     setConversations((prev) => {
       const remoteIds = new Set(converted.map((c) => c.sessionId));
       const existingMap = new Map(prev.map((c) => [c.sessionId, c]));
+      const activeDraft = prev.find(
+        (conversation) =>
+          conversation.id === currentConversationId &&
+          isDraftConversation(conversation) &&
+          (remoteMessageCounts.get(conversation.sessionId) ?? 0) === 0
+      );
       // 保留已加载chatList的会话
       const merged = converted.map((rc) => {
         const existing = existingMap.get(rc.sessionId);
         return existing && existing.chatList.length > 0 ? existing : rc;
       });
-      // 保留有内容的本地独有会话
+      // 保留当前正在使用的空白草稿，以及有内容的本地独有会话，避免首次进入或新建对话时被历史记录覆盖
       const localOnly = prev.filter(
-        (c) => !remoteIds.has(c.sessionId) && (c.chatList.length > 0 || c.dataChatList.length > 0)
+        (conversation) =>
+          !remoteIds.has(conversation.sessionId) &&
+          (conversation.id === activeDraft?.id || !isDraftConversation(conversation))
       );
       return pruneHistory([...merged, ...localOnly]);
     });
-  }, [apiMode, remoteConversations]);
+  }, [apiMode, currentConversationId, remoteConversations]);
 
   useEffect(() => {
     if (!conversations.length) return;
     const exists = conversations.some((item) => item.id === currentConversationId);
     if (!exists) {
-      const latest = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      setCurrentConversationId(latest.id);
+      const draftConversation = conversations.find(
+        (conversation) =>
+          isDraftConversation(conversation) &&
+          (remoteMessageCountMap.get(conversation.sessionId) ?? 0) === 0
+      );
+      if (draftConversation) {
+        setCurrentConversationId(draftConversation.id);
+        return;
+      }
+      const nextDraft = createConversation({ productType: product.type, deepThink: false });
+      if (apiMode) {
+        nextDraft.id = nextDraft.sessionId;
+      }
+      setConversations((prev) => pruneHistory([nextDraft, ...prev]));
+      setCurrentConversationId(nextDraft.id);
+      setInputInfo({ ...EMPTY_INPUT });
     }
-  }, [conversations, currentConversationId]);
+  }, [apiMode, conversations, currentConversationId, product.type, remoteMessageCountMap]);
 
   const updateConversation = useCallback(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -277,7 +313,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const createNewChat = useCallback(() => {
     const existedEmpty = sortedConversations.find(
-      (item) => item.chatList.length === 0 && item.dataChatList.length === 0
+      (item) => isDraftConversation(item) && (remoteMessageCountMap.get(item.sessionId) ?? 0) === 0
     );
     if (existedEmpty) {
       setCurrentConversationId(existedEmpty.id);
@@ -297,7 +333,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     setCurrentConversationId(next.id);
     setInputInfo({ ...EMPTY_INPUT });
     setHistoryDrawerOpen(false);
-  }, [product.type, sortedConversations, apiMode, createRemoteConversation]);
+  }, [product.type, sortedConversations, apiMode, createRemoteConversation, remoteMessageCountMap]);
 
   const onInputConsumed = useCallback(() => {
     setInputInfo({ ...EMPTY_INPUT });
@@ -348,9 +384,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               .then((chatItems) => {
                 if (chatItems.length > 0) {
                   setConversations((prev) =>
-                    prev.map((c) =>
-                      c.id === conversationId ? { ...c, chatList: chatItems, updatedAt: Date.now() } : c
-                    )
+                    prev.map((c) => (c.id === conversationId ? { ...c, chatList: chatItems } : c))
                   );
                 }
               })

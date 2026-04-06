@@ -102,6 +102,9 @@
         <logger name="com.nmys.view" level="debug"/>
     </springProfile>
 
+    <!-- MCP SSE 传输层在服务端主动断流后会打印连接重置告警，这里只保留 ERROR，避免刷屏 -->
+    <logger name="io.modelcontextprotocol.client.transport.HttpClientSseClientTransport" level="ERROR"/>
+
     <root level="info">
         <appender-ref ref="CONSOLE"/>
         <!-- 异步日志-INFO -->

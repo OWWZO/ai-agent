@@ -6,7 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,7 +22,13 @@ import java.util.Map;
 public class McpServerDescriptor {
 
     public static final String TRANSPORT_TYPE_SSE = "sse";
+    public static final String TRANSPORT_TYPE_STDIO = "stdio";
     public static final String TRANSPORT_TYPE_STREAMABLE_HTTP = "streamable_http";
+
+    /**
+     * MCP 业务标识。
+     */
+    private String mcpId;
 
     /**
      * 配置中的原始 MCP 服务地址。
@@ -49,6 +57,28 @@ public class McpServerDescriptor {
     private String endpoint;
 
     /**
+     * 请求超时时间，沿用数据库配置定义。
+     */
+    private Integer requestTimeout;
+
+    /**
+     * STDIO 启动命令。
+     */
+    private String command;
+
+    /**
+     * STDIO 启动参数。
+     */
+    @Builder.Default
+    private List<String> args = new ArrayList<>();
+
+    /**
+     * STDIO 环境变量。
+     */
+    @Builder.Default
+    private Map<String, String> env = new HashMap<>();
+
+    /**
      * 预留字段：后续可透传鉴权头。
      */
     @Builder.Default
@@ -69,6 +99,12 @@ public class McpServerDescriptor {
      * 获取稳定的服务标识。
      */
     public String resolveServerKey() {
-        return StringUtils.isNotBlank(serverKey) ? serverKey : serverUrl;
+        if (StringUtils.isNotBlank(serverKey)) {
+            return serverKey;
+        }
+        if (StringUtils.isNotBlank(mcpId)) {
+            return mcpId;
+        }
+        return serverUrl;
     }
 }

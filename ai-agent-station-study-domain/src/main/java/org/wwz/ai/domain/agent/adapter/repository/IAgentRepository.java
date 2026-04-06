@@ -19,6 +19,21 @@ public interface IAgentRepository {
 
     List<AiClientToolMcpVO> AiClientToolMcpVOByClientIds(List<String> clientIdList);
 
+    /**
+     * 查询所有启用的 MCP 配置。
+     *
+     * @return 启用的 MCP 配置列表
+     */
+    List<AiClientToolMcpVO> queryEnabledAiClientToolMcpVOList();
+
+    /**
+     * 查询指定客户端关联的启用 MCP ID 列表。
+     *
+     * @param clientIdList 客户端 ID 列表
+     * @return key 为 clientId，value 为启用的 mcpId 列表
+     */
+    Map<String, List<String>> queryEnabledClientMcpIdMap(List<String> clientIdList);
+
     List<AiClientSystemPromptVO> AiClientSystemPromptVOByClientIds(List<String> clientIdList);
 
     Map<String, AiClientSystemPromptVO> queryAiClientSystemPromptMapByClientIds(List<String> clientIdList);

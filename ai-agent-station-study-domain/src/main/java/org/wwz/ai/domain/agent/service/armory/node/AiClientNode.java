@@ -4,18 +4,18 @@ import org.wwz.ai.domain.agent.model.entity.ArmoryCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import org.wwz.ai.domain.agent.model.valobj.AiClientSystemPromptVO;
 import org.wwz.ai.domain.agent.model.valobj.AiClientVO;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpRegistry;
 import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
-import io.modelcontextprotocol.client.McpSyncClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 
-
+import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +27,9 @@ import java.util.Map;
 @Slf4j
 @Service
 public class AiClientNode extends AbstractArmorySupport {
+
+    @Resource
+    private McpRegistry mcpRegistry;
 
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -53,12 +56,7 @@ public class AiClientNode extends AbstractArmorySupport {
             OpenAiChatModel chatModel = getBean(aiClientVO.getModelBeanName());
 
             // 3. MCP 服务
-            List<McpSyncClient> mcpSyncClients = new ArrayList<>();
-            List<String> mcpBeanNameList = aiClientVO.getMcpBeanNameList();
-
-            for (String mcpBeanName : mcpBeanNameList) {
-                mcpSyncClients.add(getBean(mcpBeanName));
-            }
+            List<ToolCallback> toolCallbacks = mcpRegistry.getToolCallbacksByMcpIds(aiClientVO.getMcpIdList());
 
             // 4. advisor 顾问角色
             List<Advisor> advisors = new ArrayList<>();
@@ -71,12 +69,16 @@ public class AiClientNode extends AbstractArmorySupport {
             Advisor[] advisorArray = advisors.toArray(new Advisor[]{});
 
             // 6. 构建对话客户端
-            ChatClient chatClient = ChatClient.builder(chatModel)
+            ChatClient.Builder chatClientBuilder = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
-                    .defaultToolCallbacks(new SyncMcpToolCallbackProvider(mcpSyncClients.toArray(new McpSyncClient[]{})))
-                    // 仅注册 MCP 工具（JDReactor 工具逻辑尚未完善，避免被模型误调用）
-                    .defaultAdvisors(advisorArray)
-                    .build();
+                    .defaultAdvisors(advisorArray);
+
+            // fix 策略继续使用 Spring AI 原生 ToolCallback，但改成装配阶段一次性生成并缓存，避免请求期重复 listTools。
+            if (!toolCallbacks.isEmpty()) {
+                chatClientBuilder.defaultToolCallbacks(toolCallbacks);
+            }
+
+            ChatClient chatClient = chatClientBuilder.build();
 
             registerBean(beanName(aiClientVO.getClientId()), ChatClient.class, chatClient);
         }
