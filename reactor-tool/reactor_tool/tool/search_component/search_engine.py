@@ -11,6 +11,7 @@ import os
 from loguru import logger
 from abc import ABC, abstractmethod
 from typing import List
+from urllib.parse import quote
 import aiohttp
 from bs4 import BeautifulSoup
 
@@ -85,6 +86,14 @@ class SearchBase(ABC):
             return []
         except aiohttp.client_exceptions.InvalidUrlClientError as e:
             logger.warning(f"Search skipped (invalid URL): {e}")
+            return []
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+            # 单个搜索引擎异常时直接降级，避免影响混合搜索整体结果。
+            logger.warning(f"{self.__class__.__name__} skipped due to request error: {e}")
+            return []
+        except Exception as e:
+            # 兜底保护，保证某个搜索引擎失败时不会中断整个深度搜索流程。
+            logger.exception(f"{self.__class__.__name__} skipped due to unexpected error: {e}")
             return []
         docs = await self.parser(docs=docs, timeout=self._parser_timeout)
 
@@ -162,6 +171,9 @@ class JinaSearch(BingSearch):
         self._url = os.getenv("JINA_SEARCH_URL")
         self._api_key = os.getenv("JINA_SEARCH_API_KEY")
 
+    def _build_search_url(self, query: str) -> str:
+        """Jina Search 使用路径参数而不是 q 查询参数。"""
+        return f"{self._url.rstrip('/')}/{quote(query, safe='')}"
 
     async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
         if not _search_url_ok(self._url):
@@ -186,9 +198,13 @@ class JinaSearch(BingSearch):
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self._api_key}"
             }
+            search_url = self._build_search_url(query)
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self._url}?q={query}", headers=headers, timeout=self._timeout) as response:
-                    result = json.loads(await response.text())
+                async with session.get(search_url, headers=headers, timeout=self._timeout) as response:
+                    if response.status != 200:
+                        logger.error(f"Jina search failed: status={response.status}, body={await response.text()}")
+                        return []
+                    result = await response.json(content_type=None)
                     return [
                         Doc(
                             doc_type="web_page",

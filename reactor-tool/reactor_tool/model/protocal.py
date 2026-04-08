@@ -71,7 +71,7 @@ class DeepSearchRequest(BaseModel):
     query: str = Field(description="搜索查询")
     max_loop: Optional[int] = Field(default=1, alias="maxLoop", description="最大循环次数")
 
-    # bing, jina, sogou
+    # bing, jina, sogou, serp, exa
     search_engines: List[str] = Field(default=[], description="使用哪些搜索引擎")
 
     stream: bool = Field(default=True, description="是否流式响应")
