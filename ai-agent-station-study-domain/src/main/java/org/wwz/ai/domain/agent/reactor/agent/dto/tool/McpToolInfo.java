@@ -35,7 +35,7 @@ public class McpToolInfo {
     private String parameters;
 
     /**
-     * 传输协议类型，本次固定为 sse。
+     * 传输协议类型，支持 sse/stdio/streamable_http。
      */
     private String transportType;
 

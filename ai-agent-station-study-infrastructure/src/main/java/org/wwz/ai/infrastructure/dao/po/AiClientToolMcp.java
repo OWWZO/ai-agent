@@ -34,12 +34,12 @@ public class AiClientToolMcp {
     private String mcpName;
 
     /**
-     * 传输类型(sse/stdio)
+     * 传输类型(sse/stdio/streamable_http)
      */
     private String transportType;
 
     /**
-     * 传输配置(sse/stdio)
+     * 传输配置(sse/stdio/streamable_http)
      */
     private String transportConfig;
 

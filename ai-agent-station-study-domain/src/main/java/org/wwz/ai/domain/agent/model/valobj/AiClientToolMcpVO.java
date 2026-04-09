@@ -28,12 +28,12 @@ public class AiClientToolMcpVO {
     private String mcpName;
 
     /**
-     * 传输类型(sse/stdio)
+     * 传输类型(sse/stdio/streamable_http)
      */
     private String transportType;
 
     /**
-     * 传输配置(sse/stdio)
+     * 传输配置(sse/stdio/streamable_http)
      */
     private String transportConfig;
 
@@ -51,6 +51,11 @@ public class AiClientToolMcpVO {
      * 传输配置 - stdio
      */
     private TransportConfigStdio transportConfigStdio;
+
+    /**
+     * 传输配置 - streamable http
+     */
+    private TransportConfigStreamableHttp transportConfigStreamableHttp;
 
     @Data
     @Builder
@@ -75,6 +80,42 @@ public class AiClientToolMcpVO {
             private List<String> args;
             private Map<String, String> env;
         }
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class TransportConfigStreamableHttp {
+
+        /**
+         * MCP 服务基础地址，例如 http://127.0.0.1:8101
+         */
+        private String baseUri;
+
+        /**
+         * Streamable HTTP 端点，默认 /mcp
+         */
+        @Builder.Default
+        private String endpoint = "/mcp";
+
+        /**
+         * 透传给服务端的请求头
+         */
+        @Builder.Default
+        private Map<String, String> headers = Map.of();
+
+        /**
+         * 是否启用可恢复流
+         */
+        @Builder.Default
+        private Boolean resumableStreams = false;
+
+        /**
+         * 是否在启动时主动建立连接
+         */
+        @Builder.Default
+        private Boolean openConnectionOnStartup = true;
     }
 
 }

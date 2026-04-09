@@ -43,6 +43,23 @@ public class AiClientToolMcpDaoTest {
     }
 
     @Test
+    public void test_insert_streamableHttp() {
+        AiClientToolMcp aiClientToolMcp = AiClientToolMcp.builder()
+                .mcpId("test_streamable_5007")
+                .mcpName("测试StreamableHttp工具")
+                .transportType("streamable_http")
+                .transportConfig("{\"baseUri\":\"http://127.0.0.1:8101\",\"endpoint\":\"/mcp\",\"headers\":{\"Authorization\":\"Bearer test-token\"},\"resumableStreams\":false,\"openConnectionOnStartup\":true}")
+                .requestTimeout(180)
+                .status(1)
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .build();
+
+        int result = aiClientToolMcpDao.insert(aiClientToolMcp);
+        log.info("插入Streamable HTTP结果: {}, 生成ID: {}", result, aiClientToolMcp.getId());
+    }
+
+    @Test
     public void test_updateById() {
         AiClientToolMcp aiClientToolMcp = AiClientToolMcp.builder()
                 .id(1L)
@@ -73,6 +90,22 @@ public class AiClientToolMcpDaoTest {
 
         int result = aiClientToolMcpDao.updateByMcpId(aiClientToolMcp);
         log.info("根据MCP ID更新结果: {}", result);
+    }
+
+    @Test
+    public void test_updateByMcpId_streamableHttp() {
+        AiClientToolMcp aiClientToolMcp = AiClientToolMcp.builder()
+                .mcpId("test_streamable_5007")
+                .mcpName("根据MCP ID更新的StreamableHttp工具")
+                .transportType("streamable_http")
+                .transportConfig("{\"baseUri\":\"http://updated.example.com\",\"endpoint\":\"/mcp\",\"headers\":{\"Authorization\":\"Bearer updated-token\"},\"resumableStreams\":true,\"openConnectionOnStartup\":true}")
+                .requestTimeout(240)
+                .status(1)
+                .updateTime(LocalDateTime.now())
+                .build();
+
+        int result = aiClientToolMcpDao.updateByMcpId(aiClientToolMcp);
+        log.info("根据MCP ID更新Streamable HTTP结果: {}", result);
     }
 
     @Test
@@ -118,6 +151,13 @@ public class AiClientToolMcpDaoTest {
         List<AiClientToolMcp> aiClientToolMcpList = aiClientToolMcpDao.queryByTransportType("sse");
         log.info("根据传输类型查询结果数量: {}", aiClientToolMcpList.size());
         aiClientToolMcpList.forEach(mcp -> log.info("SSE类型MCP工具配置: {}", mcp));
+    }
+
+    @Test
+    public void test_queryByTransportType_streamableHttp() {
+        List<AiClientToolMcp> aiClientToolMcpList = aiClientToolMcpDao.queryByTransportType("streamable_http");
+        log.info("根据Streamable HTTP传输类型查询结果数量: {}", aiClientToolMcpList.size());
+        aiClientToolMcpList.forEach(mcp -> log.info("Streamable HTTP类型MCP工具配置: {}", mcp));
     }
 
     @Test

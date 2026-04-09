@@ -1,0 +1,1108 @@
+﻿Compiled from "WebClientStreamableHttpTransport.java"
+public class io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport implements io.modelcontextprotocol.spec.McpClientTransport {
+  private static final java.lang.String MISSING_SESSION_ID;
+
+  private static final org.slf4j.Logger logger;
+
+  private static final java.lang.String DEFAULT_ENDPOINT;
+
+  private static final java.lang.String MESSAGE_EVENT_TYPE;
+
+  private static final org.springframework.core.ParameterizedTypeReference<org.springframework.http.codec.ServerSentEvent<java.lang.String>> PARAMETERIZED_TYPE_REF;
+
+  private final io.modelcontextprotocol.json.McpJsonMapper jsonMapper;
+
+  private final org.springframework.web.reactive.function.client.WebClient webClient;
+
+  private final java.lang.String endpoint;
+
+  private final boolean openConnectionOnStartup;
+
+  private final boolean resumableStreams;
+
+  private final java.util.concurrent.atomic.AtomicReference<io.modelcontextprotocol.spec.McpTransportSession<reactor.core.Disposable>> activeSession;
+
+  private final java.util.concurrent.atomic.AtomicReference<java.util.function.Function<reactor.core.publisher.Mono<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage>, reactor.core.publisher.Mono<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage>>> handler;
+
+  private final java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<java.lang.Throwable>> exceptionHandler;
+
+  private final java.util.List<java.lang.String> supportedProtocolVersions;
+
+  private final java.lang.String latestSupportedProtocolVersion;
+
+  private io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport(io.modelcontextprotocol.json.McpJsonMapper, org.springframework.web.reactive.function.client.WebClient$Builder, java.lang.String, boolean, boolean, java.util.List<java.lang.String>);
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: aload_0
+       5: new           #7                  // class java/util/concurrent/atomic/AtomicReference
+       8: dup
+       9: invokespecial #9                  // Method java/util/concurrent/atomic/AtomicReference."<init>":()V
+      12: putfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      15: aload_0
+      16: new           #7                  // class java/util/concurrent/atomic/AtomicReference
+      19: dup
+      20: invokespecial #9                  // Method java/util/concurrent/atomic/AtomicReference."<init>":()V
+      23: putfield      #16                 // Field handler:Ljava/util/concurrent/atomic/AtomicReference;
+      26: aload_0
+      27: new           #7                  // class java/util/concurrent/atomic/AtomicReference
+      30: dup
+      31: invokespecial #9                  // Method java/util/concurrent/atomic/AtomicReference."<init>":()V
+      34: putfield      #19                 // Field exceptionHandler:Ljava/util/concurrent/atomic/AtomicReference;
+      37: aload_0
+      38: aload_1
+      39: putfield      #22                 // Field jsonMapper:Lio/modelcontextprotocol/json/McpJsonMapper;
+      42: aload_0
+      43: aload_2
+      44: invokeinterface #26,  1           // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$Builder.build:()Lorg/springframework/web/reactive/function/client/WebClient;
+      49: putfield      #32                 // Field webClient:Lorg/springframework/web/reactive/function/client/WebClient;
+      52: aload_0
+      53: aload_3
+      54: putfield      #36                 // Field endpoint:Ljava/lang/String;
+      57: aload_0
+      58: iload         4
+      60: putfield      #40                 // Field resumableStreams:Z
+      63: aload_0
+      64: iload         5
+      66: putfield      #44                 // Field openConnectionOnStartup:Z
+      69: aload_0
+      70: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      73: aload_0
+      74: invokevirtual #47                 // Method createTransportSession:()Lio/modelcontextprotocol/spec/McpTransportSession;
+      77: invokevirtual #51                 // Method java/util/concurrent/atomic/AtomicReference.set:(Ljava/lang/Object;)V
+      80: aload_0
+      81: aload         6
+      83: invokestatic  #55                 // InterfaceMethod java/util/List.copyOf:(Ljava/util/Collection;)Ljava/util/List;
+      86: putfield      #61                 // Field supportedProtocolVersions:Ljava/util/List;
+      89: aload_0
+      90: aload_0
+      91: getfield      #61                 // Field supportedProtocolVersions:Ljava/util/List;
+      94: invokeinterface #65,  1           // InterfaceMethod java/util/List.stream:()Ljava/util/stream/Stream;
+      99: invokestatic  #69                 // InterfaceMethod java/util/Comparator.reverseOrder:()Ljava/util/Comparator;
+     102: invokeinterface #75,  2           // InterfaceMethod java/util/stream/Stream.sorted:(Ljava/util/Comparator;)Ljava/util/stream/Stream;
+     107: invokeinterface #81,  1           // InterfaceMethod java/util/stream/Stream.findFirst:()Ljava/util/Optional;
+     112: invokevirtual #85                 // Method java/util/Optional.get:()Ljava/lang/Object;
+     115: checkcast     #91                 // class java/lang/String
+     118: putfield      #93                 // Field latestSupportedProtocolVersion:Ljava/lang/String;
+     121: return
+
+  public java.util.List<java.lang.String> protocolVersions();
+    Code:
+       0: aload_0
+       1: getfield      #61                 // Field supportedProtocolVersions:Ljava/util/List;
+       4: areturn
+
+  public static io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport$Builder builder(org.springframework.web.reactive.function.client.WebClient$Builder);
+    Code:
+       0: new           #96                 // class io/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport$Builder
+       3: dup
+       4: aload_0
+       5: invokespecial #98                 // Method io/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport$Builder."<init>":(Lorg/springframework/web/reactive/function/client/WebClient$Builder;)V
+       8: areturn
+
+  public reactor.core.publisher.Mono<java.lang.Void> connect(java.util.function.Function<reactor.core.publisher.Mono<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage>, reactor.core.publisher.Mono<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage>>);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: invokedynamic #101,  0            // InvokeDynamic #0:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Ljava/util/function/Function;)Ljava/util/function/Function;
+       7: invokestatic  #105                // Method reactor/core/publisher/Mono.deferContextual:(Ljava/util/function/Function;)Lreactor/core/publisher/Mono;
+      10: areturn
+
+  private io.modelcontextprotocol.spec.McpTransportSession<reactor.core.Disposable> createTransportSession();
+    Code:
+       0: aload_0
+       1: invokedynamic #111,  0            // InvokeDynamic #1:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+       6: astore_1
+       7: new           #114                // class io/modelcontextprotocol/spec/DefaultMcpTransportSession
+      10: dup
+      11: aload_1
+      12: invokespecial #116                // Method io/modelcontextprotocol/spec/DefaultMcpTransportSession."<init>":(Ljava/util/function/Function;)V
+      15: areturn
+
+  private io.modelcontextprotocol.spec.McpTransportSession<reactor.core.Disposable> createClosedSession(io.modelcontextprotocol.spec.McpTransportSession<reactor.core.Disposable>);
+    Code:
+       0: aload_1
+       1: invokestatic  #119                // Method java/util/Optional.ofNullable:(Ljava/lang/Object;)Ljava/util/Optional;
+       4: invokedynamic #123,  0            // InvokeDynamic #2:test:()Ljava/util/function/Predicate;
+       9: invokevirtual #127                // Method java/util/Optional.filter:(Ljava/util/function/Predicate;)Ljava/util/Optional;
+      12: invokedynamic #131,  0            // InvokeDynamic #3:apply:()Ljava/util/function/Function;
+      17: invokevirtual #134                // Method java/util/Optional.flatMap:(Ljava/util/function/Function;)Ljava/util/Optional;
+      20: aconst_null
+      21: invokevirtual #138                // Method java/util/Optional.orElse:(Ljava/lang/Object;)Ljava/lang/Object;
+      24: checkcast     #91                 // class java/lang/String
+      27: astore_2
+      28: new           #142                // class io/modelcontextprotocol/spec/ClosedMcpTransportSession
+      31: dup
+      32: aload_2
+      33: invokespecial #144                // Method io/modelcontextprotocol/spec/ClosedMcpTransportSession."<init>":(Ljava/lang/String;)V
+      36: areturn
+
+  public void setExceptionHandler(java.util.function.Consumer<java.lang.Throwable>);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc           #151                // String Exception handler registered
+       5: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      10: aload_0
+      11: getfield      #19                 // Field exceptionHandler:Ljava/util/concurrent/atomic/AtomicReference;
+      14: aload_1
+      15: invokevirtual #51                 // Method java/util/concurrent/atomic/AtomicReference.set:(Ljava/lang/Object;)V
+      18: return
+
+  private void handleException(java.lang.Throwable);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc           #158                // String Handling exception for session {}
+       5: aload_0
+       6: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+       9: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+      12: checkcast     #161                // class io/modelcontextprotocol/spec/McpTransportSession
+      15: invokestatic  #163                // Method sessionIdOrPlaceholder:(Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/lang/String;
+      18: aload_1
+      19: invokeinterface #167,  4          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+      24: aload_1
+      25: instanceof    #170                // class io/modelcontextprotocol/spec/McpTransportSessionNotFoundException
+      28: ifeq          68
+      31: aload_0
+      32: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      35: aload_0
+      36: invokevirtual #47                 // Method createTransportSession:()Lio/modelcontextprotocol/spec/McpTransportSession;
+      39: invokevirtual #172                // Method java/util/concurrent/atomic/AtomicReference.getAndSet:(Ljava/lang/Object;)Ljava/lang/Object;
+      42: checkcast     #161                // class io/modelcontextprotocol/spec/McpTransportSession
+      45: astore_2
+      46: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      49: ldc           #175                // String Server does not recognize session {}. Invalidating.
+      51: aload_2
+      52: invokeinterface #177,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.sessionId:()Ljava/util/Optional;
+      57: invokeinterface #180,  3          // InterfaceMethod org/slf4j/Logger.warn:(Ljava/lang/String;Ljava/lang/Object;)V
+      62: aload_2
+      63: invokeinterface #184,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.close:()V
+      68: aload_0
+      69: getfield      #19                 // Field exceptionHandler:Ljava/util/concurrent/atomic/AtomicReference;
+      72: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+      75: checkcast     #187                // class java/util/function/Consumer
+      78: astore_2
+      79: aload_2
+      80: ifnull        90
+      83: aload_2
+      84: aload_1
+      85: invokeinterface #189,  2          // InterfaceMethod java/util/function/Consumer.accept:(Ljava/lang/Object;)V
+      90: return
+
+  public reactor.core.publisher.Mono<java.lang.Void> closeGracefully();
+    Code:
+       0: aload_0
+       1: invokedynamic #192,  0            // InvokeDynamic #4:get:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Supplier;
+       6: invokestatic  #195                // Method reactor/core/publisher/Mono.defer:(Ljava/util/function/Supplier;)Lreactor/core/publisher/Mono;
+       9: areturn
+
+  private reactor.core.publisher.Mono<reactor.core.Disposable> reconnect(io.modelcontextprotocol.spec.McpTransportStream<reactor.core.Disposable>);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: invokedynamic #199,  0            // InvokeDynamic #5:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpTransportStream;)Ljava/util/function/Function;
+       7: invokestatic  #105                // Method reactor/core/publisher/Mono.deferContextual:(Ljava/util/function/Function;)Lreactor/core/publisher/Mono;
+      10: areturn
+
+  public reactor.core.publisher.Mono<java.lang.Void> sendMessage(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: invokedynamic #202,  0            // InvokeDynamic #6:accept:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;)Ljava/util/function/Consumer;
+       7: invokestatic  #205                // Method reactor/core/publisher/Mono.create:(Ljava/util/function/Consumer;)Lreactor/core/publisher/Mono;
+      10: areturn
+
+  private static reactor.core.publisher.Flux<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage> mcpSessionNotFoundError(java.lang.String);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc           #209                // String Session {} was not found on the MCP server
+       5: aload_0
+       6: invokeinterface #180,  3          // InterfaceMethod org/slf4j/Logger.warn:(Ljava/lang/String;Ljava/lang/Object;)V
+      11: new           #170                // class io/modelcontextprotocol/spec/McpTransportSessionNotFoundException
+      14: dup
+      15: aload_0
+      16: invokespecial #211                // Method io/modelcontextprotocol/spec/McpTransportSessionNotFoundException."<init>":(Ljava/lang/String;)V
+      19: invokestatic  #212                // Method reactor/core/publisher/Flux.error:(Ljava/lang/Throwable;)Lreactor/core/publisher/Flux;
+      22: areturn
+
+  private reactor.core.publisher.Flux<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage> extractError(org.springframework.web.reactive.function.client.ClientResponse, java.lang.String);
+    Code:
+       0: aload_1
+       1: invokeinterface #218,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.createError:()Lreactor/core/publisher/Mono;
+       6: aload_0
+       7: aload_1
+       8: aload_2
+       9: invokedynamic #224,  0            // InvokeDynamic #7:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lorg/springframework/web/reactive/function/client/ClientResponse;Ljava/lang/String;)Ljava/util/function/Function;
+      14: invokevirtual #227                // Method reactor/core/publisher/Mono.onErrorResume:(Ljava/util/function/Function;)Lreactor/core/publisher/Mono;
+      17: invokevirtual #230                // Method reactor/core/publisher/Mono.flux:()Lreactor/core/publisher/Flux;
+      20: areturn
+
+  private reactor.core.publisher.Flux<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage> eventStream(io.modelcontextprotocol.spec.McpTransportStream<reactor.core.Disposable>, org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_1
+       1: ifnull        8
+       4: aload_1
+       5: goto          25
+       8: new           #234                // class io/modelcontextprotocol/spec/DefaultMcpTransportStream
+      11: dup
+      12: aload_0
+      13: getfield      #40                 // Field resumableStreams:Z
+      16: aload_0
+      17: invokedynamic #236,  0            // InvokeDynamic #8:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+      22: invokespecial #237                // Method io/modelcontextprotocol/spec/DefaultMcpTransportStream."<init>":(ZLjava/util/function/Function;)V
+      25: astore_3
+      26: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      29: ldc           #240                // String Connected stream {}
+      31: aload_3
+      32: invokeinterface #242,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.streamId:()J
+      37: invokestatic  #248                // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      40: invokeinterface #254,  3          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;)V
+      45: aload_2
+      46: getstatic     #256                // Field PARAMETERIZED_TYPE_REF:Lorg/springframework/core/ParameterizedTypeReference;
+      49: invokeinterface #260,  2          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.bodyToFlux:(Lorg/springframework/core/ParameterizedTypeReference;)Lreactor/core/publisher/Flux;
+      54: aload_0
+      55: invokedynamic #264,  0            // InvokeDynamic #9:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+      60: invokevirtual #265                // Method reactor/core/publisher/Flux.map:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+      63: astore        4
+      65: aload_3
+      66: aload         4
+      68: invokeinterface #269,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.consumeSseStream:(Lorg/reactivestreams/Publisher;)Lorg/reactivestreams/Publisher;
+      73: invokestatic  #273                // Method reactor/core/publisher/Flux.from:(Lorg/reactivestreams/Publisher;)Lreactor/core/publisher/Flux;
+      76: areturn
+
+  private static boolean isNotFound(org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_0
+       1: invokeinterface #277,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.statusCode:()Lorg/springframework/http/HttpStatusCode;
+       6: getstatic     #281                // Field org/springframework/http/HttpStatus.NOT_FOUND:Lorg/springframework/http/HttpStatus;
+       9: invokeinterface #287,  2          // InterfaceMethod org/springframework/http/HttpStatusCode.isSameCodeAs:(Lorg/springframework/http/HttpStatusCode;)Z
+      14: ireturn
+
+  private static boolean isNotAllowed(org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_0
+       1: invokeinterface #277,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.statusCode:()Lorg/springframework/http/HttpStatusCode;
+       6: getstatic     #293                // Field org/springframework/http/HttpStatus.METHOD_NOT_ALLOWED:Lorg/springframework/http/HttpStatus;
+       9: invokeinterface #287,  2          // InterfaceMethod org/springframework/http/HttpStatusCode.isSameCodeAs:(Lorg/springframework/http/HttpStatusCode;)Z
+      14: ireturn
+
+  private static boolean isEventStream(org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_0
+       1: invokeinterface #277,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.statusCode:()Lorg/springframework/http/HttpStatusCode;
+       6: invokeinterface #296,  1          // InterfaceMethod org/springframework/http/HttpStatusCode.is2xxSuccessful:()Z
+      11: ifeq          61
+      14: aload_0
+      15: invokeinterface #300,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.headers:()Lorg/springframework/web/reactive/function/client/ClientResponse$Headers;
+      20: invokeinterface #304,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse$Headers.contentType:()Ljava/util/Optional;
+      25: invokevirtual #309                // Method java/util/Optional.isPresent:()Z
+      28: ifeq          61
+      31: aload_0
+      32: invokeinterface #300,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.headers:()Lorg/springframework/web/reactive/function/client/ClientResponse$Headers;
+      37: invokeinterface #304,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse$Headers.contentType:()Ljava/util/Optional;
+      42: invokevirtual #85                 // Method java/util/Optional.get:()Ljava/lang/Object;
+      45: checkcast     #312                // class org/springframework/http/MediaType
+      48: getstatic     #314                // Field org/springframework/http/MediaType.TEXT_EVENT_STREAM:Lorg/springframework/http/MediaType;
+      51: invokevirtual #318                // Method org/springframework/http/MediaType.isCompatibleWith:(Lorg/springframework/http/MediaType;)Z
+      54: ifeq          61
+      57: iconst_1
+      58: goto          62
+      61: iconst_0
+      62: ireturn
+
+  private static java.lang.String sessionIdOrPlaceholder(io.modelcontextprotocol.spec.McpTransportSession<?>);
+    Code:
+       0: aload_0
+       1: invokeinterface #177,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.sessionId:()Ljava/util/Optional;
+       6: ldc_w         #322                // String [missing_session_id]
+       9: invokevirtual #138                // Method java/util/Optional.orElse:(Ljava/lang/Object;)Ljava/lang/Object;
+      12: checkcast     #91                 // class java/lang/String
+      15: areturn
+
+  private reactor.core.publisher.Flux<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage> directResponseFlux(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage, org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_2
+       1: ldc           #91                 // class java/lang/String
+       3: invokeinterface #324,  2          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.bodyToMono:(Ljava/lang/Class;)Lreactor/core/publisher/Mono;
+       8: aload_0
+       9: aload_1
+      10: invokedynamic #328,  0            // InvokeDynamic #10:accept:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;)Ljava/util/function/BiConsumer;
+      15: invokevirtual #331                // Method reactor/core/publisher/Mono.handle:(Ljava/util/function/BiConsumer;)Lreactor/core/publisher/Mono;
+      18: invokestatic  #335                // InterfaceMethod java/util/function/Function.identity:()Ljava/util/function/Function;
+      21: invokevirtual #340                // Method reactor/core/publisher/Mono.flatMapIterable:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+      24: areturn
+
+  private reactor.core.publisher.Flux<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage> newEventStream(org.springframework.web.reactive.function.client.ClientResponse, java.lang.String);
+    Code:
+       0: new           #234                // class io/modelcontextprotocol/spec/DefaultMcpTransportStream
+       3: dup
+       4: aload_0
+       5: getfield      #40                 // Field resumableStreams:Z
+       8: aload_0
+       9: invokedynamic #236,  0            // InvokeDynamic #8:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+      14: invokespecial #237                // Method io/modelcontextprotocol/spec/DefaultMcpTransportStream."<init>":(ZLjava/util/function/Function;)V
+      17: astore_3
+      18: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      21: ldc_w         #343                // String Sent POST and opened a stream ({}) for session {}
+      24: aload_3
+      25: invokeinterface #242,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.streamId:()J
+      30: invokestatic  #248                // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      33: aload_2
+      34: invokeinterface #345,  4          // InterfaceMethod org/slf4j/Logger.trace:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+      39: aload_0
+      40: aload_3
+      41: aload_1
+      42: invokevirtual #348                // Method eventStream:(Lio/modelcontextprotocol/spec/McpTransportStream;Lorg/springframework/web/reactive/function/client/ClientResponse;)Lreactor/core/publisher/Flux;
+      45: areturn
+
+  public <T> T unmarshalFrom(java.lang.Object, io.modelcontextprotocol.json.TypeRef<T>);
+    Code:
+       0: aload_0
+       1: getfield      #22                 // Field jsonMapper:Lio/modelcontextprotocol/json/McpJsonMapper;
+       4: aload_1
+       5: aload_2
+       6: invokeinterface #352,  3          // InterfaceMethod io/modelcontextprotocol/json/McpJsonMapper.convertValue:(Ljava/lang/Object;Lio/modelcontextprotocol/json/TypeRef;)Ljava/lang/Object;
+      11: areturn
+
+  private reactor.util.function.Tuple2<java.util.Optional<java.lang.String>, java.lang.Iterable<io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage>> parse(org.springframework.http.codec.ServerSentEvent<java.lang.String>);
+    Code:
+       0: ldc_w         #358                // String message
+       3: aload_1
+       4: invokevirtual #360                // Method org/springframework/http/codec/ServerSentEvent.event:()Ljava/lang/String;
+       7: invokevirtual #366                // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+      10: ifeq          65
+      13: aload_0
+      14: getfield      #22                 // Field jsonMapper:Lio/modelcontextprotocol/json/McpJsonMapper;
+      17: aload_1
+      18: invokevirtual #370                // Method org/springframework/http/codec/ServerSentEvent.data:()Ljava/lang/Object;
+      21: checkcast     #91                 // class java/lang/String
+      24: invokestatic  #373                // Method io/modelcontextprotocol/spec/McpSchema.deserializeJsonRpcMessage:(Lio/modelcontextprotocol/json/McpJsonMapper;Ljava/lang/String;)Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;
+      27: astore_2
+      28: aload_1
+      29: invokevirtual #379                // Method org/springframework/http/codec/ServerSentEvent.id:()Ljava/lang/String;
+      32: invokestatic  #119                // Method java/util/Optional.ofNullable:(Ljava/lang/Object;)Ljava/util/Optional;
+      35: aload_2
+      36: invokestatic  #382                // InterfaceMethod java/util/List.of:(Ljava/lang/Object;)Ljava/util/List;
+      39: invokestatic  #386                // Method reactor/util/function/Tuples.of:(Ljava/lang/Object;Ljava/lang/Object;)Lreactor/util/function/Tuple2;
+      42: areturn
+      43: astore_2
+      44: new           #393                // class io/modelcontextprotocol/spec/McpTransportException
+      47: dup
+      48: aload_1
+      49: invokevirtual #370                // Method org/springframework/http/codec/ServerSentEvent.data:()Ljava/lang/Object;
+      52: checkcast     #91                 // class java/lang/String
+      55: invokedynamic #395,  0            // InvokeDynamic #11:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+      60: aload_2
+      61: invokespecial #399                // Method io/modelcontextprotocol/spec/McpTransportException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+      64: athrow
+      65: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      68: ldc_w         #402                // String Received SSE event with type: {}
+      71: aload_1
+      72: invokeinterface #254,  3          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;)V
+      77: invokestatic  #404                // Method java/util/Optional.empty:()Ljava/util/Optional;
+      80: invokestatic  #407                // InterfaceMethod java/util/List.of:()Ljava/util/List;
+      83: invokestatic  #386                // Method reactor/util/function/Tuples.of:(Ljava/lang/Object;Ljava/lang/Object;)Lreactor/util/function/Tuple2;
+      86: areturn
+    Exception table:
+       from    to  target type
+          13    42    43   Class java/io/IOException
+
+  private void lambda$directResponseFlux$23(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage, java.lang.String, reactor.core.publisher.SynchronousSink);
+    Code:
+       0: aload_1
+       1: instanceof    #410                // class io/modelcontextprotocol/spec/McpSchema$JSONRPCNotification
+       4: ifeq          42
+       7: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      10: ldc_w         #412                // String Notification: {} received non-compliant response: {}
+      13: aload_1
+      14: aload_2
+      15: invokestatic  #414                // Method io/modelcontextprotocol/util/Utils.hasText:(Ljava/lang/String;)Z
+      18: ifeq          25
+      21: aload_2
+      22: goto          28
+      25: ldc_w         #420                // String [empty]
+      28: invokeinterface #422,  4          // InterfaceMethod org/slf4j/Logger.warn:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+      33: aload_3
+      34: invokeinterface #424,  1          // InterfaceMethod reactor/core/publisher/SynchronousSink.complete:()V
+      39: goto          63
+      42: aload_0
+      43: getfield      #22                 // Field jsonMapper:Lio/modelcontextprotocol/json/McpJsonMapper;
+      46: aload_2
+      47: invokestatic  #373                // Method io/modelcontextprotocol/spec/McpSchema.deserializeJsonRpcMessage:(Lio/modelcontextprotocol/json/McpJsonMapper;Ljava/lang/String;)Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;
+      50: astore        4
+      52: aload_3
+      53: aload         4
+      55: invokestatic  #382                // InterfaceMethod java/util/List.of:(Ljava/lang/Object;)Ljava/util/List;
+      58: invokeinterface #429,  2          // InterfaceMethod reactor/core/publisher/SynchronousSink.next:(Ljava/lang/Object;)V
+      63: goto          83
+      66: astore        4
+      68: aload_3
+      69: new           #393                // class io/modelcontextprotocol/spec/McpTransportException
+      72: dup
+      73: aload         4
+      75: invokespecial #432                // Method io/modelcontextprotocol/spec/McpTransportException."<init>":(Ljava/lang/Throwable;)V
+      78: invokeinterface #435,  2          // InterfaceMethod reactor/core/publisher/SynchronousSink.error:(Ljava/lang/Throwable;)V
+      83: return
+    Exception table:
+       from    to  target type
+           0    63    66   Class java/io/IOException
+
+  private reactor.core.publisher.Mono lambda$extractError$22(org.springframework.web.reactive.function.client.ClientResponse, java.lang.String, java.lang.Throwable);
+    Code:
+       0: aload_3
+       1: checkcast     #437                // class org/springframework/web/reactive/function/client/WebClientResponseException
+       4: astore        4
+       6: aload         4
+       8: invokevirtual #439                // Method org/springframework/web/reactive/function/client/WebClientResponseException.getResponseBodyAsByteArray:()[B
+      11: astore        5
+      13: aconst_null
+      14: astore        6
+      16: aload_0
+      17: getfield      #22                 // Field jsonMapper:Lio/modelcontextprotocol/json/McpJsonMapper;
+      20: aload         5
+      22: ldc_w         #443                // class io/modelcontextprotocol/spec/McpSchema$JSONRPCResponse
+      25: invokeinterface #445,  3          // InterfaceMethod io/modelcontextprotocol/json/McpJsonMapper.readValue:([BLjava/lang/Class;)Ljava/lang/Object;
+      30: checkcast     #443                // class io/modelcontextprotocol/spec/McpSchema$JSONRPCResponse
+      33: astore        8
+      35: aload         8
+      37: invokevirtual #449                // Method io/modelcontextprotocol/spec/McpSchema$JSONRPCResponse.error:()Lio/modelcontextprotocol/spec/McpSchema$JSONRPCResponse$JSONRPCError;
+      40: astore        6
+      42: aload         6
+      44: ifnull        59
+      47: new           #452                // class io/modelcontextprotocol/spec/McpError
+      50: dup
+      51: aload         6
+      53: invokespecial #454                // Method io/modelcontextprotocol/spec/McpError."<init>":(Lio/modelcontextprotocol/spec/McpSchema$JSONRPCResponse$JSONRPCError;)V
+      56: goto          76
+      59: new           #393                // class io/modelcontextprotocol/spec/McpTransportException
+      62: dup
+      63: aload         8
+      65: invokestatic  #457                // Method java/lang/String.valueOf:(Ljava/lang/Object;)Ljava/lang/String;
+      68: invokedynamic #460,  0            // InvokeDynamic #12:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+      73: invokespecial #461                // Method io/modelcontextprotocol/spec/McpTransportException."<init>":(Ljava/lang/String;)V
+      76: astore        7
+      78: goto          121
+      81: astore        8
+      83: new           #393                // class io/modelcontextprotocol/spec/McpTransportException
+      86: dup
+      87: aload_3
+      88: invokevirtual #462                // Method java/lang/Throwable.getMessage:()Ljava/lang/String;
+      91: invokedynamic #467,  0            // InvokeDynamic #13:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+      96: aload_3
+      97: invokespecial #399                // Method io/modelcontextprotocol/spec/McpTransportException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+     100: astore        7
+     102: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+     105: ldc_w         #468                // String Received content together with {} HTTP code response: {}
+     108: aload_1
+     109: invokeinterface #277,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.statusCode:()Lorg/springframework/http/HttpStatusCode;
+     114: aload         5
+     116: invokeinterface #167,  4          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+     121: aload         4
+     123: invokevirtual #470                // Method org/springframework/web/reactive/function/client/WebClientResponseException.getStatusCode:()Lorg/springframework/http/HttpStatusCode;
+     126: getstatic     #473                // Field org/springframework/http/HttpStatus.BAD_REQUEST:Lorg/springframework/http/HttpStatus;
+     129: invokeinterface #287,  2          // InterfaceMethod org/springframework/http/HttpStatusCode.isSameCodeAs:(Lorg/springframework/http/HttpStatusCode;)Z
+     134: ifeq          185
+     137: aload_2
+     138: ldc_w         #322                // String [missing_session_id]
+     141: invokevirtual #366                // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+     144: ifne          161
+     147: new           #170                // class io/modelcontextprotocol/spec/McpTransportSessionNotFoundException
+     150: dup
+     151: aload_2
+     152: aload         7
+     154: invokespecial #476                // Method io/modelcontextprotocol/spec/McpTransportSessionNotFoundException."<init>":(Ljava/lang/String;Ljava/lang/Exception;)V
+     157: invokestatic  #479                // Method reactor/core/publisher/Mono.error:(Ljava/lang/Throwable;)Lreactor/core/publisher/Mono;
+     160: areturn
+     161: new           #393                // class io/modelcontextprotocol/spec/McpTransportException
+     164: dup
+     165: aload_2
+     166: aload         7
+     168: invokevirtual #482                // Method java/lang/Exception.getMessage:()Ljava/lang/String;
+     171: invokedynamic #485,  0            // InvokeDynamic #14:makeConcatWithConstants:(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+     176: aload         7
+     178: invokespecial #399                // Method io/modelcontextprotocol/spec/McpTransportException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+     181: invokestatic  #479                // Method reactor/core/publisher/Mono.error:(Ljava/lang/Throwable;)Lreactor/core/publisher/Mono;
+     184: areturn
+     185: aload         7
+     187: invokestatic  #479                // Method reactor/core/publisher/Mono.error:(Ljava/lang/Throwable;)Lreactor/core/publisher/Mono;
+     190: areturn
+    Exception table:
+       from    to  target type
+          16    78    81   Class java/io/IOException
+
+  private void lambda$sendMessage$21(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage, reactor.core.publisher.MonoSink);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc_w         #488                // String Sending message {}
+       6: aload_1
+       7: invokeinterface #254,  3          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;)V
+      12: new           #7                  // class java/util/concurrent/atomic/AtomicReference
+      15: dup
+      16: invokespecial #9                  // Method java/util/concurrent/atomic/AtomicReference."<init>":()V
+      19: astore_3
+      20: aload_0
+      21: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      24: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+      27: checkcast     #161                // class io/modelcontextprotocol/spec/McpTransportSession
+      30: astore        4
+      32: aload_0
+      33: aload         4
+      35: aload_1
+      36: aload_2
+      37: invokedynamic #490,  0            // InvokeDynamic #15:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpTransportSession;Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;Lreactor/core/publisher/MonoSink;)Ljava/util/function/Function;
+      42: invokestatic  #493                // Method reactor/core/publisher/Flux.deferContextual:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+      45: aload_0
+      46: invokedynamic #495,  0            // InvokeDynamic #16:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+      51: invokevirtual #496                // Method reactor/core/publisher/Flux.flatMap:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+      54: aload_0
+      55: aload_2
+      56: invokedynamic #498,  0            // InvokeDynamic #17:test:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lreactor/core/publisher/MonoSink;)Ljava/util/function/Predicate;
+      61: invokevirtual #501                // Method reactor/core/publisher/Flux.onErrorComplete:(Ljava/util/function/Predicate;)Lreactor/core/publisher/Flux;
+      64: aload_3
+      65: aload         4
+      67: invokedynamic #505,  0            // InvokeDynamic #18:accept:(Ljava/util/concurrent/atomic/AtomicReference;Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/util/function/Consumer;
+      72: invokevirtual #508                // Method reactor/core/publisher/Flux.doFinally:(Ljava/util/function/Consumer;)Lreactor/core/publisher/Flux;
+      75: aload_2
+      76: invokeinterface #512,  1          // InterfaceMethod reactor/core/publisher/MonoSink.contextView:()Lreactor/util/context/ContextView;
+      81: invokevirtual #518                // Method reactor/core/publisher/Flux.contextWrite:(Lreactor/util/context/ContextView;)Lreactor/core/publisher/Flux;
+      84: invokevirtual #522                // Method reactor/core/publisher/Flux.subscribe:()Lreactor/core/Disposable;
+      87: astore        5
+      89: aload_3
+      90: aload         5
+      92: invokevirtual #51                 // Method java/util/concurrent/atomic/AtomicReference.set:(Ljava/lang/Object;)V
+      95: aload         4
+      97: aload         5
+      99: invokeinterface #526,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.addConnection:(Ljava/lang/Object;)V
+     104: return
+
+  private static void lambda$sendMessage$20(java.util.concurrent.atomic.AtomicReference, io.modelcontextprotocol.spec.McpTransportSession, reactor.core.publisher.SignalType);
+    Code:
+       0: aload_0
+       1: aconst_null
+       2: invokevirtual #172                // Method java/util/concurrent/atomic/AtomicReference.getAndSet:(Ljava/lang/Object;)Ljava/lang/Object;
+       5: checkcast     #529                // class reactor/core/Disposable
+       8: astore_3
+       9: aload_3
+      10: ifnull        20
+      13: aload_1
+      14: aload_3
+      15: invokeinterface #531,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.removeConnection:(Ljava/lang/Object;)V
+      20: return
+
+  private boolean lambda$sendMessage$19(reactor.core.publisher.MonoSink, java.lang.Throwable);
+    Code:
+       0: aload_0
+       1: aload_2
+       2: invokevirtual #534                // Method handleException:(Ljava/lang/Throwable;)V
+       5: aload_1
+       6: aload_2
+       7: invokeinterface #537,  2          // InterfaceMethod reactor/core/publisher/MonoSink.error:(Ljava/lang/Throwable;)V
+      12: iconst_1
+      13: ireturn
+
+  private org.reactivestreams.Publisher lambda$sendMessage$18(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage);
+    Code:
+       0: aload_0
+       1: getfield      #16                 // Field handler:Ljava/util/concurrent/atomic/AtomicReference;
+       4: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+       7: checkcast     #336                // class java/util/function/Function
+      10: aload_1
+      11: invokestatic  #538                // Method reactor/core/publisher/Mono.just:(Ljava/lang/Object;)Lreactor/core/publisher/Mono;
+      14: invokeinterface #542,  2          // InterfaceMethod java/util/function/Function.apply:(Ljava/lang/Object;)Ljava/lang/Object;
+      19: checkcast     #544                // class org/reactivestreams/Publisher
+      22: areturn
+
+  private org.reactivestreams.Publisher lambda$sendMessage$17(io.modelcontextprotocol.spec.McpTransportSession, io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage, reactor.core.publisher.MonoSink, reactor.util.context.ContextView);
+    Code:
+       0: aload_0
+       1: getfield      #32                 // Field webClient:Lorg/springframework/web/reactive/function/client/WebClient;
+       4: invokeinterface #546,  1          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient.post:()Lorg/springframework/web/reactive/function/client/WebClient$RequestBodyUriSpec;
+       9: aload_0
+      10: getfield      #36                 // Field endpoint:Ljava/lang/String;
+      13: iconst_0
+      14: anewarray     #2                  // class java/lang/Object
+      17: invokeinterface #552,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestBodyUriSpec.uri:(Ljava/lang/String;[Ljava/lang/Object;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      22: checkcast     #558                // class org/springframework/web/reactive/function/client/WebClient$RequestBodySpec
+      25: iconst_2
+      26: anewarray     #312                // class org/springframework/http/MediaType
+      29: dup
+      30: iconst_0
+      31: getstatic     #560                // Field org/springframework/http/MediaType.APPLICATION_JSON:Lorg/springframework/http/MediaType;
+      34: aastore
+      35: dup
+      36: iconst_1
+      37: getstatic     #314                // Field org/springframework/http/MediaType.TEXT_EVENT_STREAM:Lorg/springframework/http/MediaType;
+      40: aastore
+      41: invokeinterface #563,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestBodySpec.accept:([Lorg/springframework/http/MediaType;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      46: checkcast     #558                // class org/springframework/web/reactive/function/client/WebClient$RequestBodySpec
+      49: ldc_w         #568                // String MCP-Protocol-Version
+      52: iconst_1
+      53: anewarray     #91                 // class java/lang/String
+      56: dup
+      57: iconst_0
+      58: aload         4
+      60: ldc_w         #572                // String io.modelcontextprotocol.client.negotiated-protocol-version
+      63: aload_0
+      64: getfield      #93                 // Field latestSupportedProtocolVersion:Ljava/lang/String;
+      67: invokeinterface #574,  3          // InterfaceMethod reactor/util/context/ContextView.getOrDefault:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+      72: checkcast     #91                 // class java/lang/String
+      75: aastore
+      76: invokeinterface #580,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestBodySpec.header:(Ljava/lang/String;[Ljava/lang/String;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      81: checkcast     #558                // class org/springframework/web/reactive/function/client/WebClient$RequestBodySpec
+      84: aload_1
+      85: invokedynamic #584,  0            // InvokeDynamic #19:accept:(Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/util/function/Consumer;
+      90: invokeinterface #587,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestBodySpec.headers:(Ljava/util/function/Consumer;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      95: checkcast     #558                // class org/springframework/web/reactive/function/client/WebClient$RequestBodySpec
+      98: aload_2
+      99: invokeinterface #590,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestBodySpec.bodyValue:(Ljava/lang/Object;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+     104: aload_0
+     105: aload_1
+     106: aload_3
+     107: aload_2
+     108: invokedynamic #594,  0            // InvokeDynamic #20:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpTransportSession;Lreactor/core/publisher/MonoSink;Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;)Ljava/util/function/Function;
+     113: invokeinterface #597,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.exchangeToFlux:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+     118: areturn
+
+  private reactor.core.publisher.Flux lambda$sendMessage$16(io.modelcontextprotocol.spec.McpTransportSession, reactor.core.publisher.MonoSink, io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage, org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_1
+       1: aload         4
+       3: invokeinterface #300,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.headers:()Lorg/springframework/web/reactive/function/client/ClientResponse$Headers;
+       8: invokeinterface #602,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse$Headers.asHttpHeaders:()Lorg/springframework/http/HttpHeaders;
+      13: ldc_w         #606                // String Mcp-Session-Id
+      16: invokevirtual #608                // Method org/springframework/http/HttpHeaders.getFirst:(Ljava/lang/String;)Ljava/lang/String;
+      19: invokeinterface #613,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.markInitialized:(Ljava/lang/String;)Z
+      24: ifeq          45
+      27: aload_0
+      28: aconst_null
+      29: invokevirtual #616                // Method reconnect:(Lio/modelcontextprotocol/spec/McpTransportStream;)Lreactor/core/publisher/Mono;
+      32: aload_2
+      33: invokeinterface #512,  1          // InterfaceMethod reactor/core/publisher/MonoSink.contextView:()Lreactor/util/context/ContextView;
+      38: invokevirtual #620                // Method reactor/core/publisher/Mono.contextWrite:(Lreactor/util/context/ContextView;)Lreactor/core/publisher/Mono;
+      41: invokevirtual #623                // Method reactor/core/publisher/Mono.subscribe:()Lreactor/core/Disposable;
+      44: pop
+      45: aload_1
+      46: invokestatic  #163                // Method sessionIdOrPlaceholder:(Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/lang/String;
+      49: astore        5
+      51: aload         4
+      53: invokeinterface #277,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.statusCode:()Lorg/springframework/http/HttpStatusCode;
+      58: invokeinterface #296,  1          // InterfaceMethod org/springframework/http/HttpStatusCode.is2xxSuccessful:()Z
+      63: ifeq          259
+      66: aload         4
+      68: invokeinterface #300,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.headers:()Lorg/springframework/web/reactive/function/client/ClientResponse$Headers;
+      73: invokeinterface #304,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse$Headers.contentType:()Ljava/util/Optional;
+      78: astore        6
+      80: aload         4
+      82: invokeinterface #300,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.headers:()Lorg/springframework/web/reactive/function/client/ClientResponse$Headers;
+      87: invokeinterface #624,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse$Headers.contentLength:()Ljava/util/OptionalLong;
+      92: ldc2_w        #628                // long -1l
+      95: invokevirtual #630                // Method java/util/OptionalLong.orElse:(J)J
+      98: lstore        7
+     100: aload         6
+     102: invokevirtual #635                // Method java/util/Optional.isEmpty:()Z
+     105: ifne          115
+     108: lload         7
+     110: lconst_0
+     111: lcmp
+     112: ifne          138
+     115: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+     118: ldc_w         #638                // String Message was successfully sent via POST for session {}
+     121: aload         5
+     123: invokeinterface #640,  3          // InterfaceMethod org/slf4j/Logger.trace:(Ljava/lang/String;Ljava/lang/Object;)V
+     128: aload_2
+     129: invokeinterface #642,  1          // InterfaceMethod reactor/core/publisher/MonoSink.success:()V
+     134: invokestatic  #645                // Method reactor/core/publisher/Flux.empty:()Lreactor/core/publisher/Flux;
+     137: areturn
+     138: aload         6
+     140: invokevirtual #85                 // Method java/util/Optional.get:()Ljava/lang/Object;
+     143: checkcast     #312                // class org/springframework/http/MediaType
+     146: astore        9
+     148: aload         9
+     150: getstatic     #314                // Field org/springframework/http/MediaType.TEXT_EVENT_STREAM:Lorg/springframework/http/MediaType;
+     153: invokevirtual #318                // Method org/springframework/http/MediaType.isCompatibleWith:(Lorg/springframework/http/MediaType;)Z
+     156: ifeq          185
+     159: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+     162: ldc_w         #647                // String Established SSE stream via POST
+     165: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+     170: aload_2
+     171: invokeinterface #642,  1          // InterfaceMethod reactor/core/publisher/MonoSink.success:()V
+     176: aload_0
+     177: aload         4
+     179: aload         5
+     181: invokevirtual #649                // Method newEventStream:(Lorg/springframework/web/reactive/function/client/ClientResponse;Ljava/lang/String;)Lreactor/core/publisher/Flux;
+     184: areturn
+     185: aload         9
+     187: getstatic     #560                // Field org/springframework/http/MediaType.APPLICATION_JSON:Lorg/springframework/http/MediaType;
+     190: invokevirtual #318                // Method org/springframework/http/MediaType.isCompatibleWith:(Lorg/springframework/http/MediaType;)Z
+     193: ifeq          223
+     196: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+     199: ldc_w         #653                // String Received response to POST for session {}
+     202: aload         5
+     204: invokeinterface #640,  3          // InterfaceMethod org/slf4j/Logger.trace:(Ljava/lang/String;Ljava/lang/Object;)V
+     209: aload_2
+     210: invokeinterface #642,  1          // InterfaceMethod reactor/core/publisher/MonoSink.success:()V
+     215: aload_0
+     216: aload_3
+     217: aload         4
+     219: invokevirtual #655                // Method directResponseFlux:(Lio/modelcontextprotocol/spec/McpSchema$JSONRPCMessage;Lorg/springframework/web/reactive/function/client/ClientResponse;)Lreactor/core/publisher/Flux;
+     222: areturn
+     223: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+     226: ldc_w         #659                // String Unknown media type {} returned for POST in session {}
+     229: aload         6
+     231: aload         5
+     233: invokeinterface #422,  4          // InterfaceMethod org/slf4j/Logger.warn:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+     238: new           #661                // class java/lang/RuntimeException
+     241: dup
+     242: aload         6
+     244: invokestatic  #457                // Method java/lang/String.valueOf:(Ljava/lang/Object;)Ljava/lang/String;
+     247: invokedynamic #663,  0            // InvokeDynamic #21:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+     252: invokespecial #664                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;)V
+     255: invokestatic  #212                // Method reactor/core/publisher/Flux.error:(Ljava/lang/Throwable;)Lreactor/core/publisher/Flux;
+     258: areturn
+     259: aload         4
+     261: invokestatic  #665                // Method isNotFound:(Lorg/springframework/web/reactive/function/client/ClientResponse;)Z
+     264: ifeq          284
+     267: aload         5
+     269: ldc_w         #322                // String [missing_session_id]
+     272: invokevirtual #366                // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+     275: ifne          284
+     278: aload         5
+     280: invokestatic  #669                // Method mcpSessionNotFoundError:(Ljava/lang/String;)Lreactor/core/publisher/Flux;
+     283: areturn
+     284: aload_0
+     285: aload         4
+     287: aload         5
+     289: invokevirtual #673                // Method extractError:(Lorg/springframework/web/reactive/function/client/ClientResponse;Ljava/lang/String;)Lreactor/core/publisher/Flux;
+     292: areturn
+
+  private static void lambda$sendMessage$15(io.modelcontextprotocol.spec.McpTransportSession, org.springframework.http.HttpHeaders);
+    Code:
+       0: aload_0
+       1: invokeinterface #177,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.sessionId:()Ljava/util/Optional;
+       6: aload_1
+       7: invokedynamic #676,  0            // InvokeDynamic #22:accept:(Lorg/springframework/http/HttpHeaders;)Ljava/util/function/Consumer;
+      12: invokevirtual #679                // Method java/util/Optional.ifPresent:(Ljava/util/function/Consumer;)V
+      15: return
+
+  private static void lambda$sendMessage$14(org.springframework.http.HttpHeaders, java.lang.String);
+    Code:
+       0: aload_0
+       1: ldc_w         #606                // String Mcp-Session-Id
+       4: aload_1
+       5: invokevirtual #683                // Method org/springframework/http/HttpHeaders.add:(Ljava/lang/String;Ljava/lang/String;)V
+       8: return
+
+  private reactor.core.publisher.Mono lambda$reconnect$13(io.modelcontextprotocol.spec.McpTransportStream, reactor.util.context.ContextView);
+    Code:
+       0: aload_1
+       1: ifnull        33
+       4: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       7: ldc_w         #687                // String Reconnecting stream {} with lastId {}
+      10: aload_1
+      11: invokeinterface #242,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.streamId:()J
+      16: invokestatic  #248                // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      19: aload_1
+      20: invokeinterface #689,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.lastId:()Ljava/util/Optional;
+      25: invokeinterface #167,  4          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+      30: goto          44
+      33: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      36: ldc_w         #692                // String Reconnecting with no prior stream
+      39: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      44: new           #7                  // class java/util/concurrent/atomic/AtomicReference
+      47: dup
+      48: invokespecial #9                  // Method java/util/concurrent/atomic/AtomicReference."<init>":()V
+      51: astore_3
+      52: aload_0
+      53: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      56: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+      59: checkcast     #161                // class io/modelcontextprotocol/spec/McpTransportSession
+      62: astore        4
+      64: aload_0
+      65: getfield      #32                 // Field webClient:Lorg/springframework/web/reactive/function/client/WebClient;
+      68: invokeinterface #694,  1          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient.get:()Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersUriSpec;
+      73: aload_0
+      74: getfield      #36                 // Field endpoint:Ljava/lang/String;
+      77: iconst_0
+      78: anewarray     #2                  // class java/lang/Object
+      81: invokeinterface #697,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersUriSpec.uri:(Ljava/lang/String;[Ljava/lang/Object;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      86: iconst_1
+      87: anewarray     #312                // class org/springframework/http/MediaType
+      90: dup
+      91: iconst_0
+      92: getstatic     #314                // Field org/springframework/http/MediaType.TEXT_EVENT_STREAM:Lorg/springframework/http/MediaType;
+      95: aastore
+      96: invokeinterface #700,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.accept:([Lorg/springframework/http/MediaType;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+     101: ldc_w         #568                // String MCP-Protocol-Version
+     104: iconst_1
+     105: anewarray     #91                 // class java/lang/String
+     108: dup
+     109: iconst_0
+     110: aload_2
+     111: ldc_w         #572                // String io.modelcontextprotocol.client.negotiated-protocol-version
+     114: aload_0
+     115: getfield      #93                 // Field latestSupportedProtocolVersion:Ljava/lang/String;
+     118: invokeinterface #574,  3          // InterfaceMethod reactor/util/context/ContextView.getOrDefault:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+     123: checkcast     #91                 // class java/lang/String
+     126: aastore
+     127: invokeinterface #701,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.header:(Ljava/lang/String;[Ljava/lang/String;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+     132: aload         4
+     134: aload_1
+     135: invokedynamic #702,  0            // InvokeDynamic #23:accept:(Lio/modelcontextprotocol/spec/McpTransportSession;Lio/modelcontextprotocol/spec/McpTransportStream;)Ljava/util/function/Consumer;
+     140: invokeinterface #705,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.headers:(Ljava/util/function/Consumer;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+     145: aload_0
+     146: aload_1
+     147: aload         4
+     149: invokedynamic #706,  0            // InvokeDynamic #24:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;Lio/modelcontextprotocol/spec/McpTransportStream;Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/util/function/Function;
+     154: invokeinterface #597,  2          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.exchangeToFlux:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+     159: aload_0
+     160: invokedynamic #709,  0            // InvokeDynamic #25:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Function;
+     165: invokevirtual #496                // Method reactor/core/publisher/Flux.flatMap:(Ljava/util/function/Function;)Lreactor/core/publisher/Flux;
+     168: aload_0
+     169: invokedynamic #710,  0            // InvokeDynamic #26:test:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/Predicate;
+     174: invokevirtual #501                // Method reactor/core/publisher/Flux.onErrorComplete:(Ljava/util/function/Predicate;)Lreactor/core/publisher/Flux;
+     177: aload_3
+     178: aload         4
+     180: invokedynamic #713,  0            // InvokeDynamic #27:accept:(Ljava/util/concurrent/atomic/AtomicReference;Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/util/function/Consumer;
+     185: invokevirtual #508                // Method reactor/core/publisher/Flux.doFinally:(Ljava/util/function/Consumer;)Lreactor/core/publisher/Flux;
+     188: aload_2
+     189: invokevirtual #518                // Method reactor/core/publisher/Flux.contextWrite:(Lreactor/util/context/ContextView;)Lreactor/core/publisher/Flux;
+     192: invokevirtual #522                // Method reactor/core/publisher/Flux.subscribe:()Lreactor/core/Disposable;
+     195: astore        5
+     197: aload_3
+     198: aload         5
+     200: invokevirtual #51                 // Method java/util/concurrent/atomic/AtomicReference.set:(Ljava/lang/Object;)V
+     203: aload         4
+     205: aload         5
+     207: invokeinterface #526,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.addConnection:(Ljava/lang/Object;)V
+     212: aload         5
+     214: invokestatic  #538                // Method reactor/core/publisher/Mono.just:(Ljava/lang/Object;)Lreactor/core/publisher/Mono;
+     217: areturn
+
+  private static void lambda$reconnect$12(java.util.concurrent.atomic.AtomicReference, io.modelcontextprotocol.spec.McpTransportSession, reactor.core.publisher.SignalType);
+    Code:
+       0: aload_0
+       1: aconst_null
+       2: invokevirtual #172                // Method java/util/concurrent/atomic/AtomicReference.getAndSet:(Ljava/lang/Object;)Ljava/lang/Object;
+       5: checkcast     #529                // class reactor/core/Disposable
+       8: astore_3
+       9: aload_3
+      10: ifnull        20
+      13: aload_1
+      14: aload_3
+      15: invokeinterface #531,  2          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.removeConnection:(Ljava/lang/Object;)V
+      20: return
+
+  private boolean lambda$reconnect$11(java.lang.Throwable);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: invokevirtual #534                // Method handleException:(Ljava/lang/Throwable;)V
+       5: iconst_1
+       6: ireturn
+
+  private org.reactivestreams.Publisher lambda$reconnect$10(io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage);
+    Code:
+       0: aload_0
+       1: getfield      #16                 // Field handler:Ljava/util/concurrent/atomic/AtomicReference;
+       4: invokevirtual #160                // Method java/util/concurrent/atomic/AtomicReference.get:()Ljava/lang/Object;
+       7: checkcast     #336                // class java/util/function/Function
+      10: aload_1
+      11: invokestatic  #538                // Method reactor/core/publisher/Mono.just:(Ljava/lang/Object;)Lreactor/core/publisher/Mono;
+      14: invokeinterface #542,  2          // InterfaceMethod java/util/function/Function.apply:(Ljava/lang/Object;)Ljava/lang/Object;
+      19: checkcast     #544                // class org/reactivestreams/Publisher
+      22: areturn
+
+  private reactor.core.publisher.Flux lambda$reconnect$9(io.modelcontextprotocol.spec.McpTransportStream, io.modelcontextprotocol.spec.McpTransportSession, org.springframework.web.reactive.function.client.ClientResponse);
+    Code:
+       0: aload_3
+       1: invokestatic  #714                // Method isEventStream:(Lorg/springframework/web/reactive/function/client/ClientResponse;)Z
+       4: ifeq          25
+       7: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      10: ldc_w         #717                // String Established SSE stream via GET
+      13: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      18: aload_0
+      19: aload_1
+      20: aload_3
+      21: invokevirtual #348                // Method eventStream:(Lio/modelcontextprotocol/spec/McpTransportStream;Lorg/springframework/web/reactive/function/client/ClientResponse;)Lreactor/core/publisher/Flux;
+      24: areturn
+      25: aload_3
+      26: invokestatic  #719                // Method isNotAllowed:(Lorg/springframework/web/reactive/function/client/ClientResponse;)Z
+      29: ifeq          47
+      32: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      35: ldc_w         #722                // String The server does not support SSE streams, using request-response mode.
+      38: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      43: invokestatic  #645                // Method reactor/core/publisher/Flux.empty:()Lreactor/core/publisher/Flux;
+      46: areturn
+      47: aload_3
+      48: invokestatic  #665                // Method isNotFound:(Lorg/springframework/web/reactive/function/client/ClientResponse;)Z
+      51: ifeq          87
+      54: aload_2
+      55: invokeinterface #177,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.sessionId:()Ljava/util/Optional;
+      60: invokevirtual #309                // Method java/util/Optional.isPresent:()Z
+      63: ifeq          78
+      66: aload_2
+      67: invokestatic  #163                // Method sessionIdOrPlaceholder:(Lio/modelcontextprotocol/spec/McpTransportSession;)Ljava/lang/String;
+      70: astore        4
+      72: aload         4
+      74: invokestatic  #669                // Method mcpSessionNotFoundError:(Ljava/lang/String;)Lreactor/core/publisher/Flux;
+      77: areturn
+      78: aload_0
+      79: aload_3
+      80: ldc_w         #322                // String [missing_session_id]
+      83: invokevirtual #673                // Method extractError:(Lorg/springframework/web/reactive/function/client/ClientResponse;Ljava/lang/String;)Lreactor/core/publisher/Flux;
+      86: areturn
+      87: aload_3
+      88: invokeinterface #218,  1          // InterfaceMethod org/springframework/web/reactive/function/client/ClientResponse.createError:()Lreactor/core/publisher/Mono;
+      93: invokedynamic #724,  0            // InvokeDynamic #28:accept:()Ljava/util/function/Consumer;
+      98: invokevirtual #727                // Method reactor/core/publisher/Mono.doOnError:(Ljava/util/function/Consumer;)Lreactor/core/publisher/Mono;
+     101: invokevirtual #230                // Method reactor/core/publisher/Mono.flux:()Lreactor/core/publisher/Flux;
+     104: areturn
+
+  private static void lambda$reconnect$8(java.lang.Throwable);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc_w         #730                // String Opening an SSE stream failed. This can be safely ignored.
+       6: aload_0
+       7: invokeinterface #732,  3          // InterfaceMethod org/slf4j/Logger.info:(Ljava/lang/String;Ljava/lang/Throwable;)V
+      12: return
+
+  private static void lambda$reconnect$7(io.modelcontextprotocol.spec.McpTransportSession, io.modelcontextprotocol.spec.McpTransportStream, org.springframework.http.HttpHeaders);
+    Code:
+       0: aload_0
+       1: invokeinterface #177,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.sessionId:()Ljava/util/Optional;
+       6: aload_2
+       7: invokedynamic #735,  0            // InvokeDynamic #29:accept:(Lorg/springframework/http/HttpHeaders;)Ljava/util/function/Consumer;
+      12: invokevirtual #679                // Method java/util/Optional.ifPresent:(Ljava/util/function/Consumer;)V
+      15: aload_1
+      16: ifnull        34
+      19: aload_1
+      20: invokeinterface #689,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportStream.lastId:()Ljava/util/Optional;
+      25: aload_2
+      26: invokedynamic #736,  0            // InvokeDynamic #30:accept:(Lorg/springframework/http/HttpHeaders;)Ljava/util/function/Consumer;
+      31: invokevirtual #679                // Method java/util/Optional.ifPresent:(Ljava/util/function/Consumer;)V
+      34: return
+
+  private static void lambda$reconnect$6(org.springframework.http.HttpHeaders, java.lang.String);
+    Code:
+       0: aload_0
+       1: ldc_w         #737                // String Last-Event-ID
+       4: aload_1
+       5: invokevirtual #683                // Method org/springframework/http/HttpHeaders.add:(Ljava/lang/String;Ljava/lang/String;)V
+       8: return
+
+  private static void lambda$reconnect$5(org.springframework.http.HttpHeaders, java.lang.String);
+    Code:
+       0: aload_0
+       1: ldc_w         #606                // String Mcp-Session-Id
+       4: aload_1
+       5: invokevirtual #683                // Method org/springframework/http/HttpHeaders.add:(Ljava/lang/String;Ljava/lang/String;)V
+       8: return
+
+  private reactor.core.publisher.Mono lambda$closeGracefully$4();
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc_w         #739                // String Graceful close triggered
+       6: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      11: aload_0
+      12: getfield      #10                 // Field activeSession:Ljava/util/concurrent/atomic/AtomicReference;
+      15: aload_0
+      16: invokedynamic #741,  0            // InvokeDynamic #31:apply:(Lio/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport;)Ljava/util/function/UnaryOperator;
+      21: invokevirtual #744                // Method java/util/concurrent/atomic/AtomicReference.getAndUpdate:(Ljava/util/function/UnaryOperator;)Ljava/lang/Object;
+      24: checkcast     #161                // class io/modelcontextprotocol/spec/McpTransportSession
+      27: astore_1
+      28: aload_1
+      29: ifnull        42
+      32: aload_1
+      33: invokeinterface #748,  1          // InterfaceMethod io/modelcontextprotocol/spec/McpTransportSession.closeGracefully:()Lorg/reactivestreams/Publisher;
+      38: invokestatic  #752                // Method reactor/core/publisher/Mono.from:(Lorg/reactivestreams/Publisher;)Lreactor/core/publisher/Mono;
+      41: areturn
+      42: invokestatic  #755                // Method reactor/core/publisher/Mono.empty:()Lreactor/core/publisher/Mono;
+      45: areturn
+
+  private static boolean lambda$createClosedSession$3(io.modelcontextprotocol.spec.McpTransportSession);
+    Code:
+       0: aload_0
+       1: instanceof    #142                // class io/modelcontextprotocol/spec/ClosedMcpTransportSession
+       4: ifne          11
+       7: iconst_1
+       8: goto          12
+      11: iconst_0
+      12: ireturn
+
+  private org.reactivestreams.Publisher lambda$createTransportSession$2(java.lang.String);
+    Code:
+       0: aload_1
+       1: ifnonnull     10
+       4: invokestatic  #755                // Method reactor/core/publisher/Mono.empty:()Lreactor/core/publisher/Mono;
+       7: goto          88
+      10: aload_0
+      11: getfield      #32                 // Field webClient:Lorg/springframework/web/reactive/function/client/WebClient;
+      14: invokeinterface #757,  1          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient.delete:()Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersUriSpec;
+      19: aload_0
+      20: getfield      #36                 // Field endpoint:Ljava/lang/String;
+      23: iconst_0
+      24: anewarray     #2                  // class java/lang/Object
+      27: invokeinterface #697,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersUriSpec.uri:(Ljava/lang/String;[Ljava/lang/Object;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      32: ldc_w         #606                // String Mcp-Session-Id
+      35: iconst_1
+      36: anewarray     #91                 // class java/lang/String
+      39: dup
+      40: iconst_0
+      41: aload_1
+      42: aastore
+      43: invokeinterface #701,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.header:(Ljava/lang/String;[Ljava/lang/String;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      48: ldc_w         #568                // String MCP-Protocol-Version
+      51: iconst_1
+      52: anewarray     #91                 // class java/lang/String
+      55: dup
+      56: iconst_0
+      57: aload_0
+      58: getfield      #93                 // Field latestSupportedProtocolVersion:Ljava/lang/String;
+      61: aastore
+      62: invokeinterface #701,  3          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.header:(Ljava/lang/String;[Ljava/lang/String;)Lorg/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec;
+      67: invokeinterface #760,  1          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$RequestHeadersSpec.retrieve:()Lorg/springframework/web/reactive/function/client/WebClient$ResponseSpec;
+      72: invokeinterface #764,  1          // InterfaceMethod org/springframework/web/reactive/function/client/WebClient$ResponseSpec.toBodilessEntity:()Lreactor/core/publisher/Mono;
+      77: invokedynamic #769,  0            // InvokeDynamic #32:test:()Ljava/util/function/Predicate;
+      82: invokevirtual #770                // Method reactor/core/publisher/Mono.onErrorComplete:(Ljava/util/function/Predicate;)Lreactor/core/publisher/Mono;
+      85: invokevirtual #773                // Method reactor/core/publisher/Mono.then:()Lreactor/core/publisher/Mono;
+      88: areturn
+
+  private static boolean lambda$createTransportSession$1(java.lang.Throwable);
+    Code:
+       0: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       3: ldc_w         #776                // String Got error when closing transport
+       6: aload_0
+       7: invokeinterface #778,  3          // InterfaceMethod org/slf4j/Logger.warn:(Ljava/lang/String;Ljava/lang/Throwable;)V
+      12: iconst_1
+      13: ireturn
+
+  private reactor.core.publisher.Mono lambda$connect$0(java.util.function.Function, reactor.util.context.ContextView);
+    Code:
+       0: aload_0
+       1: getfield      #16                 // Field handler:Ljava/util/concurrent/atomic/AtomicReference;
+       4: aload_1
+       5: invokevirtual #51                 // Method java/util/concurrent/atomic/AtomicReference.set:(Ljava/lang/Object;)V
+       8: aload_0
+       9: getfield      #44                 // Field openConnectionOnStartup:Z
+      12: ifeq          35
+      15: getstatic     #147                // Field logger:Lorg/slf4j/Logger;
+      18: ldc_w         #780                // String Eagerly opening connection on startup
+      21: invokeinterface #153,  2          // InterfaceMethod org/slf4j/Logger.debug:(Ljava/lang/String;)V
+      26: aload_0
+      27: aconst_null
+      28: invokevirtual #616                // Method reconnect:(Lio/modelcontextprotocol/spec/McpTransportStream;)Lreactor/core/publisher/Mono;
+      31: invokevirtual #773                // Method reactor/core/publisher/Mono.then:()Lreactor/core/publisher/Mono;
+      34: areturn
+      35: invokestatic  #755                // Method reactor/core/publisher/Mono.empty:()Lreactor/core/publisher/Mono;
+      38: areturn
+
+  static {};
+    Code:
+       0: ldc           #11                 // class io/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport
+       2: invokestatic  #782                // Method org/slf4j/LoggerFactory.getLogger:(Ljava/lang/Class;)Lorg/slf4j/Logger;
+       5: putstatic     #147                // Field logger:Lorg/slf4j/Logger;
+       8: new           #788                // class io/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport$1
+      11: dup
+      12: invokespecial #790                // Method io/modelcontextprotocol/client/transport/WebClientStreamableHttpTransport$1."<init>":()V
+      15: putstatic     #256                // Field PARAMETERIZED_TYPE_REF:Lorg/springframework/core/ParameterizedTypeReference;
+      18: return
+}

@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * MCP 服务描述对象。
- * 当前只落地 SSE，但字段设计预留给后续 Streamable HTTP 扩展。
+ * 统一承载 SSE、STDIO、Streamable HTTP 三种协议的运行时参数。
  */
 @Data
 @Builder
@@ -36,7 +36,7 @@ public class McpServerDescriptor {
     private String serverUrl;
 
     /**
-     * 传输协议类型，本次固定为 sse。
+     * 传输协议类型，支持 sse/stdio/streamable_http。
      */
     @Builder.Default
     private String transportType = TRANSPORT_TYPE_SSE;
@@ -47,12 +47,12 @@ public class McpServerDescriptor {
     private String serverKey;
 
     /**
-     * 预留字段：后续可直接指定基础地址。
+     * HTTP 类协议的基础地址。
      */
     private String baseUri;
 
     /**
-     * 预留字段：后续可直接指定协议端点。
+     * HTTP 类协议的端点。
      */
     private String endpoint;
 
@@ -79,10 +79,22 @@ public class McpServerDescriptor {
     private Map<String, String> env = new HashMap<>();
 
     /**
-     * 预留字段：后续可透传鉴权头。
+     * HTTP 类协议透传请求头。
      */
     @Builder.Default
     private Map<String, String> headers = new HashMap<>();
+
+    /**
+     * Streamable HTTP 是否启用可恢复流。
+     */
+    @Builder.Default
+    private Boolean resumableStreams = false;
+
+    /**
+     * Streamable HTTP 是否在启动时主动建立连接。
+     */
+    @Builder.Default
+    private Boolean openConnectionOnStartup = true;
 
     /**
      * 构建默认 SSE 描述对象。

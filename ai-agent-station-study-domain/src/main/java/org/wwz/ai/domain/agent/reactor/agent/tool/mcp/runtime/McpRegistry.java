@@ -313,6 +313,26 @@ public class McpRegistry {
                     .build();
         }
 
+        if (McpServerDescriptor.TRANSPORT_TYPE_STREAMABLE_HTTP.equals(mcpVO.getTransportType())) {
+            AiClientToolMcpVO.TransportConfigStreamableHttp streamableHttp = mcpVO.getTransportConfigStreamableHttp();
+            String baseUri = streamableHttp != null ? streamableHttp.getBaseUri() : "";
+            String endpoint = streamableHttp != null ? streamableHttp.getEndpoint() : "/mcp";
+            Map<String, String> headers = streamableHttp != null && streamableHttp.getHeaders() != null
+                    ? streamableHttp.getHeaders()
+                    : Collections.emptyMap();
+            Boolean resumableStreams = streamableHttp != null ? streamableHttp.getResumableStreams() : false;
+            Boolean openConnectionOnStartup = streamableHttp != null ? streamableHttp.getOpenConnectionOnStartup() : true;
+            String serverUrl = buildServerUrl(baseUri, endpoint);
+            return builder
+                    .serverUrl(serverUrl)
+                    .baseUri(baseUri)
+                    .endpoint(endpoint)
+                    .headers(headers)
+                    .resumableStreams(Boolean.TRUE.equals(resumableStreams))
+                    .openConnectionOnStartup(!Boolean.FALSE.equals(openConnectionOnStartup))
+                    .build();
+        }
+
         return builder
                 .serverUrl(mcpVO.getTransportConfig())
                 .build();
@@ -495,6 +515,8 @@ public class McpRegistry {
                 .args(descriptor.getArgs() == null ? Collections.emptyList() : new ArrayList<>(descriptor.getArgs()))
                 .env(descriptor.getEnv() == null ? Collections.emptyMap() : new LinkedHashMap<>(descriptor.getEnv()))
                 .headers(descriptor.getHeaders() == null ? Collections.emptyMap() : new LinkedHashMap<>(descriptor.getHeaders()))
+                .resumableStreams(Boolean.TRUE.equals(descriptor.getResumableStreams()))
+                .openConnectionOnStartup(!Boolean.FALSE.equals(descriptor.getOpenConnectionOnStartup()))
                 .build();
     }
 

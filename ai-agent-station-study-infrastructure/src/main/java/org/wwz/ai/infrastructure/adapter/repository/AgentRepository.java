@@ -687,6 +687,23 @@ public class AgentRepository implements IAgentRepository {
                 AiClientToolMcpVO.TransportConfigStdio transportConfigStdio = new AiClientToolMcpVO.TransportConfigStdio();
                 transportConfigStdio.setStdio(stdio);
                 mcpVO.setTransportConfigStdio(transportConfigStdio);
+            } else if ("streamable_http".equals(transportType)) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                AiClientToolMcpVO.TransportConfigStreamableHttp transportConfigStreamableHttp =
+                        objectMapper.readValue(transportConfig, AiClientToolMcpVO.TransportConfigStreamableHttp.class);
+                if (transportConfigStreamableHttp.getEndpoint() == null || transportConfigStreamableHttp.getEndpoint().isBlank()) {
+                    transportConfigStreamableHttp.setEndpoint("/mcp");
+                }
+                if (transportConfigStreamableHttp.getHeaders() == null) {
+                    transportConfigStreamableHttp.setHeaders(Map.of());
+                }
+                if (transportConfigStreamableHttp.getResumableStreams() == null) {
+                    transportConfigStreamableHttp.setResumableStreams(false);
+                }
+                if (transportConfigStreamableHttp.getOpenConnectionOnStartup() == null) {
+                    transportConfigStreamableHttp.setOpenConnectionOnStartup(true);
+                }
+                mcpVO.setTransportConfigStreamableHttp(transportConfigStreamableHttp);
             }
         } catch (Exception e) {
             log.error("解析传输配置失败: mcpId={}, reason={}", toolMcp.getMcpId(), e.getMessage(), e);
