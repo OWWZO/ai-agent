@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_conversation (
     title           VARCHAR(256) NOT NULL DEFAULT '新对话' COMMENT '会话标题',
     agent_type      TINYINT      NOT NULL COMMENT '0=CHAT, 1=PLAN_SOLVE(深度思考), 2=REACT(深度研究)',
     product_type    VARCHAR(32)  NOT NULL DEFAULT 'chat' COMMENT '产品形态: chat/html/docs/ppt/table',
+    ai_agent_id     VARCHAR(64)  NULL     COMMENT 'chat 会话绑定的 Fix 角色ID',
+    ai_agent_name_snapshot VARCHAR(128) NULL COMMENT 'chat 角色名称快照，保障历史展示稳定',
     message_count   INT          NOT NULL DEFAULT 0 COMMENT '消息轮数(冗余字段,避免COUNT)',
     pinned          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否置顶',
     last_message_preview VARCHAR(200) NULL COMMENT '最后消息预览',
@@ -49,6 +51,10 @@ CREATE TABLE IF NOT EXISTS ai_agent_conversation (
     KEY idx_device_id (device_id, deleted, update_time DESC),
     KEY idx_user_id (user_id, deleted, update_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 会话表';
+
+ALTER TABLE ai_agent_conversation
+    ADD COLUMN IF NOT EXISTS ai_agent_id VARCHAR(64) NULL COMMENT 'chat 会话绑定的 Fix 角色ID' AFTER product_type,
+    ADD COLUMN IF NOT EXISTS ai_agent_name_snapshot VARCHAR(128) NULL COMMENT 'chat 角色名称快照，保障历史展示稳定' AFTER ai_agent_id;
 
 CREATE TABLE IF NOT EXISTS ai_agent_message (
     id               BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',

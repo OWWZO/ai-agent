@@ -1,8 +1,10 @@
-# ai-agent-station-study Development Guidelines
+﻿# ai-agent-station-study Development Guidelines
 
 Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-11
 
 ## Active Technologies
+- Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
+- MySQL（`ai_agent` / `ai_agent_flow_config` / `ai_agent_conversation` / `ai_client*`） (001-fix-role-library)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -50,10 +52,10 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 001-fix-role-library: Added Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI
 
 - `master`: 引入 `spec-kit`、`.specify/`、`.agents/skills/`，为 Codex 增加 Spec-Driven Development 能力
 - `master`: 补充项目级 `AGENTS.md` 与项目宪章，固化 DDD 边界、验证要求与棕地项目接入方式
-- `master`: 保留既有 `CLAUDE.md` / `.claude/index.json` 作为架构扫描结果与模块上下文入口
 
 <!-- MANUAL ADDITIONS START -->
 ## Working Agreements

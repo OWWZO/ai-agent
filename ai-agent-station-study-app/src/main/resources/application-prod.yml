@@ -39,3 +39,9 @@ logging:
   level:
     root: info
   config: classpath:logback-spring.xml
+
+spring:
+  ai:
+    agent:
+      chat:
+        default-role-id: 85374287

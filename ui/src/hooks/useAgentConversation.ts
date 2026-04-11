@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   conversationApi,
-  restoreMessages,
+  roleLibraryApi,
   type ConversationListItem,
+  type ConversationDetail,
+  type FixRoleItem,
 } from "@/services/agentConversation";
 
 /**
@@ -23,6 +25,7 @@ export function useAgentConversation() {
   // 远程会话列表 (轻量元数据)
   const [remoteConversations, setRemoteConversations] = useState<ConversationListItem[]>([]);
   const [remoteTotal, setRemoteTotal] = useState(0);
+  const [fixRoles, setFixRoles] = useState<FixRoleItem[]>([]);
 
   // 检测API是否可用
   useEffect(() => {
@@ -36,11 +39,21 @@ export function useAgentConversation() {
         if (resp && resp.list !== undefined) {
           setApiMode(true);
           loadRemoteConversations();
+          loadRoleLibrary();
         }
       })
       .catch(() => {
         console.log("API不可用，无法加载服务端历史记录");
       });
+  }, []);
+
+  const loadRoleLibrary = useCallback(async () => {
+    try {
+      const data: any = await roleLibraryApi.list();
+      setFixRoles(data || []);
+    } catch (e) {
+      console.error("加载角色库失败", e);
+    }
   }, []);
 
   /**
@@ -65,26 +78,25 @@ export function useAgentConversation() {
   /**
    * 从API加载会话详情，返回ChatItem[]
    */
-  const loadConversationDetail = useCallback(async (sessionId: string): Promise<CHAT.ChatItem[]> => {
+  const loadConversationDetail = useCallback(async (sessionId: string): Promise<ConversationDetail | null> => {
     try {
       const data: any = await conversationApi.detail(sessionId);
-      // 拦截器已解包: data 直接是 {conversation, messages}
-      if (data?.messages) {
-        return restoreMessages(data.messages);
+      if (data?.conversation) {
+        return data;
       }
     } catch (e) {
       console.error("加载会话详情失败", e);
     }
-    return [];
+    return null;
   }, []);
 
   /**
    * 创建远程会话
    */
   const createRemoteConversation = useCallback(
-    async (sessionId: string, agentType: number, productType: string, title?: string) => {
+    async (sessionId: string, agentType: number, productType: string, title?: string, aiAgentId?: string) => {
       try {
-        await conversationApi.create({ sessionId, agentType, productType, title });
+        await conversationApi.create({ sessionId, agentType, productType, title, aiAgentId });
         // 刷新列表
         loadRemoteConversations();
       } catch (e) {
@@ -129,7 +141,9 @@ export function useAgentConversation() {
     apiLoading,
     remoteConversations,
     remoteTotal,
+    fixRoles,
     loadRemoteConversations,
+    loadRoleLibrary,
     loadConversationDetail,
     createRemoteConversation,
     deleteRemoteConversation,

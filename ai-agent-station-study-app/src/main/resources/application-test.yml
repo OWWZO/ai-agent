@@ -24,6 +24,8 @@ spring:
       base-url: https://apis.itedus.cn
       api-key: sk-sLvFUs1wSIgtbWcE03464f199d254cFcA3A5F2A353C8EdDe
     agent:
+      chat:
+        default-role-id: 85374287
       auto-config:
         enabled: false
 

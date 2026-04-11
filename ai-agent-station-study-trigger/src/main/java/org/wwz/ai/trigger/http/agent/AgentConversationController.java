@@ -2,11 +2,15 @@ package org.wwz.ai.trigger.http.agent;
 
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
+import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
 import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
+import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.trigger.http.agent.vo.*;
 import org.wwz.ai.types.enums.ResponseCode;
 
@@ -25,6 +29,8 @@ public class AgentConversationController {
 
     @Resource
     private IAgentConversationService conversationService;
+    @Resource
+    private IFixRoleService fixRoleService;
 
     /**
      * 会话列表
@@ -84,9 +90,18 @@ public class AgentConversationController {
             HttpServletRequest request,
             @RequestBody ConversationCreateReqVO reqVO) {
         String deviceId = resolveDeviceId(request);
+        FixRoleVO roleVO = resolveCreateRole(reqVO);
+        if ("chat".equalsIgnoreCase(reqVO.getProductType()) && roleVO == null) {
+            return Response.<ConversationListRespVO>builder()
+                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                    .info(StringUtils.hasText(reqVO.getAiAgentId()) ? "角色不可用" : "当前暂无可用角色")
+                    .build();
+        }
         AgentConversation conversation = conversationService.createConversation(
                 reqVO.getSessionId(), deviceId, reqVO.getTitle(),
-                reqVO.getAgentType(), reqVO.getProductType());
+                reqVO.getAgentType(), reqVO.getProductType(),
+                roleVO != null ? roleVO.getAgentId() : null,
+                roleVO != null ? roleVO.getAgentName() : null);
         return Response.<ConversationListRespVO>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info("success")
@@ -173,6 +188,7 @@ public class AgentConversationController {
     }
 
     private ConversationListRespVO toListVO(AgentConversation c) {
+        ConversationRoleVO roleVO = conversationService.buildConversationRole(c);
         return ConversationListRespVO.builder()
                 .id(c.getId())
                 .sessionId(c.getSessionId())
@@ -182,9 +198,32 @@ public class AgentConversationController {
                 .messageCount(c.getMessageCount())
                 .pinned(c.getPinned())
                 .lastMessagePreview(c.getLastMessagePreview())
+                .role(toConversationRoleRespVO(roleVO))
                 .createTime(c.getCreateTime())
                 .updateTime(c.getUpdateTime())
                 .build();
+    }
+
+    private ConversationRoleRespVO toConversationRoleRespVO(ConversationRoleVO roleVO) {
+        if (roleVO == null) {
+            return null;
+        }
+        return ConversationRoleRespVO.builder()
+                .agentId(roleVO.getAgentId())
+                .agentName(roleVO.getAgentName())
+                .available(roleVO.isAvailable())
+                .defaultRole(roleVO.isDefaultRole())
+                .build();
+    }
+
+    private FixRoleVO resolveCreateRole(ConversationCreateReqVO reqVO) {
+        if (!"chat".equalsIgnoreCase(reqVO.getProductType())) {
+            return null;
+        }
+        if (StringUtils.hasText(reqVO.getAiAgentId())) {
+            return fixRoleService.queryRole(reqVO.getAiAgentId());
+        }
+        return fixRoleService.queryDefaultRole();
     }
 
     private MessageRespVO toMessageVO(AgentMessage m) {

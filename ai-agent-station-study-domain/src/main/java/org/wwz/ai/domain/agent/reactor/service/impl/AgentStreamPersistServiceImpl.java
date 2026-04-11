@@ -4,8 +4,10 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
 import org.wwz.ai.domain.agent.reactor.agent.enums.ConversationAgentType;
 import org.wwz.ai.domain.agent.reactor.agent.enums.MessageStatus;
@@ -21,6 +23,7 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentStreamPersistService;
+import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.domain.agent.reactor.util.ChateiUtils;
 import org.wwz.ai.domain.agent.reactor.util.SseUtil;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao;
@@ -56,17 +59,35 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
     private IAgentMessageEventService messageEventService;
     @Resource
     private IAgentConversationDao conversationDao;
+    @Resource
+    private IFixRoleService fixRoleService;
 
     @Override
     public SseEmitter sendAndPersist(String sessionId, String requestId, String deviceId,
-                                     String query, Integer deepThink, String outputStyle, String filesJson) {
+                                     String query, Integer deepThink, String outputStyle, String filesJson,
+                                     String aiAgentId) {
 
         // 1. 解析/创建会话
         ConversationAgentType convAgentType = ConversationAgentType.resolve(outputStyle, deepThink);
         AgentConversation conversation = conversationService.getBySessionId(sessionId);
+        FixRoleVO resolvedRole = null;
+        if (ConversationAgentType.CHAT == convAgentType) {
+            ChatRoleResolution resolution = resolveChatRole(conversation, aiAgentId);
+            if (!resolution.success()) {
+                return emitChatRoleError(conversation, sessionId, requestId, deviceId, query, outputStyle,
+                        convAgentType, filesJson, resolution.status(), resolution.errorMsg());
+            }
+            resolvedRole = resolution.role();
+        }
+
         if (conversation == null) {
             conversation = conversationService.createConversation(
-                    sessionId, deviceId, null, convAgentType.getCode(), outputStyle);
+                    sessionId, deviceId, null, convAgentType.getCode(), outputStyle,
+                    resolvedRole != null ? resolvedRole.getAgentId() : null,
+                    resolvedRole != null ? resolvedRole.getAgentName() : null);
+        } else if (resolvedRole != null && shouldBindChatRole(conversation, resolvedRole)) {
+            conversation = conversationService.bindChatRole(
+                    conversation, resolvedRole.getAgentId(), resolvedRole.getAgentName());
         }
 
         // 2. 插入占位消息
@@ -85,6 +106,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         gptReq.setDeepThink(deepThink != null ? deepThink : 0);
         gptReq.setOutputStyle(outputStyle);
         gptReq.setUser("reactor");
+        gptReq.setAiAgentId(resolvedRole != null ? resolvedRole.getAgentId() : null);
         String traceId = ChateiUtils.getRequestId(gptReq);
         gptReq.setTraceId(traceId);
 
@@ -831,6 +853,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         request.setSessionId(req.getSessionId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
+        request.setAiAgentId(req.getAiAgentId());
 
         if ("chat".equalsIgnoreCase(req.getOutputStyle())) {
             request.setAgentType(AgentType.WORKFLOW.getValue());
@@ -847,6 +870,113 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         request.setIsStream(true);
         request.setOutputStyle(req.getOutputStyle());
         return request;
+    }
+
+    private ChatRoleResolution resolveChatRole(AgentConversation conversation, String requestedAiAgentId) {
+        if (conversation != null && StringUtils.hasText(conversation.getAiAgentId())) {
+            if (StringUtils.hasText(requestedAiAgentId) && !conversation.getAiAgentId().equals(requestedAiAgentId)) {
+                return ChatRoleResolution.error("roleSwitchRejected", "当前会话已绑定其他角色，请新建对话后再切换角色");
+            }
+
+            FixRoleVO boundRole = fixRoleService.queryRole(conversation.getAiAgentId());
+            if (boundRole == null) {
+                return ChatRoleResolution.error("roleUnavailable", "当前角色已不可继续使用，请新建对话后重新选择角色");
+            }
+            return ChatRoleResolution.success(boundRole);
+        }
+
+        if (StringUtils.hasText(requestedAiAgentId)) {
+            FixRoleVO requestedRole = fixRoleService.queryRole(requestedAiAgentId);
+            if (requestedRole == null) {
+                return ChatRoleResolution.error("roleUnavailable", "当前角色已不可继续使用，请新建对话后重新选择角色");
+            }
+            return ChatRoleResolution.success(requestedRole);
+        }
+
+        FixRoleVO defaultRole = fixRoleService.queryDefaultRole();
+        if (defaultRole == null) {
+            return ChatRoleResolution.error("noAvailableChatRole", "当前暂无可用角色，请稍后重试");
+        }
+        return ChatRoleResolution.success(defaultRole);
+    }
+
+    private boolean shouldBindChatRole(AgentConversation conversation, FixRoleVO resolvedRole) {
+        if (conversation == null || resolvedRole == null) {
+            return false;
+        }
+        if (!StringUtils.hasText(conversation.getAiAgentId())) {
+            return true;
+        }
+        return !StringUtils.hasText(conversation.getAiAgentNameSnapshot());
+    }
+
+    private SseEmitter emitChatRoleError(AgentConversation conversation, String sessionId, String requestId,
+                                         String deviceId, String query, String outputStyle,
+                                         ConversationAgentType convAgentType, String filesJson,
+                                         String status, String errorMsg) {
+        AgentConversation targetConversation = conversation;
+        if (targetConversation == null) {
+            targetConversation = conversationService.createConversation(
+                    sessionId, deviceId, null, convAgentType.getCode(), outputStyle, null, null);
+        }
+
+        AgentMessage placeholderMessage = messageService.insertPlaceholder(
+                targetConversation.getId(), sessionId, requestId, query, convAgentType.getCode(), filesJson);
+        JSONObject metrics = new JSONObject();
+        metrics.put("status", status);
+        metrics.put("role_error", true);
+        messageService.markError(placeholderMessage.getId(), errorMsg, null, null, metrics.toJSONString());
+
+        conversationDao.incrementMessageCount(targetConversation.getId());
+        updateConversationSnapshot(targetConversation, query, errorMsg);
+
+        GptProcessResult result = GptProcessResult.builder()
+                .status(status)
+                .response("")
+                .responseAll("")
+                .finished(true)
+                .responseType("markdown")
+                .traceId(requestId)
+                .reqId(requestId)
+                .encrypted(false)
+                .packageType("result")
+                .errorMsg(errorMsg)
+                .build();
+
+        SseEmitter emitter = SseUtil.build(TimeUnit.MINUTES.toMillis(5), requestId);
+        try {
+            emitter.send(result);
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+        return emitter;
+    }
+
+    private void updateConversationSnapshot(AgentConversation conversation, String query, String response) {
+        AgentConversation update = new AgentConversation();
+        update.setId(conversation.getId());
+        update.setLastMessagePreview(buildLastMessagePreview(query, response, null));
+        if (conversation.getMessageCount() != null && conversation.getMessageCount() == 0
+                && "新对话".equals(conversation.getTitle())) {
+            update.setTitle(query.length() > 50 ? query.substring(0, 50) + "..." : query);
+        }
+        conversationDao.updateById(update);
+    }
+
+    private record ChatRoleResolution(FixRoleVO role, String status, String errorMsg) {
+
+        private static ChatRoleResolution success(FixRoleVO role) {
+            return new ChatRoleResolution(role, null, null);
+        }
+
+        private static ChatRoleResolution error(String status, String errorMsg) {
+            return new ChatRoleResolution(null, status, errorMsg);
+        }
+
+        private boolean success() {
+            return role != null;
+        }
     }
 
     private Request buildHttpRequest(AgentRequest autoReq) {

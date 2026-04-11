@@ -21,5 +21,6 @@ public interface IAgentStreamPersistService {
      * @return SseEmitter
      */
     SseEmitter sendAndPersist(String sessionId, String requestId, String deviceId,
-                              String query, Integer deepThink, String outputStyle, String filesJson);
+                              String query, Integer deepThink, String outputStyle, String filesJson,
+                              String aiAgentId);
 }

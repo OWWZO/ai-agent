@@ -84,6 +84,11 @@ spring:
     openai:
       base-url: https://dashscope.aliyuncs.com/compatible-mode
       api-key:  sk-95e5d430617f428181f089aef88036cc
+    agent:
+      chat:
+        default-role-id: 85374287
+      auto-config:
+        enabled: true
     ollama:
       base-url: http://192.168.1.109:11434
       embedding:
@@ -92,10 +97,6 @@ spring:
         model: nomic-embed-text
     rag:
       embed: nomic-embed-text
-
-    agent:
-      auto-config:
-        enabled: true
 
 # 小傅哥扳手通用组件配置
 xfg:

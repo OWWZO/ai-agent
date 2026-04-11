@@ -77,4 +77,11 @@ public interface IAiAgentFlowConfigDao {
      */
     List<AiAgentFlowConfig> queryAll();
 
+    /**
+     * 统计仍可执行的 Fix 流程步骤数
+     * @param agentId 角色ID
+     * @return 步骤数量
+     */
+    int countEnabledFlowConfigsByAgentId(@Param("agentId") String agentId);
+
 }

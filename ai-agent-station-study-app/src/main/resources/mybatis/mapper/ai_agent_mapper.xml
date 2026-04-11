@@ -12,6 +12,7 @@
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
+        <result column="flow_step_count" property="flowStepCount"/>
     </resultMap>
 
     <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.AiAgent" useGeneratedKeys="true" keyProperty="id">
@@ -83,6 +84,56 @@
         SELECT id, agent_id, agent_name, description, channel, strategy, status, create_time, update_time
         FROM ai_agent
         ORDER BY create_time DESC
+    </select>
+
+    <select id="queryAvailableFixRoles" resultMap="AiAgentMap">
+        SELECT
+            a.id,
+            a.agent_id,
+            a.agent_name,
+            a.description,
+            a.channel,
+            a.strategy,
+            a.status,
+            a.create_time,
+            a.update_time,
+            COUNT(DISTINCT afc.id) AS flow_step_count
+        FROM ai_agent a
+        INNER JOIN ai_agent_flow_config afc
+            ON a.agent_id = afc.agent_id
+        INNER JOIN ai_client c
+            ON afc.client_id = c.client_id
+           AND c.status = 1
+        WHERE a.status = 1
+          AND a.strategy = 'flowAgentExecuteStrategy'
+        GROUP BY a.id, a.agent_id, a.agent_name, a.description, a.channel, a.strategy, a.status, a.create_time, a.update_time
+        HAVING COUNT(DISTINCT afc.id) > 0
+        ORDER BY a.create_time ASC, a.id ASC
+    </select>
+
+    <select id="queryAvailableFixRoleByAgentId" resultMap="AiAgentMap">
+        SELECT
+            a.id,
+            a.agent_id,
+            a.agent_name,
+            a.description,
+            a.channel,
+            a.strategy,
+            a.status,
+            a.create_time,
+            a.update_time,
+            COUNT(DISTINCT afc.id) AS flow_step_count
+        FROM ai_agent a
+        INNER JOIN ai_agent_flow_config afc
+            ON a.agent_id = afc.agent_id
+        INNER JOIN ai_client c
+            ON afc.client_id = c.client_id
+           AND c.status = 1
+        WHERE a.agent_id = #{agentId}
+          AND a.status = 1
+          AND a.strategy = 'flowAgentExecuteStrategy'
+        GROUP BY a.id, a.agent_id, a.agent_name, a.description, a.channel, a.strategy, a.status, a.create_time, a.update_time
+        HAVING COUNT(DISTINCT afc.id) > 0
     </select>
 
 </mapper>

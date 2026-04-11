@@ -3,6 +3,8 @@ package org.wwz.ai.domain.agent.reactor.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
+import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageDao;
@@ -20,22 +22,27 @@ public class AgentConversationServiceImpl implements IAgentConversationService {
     private IAgentConversationDao conversationDao;
     @Resource
     private IAgentMessageDao messageDao;
+    @Resource
+    private IFixRoleService fixRoleService;
 
     @Override
     public AgentConversation createConversation(String sessionId, String deviceId, String title,
-                                                 Integer agentType, String productType) {
+                                                Integer agentType, String productType,
+                                                String aiAgentId, String aiAgentNameSnapshot) {
         AgentConversation conversation = AgentConversation.builder()
                 .sessionId(sessionId)
                 .deviceId(deviceId)
                 .title(title != null ? title : "新对话")
                 .agentType(agentType)
                 .productType(productType != null ? productType : "chat")
+                .aiAgentId(aiAgentId)
+                .aiAgentNameSnapshot(aiAgentNameSnapshot)
                 .messageCount(0)
                 .pinned(0)
                 .deleted(0)
                 .build();
         conversationDao.insert(conversation);
-        log.info("创建会话 sessionId={}, deviceId={}, agentType={}", sessionId, deviceId, agentType);
+        log.info("创建会话 sessionId={}, deviceId={}, agentType={}, aiAgentId={}", sessionId, deviceId, agentType, aiAgentId);
         return conversation;
     }
 
@@ -119,5 +126,22 @@ public class AgentConversationServiceImpl implements IAgentConversationService {
         int count = conversationDao.migrateDeviceToUser(deviceId, userId);
         log.info("匿名会话迁移: deviceId={}, userId={}, count={}", deviceId, userId, count);
         return count;
+    }
+
+    @Override
+    public AgentConversation bindChatRole(AgentConversation conversation, String aiAgentId, String aiAgentNameSnapshot) {
+        if (conversation == null) {
+            return null;
+        }
+
+        conversationDao.bindChatRole(conversation.getId(), aiAgentId, aiAgentNameSnapshot);
+        conversation.setAiAgentId(aiAgentId);
+        conversation.setAiAgentNameSnapshot(aiAgentNameSnapshot);
+        return conversation;
+    }
+
+    @Override
+    public ConversationRoleVO buildConversationRole(AgentConversation conversation) {
+        return fixRoleService.buildConversationRole(conversation);
     }
 }

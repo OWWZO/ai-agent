@@ -12,4 +12,6 @@ public class ConversationCreateReqVO {
     private Integer agentType;
     /** chat/html/docs/ppt/table */
     private String productType;
+    /** chat 模式角色ID */
+    private String aiAgentId;
 }

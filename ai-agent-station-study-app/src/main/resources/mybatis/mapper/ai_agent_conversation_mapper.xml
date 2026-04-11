@@ -10,6 +10,8 @@
         <result column="title" property="title"/>
         <result column="agent_type" property="agentType"/>
         <result column="product_type" property="productType"/>
+        <result column="ai_agent_id" property="aiAgentId"/>
+        <result column="ai_agent_name_snapshot" property="aiAgentNameSnapshot"/>
         <result column="message_count" property="messageCount"/>
         <result column="pinned" property="pinned"/>
         <result column="last_message_preview" property="lastMessagePreview"/>
@@ -20,10 +22,10 @@
 
     <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentConversation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_conversation (
-            session_id, device_id, user_id, title, agent_type, product_type,
+            session_id, device_id, user_id, title, agent_type, product_type, ai_agent_id, ai_agent_name_snapshot,
             message_count, pinned, create_time, update_time, deleted
         ) VALUES (
-            #{sessionId}, #{deviceId}, #{userId}, #{title}, #{agentType}, #{productType},
+            #{sessionId}, #{deviceId}, #{userId}, #{title}, #{agentType}, #{productType}, #{aiAgentId}, #{aiAgentNameSnapshot},
             #{messageCount}, #{pinned}, now(), now(), 0
         )
     </insert>
@@ -34,12 +36,22 @@
             <if test="title != null">title = #{title},</if>
             <if test="agentType != null">agent_type = #{agentType},</if>
             <if test="productType != null">product_type = #{productType},</if>
+            <if test="aiAgentId != null">ai_agent_id = #{aiAgentId},</if>
+            <if test="aiAgentNameSnapshot != null">ai_agent_name_snapshot = #{aiAgentNameSnapshot},</if>
             <if test="messageCount != null">message_count = #{messageCount},</if>
             <if test="pinned != null">pinned = #{pinned},</if>
             <if test="lastMessagePreview != null">last_message_preview = #{lastMessagePreview},</if>
             <if test="userId != null">user_id = #{userId},</if>
             update_time = now()
         </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="bindChatRole">
+        UPDATE ai_agent_conversation
+        SET ai_agent_id = #{aiAgentId},
+            ai_agent_name_snapshot = #{aiAgentNameSnapshot},
+            update_time = now()
         WHERE id = #{id} AND deleted = 0
     </update>
 

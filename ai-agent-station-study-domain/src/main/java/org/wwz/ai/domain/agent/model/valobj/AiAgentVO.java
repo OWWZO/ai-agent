@@ -47,4 +47,9 @@ public class AiAgentVO {
      */
     private Integer status;
 
+    /**
+     * Fix 流程步骤数
+     */
+    private Integer flowStepCount;
+
 }

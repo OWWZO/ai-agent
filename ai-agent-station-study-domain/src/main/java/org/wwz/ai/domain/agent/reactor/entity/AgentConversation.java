@@ -36,6 +36,12 @@ public class AgentConversation {
     /** 产品形态: chat/html/docs/ppt/table */
     private String productType;
 
+    /** chat 会话绑定的角色ID */
+    private String aiAgentId;
+
+    /** 角色名称快照 */
+    private String aiAgentNameSnapshot;
+
     /** 消息轮数 */
     private Integer messageCount;
 

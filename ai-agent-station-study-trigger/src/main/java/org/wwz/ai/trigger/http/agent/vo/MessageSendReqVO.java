@@ -13,4 +13,6 @@ public class MessageSendReqVO {
     private String outputStyle;
     /** 文件列表JSON字符串 */
     private String filesJson;
+    /** chat 模式角色ID */
+    private String aiAgentId;
 }

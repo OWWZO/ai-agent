@@ -30,6 +30,7 @@ public class AgentRequest {
     private Boolean isStream;
     private List<Message> messages;
     private String outputStyle; // 交付物产出格式：html(网页模式）， docs(文档模式）， table(表格模式）
+    private String aiAgentId;
 
     @Data
     @Builder

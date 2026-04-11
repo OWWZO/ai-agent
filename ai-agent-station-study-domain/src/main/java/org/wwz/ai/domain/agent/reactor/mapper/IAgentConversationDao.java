@@ -63,4 +63,11 @@ public interface IAgentConversationDao {
      * 将设备的匿名会话迁移到用户
      */
     int migrateDeviceToUser(@Param("deviceId") String deviceId, @Param("userId") Long userId);
+
+    /**
+     * 绑定 chat 角色
+     */
+    int bindChatRole(@Param("id") Long id,
+                     @Param("aiAgentId") String aiAgentId,
+                     @Param("aiAgentNameSnapshot") String aiAgentNameSnapshot);
 }

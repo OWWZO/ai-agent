@@ -16,6 +16,7 @@ public class ConversationListRespVO {
     private Integer messageCount;
     private Integer pinned;
     private String lastMessagePreview;
+    private ConversationRoleRespVO role;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

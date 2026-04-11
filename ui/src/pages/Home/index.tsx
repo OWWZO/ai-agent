@@ -16,6 +16,7 @@ import {
   pruneHistory,
 } from "@/utils/chatHistory";
 import { useAgentConversation } from "@/hooks/useAgentConversation";
+import { restoreMessages } from "@/services/agentConversation";
 
 type HomeProps = Record<string, never>;
 
@@ -78,6 +79,18 @@ const hasLocalConversationContent = (conversation: CHAT.ConversationHistory | un
 const isDraftConversation = (conversation: CHAT.ConversationHistory | undefined) => {
   if (!conversation) return false;
   return !hasLocalConversationContent(conversation);
+};
+
+const toConversationRole = (role?: CHAT.FixRole | null): CHAT.ConversationRole | null => {
+  if (!role) {
+    return null;
+  }
+  return {
+    agentId: role.agentId,
+    agentName: role.agentName,
+    available: true,
+    defaultRole: role.defaultRole,
+  };
 };
 
 const createInitialState = (): InitialState => {
@@ -160,6 +173,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const {
     apiMode,
     remoteConversations,
+    fixRoles,
     loadConversationDetail,
     createRemoteConversation,
     deleteRemoteConversation,
@@ -192,6 +206,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [conversations, currentConversationId]
   );
 
+  const defaultFixRole = useMemo(
+    () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
+    [fixRoles]
+  );
+
+  const currentConversationRole = useMemo(() => {
+    if (!currentConversation || currentConversation.productType !== "chat") {
+      return null;
+    }
+    return currentConversation.role || toConversationRole(defaultFixRole);
+  }, [currentConversation, defaultFixRole]);
+
   const sortedConversations = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations]
@@ -218,6 +244,19 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     }
   }, [currentConversation]);
 
+  useEffect(() => {
+    if (!currentConversation || currentConversation.productType !== "chat" || currentConversation.role || !defaultFixRole) {
+      return;
+    }
+    setConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === currentConversation.id
+          ? { ...conversation, role: toConversationRole(defaultFixRole) }
+          : conversation
+      )
+    );
+  }, [currentConversation, defaultFixRole]);
+
   // 远程会话列表同步到本地状态
   useEffect(() => {
     if (!apiMode || remoteConversations.length === 0) return;
@@ -233,6 +272,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       chatTitle: rc.title,
       productType: rc.productType || "chat",
       deepThink: rc.agentType === 1,
+      role: rc.role || null,
       createdAt: new Date(rc.createTime).getTime(),
       updatedAt: new Date(rc.updateTime).getTime(),
       chatList: [],
@@ -276,7 +316,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         setCurrentConversationId(draftConversation.id);
         return;
       }
-      const nextDraft = createConversation({ productType: product.type, deepThink: false });
+      const nextDraft = createConversation({
+        productType: product.type,
+        deepThink: false,
+        role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
+      });
       if (apiMode) {
         nextDraft.id = nextDraft.sessionId;
       }
@@ -284,7 +328,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       setCurrentConversationId(nextDraft.id);
       setInputInfo({ ...EMPTY_INPUT });
     }
-  }, [apiMode, conversations, currentConversationId, product.type, remoteMessageCountMap]);
+  }, [apiMode, conversations, currentConversationId, product.type, remoteMessageCountMap, defaultFixRole]);
 
   const updateConversation = useCallback(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -322,18 +366,28 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       return;
     }
 
-    const next = createConversation({ productType: product.type, deepThink: false });
+    const next = createConversation({
+      productType: product.type,
+      deepThink: false,
+      role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
+    });
     if (apiMode) {
       // API模式下使用sessionId作为id，保持与远程数据一致
       next.id = next.sessionId;
       const agentType = product.type === "chat" ? 0 : next.deepThink ? 1 : 2;
-      createRemoteConversation(next.sessionId, agentType, product.type, "新对话");
+      createRemoteConversation(
+        next.sessionId,
+        agentType,
+        product.type,
+        "新对话",
+        product.type === "chat" ? next.role?.agentId : undefined
+      );
     }
     setConversations((prev) => pruneHistory([next, ...prev]));
     setCurrentConversationId(next.id);
     setInputInfo({ ...EMPTY_INPUT });
     setHistoryDrawerOpen(false);
-  }, [product.type, sortedConversations, apiMode, createRemoteConversation, remoteMessageCountMap]);
+  }, [product.type, sortedConversations, apiMode, createRemoteConversation, remoteMessageCountMap, defaultFixRole]);
 
   const onInputConsumed = useCallback(() => {
     setInputInfo({ ...EMPTY_INPUT });
@@ -349,11 +403,17 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       updateCurrentConversationMeta({
         productType: outputStyle,
         deepThink,
+        role: outputStyle === "chat" ? currentConversationRole : null,
       });
 
-      setInputInfo({ ...info, outputStyle, deepThink });
+      setInputInfo({
+        ...info,
+        outputStyle,
+        deepThink,
+        aiAgentId: outputStyle === "chat" ? currentConversationRole?.agentId : undefined,
+      });
     },
-    [currentConversation, product.type, updateCurrentConversationMeta]
+    [currentConversation, product.type, updateCurrentConversationMeta, currentConversationRole]
   );
 
   const toSendMessage = useCallback(
@@ -381,10 +441,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           if (remote && remote.messageCount > 0) {
             setDetailLoading(true);
             loadConversationDetail(conv.sessionId)
-              .then((chatItems) => {
-                if (chatItems.length > 0) {
+              .then((detail) => {
+                if (detail?.conversation) {
                   setConversations((prev) =>
-                    prev.map((c) => (c.id === conversationId ? { ...c, chatList: chatItems } : c))
+                    prev.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            role: detail.conversation.role || c.role || null,
+                            chatList: detail.messages ? restoreMessages(detail.messages) : c.chatList,
+                          }
+                        : c
+                    )
                   );
                 }
               })
@@ -415,14 +483,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           return filtered;
         }
 
-        const fallback = createConversation({ productType: product.type, deepThink: false });
+        const fallback = createConversation({
+          productType: product.type,
+          deepThink: false,
+          role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
+        });
         if (apiMode) fallback.id = fallback.sessionId;
         setCurrentConversationId(fallback.id);
         setInputInfo({ ...EMPTY_INPUT });
         return [fallback];
       });
     },
-    [currentConversationId, product.type, apiMode, conversations, deleteRemoteConversation]
+    [currentConversationId, product.type, apiMode, conversations, deleteRemoteConversation, defaultFixRole]
   );
 
   const handleInputSelectionChange = useCallback(
@@ -432,12 +504,48 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         setDisplayOutput(nextProduct);
       }
       if (!currentConversation) return;
+      const nextRole = nextProduct.type === "chat" ? currentConversation.role || toConversationRole(defaultFixRole) : null;
       updateCurrentConversationMeta({
         productType: nextProduct.type,
         deepThink: nextProduct.type === "chat" || nextProduct.type === "dataAgent" ? false : nextDeepThink,
+        role: nextRole,
       });
     },
-    [currentConversation, updateCurrentConversationMeta]
+    [currentConversation, updateCurrentConversationMeta, defaultFixRole]
+  );
+
+  const handleRoleSelect = useCallback(
+    (role: CHAT.FixRole) => {
+      if (!currentConversation) return;
+      const nextRole = toConversationRole(role);
+      const hasRemoteMessages = (remoteMessageCountMap.get(currentConversation.sessionId) ?? 0) > 0;
+      const hasMessages = hasLocalConversationContent(currentConversation) || hasRemoteMessages;
+
+      if (currentConversation.productType === "chat" && hasMessages) {
+        const nextConversation = createConversation({
+          productType: "chat",
+          deepThink: false,
+          role: nextRole,
+        });
+        if (apiMode) {
+          nextConversation.id = nextConversation.sessionId;
+          createRemoteConversation(nextConversation.sessionId, 0, "chat", "新对话", role.agentId);
+        }
+        setConversations((prev) => pruneHistory([nextConversation, ...prev]));
+        setCurrentConversationId(nextConversation.id);
+        setProduct(productList.find((item) => item.type === "chat") ?? defaultProduct);
+        setInputInfo({ ...EMPTY_INPUT });
+        return;
+      }
+
+      updateCurrentConversationMeta({
+        productType: "chat",
+        deepThink: false,
+        role: nextRole,
+      });
+      setProduct(productList.find((item) => item.type === "chat") ?? defaultProduct);
+    },
+    [apiMode, createRemoteConversation, currentConversation, remoteMessageCountMap, updateCurrentConversationMeta]
   );
 
   const threadListItems = useMemo<LocalThreadListItem[]>(
@@ -514,8 +622,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 product={product}
                 deepThink={currentConversation.deepThink}
                 displayOutput={displayOutput}
+                chatRole={currentConversationRole}
+                chatRoles={fixRoles}
+                showRoleSelector={product.type === "chat"}
                 send={changeInputInfo}
                 onSelectionChange={handleInputSelectionChange}
+                onRoleSelect={handleRoleSelect}
               />
             </AiChatSurface>
           </motion.div>
@@ -715,7 +827,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 inputInfo={inputInfo}
                 product={product}
                 conversation={currentConversation}
+                chatRoles={fixRoles}
                 onConversationChange={updateConversation}
+                onRoleSelect={handleRoleSelect}
                 onInputConsumed={onInputConsumed}
               />
             )}

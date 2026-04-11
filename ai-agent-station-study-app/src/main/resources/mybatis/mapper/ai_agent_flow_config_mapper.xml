@@ -70,4 +70,13 @@
         ORDER BY agent_id ASC, sequence ASC
     </select>
 
+    <select id="countEnabledFlowConfigsByAgentId" resultType="int">
+        SELECT COUNT(1)
+        FROM ai_agent_flow_config afc
+        INNER JOIN ai_client c
+            ON afc.client_id = c.client_id
+           AND c.status = 1
+        WHERE afc.agent_id = #{agentId}
+    </select>
+
 </mapper>

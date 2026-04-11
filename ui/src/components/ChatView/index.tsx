@@ -22,10 +22,12 @@ type Props = {
   inputInfo: CHAT.TInputInfo;
   product?: CHAT.Product;
   conversation: CHAT.ConversationHistory;
+  chatRoles: CHAT.FixRole[];
   onConversationChange: (
     conversationId: string,
     nextConversation: CHAT.ConversationHistory
   ) => void;
+  onRoleSelect: (role: CHAT.FixRole) => void;
   onInputConsumed?: () => void;
 };
 
@@ -96,7 +98,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     inputInfo: inputInfoProp,
     product,
     conversation,
+    chatRoles,
     onConversationChange,
+    onRoleSelect,
     onInputConsumed,
   } = props;
 
@@ -368,6 +372,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       deepThink: normalizedDeepThink ? 1 : 0,
       outputStyle: outputStyle || baseConversation.productType,
       filesJson: inputInfo.files?.length ? JSON.stringify(inputInfo.files) : undefined,
+      aiAgentId: (outputStyle || baseConversation.productType) === "chat"
+        ? inputInfo.aiAgentId || baseConversation.role?.agentId
+        : undefined,
     };
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;
@@ -433,6 +440,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
     const handleMessage = (data: MESSAGE.Answer) => {
       const { finished, resultMap, packageType, status } = data;
+      if (["roleUnavailable", "roleSwitchRejected", "noAvailableChatRole"].includes(status)) {
+        currentChat.response = data.errorMsg || "当前角色暂不可用";
+        currentChat.loading = false;
+        setLoading(false);
+        const newChatList = [...runningConversation.chatList];
+        newChatList.splice(newChatList.length - 1, 1, currentChat);
+        runningConversation = {
+          ...runningConversation,
+          chatList: newChatList,
+        };
+        commitConversation(conversationId, runningConversation);
+        return;
+      }
       if (status === "tokenUseUp") {
         modal.info({
           title: "您的试用次数已用尽",
@@ -680,6 +700,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       message: last.query,
       outputStyle: conversation.productType,
       deepThink: conversation.deepThink,
+      aiAgentId: conversation.role?.agentId,
     });
   });
 
@@ -872,17 +893,28 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
             <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
               <div className="mx-auto w-full max-w-[860px]">
-                <GeneralInput
-                  placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
+              <GeneralInput
+                  placeholder={
+                    conversation.role?.available === false
+                      ? "当前角色已失效，请新建对话后重新选择角色"
+                      : loading
+                        ? "任务进行中..."
+                        : "希望 Reactor 为你做哪些任务呢？"
+                  }
                   showBtn={false}
                   size="medium"
-                  disabled={loading}
+                  disabled={loading || conversation.role?.available === false}
                   product={currentProduct}
+                  chatRole={conversation.role}
+                  chatRoles={chatRoles}
+                  showRoleSelector={conversation.productType === "chat"}
+                  onRoleSelect={onRoleSelect}
                   send={(info) =>
                     sendMessage({
                       ...info,
                       outputStyle: conversation.productType,
                       deepThink: conversation.deepThink,
+                      aiAgentId: conversation.role?.agentId,
                     })
                   }
                 />
@@ -956,16 +988,27 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 {/* Input */}
                 <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
                   <GeneralInput
-                    placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
+                    placeholder={
+                      conversation.role?.available === false
+                        ? "当前角色已失效，请新建对话后重新选择角色"
+                        : loading
+                          ? "任务进行中..."
+                          : "希望 Reactor 为你做哪些任务呢？"
+                    }
                     showBtn={false}
                     size="medium"
-                    disabled={loading}
+                    disabled={loading || conversation.role?.available === false}
                     product={currentProduct}
+                    chatRole={conversation.role}
+                    chatRoles={chatRoles}
+                    showRoleSelector={conversation.productType === "chat"}
+                    onRoleSelect={onRoleSelect}
                     send={(info) =>
                       sendMessage({
                         ...info,
                         outputStyle: conversation.productType,
                         deepThink: conversation.deepThink,
+                        aiAgentId: conversation.role?.agentId,
                       })
                     }
                   />

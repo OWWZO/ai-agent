@@ -34,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import ChatRoleSelector from "@/components/ChatRoleSelector";
 import { cn } from "@/lib/utils";
 import { defaultProduct, productList } from "@/utils/constants";
 
@@ -45,8 +46,12 @@ type Props = {
   product?: CHAT.Product;
   deepThink?: boolean;
   displayOutput?: CHAT.Product;
+  chatRole?: CHAT.ConversationRole | null;
+  chatRoles?: CHAT.FixRole[];
+  showRoleSelector?: boolean;
   send: (p: CHAT.TInputInfo) => void;
   onSelectionChange?: (selection: { product: CHAT.Product; deepThink: boolean }) => void;
+  onRoleSelect?: (role: CHAT.FixRole) => void;
 };
 
 type InputModeKey = "quick" | "think" | "research";
@@ -224,8 +229,12 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     product,
     deepThink = false,
     displayOutput,
+    chatRole,
+    chatRoles = [],
+    showRoleSelector = false,
     send,
     onSelectionChange,
+    onRoleSelect,
   } = props;
 
   const [question, setQuestion] = useState("");
@@ -303,6 +312,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       outputStyle,
       deepThink: outputStyle !== "chat" && outputStyle !== "dataAgent" ? visibleMode === "research" : false,
       files: mappedFiles.length > 0 ? mappedFiles : undefined,
+      aiAgentId: outputStyle === "chat" ? chatRole?.agentId : undefined,
     });
 
     setQuestion("");
@@ -403,6 +413,14 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
               {showBtn ? (
                 <div className={selectorTrayClassName}>
+                  {showRoleSelector ? (
+                    <ChatRoleSelector
+                      roles={chatRoles}
+                      selectedRole={chatRole}
+                      disabled={disabled}
+                      onSelect={(role) => onRoleSelect?.(role)}
+                    />
+                  ) : null}
                   <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -532,6 +550,13 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     </button>
                   ) : null}
                 </div>
+              ) : showRoleSelector ? (
+                <ChatRoleSelector
+                  roles={chatRoles}
+                  selectedRole={chatRole}
+                  disabled={disabled}
+                  onSelect={(role) => onRoleSelect?.(role)}
+                />
               ) : null}
             </PromptInputTools>
 

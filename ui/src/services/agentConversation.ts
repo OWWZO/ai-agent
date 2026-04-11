@@ -31,6 +31,7 @@ export interface ConversationListItem {
   messageCount: number;
   pinned: number;
   lastMessagePreview?: string;
+  role?: CHAT.ConversationRole | null;
   createTime: string;
   updateTime: string;
 }
@@ -68,6 +69,13 @@ export interface PageResult<T> {
   list: T[];
 }
 
+export interface FixRoleItem {
+  agentId: string;
+  agentName: string;
+  description?: string;
+  defaultRole: boolean;
+}
+
 // ---- API 方法 ----
 
 export const conversationApi = {
@@ -97,6 +105,7 @@ export const conversationApi = {
     title?: string;
     agentType: number;
     productType: string;
+    aiAgentId?: string;
   }) => api.post<ConversationListItem>(`/api/agent/conversation/create`, data),
 
   /**
@@ -128,6 +137,10 @@ export const conversationApi = {
     api.post<number>(
       `/api/agent/conversation/migrate?userId=${userId}&deviceId=${getDeviceId()}`
     ),
+};
+
+export const roleLibraryApi = {
+  list: () => api.get<FixRoleItem[]>(`/api/agent/role-library/list`),
 };
 
 // ---- 消息还原工具函数 ----

@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.reactor.service;
 
+import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 
@@ -14,7 +15,8 @@ public interface IAgentConversationService {
      * 创建会话
      */
     AgentConversation createConversation(String sessionId, String deviceId, String title,
-                                         Integer agentType, String productType);
+                                         Integer agentType, String productType,
+                                         String aiAgentId, String aiAgentNameSnapshot);
 
     /**
      * 按sessionId查询会话
@@ -55,4 +57,14 @@ public interface IAgentConversationService {
      * 匿名会话迁移到用户
      */
     int migrateToUser(String deviceId, Long userId);
+
+    /**
+     * 绑定 chat 角色
+     */
+    AgentConversation bindChatRole(AgentConversation conversation, String aiAgentId, String aiAgentNameSnapshot);
+
+    /**
+     * 构建会话角色摘要
+     */
+    ConversationRoleVO buildConversationRole(AgentConversation conversation);
 }

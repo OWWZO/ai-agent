@@ -68,6 +68,7 @@ declare global {
       message: string;
       outputStyle?: string;
       deepThink: boolean;
+      aiAgentId?: string;
     };
 
     export type TAbortController = {
@@ -124,6 +125,7 @@ declare global {
       title: string;
       productType: string;
       deepThink: boolean;
+      role?: ConversationRole | null;
       createdAt: number;
       updatedAt: number;
       chatTitle: string;
@@ -140,6 +142,20 @@ declare global {
       modelName: string;
       modelCode: string;
       schemaList: { columnComment: string; columnName: string; dataType: string; columnId: string }[];
+    };
+
+    export type ConversationRole = {
+      agentId: string;
+      agentName: string;
+      available: boolean;
+      defaultRole: boolean;
+    };
+
+    export type FixRole = {
+      agentId: string;
+      agentName: string;
+      description?: string;
+      defaultRole: boolean;
     };
   }
 }

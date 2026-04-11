@@ -41,7 +41,8 @@ public class AgentMessageController {
                 reqVO.getQuery(),
                 reqVO.getDeepThink(),
                 reqVO.getOutputStyle(),
-                reqVO.getFilesJson()
+                reqVO.getFilesJson(),
+                reqVO.getAiAgentId()
         );
     }
 

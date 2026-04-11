@@ -269,5 +269,8 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.task_complete_desc:当前task完成，请将当前task标记为 completed}")
     private String taskCompleteDesc;
 
+    @Value("${spring.ai.agent.chat.default-role-id:}")
+    private String chatDefaultRoleId;
+
 
 }

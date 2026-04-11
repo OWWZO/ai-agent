@@ -71,8 +71,15 @@ public class FixedAgentExecuteStrategy implements IExecuteStrategy {
                 .build();
 
         // 1. 获取配置客户端（固定 AgentId，可按需调整）
+        if (request.getAiAgentId() == null || request.getAiAgentId().isBlank()) {
+            throw new IllegalStateException("chat 角色未解析，无法执行 Fix 策略");
+        }
+
         List<AiAgentClientFlowConfigVO> aiAgentClientList =
-                repository.queryAiAgentClientsByAgentId("1");
+                repository.queryAiAgentClientsByAgentId(request.getAiAgentId());
+        if (aiAgentClientList == null || aiAgentClientList.isEmpty()) {
+            throw new IllegalStateException("当前角色未配置可执行的 Fix 流程");
+        }
 
         String content = "";
         final String sessionId = request.getSessionId();

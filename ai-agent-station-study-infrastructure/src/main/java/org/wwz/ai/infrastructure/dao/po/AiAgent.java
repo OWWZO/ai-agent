@@ -63,4 +63,9 @@ public class AiAgent {
      */
     private LocalDateTime updateTime;
 
+    /**
+     * Fix 流程步骤数
+     */
+    private Integer flowStepCount;
+
 }

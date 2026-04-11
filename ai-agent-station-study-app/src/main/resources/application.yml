@@ -3,6 +3,10 @@ spring:
     name: ai-agent-station-study-app
   profiles:
     active: dev
+  ai:
+    agent:
+      chat:
+        default-role-id: 85374287
   # 通用文件上传配置：为所有环境提供默认的上传大小限制，可在具体环境覆盖
   servlet:
     multipart:
