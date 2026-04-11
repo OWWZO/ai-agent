@@ -456,7 +456,7 @@ public class McpRegistry {
 
     /**
      * 根据传输协议选择调用策略。
-     * SSE 继续复用共享客户端；STDIO 每次创建临时运行时，用完即关，避免长连接 transport 状态失效。
+     * SSE和Stream 继续复用共享客户端；STDIO 每次创建临时运行时，用完即关，避免长连接 transport 状态失效。
      */
     private McpSchema.CallToolResult callToolWithRuntime(McpClientRuntime runtime, String toolName, Object args) {
         McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(toolName, normalizeArguments(args));

@@ -21,6 +21,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
+import org.wwz.ai.domain.agent.reactor.agent.util.ToolSchemaNormalizer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import lombok.AllArgsConstructor;
@@ -607,7 +608,7 @@ public class LLM {
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDescription());
                     // 为参数补充工具名称字段，方便结构化解析时识别
-                    functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams()), tool.getName()));
+                    functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams(), tool.getName()), tool.getName()));
                     // 按"工具名+JSON格式参数"的格式拼接，让模型输出标准化JSON
                     stringBuilder.append(String.format("- `%s`\n```json %s ```\n", tool.getName(), JSON.toJSONString(functionMap)));
                 }
@@ -615,11 +616,11 @@ public class LLM {
                 // 处理MCP工具（McpToolInfo）：兼容MCP协议工具，格式化后拼接到提示词
                 for (McpToolInfo tool : tools.getMcpToolMap().values()) {
                     // 解析MCP工具的参数JSON为Map结构
-                    Map<String, Object> parameters = JSON.parseObject(tool.getParameters(), new TypeReference<Map<String, Object>>() {});
+                    Map<String, Object> parameters = parseAndNormalizeToolParameters(tool.getParameters(), tool.getName());
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDesc());
-                    functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(parameters), tool.getName()));
+                    functionMap.put("parameters", addFunctionNameParam(parameters, tool.getName()));
                     stringBuilder.append(String.format("- `%s`\n```json %s ```\n", tool.getName(), JSON.toJSONString(functionMap)));
                 }
 
@@ -629,7 +630,7 @@ public class LLM {
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDescription());
-                    functionMap.put("parameters", normalizeToolParameters(tool.toParams()));
+                    functionMap.put("parameters", normalizeToolParameters(tool.toParams(), tool.getName()));
                     Map<String, Object> toolMap = new HashMap<>();
                     toolMap.put("type", "function"); // 固定类型：function
                     toolMap.put("function", functionMap);
@@ -638,11 +639,11 @@ public class LLM {
 
                 // 处理MCP工具（McpToolInfo）：格式化为模型原生工具调用结构
                 for (McpToolInfo tool : tools.getMcpToolMap().values()) {
-                    Map<String, Object> parameters = JSON.parseObject(tool.getParameters(), new TypeReference<Map<String, Object>>() {});
+                    Map<String, Object> parameters = parseAndNormalizeToolParameters(tool.getParameters(), tool.getName());
                     Map<String, Object> functionMap = new HashMap<>();
                     functionMap.put("name", tool.getName());
                     functionMap.put("description", tool.getDesc());
-                    functionMap.put("parameters", normalizeToolParameters(parameters));
+                    functionMap.put("parameters", parameters);
                     Map<String, Object> toolMap = new HashMap<>();
                     toolMap.put("type", "function");
                     toolMap.put("function", functionMap);
@@ -822,7 +823,7 @@ public class LLM {
                 Map<String, Object> functionMap = new HashMap<>();
                 functionMap.put("name", tool.getName());
                 functionMap.put("description", tool.getDescription());
-                functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams()), tool.getName()));
+                functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(tool.toParams(), tool.getName()), tool.getName()));
                 promptBuilder.append(String.format(
                         "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
                         tool.getName(), tool.getDescription(), JSON.toJSONString(functionMap)
@@ -831,12 +832,11 @@ public class LLM {
 
             // McpTool
             for (McpToolInfo tool : tools.getMcpToolMap().values()) {
-                Map<String, Object> parameters = JSON.parseObject(tool.getParameters(),
-                        new TypeReference<Map<String, Object>>() {});
+                Map<String, Object> parameters = parseAndNormalizeToolParameters(tool.getParameters(), tool.getName());
                 Map<String, Object> functionMap = new HashMap<>();
                 functionMap.put("name", tool.getName());
                 functionMap.put("description", tool.getDesc());
-                functionMap.put("parameters", addFunctionNameParam(normalizeToolParameters(parameters), tool.getName()));
+                functionMap.put("parameters", addFunctionNameParam(parameters, tool.getName()));
                 promptBuilder.append(String.format(
                         "- 工具名: %s\n  描述: %s\n  参数(JSON): ```json %s ```\n",
                         tool.getName(), tool.getDesc(), JSON.toJSONString(functionMap)
@@ -1664,28 +1664,15 @@ public class LLM {
     /**
      * Normalize tool JSON schema for stricter OpenAI-compatible gateways.
      */
-    private Map<String, Object> normalizeToolParameters(Map<String, Object> rawParameters) {
-        Map<String, Object> normalized = deepCopy(rawParameters);
-        removeUnsupportedSchemaFields(normalized);
-        return normalized;
+    private Map<String, Object> normalizeToolParameters(Map<String, Object> rawParameters, String toolName) {
+        return ToolSchemaNormalizer.normalizeSchema(rawParameters, toolName);
     }
 
-    @SuppressWarnings("unchecked")
-    private void removeUnsupportedSchemaFields(Object node) {
-        if (node instanceof Map<?, ?> mapNode) {
-            Map<String, Object> objectMap = (Map<String, Object>) mapNode;
-            objectMap.remove("$schema");
-            objectMap.remove("additionalProperties");
-            for (Object value : objectMap.values()) {
-                removeUnsupportedSchemaFields(value);
-            }
-            return;
-        }
-        if (node instanceof List<?> listNode) {
-            for (Object value : listNode) {
-                removeUnsupportedSchemaFields(value);
-            }
-        }
+    /**
+     * 解析并规范化 MCP 工具参数，统一兼容空对象 Schema。
+     */
+    private Map<String, Object> parseAndNormalizeToolParameters(String rawParameters, String toolName) {
+        return ToolSchemaNormalizer.normalizeSchemaAsMap(rawParameters, toolName);
     }
 
     /**

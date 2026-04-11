@@ -1,0 +1,10 @@
+{
+  "ai": "codex",
+  "ai_skills": true,
+  "branch_numbering": "sequential",
+  "here": true,
+  "integration": "codex",
+  "preset": null,
+  "script": "ps",
+  "speckit_version": "0.6.1"
+}

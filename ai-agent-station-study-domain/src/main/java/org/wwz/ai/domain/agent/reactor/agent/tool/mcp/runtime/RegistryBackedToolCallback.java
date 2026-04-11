@@ -8,6 +8,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.reactor.agent.util.ToolSchemaNormalizer;
 
 /**
  * 基于 McpRegistry 的 ToolCallback 实现。
@@ -32,7 +33,7 @@ public class RegistryBackedToolCallback implements ToolCallback {
         return DefaultToolDefinition.builder()
                 .name(toolInfo.getName())
                 .description(StringUtils.defaultString(toolInfo.getDesc()))
-                .inputSchema(StringUtils.defaultIfBlank(toolInfo.getParameters(), "{}"))
+                .inputSchema(ToolSchemaNormalizer.normalizeSchema(toolInfo.getParameters(), toolInfo.getName()))
                 .build();
     }
 
