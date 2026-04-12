@@ -23,7 +23,7 @@ import java.util.List;
  */
 @Slf4j
 @Configuration
-@EnableConfigurationProperties(AiAgentAutoConfigProperties.class)
+@EnableConfigurationProperties({AiAgentAutoConfigProperties.class, AiAgentSkillProperties.class})
 @ConditionalOnProperty(prefix = "spring.ai.agent.auto-config", name = "enabled", havingValue = "true")
 public class AiAgentAutoConfiguration implements ApplicationListener<ApplicationReadyEvent> {
 

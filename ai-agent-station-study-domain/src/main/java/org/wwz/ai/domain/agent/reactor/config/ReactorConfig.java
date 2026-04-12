@@ -227,6 +227,30 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.summary.message_size_limit:1000}")
     private Integer messageSizeLimit;
 
+    /**
+     * skill 在 ReAct 链路中的启用开关，主要用于日志观测与排障。
+     */
+    @Value("${autobots.autoagent.skill.react-enabled:true}")
+    private Boolean skillReactEnabled;
+
+    /**
+     * skill 在 PlanSolve 链路中的启用开关，主要用于日志观测与排障。
+     */
+    @Value("${autobots.autoagent.skill.plan-solve-enabled:true}")
+    private Boolean skillPlanSolveEnabled;
+
+    /**
+     * skill 脚本默认超时，便于在统一配置快照中查看当前生效值。
+     */
+    @Value("${autobots.autoagent.skill.default-script-timeout-seconds:120}")
+    private Integer skillDefaultScriptTimeoutSeconds;
+
+    /**
+     * skill 文本读取上限，便于和 read_tool / skill_tool 的截断行为联动排查。
+     */
+    @Value("${autobots.autoagent.skill.max-read-chars:12000}")
+    private Integer skillMaxReadChars;
+
     private Map<String, String> sensitivePatterns = new HashMap<>();
     @Value("${autobots.autoagent.sensitive_patterns:{}}")
     public void setSensitivePatterns(String jsonStr) {

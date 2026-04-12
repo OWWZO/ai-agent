@@ -5,12 +5,9 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.*;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.reactor.agent.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
@@ -18,8 +15,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -30,13 +25,10 @@ import java.util.Objects;
 public class RootNode extends AbstractExecuteSupport {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private AgentToolCollectionFactory agentToolCollectionFactory;
 
     @Resource
     private RunReactNode step2RunReactNode;
-
-    @Resource
-    private McpToolExecutor mcpToolExecutor;
 
     @Override
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -73,56 +65,7 @@ public class RootNode extends AbstractExecuteSupport {
     }
 
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
-        ToolCollection toolCollection = new ToolCollection();
-        toolCollection.setAgentContext(agentContext);
-        toolCollection.setMcpToolExecutor(mcpToolExecutor);
-
-        if ("dataAgent".equals(request.getOutputStyle())) {
-            ReportTool htmlTool = new ReportTool();
-            htmlTool.setAgentContext(agentContext);
-            toolCollection.addTool(htmlTool);
-            DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-            dataAnalysisTool.setAgentContext(agentContext);
-            toolCollection.addTool(dataAnalysisTool);
-        } else {
-            FileTool fileTool = new FileTool();
-            fileTool.setAgentContext(agentContext);
-            toolCollection.addTool(fileTool);
-            List<String> agentToolList = Arrays.asList(reactorConfig.getMultiAgentToolListMap()
-                    .getOrDefault("default", "search,code,report").split(","));
-            if (!agentToolList.isEmpty()) {
-                if (agentToolList.contains("code")) {
-                    CodeInterpreterTool codeTool = new CodeInterpreterTool();
-                    codeTool.setAgentContext(agentContext);
-                    toolCollection.addTool(codeTool);
-                }
-                if (agentToolList.contains("report")) {
-                    ReportTool htmlTool = new ReportTool();
-                    htmlTool.setAgentContext(agentContext);
-                    toolCollection.addTool(htmlTool);
-                }
-                if (agentToolList.contains("search")) {
-                    DeepSearchTool deepSearchTool = new DeepSearchTool();
-                    deepSearchTool.setAgentContext(agentContext);
-                    toolCollection.addTool(deepSearchTool);
-                }
-                if (agentToolList.contains("data_analysis")) {
-                    DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-                    dataAnalysisTool.setAgentContext(agentContext);
-                    toolCollection.addTool(dataAnalysisTool);
-                }
-            }
-        }
-
-        try {
-            // React 与 Plan 两条链路共用同一套 Java MCP Client 发现逻辑。
-            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
-                toolCollection.addMcpTool(toolInfo);
-            }
-        } catch (Exception e) {
-            log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
-        }
-        return toolCollection;
+        return agentToolCollectionFactory.buildForReact(agentContext, request);
     }
 
     @Override

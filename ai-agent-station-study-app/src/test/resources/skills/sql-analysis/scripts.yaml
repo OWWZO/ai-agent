@@ -1,0 +1,5 @@
+scripts:
+  summarize:
+    path: scripts/summarize.py
+    runtime: python
+    description: 汇总 SQL 指标说明并生成 markdown 摘要。

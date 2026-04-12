@@ -7,21 +7,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.SopRecallResponse;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.*;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.reactor.agent.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.SopRecallService;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -32,16 +27,13 @@ import java.util.Objects;
 public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private AgentToolCollectionFactory agentToolCollectionFactory;
 
     @Resource
     private SopRecallService sopRecallService;
 
     @Resource
     private Step2PlanExecuteNode step2PlanExecuteNode;
-
-    @Resource
-    private McpToolExecutor mcpToolExecutor;
 
     @Override
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -97,66 +89,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         }
     }
 
-    //TODO 提炼到抽象支持
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
-        ToolCollection toolCollection = new ToolCollection();
-        toolCollection.setAgentContext(agentContext);
-        toolCollection.setMcpToolExecutor(mcpToolExecutor);
-
-        //智能问数模式
-        if ("dataAgent".equals(request.getOutputStyle())) {
-            //报告工具
-            ReportTool htmlTool = new ReportTool();
-            htmlTool.setAgentContext(agentContext);
-            toolCollection.addTool(htmlTool);
-
-            //数据分析工具
-            DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-            dataAnalysisTool.setAgentContext(agentContext);
-            toolCollection.addTool(dataAnalysisTool);
-        } else {
-            //深度思考/深度研究模式
-
-            //文件工具
-            FileTool fileTool = new FileTool();
-            fileTool.setAgentContext(agentContext);
-            toolCollection.addTool(fileTool);
-
-            List<String> agentToolList = Arrays.asList(reactorConfig.getMultiAgentToolListMap()
-                    .getOrDefault("default", "search,code,report").split(","));
-            if (!agentToolList.isEmpty()) {
-                if (agentToolList.contains("code")) {
-                    CodeInterpreterTool codeTool = new CodeInterpreterTool();
-                    codeTool.setAgentContext(agentContext);
-                    toolCollection.addTool(codeTool);
-                }
-                if (agentToolList.contains("report")) {
-                    ReportTool htmlTool = new ReportTool();
-                    htmlTool.setAgentContext(agentContext);
-                    toolCollection.addTool(htmlTool);
-                }
-                if (agentToolList.contains("search")) {
-                    DeepSearchTool deepSearchTool = new DeepSearchTool();
-                    deepSearchTool.setAgentContext(agentContext);
-                    toolCollection.addTool(deepSearchTool);
-                }
-                if (agentToolList.contains("data_analysis")) {
-                    DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-                    dataAnalysisTool.setAgentContext(agentContext);
-                    toolCollection.addTool(dataAnalysisTool);
-                }
-            }
-        }
-
-        try {
-            // 统一走 Java MCP Client 发现工具，不再依赖 Python SSE 中转层。
-            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
-                toolCollection.addMcpTool(toolInfo);
-            }
-        } catch (Exception e) {
-            log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
-        }
-        return toolCollection;
+        return agentToolCollectionFactory.buildForPlanSolve(agentContext, request);
     }
 
     @Override

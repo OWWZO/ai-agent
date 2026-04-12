@@ -18,7 +18,17 @@ from jinja2 import Template
 from sse_starlette import ServerSentEvent, EventSourceResponse
 
 from reactor_tool.model.code import ActionOutput, CodeOuput
-from reactor_tool.model.protocal import TableRAGRequest, AutoAnalysisRequest, CIRequest, CalEngineRequest, ReportRequest, DeepSearchRequest, NL2SQLRequest, SopChooseRequest
+from reactor_tool.model.protocal import (
+    TableRAGRequest,
+    AutoAnalysisRequest,
+    CIRequest,
+    CalEngineRequest,
+    ReportRequest,
+    DeepSearchRequest,
+    NL2SQLRequest,
+    SopChooseRequest,
+    ScriptRunnerRequest,
+)
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.llm_util import ask_llm
 from reactor_tool.util.prompt_util import get_prompt
@@ -30,6 +40,7 @@ from reactor_tool.tool.auto_analysis import AutoAnalysisAgent
 from reactor_tool.tool.nl2sql import NL2SQLAgent
 from reactor_tool.tool.table_rag import TableRAGAgent
 from reactor_tool.tool.plan_sop import PlanSOP
+from reactor_tool.tool.script_runner import run_script_request
 load_dotenv()
 
 
@@ -430,5 +441,12 @@ async def post_sop_recall(
     sop_mode, choosed_sop_string = pl_sop.sop_choose(query=query, sop_list=sop_list)
     
     return {"code": 200, "data": {"sop_mode": sop_mode, "choosed_sop_string": choosed_sop_string}, "requestId": body.request_id}
+
+
+@router.post("/script_runner")
+async def post_script_runner(body: ScriptRunnerRequest):
+    """skill 脚本执行端点"""
+    response = await run_script_request(body)
+    return response.model_dump(by_alias=True)
 
 

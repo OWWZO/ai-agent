@@ -8,10 +8,10 @@
 import hashlib
 
 
-from typing import Dict, Optional, Literal, List
+from typing import Dict, Optional, Literal, List, Any
 
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, ConfigDict
 
 
 class StreamMode(BaseModel):
@@ -123,3 +123,48 @@ class SopChooseRequest(BaseModel):
     query: str = Field(description="用户问题")
     sop_list: Optional[List[Dict]] = Field(default=[],
         alias="sopList", description="SOP 列表，包含每一个sop")
+
+
+class ScriptRunnerFileInfo(BaseModel):
+    """脚本执行产物信息"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_name: str = Field(alias="fileName", description="文件名称")
+    oss_url: Optional[str] = Field(default=None, alias="ossUrl", description="对象存储地址")
+    domain_url: Optional[str] = Field(default=None, alias="domainUrl", description="可访问地址")
+    download_url: Optional[str] = Field(default=None, alias="downloadUrl", description="下载地址")
+    file_size: Optional[int] = Field(default=0, alias="fileSize", description="文件大小")
+
+
+class ScriptRunnerRequest(BaseModel):
+    """script_runner 请求协议"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", description="Request ID")
+    skill_name: str = Field(alias="skillName", description="skill 名称")
+    skill_base_path: str = Field(alias="skillBasePath", description="skill 根目录")
+    script_name: str = Field(alias="scriptName", description="脚本名称")
+    script_path: str = Field(alias="scriptPath", description="脚本相对路径")
+    runtime: Literal["python", "node", "shell", "powershell", "bat"] = Field(description="脚本运行时")
+    arguments: Dict[str, Any] = Field(default_factory=dict, description="结构化参数")
+    argv: List[str] = Field(default_factory=list, description="原始命令行参数")
+    timeout_seconds: int = Field(default=120, alias="timeoutSeconds", description="超时时间，单位秒")
+
+
+class ScriptRunnerResponse(BaseModel):
+    """script_runner 返回协议"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", description="Request ID")
+    skill_name: str = Field(alias="skillName", description="skill 名称")
+    script_name: str = Field(alias="scriptName", description="脚本名称")
+    runtime: Literal["python", "node", "shell", "powershell", "bat"] = Field(description="脚本运行时")
+    success: bool = Field(description="是否执行成功")
+    exit_code: int = Field(alias="exitCode", description="进程退出码")
+    stdout: str = Field(default="", description="标准输出")
+    stderr: str = Field(default="", description="错误输出")
+    summary: str = Field(default="", description="执行摘要")
+    file_info: List[ScriptRunnerFileInfo] = Field(default_factory=list, alias="fileInfo", description="产出文件")

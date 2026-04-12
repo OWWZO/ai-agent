@@ -17,7 +17,7 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -93,8 +93,8 @@ public class ToolCollection {
      * 初始化工具映射表：默认创建空的HashMap，避免空指针异常。
      */
     public ToolCollection() {
-        this.toolMap = new HashMap<>();
-        this.mcpToolMap = new HashMap<>();
+        this.toolMap = new LinkedHashMap<>();
+        this.mcpToolMap = new LinkedHashMap<>();
     }
 
     /**

@@ -385,6 +385,18 @@ Assistant：现在需要在上一步列举出的11、22、33、44、55、66、77
     sensitive_patterns: '{}'
     output_style_prompts: '{"html": "", "docs": "，最后以 markdown 展示最终结果", "table": "，最后以excel 展示最终结果", "ppt": "，最后以 ppt 展示最终结果"}'
     message_interval: '{}'
+    skill:
+      enabled: true
+      # 本地开发时可直接把 skill 放到仓库 runtime/skills 目录，开箱即用
+      directories:
+        - ${user.dir}/ai-agent-station-study/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      default-script-timeout-seconds: 120
     user_name: ''
     default_model_name: gpt-5.2 
     reactor_sop_prompt: '

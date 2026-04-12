@@ -6,6 +6,7 @@
 # Date:   2025/7/7
 # =====================
 import os
+import warnings
 from optparse import OptionParser
 from pathlib import Path
 
@@ -18,6 +19,13 @@ from starlette.middleware.cors import CORSMiddleware
 from reactor_tool.util.middleware_util import UnknownException, HTTPProcessTimeMiddleware
 
 load_dotenv()
+
+# 压掉已知的第三方库噪音告警，避免排查真实异常时被无关 warning 干扰。
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API.*",
+    category=UserWarning,
+)
 
 
 def print_logo():
@@ -71,13 +79,26 @@ if __name__ == "__main__":
 
     print(f"Start params: {options}")
 
-    uvicorn.run(
-        app="server:app",
-        host=options.host,
-        port=options.port,
-        workers=options.workers,
-        reload=os.getenv("ENV", "local") == "local",
-        timeout_keep_alive=99999,
-        ws_ping_interval=99999,
-        ws_ping_timeout=99999,
-    )
+    reload_enabled = os.getenv("ENV", "local") == "local"
+
+    # 单进程时直接传入 app 实例，避免复制环境后再被子进程/重载器放大解释器差异。
+    if not reload_enabled and int(options.workers) <= 1:
+        uvicorn.run(
+            app=app,
+            host=options.host,
+            port=options.port,
+            timeout_keep_alive=99999,
+            ws_ping_interval=99999,
+            ws_ping_timeout=99999,
+        )
+    else:
+        uvicorn.run(
+            app="server:app",
+            host=options.host,
+            port=options.port,
+            workers=options.workers,
+            reload=reload_enabled,
+            timeout_keep_alive=99999,
+            ws_ping_interval=99999,
+            ws_ping_timeout=99999,
+        )

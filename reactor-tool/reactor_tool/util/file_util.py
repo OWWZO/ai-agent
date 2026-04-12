@@ -5,11 +5,14 @@
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
+import hashlib
 import secrets
 import string
 import json
 import os
+import shutil
 from copy import deepcopy
+from pathlib import Path
 from typing import List, Dict, Any
 
 import aiohttp
@@ -22,13 +25,14 @@ from reactor_tool.model.document import Doc
 @timer()
 async def get_file_content(file_name: str) -> str:
     # local file
-    if file_name.startswith("/"):
+    if _is_local_file_reference(file_name):
+        local_path = _normalize_local_path(file_name)
         try:
-            with open(file_name, "r", encoding='utf-8') as rf:
+            with open(local_path, "r", encoding='utf-8') as rf:
                 return rf.read()
         except UnicodeDecodeError:
             # UTF-8失败时尝试GBK
-            with open(file_name, "r", encoding='gbk') as rf:
+            with open(local_path, "r", encoding='gbk') as rf:
                 return rf.read()
     # file server
     else:
@@ -102,23 +106,40 @@ async def upload_file(
         file_type = "md"
     if not file_name.endswith(file_type):
         file_name = f"{file_name}.{file_type}"
-    body = {
-        "requestId": request_id,
-        "fileName": file_name,
-        "content": content,
-        "description": content[:200],
-    }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{os.getenv('FILE_SERVER_URL')}/upload_file", json=body, timeout=99999
-        ) as response:
-            result = json.loads(await response.text())
+    storage_target = _get_file_storage_target()
+    if _is_http_endpoint(storage_target):
+        body = {
+            "requestId": request_id,
+            "fileName": file_name,
+            "content": content,
+            "description": content[:200],
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{storage_target}/upload_file", json=body, timeout=99999
+            ) as response:
+                result = json.loads(await response.text())
+        return {
+            "fileName": file_name,
+            "ossUrl": result["downloadUrl"],
+            "domainUrl": result["domainUrl"],
+            "downloadUrl": result["downloadUrl"],
+            "fileSize": len(content),
+        }
+
+    target_file = _write_local_text_file(
+        storage_root=storage_target,
+        request_id=request_id,
+        file_name=file_name,
+        content=content,
+    )
+    local_reference = str(target_file)
     return {
         "fileName": file_name,
-        "ossUrl": result["downloadUrl"],
-        "domainUrl": result["domainUrl"],
-        "downloadUrl": result["downloadUrl"],
-        "fileSize": len(content),
+        "ossUrl": local_reference,
+        "domainUrl": local_reference,
+        "downloadUrl": local_reference,
+        "fileSize": len(content.encode("utf-8")),
     }
 
 
@@ -131,24 +152,40 @@ async def upload_file_by_path(
         return None
     file_name = os.path.basename(file_path)
     file_size = os.path.getsize(file_path)
+    storage_target = _get_file_storage_target()
+    if _is_http_endpoint(storage_target):
+        data = aiohttp.FormData()
+        data.add_field("requestId", request_id)
+        data.add_field(
+            "file",
+            open(file_path, "rb"),
+            filename=file_name,
+            content_type="application/octet-stream",
+        )
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{storage_target}/upload_file_data", data=data, timeout=99999
+            ) as response:
+                result = json.loads(await response.text())
+        return {
+            "fileName": file_name,
+            "ossUrl": result["downloadUrl"],
+            "domainUrl": result["domainUrl"],
+            "downloadUrl": result["downloadUrl"],
+            "fileSize": file_size,
+        }
 
-    data = aiohttp.FormData()
-    data.add_field("requestId", request_id)
-    data.add_field(
-        "file",
-        open(file_path, "rb"),
-        filename=file_name,
-        content_type="application/octet-stream",
+    target_file = _copy_file_to_local_storage(
+        storage_root=storage_target,
+        request_id=request_id,
+        source_file=Path(file_path),
     )
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{os.getenv('FILE_SERVER_URL')}/upload_file_data", data=data, timeout=99999
-        ) as response:
-            result = json.loads(await response.text())
+    local_reference = str(target_file)
     return {
         "fileName": file_name,
-        "domainUrl": result["domainUrl"],
-        "downloadUrl": result["downloadUrl"],
+        "ossUrl": local_reference,
+        "domainUrl": local_reference,
+        "downloadUrl": local_reference,
         "fileSize": file_size,
     }
 
@@ -177,8 +214,8 @@ def flatten_search_file(s_file: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 @timer()
 async def get_file_path(file_name: str, word_dir: str) -> str:
-    if file_name.startswith("/"):
-        return file_name
+    if _is_local_file_reference(file_name):
+        return str(_normalize_local_path(file_name))
     else:
         b_content = b""
         file_path = os.path.join(word_dir, os.path.basename(file_name))
@@ -222,3 +259,87 @@ async def download_all_files_in_path(file_names: list[str], work_dir: str) -> Li
                 }
             )
     return file_paths
+
+
+def _get_file_storage_target() -> str:
+    """读取文件存储目标，既支持 HTTP 文件服务，也支持本地目录。"""
+    storage_target = (os.getenv("FILE_SERVER_URL") or "").strip()
+    if not storage_target:
+        raise ValueError("FILE_SERVER_URL is not configured")
+    return storage_target
+
+
+def _is_http_endpoint(storage_target: str) -> bool:
+    """判断当前文件存储目标是否为 HTTP 文件服务。"""
+    lowered = storage_target.lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _is_local_file_reference(file_name: str) -> bool:
+    """判断字符串是否指向本地文件。兼容 Windows 盘符路径。"""
+    if not file_name:
+        return False
+    if file_name.startswith("file://"):
+        return True
+    if file_name.startswith("/") or file_name.startswith("\\\\"):
+        return True
+    return len(file_name) >= 3 and file_name[1] == ":" and file_name[2] in {"\\", "/"}
+
+
+def _normalize_local_path(file_name: str) -> Path:
+    """将本地文件引用归一化为 Path。"""
+    if file_name.startswith("file://"):
+        normalized = file_name[len("file://"):]
+        if normalized.startswith("/") and len(normalized) >= 3 and normalized[2] == ":":
+            normalized = normalized[1:]
+        return Path(normalized)
+    return Path(file_name)
+
+
+def _build_local_storage_path(storage_root: str, request_id: str, file_name: str) -> Path:
+    """按 requestId 隔离本地产物目录，避免不同会话互相覆盖。"""
+    target_directory = Path(storage_root).expanduser().resolve() / _sanitize_local_request_scope(request_id)
+    target_directory.mkdir(parents=True, exist_ok=True)
+    return target_directory / file_name
+
+
+def _sanitize_local_request_scope(request_id: str) -> str:
+    """将 requestId 转换为兼容本地文件系统的目录名，同时保留可读性。"""
+    sanitized = _sanitize_local_path_segment(request_id, fallback="request")
+    if sanitized == request_id:
+        return sanitized
+    digest = hashlib.md5(request_id.encode("utf-8")).hexdigest()[:8]
+    return f"{sanitized}-{digest}"
+
+
+def _sanitize_local_path_segment(segment: str, fallback: str) -> str:
+    """清洗单个路径片段，兼容 Windows 非法字符与保留名称。"""
+    invalid_chars = '<>:"/\\|?*'
+    translated = "".join("_" if char in invalid_chars or ord(char) < 32 else char for char in segment)
+    sanitized = translated.strip().rstrip(". ")
+    if not sanitized or sanitized in {".", ".."}:
+        sanitized = fallback
+
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }
+    if sanitized.upper() in reserved_names:
+        sanitized = f"_{sanitized}"
+    return sanitized[:120]
+
+
+def _write_local_text_file(storage_root: str, request_id: str, file_name: str, content: str) -> Path:
+    """将文本内容直接落到本地目录，模拟文件服务上传。"""
+    target_file = _build_local_storage_path(storage_root, request_id, file_name)
+    target_file.write_text(content, encoding="utf-8")
+    return target_file
+
+
+def _copy_file_to_local_storage(storage_root: str, request_id: str, source_file: Path) -> Path:
+    """将已有文件复制到本地目录，模拟文件服务上传。"""
+    target_file = _build_local_storage_path(storage_root, request_id, source_file.name)
+    if source_file.resolve() != target_file.resolve():
+        shutil.copy2(source_file, target_file)
+    return target_file

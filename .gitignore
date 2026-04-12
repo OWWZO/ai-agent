@@ -40,3 +40,9 @@ build/
 /ai-agent-station-study-app/data/
 /data/
 /ai-agent-station-study-app/.local-config
+__pycache__/
+*.pyc
+.venv/
+venv/
+runtime/skills/*
+!runtime/skills/.gitkeep

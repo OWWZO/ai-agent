@@ -13,3 +13,18 @@ spring:
       enabled: true        # 启用文件上传
       max-file-size: 200MB # 默认单文件上限
       max-request-size: 300MB # 默认请求总大小上限
+
+autobots:
+  autoagent:
+    skill:
+      enabled: false
+      # 默认从当前服务工作目录下的 runtime/skills 加载运行时技能
+      directories:
+        - ${user.dir}/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      default-script-timeout-seconds: 120
