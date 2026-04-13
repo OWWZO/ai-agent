@@ -55,7 +55,7 @@ public class AiAgentFlowConfigDaoTest {
 
     @Test
     public void test_queryById() {
-        AiAgentFlowConfig aiAgentFlowConfig = aiAgentFlowConfigDao.queryById(1L);
+        AiAgentFlowConfig aiAgentFlowConfig = aiAgentFlowConfigDao.queryById("1");
         log.info("根据ID查询结果: {}", aiAgentFlowConfig);
     }
 
@@ -88,7 +88,7 @@ public class AiAgentFlowConfigDaoTest {
 
     @Test
     public void test_deleteById() {
-        int result = aiAgentFlowConfigDao.deleteById(1L);
+        int result = aiAgentFlowConfigDao.deleteById("1");
         log.info("根据ID删除结果: {}", result);
     }
 

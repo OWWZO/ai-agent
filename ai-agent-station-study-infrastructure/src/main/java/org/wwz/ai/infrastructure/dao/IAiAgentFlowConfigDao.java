@@ -33,7 +33,7 @@ public interface IAiAgentFlowConfigDao {
      * @param id 主键ID
      * @return 影响行数
      */
-    int deleteById(Long id);
+    int deleteById(String id);
 
     /**
      * 根据智能体ID删除关联配置
@@ -47,7 +47,7 @@ public interface IAiAgentFlowConfigDao {
      * @param id 主键ID
      * @return 智能体-客户端关联配置对象
      */
-    AiAgentFlowConfig queryById(Long id);
+    AiAgentFlowConfig queryById(String id);
 
     /**
      * 根据智能体ID查询关联配置列表

@@ -1079,16 +1079,20 @@ export const getIcon = (type: string): string => {
   return DEFAULT_ICON;
 };
 
-export const buildAttachment = (fileList: CHAT.FileList[]) => {
-  const result = fileList?.map((item) => {
+export const buildAttachment = (fileList?: CHAT.FileList[]): CHAT.TFile[] => {
+  if (!Array.isArray(fileList) || !fileList.length) {
+    return [];
+  }
+
+  // 后端历史记录里的文件字段可能不完整，这里统一归一化成前端稳定结构。
+  return fileList.map((item) => {
     const { domainUrl, fileName, fileSize } = item;
-    const extension = fileName?.split(".").pop();
+    const extension = fileName?.split(".").pop()?.toLowerCase() || "";
     return {
-      name: fileName,
-      url: domainUrl,
-      type: extension!,
-      size: fileSize,
+      name: fileName || "未命名文件",
+      url: domainUrl || "",
+      type: extension,
+      size: typeof fileSize === "number" ? fileSize : Number(fileSize) || 0,
     };
   });
-  return result;
 };

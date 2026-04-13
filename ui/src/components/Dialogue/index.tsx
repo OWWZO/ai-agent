@@ -165,11 +165,12 @@ const ToolItem: FC<{
       );
     }
     case "task_summary": {
+      const attachmentFiles = buildAttachment(tool.resultMap?.fileInfo || tool.resultMap?.fileList);
       return (
         <div className="mt-[8px]">
           <div className="mb-[8px]">{tool.resultMap.taskSummary}</div>
           <AttachmentList
-            files={buildAttachment(tool.resultMap.fileList!)}
+            files={attachmentFiles}
             preview={true}
             review={changeFile}
           />
@@ -616,7 +617,7 @@ const ConclusionSection: FC<{
         <MessageResponse isStreaming={summaryStreaming}>{summary}</MessageResponse>
       </div>
       <AttachmentList
-        files={buildAttachment(chat.conclusion?.resultMap.fileList || [])}
+        files={buildAttachment(chat.conclusion?.resultMap?.fileInfo || chat.conclusion?.resultMap?.fileList)}
         preview={true}
         review={changeFile}
       />

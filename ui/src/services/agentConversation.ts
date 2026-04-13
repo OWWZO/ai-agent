@@ -1,14 +1,17 @@
 import api from "./index";
 import { combineData, handleTaskData } from "@/utils/chat";
 
-let runtimeDeviceId: string | null = null;
+const DEFAULT_DEVICE_ID = "device-default";
+
+let runtimeDeviceId: string | null = DEFAULT_DEVICE_ID;
 
 /**
- * 获取或生成设备标识（仅内存，不落本地存储）
+ * 获取默认设备标识。
+ * 这里先收敛为固定值，保证匿名历史在不同浏览器中可见。
  */
 export function getDeviceId(): string {
   if (!runtimeDeviceId) {
-    runtimeDeviceId = `device-${crypto.randomUUID()}`;
+    runtimeDeviceId = DEFAULT_DEVICE_ID;
   }
   return runtimeDeviceId;
 }
