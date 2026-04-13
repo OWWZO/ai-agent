@@ -8,7 +8,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * AI Agent 消息表 PO (每轮对话一行,包含用户问题+AI回答)
+ * AI Agent 消息表 PO
+ * 仅保留单轮请求账本所需字段，不再承载 rich replay 细节。
  */
 @Data
 @Builder
@@ -20,9 +21,6 @@ public class AgentMessage {
 
     /** FK -> ai_agent_conversation.id */
     private Long conversationId;
-
-    /** 冗余会话ID */
-    private String sessionId;
 
     /** 前端请求UUID,每轮唯一 */
     private String requestId;
@@ -41,35 +39,8 @@ public class AgentMessage {
     /** 0=CHAT, 1=PLAN_SOLVE, 2=REACT */
     private Integer agentType;
 
-    // ---- Chat模式 ----
-
-    /** LLM纯文本回答 */
+    /** 单轮最终回答/上下文文本 */
     private String response;
-
-    // ---- 深度思考模式 ----
-
-    /** 推理过程文本(plan_thought) */
-    private String thought;
-
-    /** Plan对象JSON */
-    private String planJson;
-
-    // ---- 深度模式共用 ----
-
-    /** Task[][] 二维数组JSON */
-    private String tasksJson;
-
-    /** MultiAgent元数据JSON */
-    private String multiAgentJson;
-
-    /** 最终结论Task JSON */
-    private String conclusionJson;
-
-    /** PlanItem[]计划列表JSON */
-    private String planListJson;
-
-    /** 版本化渲染快照 */
-    private String renderSnapshotJson;
 
     /** 执行指标JSON */
     private String metricsJson;

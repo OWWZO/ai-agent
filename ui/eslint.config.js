@@ -5,17 +5,19 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  {
+    ignores: ['dist', 'build', 'coverage', 'node_modules', '*.min.js'],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
-    },
-    globals: {
-      REQUEST_BASE_URL: 'readonly',
-      env: 'readonly',
+      globals: {
+        ...globals.browser,
+        REQUEST_BASE_URL: 'readonly',
+        env: 'readonly',
+      },
     },
     plugins: {
       'react-hooks': reactHooks,
@@ -33,7 +35,6 @@ export default tseslint.config(
       'key-spacing': ['error', { beforeColon: false, afterColon: true }],
       'no-multiple-empty-lines': ['error', { max: 1 }],
       'no-trailing-spaces': 'error',
-      'linebreak-style': ['error', 'unix'],
       'func-call-spacing': ['error', 'never'],
       'object-curly-newline': ['error', { multiline: true }],
       'keyword-spacing': ['error', { before: true, after: true }],

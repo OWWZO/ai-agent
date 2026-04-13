@@ -12,16 +12,15 @@ import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter
 import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
 import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
 import {
-  createConversation,
-  pruneHistory,
+  hasLocalConversationContent,
+  isDraftConversation,
+  resolveConversationHistories,
 } from "@/utils/chatHistory";
 import { useAgentConversation } from "@/hooks/useAgentConversation";
-import { restoreMessages } from "@/services/agentConversation";
 
 type HomeProps = Record<string, never>;
 
 type InitialState = {
-  conversations: CHAT.ConversationHistory[];
   currentConversationId: string;
   productType: string;
 };
@@ -45,7 +44,7 @@ const EMPTY_INPUT: CHAT.TInputInfo = {
   deepThink: false,
 };
 
-const HERO_TYPEWRITER_TEXTS = ["Let's build", "Let's create", "Hello! How can I help?", "Let's analyze","Let's research","Welcome back!","Awaiting your instructions"];
+const HERO_TYPEWRITER_TEXTS = ["Let's build", "Let's create", "Hello! How can I help?", "Let's analyze", "Let's research", "Welcome back!", "Awaiting your instructions"];
 const SHOW_FEATURED_CASES = false;
 
 const tagColorMap: Record<string, string> = {
@@ -71,16 +70,6 @@ const formatHistoryTime = (timestamp: number) => {
   }
 };
 
-const hasLocalConversationContent = (conversation: CHAT.ConversationHistory | undefined) => {
-  if (!conversation) return false;
-  return conversation.chatList.length > 0 || conversation.dataChatList.length > 0;
-};
-
-const isDraftConversation = (conversation: CHAT.ConversationHistory | undefined) => {
-  if (!conversation) return false;
-  return !hasLocalConversationContent(conversation);
-};
-
 const toConversationRole = (role?: CHAT.FixRole | null): CHAT.ConversationRole | null => {
   if (!role) {
     return null;
@@ -95,12 +84,9 @@ const toConversationRole = (role?: CHAT.FixRole | null): CHAT.ConversationRole |
 
 const createInitialState = (): InitialState => {
   const initialProduct = productList.find((item) => item.type === "html") ?? defaultProduct;
-  const seeded = [createConversation({ productType: initialProduct.type, deepThink: false })];
-  const latest = [...seeded].sort((a, b) => b.updatedAt - a.updatedAt)[0];
   return {
-    conversations: seeded,
-    currentConversationId: latest.id,
-    productType: latest.productType || initialProduct.type,
+    currentConversationId: "",
+    productType: initialProduct.type,
   };
 };
 
@@ -110,8 +96,14 @@ const CaseCard = memo((props: CaseCardProps) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{
+        opacity: 0,
+        y: 24
+      }}
+      animate={{
+        opacity: 1,
+        y: 0
+      }}
       transition={{
         duration: 0.7,
         delay: 0.8 + index * 0.1,
@@ -173,16 +165,19 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const {
     apiMode,
     remoteConversations,
+    detailCache,
+    draftConversations,
     fixRoles,
     loadConversationDetail,
+    cacheConversationDetail,
+    removeConversationDetail,
+    createDraftConversation,
+    upsertDraftConversation,
+    removeDraftConversation,
     createRemoteConversation,
     deleteRemoteConversation,
   } = useAgentConversation();
   const [detailLoading, setDetailLoading] = useState(false);
-
-  const [conversations, setConversations] = useState<CHAT.ConversationHistory[]>(
-    initialRef.current.conversations
-  );
   const [currentConversationId, setCurrentConversationId] = useState(
     initialRef.current.currentConversationId
   );
@@ -201,14 +196,25 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const currentConversation = useMemo(
-    () => conversations.find((item) => item.id === currentConversationId) || conversations[0],
-    [conversations, currentConversationId]
-  );
-
   const defaultFixRole = useMemo(
     () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
     [fixRoles]
+  );
+
+  const conversations = useMemo(
+    () =>
+      resolveConversationHistories({
+        summaries: remoteConversations,
+        detailCache,
+        drafts: draftConversations,
+        fallbackChatRole: toConversationRole(defaultFixRole),
+      }),
+    [defaultFixRole, detailCache, draftConversations, remoteConversations]
+  );
+
+  const currentConversation = useMemo(
+    () => conversations.find((item) => item.id === currentConversationId) || conversations[0],
+    [conversations, currentConversationId]
   );
 
   const currentConversationRole = useMemo(() => {
@@ -228,6 +234,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [remoteConversations]
   );
 
+  const remoteSessionIdSet = useMemo(
+    () => new Set(remoteConversations.map((item) => item.sessionId)),
+    [remoteConversations]
+  );
+
   const hasConversationContent = useMemo(() => {
     if (hasLocalConversationContent(currentConversation)) return true;
     if (!currentConversation || !apiMode) return false;
@@ -244,104 +255,85 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     }
   }, [currentConversation]);
 
+  const updateConversation = useCallback(
+    (_conversationId: string, nextConversation: CHAT.ConversationHistory) => {
+      const remoteMessageCount =
+        remoteMessageCountMap.get(nextConversation.sessionId) ?? 0;
+      const hasRemoteSummary = remoteSessionIdSet.has(nextConversation.sessionId);
+      const keepAsDraft =
+        !hasRemoteSummary ||
+        (remoteMessageCount === 0 && isDraftConversation(nextConversation));
+
+      if (keepAsDraft) {
+        upsertDraftConversation(nextConversation);
+        return;
+      }
+
+      cacheConversationDetail(nextConversation);
+      removeDraftConversation(nextConversation.sessionId);
+    },
+    [
+      cacheConversationDetail,
+      remoteMessageCountMap,
+      remoteSessionIdSet,
+      removeDraftConversation,
+      upsertDraftConversation,
+    ]
+  );
+
   useEffect(() => {
     if (!currentConversation || currentConversation.productType !== "chat" || currentConversation.role || !defaultFixRole) {
       return;
     }
-    setConversations((prev) =>
-      prev.map((conversation) =>
-        conversation.id === currentConversation.id
-          ? { ...conversation, role: toConversationRole(defaultFixRole) }
-          : conversation
-      )
-    );
-  }, [currentConversation, defaultFixRole]);
-
-  // 远程会话列表同步到本地状态
-  useEffect(() => {
-    if (!apiMode || remoteConversations.length === 0) return;
-
-    const remoteMessageCounts = new Map(
-      remoteConversations.map((conversation) => [conversation.sessionId, conversation.messageCount])
-    );
-
-    const converted: CHAT.ConversationHistory[] = remoteConversations.map((rc) => ({
-      id: rc.sessionId,
-      sessionId: rc.sessionId,
-      title: rc.title,
-      chatTitle: rc.title,
-      productType: rc.productType || "chat",
-      deepThink: rc.agentType === 1,
-      role: rc.role || null,
-      createdAt: new Date(rc.createTime).getTime(),
-      updatedAt: new Date(rc.updateTime).getTime(),
-      chatList: [],
-      dataChatList: [],
-    }));
-
-    setConversations((prev) => {
-      const remoteIds = new Set(converted.map((c) => c.sessionId));
-      const existingMap = new Map(prev.map((c) => [c.sessionId, c]));
-      const activeDraft = prev.find(
-        (conversation) =>
-          conversation.id === currentConversationId &&
-          isDraftConversation(conversation) &&
-          (remoteMessageCounts.get(conversation.sessionId) ?? 0) === 0
-      );
-      // 保留已加载chatList的会话
-      const merged = converted.map((rc) => {
-        const existing = existingMap.get(rc.sessionId);
-        return existing && existing.chatList.length > 0 ? existing : rc;
-      });
-      // 保留当前正在使用的空白草稿，以及有内容的本地独有会话，避免首次进入或新建对话时被历史记录覆盖
-      const localOnly = prev.filter(
-        (conversation) =>
-          !remoteIds.has(conversation.sessionId) &&
-          (conversation.id === activeDraft?.id || !isDraftConversation(conversation))
-      );
-      return pruneHistory([...merged, ...localOnly]);
+    updateConversation(currentConversation.id, {
+      ...currentConversation,
+      role: toConversationRole(defaultFixRole),
+      updatedAt: Date.now(),
     });
-  }, [apiMode, currentConversationId, remoteConversations]);
+  }, [currentConversation, defaultFixRole, updateConversation]);
 
   useEffect(() => {
-    if (!conversations.length) return;
-    const exists = conversations.some((item) => item.id === currentConversationId);
-    if (!exists) {
-      const draftConversation = conversations.find(
-        (conversation) =>
-          isDraftConversation(conversation) &&
-          (remoteMessageCountMap.get(conversation.sessionId) ?? 0) === 0
-      );
-      if (draftConversation) {
-        setCurrentConversationId(draftConversation.id);
-        return;
-      }
-      const nextDraft = createConversation({
+    if (!conversations.length) {
+      const nextDraft = createDraftConversation({
         productType: product.type,
         deepThink: false,
         role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
       });
-      if (apiMode) {
-        nextDraft.id = nextDraft.sessionId;
-      }
-      setConversations((prev) => pruneHistory([nextDraft, ...prev]));
       setCurrentConversationId(nextDraft.id);
       setInputInfo({ ...EMPTY_INPUT });
+      return;
     }
-  }, [apiMode, conversations, currentConversationId, product.type, remoteMessageCountMap, defaultFixRole]);
 
-  const updateConversation = useCallback(
-    (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
-      setConversations((prev) => {
-        const exists = prev.some((item) => item.id === conversationId);
-        const merged = exists
-          ? prev.map((item) => (item.id === conversationId ? nextConversation : item))
-          : [nextConversation, ...prev];
-        return pruneHistory(merged);
-      });
-    },
-    []
-  );
+    const exists = conversations.some((item) => item.id === currentConversationId);
+    if (exists) {
+      return;
+    }
+
+    const draftConversation = conversations.find(
+      (conversation) =>
+        isDraftConversation(conversation) &&
+        (remoteMessageCountMap.get(conversation.sessionId) ?? 0) === 0
+    );
+    if (draftConversation) {
+      setCurrentConversationId(draftConversation.id);
+      return;
+    }
+
+    const nextDraft = createDraftConversation({
+      productType: product.type,
+      deepThink: false,
+      role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
+    });
+    setCurrentConversationId(nextDraft.id);
+    setInputInfo({ ...EMPTY_INPUT });
+  }, [
+    conversations,
+    createDraftConversation,
+    currentConversationId,
+    defaultFixRole,
+    product.type,
+    remoteMessageCountMap,
+  ]);
 
   const updateCurrentConversationMeta = useCallback(
     (meta: Partial<CHAT.ConversationHistory>) => {
@@ -366,14 +358,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       return;
     }
 
-    const next = createConversation({
+    const next = createDraftConversation({
       productType: product.type,
       deepThink: false,
       role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
     });
     if (apiMode) {
-      // API模式下使用sessionId作为id，保持与远程数据一致
-      next.id = next.sessionId;
       const agentType = product.type === "chat" ? 0 : next.deepThink ? 1 : 2;
       createRemoteConversation(
         next.sessionId,
@@ -383,11 +373,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         product.type === "chat" ? next.role?.agentId : undefined
       );
     }
-    setConversations((prev) => pruneHistory([next, ...prev]));
     setCurrentConversationId(next.id);
     setInputInfo({ ...EMPTY_INPUT });
     setHistoryDrawerOpen(false);
-  }, [product.type, sortedConversations, apiMode, createRemoteConversation, remoteMessageCountMap, defaultFixRole]);
+  }, [
+    apiMode,
+    createDraftConversation,
+    createRemoteConversation,
+    defaultFixRole,
+    product.type,
+    remoteMessageCountMap,
+    sortedConversations,
+  ]);
 
   const onInputConsumed = useCallback(() => {
     setInputInfo({ ...EMPTY_INPUT });
@@ -436,27 +433,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       // API模式下懒加载会话详情
       if (apiMode) {
         const conv = conversations.find((c) => c.id === conversationId);
-        if (conv && conv.chatList.length === 0) {
+        if (conv && !hasLocalConversationContent(conv)) {
           const remote = remoteConversations.find((rc) => rc.sessionId === conv.sessionId);
           if (remote && remote.messageCount > 0) {
             setDetailLoading(true);
-            loadConversationDetail(conv.sessionId)
-              .then((detail) => {
-                if (detail?.conversation) {
-                  setConversations((prev) =>
-                    prev.map((c) =>
-                      c.id === conversationId
-                        ? {
-                            ...c,
-                            role: detail.conversation.role || c.role || null,
-                            chatList: detail.messages ? restoreMessages(detail.messages) : c.chatList,
-                          }
-                        : c
-                    )
-                  );
-                }
-              })
-              .finally(() => setDetailLoading(false));
+            loadConversationDetail(conv.sessionId).finally(() =>
+              setDetailLoading(false)
+            );
           }
         }
       }
@@ -466,35 +449,52 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleDeleteConversation = useCallback(
     (conversationId: string) => {
-      // API模式下同步删除远程会话
-      if (apiMode) {
-        const conv = conversations.find((c) => c.id === conversationId);
-        if (conv) deleteRemoteConversation(conv.sessionId);
+      const conversation = conversations.find((item) => item.id === conversationId);
+      if (!conversation) {
+        return;
       }
 
-      setConversations((prev) => {
-        const filtered = prev.filter((item) => item.id !== conversationId);
-        if (filtered.length > 0) {
-          const latest = [...filtered].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-          if (conversationId === currentConversationId) {
-            setCurrentConversationId(latest.id);
-            setInputInfo({ ...EMPTY_INPUT });
-          }
-          return filtered;
-        }
+      if (apiMode && remoteSessionIdSet.has(conversation.sessionId)) {
+        deleteRemoteConversation(conversation.sessionId);
+      }
 
-        const fallback = createConversation({
-          productType: product.type,
-          deepThink: false,
-          role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
-        });
-        if (apiMode) fallback.id = fallback.sessionId;
-        setCurrentConversationId(fallback.id);
-        setInputInfo({ ...EMPTY_INPUT });
-        return [fallback];
+      removeConversationDetail(conversation.sessionId);
+      removeDraftConversation(conversation.sessionId);
+
+      const filtered = conversations.filter(
+        (item) =>
+          item.id !== conversationId && item.sessionId !== conversation.sessionId
+      );
+
+      if (filtered.length > 0) {
+        const latest = [...filtered].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (conversationId === currentConversationId) {
+          setCurrentConversationId(latest.id);
+          setInputInfo({ ...EMPTY_INPUT });
+        }
+        return;
+      }
+
+      const fallback = createDraftConversation({
+        productType: product.type,
+        deepThink: false,
+        role: product.type === "chat" ? toConversationRole(defaultFixRole) : null,
       });
+      setCurrentConversationId(fallback.id);
+      setInputInfo({ ...EMPTY_INPUT });
     },
-    [currentConversationId, product.type, apiMode, conversations, deleteRemoteConversation, defaultFixRole]
+    [
+      apiMode,
+      conversations,
+      createDraftConversation,
+      currentConversationId,
+      defaultFixRole,
+      deleteRemoteConversation,
+      product.type,
+      remoteSessionIdSet,
+      removeConversationDetail,
+      removeDraftConversation,
+    ]
   );
 
   const handleInputSelectionChange = useCallback(
@@ -522,18 +522,15 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       const hasMessages = hasLocalConversationContent(currentConversation) || hasRemoteMessages;
 
       if (currentConversation.productType === "chat" && hasMessages) {
-        const nextConversation = createConversation({
+        const nextConversation = createDraftConversation({
           productType: "chat",
           deepThink: false,
           role: nextRole,
         });
         if (apiMode) {
-          nextConversation.id = nextConversation.sessionId;
           createRemoteConversation(nextConversation.sessionId, 0, "chat", "新对话", role.agentId);
         }
-        setConversations((prev) => pruneHistory([nextConversation, ...prev]));
         setCurrentConversationId(nextConversation.id);
-        setProduct(productList.find((item) => item.type === "chat") ?? defaultProduct);
         setInputInfo({ ...EMPTY_INPUT });
         return;
       }
@@ -545,7 +542,14 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       });
       setProduct(productList.find((item) => item.type === "chat") ?? defaultProduct);
     },
-    [apiMode, createRemoteConversation, currentConversation, remoteMessageCountMap, updateCurrentConversationMeta]
+    [
+      apiMode,
+      createDraftConversation,
+      createRemoteConversation,
+      currentConversation,
+      remoteMessageCountMap,
+      updateCurrentConversationMeta,
+    ]
   );
 
   const threadListItems = useMemo<LocalThreadListItem[]>(
@@ -608,9 +612,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
           {/* Input Section */}
           <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            initial={{
+              opacity: 0,
+              y: 24,
+              scale: 0.98
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1
+            }}
+            transition={{
+              duration: 0.8,
+              delay: 0.5,
+              ease: [0.16, 1, 0.3, 1]
+            }}
             className="mb-12 w-full max-w-[920px]"
           >
             <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
@@ -639,7 +655,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               opacity: product.type === "dataAgent" ? 1 : 0,
               y: product.type === "dataAgent" ? 0 : -10,
             }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            transition={{
+              duration: 0.3,
+              ease: [0.16, 1, 0.3, 1]
+            }}
             className={classNames(
               "w-full max-w-[800px] mx-auto overflow-hidden",
               product.type === "dataAgent" ? "max-h-[100px] mb-12 pointer-events-auto" : "max-h-0 mb-0 pointer-events-none"
@@ -663,9 +682,19 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           {SHOW_FEATURED_CASES && (
             <div className="w-full max-w-[1000px] mx-auto pb-24 mt-8">
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.75, ease: [0.16, 1, 0.3, 1] }}
+                initial={{
+                  opacity: 0,
+                  y: 20
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0
+                }}
+                transition={{
+                  duration: 0.7,
+                  delay: 0.75,
+                  ease: [0.16, 1, 0.3, 1]
+                }}
                 className="mb-10 text-center"
               >
                 <h2 className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]" style={{ fontFamily: "var(--font-display)" }}>精选案例</h2>

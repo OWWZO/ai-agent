@@ -23,6 +23,7 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentStreamPersistService;
+import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.domain.agent.reactor.util.ChateiUtils;
 import org.wwz.ai.domain.agent.reactor.util.SseUtil;
@@ -92,7 +93,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
         // 2. 插入占位消息
         AgentMessage placeholderMessage = messageService.insertPlaceholder(
-                conversation.getId(), sessionId, requestId, query, convAgentType.getCode(), filesJson);
+                conversation.getId(), requestId, query, convAgentType.getCode(), filesJson);
         final Long messageId = placeholderMessage.getId();
         final Long conversationId = conversation.getId();
         final String convTitle = conversation.getTitle();
@@ -162,9 +163,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             public void onFailure(Call call, IOException e) {
                 log.error("onFailure requestId={}, error={}", autoReq.getRequestId(), e.getMessage(), e);
                 try {
-                    persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                            query, currentMessageCount, convTitle, new EventResult(),
-                            responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                    persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                            convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
                 } catch (Exception ex) {
                     log.error("持久化错误状态失败", ex);
                 } finally {
@@ -180,9 +180,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
                 if (responseBody == null) {
                     log.error("{} empty response body", autoReq.getRequestId());
-                    persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                            query, currentMessageCount, convTitle, eventResult,
-                            responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                    persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                            convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
                     sseEmitter.completeWithError(new IllegalStateException("empty response body"));
                     return;
                 }
@@ -192,9 +191,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 try {
                     if (!response.isSuccessful()) {
                         log.error("{} response failed: {}", autoReq.getRequestId(), responseBody.string());
-                        persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                                query, currentMessageCount, convTitle, eventResult,
-                                responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
                         sseEmitter.completeWithError(new IllegalStateException("upstream response failed"));
                         return;
                     }
@@ -245,9 +243,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 } catch (Exception e) {
                     log.error("{} stream exception", autoReq.getRequestId(), e);
                     try {
-                        persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                                query, currentMessageCount, convTitle, eventResult,
-                                responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
                     } catch (Exception ex) {
                         log.error("持久化错误状态失败", ex);
                     } finally {
@@ -259,14 +256,12 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 // --- 流结束: 持久化完整消息 ---
                 try {
                     if (streamCompleted) {
-                        persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                                query, currentMessageCount, convTitle, eventResult,
-                                responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "completed");
+                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "completed");
                         log.info("消息持久化完成 messageId={}, conversationId={}", messageId, conversationId);
                     } else {
-                        persistEventsAndSnapshot(messageId, conversationId, sessionId, requestId,
-                                query, currentMessageCount, convTitle, eventResult,
-                                responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
                         sseEmitter.completeWithError(new IllegalStateException("stream closed before completion"));
                     }
                 } catch (Exception e) {
@@ -321,7 +316,8 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 .isFinal(Boolean.TRUE.equals(agentResponse.getIsFinal()))
                 .title(resolveEventTitle(agentResponse))
                 .contentText(extractContentText(agentResponse))
-                .payloadJson(JSON.toJSONString(eventDataMap))
+                // 持久化时统一收敛 artifactRefs，避免历史回放继续依赖旧 fileInfo/fileList 结构。
+                .payloadJson(ConversationEventPayloadNormalizer.normalizePayload(eventDataMap).toJSONString())
                 .eventTime(LocalDateTime.now())
                 .build();
 
@@ -333,29 +329,15 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         orderedEvents.add(currentEvent);
     }
 
-    private void persistEventsAndSnapshot(Long messageId, Long conversationId,
-                                          String sessionId, String requestId, String query,
-                                          int currentMessageCount, String convTitle, EventResult eventResult,
+    private void persistTurnAndEvents(Long messageId, Long conversationId, String query,
+                                          int currentMessageCount, String convTitle,
                                           StringBuilder responseBuffer, StringBuilder thoughtBuffer,
                                           List<OrderedEvent> orderedEvents, Map<String, OrderedEvent> bufferedEvents,
                                           String status) {
         List<OrderedEvent> finalOrderedEvents = mergeOrderedEvents(orderedEvents, bufferedEvents);
         if (!finalOrderedEvents.isEmpty()) {
-            messageEventService.persistEvents(finalOrderedEvents, messageId, conversationId, sessionId, requestId, status);
+            messageEventService.persistEvents(finalOrderedEvents, messageId, status);
         }
-
-        String planJson = eventResult != null && eventResult.getResultMap().containsKey("plan")
-                ? JSON.toJSONString(eventResult.getResultMap().get("plan")) : null;
-        String multiAgentJson = eventResult != null && !eventResult.getResultMap().isEmpty()
-                ? JSON.toJSONString(eventResult.getResultMap()) : null;
-        List<Object> tasksList = eventResult != null ? eventResult.getResulMapTask() : null;
-        String tasksJson = tasksList != null && !tasksList.isEmpty() ? JSON.toJSONString(tasksList) : null;
-        String conclusionJson = buildConclusionJson(tasksList);
-
-        String renderSnapshotJson = messageEventService.buildRenderSnapshot(
-                finalOrderedEvents,
-                thoughtBuffer.length() > 0 ? thoughtBuffer.toString() : null,
-                multiAgentJson, tasksJson, planJson, conclusionJson, status);
 
         JSONObject metrics = new JSONObject();
         metrics.put("event_count", finalOrderedEvents.size());
@@ -363,21 +345,17 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         String metricsJson = metrics.toJSONString();
 
         String response = responseBuffer.length() > 0 ? responseBuffer.toString() : null;
-        String thought = thoughtBuffer.length() > 0 ? thoughtBuffer.toString() : null;
 
         switch (status) {
             case "completed":
-                messageService.completeMessage(messageId, response, thought,
-                        planJson, tasksJson, multiAgentJson, conclusionJson, null,
-                        renderSnapshotJson, metricsJson);
+                messageService.completeMessage(messageId, response, metricsJson);
                 break;
             case "partial":
-                messageService.markForceStop(messageId, response, thought,
-                        tasksJson, multiAgentJson, renderSnapshotJson, metricsJson);
+                messageService.markForceStop(messageId, response, metricsJson);
                 break;
             case "error":
             default:
-                messageService.markError(messageId, response, thought, renderSnapshotJson, metricsJson);
+                messageService.markError(messageId, response, metricsJson);
                 break;
         }
 
@@ -385,7 +363,10 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
         AgentConversation update = new AgentConversation();
         update.setId(conversationId);
-        update.setLastMessagePreview(buildLastMessagePreview(query, response, thought));
+        update.setLastMessagePreview(buildLastMessagePreview(
+                query,
+                response,
+                thoughtBuffer.length() > 0 ? thoughtBuffer.toString() : null));
         if (currentMessageCount == 0 && "新对话".equals(convTitle)) {
             update.setTitle(query.length() > 50 ? query.substring(0, 50) + "..." : query);
         }
@@ -775,33 +756,6 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         return base.length() > 100 ? base.substring(0, 100) + "..." : base;
     }
 
-    private String buildConclusionJson(List<Object> tasksList) {
-        if (tasksList == null || tasksList.isEmpty()) {
-            return null;
-        }
-
-        for (int i = tasksList.size() - 1; i >= 0; i--) {
-            Object groupObj = tasksList.get(i);
-            if (!(groupObj instanceof List)) {
-                continue;
-            }
-            List<?> group = (List<?>) groupObj;
-            for (int j = group.size() - 1; j >= 0; j--) {
-                Object itemObj = group.get(j);
-                if (!(itemObj instanceof Map)) {
-                    continue;
-                }
-                @SuppressWarnings("unchecked")
-                Map<String, Object> itemMap = (Map<String, Object>) itemObj;
-                Object messageType = itemMap.get("messageType");
-                if ("result".equals(messageType) || "task_summary".equals(messageType) || "agent_stream".equals(messageType)) {
-                    return JSON.toJSONString(itemMap);
-                }
-            }
-        }
-        return null;
-    }
-
     private String abbreviate(String text, int maxLen, String fallback) {
         if (text == null || text.isBlank()) {
             return fallback;
@@ -921,11 +875,11 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         AgentMessage placeholderMessage = messageService.insertPlaceholder(
-                targetConversation.getId(), sessionId, requestId, query, convAgentType.getCode(), filesJson);
+                targetConversation.getId(), requestId, query, convAgentType.getCode(), filesJson);
         JSONObject metrics = new JSONObject();
         metrics.put("status", status);
         metrics.put("role_error", true);
-        messageService.markError(placeholderMessage.getId(), errorMsg, null, null, metrics.toJSONString());
+        messageService.markError(placeholderMessage.getId(), errorMsg, metrics.toJSONString());
 
         conversationDao.incrementMessageCount(targetConversation.getId());
         updateConversationSnapshot(targetConversation, query, errorMsg);

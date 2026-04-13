@@ -126,6 +126,18 @@ declare global {
       taskOrder: number
     }
 
+    interface ArtifactReference {
+      artifactType?: string
+      displayName?: string
+      resourceKey?: string
+      downloadUrl?: string | null
+      previewUrl?: string | null
+      fileSize?: number | null
+      mimeType?: string | null
+      missing?: boolean
+      missingReason?: string | null
+    }
+
     type ToolResultDataType = {
       pageName: string;
       name: string;
@@ -158,6 +170,7 @@ declare global {
       code?: string;
       tip?: string;
       task?: string;
+      artifactRefs?: ArtifactReference[]
       refList?: {
         name: string
         pageContent: string
@@ -188,6 +201,10 @@ declare global {
       ossUrl: string
       fileSize: number
       domainUrl: string
+      downloadUrl?: string
+      missing?: boolean
+      missingReason?: string
+      resourceKey?: string
     }
 
     type EventResult = object

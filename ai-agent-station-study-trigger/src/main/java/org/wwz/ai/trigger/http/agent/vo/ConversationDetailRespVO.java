@@ -9,5 +9,5 @@ import java.util.List;
 @Builder
 public class ConversationDetailRespVO {
     private ConversationListRespVO conversation;
-    private List<MessageRespVO> messages;
+    private List<ConversationTurnRespVO> turns;
 }

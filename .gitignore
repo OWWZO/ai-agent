@@ -2,6 +2,12 @@ target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

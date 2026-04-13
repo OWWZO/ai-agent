@@ -47,7 +47,8 @@ public class RootNode extends AbstractExecuteSupport {
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         if (dynamicContext.getMaxStep() <= 1) {
-            return getBean("stepReactNode");
+            // 单步模式下直接进入执行节点，避免路由到已下线的旧 ReAct 单节点实现。
+            return getBean("step2PrecisionExecutorNode");
         }
         return step1AnalyzerNode;
     }

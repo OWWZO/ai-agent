@@ -11,6 +11,10 @@
 
     <packaging>jar</packaging>
 
+    <properties>
+        <skipTests>true</skipTests>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -163,11 +167,29 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.6</version>
                 <configuration>
-                    <skipTests>true</skipTests>
+                    <skipTests>${skipTests}</skipTests>
                     <testFailureIgnore>false</testFailureIgnore>
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
+                    <excludes>
+                        <!-- 默认回归仅执行可离线复现的测试，以下用例依赖外部模型、MCP 或独立服务环境 -->
+                        <exclude>**/org/wwz/ai/test/ElkBlacklistDataTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/domain/AgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/domain/AutoAgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/domain/FlowAgentExecuteTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/prompt/DynamicAutoAgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/prompt/TraePromptTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/AiAgentMCPESTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/AiAgentStepTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/AiAgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/AiSearchMCPTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/AutoAgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/DynamicRateLimitQueryTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/FlowAgentMCPTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/FlowAgentTest.java</exclude>
+                        <exclude>**/org/wwz/ai/test/spring/ai/OpenAiTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>

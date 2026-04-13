@@ -18,7 +18,6 @@ declare global {
         response?: string;
         taskStatus?: MESSAGE.MsgItem["taskStatus"];
         planList?: PlanItem[];
-        renderSnapshot?: RenderSnapshotV1;
         timeline?: TimelineEntry[];
         metrics?: {
           event_count?: number;
@@ -39,16 +38,6 @@ declare global {
       taskId?: string;
       messageIdExt?: string;
       isFinal: boolean;
-    };
-
-    export type RenderSnapshotV1 = {
-      v: 1;
-      status: string;
-      thought?: string;
-      plan?: MESSAGE.Plan;
-      tasks?: MESSAGE.Task[][];
-      conclusion?: Task;
-      timeline: TimelineEntry[];
     };
 
     type PlanItem = {
@@ -137,6 +126,8 @@ declare global {
       version: number;
       conversations: ConversationHistory[];
     };
+
+    export type ConversationDetailCache = Record<string, ConversationHistory>;
 
     export type ModelInfo = {
       modelName: string;

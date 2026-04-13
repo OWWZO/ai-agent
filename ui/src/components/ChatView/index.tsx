@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
-import { handleTaskData, combineData } from "@/utils/chat";
+import { buildReplayTaskData, handleTaskData, combineData } from "@/utils/chat";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -295,6 +295,42 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [cancelThoughtStreamFrame, cancelWorkspaceStreamFrame, conversation.id]);
 
   useEffect(() => {
+    if (!conversation.chatList.length || loading) {
+      return;
+    }
+
+    const latestReplayChat = [...conversation.chatList]
+      .reverse()
+      .find(
+        (chat) =>
+          (chat.multiAgent?.tasks?.length || 0) > 0 ||
+          !!chat.multiAgent?.plan ||
+          !!chat.timeline?.length
+      );
+
+    if (!latestReplayChat) {
+      return;
+    }
+
+    const replayTaskData = buildReplayTaskData(
+      latestReplayChat,
+      conversation.deepThink
+    );
+    const latestTask = getLatestRenderableTask(replayTaskData.currentChat);
+
+    setTaskList(replayTaskData.taskList);
+    setPlan(replayTaskData.plan);
+    setWorkspaceStreamTask(
+      latestTask ? cloneWorkspaceTask(latestTask) : undefined
+    );
+    setShowAction(
+      replayTaskData.taskList.some(
+        (task) => !RESULT_TYPES.includes(task.messageType)
+      )
+    );
+  }, [conversation.chatList, conversation.deepThink, conversation.id, loading]);
+
+  useEffect(() => {
     return () => {
       cancelWorkspaceStreamFrame();
       cancelThoughtStreamFrame();
@@ -348,7 +384,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     const isChatMode = outputStyle === "chat";
     const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
     if (!isChatMode && normalizedDeepThink) {
-      setStreamingThoughtMap((prev) => ({ ...prev, [requestId]: "" }));
+      setStreamingThoughtMap((prev) => ({
+        ...prev,
+        [requestId]: ""
+      }));
     }
     let runningConversation: CHAT.ConversationHistory = {
       ...baseConversation,
@@ -610,9 +649,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
-    const params = {
-      content: inputInfo.message,
-    };
+    const params = {content: inputInfo.message,};
     const currentChat = {
       query: inputInfo.message,
       loading: true,
@@ -780,9 +817,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       return (
         <motion.div
           key={`switch-${conversation.id}`}
-          initial={{ opacity: 0.9, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.14, ease: [0.25, 0.46, 0.45, 0.94] }}
+          initial={{
+            opacity: 0.9,
+            y: 6
+          }}
+          animate={{
+            opacity: 1,
+            y: 0
+          }}
+          transition={{
+            duration: 0.14,
+            ease: [0.25, 0.46, 0.45, 0.94]
+          }}
         >
           {conversation.chatList.map((chat) => (
             <Dialogue
@@ -805,9 +851,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {conversation.chatList.map((chat) => (
           <motion.div
             key={chat.requestId}
-            initial={{ opacity: 0.9, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0.85, y: -4 }}
+            initial={{
+              opacity: 0.9,
+              y: 6
+            }}
+            animate={{
+              opacity: 1,
+              y: 0
+            }}
+            exit={{
+              opacity: 0.85,
+              y: -4
+            }}
             transition={{
               duration: 0.14,
               ease: [0.25, 0.46, 0.45, 0.94],
@@ -833,9 +888,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       return (
         <motion.div
           key={`switch-data-${conversation.id}`}
-          initial={{ opacity: 0.9, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.14, ease: [0.25, 0.46, 0.45, 0.94] }}
+          initial={{
+            opacity: 0.9,
+            y: 6
+          }}
+          animate={{
+            opacity: 1,
+            y: 0
+          }}
+          transition={{
+            duration: 0.14,
+            ease: [0.25, 0.46, 0.45, 0.94]
+          }}
         >
           {conversation.dataChatList.map((chat, idx) => (
             <DataDialogue key={`${conversation.id}-${idx}`} chat={chat} />
@@ -849,9 +913,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {conversation.dataChatList.map((chat, idx) => (
           <motion.div
             key={`${conversation.id}-${idx}`}
-            initial={{ opacity: 0.9, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0.85, y: -4 }}
+            initial={{
+              opacity: 0.9,
+              y: 6
+            }}
+            animate={{
+              opacity: 1,
+              y: 0
+            }}
+            exit={{
+              opacity: 0.85,
+              y: -4
+            }}
             transition={{
               duration: 0.14,
               ease: [0.25, 0.46, 0.45, 0.94],
@@ -893,7 +966,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
             <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
               <div className="mx-auto w-full max-w-[860px]">
-              <GeneralInput
+                <GeneralInput
                   placeholder={
                     conversation.role?.available === false
                       ? "当前角色已失效，请新建对话后重新选择角色"

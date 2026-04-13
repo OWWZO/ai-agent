@@ -17,7 +17,7 @@ public class ReactAgentResponseHandler  extends BaseAgentResponseHandler impleme
     @Override
     public GptProcessResult handle(AgentRequest request, AgentResponse response, List<AgentResponse> agentRespList, EventResult eventResult) {
         try {
-            return buildIncrResult(request, eventResult, response);
+            return buildCanonicalIncrResult(request, eventResult, response);
         } catch (Exception e) {
             log.error("{} ReactAgentResponseHandler handle error", request.getRequestId(), e);
             return null;

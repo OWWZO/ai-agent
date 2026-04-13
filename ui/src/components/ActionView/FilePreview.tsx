@@ -87,9 +87,18 @@ const Header = ({
       <AnimatePresence>
         {canPreview && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
+            initial={{
+              opacity: 0,
+              scale: 0.8
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.8
+            }}
           >
             <Badge variant="secondary" className="ml-2 h-4 shrink-0 text-[10px]">
               可预览
@@ -109,6 +118,30 @@ const Header = ({
         </Button>
       </div>
     )}
+  </div>
+);
+
+const getPrimaryFileInfo = (taskItem?: CHAT.Task | PanelItemType) => {
+  const fileInfo = taskItem?.resultMap?.fileInfo;
+  if (!Array.isArray(fileInfo) || fileInfo.length === 0) {
+    return undefined;
+  }
+  return fileInfo[0];
+};
+
+const MissingArtifactState = ({ reason }: { reason?: string }) => (
+  <div className="flex h-full items-center justify-center">
+    <Card className="w-72 border-dashed bg-muted/15 shadow-none">
+      <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
+          <FileText className="h-5 w-5 text-[#86868b]" />
+        </div>
+        <p className="text-sm font-medium text-[#1d1d1f]">引用内容不可读取</p>
+        <p className="mt-1 text-xs text-[#86868b]">
+          {reason || "引用资源不存在或已失效"}
+        </p>
+      </CardContent>
+    </Card>
   </div>
 );
 
@@ -156,6 +189,8 @@ const FilePreview: React.FC<{
   });
 
   const { useHtml, useExcel } = useMsgTypes(taskItem) || {};
+  const primaryFileInfo = useMemo(() => getPrimaryFileInfo(taskItem), [taskItem]);
+  const artifactMissing = Boolean(primaryFileInfo?.missing);
 
   const title = useMemo(() => {
     if (!taskItem) return "";
@@ -202,7 +237,7 @@ const FilePreview: React.FC<{
     return undefined;
   }, [taskItem]);
 
-  const canPreview = useHtml || useExcel;
+  const canPreview = !artifactMissing && (useHtml || useExcel);
   const taskRenderKey = useMemo(() => getStableTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State
@@ -219,31 +254,53 @@ const FilePreview: React.FC<{
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="sync" initial={false}>
-          <motion.div
-            key={taskRenderKey}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
-            className="h-full"
-          >
-            <ActionPanel
+        {artifactMissing ? (
+          <MissingArtifactState reason={primaryFileInfo?.missingReason} />
+        ) : (
+          <AnimatePresence mode="sync" initial={false}>
+            <motion.div
+              key={taskRenderKey}
+              initial={{
+                opacity: 0,
+                y: 8
+              }}
+              animate={{
+                opacity: 1,
+                y: 0
+              }}
+              exit={{
+                opacity: 0,
+                y: -6
+              }}
+              transition={{ duration: 0.2 }}
               className="h-full"
-              taskItem={taskItem}
-              allowShowToolBar
-            />
-          </motion.div>
-        </AnimatePresence>
+            >
+              <ActionPanel
+                className="h-full"
+                taskItem={taskItem}
+                allowShowToolBar
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
 
       {/* Footer Navigation */}
       <AnimatePresence>
         {!!taskLength && taskLength > 1 && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
+            initial={{
+              opacity: 0,
+              y: 10
+            }}
+            animate={{
+              opacity: 1,
+              y: 0
+            }}
+            exit={{
+              opacity: 0,
+              y: 10
+            }}
           >
             <Separator className="bg-[#e8e8ed]" />
             <div className="flex items-center justify-between px-4 py-3">
@@ -261,8 +318,14 @@ const FilePreview: React.FC<{
               <motion.div
                 className="flex items-center gap-2 text-xs text-[#86868b]"
                 key={realActiveTaskIndex}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{
+                  opacity: 0,
+                  scale: 0.9
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1
+                }}
                 transition={{ duration: 0.2 }}
               >
                 <Clock className="h-3 w-3" />

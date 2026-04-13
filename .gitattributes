@@ -1,0 +1,25 @@
+* text=auto
+
+*.java text eol=lf
+*.kt text eol=lf
+*.xml text eol=lf
+*.sql text eol=lf
+*.properties text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.less text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

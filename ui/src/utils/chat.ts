@@ -729,6 +729,79 @@ function clonePlanForRender(plan?: MESSAGE.Plan) {
   };
 }
 
+function cloneSearchResultForReplay(searchResult?: MESSAGE.SearchResult) {
+  if (!searchResult) {
+    return searchResult;
+  }
+
+  return {
+    ...searchResult,
+    query: [...(searchResult.query || [])],
+    docs: (searchResult.docs || []).map((item) =>
+      Array.isArray(item) ? [...item] : item
+    ),
+  };
+}
+
+function cloneResultMapForReplay(
+  resultMap?: MESSAGE.ResultMap
+): MESSAGE.ResultMap {
+  if (!resultMap) {
+    return {} as MESSAGE.ResultMap;
+  }
+
+  return {
+    ...resultMap,
+    searchResult: cloneSearchResultForReplay(resultMap.searchResult),
+    fileInfo: [...(resultMap.fileInfo || [])],
+    fileList: [...(resultMap.fileList || [])],
+    refList: [...(resultMap.refList || [])],
+    steps: [...(resultMap.steps || [])],
+  };
+}
+
+function cloneTaskForReplay(task: MESSAGE.Task): MESSAGE.Task {
+  return {
+    ...task,
+    plan: clonePlanForRender(task.plan),
+    resultMap: cloneResultMapForReplay(task.resultMap),
+    toolResult: task.toolResult
+      ? {
+        ...task.toolResult,
+        toolParam: task.toolResult.toolParam
+          ? { ...task.toolResult.toolParam }
+          : task.toolResult.toolParam,
+      }
+      : task.toolResult,
+  };
+}
+
+/**
+ * 为历史回放构建工作区任务数据。
+ * 当前历史已经完全从 turn/event 还原，这里只负责把事件结果转成工作区视图，
+ * 不再依赖 renderSnapshot 之类的旧富字段兜底。
+ */
+export const buildReplayTaskData = (
+  chat: CHAT.ChatItem,
+  deepThink?: boolean
+) => {
+  const replayChat = {
+    ...chat,
+    files: [...(chat.files || [])],
+    tasks: [],
+    multiAgent: {
+      ...chat.multiAgent,
+      plan: clonePlanForRender(chat.multiAgent?.plan),
+      tasks: (chat.multiAgent?.tasks || []).map((group) =>
+        group.map((task) => cloneTaskForReplay(task))
+      ),
+    },
+    timeline: [...(chat.timeline || [])],
+  } as CHAT.ChatItem;
+
+  return handleTaskData(replayChat, deepThink, replayChat.multiAgent);
+};
+
 function createRenderTask(
   task: any,
   id: string,

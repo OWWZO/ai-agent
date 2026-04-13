@@ -31,6 +31,7 @@ public class StepReactNodeRoutingTest {
         ctx.setMaxStep(1);
 
         StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> next = rootNode.get(cmd, ctx);
+        Assert.assertNotNull("单步模式应当能路由到可执行节点", next);
     }
 }
 

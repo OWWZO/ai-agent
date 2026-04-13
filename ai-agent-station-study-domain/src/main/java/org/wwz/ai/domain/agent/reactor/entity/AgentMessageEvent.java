@@ -18,9 +18,6 @@ public class AgentMessageEvent {
 
     private Long id;
     private Long messageId;
-    private Long conversationId;
-    private String sessionId;
-    private String requestId;
     private Integer seqNo;
     private String eventType;
     private String eventSubType;
@@ -31,7 +28,6 @@ public class AgentMessageEvent {
     private String title;
     private String contentText;
     private String payloadJson;
-    private Long artifactId;
     private Integer isFinal;
     private String status;
     private LocalDateTime startedAt;

@@ -5,20 +5,12 @@
     <resultMap id="AgentMessageMap" type="org.wwz.ai.domain.agent.reactor.entity.AgentMessage">
         <id column="id" property="id"/>
         <result column="conversation_id" property="conversationId"/>
-        <result column="session_id" property="sessionId"/>
         <result column="request_id" property="requestId"/>
         <result column="sort_order" property="sortOrder"/>
         <result column="query" property="query"/>
         <result column="files_json" property="filesJson"/>
         <result column="agent_type" property="agentType"/>
         <result column="response" property="response"/>
-        <result column="thought" property="thought"/>
-        <result column="plan_json" property="planJson"/>
-        <result column="tasks_json" property="tasksJson"/>
-        <result column="multi_agent_json" property="multiAgentJson"/>
-        <result column="conclusion_json" property="conclusionJson"/>
-        <result column="plan_list_json" property="planListJson"/>
-        <result column="render_snapshot_json" property="renderSnapshotJson"/>
         <result column="metrics_json" property="metricsJson"/>
         <result column="status" property="status"/>
         <result column="force_stop" property="forceStop"/>
@@ -31,19 +23,15 @@
 
     <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentMessage" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_message (
-            conversation_id, session_id, request_id, sort_order,
+            conversation_id, request_id, sort_order,
             query, files_json, agent_type,
-            response, thought, plan_json, tasks_json,
-            multi_agent_json, conclusion_json, plan_list_json,
-            render_snapshot_json, metrics_json,
+            response, metrics_json,
             status, force_stop, started_at, finished_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{conversationId}, #{sessionId}, #{requestId}, #{sortOrder},
+            #{conversationId}, #{requestId}, #{sortOrder},
             #{query}, #{filesJson}, #{agentType},
-            #{response}, #{thought}, #{planJson}, #{tasksJson},
-            #{multiAgentJson}, #{conclusionJson}, #{planListJson},
-            #{renderSnapshotJson}, #{metricsJson},
+            #{response}, #{metricsJson},
             #{status}, #{forceStop}, #{startedAt}, #{finishedAt}, now(), now(), 0
         )
     </insert>
@@ -52,13 +40,6 @@
         UPDATE ai_agent_message
         <set>
             <if test="response != null">response = #{response},</if>
-            <if test="thought != null">thought = #{thought},</if>
-            <if test="planJson != null">plan_json = #{planJson},</if>
-            <if test="tasksJson != null">tasks_json = #{tasksJson},</if>
-            <if test="multiAgentJson != null">multi_agent_json = #{multiAgentJson},</if>
-            <if test="conclusionJson != null">conclusion_json = #{conclusionJson},</if>
-            <if test="planListJson != null">plan_list_json = #{planListJson},</if>
-            <if test="renderSnapshotJson != null">render_snapshot_json = #{renderSnapshotJson},</if>
             <if test="metricsJson != null">metrics_json = #{metricsJson},</if>
             <if test="status != null">status = #{status},</if>
             <if test="forceStop != null">force_stop = #{forceStop},</if>

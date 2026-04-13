@@ -14,7 +14,6 @@
         <module>ai-agent-station-study-trigger</module>
         <module>ai-agent-station-study-infrastructure</module>
         <module>ai-agent-station-study-types</module>
-        <module>mcp-server-csdn/mcp-server-csdn</module>
     </modules>
 
     <repositories>
@@ -212,6 +211,18 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>with-mcp-server-csdn</id>
+            <activation>
+                <!-- 仅在 MCP 子模块源码存在时纳入聚合构建，避免工作区缺失该模块时根构建直接失败 -->
+                <file>
+                    <exists>${project.basedir}/mcp-server-csdn/mcp-server-csdn/pom.xml</exists>
+                </file>
+            </activation>
+            <modules>
+                <module>mcp-server-csdn/mcp-server-csdn</module>
+            </modules>
+        </profile>
         <profile>
             <id>dev</id>
             <activation>

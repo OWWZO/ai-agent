@@ -25,6 +25,9 @@ type FileItem = {
   type: string;
   task: PanelItemType;
   url: string;
+  downloadUrl?: string;
+  missing?: boolean;
+  missingReason?: string;
 };
 
 const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis'];
@@ -73,9 +76,12 @@ const FileList: React.FC<{
             ...item,
             name: item.fileName!,
             url: item.domainUrl!,
+            downloadUrl: item.downloadUrl || item.ossUrl,
             task,
             messageTime: formatTimestamp(task.messageTime),
-            type: extension!
+            type: extension!,
+            missing: Boolean(item.missing),
+            missingReason: item.missingReason,
           };
         });
         pre.push(...fileInfo.filter((item) => !map[item.name]));
@@ -83,10 +89,18 @@ const FileList: React.FC<{
       }
       return pre;
     }, []);
-    return { list, map };
+    return {
+      list,
+      map
+    };
   }, [taskList]);
 
   const fileItem = activeFile || (activeItem ? fileMap[activeItem] : undefined);
+  const missing = !!fileItem && "missing" in fileItem && Boolean(fileItem.missing);
+  const missingReason =
+    fileItem && "missingReason" in fileItem ? fileItem.missingReason : undefined;
+  const downloadUrl =
+    fileItem && "downloadUrl" in fileItem ? fileItem.downloadUrl : undefined;
 
   const copy = useMemoizedFn(async () => {
     if (!fileItem?.url) return;
@@ -127,7 +141,7 @@ const FileList: React.FC<{
             <Card
               key={item.name}
               className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
-              onClick={() => setActiveItem(item.name)}
+              onClick={() => !item.missing && setActiveItem(item.name)}
             >
               <CardContent className="flex items-center gap-2.5 p-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
@@ -137,13 +151,34 @@ const FileList: React.FC<{
                   <p className="truncate text-[12px] font-medium leading-5 text-[#1d1d1f]">
                     {item.name}
                   </p>
-                  <p className="text-xs text-[#86868b]">{item.messageTime}</p>
+                  <p className="text-xs text-[#86868b]">
+                    {item.missing ? item.missingReason || "内容不可读取" : item.messageTime}
+                  </p>
                 </div>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#c7c7cc] transition-colors group-hover:text-[#86868b]" />
               </CardContent>
             </Card>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // File Detail View
+  if (missing) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Card className="w-72 bg-muted/15 py-8 shadow-none ring-0">
+          <CardContent className="flex flex-col items-center justify-center py-0 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
+              <FileText className="h-5 w-5 text-[#86868b]" />
+            </div>
+            <p className="text-sm font-medium text-[#1d1d1f]">文件不可读取</p>
+            <p className="mt-1 text-xs text-[#86868b]">
+              {missingReason || "引用资源不存在或已失效"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -181,7 +216,7 @@ const FileList: React.FC<{
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
-                onClick={() => downloadFile(fileItem.url.replace('preview', 'download'), fileItem.name)}
+                onClick={() => downloadFile(downloadUrl || fileItem.url.replace('preview', 'download'), fileItem.name)}
               >
                 <Download className="h-4 w-4" />
               </Button>

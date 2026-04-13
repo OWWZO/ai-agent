@@ -1,14 +1,14 @@
 package org.wwz.ai.domain.agent.reactor.service.impl;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.JSONException;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
+import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
@@ -25,8 +25,7 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
     private IAgentMessageEventDao messageEventDao;
 
     @Override
-    public void persistEvents(List<OrderedEvent> orderedEvents, Long messageId, Long conversationId,
-                              String sessionId, String requestId, String finalStatus) {
+    public void persistEvents(List<OrderedEvent> orderedEvents, Long messageId, String finalStatus) {
         if (orderedEvents == null || orderedEvents.isEmpty()) {
             return;
         }
@@ -36,9 +35,6 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
             LocalDateTime eventTime = orderedEvent.getEventTime() != null ? orderedEvent.getEventTime() : LocalDateTime.now();
             events.add(AgentMessageEvent.builder()
                     .messageId(messageId)
-                    .conversationId(conversationId)
-                    .sessionId(sessionId)
-                    .requestId(requestId)
                     .seqNo(orderedEvent.getSeqNo())
                     .eventType(orderedEvent.getEventType())
                     .eventSubType(orderedEvent.getEventSubType())
@@ -48,8 +44,7 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
                     .messageIdExt(orderedEvent.getMessageIdExt())
                     .title(resolveTitle(orderedEvent))
                     .contentText(orderedEvent.getContentText())
-                    .payloadJson(orderedEvent.getPayloadJson())
-                    .artifactId(null)
+                    .payloadJson(normalizePayloadJson(orderedEvent.getPayloadJson()))
                     .isFinal(orderedEvent.isFinal() ? 1 : 0)
                     .status(finalStatus)
                     .startedAt(eventTime)
@@ -59,68 +54,6 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
         }
 
         messageEventDao.batchInsert(events);
-    }
-
-    @Override
-    public String buildRenderSnapshot(List<OrderedEvent> orderedEvents, String thoughtText, String multiAgentJson,
-                                      String tasksJson, String planJson, String conclusionJson, String status) {
-        JSONObject snapshot = new JSONObject();
-        snapshot.put("v", 1);
-        snapshot.put("status", status);
-        if (StringUtils.isNotBlank(thoughtText)) {
-            snapshot.put("thought", thoughtText);
-        }
-        if (StringUtils.isNotBlank(planJson)) {
-            snapshot.put("plan", JSON.parseObject(planJson));
-        }
-        if (StringUtils.isNotBlank(tasksJson)) {
-            snapshot.put("tasks", JSON.parseArray(tasksJson));
-        } else if (StringUtils.isNotBlank(multiAgentJson)) {
-            JSONObject multiAgent = JSON.parseObject(multiAgentJson);
-            Object tasks = multiAgent.get("tasks");
-            if (tasks != null) {
-                snapshot.put("tasks", tasks);
-            }
-            Object plan = multiAgent.get("plan");
-            if (plan != null && !snapshot.containsKey("plan")) {
-                snapshot.put("plan", plan);
-            }
-        }
-        if (StringUtils.isNotBlank(conclusionJson)) {
-            snapshot.put("conclusion", JSON.parseObject(conclusionJson));
-        } else if (StringUtils.isNotBlank(tasksJson)) {
-            JSONObject derivedConclusion = extractConclusion(JSON.parseArray(tasksJson));
-            if (derivedConclusion != null) {
-                snapshot.put("conclusion", derivedConclusion);
-            }
-        }
-
-        JSONArray timeline = new JSONArray();
-        if (orderedEvents != null) {
-            for (OrderedEvent orderedEvent : orderedEvents) {
-                JSONObject entry = new JSONObject();
-                entry.put("seq", orderedEvent.getSeqNo());
-                entry.put("type", orderedEvent.getEventType());
-                if (StringUtils.isNotBlank(orderedEvent.getEventSubType())) {
-                    entry.put("subType", orderedEvent.getEventSubType());
-                }
-                entry.put("area", StringUtils.defaultIfBlank(orderedEvent.getDisplayArea(), "timeline"));
-                entry.put("title", resolveTitle(orderedEvent));
-                if (StringUtils.isNotBlank(orderedEvent.getContentText())) {
-                    entry.put("content", abbreviate(orderedEvent.getContentText(), 200));
-                }
-                if (StringUtils.isNotBlank(orderedEvent.getTaskId())) {
-                    entry.put("taskId", orderedEvent.getTaskId());
-                }
-                if (StringUtils.isNotBlank(orderedEvent.getMessageIdExt())) {
-                    entry.put("messageIdExt", orderedEvent.getMessageIdExt());
-                }
-                entry.put("isFinal", orderedEvent.isFinal());
-                timeline.add(entry);
-            }
-        }
-        snapshot.put("timeline", timeline);
-        return snapshot.toJSONString();
     }
 
     private String resolveTitle(OrderedEvent orderedEvent) {
@@ -184,29 +117,21 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
         return text.length() > maxLen ? text.substring(0, maxLen) : text;
     }
 
-    private JSONObject extractConclusion(JSONArray tasks) {
-        if (tasks == null || tasks.isEmpty()) {
-            return null;
+    /**
+     * 事件服务统一负责 payloadJson 的最终收口，
+     * 这样即便未来不是通过当前 SSE 持久化链路写入，也能保持 artifact 缺失态语义一致。
+     */
+    private String normalizePayloadJson(String payloadJson) {
+        if (StringUtils.isBlank(payloadJson)) {
+            return payloadJson;
         }
 
-        for (int i = tasks.size() - 1; i >= 0; i--) {
-            Object groupObj = tasks.get(i);
-            if (!(groupObj instanceof JSONArray)) {
-                continue;
-            }
-            JSONArray group = (JSONArray) groupObj;
-            for (int j = group.size() - 1; j >= 0; j--) {
-                Object taskObj = group.get(j);
-                if (!(taskObj instanceof JSONObject)) {
-                    continue;
-                }
-                JSONObject task = (JSONObject) taskObj;
-                String messageType = task.getString("messageType");
-                if ("result".equals(messageType) || "task_summary".equals(messageType) || "agent_stream".equals(messageType)) {
-                    return task;
-                }
-            }
+        try {
+            Object payload = JSON.parse(payloadJson);
+            Object normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(payload);
+            return JSON.toJSONString(normalizedPayload);
+        } catch (JSONException e) {
+            return payloadJson;
         }
-        return null;
     }
 }

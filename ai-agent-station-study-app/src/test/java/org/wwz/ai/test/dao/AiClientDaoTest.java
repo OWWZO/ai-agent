@@ -25,10 +25,18 @@ public class AiClientDaoTest {
     @Resource
     private IAiClientDao aiClientDao;
 
+    /**
+     * 为写操作生成唯一测试主键，避免默认回归在脏库里重复插入失败。
+     */
+    private String nextClientId() {
+        return "test_client_" + System.nanoTime();
+    }
+
     @Test
     public void test_insert() {
+        String clientId = nextClientId();
         AiClient aiClient = AiClient.builder()
-                .clientId("test_3006")
+                .clientId(clientId)
                 .clientName("测试客户端")
                 .description("这是一个测试客户端")
                 .status(1)

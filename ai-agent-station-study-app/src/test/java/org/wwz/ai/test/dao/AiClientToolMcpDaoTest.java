@@ -25,10 +25,17 @@ public class AiClientToolMcpDaoTest {
     @Resource
     private IAiClientToolMcpDao aiClientToolMcpDao;
 
+    /**
+     * 生成唯一 MCP 标识，避免测试重复运行时命中唯一索引。
+     */
+    private String nextMcpId(String prefix) {
+        return prefix + "_" + System.nanoTime();
+    }
+
     @Test
     public void test_insert() {
         AiClientToolMcp aiClientToolMcp = AiClientToolMcp.builder()
-                .mcpId("test_5006")
+                .mcpId(nextMcpId("test_5006"))
                 .mcpName("测试MCP工具")
                 .transportType("sse")
                 .transportConfig("{\"baseUri\":\"http://localhost:8080\",\"sseEndpoint\":\"/sse\"}")
@@ -45,7 +52,7 @@ public class AiClientToolMcpDaoTest {
     @Test
     public void test_insert_streamableHttp() {
         AiClientToolMcp aiClientToolMcp = AiClientToolMcp.builder()
-                .mcpId("test_streamable_5007")
+                .mcpId(nextMcpId("test_streamable_5007"))
                 .mcpName("测试StreamableHttp工具")
                 .transportType("streamable_http")
                 .transportConfig("{\"baseUri\":\"http://127.0.0.1:8101\",\"endpoint\":\"/mcp\",\"headers\":{\"Authorization\":\"Bearer test-token\"},\"resumableStreams\":false,\"openConnectionOnStartup\":true}")

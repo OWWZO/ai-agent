@@ -1,5 +1,6 @@
 package org.wwz.ai.test.dao;
 
+import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import org.wwz.ai.infrastructure.dao.IAiAgentFlowConfigDao;
 import org.wwz.ai.infrastructure.dao.po.AiAgentFlowConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +29,12 @@ public class AiAgentFlowConfigDaoTest {
     @Test
     public void test_insert() {
         AiAgentFlowConfig aiAgentFlowConfig = AiAgentFlowConfig.builder()
+                .agentId("1")
                 .clientId("3001")
+                .clientName("测试客户端")
+                .clientType(AiClientTypeEnumVO.TASK_ANALYZER_CLIENT.getCode())
                 .sequence(1)
+                .stepPrompt("测试步骤提示词")
                 .createTime(LocalDateTime.now())
                 .build();
 
@@ -50,7 +55,7 @@ public class AiAgentFlowConfigDaoTest {
 
     @Test
     public void test_queryById() {
-        AiAgentFlowConfig aiAgentFlowConfig = aiAgentFlowConfigDao.queryById("1");
+        AiAgentFlowConfig aiAgentFlowConfig = aiAgentFlowConfigDao.queryById(1L);
         log.info("根据ID查询结果: {}", aiAgentFlowConfig);
     }
 
@@ -83,7 +88,7 @@ public class AiAgentFlowConfigDaoTest {
 
     @Test
     public void test_deleteById() {
-        int result = aiAgentFlowConfigDao.deleteById("1");
+        int result = aiAgentFlowConfigDao.deleteById(1L);
         log.info("根据ID删除结果: {}", result);
     }
 

@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
-import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
+import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
 
 import java.util.List;
 
@@ -22,6 +22,11 @@ public interface IAgentConversationService {
      * 按sessionId查询会话
      */
     AgentConversation getBySessionId(String sessionId);
+
+    /**
+     * 按设备/用户归属校验可访问会话。
+     */
+    AgentConversation getAccessibleConversation(String sessionId, String deviceId, Long userId);
 
     /**
      * 重命名会话
@@ -44,9 +49,9 @@ public interface IAgentConversationService {
     int countConversations(String deviceId, Long userId);
 
     /**
-     * 加载会话详情(含所有消息)
+     * 加载会话详情(按 turn + events 装配)
      */
-    List<AgentMessage> getConversationMessages(String sessionId);
+    List<ConversationTurnDetail> getConversationTurns(String sessionId, String deviceId, Long userId);
 
     /**
      * 置顶/取消置顶

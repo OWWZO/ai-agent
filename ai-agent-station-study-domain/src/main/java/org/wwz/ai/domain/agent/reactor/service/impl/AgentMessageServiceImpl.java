@@ -19,12 +19,11 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     private IAgentMessageDao messageDao;
 
     @Override
-    public AgentMessage insertPlaceholder(Long conversationId, String sessionId, String requestId,
+    public AgentMessage insertPlaceholder(Long conversationId, String requestId,
                                           String query, Integer agentType, String filesJson) {
         int sortOrder = getNextSortOrder(conversationId);
         AgentMessage message = AgentMessage.builder()
                 .conversationId(conversationId)
-                .sessionId(sessionId)
                 .requestId(requestId)
                 .sortOrder(sortOrder)
                 .query(query)
@@ -41,20 +40,10 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void completeMessage(Long messageId, String response, String thought,
-                                String planJson, String tasksJson, String multiAgentJson,
-                                String conclusionJson, String planListJson,
-                                String renderSnapshotJson, String metricsJson) {
+    public void completeMessage(Long messageId, String response, String metricsJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(response);
-        update.setThought(thought);
-        update.setPlanJson(planJson);
-        update.setTasksJson(tasksJson);
-        update.setMultiAgentJson(multiAgentJson);
-        update.setConclusionJson(conclusionJson);
-        update.setPlanListJson(planListJson);
-        update.setRenderSnapshotJson(renderSnapshotJson);
         update.setMetricsJson(metricsJson);
         update.setStatus(MessageStatus.COMPLETED.getCode());
         update.setFinishedAt(LocalDateTime.now());
@@ -63,13 +52,10 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void markError(Long messageId, String partialResponse, String partialThought,
-                          String renderSnapshotJson, String metricsJson) {
+    public void markError(Long messageId, String partialResponse, String metricsJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(partialResponse);
-        update.setThought(partialThought);
-        update.setRenderSnapshotJson(renderSnapshotJson);
         update.setMetricsJson(metricsJson);
         update.setStatus(MessageStatus.ERROR.getCode());
         update.setFinishedAt(LocalDateTime.now());
@@ -78,16 +64,10 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void markForceStop(Long messageId, String partialResponse, String partialThought,
-                              String partialTasksJson, String partialMultiAgentJson,
-                              String renderSnapshotJson, String metricsJson) {
+    public void markForceStop(Long messageId, String partialResponse, String metricsJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(partialResponse);
-        update.setThought(partialThought);
-        update.setTasksJson(partialTasksJson);
-        update.setMultiAgentJson(partialMultiAgentJson);
-        update.setRenderSnapshotJson(renderSnapshotJson);
         update.setMetricsJson(metricsJson);
         update.setStatus(MessageStatus.FORCE_STOPPED.getCode());
         update.setForceStop(1);

@@ -1,22 +1,25 @@
 package org.wwz.ai.trigger.http.agent;
 
-import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
+import org.wwz.ai.domain.agent.reactor.model.history.ConversationEventDetail;
+import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
 import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
-import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.trigger.http.agent.vo.*;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -37,10 +40,12 @@ public class AgentConversationController {
      */
     @GetMapping("/list")
     public Response<PageRespVO<ConversationListRespVO>> list(
+            HttpServletRequest request,
             @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
             @RequestParam(name = "pageSize", defaultValue = "20") int pageSize) {
-        List<AgentConversation> conversations = conversationService.listConversations(null, null, pageNo, pageSize);
-        int total = conversationService.countConversations(null, null);
+        String deviceId = resolveDeviceId(request);
+        List<AgentConversation> conversations = conversationService.listConversations(deviceId, null, pageNo, pageSize);
+        int total = conversationService.countConversations(deviceId, null);
 
         List<ConversationListRespVO> list = conversations.stream()
                 .map(this::toListVO)
@@ -58,8 +63,10 @@ public class AgentConversationController {
      */
     @GetMapping("/detail")
     public Response<ConversationDetailRespVO> detail(
+            HttpServletRequest request,
             @RequestParam("sessionId") String sessionId) {
-        AgentConversation conversation = conversationService.getBySessionId(sessionId);
+        String deviceId = resolveDeviceId(request);
+        AgentConversation conversation = conversationService.getAccessibleConversation(sessionId, deviceId, null);
         if (conversation == null) {
             return Response.<ConversationDetailRespVO>builder()
                     .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -67,9 +74,8 @@ public class AgentConversationController {
                     .build();
         }
 
-        List<AgentMessage> messages = conversationService.getConversationMessages(sessionId);
-        List<MessageRespVO> messageVOs = messages.stream()
-                .map(this::toMessageVO)
+        List<ConversationTurnRespVO> turnVOs = conversationService.getConversationTurns(sessionId, deviceId, null).stream()
+                .map(this::toTurnVO)
                 .collect(Collectors.toList());
 
         return Response.<ConversationDetailRespVO>builder()
@@ -77,7 +83,7 @@ public class AgentConversationController {
                 .info("success")
                 .data(ConversationDetailRespVO.builder()
                         .conversation(toListVO(conversation))
-                        .messages(messageVOs)
+                        .turns(turnVOs)
                         .build())
                 .build();
     }
@@ -226,28 +232,106 @@ public class AgentConversationController {
         return fixRoleService.queryDefaultRole();
     }
 
-    private MessageRespVO toMessageVO(AgentMessage m) {
-        return MessageRespVO.builder()
-                .requestId(m.getRequestId())
-                .sessionId(m.getSessionId())
-                .sortOrder(m.getSortOrder())
-                .query(m.getQuery())
-                .agentType(m.getAgentType())
-                .status(m.getStatus())
-                .forceStop(m.getForceStop())
-                .response(m.getResponse())
-                .thought(m.getThought())
-                .planJson(m.getPlanJson())
-                .tasksJson(m.getTasksJson())
-                .multiAgentJson(m.getMultiAgentJson())
-                .conclusionJson(m.getConclusionJson())
-                .planListJson(m.getPlanListJson())
-                .renderSnapshotJson(m.getRenderSnapshotJson())
-                .metricsJson(m.getMetricsJson())
-                .filesJson(m.getFilesJson())
-                .startedAt(m.getStartedAt())
-                .finishedAt(m.getFinishedAt())
-                .createTime(m.getCreateTime())
+    private ConversationTurnRespVO toTurnVO(ConversationTurnDetail turn) {
+        return ConversationTurnRespVO.builder()
+                .requestId(turn.getRequestId())
+                .sortOrder(turn.getSortOrder())
+                .query(turn.getQuery())
+                .files(turn.getFiles())
+                .agentType(turn.getAgentType())
+                .response(turn.getResponse())
+                .status(turn.getStatus())
+                .forceStop(turn.getForceStop())
+                .metrics(turn.getMetrics())
+                .startedAt(turn.getStartedAt())
+                .finishedAt(turn.getFinishedAt())
+                .events(turn.getEvents().stream().map(this::toEventVO).collect(Collectors.toList()))
                 .build();
+    }
+
+    private ConversationEventRespVO toEventVO(ConversationEventDetail event) {
+        return ConversationEventRespVO.builder()
+                .seqNo(event.getSeqNo())
+                .eventType(event.getEventType())
+                .eventSubType(event.getEventSubType())
+                .displayArea(event.getDisplayArea())
+                .taskId(event.getTaskId())
+                .taskOrder(event.getTaskOrder())
+                .messageIdExt(event.getMessageIdExt())
+                .title(event.getTitle())
+                .contentText(event.getContentText())
+                .status(event.getStatus())
+                .isFinal(event.getIsFinal())
+                .payload(toPayloadMap(event.getPayload()))
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toPayloadMap(Object payload) {
+        if (!(payload instanceof Map)) {
+            return null;
+        }
+
+        Map<String, Object> payloadMap = new LinkedHashMap<>((Map<String, Object>) payload);
+        Object artifactRefs = payloadMap.get("artifactRefs");
+        if (artifactRefs instanceof List) {
+            List<ArtifactReferenceRespVO> normalizedRefs = ((List<?>) artifactRefs).stream()
+                    .map(this::toArtifactRefVO)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            payloadMap.put("artifactRefs", normalizedRefs);
+        }
+        return payloadMap;
+    }
+
+    private ArtifactReferenceRespVO toArtifactRefVO(Object artifactRef) {
+        if (!(artifactRef instanceof Map)) {
+            return null;
+        }
+
+        Map<?, ?> refMap = (Map<?, ?>) artifactRef;
+        return ArtifactReferenceRespVO.builder()
+                .artifactType(stringValue(refMap.get("artifactType")))
+                .displayName(stringValue(refMap.get("displayName")))
+                .resourceKey(stringValue(refMap.get("resourceKey")))
+                .downloadUrl(stringValue(refMap.get("downloadUrl")))
+                .previewUrl(stringValue(refMap.get("previewUrl")))
+                .fileSize(longValue(refMap.get("fileSize")))
+                .mimeType(stringValue(refMap.get("mimeType")))
+                .missing(booleanValue(refMap.get("missing")))
+                .missingReason(stringValue(refMap.get("missingReason")))
+                .build();
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Long longValue(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Boolean booleanValue(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        return "true".equalsIgnoreCase(text) || "1".equals(text);
     }
 }

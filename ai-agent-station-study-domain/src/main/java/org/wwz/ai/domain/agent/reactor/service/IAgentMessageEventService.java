@@ -10,12 +10,6 @@ import java.util.List;
 public interface IAgentMessageEventService {
 
     void persistEvents(List<OrderedEvent> orderedEvents,
-                       Long messageId, Long conversationId,
-                       String sessionId, String requestId,
+                       Long messageId,
                        String finalStatus);
-
-    String buildRenderSnapshot(List<OrderedEvent> orderedEvents,
-                               String thoughtText, String multiAgentJson,
-                               String tasksJson, String planJson,
-                               String conclusionJson, String status);
 }

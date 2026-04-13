@@ -16,7 +16,5 @@ public interface IAgentMessageEventDao {
 
     List<AgentMessageEvent> queryByMessageId(@Param("messageId") Long messageId);
 
-    List<AgentMessageEvent> queryByRequestId(@Param("requestId") String requestId);
-
     int deleteByMessageId(@Param("messageId") Long messageId);
 }

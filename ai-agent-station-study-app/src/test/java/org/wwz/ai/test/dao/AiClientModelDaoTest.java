@@ -25,13 +25,22 @@ public class AiClientModelDaoTest {
     @Resource
     private IAiClientModelDao aiClientModelDao;
 
+    /**
+     * 为写操作生成唯一模型ID，避免重复执行测试时污染唯一索引。
+     */
+    private String nextModelId() {
+        return "test_model_" + System.nanoTime();
+    }
+
     @Test
     public void test_insert() {
+        String modelId = nextModelId();
         AiClientModel aiClientModel = AiClientModel.builder()
-                .modelId("test_model_001")
+                .modelId(modelId)
                 .apiId("1001")
                 .modelName("gpt-4o-mini")
                 .modelType("openai")
+                .modelUsage("chat")
                 .status(1)
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
@@ -49,6 +58,7 @@ public class AiClientModelDaoTest {
                 .apiId("1001")
                 .modelName("gpt-4o-mini-updated")
                 .modelType("openai")
+                .modelUsage("chat")
                 .status(1)
                 .updateTime(LocalDateTime.now())
                 .build();
@@ -64,6 +74,7 @@ public class AiClientModelDaoTest {
                 .apiId("1001")
                 .modelName("根据模型ID更新的模型")
                 .modelType("openai")
+                .modelUsage("chat")
                 .status(1)
                 .updateTime(LocalDateTime.now())
                 .build();
