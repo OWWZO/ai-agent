@@ -1,73 +1,73 @@
-# Research: 对话历史最终态重构与一致性修复
+# Research: 对话细节统一 UI 与最终态历史重构
 
-## Decision 1: “最终态”定义为最终界面可见细节块，而不是最小摘要
+## Decision 1: 历史与进行中共享同一份 canonical detail contract
 
-- **Decision**: 历史持久化与历史重开都以“对话结束时界面最终仍可见的细节块”为准，保留思考过程、计划、任务分组、工具调用、搜索/总结卡片、最终答案和工作区结果，而不是压缩成少量摘要事件。
-- **Rationale**: 用户明确要求“几天后回来仍看到结束时那份完整对话细节”，因此历史真相源必须对应最终界面态，而不是过程回放或最小摘要替代视图。
+- **Decision**: 历史详情接口继续返回 `turns[].events[]` 外层结构，但每个事件的 `payload` 必须直接对齐前端进行中链路已消费的 `MESSAGE.EventData` 语义，即统一使用 `messageType`、`messageId`、`taskId`、`taskOrder`、`resultMap` 这组核心字段。
+- **Rationale**: 当前进行中对话已经通过 `combineData`、`handleTaskData`、`buildReplayTaskData` 驱动左侧细节区与右侧工作区。把历史数据直接收敛到同一 contract，才能满足“入口和处理逻辑一致，只是数据来源不同”。
 - **Alternatives considered**:
-  - 只保留“搜索完成 / 总结完成 / 最终回复”摘要：读取简单，但直接违背用户目标。
-  - 完整保存所有流式增量：信息最全，但会重新回到实时回放模型，超出本次范围。
+  - 历史单独走一层 normalization，再进入共享渲染器：短期可行，但会保留历史专用处理链路。
+  - 只共享最终渲染组件，不共享输入 contract：未来最容易再次分叉。
 
-## Decision 2: `ai_agent_message_event` 继续保留，但语义收敛为最终界面细节表
+## Decision 2: 保留三表结构，但收敛为摘要账本 + 最终细节快照
 
-- **Decision**: 保留 `ai_agent_message_event` 作为历史细节主表，一条记录对应一个最终界面可见细节单元。
-- **Rationale**: 现有列表/turn/event 分层已被项目和前端链路广泛使用，问题在于事件表语义错误，而不是三表结构本身不可用。
+- **Decision**: 继续保留 `ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event` 三层结构，但只让它们承担会话摘要、单轮账本、最终可见细节快照三种职责，不再为实时回放保留冗余字段和语义。
+- **Rationale**: 现有列表、详情、作用域校验、排序和删除逻辑已经围绕三层结构搭建完成，问题在于事件表承担了过多“过程回放”含义，而不是结构本身需要推倒重来。
 - **Alternatives considered**:
-  - 把所有细节塞回 `ai_agent_message`：会让单轮账本再次膨胀成 rich JSON 容器。
-  - 改成单条大快照：写入简单，但多条同类细节和跨区域关系难以稳定表达。
+  - 把所有最终细节塞回 `ai_agent_message.response/metrics_json`：会重新形成大 JSON 容器，不利于顺序恢复和多块明细。
+  - 新建第四张“history_snapshot”表：语义可控，但会增加迁移和维护成本。
 
-## Decision 3: 结构化最终细节模型正式覆盖 `PLAN_SOLVE` 和 `REACT`
+## Decision 3: 每个最终可见细节块独立持久化为一条明细记录
 
-- **Decision**: `PLAN_SOLVE` 与 `REACT` 共用同一套结构化最终细节历史模型；普通 `CHAT` 继续保持轻量历史。
-- **Rationale**: 这两类模式都存在思考、计划、工具调用、搜索/总结、工作区等结构化界面细节，长期维护两套结构化历史语义风险更高；普通聊天则没有必要被强制迁移到复杂模型。
+- **Decision**: `ai_agent_message_event` 中一条记录只对应一个对话结束时仍可见的细节块；稳定 `block identity` 由 `payload.messageId` 承担，`seq_no` 表示最终展示顺序，`status` 表示终态，`payload_json` 保存最终快照。
+- **Rationale**: 当前历史错乱的根因之一就是多条 `deep_search` 被合并进同一条记录，读取时又无法无损拆回。逐块持久化后，历史读取不再需要猜测或拆分。
 - **Alternatives considered**:
-  - 只覆盖 `PLAN_SOLVE`：会让 `REACT` 长期滞留在不同语义下，增加分叉。
-  - 所有模式统一结构化：实现范围过大，且对普通聊天收益有限。
+  - 同类细节块合并存一条记录，读取时再拆：实现最省事，但已经证明会丢失多条搜索结果。
+  - 只保存一份大快照：顺序、分组、跨区域关联和局部点击都不稳定。
 
-## Decision 4: 流结束时投影最终界面细节块，而不是读取时二次拼装
+## Decision 4: 所有已结束终态都保留“最后可见界面”
 
-- **Decision**: 在 `AgentStreamPersistServiceImpl` 中保留运行时增量缓冲，但在消息完成时统一投影成最终界面细节块集合，再一次性写入 `ai_agent_message_event`。
-- **Rationale**: 只有在流结束时，系统才能确定哪些内容最终仍留在界面上；若继续在读取时从摘要或过程片段临时拼装，历史结果仍会和真实结束态偏离。
+- **Decision**: `completed`、`error`、`force_stop` 三类终态都要持久化该轮结束瞬间最后仍可见的细节块，并将终态信息同步写入 turn 与 event。
+- **Rationale**: 用户回看历史时，不会接受只有成功完成的会话才使用统一 UI，错误结束或手动停止也必须回到最后看到的那一版界面。
 - **Alternatives considered**:
-  - 继续全量落库再在读取时筛选：读取规则复杂且容易回退。
-  - 只依赖最终 `response` 和 `metrics` 推导：无法重建思考面板、工具调用和任务分组。
+  - 只有 `completed` 才做完整历史：会继续保留终态分叉。
+  - `error/force_stop` 只保留摘要：无法满足“同一套 UI 基线”。
 
-## Decision 5: 复用现有前端消息类型和恢复链路，避免重做整套历史 UI
+## Decision 5: 在流结束时投影最终块，而不是读取时二次推导
 
-- **Decision**: 详情接口继续返回 `turns[].events[]`，并尽量复用现有前端消费语义，使 `restoreTurn`、`combineData`、`buildReplayTaskData`、`Dialogue`、`ChatView` 可以在调整输入语义后继续工作。
-- **Rationale**: 当前 UI 已经具备按 `messageType / resultMap` 还原思考、任务和工具调用的能力，真正需要修正的是事件内容来源，而不是推翻整套渲染链路。
+- **Decision**: 继续在运行期缓冲 SSE 增量，但只在消息终态到达时把当前界面仍可见的块投影成最终快照，并一次性覆盖写入 `ai_agent_message_event`。
+- **Rationale**: 哪些块最终留在界面上，只有在流结束时才能准确判断。若把责任留到历史读取阶段，就会再次引入“根据少量摘要猜最终界面”的问题。
 - **Alternatives considered**:
-  - 新建全新 `details[]` 契约和全新历史渲染器：语义更纯，但联动范围大、返工高。
-  - 完全不动前端契约：无法表达这次新的最终界面细节要求。
+  - 读取历史时从摘要事件再拼装：当前 bug 就来源于此。
+  - 全量保存每个流式片段：会重新落回实时回放模型。
 
-## Decision 6: `plan_thought`、`tool_thought`、`task_summary`、`result` 允许作为最终细节保留
+## Decision 6: 历史仍复用当前进行中 UI，而不是新建历史专用界面
 
-- **Decision**: 这些类型不再被一刀切视为“过程回放垃圾数据”；只要它们在对话结束时仍然是界面可见块，就必须以最终文本或最终状态写入历史事件。
-- **Rationale**: 用户明确要求思考过程和工具调用细节在历史中完整可见；因此判断标准应是“结束时是否可见”，而不是“类型名是否像过程事件”。
+- **Decision**: 统一方案优先修改后端持久化语义和历史详情返回形状，让历史数据去适配 `ChatView`、`Dialogue`、`ActionView`、`FilePreview` 这条现有进行中渲染链，而不是新增第三套历史组件树。
+- **Rationale**: 当前进行中 UI 已经具备计划、思考、工具、搜索、工作区联动能力；本次的核心问题是历史数据喂不准，而不是这些组件本身不能用。
 - **Alternatives considered**:
-  - 永远排除 `plan_thought/tool_thought`：会直接丢失用户最关注的细节。
-  - 保留所有该类型的增量：又会回到回放模式。
+  - 新建 history-only renderer：短期可控，但会永久制造双轨 UI。
+  - 大改进行中 UI 去适配旧历史：违背“以当前进行中界面作为唯一基线”。
 
-## Decision 7: 同一细节跨对话区/工作区时只保留一份 canonical 记录
+## Decision 7: `artifactRefs[]` 继续作为跨区域产物的 canonical 引用
 
-- **Decision**: 当同一最终细节既在对话区可见，又关联工作区预览时，只保留一份 canonical 事件记录，并通过 `displayArea` 和 payload 中的展示关系/产物引用恢复多区域关系。
-- **Rationale**: 单一真相源可以避免对话区文本与工作区预览漂移，也能减少重复写入与重复删除问题。
+- **Decision**: 文件、HTML、Markdown、报告等最终产物统一以 `payload.artifactRefs[]` 表达；右侧工作区预览和左侧时间线点击都围绕这份引用工作，缺失态通过 `missing/missingReason` 明示。
+- **Rationale**: 项目里已经存在 `ConversationEventPayloadNormalizer` 和前端 `historyArtifacts` 兼容工具，沿用 `artifactRefs[]` 最容易稳定支撑“重开历史仍可预览或可解释失败”。
 - **Alternatives considered**:
-  - 对话区和工作区各存一份：实现直觉，但后续一致性最差。
-  - 只保留工作区记录：会让时间线丢失上下文。
+  - 继续混用 `fileInfo/fileList/artifactRefs`：读写两边都会继续堆兼容分支。
+  - 只保存临时路径：历史几天后重开天然不稳定。
 
-## Decision 8: `artifactRefs[]` 继续作为 canonical 产物引用表达
+## Decision 8: 历史详情读取改为批量加载 event，避免会话放大后出现 N+1
 
-- **Decision**: 文件、HTML、Markdown、报告等最终产物统一以 `payload.artifactRefs[]` 表达；如旧组件需要 `fileInfo`，只在响应层或前端兼容层派生。
-- **Rationale**: 这与现有 `ConversationEventPayloadNormalizer` 和前端 `mergeArtifactRefsIntoPayload` 能力一致，最容易稳定支持历史预览和缺失态。
+- **Decision**: `AgentConversationServiceImpl` 在详情装配阶段应支持按 messageId 集合批量查询 `ai_agent_message_event`，再按 `message_id + seq_no` 分组排序回填，而不是继续逐 message 单查事件。
+- **Rationale**: 统一 UI 后每轮会保留更多最终细节块，继续逐轮单查事件会让详情接口随着轮次数增加出现额外数据库往返。
 - **Alternatives considered**:
-  - 数据库继续混用 `artifactRefs` 和 `fileInfo`：写读两侧都要维护兜底分支。
-  - 只保存本地临时路径：历史重开天然不稳定。
+  - 保持当前逐 message 查询：实现最少，但会随着事件量上升放大响应抖动。
+  - 把 event 再塞回 message 大字段：可以省查询，但失去清晰的数据职责。
 
-## Decision 9: 旧历史数据直接清理，不做迁移兼容
+## Decision 9: 旧错误历史数据不做兼容，切换前直接清理
 
-- **Decision**: 上线切换时允许直接删除旧历史数据，不设计双读、迁移或回填。
-- **Rationale**: 用户已明确接受删除旧数据；把精力集中在新模型正确性和前端最终界面一致性上收益最高。
+- **Decision**: 本次不为旧错误持久化模型做迁移、双读或回填逻辑；上线切换前允许直接清空旧历史数据。
+- **Rationale**: 用户已经明确接受删除旧数据，把复杂度集中到新模型正确性上收益最高。
 - **Alternatives considered**:
-  - 双路径兼容：会让 005 长期背负两套历史语义。
-  - 回填迁移：对旧错误模型的映射成本高，且结果不稳定。
+  - 双路径兼容：会让历史链路长期背负两套语义。
+  - 回填迁移：旧数据本身已经缺块或错态，迁移结果不可信。

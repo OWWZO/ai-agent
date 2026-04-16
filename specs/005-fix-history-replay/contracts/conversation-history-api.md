@@ -101,14 +101,11 @@ X-Device-Id: device-xxx
           "payload": {
             "messageType": "plan_thought",
             "messageId": "msg-thought-1",
+            "taskId": null,
+            "taskOrder": null,
             "resultMap": {
               "planThought": "先确认分析范围，再逐步检索证据并汇总结论",
               "isFinal": true
-            },
-            "presentation": {
-              "primaryArea": "timeline",
-              "relatedAreas": [],
-              "linkedArtifactKeys": []
             }
           }
         },
@@ -127,6 +124,8 @@ X-Device-Id: device-xxx
           "payload": {
             "messageType": "plan",
             "messageId": "msg-plan-1",
+            "taskId": null,
+            "taskOrder": null,
             "resultMap": {
               "title": "执行计划",
               "steps": [
@@ -144,51 +143,6 @@ X-Device-Id: device-xxx
         },
         {
           "seqNo": 3,
-          "eventType": "task",
-          "eventSubType": "final_state",
-          "displayArea": "timeline",
-          "title": "检索销量波动原因",
-          "contentText": "任务 1",
-          "taskId": "task-1",
-          "taskOrder": 1,
-          "messageIdExt": "msg-task-1",
-          "status": "completed",
-          "isFinal": 1,
-          "payload": {
-            "messageType": "task",
-            "messageId": "msg-task-1",
-            "taskId": "task-1",
-            "resultMap": {
-              "messageType": "task",
-              "task": "检索销量波动原因"
-            }
-          }
-        },
-        {
-          "seqNo": 4,
-          "eventType": "tool_thought",
-          "eventSubType": "final_state",
-          "displayArea": "timeline",
-          "title": "检索策略思考",
-          "contentText": "先看区域分布，再对比促销与库存因素",
-          "taskId": "task-1",
-          "taskOrder": 1,
-          "messageIdExt": "msg-tool-thought-1",
-          "status": "completed",
-          "isFinal": 1,
-          "payload": {
-            "messageType": "task",
-            "messageId": "msg-tool-thought-1",
-            "taskId": "task-1",
-            "resultMap": {
-              "messageType": "tool_thought",
-              "toolThought": "先看区域分布，再对比促销与库存因素",
-              "isFinal": true
-            }
-          }
-        },
-        {
-          "seqNo": 5,
           "eventType": "deep_search",
           "eventSubType": "search",
           "displayArea": "timeline",
@@ -203,48 +157,28 @@ X-Device-Id: device-xxx
             "messageType": "task",
             "messageId": "msg-search-1",
             "taskId": "task-1",
+            "taskOrder": 1,
             "resultMap": {
               "messageType": "deep_search",
-              "resultMap": {
-                "messageType": "search",
-                "query": [
-                  "近三个月销量波动原因"
-                ],
-                "answer": "已整理 3 条关键发现"
-              }
+              "searchFinish": true,
+              "isFinal": true,
+              "searchResult": {
+                "query": ["近三个月销量波动原因"],
+                "docs": [[{"title": "示例文档"}]]
+              },
+              "answer": "已整理 3 条关键发现"
+            },
+            "presentation": {
+              "primaryArea": "timeline",
+              "relatedAreas": [],
+              "linkedArtifactKeys": []
             }
           }
         },
         {
-          "seqNo": 6,
-          "eventType": "deep_search",
-          "eventSubType": "report",
-          "displayArea": "timeline",
-          "title": "总结完成",
-          "contentText": "华东区域波动与促销衰减、缺货共同相关",
-          "taskId": "task-1",
-          "taskOrder": 1,
-          "messageIdExt": "msg-report-1",
-          "status": "completed",
-          "isFinal": 1,
-          "payload": {
-            "messageType": "task",
-            "messageId": "msg-report-1",
-            "taskId": "task-1",
-            "resultMap": {
-              "messageType": "deep_search",
-              "resultMap": {
-                "messageType": "report",
-                "query": "近三个月销量波动原因",
-                "answer": "华东区域波动与促销衰减、缺货共同相关"
-              }
-            }
-          }
-        },
-        {
-          "seqNo": 7,
+          "seqNo": 4,
           "eventType": "html",
-          "eventSubType": null,
+          "eventSubType": "final_state",
           "displayArea": "workspace",
           "title": "销量分析报告.html",
           "contentText": "最终报告",
@@ -254,16 +188,13 @@ X-Device-Id: device-xxx
           "status": "completed",
           "isFinal": 1,
           "payload": {
-            "messageType": "html",
+            "messageType": "task",
             "messageId": "msg-html-1",
-            "presentation": {
-              "primaryArea": "workspace",
-              "relatedAreas": [
-                "timeline"
-              ],
-              "linkedArtifactKeys": [
-                "file-123"
-              ]
+            "taskId": "task-1",
+            "taskOrder": 1,
+            "resultMap": {
+              "messageType": "html",
+              "isFinal": true
             },
             "artifactRefs": [
               {
@@ -277,7 +208,12 @@ X-Device-Id: device-xxx
                 "missing": false,
                 "missingReason": null
               }
-            ]
+            ],
+            "presentation": {
+              "primaryArea": "workspace",
+              "relatedAreas": ["timeline"],
+              "linkedArtifactKeys": ["file-123"]
+            }
           }
         }
       ]
@@ -288,26 +224,40 @@ X-Device-Id: device-xxx
 
 ### Rules
 
-- 详情接口继续输出 `turns[].events[]`，但这些 `events` 表示最终界面细节块，不再表示全过程回放增量，也不再退化为最小摘要。
+- 详情接口继续输出 `turns[].events[]`，但这些 `events` 表示最终界面细节块，不再表示全过程回放增量。
+- `events[].payload` 必须直接兼容前端进行中链路消费的 `MESSAGE.EventData` 语义，历史不得再依赖独立 normalization 分支才能进入统一渲染路径。
 - `PLAN_SOLVE` 与 `REACT` 必须返回结构化最终细节块；普通 `CHAT` 允许返回空 `events[]` 或轻量历史。
-- `response` 仍表示单轮最终答案/上下文文本；若界面还展示 `task_summary` / `result` 类块，则这些块也必须出现在 `events[]` 中。
-- `events[]` 允许包含 `plan_thought`、`plan`、`task`、`tool_thought`、`tool_result`、`deep_search`、`task_summary`、`result`、`html/markdown/file/...` 等结束时仍可见的块类型。
-- `messageIdExt` 继续作为兼容字段返回，但由 payload `messageId` 派生，不要求数据库保留独立列。
-- `payload.artifactRefs[]` 是 canonical 文件引用表达；如旧组件仍消费 `fileInfo`，只允许在响应层或前端兼容层派生。
+- `response` 继续表示单轮最终答案；如界面结束时仍可见 `task_summary` / `result` 块，则这些块也必须出现在 `events[]` 中。
+- `messageIdExt` 继续作为兼容字段返回，但由 `payload.messageId` 派生。
+- `isFinal` 在历史详情中恒定为 `1`。
 - 若同一细节块同时服务于时间线与工作区，只允许返回一条 canonical 事件记录，通过 `displayArea + payload.presentation` 恢复跨区域关系。
 
-## 3. 错误语义
+## 3. 终态语义
 
-### 会话不存在或越权
+### 3.1 成功完成
 
-```json
-{
-  "code": "ILLEGAL_PARAMETER",
-  "info": "会话不存在"
-}
-```
+- `turn.status = 1`
+- `turn.forceStop = 0`
+- `event.status = "completed"`
 
-### Artifact 引用失效
+### 3.2 异常结束
+
+- `turn.status = 2`
+- `turn.forceStop = 0`
+- `event.status = "error"`
+
+### 3.3 手动停止
+
+- `turn.status = 3`
+- `turn.forceStop = 1`
+- `event.status = "force_stop"`
+
+规则：
+
+- 三类终态都必须返回“最后仍可见的细节块”。
+- 历史 UI 不能因为 `error` 或 `force_stop` 而退化成摘要视图。
+
+## 4. Artifact 缺失语义
 
 详情接口仍返回 turn/event，但对应事件 payload 中标记缺失状态：
 
@@ -326,3 +276,8 @@ X-Device-Id: device-xxx
   ]
 }
 ```
+
+规则：
+
+- 缺失态仍保留该事件，不得静默吞掉。
+- 前端点击后必须展示明确不可用原因，而不是通用 `Failed to fetch`。

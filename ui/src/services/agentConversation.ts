@@ -148,27 +148,22 @@ const ensureHistoryPlanShape = (planLike: any) => {
   };
 };
 
-const normalizeHistoryPayload = (
-  payload?: ConversationPayload
-): ConversationPayload | undefined => {
-  if (!payload) {
-    return payload;
-  }
-
-  const mergedPayload = mergeArtifactRefsIntoPayload(payload);
-  if (!mergedPayload) {
-    return mergedPayload;
-  }
-
-  if (mergedPayload.messageType !== "plan") {
-    return mergedPayload;
-  }
-
-  return {
-    ...mergedPayload,
-    resultMap: ensureHistoryPlanShape(mergedPayload.resultMap),
-  };
-};
+const LEGACY_TASK_MESSAGE_TYPES = new Set([
+  "tool_result",
+  "browser",
+  "code",
+  "html",
+  "file",
+  "knowledge",
+  "deep_search",
+  "markdown",
+  "ppt",
+  "data_analysis",
+  "task_summary",
+  "result",
+  "agent_stream",
+  "tool_thought",
+]);
 
 const extractArtifactRefs = (payload: ConversationPayload): ArtifactReferenceItem[] => {
   const directRefs = normalizeArtifactRefs(payload.artifactRefs);
@@ -222,6 +217,351 @@ const normalizeArtifactRefs = (artifactRefs?: any[]): ArtifactReferenceItem[] =>
   });
 };
 
+const cloneRecord = (value: unknown): Record<string, any> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return { ...(value as Record<string, any>) };
+};
+
+const isAgentResponseLikeTaskResultMap = (value: Record<string, any>) => {
+  return Boolean(
+    value &&
+      typeof value.messageType === "string" &&
+      (
+        value.finish !== undefined ||
+        value.resultMap !== undefined ||
+        value.task !== undefined ||
+        value.toolThought !== undefined ||
+        value.taskSummary !== undefined ||
+        value.result !== undefined ||
+        value.plan !== undefined
+      )
+  );
+};
+
+const resolveTaskMessageType = (
+  payload: ConversationPayload,
+  event: ConversationEventItem,
+  payloadResultMap: Record<string, any>
+) => {
+  if (
+    typeof payloadResultMap.messageType === "string" &&
+    payloadResultMap.messageType
+  ) {
+    return payloadResultMap.messageType;
+  }
+
+  const nestedResultMap =
+    payloadResultMap.resultMap && typeof payloadResultMap.resultMap === "object"
+      ? (payloadResultMap.resultMap as Record<string, any>)
+      : undefined;
+  if (
+    typeof nestedResultMap?.messageType === "string" &&
+    nestedResultMap.messageType
+  ) {
+    return nestedResultMap.messageType;
+  }
+
+  if (payload.messageType && payload.messageType !== "task") {
+    return payload.messageType;
+  }
+
+  return event.eventType;
+};
+
+const resolveDeepSearchStage = (
+  event: ConversationEventItem,
+  resultMap: Record<string, any>
+) => {
+  if (
+    typeof resultMap.messageType === "string" &&
+    resultMap.messageType &&
+    ["extend", "search", "report"].includes(resultMap.messageType)
+  ) {
+    return resultMap.messageType;
+  }
+
+  if (
+    typeof event.eventSubType === "string" &&
+    event.eventSubType &&
+    ["extend", "search", "report"].includes(event.eventSubType)
+  ) {
+    return event.eventSubType;
+  }
+
+  return "search";
+};
+
+const normalizeSearchResult = (value: unknown) => {
+  const searchResult = cloneRecord(value);
+  const queries = Array.isArray(searchResult.query)
+    ? searchResult.query
+    : searchResult.query != null
+      ? [searchResult.query]
+      : [];
+  const docs = Array.isArray(searchResult.docs)
+    ? searchResult.docs
+    : searchResult.docs != null
+      ? [searchResult.docs]
+      : [];
+
+  return {
+    ...searchResult,
+    query: queries.map((item) => String(item ?? "").trim()).filter(Boolean),
+    docs,
+  };
+};
+
+const normalizeTaskInnerResultMap = (
+  taskMessageType: string,
+  rawInnerResultMap: Record<string, any>,
+  event: ConversationEventItem,
+  artifactFileInfo: ReturnType<typeof artifactRefsToFileInfo>
+) => {
+  const nextInnerResultMap = cloneRecord(rawInnerResultMap);
+  nextInnerResultMap.isFinal = true;
+
+  if (taskMessageType === "deep_search") {
+    nextInnerResultMap.messageType = resolveDeepSearchStage(
+      event,
+      nextInnerResultMap
+    );
+    nextInnerResultMap.searchResult = normalizeSearchResult(
+      nextInnerResultMap.searchResult
+    );
+  } else {
+    nextInnerResultMap.messageType =
+      nextInnerResultMap.messageType || taskMessageType;
+  }
+
+  if (artifactFileInfo.length && !Array.isArray(nextInnerResultMap.fileInfo)) {
+    nextInnerResultMap.fileInfo = artifactFileInfo;
+  }
+
+  if (
+    taskMessageType === "task_summary" &&
+    !nextInnerResultMap.taskSummary &&
+    event.contentText
+  ) {
+    nextInnerResultMap.taskSummary = event.contentText;
+  }
+
+  if (
+    ["result", "agent_stream"].includes(taskMessageType) &&
+    !nextInnerResultMap.result &&
+    event.contentText
+  ) {
+    nextInnerResultMap.result = event.contentText;
+  }
+
+  if (
+    taskMessageType === "tool_thought" &&
+    !nextInnerResultMap.toolThought &&
+    event.contentText
+  ) {
+    nextInnerResultMap.toolThought = event.contentText;
+  }
+
+  return nextInnerResultMap;
+};
+
+const normalizeTaskOuterResultMap = (
+  taskMessageType: string,
+  rawOuterResultMap: Record<string, any>,
+  event: ConversationEventItem,
+  messageId: string,
+  artifactFileInfo: ReturnType<typeof artifactRefsToFileInfo>
+) => {
+  const nextOuterResultMap = {
+    ...cloneRecord(rawOuterResultMap),
+    messageType: taskMessageType,
+    messageId: rawOuterResultMap.messageId || messageId,
+    finish: rawOuterResultMap.finish ?? true,
+    isFinal: true,
+    messageTime: rawOuterResultMap.messageTime || String(event.seqNo),
+  } as Record<string, any>;
+
+  const nestedResultMap = normalizeTaskInnerResultMap(
+    taskMessageType,
+    cloneRecord(nextOuterResultMap.resultMap),
+    event,
+    artifactFileInfo
+  );
+  nextOuterResultMap.resultMap = nestedResultMap;
+
+  if (taskMessageType === "tool_thought") {
+    nextOuterResultMap.toolThought =
+      nextOuterResultMap.toolThought ||
+      nestedResultMap.toolThought ||
+      event.contentText ||
+      "";
+  }
+
+  if (taskMessageType === "task_summary") {
+    nextOuterResultMap.taskSummary =
+      nextOuterResultMap.taskSummary ||
+      nestedResultMap.taskSummary ||
+      event.contentText ||
+      "";
+  }
+
+  if (["result", "agent_stream"].includes(taskMessageType)) {
+    nextOuterResultMap.result =
+      nextOuterResultMap.result ||
+      nestedResultMap.result ||
+      event.contentText ||
+      "";
+  }
+
+  if (taskMessageType === "task" && !nextOuterResultMap.task) {
+    nextOuterResultMap.task = event.title || event.contentText || event.eventType;
+  }
+
+  return nextOuterResultMap;
+};
+
+const buildLegacyTaskOuterResultMap = (
+  taskMessageType: string,
+  rawResultMap: Record<string, any>,
+  event: ConversationEventItem,
+  messageId: string,
+  artifactFileInfo: ReturnType<typeof artifactRefsToFileInfo>
+) => {
+  const outerResultMap: Record<string, any> = {
+    messageType: taskMessageType,
+    messageId,
+    finish: true,
+    isFinal: true,
+    messageTime: rawResultMap.messageTime || String(event.seqNo),
+  };
+
+  const innerResultMap = normalizeTaskInnerResultMap(
+    taskMessageType,
+    rawResultMap,
+    event,
+    artifactFileInfo
+  );
+  outerResultMap.resultMap = innerResultMap;
+
+  if (taskMessageType === "tool_thought") {
+    outerResultMap.toolThought = innerResultMap.toolThought || event.contentText || "";
+  }
+
+  if (taskMessageType === "task_summary") {
+    outerResultMap.taskSummary =
+      innerResultMap.taskSummary || event.contentText || "";
+  }
+
+  if (["result", "agent_stream"].includes(taskMessageType)) {
+    outerResultMap.result = innerResultMap.result || event.contentText || "";
+  }
+
+  if (taskMessageType === "task") {
+    outerResultMap.task = rawResultMap.task || event.title || event.contentText || event.eventType;
+  }
+
+  return outerResultMap;
+};
+
+const normalizeTaskPayload = (
+  payload: ConversationPayload,
+  event: ConversationEventItem,
+  fallbackMessageId: string
+): ConversationPayload => {
+  const artifactRefs = extractArtifactRefs(payload);
+  const artifactFileInfo = artifactRefsToFileInfo(artifactRefs);
+  const payloadResultMap = cloneRecord(payload.resultMap);
+  const taskMessageType = resolveTaskMessageType(payload, event, payloadResultMap);
+  const messageId = payload.messageId || event.messageIdExt || fallbackMessageId;
+  const outerResultMap = isAgentResponseLikeTaskResultMap(payloadResultMap)
+    ? normalizeTaskOuterResultMap(
+        taskMessageType,
+        payloadResultMap,
+        event,
+        messageId,
+        artifactFileInfo
+      )
+    : buildLegacyTaskOuterResultMap(
+        taskMessageType,
+        payloadResultMap,
+        event,
+        messageId,
+        artifactFileInfo
+      );
+
+  return {
+    ...payload,
+    messageType: "task",
+    messageId,
+    taskId: payload.taskId ?? event.taskId ?? undefined,
+    taskOrder: payload.taskOrder ?? event.taskOrder ?? undefined,
+    artifactRefs,
+    resultMap: outerResultMap,
+  };
+};
+
+const normalizeHistoryPayload = (
+  payload: ConversationPayload | undefined,
+  event: ConversationEventItem,
+  fallbackMessageId: string
+): ConversationPayload | undefined => {
+  if (!payload) {
+    return payload;
+  }
+
+  const mergedPayload = mergeArtifactRefsIntoPayload(payload);
+  if (!mergedPayload) {
+    return mergedPayload;
+  }
+
+  const payloadMessageType = mergedPayload.messageType || event.eventType;
+  const payloadWithMessageType =
+    mergedPayload.messageType === payloadMessageType
+      ? mergedPayload
+      : {
+          ...mergedPayload,
+          messageType: payloadMessageType,
+        };
+
+  if (payloadMessageType === "plan") {
+    return {
+      ...payloadWithMessageType,
+      messageId: payloadWithMessageType.messageId || event.messageIdExt || fallbackMessageId,
+      taskId: undefined,
+      taskOrder: undefined,
+      resultMap: ensureHistoryPlanShape(payloadWithMessageType.resultMap),
+    };
+  }
+
+  if (payloadMessageType === "plan_thought") {
+    const nextResultMap = cloneRecord(payloadWithMessageType.resultMap);
+    return {
+      ...payloadWithMessageType,
+      messageId: payloadWithMessageType.messageId || event.messageIdExt || fallbackMessageId,
+      taskId: undefined,
+      taskOrder: undefined,
+      resultMap: {
+        ...nextResultMap,
+        planThought:
+          nextResultMap.planThought || event.contentText || "",
+        isFinal: true,
+      },
+    };
+  }
+
+  if (
+    payloadMessageType === "task" ||
+    LEGACY_TASK_MESSAGE_TYPES.has(
+      payloadMessageType
+    )
+  ) {
+    return normalizeTaskPayload(payloadWithMessageType, event, fallbackMessageId);
+  }
+
+  return payloadWithMessageType;
+};
+
 const buildTimelineEntries = (
   events: Array<ConversationEventItem & { payload?: ConversationPayload }>
 ): CHAT.TimelineEntry[] => {
@@ -241,112 +581,6 @@ const buildTimelineEntries = (
   }));
 };
 
-const DIRECT_HISTORY_MESSAGE_TYPES = new Set([
-  "tool_result",
-  "browser",
-  "code",
-  "html",
-  "file",
-  "knowledge",
-  "deep_search",
-  "markdown",
-  "ppt",
-  "data_analysis",
-  "task_summary",
-  "result",
-]);
-
-const cloneResultMap = (value: unknown) => {
-  if (!value || typeof value !== "object") {
-    return {} as Record<string, any>;
-  }
-  return { ...(value as Record<string, any>) };
-};
-
-const buildSyntheticTaskFromPayload = (
-  turn: ConversationTurnItem,
-  event: ConversationEventItem,
-  payload: ConversationPayload
-): MESSAGE.Task => {
-  const messageType = payload.messageType || event.eventType;
-  const payloadResultMap = cloneResultMap(payload.resultMap);
-  const artifactFileInfo = artifactRefsToFileInfo(payload.artifactRefs);
-  const resultMap: Record<string, any> =
-    messageType === "deep_search" &&
-    payloadResultMap.resultMap &&
-    typeof payloadResultMap.resultMap === "object"
-      ? {
-          ...cloneResultMap(payloadResultMap.resultMap),
-          fileInfo:
-            payloadResultMap.resultMap.fileInfo || artifactFileInfo,
-          isFinal: true,
-        }
-      : {
-          ...payloadResultMap,
-          fileInfo: payloadResultMap.fileInfo || artifactFileInfo,
-          isFinal: true,
-        };
-
-  if (messageType === "task_summary" && !resultMap.taskSummary && event.contentText) {
-    resultMap.taskSummary = event.contentText;
-  }
-
-  if (messageType === "result" && !resultMap.result && event.contentText) {
-    resultMap.result = event.contentText;
-  }
-
-  return {
-    messageTime:
-      turn.finishedAt || turn.startedAt || String(event.seqNo),
-    task: event.title || event.contentText || event.eventType,
-    taskId: event.taskId || payload.taskId || undefined,
-    messageType,
-    resultMap: resultMap as MESSAGE.ResultMap,
-    requestId: turn.requestId,
-    messageId:
-      payload.messageId || event.messageIdExt || `${turn.requestId}-${event.seqNo}`,
-    finish: true,
-    isFinal: true,
-    toolThought:
-      messageType === "tool_thought"
-        ? event.contentText || resultMap.toolThought || ""
-        : undefined,
-    result:
-      messageType === "task_summary" || messageType === "result"
-        ? event.contentText || resultMap.taskSummary || resultMap.result || ""
-        : undefined,
-    id: payload.messageId || event.messageIdExt || `${turn.requestId}-${event.seqNo}`,
-  } as MESSAGE.Task;
-};
-
-const appendDirectHistoryTask = (
-  chatItem: CHAT.ChatItem,
-  turn: ConversationTurnItem,
-  event: ConversationEventItem,
-  payload: ConversationPayload
-) => {
-  const messageType = payload.messageType || event.eventType;
-  if (!DIRECT_HISTORY_MESSAGE_TYPES.has(messageType)) {
-    return;
-  }
-
-  const nextTask = buildSyntheticTaskFromPayload(turn, event, payload);
-  const groups = chatItem.multiAgent.tasks || (chatItem.multiAgent.tasks = []);
-
-  if (!event.taskId) {
-    groups.push([nextTask]);
-    return;
-  }
-
-  const group = groups.find((items) => items[0]?.taskId === event.taskId);
-  if (group) {
-    group.push(nextTask);
-    return;
-  }
-
-  groups.push([nextTask]);
-};
-
 export interface PageResult<T> {
   total: number;
   list: T[];
@@ -358,6 +592,36 @@ export interface FixRoleItem {
   description?: string;
   defaultRole: boolean;
 }
+
+const buildHistoryConclusionFallback = (
+  turn: ConversationTurnItem
+): CHAT.Task | undefined => {
+  const summary = turn.response?.trim();
+  if (!summary) {
+    return undefined;
+  }
+
+  const messageTime =
+    turn.finishedAt || turn.startedAt || `${turn.sortOrder}`;
+  const messageId = `${turn.requestId}-final-summary`;
+
+  return {
+    id: messageId,
+    messageId,
+    requestId: turn.requestId,
+    messageTime,
+    messageType: "task_summary",
+    taskId: undefined,
+    finish: true,
+    isFinal: true,
+    result: summary,
+    resultMap: {
+      taskSummary: summary,
+      isFinal: true,
+      fileInfo: [],
+    } as MESSAGE.ResultMap,
+  } as CHAT.Task;
+};
 
 // ---- API 方法 ----
 
@@ -438,12 +702,13 @@ export const roleLibraryApi = {list: () => api.get<FixRoleItem[]>(`/api/agent/ro
  * 将后端 turn 还原为前端 CHAT.ChatItem 格式
  */
 export function restoreTurn(sessionId: string, turn: ConversationTurnItem): CHAT.ChatItem {
+  const isStructuredTurn = turn.agentType === 1 || turn.agentType === 2;
   const chatItem = {
     sessionId,
     requestId: turn.requestId,
     query: turn.query,
     files: Array.isArray(turn.files) ? turn.files : [],
-    response: turn.response || undefined,
+    response: isStructuredTurn ? undefined : turn.response || undefined,
     loading: false,
     forceStop: turn.forceStop === 1,
     agentType: turn.agentType,
@@ -458,14 +723,17 @@ export function restoreTurn(sessionId: string, turn: ConversationTurnItem): CHAT
     .sort((left, right) => left.seqNo - right.seqNo)
     .map((event) => ({
       ...event,
-      payload: normalizeHistoryPayload(event.payload),
+      payload: normalizeHistoryPayload(
+        event.payload,
+        event,
+        `${turn.requestId}-${event.seqNo}`
+      ),
     }));
   chatItem.timeline = buildTimelineEntries(orderedEvents);
   orderedEvents.forEach((event) => {
     const payload = event.payload;
     if (payload?.messageType) {
       combineData(payload as MESSAGE.EventData, chatItem);
-      appendDirectHistoryTask(chatItem, turn, event, payload);
     }
   });
 
@@ -490,6 +758,10 @@ export function restoreTurn(sessionId: string, turn: ConversationTurnItem): CHAT
         },
       }))
     );
+  }
+
+  if (isStructuredTurn && !chatItem.conclusion) {
+    chatItem.conclusion = buildHistoryConclusionFallback(turn);
   }
 
   return chatItem;

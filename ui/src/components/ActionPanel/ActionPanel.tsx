@@ -79,6 +79,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const htmlUrl = primaryFile?.url;
   const downloadHtmlUrl = primaryFile?.downloadUrl;
+  const missingReason = primaryFile?.missingReason;
 
   const { codeOutput } = resultMap || {};
 
@@ -102,6 +103,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
               htmlUrl={htmlUrl}
               className="h-full"
               downloadUrl={downloadHtmlUrl}
+              missingReason={missingReason}
               outputCode={codeOutput}
               showToolBar={allowShowToolBar && resultMap?.isFinal}
               isStreaming={!resultMap?.isFinal}
@@ -123,7 +125,11 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       if (useExcel) {
         return (
           <ContentWrapper key="excel">
-            <TableRenderer fileUrl={primaryFile?.url || ""} fileName={primaryFile?.name} />
+            <TableRenderer
+              fileUrl={primaryFile?.url || ""}
+              fileName={primaryFile?.name}
+              missingReason={missingReason}
+            />
           </ContentWrapper>
         );
       }
@@ -131,7 +137,11 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       if (useFile) {
         return (
           <ContentWrapper key="file">
-            <FileRenderer fileUrl={primaryFile?.url || ""} fileName={primaryFile?.name} />
+            <FileRenderer
+              fileUrl={primaryFile?.url || ""}
+              fileName={primaryFile?.name}
+              missingReason={missingReason}
+            />
           </ContentWrapper>
         );
       }
@@ -159,6 +169,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     markDownContent,
     htmlUrl,
     downloadHtmlUrl,
+    missingReason,
     allowShowToolBar,
     resultMap?.isFinal,
     toolResult?.toolResult,

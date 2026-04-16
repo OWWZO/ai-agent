@@ -12,6 +12,7 @@ import MarkdownRenderer from "./MarkdownRenderer";
 interface HTMLRendererProps {
   htmlUrl?: string;
   downloadUrl?: string;
+  missingReason?: string;
   showToolBar?: boolean;
   outputCode?: string;
   isStreaming?: boolean;
@@ -19,7 +20,15 @@ interface HTMLRendererProps {
 }
 
 const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
-  const { htmlUrl, className, downloadUrl, showToolBar, outputCode, isStreaming = false } = props;
+  const {
+    htmlUrl,
+    className,
+    downloadUrl,
+    missingReason,
+    showToolBar,
+    outputCode,
+    isStreaming = false,
+  } = props;
 
   const [loading, { setTrue: startLoading, setFalse: stopLoading }] = useBoolean(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +75,9 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     if (error) {
       return <div className="text-red-500">{error}</div>;
     }
+    if (missingReason && !htmlUrl) {
+      return <div className="text-red-500">{missingReason}</div>;
+    }
     if (htmlUrl) {
       return (
         <iframe
@@ -81,7 +93,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
       );
     }
     return <Empty description="暂无内容" className="mt-32" />;
-  }, [error, htmlUrl, stopLoading]);
+  }, [error, htmlUrl, missingReason, stopLoading]);
 
   if (!htmlUrl && outputCode) {
     return <MarkdownRenderer markDownContent={outputCode} isStreaming={isStreaming} />;

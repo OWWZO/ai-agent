@@ -120,13 +120,13 @@ const readRawFiles = (taskLike: any) => {
 
   const nestedResultMap = readNestedResultMap(taskLike);
   const candidates = [
+    taskLike?.artifactRefs,
+    taskLike?.resultMap?.artifactRefs,
+    nestedResultMap?.artifactRefs,
     taskLike?.resultMap?.fileInfo,
     taskLike?.resultMap?.fileList,
-    taskLike?.resultMap?.artifactRefs,
     nestedResultMap?.fileInfo,
     nestedResultMap?.fileList,
-    nestedResultMap?.artifactRefs,
-    taskLike?.artifactRefs,
   ];
 
   for (const candidate of candidates) {

@@ -234,7 +234,7 @@ const ToolItem: FC<{
     case "browser": {
       return (
         <div className="mt-[8px]">
-          {tool.resultMap?.steps
+          {(tool.resultMap?.steps || [])
             .filter((s) => s.status !== "completed")
             .map((s, idx) => (
               <div key={`${s.goal}-${idx}`}>
@@ -395,239 +395,6 @@ const TimeLine: FC<{
   </>
 );
 
-type TimelineGroupType = "thought" | "plan" | "task_group" | "conclusion" | "tool";
-
-type TimelineGroup = {
-  type: TimelineGroupType;
-  seq: number;
-  entries: CHAT.TimelineEntry[];
-  taskId?: string;
-};
-
-function normalizeTimelineEntries(timeline: CHAT.TimelineEntry[]): CHAT.TimelineEntry[] {
-  if (!timeline.length) {
-    return timeline;
-  }
-
-  const normalized: CHAT.TimelineEntry[] = [];
-
-  for (let index = 0; index < timeline.length; index += 1) {
-    const current = timeline[index];
-    const next = timeline[index + 1];
-
-    const isDuplicatedDeepSearchStage =
-      current.type === "deep_search" &&
-      current.subType === "extend" &&
-      next?.type === "deep_search" &&
-      next.subType === "search" &&
-      current.messageIdExt &&
-      current.messageIdExt === next.messageIdExt &&
-      current.taskId === next.taskId &&
-      (current.content || "") === (next.content || "");
-
-    // 历史回放里同一轮搜索会连续写入 extend/search 两个阶段。
-    // 当两条记录指向同一 messageId 且内容一致时，只保留最终 search，避免界面重复展示。
-    if (isDuplicatedDeepSearchStage) {
-      continue;
-    }
-
-    normalized.push(current);
-  }
-
-  return normalized;
-}
-
-function groupTimelineEntries(timeline: CHAT.TimelineEntry[]): TimelineGroup[] {
-  const groups: TimelineGroup[] = [];
-
-  [...normalizeTimelineEntries(timeline)]
-    .sort((left, right) => left.seq - right.seq)
-    .forEach((entry) => {
-    if (entry.type === "plan_thought") {
-      const last = groups[groups.length - 1];
-      if (last?.type === "thought" && !last.entries[last.entries.length - 1]?.isFinal) {
-        last.entries.push(entry);
-      } else {
-        groups.push({ type: "thought", seq: entry.seq, entries: [entry] });
-      }
-      return;
-    }
-
-    if (entry.type === "plan") {
-      groups.push({ type: "plan", seq: entry.seq, entries: [entry] });
-      return;
-    }
-
-    if (entry.type === "agent_stream" || entry.type === "result") {
-      const last = groups[groups.length - 1];
-      if (last?.type === "conclusion") {
-        last.entries.push(entry);
-      } else {
-        groups.push({ type: "conclusion", seq: entry.seq, entries: [entry] });
-      }
-      return;
-    }
-
-    if (entry.type === "task_summary") {
-      groups.push({ type: "conclusion", seq: entry.seq, entries: [entry], taskId: entry.taskId });
-      return;
-    }
-
-    if (entry.type === "task") {
-      groups.push({ type: "task_group", seq: entry.seq, entries: [entry], taskId: entry.taskId });
-      return;
-    }
-
-    const last = groups[groups.length - 1];
-    const canAttachToLastTaskGroup =
-      !!entry.taskId &&
-      last?.type === "task_group" &&
-      last.taskId === entry.taskId;
-
-    if (canAttachToLastTaskGroup) {
-      last.entries.push(entry);
-      return;
-    }
-
-      groups.push({ type: "tool", seq: entry.seq, entries: [entry], taskId: entry.taskId });
-    });
-
-  return groups;
-}
-
-function findTaskByEntry(chat: CHAT.ChatItem, entry: CHAT.TimelineEntry): CHAT.Task | undefined {
-  const resolveEntryMessageType = () => {
-    if (entry.payload?.messageType && entry.payload.messageType !== "task") {
-      return entry.payload.messageType;
-    }
-
-    const payloadResultMap =
-      entry.payload?.resultMap && typeof entry.payload.resultMap === "object"
-        ? (entry.payload.resultMap as Record<string, any>)
-        : undefined;
-    if (typeof payloadResultMap?.messageType === "string" && payloadResultMap.messageType) {
-      return payloadResultMap.messageType;
-    }
-
-    return entry.type;
-  };
-
-  const resolveTaskMessageType = (task: CHAT.Task) => {
-    if (task.messageType && task.messageType !== "task") {
-      return task.messageType;
-    }
-
-    if (
-      task.resultMap &&
-      typeof task.resultMap === "object" &&
-      typeof task.resultMap.messageType === "string" &&
-      task.resultMap.messageType
-    ) {
-      return task.resultMap.messageType;
-    }
-
-    return task.messageType;
-  };
-
-  const resolveEntrySearchQuery = () => {
-    const payloadResultMap =
-      entry.payload?.resultMap && typeof entry.payload.resultMap === "object"
-        ? (entry.payload.resultMap as Record<string, any>)
-        : undefined;
-    const nestedResultMap =
-      payloadResultMap?.resultMap && typeof payloadResultMap.resultMap === "object"
-        ? (payloadResultMap.resultMap as Record<string, any>)
-        : undefined;
-    const searchResult =
-      nestedResultMap?.searchResult && typeof nestedResultMap.searchResult === "object"
-        ? (nestedResultMap.searchResult as Record<string, any>)
-        : undefined;
-    const query = searchResult?.query ?? nestedResultMap?.query;
-
-    if (Array.isArray(query)) {
-      return query.map((item) => String(item || "").trim()).find(Boolean) || "";
-    }
-
-    return query == null ? "" : String(query).trim();
-  };
-
-  const resolveTaskSearchQuery = (task: CHAT.Task) => {
-    const query = task.resultMap?.searchResult?.query;
-    if (Array.isArray(query)) {
-      return query.map((item) => String(item || "").trim()).find(Boolean) || "";
-    }
-
-    return query == null ? "" : String(query).trim();
-  };
-
-  const entryMessageType = resolveEntryMessageType();
-  const entrySearchQuery = entry.type === "deep_search" ? resolveEntrySearchQuery() : "";
-
-  const matchTask = (task: CHAT.Task) => {
-    if (resolveTaskMessageType(task) !== entryMessageType) {
-      return false;
-    }
-
-    if (entry.messageIdExt) {
-      if (task.messageId === entry.messageIdExt) {
-        return true;
-      }
-    }
-
-    if (entry.taskId && task.taskId !== entry.taskId) {
-      return false;
-    }
-
-    if (entry.subType && task.resultMap?.messageType && task.resultMap.messageType !== entry.subType) {
-      return false;
-    }
-
-    if (entrySearchQuery) {
-      return resolveTaskSearchQuery(task) === entrySearchQuery;
-    }
-
-    return Boolean(entry.taskId && task.taskId === entry.taskId);
-  };
-
-  for (const group of chat.tasks || []) {
-    for (const task of group) {
-      if (matchTask(task)) {
-        return task;
-      }
-      for (const child of task.children || []) {
-        if (matchTask(child)) {
-          return child;
-        }
-      }
-    }
-  }
-
-  for (const group of chat.multiAgent?.tasks || []) {
-    for (const rawTask of group) {
-      const candidate = {
-        ...(rawTask as CHAT.Task),
-        id:
-          (rawTask as CHAT.Task).id ||
-          rawTask.messageId ||
-          `${rawTask.taskId || entry.taskId || entry.type}-${entry.seq}`,
-      } as CHAT.Task;
-      if (matchTask(candidate)) {
-        return candidate;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function extractPlanFromEntry(entry: CHAT.TimelineEntry, fallbackPlan?: CHAT.Plan) {
-  const payload = entry.payload;
-  if (payload?.messageType === "plan" && payload.resultMap) {
-    return payload.resultMap as CHAT.Plan;
-  }
-  return fallbackPlan;
-}
-
 function resolveTaskSummaryText(task?: CHAT.Task) {
   if (!task) {
     return "";
@@ -643,170 +410,6 @@ function resolveTaskSummaryText(task?: CHAT.Task) {
     ""
   );
 }
-
-const SimpleToolCard: FC<{
-  entry: CHAT.TimelineEntry;
-  onClick?: () => void;
-}> = ({ entry, onClick }) => {
-  const clickable = typeof onClick === "function";
-  const { toneClass, surfaceClass, statusText } = (() => {
-    if (entry.status === "error") {
-      return {
-        toneClass: "text-rose-600",
-        surfaceClass: "bg-rose-500/10 ring-rose-500/15",
-        statusText: "异常",
-      };
-    }
-
-    switch (entry.type) {
-      case "deep_search":
-        return {
-          toneClass: "text-[#0071e3]",
-          surfaceClass: "bg-[rgba(0,113,227,0.08)] ring-[rgba(0,113,227,0.12)]",
-          statusText: entry.isFinal ? "已完成" : "搜索中",
-        };
-      case "file":
-        return {
-          toneClass: "text-[#0f766e]",
-          surfaceClass: "bg-[rgba(15,118,110,0.08)] ring-[rgba(15,118,110,0.12)]",
-          statusText: entry.isFinal ? "已生成" : "处理中",
-        };
-      case "browser":
-        return {
-          toneClass: "text-[#7c3aed]",
-          surfaceClass: "bg-[rgba(124,58,237,0.08)] ring-[rgba(124,58,237,0.12)]",
-          statusText: entry.isFinal ? "已完成" : "浏览中",
-        };
-      case "code":
-      case "html":
-      case "markdown":
-        return {
-          toneClass: "text-[#111827]",
-          surfaceClass: "bg-[rgba(17,24,39,0.06)] ring-[rgba(17,24,39,0.10)]",
-          statusText: entry.isFinal ? "已生成" : "生成中",
-        };
-      default:
-        return {
-          toneClass: "text-[#0071e3]",
-          surfaceClass: "bg-[rgba(0,113,227,0.08)] ring-[rgba(0,113,227,0.12)]",
-          statusText: entry.isFinal ? "已完成" : "处理中",
-        };
-    }
-  })();
-
-  const content = entry.content?.trim() || "历史回放仅保存了这一步的摘要信息。";
-
-  return (
-    <div
-      className={`mt-2 flex items-start gap-3 rounded-2xl border border-[rgba(17,24,39,0.06)] px-3 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-all duration-200 ${clickable ? "cursor-pointer hover:-translate-y-[1px] hover:bg-muted/20" : "bg-white/70"}`}
-      onClick={onClick}
-    >
-      <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl ring-1 ${toneClass} ${surfaceClass}`}>
-        <i className={`font_family ${getIcon(entry.type)} text-[17px] leading-none [text-shadow:none]`}></i>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[14px] font-medium text-foreground">{entry.title}</span>
-          <span className="shrink-0 rounded-full bg-[var(--chat-surface-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
-            {statusText}
-          </span>
-        </div>
-        <div className="mt-1 text-[13px] leading-5 text-muted-foreground">
-          {content}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const TimelineReplay: FC<{
-  timeline: CHAT.TimelineEntry[];
-  chat: CHAT.ChatItem;
-  changeTask?: (task: CHAT.Task) => void;
-  changeFile?: (file: CHAT.TFile) => void;
-}> = ({ timeline, chat, changeTask, changeFile }) => {
-  const groups = useMemo(() => groupTimelineEntries(timeline), [timeline]);
-  const lastConclusionIndex = useMemo(
-    () => groups.reduce((result, group, index) => (group.type === "conclusion" ? index : result), -1),
-    [groups]
-  );
-
-  const renderToolEntry = useCallback((entry: CHAT.TimelineEntry, index: number) => {
-    const matchedTask = findTaskByEntry(chat, entry);
-    if (entry.type === "tool_thought") {
-      return (
-        <div key={`${entry.seq}-${index}`} className="mt-2 overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/80 p-3 shadow-[var(--shadow-xs)]">
-          <Reasoning isStreaming={false} defaultOpen className="not-prose mb-0">
-            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
-            <ReasoningContent>{entry.content || ""}</ReasoningContent>
-          </Reasoning>
-        </div>
-      );
-    }
-
-    return (
-      <SimpleToolCard
-        key={`${entry.seq}-${index}`}
-        entry={entry}
-        onClick={matchedTask ? () => changeTask?.(matchedTask) : undefined}
-      />
-    );
-  }, [changeTask, chat]);
-
-  return (
-    <>
-      {groups.map((group, index) => {
-        switch (group.type) {
-          case "thought": {
-            const thoughtContent = group.entries.map((entry) => entry.content || "").join("");
-            return (
-              <div key={`${group.type}-${group.seq}-${index}`} className="mt-6 w-full overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 p-3 shadow-[var(--shadow-sm)] ring-0">
-                <Reasoning isStreaming={false} defaultOpen className="not-prose mb-0">
-                  <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
-                  <ReasoningContent>{thoughtContent}</ReasoningContent>
-                </Reasoning>
-              </div>
-            );
-          }
-          case "plan":
-            return (
-              <div key={`${group.type}-${group.seq}-${index}`} className="mt-6 w-full">
-                <PlanSection plan={extractPlanFromEntry(group.entries[0], chat.plan)} />
-              </div>
-            );
-          case "task_group": {
-            const taskEntry = group.entries[0];
-            const toolEntries = group.entries.slice(1);
-            return (
-              <div key={`${group.type}-${group.seq}-${index}`} className="flex w-full">
-                <div className="relative mb-2 mt-1 w-8 shrink-0 overflow-hidden">
-                  <i className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[#0071e3]"></i>
-                </div>
-                <div className="mb-2 flex-1 overflow-hidden">
-                  <div className="font-[500]">{taskEntry.title}</div>
-                  {toolEntries.map((entry, toolIndex) => renderToolEntry(entry, toolIndex))}
-                </div>
-              </div>
-            );
-          }
-          case "conclusion":
-            return chat.conclusion && index === lastConclusionIndex ? (
-              <div key={`${group.type}-${group.seq}-${index}`} className="w-full">
-                <ConclusionSection chat={chat} changeFile={changeFile} />
-              </div>
-            ) : null;
-          case "tool":
-          default:
-            return (
-              <div key={`${group.type}-${group.seq}-${index}`} className="w-full">
-                {group.entries.map((entry, toolIndex) => renderToolEntry(entry, toolIndex))}
-              </div>
-            );
-        }
-      })}
-    </>
-  );
-};
 
 const ConclusionSection: FC<{
   chat: CHAT.ChatItem;
@@ -857,9 +460,8 @@ const DialogueComponent: FC<Props> = (props) => {
     !!chat.plan ||
     !!chat.tasks.length ||
     !!chat.conclusion;
-  const useTimelineReplay = !chat.loading && !!chat.timeline?.length;
-  const showStandaloneResponse = !!chat.response && !useTimelineReplay && !chat.conclusion;
-  const showReplayResponse = !!chat.response && useTimelineReplay;
+  const showStandaloneResponse =
+    chat.agentType === 0 && !!chat.response && !chat.conclusion;
   const [copied, setCopied] = useState(false);
 
   const changeActiveChat = useCallback((task: CHAT.Task) => {
@@ -937,84 +539,42 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* AI 思考中占位 */}
       {chat.loading && !hasAssistantPayload ? <ThinkingMessage /> : null}
 
-      {useTimelineReplay ? (
+      {/* 思考过程（深度研究模式） */}
+      {!isReactType && thoughtText ? (
+        <div className="mt-6 w-full overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 p-3 shadow-[var(--shadow-sm)] ring-0">
+          <Reasoning isStreaming={chat.loading} defaultOpen className="not-prose mb-0">
+            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
+            <ReasoningContent>{thoughtText}</ReasoningContent>
+          </Reasoning>
+        </div>
+      ) : null}
+
+      {/* 任务计划 */}
+      {!isReactType && chat.plan ? (
         <div className="mt-6 w-full">
-          <TimelineReplay
-            timeline={chat.timeline!}
+          <PlanSection plan={chat.plan} />
+        </div>
+      ) : null}
+
+      {/* 任务时间线 */}
+      {chat.tasks.length ? (
+        <div className="mt-6 w-full">
+          <TimeLine
             chat={chat}
-            changeTask={changeTask}
+            isReactType={isReactType}
+            changeActiveChat={changeActiveChat}
+            changePlan={changePlan}
             changeFile={changeFile}
           />
-          {showReplayResponse ? (
-            <div className="mt-6 flex w-full justify-start">
-              <Message from="assistant" className="w-full max-w-full">
-                <MessageContent>
-                  <MessageResponse isStreaming={false}>{chat.response}</MessageResponse>
-                </MessageContent>
-                <MessageActions className="mt-2">
-                  <MessageAction tooltip="复制" onClick={handleCopy}>
-                    {copied
-                      ? <CheckIcon className="size-4" />
-                      : <CopyIcon className="size-4" />}
-                  </MessageAction>
-                  <MessageAction tooltip="重新生成" onClick={onRegenerate} disabled={!onRegenerate}>
-                    <RefreshCwIcon className="size-4" />
-                  </MessageAction>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <MessageAction tooltip="更多">
-                        <MoreHorizontalIcon className="size-4" />
-                      </MessageAction>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onClick={handleCopy}>复制原文</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </MessageActions>
-              </Message>
-            </div>
-          ) : null}
         </div>
-      ) : (
-        <>
-          {/* 思考过程（深度研究模式） */}
-          {!isReactType && thoughtText ? (
-            <div className="mt-6 w-full overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 p-3 shadow-[var(--shadow-sm)] ring-0">
-              <Reasoning isStreaming={chat.loading} defaultOpen className="not-prose mb-0">
-                <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
-                <ReasoningContent>{thoughtText}</ReasoningContent>
-              </Reasoning>
-            </div>
-          ) : null}
+      ) : null}
 
-          {/* 任务计划 */}
-          {!isReactType && chat.plan ? (
-            <div className="mt-6 w-full">
-              <PlanSection plan={chat.plan} />
-            </div>
-          ) : null}
-
-          {/* 任务时间线 */}
-          {chat.tasks.length ? (
-            <div className="mt-6 w-full">
-              <TimeLine
-                chat={chat}
-                isReactType={isReactType}
-                changeActiveChat={changeActiveChat}
-                changePlan={changePlan}
-                changeFile={changeFile}
-              />
-            </div>
-          ) : null}
-
-          {/* 结论 */}
-          {chat.conclusion ? (
-            <div className="w-full">
-              <ConclusionSection chat={chat} changeFile={changeFile} />
-            </div>
-          ) : null}
-        </>
-      )}
+      {/* 结论 */}
+      {chat.conclusion ? (
+        <div className="w-full">
+          <ConclusionSection chat={chat} changeFile={changeFile} />
+        </div>
+      ) : null}
 
     </div>
   );

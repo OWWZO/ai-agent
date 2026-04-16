@@ -12,6 +12,8 @@ interface FileRendererProps {
   fileUrl: string;
   /** 文件名 */
   fileName?: string;
+  /** 明确的缺失原因 */
+  missingReason?: string;
   /** 自定义样式 */
   className?: string;
 }
@@ -51,11 +53,14 @@ const resolveUnavailableReason = (error: Error) => {
 };
 
 const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
-  const { fileUrl, fileName, className } = props;
+  const { fileUrl, fileName, missingReason, className } = props;
 
   const ext = useMemo(() => getFileExtension(fileName), [fileName]);
 
   const { data, loading, error } = useRequest(async () => {
+    if (missingReason) {
+      throw new Error(missingReason);
+    }
     if (!fileUrl) {
       throw new Error('引用资源不存在或已失效');
     }
@@ -64,7 +69,7 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
       throw new Error('Network response was not ok');
     }
     return await response.text();
-  }, { refreshDeps: [fileUrl] });
+  }, { refreshDeps: [fileUrl, missingReason] });
 
   const markStr = useMemo(() => formatFileContent(ext, data), [ext, data]);
 

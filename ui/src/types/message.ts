@@ -103,6 +103,7 @@ declare global {
       task?: string
       taskId?: string
       messageType: string
+      artifactRefs?: ArtifactReference[]
       resultMap: ResultMap
       requestId: string
       messageId: string
@@ -120,6 +121,7 @@ declare global {
     interface EventData {
       messageOrder: number
       messageType: string
+      artifactRefs?: ArtifactReference[]
       resultMap: Task
       messageId: string
       taskId: string
@@ -176,7 +178,7 @@ declare global {
         pageContent: string
         sourceUrl: string
       }[],
-      steps: Steps[]
+      steps?: Steps[]
     }
 
     interface Steps {

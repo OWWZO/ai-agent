@@ -1,87 +1,150 @@
-# Data Model: 对话历史最终态重构与一致性修复
+# Data Model: 对话细节统一 UI 与最终态历史重构
 
-## 1. ConversationSummary (`ai_agent_conversation`)
+## 1. Conversation Summary
 
-- **Purpose**: 面向历史列表的轻量会话摘要，不承担详情快照职责。
-- **Retained Fields**:
-  - `id`
-  - `session_id`
-  - `device_id`
-  - `user_id`
-  - `title`
-  - `agent_type`
-  - `product_type`
-  - `ai_agent_id`
-  - `ai_agent_name_snapshot`
-  - `message_count`
-  - `pinned`
-  - `last_message_preview`
-  - `create_time`
-  - `update_time`
-  - `deleted`
+### 1.1 `ai_agent_conversation`
+
+- **Purpose**: 历史列表和访问控制用的轻量会话摘要。
+- **Canonical Responsibilities**:
+  - 会话归属：`session_id`、`device_id`、`user_id`
+  - 列表展示：`title`、`agent_type`、`product_type`、`ai_agent_name_snapshot`
+  - 排序与摘要：`message_count`、`pinned`、`last_message_preview`
+  - 生命周期：`create_time`、`update_time`、`deleted`
 - **Validation**:
   - `session_id` 全局唯一。
-  - 列表查询只能返回当前 scope 可访问的会话。
-  - 不新增详情型 JSON 字段。
+  - 不新增任何详情级 JSON 或最终态快照字段。
+  - `message_count` 只反映轮次数，不反映细节块数量。
 
-## 2. ConversationTurn (`ai_agent_message`)
+## 2. Conversation Turn Ledger
 
-- **Purpose**: 表示一次用户请求及其最终完成结果，是历史详情的父级账本。
-- **Retained Fields**:
-  - `id`
-  - `conversation_id`
-  - `request_id`
-  - `sort_order`
-  - `query`
-  - `files_json`
-  - `agent_type`
-  - `response`
-  - `metrics_json`
-  - `status`
-  - `force_stop`
-  - `started_at`
-  - `finished_at`
-  - `create_time`
-  - `update_time`
-  - `deleted`
-- **Role Rules**:
-  - `response` 仍表示单轮最终答案/上下文文本。
-  - 最终界面细节块全部由 `ai_agent_message_event` 承担。
-  - `PLAN_SOLVE` 与 `REACT` 读取结构化细节块；`CHAT` 允许只依赖 `response + files + metrics` 等轻量历史。
+### 2.1 `ai_agent_message`
+
+- **Purpose**: 单轮请求及其终态账本，是最终细节块的父级记录。
+- **Canonical Responsibilities**:
+  - 父级关系：`conversation_id`
+  - 轮次标识：`request_id`、`sort_order`
+  - 输入输出：`query`、`files_json`、`response`
+  - 终态与指标：`status`、`force_stop`、`metrics_json`
+  - 时间：`started_at`、`finished_at`
 - **Validation**:
   - `request_id` 全局唯一。
-  - 同一 `conversation_id` 下 `sort_order` 单调递增。
+  - `(conversation_id, sort_order)` 唯一，保持单调递增。
+  - `response` 继续保存单轮最终回复正文，不承担计划/工具/搜索等结构化细节。
+  - `status` 与 `force_stop` 必须能区分 `completed`、`error`、`force_stop` 三种结束态。
 
-## 3. FinalVisibleDetailEvent (`ai_agent_message_event`)
+### 2.2 Turn Status Mapping
 
-- **Purpose**: 历史详情真正需要读取的最终界面细节表；一条记录只表达一个结束时仍可见的细节块。
-- **Retained Fields**:
-  - `id`
-  - `message_id`
-  - `seq_no`
-  - `event_type`
-  - `event_sub_type`
-  - `display_area`
-  - `task_id`
-  - `task_order`
-  - `title`
-  - `content_text`
-  - `payload_json`
-  - `status`
-  - `create_time`
-  - `deleted`
-- **Removed / Deprecated Fields**:
-  - 仅服务于全过程回放的独立顶层字段继续清理，例如 `message_id_ext`、`is_final`、`started_at`、`ended_at`
-  - 如仍需兼容历史前端匹配，`messageId` / `messageIdExt` 从 `payload_json` 派生，不作为新的真相字段恢复
+| Turn Field | Meaning |
+|-----------|---------|
+| `status = 1, force_stop = 0` | `completed` |
+| `status = 2, force_stop = 0` | `error` |
+| `status = 3, force_stop = 1` | `force_stop` |
+
+## 3. Final Detail Block Snapshot
+
+### 3.1 `ai_agent_message_event`
+
+- **Purpose**: 历史详情的唯一细节真相源，一条记录对应一个最终仍可见的界面块。
+- **Canonical Responsibilities**:
+  - 父级关系：`message_id`
+  - 最终顺序：`seq_no`
+  - 细节类型：`event_type`、`event_sub_type`
+  - 主展示区域：`display_area`
+  - 分组关系：`task_id`、`task_order`
+  - UI 直出文本：`title`、`content_text`
+  - 最终快照：`payload_json`
+  - 终态：`status`
+  - 生命周期：`create_time`、`deleted`
 - **Validation**:
   - `(message_id, seq_no)` 唯一。
-  - 一条记录只表达一个最终界面细节块，不能把多个块压缩成一条摘要。
-  - `display_area` 表示主展示区域。
-  - 若同一细节同时关联工作区和对话区，只保留一条 canonical 记录，通过 payload 的展示关系恢复跨区域展示。
+  - 一条记录只能表达一个最终可见细节块，禁止把多个搜索或多个工具块压缩进同一行。
+  - `seq_no` 表示“对话结束时最终展示顺序”，不是过程回放序号。
+  - `status` 使用终态语义，推荐值为 `completed`、`error`、`force_stop`。
 
-## 4. FinalVisibleDetailEvent Types
+### 3.2 Removed Replay-Only Fields
 
-以下类型只要在对话结束时仍可见，就可以成为最终细节块：
+以下字段不再作为数据库真相字段保留：
+
+- `message_id_ext`
+- `is_final`
+- `started_at`
+- `ended_at`
+
+说明：
+
+- `message_id_ext` 由 `payload_json.messageId` 派生后在 API 层兼容输出。
+- `is_final` 在历史详情 API 中恒定输出 `1`，不需要单独落库。
+
+## 4. Canonical Block Identity And Order
+
+### 4.1 Stable Block Identity
+
+- **Canonical Field**: `payload_json.messageId`
+- **Why**: 当前前端 `combineData`、`handleTaskData`、`Dialogue`、`ActionView` 都已经把 `messageId` 视为任务卡片与工作区联动的稳定标识。
+- **Rule**:
+  - 同一最终细节块在整个 turn 内必须拥有稳定不变的 `messageId`。
+  - 多条同类型块必须使用不同 `messageId`，例如拆分后的多条 `deep_search/search`。
+
+### 4.2 Display Order
+
+- **Canonical Field**: `seq_no`
+- **Rule**:
+  - 历史详情按 `seq_no ASC` 恢复。
+  - `seq_no` 与 `payload_json.messageOrder` 可保持一致，但数据库真相源是 `seq_no`。
+
+## 5. Canonical Detail Payload
+
+### 5.1 `payload_json` Shape
+
+`payload_json` 必须直接兼容前端进行中链路消费的 `MESSAGE.EventData` 语义：
+
+```json
+{
+  "messageType": "task",
+  "messageId": "task-search-1",
+  "taskId": "task-1",
+  "taskOrder": 1,
+  "resultMap": {
+    "messageType": "deep_search",
+    "searchFinish": true,
+    "isFinal": true,
+    "searchResult": {
+      "query": ["华东销量波动原因"],
+      "docs": [[{"title": "示例文档"}]]
+    }
+  },
+  "artifactRefs": [],
+  "presentation": {
+    "primaryArea": "timeline",
+    "relatedAreas": [],
+    "linkedArtifactKeys": []
+  }
+}
+```
+
+### 5.2 Common Payload Fields
+
+| Field | Meaning |
+|-------|---------|
+| `messageType` | 与进行中 `MESSAGE.EventData.messageType` 对齐，通常为 `plan`、`plan_thought`、`task` |
+| `messageId` | 稳定 block identity |
+| `taskId` | 任务分组键 |
+| `taskOrder` | 任务顺序 |
+| `resultMap` | 与进行中一致的结构化内容 |
+| `artifactRefs[]` | 产物引用 canonical 表达 |
+| `presentation` | 时间线与工作区的跨区域关系 |
+
+### 5.3 Presentation Link
+
+| Field | Meaning |
+|-------|---------|
+| `primaryArea` | 与顶层 `display_area` 一致 |
+| `relatedAreas[]` | 同一块还会在哪些区域恢复展示 |
+| `linkedArtifactKeys[]` | 与工作区预览关联的稳定产物键 |
+
+## 6. Supported Final Block Types
+
+以下类型只要在轮次结束时仍可见，就能成为最终细节块：
 
 - `plan_thought`
 - `plan`
@@ -100,63 +163,22 @@
 - `data_analysis`
 - `ppt`
 
-### 4.1 Type Rules
+### 6.1 Type Rules
 
 - `event_type`
-  - 直接对应最终界面细节块类型，优先复用当前前端已识别的消息类型。
-- `event_sub_type`
-  - 用于细分最终状态，例如 `final_state`、`search`、`report`。
-- `display_area`
-  - `timeline`：主显示于对话/时间线区域
-  - `workspace`：主显示于右侧工作区/预览区域
+  - 表示时间线/工作区看到的块类型，用于 `Dialogue` 分组和标题/状态渲染。
+- `payload_json.messageType`
+  - 表示喂给进行中处理链路的核心类型。
+  - 对 `tool_thought`、`tool_result`、`deep_search`、`task_summary` 这类任务内块，通常固定为 `task`，真实子类型放到 `resultMap.messageType`。
 
-## 5. Embedded Payload Model (`payload_json`)
+## 7. API Projection Model
 
-### 5.1 CommonPayload
+### 7.1 `ConversationDetailRespVO`
 
-- `messageType`
-- `messageId`
-- `resultMap`
-- `artifactRefs[]`
-- `presentation`
+- `conversation`: 会话摘要
+- `turns[]`: 单轮明细
 
-### 5.2 PresentationLink
-
-- **Purpose**: 表达同一 canonical 细节块如何在不同界面区域被恢复。
-- **Fields**:
-  - `primaryArea`
-  - `relatedAreas[]`
-  - `linkedArtifactKeys[]`
-- **Validation**:
-  - `primaryArea` 必须与顶层 `display_area` 一致。
-  - `relatedAreas[]` 只表达附加展示关系，不产生第二条真相记录。
-
-### 5.3 ArtifactReference
-
-- **Purpose**: 统一表达工作区文件、HTML、Markdown、报告等最终产物引用。
-- **Fields**:
-  - `artifactType`
-  - `displayName`
-  - `resourceKey`
-  - `downloadUrl`
-  - `previewUrl`
-  - `fileSize`
-  - `mimeType`
-  - `missing`
-  - `missingReason`
-- **Validation**:
-  - 不允许只依赖本地临时路径。
-  - `missing=true` 时必须返回明确原因。
-  - `artifactRefs[]` 是 canonical 表达；`fileInfo/fileList` 只允许在兼容层派生。
-
-## 6. History Detail Projection
-
-### 6.1 ConversationDetailView
-
-- `conversation`: `ConversationSummary`
-- `turns[]`: `ConversationTurnView`
-
-### 6.2 ConversationTurnView
+### 7.2 `ConversationTurnRespVO`
 
 - `requestId`
 - `sortOrder`
@@ -169,9 +191,9 @@
 - `metrics`
 - `startedAt`
 - `finishedAt`
-- `events[]`: `FinalVisibleDetailEventView`
+- `events[]`
 
-### 6.3 FinalVisibleDetailEventView
+### 7.3 `ConversationEventRespVO`
 
 - `seqNo`
 - `eventType`
@@ -183,49 +205,45 @@
 - `title`
 - `contentText`
 - `status`
-- `payload`
 - `isFinal`
+- `payload`
 
-> `messageIdExt` 作为兼容字段继续输出，但从 payload `messageId` 派生。`isFinal` 在 API 层恒定输出 `1`。
+Compatibility 规则：
 
-## 7. Frontend History State
+- `messageIdExt = payload.messageId`
+- `isFinal = 1`
 
-### 7.1 Summary List Cache
+## 8. Frontend Runtime Model
 
-- 只保存会话摘要，不保存细节内容。
+### 8.1 Shared Render Entry
 
-### 7.2 Structured Detail Cache
+- 历史详情进入前端后，应直接恢复为与进行中一致的 `CHAT.ChatItem`。
+- `restoreTurn` 只负责把 `turn + events` 转为 `CHAT.ChatItem`，不再承担“补 plan 结构”“拆多条搜索”“派生 artifact 兼容视图”这类历史专用语义修复。
 
-- 仅用于 `PLAN_SOLVE` 与 `REACT`。
-- 保存 `turns[] + events[]`，输入即最终界面细节块，不再从摘要事件推理思考或工具调用。
+### 8.2 Timeline And Workspace Link
 
-### 7.3 Lightweight Chat Detail
+- 左侧时间线使用 `eventType`、`title`、`contentText`、`payload` 进行分组和点击联动。
+- 右侧工作区通过同一个 `payload.messageId` / `artifactRefs[]` 找到对应任务或文件预览。
+- 同一块既出现在时间线又关联工作区时，只保留一条 canonical event。
 
-- 适用于普通 `CHAT`。
-- 继续以 `response/files/metrics` 为主，不强制接入复杂细节块模型。
+## 9. State Transitions
 
-## 8. State Transitions
+### 9.1 Turn Lifecycle
 
-### 8.1 Turn Lifecycle
+- `STREAMING -> COMPLETED`
+- `STREAMING -> ERROR`
+- `STREAMING -> FORCE_STOP`
 
-- `STREAMING` → `COMPLETED`
-- `STREAMING` → `ERROR`
-- `STREAMING` → `FORCE_STOPPED`
+### 9.2 Final Block Lifecycle
 
-### 8.2 Final Visible Detail Lifecycle
+1. 流式阶段在内存里积累原始增量。
+2. 终态到达时判断哪些块在界面上仍可见。
+3. 将这些块投影为最终快照。
+4. 逐块写入 `ai_agent_message_event`。
+5. 历史详情只读取这些最终快照，不再回放过程增量。
 
-- 流式执行时在内存中积累原始增量
-- 流结束时识别哪些内容最终仍留在界面上
-- 将这些内容投影成最终界面细节块
-- 每个最终细节块写入一条 `ai_agent_message_event`
-- 历史读取只消费这些最终细节块，不再回放所有增量
+## 10. Old Data Strategy
 
-### 8.3 Replacement Rule
-
-- 若某个增量内容在结束前已从界面消失或被后续块替换，则不进入历史最终细节。
-- 若某个思考/工具块结束时仍可见，则以最终文本或最终状态写入历史。
-
-## 9. Old Data Strategy
-
-- 旧历史数据与新模型不兼容时，允许直接删除。
-- 不设计双路径读取、历史迁移脚本或回填逻辑。
+- 旧错误历史数据允许直接删除。
+- 不设计迁移脚本。
+- 不设计双读双写兼容层。

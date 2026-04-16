@@ -360,7 +360,12 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         JSONObject normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(eventDataMap);
-        if ("plan".equals(rawMessageType)) {
+        String payloadMessageType = resolvePayloadMessageType(eventDataMap);
+
+        // 只有初始化计划仍然作为独立 plan 块持久化。
+        // 任务执行过程中更新的 plan 在 live eventData 里属于 task 子块，
+        // 否则历史重开时会把“已完成计划块”错误回放成顶部 plan 面板。
+        if ("plan".equals(payloadMessageType)) {
             return List.of(buildPlanFinalEvent(agentResponse, seqCounter));
         }
         if ("deep_search".equals(rawMessageType) && "search".equals(resolveEventSubType(agentResponse))) {
@@ -368,7 +373,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         return List.of(buildProjectedEvent(
-                resolveFinalDetailKey(agentResponse, eventDataMap, null),
+                resolveFinalDetailKey(agentResponse, eventDataMap, normalizedPayload, null),
                 seqCounter.getAndIncrement(),
                 rawMessageType,
                 resolveFinalEventSubType(agentResponse),
@@ -414,7 +419,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         List<Object> docs = extractObjectList(searchResult == null ? null : searchResult.get("docs"));
         if (queries.isEmpty()) {
             return List.of(buildProjectedEvent(
-                    resolveFinalDetailKey(agentResponse, eventDataMap, null),
+                    resolveFinalDetailKey(agentResponse, eventDataMap, normalizedPayload, null),
                     seqCounter.getAndIncrement(),
                     "deep_search",
                     "search",
@@ -463,7 +468,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             }
 
             events.add(buildProjectedEvent(
-                    resolveFinalDetailKey(agentResponse, eventDataMap, queryText),
+                    resolveFinalDetailKey(agentResponse, eventDataMap, payload, queryText),
                     seqCounter.getAndIncrement(),
                     "deep_search",
                     "search",
@@ -538,9 +543,9 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         // 历史只保留对话结束时仍可见的最终细节。
-        // 最终回复正文已经由 message.response 承担，因此这里继续过滤 agent_stream/result，
-        // 但计划思考和工具思考必须作为最终态细节保留。
-        if (Arrays.asList("agent_stream", "result").contains(messageType)) {
+        // agent_stream 是纯增量正文，最终态不需要回放；
+        // 但 result 里可能挂着最终 summary 产物文件，必须保留给历史详情恢复。
+        if ("agent_stream".equals(messageType)) {
             return false;
         }
 
@@ -554,20 +559,66 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
     private String resolveFinalDetailKey(AgentResponse agentResponse,
                                          Map<String, Object> eventDataMap,
+                                         JSONObject normalizedPayload,
                                          String searchQuery) {
         String messageType = agentResponse.getMessageType();
-        if ("plan".equals(messageType)) {
+        String payloadMessageType = resolvePayloadMessageType(eventDataMap);
+        String taskId = defaultString(valueToString(eventDataMap.get("taskId")));
+        String payloadMessageId = defaultString(resolvePayloadMessageId(normalizedPayload, eventDataMap));
+
+        if ("plan".equals(payloadMessageType)) {
             return "plan";
         }
-        if ("task".equals(messageType)) {
-            return "task|" + defaultString(valueToString(eventDataMap.get("taskId")));
+        if ("task".equals(payloadMessageType)) {
+            String taskMessageType = resolveTaskMessageType(normalizedPayload, messageType);
+            if ("task".equals(taskMessageType)) {
+                return "task|" + taskId;
+            }
+            if ("deep_search".equals(taskMessageType) && "search".equals(resolveEventSubType(agentResponse))) {
+                return "deep_search|search|" + taskId + "|" + defaultString(searchQuery);
+            }
+            return taskMessageType + "|" + taskId + "|" + payloadMessageId;
         }
         if ("deep_search".equals(messageType) && "search".equals(resolveEventSubType(agentResponse))) {
-            return "deep_search|search|" + defaultString(valueToString(eventDataMap.get("taskId")))
+            return "deep_search|search|" + taskId
                     + "|" + defaultString(searchQuery);
         }
-        return messageType + "|" + defaultString(valueToString(eventDataMap.get("taskId")))
-                + "|" + defaultString(agentResponse.getMessageId());
+        return messageType + "|" + taskId + "|" + payloadMessageId;
+    }
+
+    private String resolvePayloadMessageType(Map<String, Object> eventDataMap) {
+        String payloadMessageType = valueToString(eventDataMap.get("messageType"));
+        return StringUtils.hasText(payloadMessageType) ? payloadMessageType : null;
+    }
+
+    private String resolvePayloadMessageId(JSONObject normalizedPayload,
+                                           Map<String, Object> eventDataMap) {
+        String payloadMessageId = normalizedPayload == null ? null : valueToString(normalizedPayload.get("messageId"));
+        if (StringUtils.hasText(payloadMessageId)) {
+            return payloadMessageId;
+        }
+        return valueToString(eventDataMap.get("messageId"));
+    }
+
+    private String resolveTaskMessageType(JSONObject normalizedPayload, String fallbackMessageType) {
+        if (normalizedPayload != null) {
+            JSONObject outerResultMap = normalizedPayload.getJSONObject("resultMap");
+            if (outerResultMap != null) {
+                String outerMessageType = valueToString(outerResultMap.get("messageType"));
+                if (StringUtils.hasText(outerMessageType)) {
+                    return outerMessageType;
+                }
+
+                JSONObject nestedResultMap = outerResultMap.getJSONObject("resultMap");
+                if (nestedResultMap != null) {
+                    String nestedMessageType = valueToString(nestedResultMap.get("messageType"));
+                    if (StringUtils.hasText(nestedMessageType)) {
+                        return nestedMessageType;
+                    }
+                }
+            }
+        }
+        return fallbackMessageType;
     }
 
     private String resolveFinalDisplayArea(String messageType, String eventSubType) {

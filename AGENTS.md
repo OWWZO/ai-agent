@@ -11,6 +11,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 现有文件服务返回的稳定资源 URL / key (004-conversation-history-refactor)
 - Java 17（后端主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5 (005-fix-history-replay)
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 现有文件服务稳定资源引用 (005-fix-history-replay)
+- Java 17（Spring Boot 多模块主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis DAO + Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、ahooks、现有 `ActionView/FilePreview/Dialogue` 组件链 (005-fix-history-replay)
+- MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 文件服务稳定 `artifactRefs` 引用 (005-fix-history-replay)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -58,6 +60,7 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 005-fix-history-replay: Added Java 17（Spring Boot 多模块主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis DAO + Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、ahooks、现有 `ActionView/FilePreview/Dialogue` 组件链
 - 005-fix-history-replay: Added Java 17（后端主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5
 - 004-conversation-history-refactor: Added Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `reactor-tool` 文件上传能力
 

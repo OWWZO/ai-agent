@@ -85,13 +85,13 @@ CREATE TABLE IF NOT EXISTS ai_agent_message_event (
     task_order      INT          NULL     COMMENT '任务内顺序',
     title           VARCHAR(256) NULL     COMMENT '显示标题',
     content_text    MEDIUMTEXT   NULL     COMMENT '展示文本',
-    payload_json    JSON         NULL     COMMENT '结构化扩展负载，包含未来展示字段与 artifactRefs',
+    payload_json    JSON         NULL     COMMENT '最终可见块的结构化快照，包含 canonical payload 与 artifactRefs',
     status          VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'completed/partial/error',
     create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     deleted         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_message_seq (message_id, seq_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 消息事件表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 最终可见细节块快照表';
 
 CREATE TABLE IF NOT EXISTS sales_data (
     row_id INT PRIMARY KEY COMMENT '行 ID',

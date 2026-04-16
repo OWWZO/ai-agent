@@ -18,10 +18,12 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -184,8 +186,26 @@ public class AgentConversationServiceImpl implements IAgentConversationService {
      */
     private Map<Long, List<AgentMessageEvent>> loadEventMap(List<AgentMessage> messages) {
         Map<Long, List<AgentMessageEvent>> eventMap = new LinkedHashMap<>();
+        if (messages == null || messages.isEmpty()) {
+            return eventMap;
+        }
+
+        List<Long> messageIds = messages.stream()
+                .map(AgentMessage::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (messageIds.isEmpty()) {
+            return eventMap;
+        }
+
+        Map<Long, List<AgentMessageEvent>> groupedEvents = new HashMap<>();
+        for (AgentMessageEvent event : messageEventDao.queryByMessageIds(messageIds)) {
+            groupedEvents.computeIfAbsent(event.getMessageId(), key -> new ArrayList<>()).add(event);
+        }
+
         for (AgentMessage message : messages) {
-            List<AgentMessageEvent> events = new ArrayList<>(messageEventDao.queryByMessageId(message.getId()));
+            List<AgentMessageEvent> events = new ArrayList<>(
+                    groupedEvents.getOrDefault(message.getId(), List.of()));
             events.sort(Comparator.comparing(AgentMessageEvent::getSeqNo));
             eventMap.put(message.getId(), events);
         }

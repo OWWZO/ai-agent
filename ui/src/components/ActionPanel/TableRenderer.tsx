@@ -36,8 +36,12 @@ const TableRenderer: ReactorType.FC<{
    * 文件名
    */
   fileName?: string;
+  /**
+   * 明确的缺失原因
+   */
+  missingReason?: string;
 }> = (props) => {
-  const { fileUrl, mode, fileName } = props;
+  const { fileUrl, mode, fileName, missingReason } = props;
 
   const ext = (fileName || fileUrl).split('.').pop()?.toLowerCase();
 
@@ -45,6 +49,9 @@ const TableRenderer: ReactorType.FC<{
 
   // 拉取 CSV 文本
   const { data, loading, error } = useRequest(async () => {
+    if (missingReason) {
+      throw new Error(missingReason);
+    }
     if (!fileUrl) {
       throw new Error('引用资源不存在或已失效');
     }
@@ -57,7 +64,7 @@ const TableRenderer: ReactorType.FC<{
 
     return res.text();
   },
-  { refreshDeps: [fileUrl] }
+  { refreshDeps: [fileUrl, missingReason] }
   );
 
   // 解析 CSV

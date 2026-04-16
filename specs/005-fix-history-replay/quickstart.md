@@ -1,8 +1,8 @@
-# Quickstart: 对话历史最终态重构与一致性修复
+# Quickstart: 对话细节统一 UI 与最终态历史重构
 
 ## 1. 切换前准备
 
-旧历史数据与新模型不兼容，切换前先清理：
+本次不兼容旧错误历史数据，切换前先清理：
 
 ```sql
 DELETE FROM ai_agent_message_event;
@@ -10,20 +10,28 @@ DELETE FROM ai_agent_message;
 DELETE FROM ai_agent_conversation;
 ```
 
-然后应用最新的 `schema.sql` 与 Mapper XML。
+然后同步最新的：
+
+- `ai-agent-station-study-app/src/main/resources/db/schema.sql`
+- `ai-agent-station-study-app/src/main/resources/mybatis/mapper/ai_agent_message_mapper.xml`
+- `ai-agent-station-study-app/src/main/resources/mybatis/mapper/ai_agent_message_event_mapper.xml`
+- 历史详情相关 VO / Service / UI 代码
 
 ## 2. 回归验证命令
 
-### Java
+### 2.1 Java
 
 ```bash
 mvn -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ConversationHistoryPersistenceTest,ConversationHistoryDetailApiTest,ConversationHistoryArtifactTest test
-mvn -pl ai-agent-station-study-domain,ai-agent-station-study-trigger,ai-agent-station-study-app -am -DskipTests=false test
 ```
 
-说明：第一条命令带 `-am`，避免 `ai-agent-station-study-app` 在单独执行定向测试时因为依赖模块未先编译而失败。
+如有新增终态和批量查询用例，再补充对应测试类：
 
-### UI
+```bash
+mvn -pl ai-agent-station-study-app -am -DskipTests=false test
+```
+
+### 2.2 UI
 
 ```bash
 cd ui
@@ -33,56 +41,65 @@ npm run build
 
 ## 3. 手工验收路径
 
-### 场景 A: `PLAN_SOLVE` 历史恢复 1:1 最终界面细节
+### 场景 A: `PLAN_SOLVE` 结束态与历史重开是同一套 UI
 
 1. 启动后端与前端。
-2. 发起一条 `PLAN_SOLVE` 对话，让它产生：
-   - 思考过程面板
-   - 计划面板
+2. 发起一条 `PLAN_SOLVE` 对话，确保它在进行中界面里出现：
+   - 思考过程块
+   - 计划块
    - 至少一个任务分组
-   - 多个工具调用/搜索/总结细节卡片
-   - 最终答案
-3. 在对话结束时记录这些细节块的数量、顺序和主要文案。
-4. 刷新页面，重新打开该会话。
-5. 确认历史详情仍展示相同数量、相同顺序、相同主要文案的最终细节块，而不是退化成少量摘要。
+   - 多个工具/搜索/总结细节块
+   - 右侧工作区内容
+3. 在对话结束时记录左侧与右侧界面的块顺序、标题、状态、可点击入口。
+4. 刷新页面并重新打开同一会话。
+5. 确认历史详情仍然使用相同的 `ChatView + Dialogue + ActionView/FilePreview` 体验，而不是历史专用布局。
 
-### 场景 B: 计划完成态不回退
+### 场景 B: 多条同类搜索块不丢失
 
-1. 发起一条带多个计划步骤的深度思考对话。
-2. 等待其执行完成，确认页面中多个步骤已显示为完成。
-3. 刷新页面并重新打开该会话。
-4. 确认计划组件仍显示最终完成态，不回退为初始计划状态，也不退化成单条“计划完成”摘要。
+1. 发起一条会产生多条 `deep_search/search` 的结构化对话。
+2. 在结束时记录这些搜索块的数量与顺序。
+3. 刷新并重开历史。
+4. 确认历史中逐条显示相同数量的搜索块，不再只剩第一条。
 
-### 场景 C: 工作区结果可再次预览
+### 场景 C: 计划完成态不回退
+
+1. 发起一条多步骤 `PLAN_SOLVE` 会话。
+2. 等待多个计划步骤显示为 `completed`。
+3. 刷新并重开历史。
+4. 确认计划块仍显示相同的完成态，不退回初始计划组件。
+
+### 场景 D: `REACT` 会话也走同一套界面
+
+1. 发起一条 `REACT` 会话。
+2. 等待它出现搜索、总结、结果块和右侧工作区内容。
+3. 记录结束时界面结构。
+4. 刷新并重开历史。
+5. 确认历史详情与结束时的进行中界面 1:1 对齐。
+
+### 场景 E: `error` / `force_stop` 终态仍保留最后可见细节
+
+1. 发起一条结构化会话，让它在出现思考、计划或工具细节后异常结束，或手动停止。
+2. 记录结束瞬间界面上最后仍可见的细节块。
+3. 刷新并重开历史。
+4. 确认历史仍显示这些块，并明确显示该轮为 `error` 或 `force_stop`。
+
+### 场景 F: 工作区产物可再次预览，缺失时可解释
 
 1. 发起一条会生成 HTML/Markdown/文件结果的结构化会话。
-2. 对话结束后刷新页面并重新打开会话。
-3. 在右侧工作区或历史关联入口中点击最终产物。
-4. 确认可正常预览，且相关时间线细节与工作区结果保持关联。
+2. 在结束时记录右侧工作区和左侧相关入口。
+3. 刷新并重开历史，点击同一入口。
+4. 确认预览正常，或看到明确缺失原因，而不是 `Failed to fetch`。
 
-### 场景 D: Artifact 缺失态可解释
+### 场景 G: 普通 `CHAT` 不被结构化历史破坏
 
-1. 复用场景 C 的一条历史记录。
-2. 让对应稳定引用失效或删除文件资源。
-3. 重新打开会话并点击该结果。
-4. 确认页面显示明确的“引用内容不可读取/资源已失效”状态，而不是通用 `Failed to fetch`。
-
-### 场景 E: `REACT` 历史也恢复最终界面细节
-
-1. 发起一条 `REACT` 对话并完成。
-2. 记录其结束时仍可见的思考/工具/搜索/结果细节。
-3. 刷新页面并重新打开历史会话。
-4. 确认这些最终可见细节继续存在，且没有因为 005 收敛而只剩摘要。
-
-### 场景 F: 普通 `CHAT` 轻量历史不回归
-
-1. 发起一条普通 `CHAT` 对话并完成。
-2. 刷新页面并重新打开该会话。
-3. 确认聊天历史仍正常展示最终答案与基础上下文，没有被结构化细节模型破坏。
+1. 发起一条普通 `CHAT` 会话并完成。
+2. 刷新并重开历史。
+3. 确认普通聊天仍维持轻量展示，不被强行迁移为复杂多区块视图。
 
 ## 4. 验收关注点
 
-- 历史恢复对齐的是“对话结束时界面最终仍可见的细节块”，不是实时执行轨迹。
-- 若某段瞬时增量在结束前已从界面消失，则不要求在历史中重放。
-- 若某个思考/工具块结束时仍可见，则必须在历史中完整保留。
-- 同一份同时出现在对话区和工作区的内容应保持单一真相源，不能出现两份内容漂移的拷贝。
+- 历史与进行中共用的是同一套 UI 基线，不只是“内容大致相似”。
+- 历史详情 `payload` 必须可以直接喂给前端已有的 `combineData/handleTaskData` 处理路径。
+- 每个最终可见块一条 event 记录，不能把多条搜索或多条工具块合并后再读时拆。
+- `completed`、`error`、`force_stop` 三类终态都必须保留最后可见界面。
+- 工作区预览依赖稳定 `artifactRefs[]`，缺失态必须显式可见。
