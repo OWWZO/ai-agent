@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-12
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-16
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -9,6 +9,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - 文件系统中的运行时 skill 目录；现有文件服务用于脚本输出文件上传；无新增数据库表 (002-agent-skill-mechanism)
 - Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `reactor-tool` 文件上传能力 (004-conversation-history-refactor)
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 现有文件服务返回的稳定资源 URL / key (004-conversation-history-refactor)
+- Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有文件服务/`artifactRefs` 归一化能力 (005-fix-history-replay)
+- MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 稳定文件资源 URL / key (005-fix-history-replay)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -56,9 +58,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 005-fix-history-replay: Added Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有文件服务/`artifactRefs` 归一化能力
 - 004-conversation-history-refactor: Added Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `reactor-tool` 文件上传能力
 - 002-agent-skill-mechanism: Added Java 17（Spring Boot 多模块主链路）；Python 3.11+（`reactor-tool`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、FastJSON 1.2.83、OkHttp 4.9.3、FastAPI、Pydantic v2、PyYAML
-- 001-fix-role-library: Added Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI
 
 
 <!-- MANUAL ADDITIONS START -->
