@@ -35,3 +35,18 @@ logging:
     root: info
     cn.bugstack.ai: debug
   config: classpath:logback-spring.xml
+
+autobots:
+  autoagent:
+    skill:
+      enabled: false
+      # 测试环境默认指向仓库内运行时目录，便于用测试夹具覆盖
+      directories:
+        - ${user.dir}/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      default-script-timeout-seconds: 120

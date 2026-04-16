@@ -1,0 +1,152 @@
+package org.wwz.ai.domain.agent.reactor.agent.tool.factory;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.CodeInterpreterTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.DataAnalysisTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.FileTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.ReportTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.GlobTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.GrepTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.ListDirectoryTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.ReadTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.ScriptRunnerTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.SkillTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
+import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptRunnerClient;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * 统一构建 PlanSolve / ReAct 的工具集合，避免节点层重复拼装。
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class AgentToolCollectionFactory {
+
+    private final ReactorConfig reactorConfig;
+    private final McpToolExecutor mcpToolExecutor;
+    private final SkillRegistry skillRegistry;
+    private final SkillRuntimeOptions skillRuntimeOptions;
+    private final SkillScriptRunnerClient skillScriptRunnerClient;
+
+    public ToolCollection buildForReact(AgentContext agentContext, AgentRequest request) {
+        return build(agentContext, request, SkillAttachScope.REACT);
+    }
+
+    public ToolCollection buildForPlanSolve(AgentContext agentContext, AgentRequest request) {
+        return build(agentContext, request, SkillAttachScope.PLAN_SOLVE);
+    }
+
+    private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
+        ToolCollection toolCollection = new ToolCollection();
+        toolCollection.setAgentContext(agentContext);
+        toolCollection.setMcpToolExecutor(mcpToolExecutor);
+
+        if ("dataAgent".equals(request.getOutputStyle())) {
+            ReportTool reportTool = new ReportTool();
+            reportTool.setAgentContext(agentContext);
+            toolCollection.addTool(reportTool);
+
+            DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
+            dataAnalysisTool.setAgentContext(agentContext);
+            toolCollection.addTool(dataAnalysisTool);
+        } else {
+            FileTool fileTool = new FileTool();
+            fileTool.setAgentContext(agentContext);
+            toolCollection.addTool(fileTool);
+
+            List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
+                            .getOrDefault("default", "search,code,report")
+                            .split(","))
+                    .map(String::trim)
+                    .filter(item -> !item.isEmpty())
+                    .toList();
+
+            if (agentToolList.contains("code")) {
+                CodeInterpreterTool codeInterpreterTool = new CodeInterpreterTool();
+                codeInterpreterTool.setAgentContext(agentContext);
+                toolCollection.addTool(codeInterpreterTool);
+            }
+            if (agentToolList.contains("report")) {
+                ReportTool reportTool = new ReportTool();
+                reportTool.setAgentContext(agentContext);
+                toolCollection.addTool(reportTool);
+            }
+            if (agentToolList.contains("search")) {
+                DeepSearchTool deepSearchTool = new DeepSearchTool();
+                deepSearchTool.setAgentContext(agentContext);
+                toolCollection.addTool(deepSearchTool);
+            }
+            if (agentToolList.contains("data_analysis")) {
+                DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
+                dataAnalysisTool.setAgentContext(agentContext);
+                toolCollection.addTool(dataAnalysisTool);
+            }
+            if (shouldAttachSkillTools(attachScope)) {
+                registerSkillTools(toolCollection, agentContext);
+            }
+        }
+
+        try {
+            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
+                toolCollection.addMcpTool(toolInfo);
+            }
+        } catch (Exception e) {
+            log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
+        }
+        return toolCollection;
+    }
+
+    private boolean shouldAttachSkillTools(SkillAttachScope attachScope) {
+        if (!skillRegistry.isEnabled() || skillRegistry.listSkills().isEmpty()) {
+            return false;
+        }
+        return switch (attachScope) {
+            case REACT -> skillRuntimeOptions.isReactEnabled();
+            case PLAN_SOLVE -> skillRuntimeOptions.isPlanSolveEnabled();
+        };
+    }
+
+    private void registerSkillTools(ToolCollection toolCollection, AgentContext agentContext) {
+        SkillTool skillTool = new SkillTool(skillRegistry);
+        skillTool.setAgentContext(agentContext);
+        toolCollection.addTool(skillTool);
+
+        ReadTool readTool = new ReadTool(skillRegistry, skillRuntimeOptions);
+        readTool.setAgentContext(agentContext);
+        toolCollection.addTool(readTool);
+
+        ListDirectoryTool listDirectoryTool = new ListDirectoryTool(skillRegistry, skillRuntimeOptions);
+        listDirectoryTool.setAgentContext(agentContext);
+        toolCollection.addTool(listDirectoryTool);
+
+        GlobTool globTool = new GlobTool(skillRegistry, skillRuntimeOptions);
+        globTool.setAgentContext(agentContext);
+        toolCollection.addTool(globTool);
+
+        GrepTool grepTool = new GrepTool(skillRegistry, skillRuntimeOptions);
+        grepTool.setAgentContext(agentContext);
+        toolCollection.addTool(grepTool);
+
+        ScriptRunnerTool scriptRunnerTool = new ScriptRunnerTool(skillRegistry, skillRuntimeOptions, skillScriptRunnerClient);
+        scriptRunnerTool.setAgentContext(agentContext);
+        toolCollection.addTool(scriptRunnerTool);
+    }
+
+    private enum SkillAttachScope {
+        REACT,
+        PLAN_SOLVE
+    }
+}

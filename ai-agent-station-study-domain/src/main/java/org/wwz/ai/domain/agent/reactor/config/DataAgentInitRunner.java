@@ -17,10 +17,10 @@ import org.wwz.ai.domain.agent.reactor.data.jdbc.connection.JdbcConnectionFactor
 import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
 import org.wwz.ai.domain.agent.reactor.service.QdrantService;
+import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
 
 import java.sql.Connection;
-import java.util.Collections;
 
 @Slf4j
 @Component
@@ -34,6 +34,8 @@ public class DataAgentInitRunner implements CommandLineRunner {
     private ChatModelInfoService chatModelInfoService;
     @Autowired
     private ColumnValueSyncService columnValueSyncService;
+    @Autowired(required = false)
+    private SkillRegistry skillRegistry;
 
 
     @Override
@@ -73,6 +75,15 @@ public class DataAgentInitRunner implements CommandLineRunner {
         if (esConfig.getEnable()) {
             columnValueSyncService.initColumnValueIndex();
             log.info("column value es index init success");
+        }
+
+        if (skillRegistry != null) {
+            try {
+                skillRegistry.refresh();
+                log.info("skill registry init success, loaded skills={}", skillRegistry.listSkills().size());
+            } catch (Exception e) {
+                log.error("Failed to init skill registry", e);
+            }
         }
     }
 }

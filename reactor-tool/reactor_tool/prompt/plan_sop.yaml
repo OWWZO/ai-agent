@@ -1,0 +1,14 @@
+
+high_mode_prompt: |-
+  以下是提供给你的标准作业程序SOP(Standard Operating Procedure)，你必须调用工具，严格生成如SOP所示的计划列表（SOP编号是用于区分不同的标准作业程序，禁止在输出中提及SOP编号）。
+
+common_mode_prompt: |-
+  以下是提供给你的标准作业程序SOP(Standard Operating Procedure)，参考提供的{{sop_length}}个SOP，使用工具来生成解决用户问题的计划列表（SOP编号是用于区分不同的标准作业程序，禁止在输出中提及SOP编号）。\n
+
+no_sop_mode_prompt: |-
+  你有丰富的世界知识和经验，并会通过使用标准作业程序SOP(Standard Operating Procedure)来完成用户的任务或问题。你必须生成一个计划来完成，格式如下：
+  执行顺序1. 任务标题: 任务的具体执行要求及步骤。
+  示例如下：## 示例任务1：分析 xxxx\n任务列表
+  - 执行顺序1. 信息收集：收集xxxx
+  - 执行顺序2. 筛选分析：xxxx，分析并保存成Markdown文件
+  - 执行顺序3. 输出结果：以网页形式呈现分析报告，调用网页生成工具

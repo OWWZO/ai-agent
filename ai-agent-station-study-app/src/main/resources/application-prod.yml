@@ -45,3 +45,18 @@ spring:
     agent:
       chat:
         default-role-id: 85374287
+
+autobots:
+  autoagent:
+    skill:
+      enabled: false
+      # 生产环境建议挂载独立目录，默认仍保留仓库约定路径
+      directories:
+        - ${user.dir}/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      default-script-timeout-seconds: 120
