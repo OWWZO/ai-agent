@@ -11,14 +11,10 @@
         <result column="display_area" property="displayArea"/>
         <result column="task_id" property="taskId"/>
         <result column="task_order" property="taskOrder"/>
-        <result column="message_id_ext" property="messageIdExt"/>
         <result column="title" property="title"/>
         <result column="content_text" property="contentText"/>
         <result column="payload_json" property="payloadJson"/>
-        <result column="is_final" property="isFinal"/>
         <result column="status" property="status"/>
-        <result column="started_at" property="startedAt"/>
-        <result column="ended_at" property="endedAt"/>
         <result column="create_time" property="createTime"/>
         <result column="deleted" property="deleted"/>
     </resultMap>
@@ -27,15 +23,15 @@
         INSERT INTO ai_agent_message_event (
             message_id, seq_no,
             event_type, event_sub_type, display_area, task_id, task_order,
-            message_id_ext, title, content_text, payload_json,
-            is_final, status, started_at, ended_at, create_time, deleted
+            title, content_text, payload_json,
+            status, create_time, deleted
         ) VALUES
         <foreach collection="events" item="item" separator=",">
             (
                 #{item.messageId}, #{item.seqNo},
                 #{item.eventType}, #{item.eventSubType}, #{item.displayArea}, #{item.taskId}, #{item.taskOrder},
-                #{item.messageIdExt}, #{item.title}, #{item.contentText}, #{item.payloadJson},
-                #{item.isFinal}, #{item.status}, #{item.startedAt}, #{item.endedAt}, now(), #{item.deleted}
+                #{item.title}, #{item.contentText}, #{item.payloadJson},
+                #{item.status}, now(), #{item.deleted}
             )
         </foreach>
     </insert>

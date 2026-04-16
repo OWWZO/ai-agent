@@ -35,6 +35,9 @@ public class ConversationHistoryDetailApiTest {
         Assert.assertNotNull(response.getData());
         Assert.assertEquals(1, response.getData().getTurns().size());
         Assert.assertEquals(1, response.getData().getTurns().get(0).getEvents().size());
+        Assert.assertEquals("plan", response.getData().getTurns().get(0).getEvents().get(0).getEventType());
+        Assert.assertEquals("final_state", response.getData().getTurns().get(0).getEvents().get(0).getEventSubType());
+        Assert.assertEquals(Integer.valueOf(1), response.getData().getTurns().get(0).getEvents().get(0).getIsFinal());
     }
 
     @Test
@@ -82,13 +85,21 @@ public class ConversationHistoryDetailApiTest {
                             .events(List.of(
                                     ConversationEventDetail.builder()
                                             .seqNo(1)
-                                            .eventType("plan_thought")
+                                            .eventType("plan")
+                                            .eventSubType("final_state")
                                             .displayArea("timeline")
-                                            .title("思考中")
-                                            .contentText("先拆解问题")
+                                            .title("执行计划")
+                                            .contentText("全部计划已完成")
                                             .status("completed")
                                             .isFinal(1)
-                                            .payload(java.util.Map.of("messageType", "plan_thought"))
+                                            .payload(java.util.Map.of(
+                                                    "messageType", "plan",
+                                                    "messageId", "plan-final-1",
+                                                    "resultMap", java.util.Map.of(
+                                                            "title", "执行计划",
+                                                            "steps", List.of("确认范围", "检索资料", "整理结论"),
+                                                            "stepStatus", List.of("completed", "completed", "completed")
+                                                    )))
                                             .build()
                             ))
                             .build()

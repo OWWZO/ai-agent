@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class OrderedEvent {
 
+    /** 内存投影阶段使用的逻辑去重键，不参与持久化 */
+    private String dedupKey;
     private Integer seqNo;
     private String eventType;
     private String eventSubType;

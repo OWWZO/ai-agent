@@ -74,7 +74,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
           title="HTML preview"
           onLoad={stopLoading}
           onError={() => {
-            setError("加载失败，请检查 URL 是否正确");
+            setError("引用资源不存在或已失效");
             stopLoading();
           }}
         />

@@ -2,7 +2,8 @@ import { FC, useState, useCallback, useMemo, memo } from "react";
 import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { buildAction, getIcon, buildAttachment } from "@/utils/chat";
+import { buildAction, getIcon } from "@/utils/chat";
+import { getTaskFiles } from "@/utils/historyArtifacts";
 import {
   Message,
   MessageContent,
@@ -42,70 +43,153 @@ type Props = {
   onRegenerate?: () => void;
 };
 
-const PlanSection: FC<{ plan: CHAT.PlanItem[] }> = memo(({ plan }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
-    className="overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 px-4 py-4 shadow-[var(--shadow-sm)] ring-0"
-  >
-    <div className="mb-4 flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/95 text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
-        <Layers className="h-5 w-5" strokeWidth={1.75} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--chat-text-muted)]">
-          研究路线
-        </p>
-        <p
-          className="text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]"
-          style={{ fontFamily: "var(--font-sans)" }}
-        >
-          任务计划
-        </p>
-      </div>
-    </div>
-    <div className="space-y-2.5">
-      {plan.map((p, i) => (
-        <motion.div
-          key={`${p.name}-${i}`}
-          initial={{ opacity: 0, x: -6 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{
-            delay: Math.min(i * 0.06, 0.36),
-            duration: 0.22,
-            ease: [0.25, 0.46, 0.45, 0.94],
-          }}
-          className="rounded-xl bg-[var(--chat-surface)]/75 px-3 py-3 shadow-[var(--shadow-xs)]"
-        >
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-surface-muted)] text-[12px] font-semibold tabular-nums text-[var(--chat-text-soft)]">
-              {i + 1}
-            </span>
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
-                {p.name}
-              </div>
-              <ul className="space-y-1.5">
-                {p.list.map((step, j) => (
-                  <li
-                    key={j}
-                    className="flex gap-2 text-[13px] leading-relaxed text-[var(--chat-text-soft)]"
-                  >
-                    <span className="w-5 shrink-0 pt-px font-mono text-[11px] tabular-nums text-[var(--chat-text-muted)]">
-                      {j + 1}.
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+const normalizePlanForDisplay = (plan?: CHAT.Plan) => {
+  if (!plan) {
+    return null;
+  }
+
+  const steps = Array.isArray(plan.steps) ? plan.steps : [];
+  const stages =
+    Array.isArray(plan.stages) && plan.stages.length ? plan.stages : steps;
+  const stepStatus =
+    Array.isArray(plan.stepStatus) && plan.stepStatus.length
+      ? plan.stepStatus
+      : Array.from({ length: stages.length }, () => "completed");
+
+  return {
+    title: plan.title || "执行计划",
+    stages,
+    steps,
+    stepStatus,
+  };
+};
+
+const resolvePlanStepDetail = (plan: ReturnType<typeof normalizePlanForDisplay>, index: number) => {
+  if (!plan) {
+    return "";
+  }
+
+  if (
+    Array.isArray(plan.stages) &&
+    Array.isArray(plan.steps) &&
+    plan.stages[index] === plan.steps[index]
+  ) {
+    return "";
+  }
+
+  return plan.steps[index] || "";
+};
+
+const resolvePlanStepTone = (status?: string) => {
+  switch (status) {
+    case "completed":
+      return {
+        badgeClass: "bg-[#0071e3]/10 text-[#0071e3]",
+        dotClass: "bg-[#0071e3]",
+        label: "已完成",
+      };
+    case "in_progress":
+      return {
+        badgeClass: "bg-amber-500/10 text-amber-600",
+        dotClass: "bg-amber-500",
+        label: "进行中",
+      };
+    default:
+      return {
+        badgeClass: "bg-[var(--chat-surface-muted)] text-[var(--chat-text-muted)]",
+        dotClass: "bg-[var(--chat-text-muted)]",
+        label: "未开始",
+      };
+  }
+};
+
+const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
+  const normalizedPlan = useMemo(() => normalizePlanForDisplay(plan), [plan]);
+
+  if (!normalizedPlan || !normalizedPlan.stages.length) {
+    return null;
+  }
+
+  const completedCount = normalizedPlan.stepStatus.filter(
+    (status) => status === "completed"
+  ).length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className="overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 px-4 py-4 shadow-[var(--shadow-sm)] ring-0"
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/95 text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
+            <Layers className="h-5 w-5" strokeWidth={1.75} />
           </div>
-        </motion.div>
-      ))}
-    </div>
-  </motion.div>
-));
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--chat-text-muted)]">
+              研究路线
+            </p>
+            <p
+              className="text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--chat-text)]"
+              style={{ fontFamily: "var(--font-sans)" }}
+            >
+              {normalizedPlan.title}
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+          {completedCount}/{normalizedPlan.stages.length}
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        {normalizedPlan.stages.map((stage, index) => {
+          const status = normalizedPlan.stepStatus[index];
+          const tone = resolvePlanStepTone(status);
+          const stepDetail = resolvePlanStepDetail(normalizedPlan, index);
+
+          return (
+            <motion.div
+              key={`${stage}-${index}`}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{
+                delay: Math.min(index * 0.06, 0.36),
+                duration: 0.22,
+                ease: [0.25, 0.46, 0.45, 0.94],
+              }}
+              className="rounded-xl bg-[var(--chat-surface)]/75 px-3 py-3 shadow-[var(--shadow-xs)]"
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-surface-muted)] text-[12px] font-semibold tabular-nums text-[var(--chat-text-soft)]">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
+                      {stage}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone.badgeClass}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${tone.dotClass}`}></span>
+                      {tone.label}
+                    </span>
+                  </div>
+                  {stepDetail ? (
+                    <p className="mt-2 text-[13px] leading-relaxed text-[var(--chat-text-soft)]">
+                      {stepDetail}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+});
 
 PlanSection.displayName = "PlanSection";
 
@@ -165,10 +249,10 @@ const ToolItem: FC<{
       );
     }
     case "task_summary": {
-      const attachmentFiles = buildAttachment(tool.resultMap?.fileInfo || tool.resultMap?.fileList);
+      const attachmentFiles = getTaskFiles(tool);
       return (
         <div className="mt-[8px]">
-          <div className="mb-[8px]">{tool.resultMap.taskSummary}</div>
+          <div className="mb-[8px]">{resolveTaskSummaryText(tool) || "任务已完成"}</div>
           <AttachmentList
             files={attachmentFiles}
             preview={true}
@@ -384,6 +468,11 @@ function groupTimelineEntries(timeline: CHAT.TimelineEntry[]): TimelineGroup[] {
       return;
     }
 
+    if (entry.type === "task_summary") {
+      groups.push({ type: "conclusion", seq: entry.seq, entries: [entry], taskId: entry.taskId });
+      return;
+    }
+
     if (entry.type === "task") {
       groups.push({ type: "task_group", seq: entry.seq, entries: [entry], taskId: entry.taskId });
       return;
@@ -407,13 +496,82 @@ function groupTimelineEntries(timeline: CHAT.TimelineEntry[]): TimelineGroup[] {
 }
 
 function findTaskByEntry(chat: CHAT.ChatItem, entry: CHAT.TimelineEntry): CHAT.Task | undefined {
+  const resolveEntryMessageType = () => {
+    if (entry.payload?.messageType && entry.payload.messageType !== "task") {
+      return entry.payload.messageType;
+    }
+
+    const payloadResultMap =
+      entry.payload?.resultMap && typeof entry.payload.resultMap === "object"
+        ? (entry.payload.resultMap as Record<string, any>)
+        : undefined;
+    if (typeof payloadResultMap?.messageType === "string" && payloadResultMap.messageType) {
+      return payloadResultMap.messageType;
+    }
+
+    return entry.type;
+  };
+
+  const resolveTaskMessageType = (task: CHAT.Task) => {
+    if (task.messageType && task.messageType !== "task") {
+      return task.messageType;
+    }
+
+    if (
+      task.resultMap &&
+      typeof task.resultMap === "object" &&
+      typeof task.resultMap.messageType === "string" &&
+      task.resultMap.messageType
+    ) {
+      return task.resultMap.messageType;
+    }
+
+    return task.messageType;
+  };
+
+  const resolveEntrySearchQuery = () => {
+    const payloadResultMap =
+      entry.payload?.resultMap && typeof entry.payload.resultMap === "object"
+        ? (entry.payload.resultMap as Record<string, any>)
+        : undefined;
+    const nestedResultMap =
+      payloadResultMap?.resultMap && typeof payloadResultMap.resultMap === "object"
+        ? (payloadResultMap.resultMap as Record<string, any>)
+        : undefined;
+    const searchResult =
+      nestedResultMap?.searchResult && typeof nestedResultMap.searchResult === "object"
+        ? (nestedResultMap.searchResult as Record<string, any>)
+        : undefined;
+    const query = searchResult?.query ?? nestedResultMap?.query;
+
+    if (Array.isArray(query)) {
+      return query.map((item) => String(item || "").trim()).find(Boolean) || "";
+    }
+
+    return query == null ? "" : String(query).trim();
+  };
+
+  const resolveTaskSearchQuery = (task: CHAT.Task) => {
+    const query = task.resultMap?.searchResult?.query;
+    if (Array.isArray(query)) {
+      return query.map((item) => String(item || "").trim()).find(Boolean) || "";
+    }
+
+    return query == null ? "" : String(query).trim();
+  };
+
+  const entryMessageType = resolveEntryMessageType();
+  const entrySearchQuery = entry.type === "deep_search" ? resolveEntrySearchQuery() : "";
+
   const matchTask = (task: CHAT.Task) => {
-    if (task.messageType !== entry.type) {
+    if (resolveTaskMessageType(task) !== entryMessageType) {
       return false;
     }
 
     if (entry.messageIdExt) {
-      return task.messageId === entry.messageIdExt;
+      if (task.messageId === entry.messageIdExt) {
+        return true;
+      }
     }
 
     if (entry.taskId && task.taskId !== entry.taskId) {
@@ -422,6 +580,10 @@ function findTaskByEntry(chat: CHAT.ChatItem, entry: CHAT.TimelineEntry): CHAT.T
 
     if (entry.subType && task.resultMap?.messageType && task.resultMap.messageType !== entry.subType) {
       return false;
+    }
+
+    if (entrySearchQuery) {
+      return resolveTaskSearchQuery(task) === entrySearchQuery;
     }
 
     return Boolean(entry.taskId && task.taskId === entry.taskId);
@@ -440,7 +602,46 @@ function findTaskByEntry(chat: CHAT.ChatItem, entry: CHAT.TimelineEntry): CHAT.T
     }
   }
 
+  for (const group of chat.multiAgent?.tasks || []) {
+    for (const rawTask of group) {
+      const candidate = {
+        ...(rawTask as CHAT.Task),
+        id:
+          (rawTask as CHAT.Task).id ||
+          rawTask.messageId ||
+          `${rawTask.taskId || entry.taskId || entry.type}-${entry.seq}`,
+      } as CHAT.Task;
+      if (matchTask(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
   return undefined;
+}
+
+function extractPlanFromEntry(entry: CHAT.TimelineEntry, fallbackPlan?: CHAT.Plan) {
+  const payload = entry.payload;
+  if (payload?.messageType === "plan" && payload.resultMap) {
+    return payload.resultMap as CHAT.Plan;
+  }
+  return fallbackPlan;
+}
+
+function resolveTaskSummaryText(task?: CHAT.Task) {
+  if (!task) {
+    return "";
+  }
+
+  const taskRecord = task as Record<string, any>;
+  const resultMapRecord = (task.resultMap || {}) as Record<string, any>;
+  return (
+    resultMapRecord.taskSummary ||
+    taskRecord.taskSummary ||
+    task.result ||
+    resultMapRecord.result ||
+    ""
+  );
 }
 
 const SimpleToolCard: FC<{
@@ -449,6 +650,14 @@ const SimpleToolCard: FC<{
 }> = ({ entry, onClick }) => {
   const clickable = typeof onClick === "function";
   const { toneClass, surfaceClass, statusText } = (() => {
+    if (entry.status === "error") {
+      return {
+        toneClass: "text-rose-600",
+        surfaceClass: "bg-rose-500/10 ring-rose-500/15",
+        statusText: "异常",
+      };
+    }
+
     switch (entry.type) {
       case "deep_search":
         return {
@@ -515,8 +724,7 @@ const TimelineReplay: FC<{
   chat: CHAT.ChatItem;
   changeTask?: (task: CHAT.Task) => void;
   changeFile?: (file: CHAT.TFile) => void;
-  changePlan?: () => void;
-}> = ({ timeline, chat, changeTask, changeFile, changePlan }) => {
+}> = ({ timeline, chat, changeTask, changeFile }) => {
   const groups = useMemo(() => groupTimelineEntries(timeline), [timeline]);
   const lastConclusionIndex = useMemo(
     () => groups.reduce((result, group, index) => (group.type === "conclusion" ? index : result), -1),
@@ -525,15 +733,14 @@ const TimelineReplay: FC<{
 
   const renderToolEntry = useCallback((entry: CHAT.TimelineEntry, index: number) => {
     const matchedTask = findTaskByEntry(chat, entry);
-    if (matchedTask) {
+    if (entry.type === "tool_thought") {
       return (
-        <ToolItem
-          key={`${entry.seq}-${index}`}
-          tool={matchedTask}
-          changeActiveChat={(task) => changeTask?.(task)}
-          changePlan={changePlan}
-          changeFile={changeFile}
-        />
+        <div key={`${entry.seq}-${index}`} className="mt-2 overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/80 p-3 shadow-[var(--shadow-xs)]">
+          <Reasoning isStreaming={false} defaultOpen className="not-prose mb-0">
+            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
+            <ReasoningContent>{entry.content || ""}</ReasoningContent>
+          </Reasoning>
+        </div>
       );
     }
 
@@ -541,10 +748,10 @@ const TimelineReplay: FC<{
       <SimpleToolCard
         key={`${entry.seq}-${index}`}
         entry={entry}
-        onClick={undefined}
+        onClick={matchedTask ? () => changeTask?.(matchedTask) : undefined}
       />
     );
-  }, [changeFile, changePlan, changeTask, chat]);
+  }, [changeTask, chat]);
 
   return (
     <>
@@ -562,11 +769,11 @@ const TimelineReplay: FC<{
             );
           }
           case "plan":
-            return chat.planList?.length ? (
+            return (
               <div key={`${group.type}-${group.seq}-${index}`} className="mt-6 w-full">
-                <PlanSection plan={chat.planList} />
+                <PlanSection plan={extractPlanFromEntry(group.entries[0], chat.plan)} />
               </div>
-            ) : null;
+            );
           case "task_group": {
             const taskEntry = group.entries[0];
             const toolEntries = group.entries.slice(1);
@@ -605,19 +812,20 @@ const ConclusionSection: FC<{
   chat: CHAT.ChatItem;
   changeFile?: (file: CHAT.TFile) => void;
 }> = ({ chat, changeFile }) => {
-  const summary =
-    chat.conclusion?.resultMap?.taskSummary ||
-    chat.conclusion?.result ||
-    "任务已完成";
+  const summary = resolveTaskSummaryText(chat.conclusion) || "任务已完成";
   const summaryStreaming =
     !!chat.loading && chat.conclusion?.messageType === "agent_stream";
+  const attachmentFiles = useMemo(
+    () => getTaskFiles(chat.conclusion),
+    [chat.conclusion]
+  );
   return (
     <div className="mb-[8px]">
       <div className="mb-[8px]">
         <MessageResponse isStreaming={summaryStreaming}>{summary}</MessageResponse>
       </div>
       <AttachmentList
-        files={buildAttachment(chat.conclusion?.resultMap?.fileInfo || chat.conclusion?.resultMap?.fileList)}
+        files={attachmentFiles}
         preview={true}
         review={changeFile}
       />
@@ -646,11 +854,12 @@ const DialogueComponent: FC<Props> = (props) => {
     !!chat.response ||
     !!thoughtText ||
     !!chat.tip ||
-    !!chat.planList?.length ||
+    !!chat.plan ||
     !!chat.tasks.length ||
     !!chat.conclusion;
   const useTimelineReplay = !chat.loading && !!chat.timeline?.length;
-  const showStandaloneResponse = !!chat.response && (!useTimelineReplay || !chat.conclusion);
+  const showStandaloneResponse = !!chat.response && !useTimelineReplay && !chat.conclusion;
+  const showReplayResponse = !!chat.response && useTimelineReplay;
   const [copied, setCopied] = useState(false);
 
   const changeActiveChat = useCallback((task: CHAT.Task) => {
@@ -735,8 +944,36 @@ const DialogueComponent: FC<Props> = (props) => {
             chat={chat}
             changeTask={changeTask}
             changeFile={changeFile}
-            changePlan={changePlan}
           />
+          {showReplayResponse ? (
+            <div className="mt-6 flex w-full justify-start">
+              <Message from="assistant" className="w-full max-w-full">
+                <MessageContent>
+                  <MessageResponse isStreaming={false}>{chat.response}</MessageResponse>
+                </MessageContent>
+                <MessageActions className="mt-2">
+                  <MessageAction tooltip="复制" onClick={handleCopy}>
+                    {copied
+                      ? <CheckIcon className="size-4" />
+                      : <CopyIcon className="size-4" />}
+                  </MessageAction>
+                  <MessageAction tooltip="重新生成" onClick={onRegenerate} disabled={!onRegenerate}>
+                    <RefreshCwIcon className="size-4" />
+                  </MessageAction>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <MessageAction tooltip="更多">
+                        <MoreHorizontalIcon className="size-4" />
+                      </MessageAction>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={handleCopy}>复制原文</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </MessageActions>
+              </Message>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>
@@ -751,9 +988,9 @@ const DialogueComponent: FC<Props> = (props) => {
           ) : null}
 
           {/* 任务计划 */}
-          {!isReactType && chat.planList?.length ? (
+          {!isReactType && chat.plan ? (
             <div className="mt-6 w-full">
-              <PlanSection plan={chat.planList} />
+              <PlanSection plan={chat.plan} />
             </div>
           ) : null}
 

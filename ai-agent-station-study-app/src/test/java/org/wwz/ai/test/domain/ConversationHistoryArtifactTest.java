@@ -36,10 +36,9 @@ public class ConversationHistoryArtifactTest {
                 .displayArea("workspace")
                 .title("总结完成")
                 .payloadJson("""
-                        {"artifactRefs":[{"resourceKey":"file-001","downloadUrl":"https://file.example.com/download/001","missing":false}]}
+                        {"messageType":"task","messageId":"artifact-1","artifactRefs":[{"resourceKey":"file-001","downloadUrl":"https://file.example.com/download/001","missing":false}]}
                         """)
                 .status("completed")
-                .isFinal(1)
                 .build();
 
         List<ConversationTurnDetail> turns = assembler.assembleTurns(List.of(message), Map.of(1L, List.of(event)));
@@ -49,6 +48,8 @@ public class ConversationHistoryArtifactTest {
         JSONArray refs = ((JSONObject) payload).getJSONArray("artifactRefs");
         Assert.assertEquals("file-001", refs.getJSONObject(0).getString("resourceKey"));
         Assert.assertEquals("https://file.example.com/download/001", refs.getJSONObject(0).getString("downloadUrl"));
+        Assert.assertEquals("artifact-1", turns.get(0).getEvents().get(0).getMessageIdExt());
+        Assert.assertEquals(Integer.valueOf(1), turns.get(0).getEvents().get(0).getIsFinal());
     }
 
     @Test
@@ -72,10 +73,9 @@ public class ConversationHistoryArtifactTest {
                 .displayArea("workspace")
                 .title("内容缺失")
                 .payloadJson("""
-                        {"artifactRefs":[{"resourceKey":"file-404","missing":true,"missingReason":"resource not found"}]}
+                        {"messageType":"task","messageId":"artifact-404","artifactRefs":[{"resourceKey":"file-404","missing":true,"missingReason":"resource not found"}]}
                         """)
                 .status("error")
-                .isFinal(1)
                 .build();
 
         List<ConversationTurnDetail> turns = assembler.assembleTurns(List.of(message), Map.of(2L, List.of(event)));

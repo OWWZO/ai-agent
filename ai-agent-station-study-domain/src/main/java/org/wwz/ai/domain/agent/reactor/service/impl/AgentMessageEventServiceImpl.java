@@ -11,7 +11,6 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
 
 import javax.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,13 +25,13 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
 
     @Override
     public void persistEvents(List<OrderedEvent> orderedEvents, Long messageId, String finalStatus) {
+        messageEventDao.deleteByMessageId(messageId);
         if (orderedEvents == null || orderedEvents.isEmpty()) {
             return;
         }
 
         List<AgentMessageEvent> events = new ArrayList<>(orderedEvents.size());
         for (OrderedEvent orderedEvent : orderedEvents) {
-            LocalDateTime eventTime = orderedEvent.getEventTime() != null ? orderedEvent.getEventTime() : LocalDateTime.now();
             events.add(AgentMessageEvent.builder()
                     .messageId(messageId)
                     .seqNo(orderedEvent.getSeqNo())
@@ -41,14 +40,10 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
                     .displayArea(StringUtils.defaultIfBlank(orderedEvent.getDisplayArea(), "timeline"))
                     .taskId(orderedEvent.getTaskId())
                     .taskOrder(orderedEvent.getTaskOrder())
-                    .messageIdExt(orderedEvent.getMessageIdExt())
                     .title(resolveTitle(orderedEvent))
                     .contentText(orderedEvent.getContentText())
                     .payloadJson(normalizePayloadJson(orderedEvent.getPayloadJson()))
-                    .isFinal(orderedEvent.isFinal() ? 1 : 0)
                     .status(finalStatus)
-                    .startedAt(eventTime)
-                    .endedAt(orderedEvent.isFinal() ? eventTime : null)
                     .deleted(0)
                     .build());
         }
@@ -102,12 +97,12 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
     private String resolveDeepSearchTitle(OrderedEvent orderedEvent) {
         String subType = StringUtils.defaultString(orderedEvent.getEventSubType());
         if ("report".equals(subType)) {
-            return orderedEvent.isFinal() ? "总结完成" : "正在总结";
+            return "总结完成";
         }
         if ("search".equals(subType)) {
             return "搜索完成";
         }
-        return "正在搜索";
+        return "深度搜索";
     }
 
     private String abbreviate(String text, int maxLen) {

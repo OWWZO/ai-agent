@@ -2,7 +2,7 @@
 
 ## 1. ConversationSummary (`ai_agent_conversation`)
 
-- **Purpose**: 历史列表和归属管理的轻量摘要，不承担详情快照职责。
+- **Purpose**: 面向历史列表的轻量会话摘要，不承担详情快照职责。
 - **Retained Fields**:
   - `id`
   - `session_id`
@@ -19,14 +19,10 @@
   - `create_time`
   - `update_time`
   - `deleted`
-- **Attribute Cleanup**:
-  - 保持 `session_id` 唯一，不新增任何详情型 JSON 字段。
-  - `message_count`、`pinned`、`deleted` 继续保持非负布尔/计数语义。
-  - 列表查询继续依赖 `idx_device_id`、`idx_user_id`。
 - **Validation**:
   - `session_id` 全局唯一。
-  - `device_id` / `user_id` 至少一个可用于归属校验。
-  - 列表读取只允许返回 scope 匹配的数据。
+  - 列表查询只能返回当前 scope 可访问的会话。
+  - 不新增详情型 JSON 字段。
 
 ## 2. ConversationTurn (`ai_agent_message`)
 
@@ -48,18 +44,17 @@
   - `create_time`
   - `update_time`
   - `deleted`
-- **Attribute Cleanup**:
-  - `response` 只表示单轮最终答案/上下文文本，不代表最终细节集合。
-  - 不新增也不恢复任何 `thought/plan/tasks/render snapshot` 风格字段。
-  - `uk_conversation_sort` 已能支撑 `(conversation_id, sort_order)` 查询；`idx_conversation_sort` 可作为冗余索引删除。
+- **Role Rules**:
+  - `response` 仍表示单轮最终答案/上下文文本。
+  - 最终界面细节块全部由 `ai_agent_message_event` 承担。
+  - `PLAN_SOLVE` 与 `REACT` 读取结构化细节块；`CHAT` 允许只依赖 `response + files + metrics` 等轻量历史。
 - **Validation**:
   - `request_id` 全局唯一。
   - 同一 `conversation_id` 下 `sort_order` 单调递增。
-  - `status` 仍沿用现有 `0/1/2/3` 语义，避免额外扩散。
 
-## 3. FinalDetailEvent (`ai_agent_message_event`)
+## 3. FinalVisibleDetailEvent (`ai_agent_message_event`)
 
-- **Purpose**: 历史详情真正需要读取的最终态细节表，一条记录只表达一个最终可见细节项。
+- **Purpose**: 历史详情真正需要读取的最终界面细节表；一条记录只表达一个结束时仍可见的细节块。
 - **Retained Fields**:
   - `id`
   - `message_id`
@@ -75,24 +70,70 @@
   - `status`
   - `create_time`
   - `deleted`
-- **Removed Fields**:
-  - `message_id_ext`
-  - `is_final`
-  - `started_at`
-  - `ended_at`
-- **Attribute Cleanup**:
-  - `payload_json` 只保留最终态细节所需的结构化数据，不再保存过程回放辅助字段。
-  - `status` 收敛为最终态可读语义，重点覆盖 `completed` / `error`；资源缺失优先通过 `artifactRefs[].missing` 表达。
-  - `uk_message_seq(message_id, seq_no)` 保留；`idx_message_id` 与该唯一索引重复，删除。
-  - 当前历史读取链路只按 `message_id` 顺序查询，`idx_task_id` 删除。
+- **Removed / Deprecated Fields**:
+  - 仅服务于全过程回放的独立顶层字段继续清理，例如 `message_id_ext`、`is_final`、`started_at`、`ended_at`
+  - 如仍需兼容历史前端匹配，`messageId` / `messageIdExt` 从 `payload_json` 派生，不作为新的真相字段恢复
 - **Validation**:
   - `(message_id, seq_no)` 唯一。
-  - 一条记录只表达一个最终可见细节项，不能混装多个同类最终细节。
-  - 历史详情默认只按 `message_id + seq_no` 顺序读取。
+  - 一条记录只表达一个最终界面细节块，不能把多个块压缩成一条摘要。
+  - `display_area` 表示主展示区域。
+  - 若同一细节同时关联工作区和对话区，只保留一条 canonical 记录，通过 payload 的展示关系恢复跨区域展示。
 
-## 4. ArtifactReference (embedded in `FinalDetailEvent.payload_json`)
+## 4. FinalVisibleDetailEvent Types
 
-- **Purpose**: 统一表达工作区文件、报告、导出产物等可长期访问的稳定引用。
+以下类型只要在对话结束时仍可见，就可以成为最终细节块：
+
+- `plan_thought`
+- `plan`
+- `task`
+- `tool_thought`
+- `tool_result`
+- `deep_search`
+- `task_summary`
+- `result`
+- `browser`
+- `code`
+- `html`
+- `markdown`
+- `file`
+- `knowledge`
+- `data_analysis`
+- `ppt`
+
+### 4.1 Type Rules
+
+- `event_type`
+  - 直接对应最终界面细节块类型，优先复用当前前端已识别的消息类型。
+- `event_sub_type`
+  - 用于细分最终状态，例如 `final_state`、`search`、`report`。
+- `display_area`
+  - `timeline`：主显示于对话/时间线区域
+  - `workspace`：主显示于右侧工作区/预览区域
+
+## 5. Embedded Payload Model (`payload_json`)
+
+### 5.1 CommonPayload
+
+- `messageType`
+- `messageId`
+- `resultMap`
+- `artifactRefs[]`
+- `presentation`
+
+### 5.2 PresentationLink
+
+- **Purpose**: 表达同一 canonical 细节块如何在不同界面区域被恢复。
+- **Fields**:
+  - `primaryArea`
+  - `relatedAreas[]`
+  - `linkedArtifactKeys[]`
+- **Validation**:
+  - `primaryArea` 必须与顶层 `display_area` 一致。
+  - `relatedAreas[]` 只表达附加展示关系，不产生第二条真相记录。
+
+### 5.3 ArtifactReference
+
+- **Purpose**: 统一表达工作区文件、HTML、Markdown、报告等最终产物引用。
 - **Fields**:
   - `artifactType`
   - `displayName`
@@ -104,18 +145,18 @@
   - `missing`
   - `missingReason`
 - **Validation**:
-  - 不允许把工作区临时路径作为唯一定位信息。
-  - `missing=true` 时必须带明确原因，供前端直接展示。
-  - `artifactRefs[]` 是 payload 的 canonical 表达；旧 `fileInfo/fileList` 只允许在兼容层派生。
+  - 不允许只依赖本地临时路径。
+  - `missing=true` 时必须返回明确原因。
+  - `artifactRefs[]` 是 canonical 表达；`fileInfo/fileList` 只允许在兼容层派生。
 
-## 5. ConversationDetailView (API projection)
+## 6. History Detail Projection
 
-- **Purpose**: 面向 trigger/ui 的历史详情投影视图。
-- **Fields**:
-  - `conversation`: `ConversationSummary`
-  - `turns[]`: `ConversationTurnView`
+### 6.1 ConversationDetailView
 
-### 5.1 ConversationTurnView
+- `conversation`: `ConversationSummary`
+- `turns[]`: `ConversationTurnView`
+
+### 6.2 ConversationTurnView
 
 - `requestId`
 - `sortOrder`
@@ -128,9 +169,9 @@
 - `metrics`
 - `startedAt`
 - `finishedAt`
-- `events[]`: `FinalDetailEventView`
+- `events[]`: `FinalVisibleDetailEventView`
 
-### 5.2 FinalDetailEventView
+### 6.3 FinalVisibleDetailEventView
 
 - `seqNo`
 - `eventType`
@@ -138,54 +179,53 @@
 - `displayArea`
 - `taskId`
 - `taskOrder`
+- `messageIdExt`
 - `title`
 - `contentText`
 - `status`
 - `payload`
 - `isFinal`
 
-> `isFinal` 在 API 层可以继续输出 `1` 作为兼容位，但不再依赖数据库字段。
+> `messageIdExt` 作为兼容字段继续输出，但从 payload `messageId` 派生。`isFinal` 在 API 层恒定输出 `1`。
 
-## 6. Frontend History State
+## 7. Frontend History State
 
-### 6.1 Summary List Cache
+### 7.1 Summary List Cache
 
-- 来源于列表接口。
-- 只保存会话摘要，不带详情内容。
+- 只保存会话摘要，不保存细节内容。
 
-### 6.2 Detail Cache
+### 7.2 Structured Detail Cache
 
-- 只在选中某个历史会话后缓存 `turns[] + events[]`。
-- 输入数据已是最终细节事件，不需要再从过程事件推导最终态。
+- 仅用于 `PLAN_SOLVE` 与 `REACT`。
+- 保存 `turns[] + events[]`，输入即最终界面细节块，不再从摘要事件推理思考或工具调用。
 
-### 6.3 Draft / Streaming State
+### 7.3 Lightweight Chat Detail
 
-- 仅存在于当前会话运行时。
-- 不要求长期持久化，也不与历史详情做双向同步。
+- 适用于普通 `CHAT`。
+- 继续以 `response/files/metrics` 为主，不强制接入复杂细节块模型。
 
-## Relationships
+## 8. State Transitions
 
-- `ConversationSummary` 1:N `ConversationTurn`
-- `ConversationTurn` 1:N `FinalDetailEvent`
-- `FinalDetailEvent` 0:N `ArtifactReference`
-- `ConversationDetailView` 按 `session_id` 聚合 `ConversationSummary + ConversationTurn + FinalDetailEvent`
-
-## State Transitions
-
-### ConversationTurn Status
+### 8.1 Turn Lifecycle
 
 - `STREAMING` → `COMPLETED`
 - `STREAMING` → `ERROR`
 - `STREAMING` → `FORCE_STOPPED`
 
-### FinalDetailEvent Lifecycle
+### 8.2 Final Visible Detail Lifecycle
 
-- 运行时流式过程在内存中累积
-- 消息结束时投影为最终可见细节项
-- 最终细节项一次性写入 `ai_agent_message_event`
-- 历史读取只消费最终细节项，不再回放过程事件
+- 流式执行时在内存中积累原始增量
+- 流结束时识别哪些内容最终仍留在界面上
+- 将这些内容投影成最终界面细节块
+- 每个最终细节块写入一条 `ai_agent_message_event`
+- 历史读取只消费这些最终细节块，不再回放所有增量
 
-## Old Data Strategy
+### 8.3 Replacement Rule
+
+- 若某个增量内容在结束前已从界面消失或被后续块替换，则不进入历史最终细节。
+- 若某个思考/工具块结束时仍可见，则以最终文本或最终状态写入历史。
+
+## 9. Old Data Strategy
 
 - 旧历史数据与新模型不兼容时，允许直接删除。
 - 不设计双路径读取、历史迁移脚本或回填逻辑。

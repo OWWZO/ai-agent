@@ -1,6 +1,7 @@
 import { isHTML, isValidJSON } from "@/utils";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
+import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
   if (!taskItem) {
@@ -64,9 +65,9 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     if (!taskItem) {
       return;
     }
-    const [fileInfo] = taskItem.resultMap?.fileInfo || [];
     const { messageType, toolResult, resultMap } = taskItem;
-    const fileName = fileInfo?.fileName || '';
+    const primaryFile = getPrimaryTaskFile(taskItem);
+    const fileName = primaryFile?.name || '';
 
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {

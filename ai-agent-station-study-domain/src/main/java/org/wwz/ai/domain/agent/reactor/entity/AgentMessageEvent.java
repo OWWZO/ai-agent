@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * AI Agent 消息事件表 PO
+ * AI Agent 消息最终细节表 PO
  */
 @Data
 @Builder
@@ -24,14 +24,10 @@ public class AgentMessageEvent {
     private String displayArea;
     private String taskId;
     private Integer taskOrder;
-    private String messageIdExt;
     private String title;
     private String contentText;
     private String payloadJson;
-    private Integer isFinal;
     private String status;
-    private LocalDateTime startedAt;
-    private LocalDateTime endedAt;
     private LocalDateTime createTime;
     private Integer deleted;
 }

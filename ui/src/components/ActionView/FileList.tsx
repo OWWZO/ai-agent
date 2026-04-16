@@ -8,6 +8,7 @@ import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { getTaskFiles } from "@/utils/historyArtifacts";
 import {
   FileText,
   Download,
@@ -28,6 +29,8 @@ type FileItem = {
   downloadUrl?: string;
   missing?: boolean;
   missingReason?: string;
+  resourceKey?: string;
+  mimeType?: string | null;
 };
 
 const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis'];
@@ -68,24 +71,14 @@ const FileList: React.FC<{
   const { list: fileList, map: fileMap } = useMemo(() => {
     let map: Record<string, FileItem> = {};
     const list = (taskList || []).reduce<FileItem[]>((pre, task) => {
-      const { resultMap } = task;
       if (messageTypeEnum.includes(task.messageType)) {
-        const fileInfo: FileItem[] = (resultMap?.fileInfo ?? resultMap.fileList ?? []).map((item) => {
-          const extension = item.fileName?.split('.')?.pop();
-          return {
-            ...item,
-            name: item.fileName!,
-            url: item.domainUrl!,
-            downloadUrl: item.downloadUrl || item.ossUrl,
-            task,
-            messageTime: formatTimestamp(task.messageTime),
-            type: extension!,
-            missing: Boolean(item.missing),
-            missingReason: item.missingReason,
-          };
-        });
-        pre.push(...fileInfo.filter((item) => !map[item.name]));
-        map = keyBy(pre, 'name');
+        const files: FileItem[] = getTaskFiles(task).map((file) => ({
+          ...file,
+          task,
+          messageTime: formatTimestamp(task.messageTime),
+        }));
+        pre.push(...files.filter((item) => !map[item.resourceKey || item.name]));
+        map = keyBy(pre, (item) => item.resourceKey || item.name);
       }
       return pre;
     }, []);
@@ -139,9 +132,9 @@ const FileList: React.FC<{
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {fileList.map((item) => (
             <Card
-              key={item.name}
+              key={item.resourceKey || item.name}
               className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
-              onClick={() => !item.missing && setActiveItem(item.name)}
+              onClick={() => setActiveItem(item.resourceKey || item.name)}
             >
               <CardContent className="flex items-center gap-2.5 p-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
@@ -216,7 +209,12 @@ const FileList: React.FC<{
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
-                onClick={() => downloadFile(downloadUrl || fileItem.url.replace('preview', 'download'), fileItem.name)}
+                onClick={() =>
+                  downloadFile(
+                    downloadUrl || fileItem.url || "",
+                    fileItem.name
+                  )
+                }
               >
                 <Download className="h-4 w-4" />
               </Button>

@@ -8,6 +8,18 @@ import { parseCSVData } from '@/utils';
 
 const ERROR_CLASS = "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
 
+const resolveUnavailableReason = (error: Error) => {
+  const message = error?.message || '';
+  if (
+    message.includes('Failed to fetch') ||
+    message.includes('Network response was not ok') ||
+    message.includes('网络错误')
+  ) {
+    return '引用资源不存在或已失效';
+  }
+  return message || '引用资源不存在或已失效';
+};
+
 /**
  * Table 组件
  */
@@ -33,6 +45,9 @@ const TableRenderer: ReactorType.FC<{
 
   // 拉取 CSV 文本
   const { data, loading, error } = useRequest(async () => {
+    if (!fileUrl) {
+      throw new Error('引用资源不存在或已失效');
+    }
     const res = await fetch(fileUrl);
     if (!res.ok) throw new Error('网络错误');
 
@@ -125,8 +140,8 @@ const TableRenderer: ReactorType.FC<{
     return (
       <Alert
         type="error"
-        message="加载失败"
-        description={error.message}
+        message="内容不可读取"
+        description={resolveUnavailableReason(error as Error)}
         showIcon
         className={ERROR_CLASS}
       />

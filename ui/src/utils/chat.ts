@@ -1,3 +1,5 @@
+import { normalizeHistoryFile } from "@/utils/historyArtifacts";
+
 export const combineData = (
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
@@ -1084,15 +1086,7 @@ export const buildAttachment = (fileList?: CHAT.FileList[]): CHAT.TFile[] => {
     return [];
   }
 
-  // 后端历史记录里的文件字段可能不完整，这里统一归一化成前端稳定结构。
-  return fileList.map((item) => {
-    const { domainUrl, fileName, fileSize } = item;
-    const extension = fileName?.split(".").pop()?.toLowerCase() || "";
-    return {
-      name: fileName || "未命名文件",
-      url: domainUrl || "",
-      type: extension,
-      size: typeof fileSize === "number" ? fileSize : Number(fileSize) || 0,
-    };
-  });
+  return fileList
+    .map((item) => normalizeHistoryFile(item))
+    .filter((item): item is CHAT.TFile => Boolean(item));
 };

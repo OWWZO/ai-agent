@@ -36,8 +36,11 @@ declare global {
       title: string;
       content?: string;
       taskId?: string;
+      taskOrder?: number;
       messageIdExt?: string;
       isFinal: boolean;
+      status?: string;
+      payload?: Record<string, any>;
     };
 
     type PlanItem = {
@@ -50,6 +53,11 @@ declare global {
       url: string;
       type: string;
       size: number;
+      downloadUrl?: string;
+      missing?: boolean;
+      missingReason?: string;
+      resourceKey?: string;
+      mimeType?: string | null;
     };
 
     export type TInputInfo = {

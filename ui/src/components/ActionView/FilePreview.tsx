@@ -16,6 +16,7 @@ import {
   Maximize2,
   Search,
 } from "lucide-react";
+import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
 
 const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
   if (!taskItem) {
@@ -121,14 +122,6 @@ const Header = ({
   </div>
 );
 
-const getPrimaryFileInfo = (taskItem?: CHAT.Task | PanelItemType) => {
-  const fileInfo = taskItem?.resultMap?.fileInfo;
-  if (!Array.isArray(fileInfo) || fileInfo.length === 0) {
-    return undefined;
-  }
-  return fileInfo[0];
-};
-
 const MissingArtifactState = ({ reason }: { reason?: string }) => (
   <div className="flex h-full items-center justify-center">
     <Card className="w-72 border-dashed bg-muted/15 shadow-none">
@@ -189,8 +182,8 @@ const FilePreview: React.FC<{
   });
 
   const { useHtml, useExcel } = useMsgTypes(taskItem) || {};
-  const primaryFileInfo = useMemo(() => getPrimaryFileInfo(taskItem), [taskItem]);
-  const artifactMissing = Boolean(primaryFileInfo?.missing);
+  const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
+  const artifactMissing = Boolean(primaryFile?.missing);
 
   const title = useMemo(() => {
     if (!taskItem) return "";
@@ -199,8 +192,7 @@ const FilePreview: React.FC<{
       return taskItem.toolResult?.toolName || "工具执行";
     }
     if (messageType === "file" || messageType === "html") {
-      const [fileInfo] = resultMap?.fileInfo || [];
-      return fileInfo?.fileName || messageType;
+      return primaryFile?.name || messageType;
     }
     if (messageType === "deep_search") {
       if (resultMap?.messageType === "report") {
@@ -227,7 +219,7 @@ const FilePreview: React.FC<{
       return "深度搜索";
     }
     return messageType;
-  }, [taskItem]);
+  }, [primaryFile, taskItem]);
 
   const headerLeadingIcon = useMemo(() => {
     if (!taskItem) return undefined;
@@ -255,7 +247,7 @@ const FilePreview: React.FC<{
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {artifactMissing ? (
-          <MissingArtifactState reason={primaryFileInfo?.missingReason} />
+          <MissingArtifactState reason={primaryFile?.missingReason} />
         ) : (
           <AnimatePresence mode="sync" initial={false}>
             <motion.div

@@ -21,26 +21,62 @@ public class ConversationHistoryPersistenceTest {
     public void test_persistEventsOnlyUsesMessageParentContext() {
         AgentMessageEventServiceImpl service = new AgentMessageEventServiceImpl();
         AtomicReference<List<AgentMessageEvent>> inserted = new AtomicReference<>();
-        ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao(inserted));
+        AtomicReference<Long> deletedMessageId = new AtomicReference<>();
+        ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao(inserted, deletedMessageId));
 
         service.persistEvents(List.of(
                 OrderedEvent.builder()
                         .seqNo(1)
-                        .eventType("plan_thought")
+                        .eventType("deep_search")
+                        .eventSubType("search")
                         .displayArea("timeline")
-                        .title("思考中")
-                        .contentText("先拆解问题")
-                        .payloadJson("{\"messageType\":\"plan_thought\"}")
+                        .taskId("task-1")
+                        .title("检索：销量波动")
+                        .contentText("已整理 2 条发现")
+                        .payloadJson("{\"messageType\":\"task\",\"messageId\":\"search-1\"}")
                         .eventTime(LocalDateTime.now())
                         .build()
         ), 1001L, "completed");
 
+        Assert.assertEquals(Long.valueOf(1001L), deletedMessageId.get());
         Assert.assertEquals(1, inserted.get().size());
         AgentMessageEvent event = inserted.get().get(0);
         Assert.assertEquals(Long.valueOf(1001L), event.getMessageId());
         Assert.assertEquals(Integer.valueOf(1), event.getSeqNo());
         Assert.assertEquals("completed", event.getStatus());
-        Assert.assertNull(event.getTaskId());
+        Assert.assertEquals("task-1", event.getTaskId());
+    }
+
+    @Test
+    public void test_persistEventsKeepsMultipleSameTypeFinalDetails() {
+        AgentMessageEventServiceImpl service = new AgentMessageEventServiceImpl();
+        AtomicReference<List<AgentMessageEvent>> inserted = new AtomicReference<>();
+        ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao(inserted, new AtomicReference<>()));
+
+        service.persistEvents(List.of(
+                OrderedEvent.builder()
+                        .seqNo(1)
+                        .eventType("deep_search")
+                        .eventSubType("search")
+                        .taskId("task-1")
+                        .title("检索：华东销量")
+                        .contentText("发现区域异常")
+                        .payloadJson("{\"messageType\":\"task\",\"messageId\":\"search-1\"}")
+                        .build(),
+                OrderedEvent.builder()
+                        .seqNo(2)
+                        .eventType("deep_search")
+                        .eventSubType("search")
+                        .taskId("task-1")
+                        .title("检索：促销活动")
+                        .contentText("发现价格波动")
+                        .payloadJson("{\"messageType\":\"task\",\"messageId\":\"search-2\"}")
+                        .build()
+        ), 1002L, "completed");
+
+        Assert.assertEquals(2, inserted.get().size());
+        Assert.assertTrue(inserted.get().get(0).getPayloadJson().contains("search-1"));
+        Assert.assertTrue(inserted.get().get(1).getPayloadJson().contains("search-2"));
     }
 
     @Test
@@ -61,9 +97,12 @@ public class ConversationHistoryPersistenceTest {
     private static class StubMessageEventDao implements IAgentMessageEventDao {
 
         private final AtomicReference<List<AgentMessageEvent>> inserted;
+        private final AtomicReference<Long> deletedMessageId;
 
-        private StubMessageEventDao(AtomicReference<List<AgentMessageEvent>> inserted) {
+        private StubMessageEventDao(AtomicReference<List<AgentMessageEvent>> inserted,
+                                    AtomicReference<Long> deletedMessageId) {
             this.inserted = inserted;
+            this.deletedMessageId = deletedMessageId;
         }
 
         @Override
@@ -79,6 +118,7 @@ public class ConversationHistoryPersistenceTest {
 
         @Override
         public int deleteByMessageId(Long messageId) {
+            deletedMessageId.set(messageId);
             return 0;
         }
     }

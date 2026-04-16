@@ -51,20 +51,23 @@ public class ConversationReplayAssembler {
         }
 
         return events.stream()
-                .map(event -> ConversationEventDetail.builder()
-                        .seqNo(event.getSeqNo())
-                        .eventType(event.getEventType())
-                        .eventSubType(event.getEventSubType())
-                        .displayArea(event.getDisplayArea())
-                        .taskId(event.getTaskId())
-                        .taskOrder(event.getTaskOrder())
-                        .messageIdExt(event.getMessageIdExt())
-                        .title(event.getTitle())
-                        .contentText(event.getContentText())
-                        .payload(normalizePayload(parseJson(event.getPayloadJson())))
-                        .isFinal(event.getIsFinal())
-                        .status(event.getStatus())
-                        .build())
+                .map(event -> {
+                    Object payload = normalizePayload(parseJson(event.getPayloadJson()));
+                    return ConversationEventDetail.builder()
+                            .seqNo(event.getSeqNo())
+                            .eventType(event.getEventType())
+                            .eventSubType(event.getEventSubType())
+                            .displayArea(event.getDisplayArea())
+                            .taskId(event.getTaskId())
+                            .taskOrder(event.getTaskOrder())
+                            .messageIdExt(extractMessageId(payload))
+                            .title(event.getTitle())
+                            .contentText(event.getContentText())
+                            .payload(payload)
+                            .isFinal(1)
+                            .status(event.getStatus())
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -73,6 +76,28 @@ public class ConversationReplayAssembler {
      */
     private Object normalizePayload(Object payload) {
         return ConversationEventPayloadNormalizer.normalizePayload(payload);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractMessageId(Object payload) {
+        if (!(payload instanceof Map)) {
+            return null;
+        }
+
+        Map<String, Object> payloadMap = (Map<String, Object>) payload;
+        Object directMessageId = payloadMap.get("messageId");
+        if (directMessageId != null) {
+            return String.valueOf(directMessageId);
+        }
+
+        Object resultMapObj = payloadMap.get("resultMap");
+        if (resultMapObj instanceof Map) {
+            Object nestedMessageId = ((Map<String, Object>) resultMapObj).get("messageId");
+            if (nestedMessageId != null) {
+                return String.valueOf(nestedMessageId);
+            }
+        }
+        return null;
     }
 
     private Object parseJson(String json) {

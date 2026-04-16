@@ -12,6 +12,7 @@ import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
+import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;
@@ -75,9 +76,9 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const { markDownContent } = useContent(taskItem);
 
   const { resultMap, toolResult } = taskItem || {};
-  const [ fileInfo ] = resultMap?.fileInfo || [];
-  const htmlUrl = fileInfo?.domainUrl;
-  const downloadHtmlUrl = fileInfo?.ossUrl;
+  const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
+  const htmlUrl = primaryFile?.url;
+  const downloadHtmlUrl = primaryFile?.downloadUrl;
 
   const { codeOutput } = resultMap || {};
 
@@ -122,7 +123,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       if (useExcel) {
         return (
           <ContentWrapper key="excel">
-            <TableRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />
+            <TableRenderer fileUrl={primaryFile?.url || ""} fileName={primaryFile?.name} />
           </ContentWrapper>
         );
       }
@@ -130,7 +131,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       if (useFile) {
         return (
           <ContentWrapper key="file">
-            <FileRenderer fileUrl={fileInfo?.domainUrl} fileName={fileInfo?.fileName} />
+            <FileRenderer fileUrl={primaryFile?.url || ""} fileName={primaryFile?.name} />
           </ContentWrapper>
         );
       }
@@ -161,7 +162,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     allowShowToolBar,
     resultMap?.isFinal,
     toolResult?.toolResult,
-    fileInfo,
+    primaryFile,
     codeOutput,
   ]);
 

@@ -52,10 +52,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_conversation (
     KEY idx_user_id (user_id, deleted, update_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 会话表';
 
-ALTER TABLE ai_agent_conversation
-    ADD COLUMN IF NOT EXISTS ai_agent_id VARCHAR(64) NULL COMMENT 'chat 会话绑定的 Fix 角色ID' AFTER product_type,
-    ADD COLUMN IF NOT EXISTS ai_agent_name_snapshot VARCHAR(128) NULL COMMENT 'chat 角色名称快照，保障历史展示稳定' AFTER ai_agent_id;
-
 CREATE TABLE IF NOT EXISTS ai_agent_message (
     id               BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     conversation_id  BIGINT       NOT NULL COMMENT 'FK -> ai_agent_conversation.id',
@@ -75,8 +71,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_message (
     deleted          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除 0:正常 1:已删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_request_id (request_id),
-    UNIQUE KEY uk_conversation_sort (conversation_id, sort_order),
-    KEY idx_conversation_sort (conversation_id, sort_order)
+    UNIQUE KEY uk_conversation_sort (conversation_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 消息表(每轮对话一行)';
 
 CREATE TABLE IF NOT EXISTS ai_agent_message_event (
@@ -88,20 +83,14 @@ CREATE TABLE IF NOT EXISTS ai_agent_message_event (
     display_area    VARCHAR(32)  NOT NULL DEFAULT 'timeline' COMMENT '展示区域',
     task_id         VARCHAR(64)  NULL     COMMENT '关联taskId',
     task_order      INT          NULL     COMMENT '任务内顺序',
-    message_id_ext  VARCHAR(128) NULL     COMMENT '上游messageId',
     title           VARCHAR(256) NULL     COMMENT '显示标题',
     content_text    MEDIUMTEXT   NULL     COMMENT '展示文本',
     payload_json    JSON         NULL     COMMENT '结构化扩展负载，包含未来展示字段与 artifactRefs',
-    is_final        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否最终态',
     status          VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'completed/partial/error',
-    started_at      DATETIME     NULL     COMMENT '开始时间',
-    ended_at        DATETIME     NULL     COMMENT '结束时间',
     create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     deleted         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_message_seq (message_id, seq_no),
-    KEY idx_message_id (message_id, seq_no),
-    KEY idx_task_id (task_id)
+    UNIQUE KEY uk_message_seq (message_id, seq_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 消息事件表';
 
 CREATE TABLE IF NOT EXISTS sales_data (

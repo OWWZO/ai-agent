@@ -12,6 +12,8 @@ interface FileRendererProps {
   fileUrl: string;
   /** 文件名 */
   fileName?: string;
+  /** 自定义样式 */
+  className?: string;
 }
 
 /**
@@ -36,12 +38,27 @@ const formatFileContent = (ext: string | undefined, data: string | undefined): s
   return `\`\`\`${ext}\n${data || ''}\n\`\`\``;
 };
 
+const resolveUnavailableReason = (error: Error) => {
+  const message = error?.message || '';
+  if (
+    message.includes('Failed to fetch') ||
+    message.includes('Network response was not ok') ||
+    message.includes('NetworkError')
+  ) {
+    return '引用资源不存在或已失效';
+  }
+  return message || '引用资源不存在或已失效';
+};
+
 const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
   const { fileUrl, fileName, className } = props;
 
   const ext = useMemo(() => getFileExtension(fileName), [fileName]);
 
   const { data, loading, error } = useRequest(async () => {
+    if (!fileUrl) {
+      throw new Error('引用资源不存在或已失效');
+    }
     const response = await fetch(fileUrl);
     if (!response.ok) {
       throw new Error('Network response was not ok');
@@ -59,8 +76,8 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     return (
       <Alert
         type="error"
-        message="加载失败"
-        description={error.message}
+        message="内容不可读取"
+        description={resolveUnavailableReason(error as Error)}
         showIcon
         className={ERROR_CLASS}
       />

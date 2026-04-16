@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.reactor.service.impl;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
@@ -127,14 +128,13 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         // 6. 累积缓冲区
         StringBuilder responseBuffer = new StringBuilder();
         StringBuilder thoughtBuffer = new StringBuilder();
-        List<OrderedEvent> orderedEvents = new ArrayList<>();
-        Map<String, OrderedEvent> bufferedEvents = new LinkedHashMap<>();
+        Map<String, OrderedEvent> finalDetailEvents = new LinkedHashMap<>();
         AtomicInteger seqCounter = new AtomicInteger(1);
 
         // 7. 发起异步请求并处理流
         executeStreamWithPersistence(agentRequest, emitter, messageId, conversationId,
                 sessionId, requestId, convTitle, currentMessageCount, query,
-                responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, seqCounter);
+                responseBuffer, thoughtBuffer, finalDetailEvents, seqCounter);
 
         return emitter;
     }
@@ -146,8 +146,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                                                String query,
                                                StringBuilder responseBuffer,
                                                StringBuilder thoughtBuffer,
-                                               List<OrderedEvent> orderedEvents,
-                                               Map<String, OrderedEvent> bufferedEvents,
+                                               Map<String, OrderedEvent> finalDetailEvents,
                                                AtomicInteger seqCounter) {
         Request request = buildHttpRequest(autoReq);
 
@@ -164,7 +163,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 log.error("onFailure requestId={}, error={}", autoReq.getRequestId(), e.getMessage(), e);
                 try {
                     persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                            convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                            convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                 } catch (Exception ex) {
                     log.error("持久化错误状态失败", ex);
                 } finally {
@@ -181,7 +180,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 if (responseBody == null) {
                     log.error("{} empty response body", autoReq.getRequestId());
                     persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                            convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                            convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                     sseEmitter.completeWithError(new IllegalStateException("empty response body"));
                     return;
                 }
@@ -190,9 +189,9 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
                 try {
                     if (!response.isSuccessful()) {
-                        log.error("{} response failed: {}", autoReq.getRequestId(), responseBody.string());
-                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                            log.error("{} response failed: {}", autoReq.getRequestId(), responseBody.string());
+                            persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                                convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                         sseEmitter.completeWithError(new IllegalStateException("upstream response failed"));
                         return;
                     }
@@ -228,7 +227,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                         GptProcessResult result = handler.handle(autoReq, agentResponse, agentRespList, eventResult);
 
                         // --- 累积数据 ---
-                        accumulateData(agentResponse, result, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, seqCounter);
+                        accumulateData(agentResponse, result, responseBuffer, thoughtBuffer, finalDetailEvents, seqCounter);
 
                         // 发送给前端
                         sseEmitter.send(result);
@@ -244,7 +243,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                     log.error("{} stream exception", autoReq.getRequestId(), e);
                     try {
                         persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                                convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                     } catch (Exception ex) {
                         log.error("持久化错误状态失败", ex);
                     } finally {
@@ -257,11 +256,11 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 try {
                     if (streamCompleted) {
                         persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "completed");
+                                convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "completed");
                         log.info("消息持久化完成 messageId={}, conversationId={}", messageId, conversationId);
                     } else {
                         persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                                convTitle, responseBuffer, thoughtBuffer, orderedEvents, bufferedEvents, "error");
+                                convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                         sseEmitter.completeWithError(new IllegalStateException("stream closed before completion"));
                     }
                 } catch (Exception e) {
@@ -277,7 +276,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
      */
     private void accumulateData(AgentResponse agentResponse, GptProcessResult result,
                                  StringBuilder responseBuffer, StringBuilder thoughtBuffer,
-                                 List<OrderedEvent> orderedEvents, Map<String, OrderedEvent> bufferedEvents,
+                                 Map<String, OrderedEvent> finalDetailEvents,
                                  AtomicInteger seqCounter) {
         // Chat模式: 累积纯文本响应
         if ("result".equals(agentResponse.getMessageType()) && agentResponse.getResult() != null) {
@@ -299,47 +298,26 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> eventDataMap = (Map<String, Object>) eventData;
-        String rawMessageType = agentResponse.getMessageType();
-        if (rawMessageType == null || rawMessageType.isEmpty()) {
-            return;
+        Map<String, Object> eventDataMap = new LinkedHashMap<>((Map<String, Object>) eventData);
+        List<OrderedEvent> projectedEvents = projectFinalDetailEvents(agentResponse, eventDataMap, seqCounter);
+        for (OrderedEvent projectedEvent : projectedEvents) {
+            upsertFinalDetailEvent(finalDetailEvents, projectedEvent);
         }
-
-        OrderedEvent currentEvent = OrderedEvent.builder()
-                .seqNo(seqCounter.getAndIncrement())
-                .eventType(rawMessageType)
-                .eventSubType(resolveEventSubType(agentResponse))
-                .displayArea(resolveDisplayArea(rawMessageType))
-                .taskId((String) eventDataMap.get("taskId"))
-                .taskOrder(convertToInteger(eventDataMap.get("taskOrder")))
-                .messageIdExt(agentResponse.getMessageId())
-                .isFinal(Boolean.TRUE.equals(agentResponse.getIsFinal()))
-                .title(resolveEventTitle(agentResponse))
-                .contentText(extractContentText(agentResponse))
-                // 持久化时统一收敛 artifactRefs，避免历史回放继续依赖旧 fileInfo/fileList 结构。
-                .payloadJson(ConversationEventPayloadNormalizer.normalizePayload(eventDataMap).toJSONString())
-                .eventTime(LocalDateTime.now())
-                .build();
-
-        if (shouldAggregateEvent(rawMessageType)) {
-            mergeBufferedEvent(currentEvent, bufferedEvents);
-            return;
-        }
-
-        orderedEvents.add(currentEvent);
     }
 
     private void persistTurnAndEvents(Long messageId, Long conversationId, String query,
                                           int currentMessageCount, String convTitle,
                                           StringBuilder responseBuffer, StringBuilder thoughtBuffer,
-                                          List<OrderedEvent> orderedEvents, Map<String, OrderedEvent> bufferedEvents,
+                                          Map<String, OrderedEvent> finalDetailEvents,
                                           String status) {
-        List<OrderedEvent> finalOrderedEvents = mergeOrderedEvents(orderedEvents, bufferedEvents);
+        List<OrderedEvent> finalOrderedEvents = new ArrayList<>(finalDetailEvents.values());
+        finalOrderedEvents.sort(Comparator.comparing(OrderedEvent::getSeqNo));
         if (!finalOrderedEvents.isEmpty()) {
             messageEventService.persistEvents(finalOrderedEvents, messageId, status);
         }
 
         JSONObject metrics = new JSONObject();
+        metrics.put("detail_count", finalOrderedEvents.size());
         metrics.put("event_count", finalOrderedEvents.size());
         metrics.put("status", status);
         String metricsJson = metrics.toJSONString();
@@ -373,98 +351,247 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         conversationDao.updateById(update);
     }
 
-    private boolean shouldAggregateEvent(String messageType) {
-        return Arrays.asList(
-                "plan_thought",
-                "tool_thought",
-                "agent_stream",
-                "result",
-                "deep_search",
-                "html",
-                "markdown",
-                "code",
-                "data_analysis",
-                "ppt"
-        ).contains(messageType);
+    private List<OrderedEvent> projectFinalDetailEvents(AgentResponse agentResponse,
+                                                        Map<String, Object> eventDataMap,
+                                                        AtomicInteger seqCounter) {
+        String rawMessageType = agentResponse.getMessageType();
+        if (!shouldPersistFinalDetail(agentResponse, rawMessageType)) {
+            return Collections.emptyList();
+        }
+
+        JSONObject normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(eventDataMap);
+        if ("plan".equals(rawMessageType)) {
+            return List.of(buildPlanFinalEvent(agentResponse, seqCounter));
+        }
+        if ("deep_search".equals(rawMessageType) && "search".equals(resolveEventSubType(agentResponse))) {
+            return buildDeepSearchSearchEvents(agentResponse, normalizedPayload, eventDataMap, seqCounter);
+        }
+
+        return List.of(buildProjectedEvent(
+                resolveFinalDetailKey(agentResponse, eventDataMap, null),
+                seqCounter.getAndIncrement(),
+                rawMessageType,
+                resolveFinalEventSubType(agentResponse),
+                resolveFinalDisplayArea(rawMessageType, resolveEventSubType(agentResponse)),
+                valueToString(eventDataMap.get("taskId")),
+                convertToInteger(eventDataMap.get("taskOrder")),
+                valueToString(normalizedPayload.get("messageId")),
+                resolveEventTitle(agentResponse),
+                extractContentText(agentResponse),
+                normalizedPayload));
     }
 
-    private void mergeBufferedEvent(OrderedEvent currentEvent, Map<String, OrderedEvent> bufferedEvents) {
-        String eventKey = buildBufferedEventKey(currentEvent);
-        OrderedEvent existingEvent = bufferedEvents.get(eventKey);
+    private OrderedEvent buildPlanFinalEvent(AgentResponse agentResponse, AtomicInteger seqCounter) {
+        JSONObject payload = new JSONObject(new LinkedHashMap<>());
+        payload.put("messageType", "plan");
+        payload.put("messageOrder", 1);
+        payload.put("messageId", agentResponse.getMessageId());
+        payload.put("taskId", null);
+        payload.put("taskOrder", null);
+        payload.put("resultMap", JSON.parseObject(JSON.toJSONString(agentResponse.getPlan())));
+        return buildProjectedEvent(
+                "plan",
+                seqCounter.getAndIncrement(),
+                "plan",
+                "final_state",
+                "timeline",
+                null,
+                null,
+                agentResponse.getMessageId(),
+                resolvePlanDisplayTitle(agentResponse.getPlan()),
+                extractPlanContentText(agentResponse.getPlan()),
+                ConversationEventPayloadNormalizer.normalizePayload(payload));
+    }
+
+    private List<OrderedEvent> buildDeepSearchSearchEvents(AgentResponse agentResponse,
+                                                           JSONObject normalizedPayload,
+                                                           Map<String, Object> eventDataMap,
+                                                           AtomicInteger seqCounter) {
+        JSONObject outerResultMap = normalizedPayload.getJSONObject("resultMap");
+        JSONObject nestedResultMap = outerResultMap == null ? null : outerResultMap.getJSONObject("resultMap");
+        JSONObject searchResult = nestedResultMap == null ? null : nestedResultMap.getJSONObject("searchResult");
+        List<String> queries = extractStringList(searchResult == null ? null : searchResult.get("query"));
+        List<Object> docs = extractObjectList(searchResult == null ? null : searchResult.get("docs"));
+        if (queries.isEmpty()) {
+            return List.of(buildProjectedEvent(
+                    resolveFinalDetailKey(agentResponse, eventDataMap, null),
+                    seqCounter.getAndIncrement(),
+                    "deep_search",
+                    "search",
+                    "timeline",
+                    valueToString(eventDataMap.get("taskId")),
+                    convertToInteger(eventDataMap.get("taskOrder")),
+                    valueToString(normalizedPayload.get("messageId")),
+                    resolveDeepSearchSearchTitle(buildDeepSearchText(agentResponse)),
+                    buildDeepSearchText(agentResponse),
+                    normalizedPayload));
+        }
+
+        List<OrderedEvent> events = new ArrayList<>();
+        for (int index = 0; index < queries.size(); index++) {
+            String queryText = queries.get(index);
+            JSONObject payload = cloneJson(normalizedPayload);
+            String syntheticMessageId = buildSyntheticMessageId(agentResponse.getMessageId(), queryText, index);
+            payload.put("messageId", syntheticMessageId);
+
+            JSONObject payloadOuterResultMap = payload.getJSONObject("resultMap");
+            if (payloadOuterResultMap != null) {
+                payloadOuterResultMap.put("messageId", syntheticMessageId);
+                JSONObject payloadNestedResultMap = payloadOuterResultMap.getJSONObject("resultMap");
+                if (payloadNestedResultMap != null) {
+                    JSONArray queryArray = new JSONArray();
+                    queryArray.add(queryText);
+                    payloadNestedResultMap.put("query", queryArray);
+
+                    JSONObject payloadSearchResult = payloadNestedResultMap.getJSONObject("searchResult");
+                    if (payloadSearchResult == null) {
+                        payloadSearchResult = new JSONObject(new LinkedHashMap<>());
+                        payloadNestedResultMap.put("searchResult", payloadSearchResult);
+                    }
+                    payloadSearchResult.put("query", queryArray);
+                    JSONArray docsArray = new JSONArray();
+                    Object docsItem = index < docs.size() ? docs.get(index) : null;
+                    if (docsItem instanceof List) {
+                        docsArray.addAll((List<?>) docsItem);
+                    } else if (docsItem != null) {
+                        docsArray.add(docsItem);
+                    }
+                    JSONArray nestedDocsArray = new JSONArray();
+                    nestedDocsArray.add(docsArray);
+                    payloadSearchResult.put("docs", nestedDocsArray);
+                }
+            }
+
+            events.add(buildProjectedEvent(
+                    resolveFinalDetailKey(agentResponse, eventDataMap, queryText),
+                    seqCounter.getAndIncrement(),
+                    "deep_search",
+                    "search",
+                    "timeline",
+                    valueToString(eventDataMap.get("taskId")),
+                    convertToInteger(eventDataMap.get("taskOrder")),
+                    syntheticMessageId,
+                    resolveDeepSearchSearchTitle(queryText),
+                    buildDeepSearchSearchContent(queryText, nestedResultMap == null ? null : valueToString(nestedResultMap.get("answer"))),
+                    payload));
+        }
+        return events;
+    }
+
+    private OrderedEvent buildProjectedEvent(String eventKey,
+                                            int seqNo,
+                                            String eventType,
+                                            String eventSubType,
+                                            String displayArea,
+                                            String taskId,
+                                            Integer taskOrder,
+                                            String messageIdExt,
+                                            String title,
+                                            String contentText,
+                                            JSONObject payload) {
+        return OrderedEvent.builder()
+                .dedupKey(eventKey)
+                .seqNo(seqNo)
+                .eventType(eventType)
+                .eventSubType(eventSubType)
+                .displayArea(displayArea)
+                .taskId(taskId)
+                .taskOrder(taskOrder)
+                .messageIdExt(messageIdExt)
+                .isFinal(true)
+                .title(title)
+                .contentText(contentText)
+                .payloadJson(payload == null ? null : payload.toJSONString())
+                .eventTime(LocalDateTime.now())
+                .build();
+    }
+
+    private void upsertFinalDetailEvent(Map<String, OrderedEvent> finalDetailEvents, OrderedEvent currentEvent) {
+        String eventKey = defaultString(currentEvent.getDedupKey());
+        OrderedEvent existingEvent = finalDetailEvents.get(eventKey);
         if (existingEvent == null) {
-            bufferedEvents.put(eventKey, currentEvent);
+            finalDetailEvents.put(eventKey, currentEvent);
             return;
         }
 
-        existingEvent.setContentText(mergeEventContent(existingEvent.getContentText(), currentEvent.getContentText()));
+        existingEvent.setContentText(currentEvent.getContentText());
         existingEvent.setPayloadJson(currentEvent.getPayloadJson());
         existingEvent.setTitle(currentEvent.getTitle());
+        existingEvent.setEventSubType(currentEvent.getEventSubType());
+        existingEvent.setDisplayArea(currentEvent.getDisplayArea());
+        existingEvent.setTaskId(currentEvent.getTaskId());
         existingEvent.setTaskOrder(currentEvent.getTaskOrder());
+        existingEvent.setMessageIdExt(currentEvent.getMessageIdExt());
         existingEvent.setFinal(currentEvent.isFinal());
         if (currentEvent.getEventTime() != null) {
             existingEvent.setEventTime(currentEvent.getEventTime());
         }
     }
 
-    private String buildBufferedEventKey(OrderedEvent event) {
-        return String.join("|",
-                defaultString(event.getEventType()),
-                defaultString(event.getEventSubType()),
-                defaultString(event.getTaskId()),
-                defaultString(event.getMessageIdExt()));
-    }
-
-    private List<OrderedEvent> mergeOrderedEvents(List<OrderedEvent> orderedEvents, Map<String, OrderedEvent> bufferedEvents) {
-        List<OrderedEvent> mergedEvents = new ArrayList<>();
-        if (orderedEvents != null) {
-            mergedEvents.addAll(orderedEvents);
-        }
-        if (bufferedEvents != null && !bufferedEvents.isEmpty()) {
-            mergedEvents.addAll(bufferedEvents.values());
-        }
-        mergedEvents.sort(Comparator.comparing(OrderedEvent::getSeqNo));
-        return mergedEvents;
-    }
-
-    private String mergeEventContent(String existingText, String currentText) {
-        if (currentText == null || currentText.isBlank()) {
-            return existingText;
-        }
-        if (existingText == null || existingText.isBlank()) {
-            return currentText;
-        }
-        if (currentText.equals(existingText)) {
-            return existingText;
-        }
-        if (currentText.startsWith(existingText)) {
-            return currentText;
-        }
-        if (existingText.startsWith(currentText) || existingText.endsWith(currentText)) {
-            return existingText;
-        }
-        return existingText + currentText;
-    }
-
     private String defaultString(String value) {
         return value == null ? "" : value;
     }
 
-    private String resolveDisplayArea(String messageType) {
+    private boolean shouldPersistFinalDetail(AgentResponse agentResponse, String messageType) {
+        if (!StringUtils.hasText(messageType)) {
+            return false;
+        }
+
+        // 历史只保留对话结束时仍可见的最终细节。
+        // 最终回复正文已经由 message.response 承担，因此这里继续过滤 agent_stream/result，
+        // 但计划思考和工具思考必须作为最终态细节保留。
+        if (Arrays.asList("agent_stream", "result").contains(messageType)) {
+            return false;
+        }
+
+        if ("deep_search".equals(messageType)) {
+            String subType = resolveEventSubType(agentResponse);
+            return !"extend".equals(subType);
+        }
+
+        return true;
+    }
+
+    private String resolveFinalDetailKey(AgentResponse agentResponse,
+                                         Map<String, Object> eventDataMap,
+                                         String searchQuery) {
+        String messageType = agentResponse.getMessageType();
+        if ("plan".equals(messageType)) {
+            return "plan";
+        }
+        if ("task".equals(messageType)) {
+            return "task|" + defaultString(valueToString(eventDataMap.get("taskId")));
+        }
+        if ("deep_search".equals(messageType) && "search".equals(resolveEventSubType(agentResponse))) {
+            return "deep_search|search|" + defaultString(valueToString(eventDataMap.get("taskId")))
+                    + "|" + defaultString(searchQuery);
+        }
+        return messageType + "|" + defaultString(valueToString(eventDataMap.get("taskId")))
+                + "|" + defaultString(agentResponse.getMessageId());
+    }
+
+    private String resolveFinalDisplayArea(String messageType, String eventSubType) {
         switch (messageType) {
+            case "deep_search":
+                return "report".equals(eventSubType) ? "workspace" : "timeline";
             case "html":
             case "markdown":
             case "code":
             case "data_analysis":
             case "ppt":
-                return "workspace_realtime";
-            case "browser":
-                return "workspace_browser";
             case "file":
             case "knowledge":
-                return "workspace_file";
+                return "workspace";
             default:
                 return "timeline";
         }
+    }
+
+    private String resolveFinalEventSubType(AgentResponse resp) {
+        if (Arrays.asList("plan", "plan_thought", "task", "tool_thought", "task_summary").contains(resp.getMessageType())) {
+            return "final_state";
+        }
+        return resolveEventSubType(resp);
     }
 
     private String resolveEventSubType(AgentResponse resp) {
@@ -477,39 +604,36 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
     private String resolveEventTitle(AgentResponse resp) {
         String messageType = resp.getMessageType();
-        if ("plan_thought".equals(messageType)) {
-            return "思考中";
-        }
         if ("plan".equals(messageType)) {
-            return resolvePlanTitle(resp.getPlan());
+            return resolvePlanDisplayTitle(resp.getPlan());
         }
         if ("task".equals(messageType)) {
             return abbreviate(resp.getTask(), 50, "执行任务");
         }
-        if ("tool_thought".equals(messageType)) {
-            return "推理中";
-        }
         if ("tool_result".equals(messageType)) {
-            return "工具调用";
+            return resolveToolResultTitle(resp);
         }
         if ("deep_search".equals(messageType)) {
             String subType = resolveEventSubType(resp);
             if ("report".equals(subType)) {
-                return Boolean.TRUE.equals(resp.getIsFinal()) ? "总结完成" : "正在总结";
+                return "总结完成";
             }
             if ("search".equals(subType)) {
-                return "搜索完成";
+                Map<String, Object> resultMap = resp.getResultMap();
+                return resolveDeepSearchSearchTitle(extractSearchQueryText(
+                        resultMap == null ? null : resultMap.get("query"),
+                        resultMap == null ? null : resultMap.get("searchResult")));
             }
-            return "正在搜索";
+            return "深度搜索";
         }
         if ("html".equals(messageType) || "markdown".equals(messageType) || "code".equals(messageType) || "ppt".equals(messageType)) {
-            return "正在生成" + messageType;
+            return resolveStructuredResultTitle(resp, messageType);
         }
         if ("browser".equals(messageType)) {
             return "浏览页面";
         }
         if ("file".equals(messageType)) {
-            return "生成文件";
+            return resolveStructuredResultTitle(resp, "生成文件");
         }
         if ("knowledge".equals(messageType)) {
             return "知识库结果";
@@ -579,6 +703,13 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         return "任务计划";
     }
 
+    private String resolvePlanDisplayTitle(AgentResponse.Plan plan) {
+        if (plan == null) {
+            return "执行计划";
+        }
+        return abbreviate(plan.getTitle(), 50, "执行计划");
+    }
+
     private String extractPlanContentText(AgentResponse.Plan plan) {
         String latestCompletedStep = extractLatestPlanStep(plan, "completed");
         if (!latestCompletedStep.isBlank()) {
@@ -594,6 +725,104 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             return null;
         }
         return abbreviate(plan.getTitle(), 160, "");
+    }
+
+    private String resolveToolResultTitle(AgentResponse resp) {
+        AgentResponse.ToolResult toolResult = resp.getToolResult();
+        if (toolResult == null || !StringUtils.hasText(toolResult.getToolName())) {
+            return "工具调用";
+        }
+        return abbreviate(toolResult.getToolName(), 50, "工具调用");
+    }
+
+    private String resolveStructuredResultTitle(AgentResponse resp, String fallbackTitle) {
+        String fileName = extractPrimaryFileName(resp.getResultMap());
+        if (StringUtils.hasText(fileName)) {
+            return abbreviate(fileName, 50, fallbackTitle);
+        }
+        Object title = resp.getResultMap() == null ? null : resp.getResultMap().get("title");
+        if (title != null && StringUtils.hasText(String.valueOf(title))) {
+            return abbreviate(String.valueOf(title), 50, fallbackTitle);
+        }
+        return fallbackTitle;
+    }
+
+    private String extractPrimaryFileName(Map<String, Object> resultMap) {
+        if (resultMap == null) {
+            return null;
+        }
+        Object fileInfo = resultMap.get("fileInfo");
+        if (fileInfo instanceof List && !((List<?>) fileInfo).isEmpty()) {
+            Object first = ((List<?>) fileInfo).get(0);
+            if (first instanceof Map && ((Map<?, ?>) first).get("fileName") != null) {
+                return String.valueOf(((Map<?, ?>) first).get("fileName"));
+            }
+        }
+        return null;
+    }
+
+    private String resolveDeepSearchSearchTitle(String queryText) {
+        if (!StringUtils.hasText(queryText)) {
+            return "网页检索";
+        }
+        return abbreviate("检索：" + queryText, 50, "网页检索");
+    }
+
+    private String buildDeepSearchSearchContent(String queryText, String answerText) {
+        if (StringUtils.hasText(queryText) && StringUtils.hasText(answerText)) {
+            return abbreviate(queryText, 80, "") + " " + abbreviate(answerText, 120, "");
+        }
+        if (StringUtils.hasText(queryText)) {
+            return abbreviate(queryText, 160, "");
+        }
+        if (StringUtils.hasText(answerText)) {
+            return abbreviate(answerText, 160, "");
+        }
+        return null;
+    }
+
+    private String buildSyntheticMessageId(String messageId, String queryText, int index) {
+        String base = StringUtils.hasText(messageId) ? messageId : "deep-search";
+        String suffix = StringUtils.hasText(queryText)
+                ? queryText.replaceAll("\\s+", "_")
+                : String.valueOf(index);
+        return base + "#" + suffix;
+    }
+
+    private JSONObject cloneJson(JSONObject source) {
+        if (source == null) {
+            return new JSONObject(new LinkedHashMap<>());
+        }
+        return JSON.parseObject(source.toJSONString());
+    }
+
+    private List<String> extractStringList(Object value) {
+        if (!(value instanceof List)) {
+            return Collections.emptyList();
+        }
+        List<String> values = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            String text = valueToString(item);
+            if (StringUtils.hasText(text)) {
+                values.add(text);
+            }
+        }
+        return values;
+    }
+
+    private List<Object> extractObjectList(Object value) {
+        if (!(value instanceof List)) {
+            return Collections.emptyList();
+        }
+        return new ArrayList<>((List<?>) value);
+    }
+
+    private String valueToString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     // 优先提取任务执行阶段里最近一次完成/进行中的步骤，避免历史标题被笼统写成“任务计划”。
