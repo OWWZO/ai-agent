@@ -51,7 +51,7 @@ VALUES
 	(8,'3','智能对话体（Auto）','文本调研自动分析和执行任务','agent','autoAgentExecuteStrategy',1,'2025-06-14 12:41:20','2025-09-02 07:09:22'),
 	(9,'4','智能对话体（Auto）','ES日志文件检索','agent','autoAgentExecuteStrategy',1,'2025-06-14 12:41:20','2025-09-02 07:09:22'),
 	(10,'5','智能对话体（Auto）-监控分析','智能监控分析服务','agent','autoAgentExecuteStrategy',1,'2025-06-14 12:41:20','2025-09-02 07:09:21'),
-	(11,'6','智能对话体（Fixed）','智能执行体','agent','fixedAgentExecuteStrategy',1,'2025-06-14 12:41:20','2025-09-13 15:28:34');
+	(11,'6','智能对话体（Fixed）','智能执行体','agent','flowAgentExecuteStrategy',1,'2025-06-14 12:41:20','2025-09-13 15:28:34');
 
 /*!40000 ALTER TABLE `ai_agent` ENABLE KEYS */;
 UNLOCK TABLES;

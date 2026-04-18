@@ -1,11 +1,11 @@
-package org.wwz.ai.domain.agent.service.execute.flow.step;
+package org.wwz.ai.domain.agent.service.execute.auto1.step;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 
-import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
@@ -67,7 +67,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     /**
      * 流式调用 LLM：通过 SSE 将模型输出逐块推送到前端，并自动采集 token 用量
-     * 
+     *
      * <p>通过 MetricsAdvisor 自动统计 token，无需手动调用 accumulate
      * 流式调用时，MetricsAdvisor 会自动在最后一个包含 usage 的 chunk 上统计
      *
@@ -91,7 +91,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
             var promptBuilder = chatClient.prompt()
                     .user(userMessage)
                     .advisors(withMetrics(dynamicContext, null));
-            
+
             Flux<ChatResponse> flux = promptBuilder.stream().chatResponse();
             flux.doOnNext(cr -> {
                 if (cr != null && cr.getResult() != null && cr.getResult().getOutput() != null) {
@@ -202,7 +202,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
      * @param dynamicContext 动态上下文
      * @param result 要发送的结果实体
      */
-    protected void sendSseResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
+    protected void sendSseResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                 Object result) {
         try {
             // 优先使用强类型 emitter 字段，兼容老逻辑从 Map 中获取

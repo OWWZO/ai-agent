@@ -9,7 +9,7 @@
   - 专用查询可以一次性给出前端需要的角色基础信息和稳定排序依据，避免 Controller 层做零散过滤。
 - **Eligibility Rule**:
   - `ai_agent.status = 1`
-  - `ai_agent.strategy = 'fixedAgentExecuteStrategy'`
+  - `ai_agent.strategy = 'flowAgentExecuteStrategy'`
   - 至少存在 1 条 `ai_agent_flow_config`
   - FlowConfig 关联客户端至少能被解析为启用客户端；真正发送前仍再做一次运行时校验，防止配置漂移
 - **Alternatives Rejected**:

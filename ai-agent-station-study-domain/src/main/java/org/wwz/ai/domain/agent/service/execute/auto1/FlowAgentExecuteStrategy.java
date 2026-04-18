@@ -1,11 +1,10 @@
-package org.wwz.ai.domain.agent.service.execute.flow;
+package org.wwz.ai.domain.agent.service.execute.auto1;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
-import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
-import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,7 +13,7 @@ import org.springframework.stereotype.Service;
  * 流程执行策略
  */
 @Slf4j
-@Service("flowAgentExecuteStrategy")
+@Service("autoFlowAgentExecuteStrategy")
 public class FlowAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource

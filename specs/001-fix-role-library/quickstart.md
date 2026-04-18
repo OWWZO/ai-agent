@@ -4,7 +4,7 @@
 
 1. 准备至少 2 个满足以下条件的智能体：
    - `ai_agent.status = 1`
-   - `ai_agent.strategy = 'fixedAgentExecuteStrategy'`
+   - `ai_agent.strategy = 'flowAgentExecuteStrategy'`
    - `ai_agent_flow_config` 至少存在 1 条记录
    - FlowConfig 关联的客户端可正常装配
 2. 在应用配置中指定默认 chat 角色：

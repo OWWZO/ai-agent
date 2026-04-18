@@ -1,9 +1,9 @@
-package org.wwz.ai.domain.agent.service.execute.flow.step;
+package org.wwz.ai.domain.agent.service.execute.auto1.step;
 
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecutionPlanStep;
-import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -45,16 +45,16 @@ public class Step3ParseStepsNode extends AbstractExecuteSupport {
 
         // 发送SSE结果
         AgentExecuteResultEntity result = AgentExecuteResultEntity.createAnalysisSubResult(
-                dynamicContext.getStep(), 
-                "analysis_progress", 
-                parseResult, 
+                dynamicContext.getStep(),
+                "analysis_progress",
+                parseResult,
                 requestParameter.getSessionId());
 
         sendSseResult(dynamicContext, result);
-        
+
         // 更新步骤
         dynamicContext.setStep(dynamicContext.getStep() + 1);
-        
+
         return router(requestParameter, dynamicContext);
     }
 

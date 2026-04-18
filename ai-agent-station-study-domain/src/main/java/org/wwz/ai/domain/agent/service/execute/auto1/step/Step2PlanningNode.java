@@ -1,10 +1,10 @@
-package org.wwz.ai.domain.agent.service.execute.flow.step;
+package org.wwz.ai.domain.agent.service.execute.auto1.step;
 
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
-import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +16,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.wwz.ai.domain.agent.model.entity.ExecutionPlanStep;
 import java.util.List;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 import org.wwz.ai.domain.agent.model.entity.JoyAgentEvent;
 import java.util.ArrayList;
@@ -48,11 +47,11 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         ChatClient planningChatClient = getChatClientByClientId(aiAgentClientFlowConfigVO.getClientId());
 
         String userRequest = dynamicContext.getCurrentTask();
-        
+
         // 创建 BeanOutputConverter，指定 List<ExecutionPlanStep> 类型
         BeanOutputConverter<List<ExecutionPlanStep>> converter = new BeanOutputConverter<>(new ParameterizedTypeReference<>() {
         });
-        
+
         String planningPrompt = buildStructuredPlanningPrompt(userRequest, converter);
 
         // 流式调用 LLM，前端实时看到输出
@@ -66,9 +65,9 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
                 planningPrompt,
                 dynamicContext,
                 requestParameter.getSessionId());
-        
+
         log.info("执行步骤规划结果: {}", planningResult);
-        
+
         // 保存规划阶段原始输出（便于排错/前端展示，不参与执行编排）
         dynamicContext.setPlanningResultRaw(planningResult);
         dynamicContext.setValue("planningResult", planningResult);
@@ -91,7 +90,7 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
             executionPlan = tryConvertExecutionPlan(converter, repaired);
         }
         dynamicContext.setExecutionPlan(executionPlan);
-        
+
         // --- 发送 JoyAgent 格式的 Plan 事件 ---
         if (executionPlan != null && !executionPlan.isEmpty()) {
             List<String> stages = new ArrayList<>();
@@ -100,26 +99,26 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
                 stages.add(planStep.stepName());
                 steps.add(planStep.description());
             }
-            
+
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("stages", stages);
             resultMap.put("steps", steps);
             resultMap.put("title", "执行计划");
             resultMap.put("stepStatus", new ArrayList<>()); // 可选
-            
+
             JoyAgentEvent planEvent = JoyAgentEvent.builder()
                     .taskId(null) // Plan event should not have a specific taskId to be handled correctly by frontend
                     .messageType("plan")
                     .resultMap(resultMap)
                     .messageId(java.util.UUID.randomUUID().toString())
                     .build();
-            
+
             sendSseResult(dynamicContext, planEvent);
         }
-        
+
         // 更新步骤
         dynamicContext.setStep(dynamicContext.getStep() + 1);
-        
+
         return router(requestParameter, dynamicContext);
     }
 
@@ -138,11 +137,11 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
                     String text = cr.getResult().getOutput().getText();
                     if (text != null && !text.isEmpty()) {
                         fullText.append(text);
-                        
+
                         Map<String, Object> resultMap = new HashMap<>();
                         resultMap.put("planThought", text);
                         resultMap.put("isFinal", false);
-                        
+
                         JoyAgentEvent event = JoyAgentEvent.builder()
                                 .taskId(sessionId) // Plan thought uses sessionId? Or maybe empty.
                                 .messageType("plan_thought")
@@ -156,12 +155,12 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         } catch (Exception e) {
             log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
         }
-        
+
         // Send final thought (optional, or just to mark end)
         Map<String, Object> resultMap = new HashMap<>();
         resultMap.put("planThought", "");
         resultMap.put("isFinal", true);
-        
+
         JoyAgentEvent event = JoyAgentEvent.builder()
                 .taskId(sessionId)
                 .messageType("plan_thought")
@@ -248,7 +247,7 @@ public class Step2PlanningNode extends AbstractExecuteSupport {
         prompt.append("```\n");
         prompt.append(userRequest);
         prompt.append("\n```\n\n");
-        
+
         // 4. 执行计划要求
         prompt.append("##执行计划要求\n");
         prompt.append("### 核心要求\n");

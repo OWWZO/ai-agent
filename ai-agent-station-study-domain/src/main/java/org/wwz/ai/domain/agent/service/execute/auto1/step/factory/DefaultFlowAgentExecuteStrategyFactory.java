@@ -1,10 +1,10 @@
-package org.wwz.ai.domain.agent.service.execute.flow.step.factory;
+package org.wwz.ai.domain.agent.service.execute.auto1.step.factory;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 
-import org.wwz.ai.domain.agent.service.execute.flow.step.RootNode;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.RootNode;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

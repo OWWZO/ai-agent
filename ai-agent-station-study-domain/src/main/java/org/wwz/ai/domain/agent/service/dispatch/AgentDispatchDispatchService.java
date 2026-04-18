@@ -41,7 +41,7 @@ public class AgentDispatchDispatchService implements IAgentDispatchService {
         if (request.getAgentType() != null) {
             if (AgentType.WORKFLOW.getValue().equals(request.getAgentType())) {
                 // 聊天模式：固定策略（无深度研究）
-                strategy = "fixedAgentExecuteStrategy";
+                strategy = "flowAgentExecuteStrategy";
             } else if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
                 // 规划-执行模式（深度研究开启时使用）
                 strategy = "planSolveAgentExecuteStrategy";

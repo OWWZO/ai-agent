@@ -1,4 +1,4 @@
-package org.wwz.ai.domain.agent.service.execute.fixed;
+package org.wwz.ai.domain.agent.service.execute.workflow;
 
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
@@ -7,7 +7,6 @@ import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
@@ -20,7 +19,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import javax.annotation.Resource;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +28,8 @@ import java.util.Objects;
  * 固定执行策略
  */
 @Slf4j
-@Service("fixedAgentExecuteStrategy")
-public class FixedAgentExecuteStrategy implements IExecuteStrategy {
+@Service("flowAgentExecuteStrategy")
+public class FlowAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private IAgentRepository repository;

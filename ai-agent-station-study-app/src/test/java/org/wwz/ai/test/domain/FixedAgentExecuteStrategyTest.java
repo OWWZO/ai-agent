@@ -5,7 +5,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
-import org.wwz.ai.domain.agent.service.execute.fixed.FixedAgentExecuteStrategy;
+import org.wwz.ai.domain.agent.service.execute.workflow.FlowAgentExecuteStrategy;
 
 import javax.annotation.Resource;
 import java.lang.reflect.Field;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class FixedAgentExecuteStrategyTest {
 
     @Resource
-    private FixedAgentExecuteStrategy fixedAgentExecuteStrategy;
+    private FlowAgentExecuteStrategy fixedAgentExecuteStrategy;
 
     @Test
     public void shouldLoadFixedAgentExecuteStrategy() {
@@ -31,7 +31,7 @@ public class FixedAgentExecuteStrategyTest {
 
     @Test
     public void shouldNotDependOnSkillAssemblyComponents() {
-        List<String> fieldTypeNames = Arrays.stream(FixedAgentExecuteStrategy.class.getDeclaredFields())
+        List<String> fieldTypeNames = Arrays.stream(FlowAgentExecuteStrategy.class.getDeclaredFields())
                 .map(Field::getType)
                 .map(Class::getSimpleName)
                 .collect(Collectors.toList());

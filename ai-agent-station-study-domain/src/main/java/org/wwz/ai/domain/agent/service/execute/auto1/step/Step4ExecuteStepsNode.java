@@ -1,13 +1,12 @@
-package org.wwz.ai.domain.agent.service.execute.flow.step;
+package org.wwz.ai.domain.agent.service.execute.auto1.step;
 
-import jakarta.annotation.Resource;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecutionPlanStep;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
-import org.wwz.ai.domain.agent.service.execute.flow.step.factory.DefaultFlowAgentExecuteStrategyFactory;
+import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -30,7 +29,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
     @Override
     public String doApply(ExecuteCommandEntity request, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         log.info("开始执行第四步：按顺序执行规划步骤");
-        
+
         try {
             // 获取配置信息
             AiAgentClientFlowConfigVO aiAgentClientFlowConfigVO = dynamicContext.getAiAgentClientFlowConfigVOMap().get(AiClientTypeEnumVO.EXECUTOR_CLIENT.getCode());
@@ -47,15 +46,15 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             // 按顺序执行规划步骤（按 stepNumber 排序，避免正则解析）
             executeStepsInOrder(executorChatClient, executionPlan, dynamicContext, request);
 
-            
+
             // 发送ai回答结果到【最终执行结果】区域
             sendSummaryResult(dynamicContext, request.getSessionId());
 
-            
+
             // 更新步骤
             dynamicContext.setStep(dynamicContext.getStep() + 1);
             dynamicContext.setCompleted(true);
-            
+
             log.info("第四步执行完成：所有规划步骤已执行");
 
             return "所有规划步骤执行完成";
@@ -69,7 +68,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
     public StrategyHandler<ExecuteCommandEntity, DefaultFlowAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity request, DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext) {
         return defaultStrategyHandler;
     }
-    
+
     /**
      * 按顺序执行规划步骤
      */
@@ -90,7 +89,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             executeStep(executorChatClient, planStep, stepKey, dynamicContext, request.getSessionId(), sortedPlan.size());
         }
     }
-    
+
     /**
      * 执行单个步骤
      *
@@ -165,7 +164,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             Map<String, Object> startMap = new HashMap<>();
             startMap.put("messageType", "markdown");
             startMap.put("resultMap", startInnerMap);
-            
+
             JoyAgentEvent startEvent = JoyAgentEvent.builder()
                     .taskId(taskId)
                     .messageType("task")
@@ -179,12 +178,12 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
                     .advisors(withMetrics(dynamicContext, null))
                     .call()
                     .chatResponse();
-            
+
             String content = "";
             if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
                 content = response.getResult().getOutput().getText();
             }
-            
+
             if (content == null) content = "";
             fullText.append(content);
 
@@ -192,16 +191,16 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             int chunkSize = 20;
             for (int i = 0; i < content.length(); i += chunkSize) {
                 String chunk = content.substring(i, Math.min(content.length(), i + chunkSize));
-                
+
                 Map<String, Object> chunkInnerMap = new HashMap<>();
                 chunkInnerMap.put("data", chunk);
                 chunkInnerMap.put("isFinal", false);
                 chunkInnerMap.put("messageType", "markdown");
-                
+
                 Map<String, Object> chunkMap = new HashMap<>();
                 chunkMap.put("messageType", "markdown");
                 chunkMap.put("resultMap", chunkInnerMap);
-                
+
                 JoyAgentEvent chunkEvent = JoyAgentEvent.builder()
                         .taskId(taskId)
                         .messageType("task")
@@ -209,10 +208,10 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
                         .messageId(UUID.randomUUID().toString())
                         .build();
                 sendSseResult(dynamicContext, chunkEvent);
-                
+
                 try { Thread.sleep(50); } catch (InterruptedException ignored) {} // 模拟流式延迟
             }
-            
+
             // 发送完成事件
             Map<String, Object> endInnerMap = new HashMap<>();
             endInnerMap.put("data", "");
@@ -222,7 +221,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
             Map<String, Object> endMap = new HashMap<>();
             endMap.put("messageType", "markdown");
             endMap.put("resultMap", endInnerMap);
-            
+
             JoyAgentEvent endEvent = JoyAgentEvent.builder()
                     .taskId(taskId)
                     .messageType("task")
@@ -236,7 +235,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
         }
         return fullText.toString();
     }
-    
+
     /**
      * 处理步骤执行错误
      */
@@ -259,7 +258,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
         // 标记步骤为部分完成状态（不向前端发送子步骤错误，仅记录日志，总结时会体现）
         dynamicContext.setValue("step" + stepNumber + "Status", "FAILED_WITH_ERROR");
     }
-    
+
     /**
      * 构建步骤执行提示词
      * 中间步骤：【用户回答】内写「本步为中间步骤」；最后一步：【用户回答】内为面向用户的完整回复
@@ -301,7 +300,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
         sb.append("不要输出执行报告、JSON、API结构等内部细节。请执行并输出。");
         return sb.toString();
     }
-    
+
     /**
      * 从步骤输出中提取【用户回答】内的内容
      */
@@ -343,7 +342,7 @@ public class Step4ExecuteStepsNode extends AbstractExecuteSupport {
 
         log.info("已发送总结结果到【最终执行结果】区域，含 AI 最终回答");
     }
-    
+
 
 
     private String buildStepContent(ExecutionPlanStep planStep, String stepKey) {

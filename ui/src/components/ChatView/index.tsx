@@ -35,6 +35,17 @@ const getProductByType = (type?: string) => {
   return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
+const resolveConversationAgentType = (
+  outputStyle?: string,
+  deepThink?: boolean
+) => {
+  if (outputStyle === "chat") {
+    return 0;
+  }
+
+  return deepThink ? 1 : 2;
+};
+
 const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set(["task_summary", "result", "tool_thought"]);
 
 const shouldRefreshWorkspaceTask = (eventData?: MESSAGE.EventData) => {
@@ -356,7 +367,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const combineCurrentChat = (
     inputInfo: CHAT.TInputInfo,
     sessionId: string,
-    requestId: string
+    requestId: string,
+    outputStyle?: string,
+    deepThink?: boolean
   ): CHAT.ChatItem => {
     return {
       query: inputInfo.message!,
@@ -364,6 +377,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       responseType: "txt",
       sessionId,
       requestId,
+      agentType: resolveConversationAgentType(outputStyle, deepThink),
       loading: true,
       forceStop: false,
       tasks: [],
@@ -379,10 +393,17 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
     const { message, deepThink, outputStyle } = inputInfo;
-    const requestId = getUniqId();
-    let currentChat = combineCurrentChat(inputInfo, baseConversation.sessionId, requestId);
-    const isChatMode = outputStyle === "chat";
+    const currentOutputStyle = outputStyle || baseConversation.productType;
+    const isChatMode = currentOutputStyle === "chat";
     const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
+    const requestId = getUniqId();
+    let currentChat = combineCurrentChat(
+      inputInfo,
+      baseConversation.sessionId,
+      requestId,
+      currentOutputStyle,
+      normalizedDeepThink
+    );
     if (!isChatMode && normalizedDeepThink) {
       setStreamingThoughtMap((prev) => ({
         ...prev,
@@ -396,22 +417,32 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         baseConversation.title === "新对话" && message
           ? message.slice(0, 30)
           : baseConversation.title,
-      productType: outputStyle || baseConversation.productType,
+      productType: currentOutputStyle,
       deepThink: normalizedDeepThink,
-      chatList: [...baseConversation.chatList, currentChat],
+      chatList: [...baseConversation.chatList, { ...currentChat }],
     };
 
     commitConversation(conversationId, runningConversation);
     setLoading(true);
+
+    const syncRunningConversation = () => {
+      const newChatList = [...runningConversation.chatList];
+      newChatList.splice(newChatList.length - 1, 1, { ...currentChat });
+      runningConversation = {
+        ...runningConversation,
+        chatList: newChatList,
+      };
+      commitConversation(conversationId, runningConversation);
+    };
 
     const params = {
       sessionId: baseConversation.sessionId,
       requestId,
       query: message,
       deepThink: normalizedDeepThink ? 1 : 0,
-      outputStyle: outputStyle || baseConversation.productType,
+      outputStyle: currentOutputStyle,
       filesJson: inputInfo.files?.length ? JSON.stringify(inputInfo.files) : undefined,
-      aiAgentId: (outputStyle || baseConversation.productType) === "chat"
+      aiAgentId: currentOutputStyle === "chat"
         ? inputInfo.aiAgentId || baseConversation.role?.agentId
         : undefined,
     };
@@ -483,15 +514,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         currentChat.response = data.errorMsg || "当前角色暂不可用";
         currentChat.loading = false;
         setLoading(false);
-        const newChatList = [...runningConversation.chatList];
-        newChatList.splice(newChatList.length - 1, 1, currentChat);
-        runningConversation = {
-          ...runningConversation,
-          chatList: newChatList,
-        };
-        commitConversation(conversationId, runningConversation);
+        syncRunningConversation();
         return;
       }
+
       if (status === "tokenUseUp") {
         modal.info({
           title: "您的试用次数已用尽",
@@ -508,12 +534,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         runningConversation = {
           ...runningConversation,
           chatList: runningConversation.chatList.map((chat) =>
-            chat.requestId === currentChat.requestId ? currentChat : chat
+            chat.requestId === currentChat.requestId ? { ...currentChat } : chat
           ),
         };
         commitConversation(conversationId, runningConversation);
         return;
       }
+
       if (packageType !== "heartbeat") {
         if (isChatMode) {
           requestAnimationFrame(() => {
@@ -532,26 +559,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             }
 
             if (innerType) {
-              const newChatList = [...runningConversation.chatList];
-              newChatList.splice(newChatList.length - 1, 1, currentChat);
-              runningConversation = {
-                ...runningConversation,
-                chatList: newChatList,
-              };
-              commitConversation(conversationId, runningConversation);
+              syncRunningConversation();
               setChatVersion((v) => v + 1);
             }
 
             if (innerType && (inner?.finish || finished)) {
               currentChat.loading = false;
               setLoading(false);
-              const newChatList = [...runningConversation.chatList];
-              newChatList.splice(newChatList.length - 1, 1, currentChat);
-              runningConversation = {
-                ...runningConversation,
-                chatList: newChatList,
-              };
-              commitConversation(conversationId, runningConversation);
+              syncRunningConversation();
             }
           });
           return;
@@ -581,7 +596,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             }
           }
           const newChatList = [...runningConversation.chatList];
-          newChatList.splice(newChatList.length - 1, 1, currentChat);
+          newChatList.splice(newChatList.length - 1, 1, { ...currentChat });
           runningConversation = {
             ...runningConversation,
             chatList: newChatList,
@@ -666,7 +681,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           : baseConversation.title,
       productType: "dataAgent",
       deepThink: false,
-      dataChatList: [...baseConversation.dataChatList, currentChat],
+      dataChatList: [...baseConversation.dataChatList, { ...currentChat }],
     };
     commitConversation(conversationId, runningConversation);
     setLoading(true);
@@ -692,7 +707,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           break;
       }
       const newDataChatList = [...runningConversation.dataChatList];
-      newDataChatList.splice(newDataChatList.length - 1, 1, currentChat);
+      newDataChatList.splice(newDataChatList.length - 1, 1, { ...currentChat });
       runningConversation = {
         ...runningConversation,
         dataChatList: newDataChatList,

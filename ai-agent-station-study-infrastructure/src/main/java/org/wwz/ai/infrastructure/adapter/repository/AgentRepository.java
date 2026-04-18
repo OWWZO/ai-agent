@@ -528,6 +528,10 @@ public class AgentRepository implements IAgentRepository {
             Map<String, AiAgentClientFlowConfigVO> result = new HashMap<>();
 
             for (AiAgentFlowConfig flowConfig : flowConfigs) {
+                if (!isEnabledClient(flowConfig.getClientId())) {
+                    continue;
+                }
+
                 AiAgentClientFlowConfigVO configVO = AiAgentClientFlowConfigVO.builder()
                         .clientId(flowConfig.getClientId())
                         .clientName(flowConfig.getClientName())
@@ -569,6 +573,10 @@ public class AgentRepository implements IAgentRepository {
 
         List<AiAgentFlowConfig> flowConfigs = aiAgentFlowConfigDao.queryByAgentId(aiAgentId);
         for (AiAgentFlowConfig flowConfig : flowConfigs) {
+            if (!isEnabledClient(flowConfig.getClientId())) {
+                continue;
+            }
+
             AiAgentClientFlowConfigVO configVO = AiAgentClientFlowConfigVO.builder()
                     .clientId(flowConfig.getClientId())
                     .clientName(flowConfig.getClientName())
@@ -751,6 +759,15 @@ public class AgentRepository implements IAgentRepository {
         }
 
         return mcpVO;
+    }
+
+    private boolean isEnabledClient(String clientId) {
+        if (clientId == null || clientId.isBlank()) {
+            return false;
+        }
+
+        AiClient aiClient = aiClientDao.queryByClientId(clientId);
+        return aiClient != null && Objects.equals(aiClient.getStatus(), 1);
     }
 
 }
