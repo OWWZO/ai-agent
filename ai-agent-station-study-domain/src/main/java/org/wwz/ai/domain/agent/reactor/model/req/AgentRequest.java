@@ -27,8 +27,16 @@ public class AgentRequest {
     private Integer agentType;
     private String basePrompt;
     private String sopPrompt;
+    /**
+     * 会话级历史摘要文本
+     */
+    private String historyDialogue;
     private Boolean isStream;
     private List<Message> messages;
+    /**
+     * 恢复出的会话级稳定文件
+     */
+    private List<FileInformation> sessionFiles;
     private String outputStyle; // 交付物产出格式：html(网页模式）， docs(文档模式）， table(表格模式）
     private String aiAgentId;
 

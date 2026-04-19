@@ -172,6 +172,34 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 预装历史消息，避免多个 Agent 共享同一份可变列表。
+     */
+    protected void preloadMemory(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        memory.addMessages(new ArrayList<>(messages));
+    }
+
+    /**
+     * 注入会话历史摘要。
+     * 如果模板中没有显式占位符，则在尾部追加稳定区块，保证 executor 也能收到同一份会话记忆。
+     */
+    protected String injectHistoryDialogue(String promptTemplate, String historyDialogue) {
+        String normalizedTemplate = promptTemplate == null ? "" : promptTemplate;
+        String normalizedHistory = historyDialogue == null ? "" : historyDialogue;
+        if (normalizedTemplate.contains("{{history_dialogue}}")) {
+            return normalizedTemplate.replace("{{history_dialogue}}", normalizedHistory);
+        }
+        if (normalizedHistory.isBlank()) {
+            return normalizedTemplate;
+        }
+        return normalizedTemplate + "\n\n## 用户历史对话信息\n<history_dialogue>\n"
+                + normalizedHistory
+                + "\n</history_dialogue>";
+    }
+
+    /**
      * 执行单个工具调用命令
      * 处理工具名称校验、参数解析、工具执行、异常捕获，返回标准化结果
      * @param command 工具调用命令（包含工具名称、参数、工具ID等）

@@ -4,6 +4,7 @@ import com.alibaba.fastjson.annotation.JSONField;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
+import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 
@@ -140,6 +141,11 @@ public class AgentContext {
     String basePrompt;
 
     /**
+     * 会话历史摘要，用于注入 {{history_dialogue}}
+     */
+    String historyDialogue;
+
+    /**
      * 智能体类型标识
      * 用途：
      * 1. 逻辑路由：区分不同类型的Agent（如1=规划型Agent、2=执行型Agent、3=客服型Agent）；
@@ -147,6 +153,16 @@ public class AgentContext {
      * 枚举值示例：1=PlanningAgent，2=ExecutorAgent
      */
     Integer agentType;
+
+    /**
+     * 请求开始前预装入的历史消息
+     */
+    List<Message> preloadedMessages;
+
+    /**
+     * 历史恢复出的稳定文件
+     */
+    List<File> restoredFiles;
 
     /**
      * 当前任务专属的产品文件列表（任务级）
@@ -174,6 +190,7 @@ public class AgentContext {
                 ", query='" + query + '\'' +
                 ", task='" + task + '\'' +
                 ", dateInfo='" + dateInfo + '\'' +
+                ", historyDialogue='" + historyDialogue + '\'' +
                 ", productFiles=" + productFiles +
                 ", isStream=" + isStream +
                 ", streamMessageType='" + streamMessageType + '\'' +

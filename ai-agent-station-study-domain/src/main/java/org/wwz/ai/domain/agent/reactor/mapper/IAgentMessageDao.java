@@ -30,6 +30,23 @@ public interface IAgentMessageDao {
                                             @Param("limit") int limit);
 
     /**
+     * 查询边界之后最近 N 轮已完成消息，并按 sort_order 正序返回。
+     */
+    List<AgentMessage> queryCompletedAfterSortOrder(@Param("conversationId") Long conversationId,
+                                                    @Param("afterSortOrder") Integer afterSortOrder,
+                                                    @Param("limit") int limit);
+
+    /**
+     * 查询当前会话的全部已完成消息，供压缩阶段使用。
+     */
+    List<AgentMessage> queryCompletedByConversationId(@Param("conversationId") Long conversationId);
+
+    /**
+     * 检查会话内是否存在仍在执行中的轮次。
+     */
+    int countStreamingByConversationId(@Param("conversationId") Long conversationId);
+
+    /**
      * 查询会话内当前最大轮次号
      */
     Integer queryMaxSortOrder(@Param("conversationId") Long conversationId);

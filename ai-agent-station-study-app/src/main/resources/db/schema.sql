@@ -93,6 +93,26 @@ CREATE TABLE IF NOT EXISTS ai_agent_message_event (
     UNIQUE KEY uk_message_seq (message_id, seq_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 最终可见细节块快照表';
 
+CREATE TABLE IF NOT EXISTS ai_agent_session_memory (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    conversation_id     BIGINT       NOT NULL COMMENT 'FK -> ai_agent_conversation.id',
+    session_id          VARCHAR(64)  NOT NULL COMMENT '会话ID',
+    agent_type          TINYINT      NOT NULL COMMENT '0=CHAT, 1=PLAN_SOLVE, 2=REACT',
+    summary_text        MEDIUMTEXT   NULL     COMMENT '当前生效摘要',
+    facts_json          JSON         NULL     COMMENT '结构化事实 JSON',
+    artifact_refs_json  JSON         NULL     COMMENT '归档后的稳定文件/产物引用',
+    boundary_message_id BIGINT       NULL     COMMENT '已被摘要覆盖的最后一条消息ID',
+    boundary_sort_order INT          NULL     COMMENT '已被摘要覆盖的最后一轮顺序',
+    source_turn_count   INT          NOT NULL DEFAULT 0 COMMENT '摘要覆盖轮次数',
+    last_compacted_at   DATETIME     NULL     COMMENT '最近压缩时间',
+    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_session_id (session_id),
+    KEY idx_conversation_boundary (conversation_id, deleted, boundary_sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 会话记忆快照表';
+
 CREATE TABLE IF NOT EXISTS sales_data (
     row_id INT PRIMARY KEY COMMENT '行 ID',
     order_id VARCHAR(50) DEFAULT NULL COMMENT '订单 ID',

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao">
+
+    <resultMap id="AgentSessionMemoryMap" type="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory">
+        <id column="id" property="id"/>
+        <result column="conversation_id" property="conversationId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="agent_type" property="agentType"/>
+        <result column="summary_text" property="summaryText"/>
+        <result column="facts_json" property="factsJson"/>
+        <result column="artifact_refs_json" property="artifactRefsJson"/>
+        <result column="boundary_message_id" property="boundaryMessageId"/>
+        <result column="boundary_sort_order" property="boundarySortOrder"/>
+        <result column="source_turn_count" property="sourceTurnCount"/>
+        <result column="last_compacted_at" property="lastCompactedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_session_memory (
+            conversation_id, session_id, agent_type, summary_text, facts_json, artifact_refs_json,
+            boundary_message_id, boundary_sort_order, source_turn_count, last_compacted_at,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{conversationId}, #{sessionId}, #{agentType}, #{summaryText}, #{factsJson}, #{artifactRefsJson},
+            #{boundaryMessageId}, #{boundarySortOrder}, #{sourceTurnCount}, #{lastCompactedAt},
+            now(), now(), 0
+        )
+    </insert>
+
+    <update id="updateById" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory">
+        UPDATE ai_agent_session_memory
+        <set>
+            <if test="conversationId != null">conversation_id = #{conversationId},</if>
+            <if test="agentType != null">agent_type = #{agentType},</if>
+            <if test="summaryText != null">summary_text = #{summaryText},</if>
+            <if test="factsJson != null">facts_json = #{factsJson},</if>
+            <if test="artifactRefsJson != null">artifact_refs_json = #{artifactRefsJson},</if>
+            <if test="boundaryMessageId != null">boundary_message_id = #{boundaryMessageId},</if>
+            <if test="boundarySortOrder != null">boundary_sort_order = #{boundarySortOrder},</if>
+            <if test="sourceTurnCount != null">source_turn_count = #{sourceTurnCount},</if>
+            <if test="lastCompactedAt != null">last_compacted_at = #{lastCompactedAt},</if>
+            update_time = now()
+        </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <select id="queryBySessionId" resultMap="AgentSessionMemoryMap">
+        SELECT *
+        FROM ai_agent_session_memory
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+    </select>
+
+    <insert id="upsert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory">
+        INSERT INTO ai_agent_session_memory (
+            conversation_id, session_id, agent_type, summary_text, facts_json, artifact_refs_json,
+            boundary_message_id, boundary_sort_order, source_turn_count, last_compacted_at,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{conversationId}, #{sessionId}, #{agentType}, #{summaryText}, #{factsJson}, #{artifactRefsJson},
+            #{boundaryMessageId}, #{boundarySortOrder}, #{sourceTurnCount}, #{lastCompactedAt},
+            now(), now(), 0
+        )
+        ON DUPLICATE KEY UPDATE
+            conversation_id = VALUES(conversation_id),
+            agent_type = VALUES(agent_type),
+            summary_text = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(summary_text)
+                ELSE summary_text
+            END,
+            facts_json = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(facts_json)
+                ELSE facts_json
+            END,
+            artifact_refs_json = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(artifact_refs_json)
+                ELSE artifact_refs_json
+            END,
+            boundary_message_id = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(boundary_message_id)
+                ELSE boundary_message_id
+            END,
+            boundary_sort_order = GREATEST(COALESCE(boundary_sort_order, -1), COALESCE(VALUES(boundary_sort_order), -1)),
+            source_turn_count = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(source_turn_count)
+                ELSE source_turn_count
+            END,
+            last_compacted_at = CASE
+                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(last_compacted_at)
+                ELSE last_compacted_at
+            END,
+            deleted = 0,
+            update_time = now()
+    </insert>
+
+    <update id="softDeleteBySessionId">
+        UPDATE ai_agent_session_memory
+        SET deleted = 1,
+            update_time = now()
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+    </update>
+
+</mapper>

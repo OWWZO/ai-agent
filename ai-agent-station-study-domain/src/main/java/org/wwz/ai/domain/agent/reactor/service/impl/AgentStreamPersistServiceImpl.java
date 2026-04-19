@@ -16,6 +16,9 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.handler.AgentResponseHandler;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -23,12 +26,16 @@ import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
+import org.wwz.ai.domain.agent.reactor.service.IAgentSessionMemoryService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentStreamPersistService;
 import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
+import org.wwz.ai.domain.agent.reactor.service.support.ActiveSessionStreamRegistry;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.domain.agent.reactor.util.ChateiUtils;
 import org.wwz.ai.domain.agent.reactor.util.SseUtil;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageDao;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 
@@ -62,7 +69,15 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
     @Resource
     private IAgentConversationDao conversationDao;
     @Resource
+    private IAgentMessageDao messageDao;
+    @Resource
     private IFixRoleService fixRoleService;
+    @Resource
+    private IAgentSessionMemoryService sessionMemoryService;
+    @Resource
+    private SessionArtifactRestoreSupport sessionArtifactRestoreSupport;
+    @Resource
+    private ActiveSessionStreamRegistry activeSessionStreamRegistry;
 
     @Override
     public SseEmitter sendAndPersist(String sessionId, String requestId, String deviceId,
@@ -80,6 +95,11 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                         convAgentType, filesJson, resolution.status(), resolution.errorMsg());
             }
             resolvedRole = resolution.role();
+        } else {
+            SessionGuardResult guardResult = validateSessionGuard(conversation, convAgentType);
+            if (guardResult != null) {
+                return emitGuardError(requestId, guardResult.status(), guardResult.errorMsg());
+            }
         }
 
         if (conversation == null) {
@@ -90,6 +110,13 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         } else if (resolvedRole != null && shouldBindChatRole(conversation, resolvedRole)) {
             conversation = conversationService.bindChatRole(
                     conversation, resolvedRole.getAgentId(), resolvedRole.getAgentName());
+        }
+
+        if (ConversationAgentType.CHAT != convAgentType) {
+            SessionGuardResult guardResult = validateBusyGuard(conversation);
+            if (guardResult != null) {
+                return emitGuardError(requestId, guardResult.status(), guardResult.errorMsg());
+            }
         }
 
         // 2. 插入占位消息
@@ -113,12 +140,24 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         gptReq.setTraceId(traceId);
 
         AgentRequest agentRequest = buildAgentRequest(gptReq);
+        List<FileInformation> currentRequestFiles = sessionArtifactRestoreSupport.parseFiles(filesJson);
 
         // 4. 滑动窗口上下文 (仅Chat模式)
         if (convAgentType == ConversationAgentType.CHAT) {
             List<AgentMessage> recentMessages = messageService.getRecentCompleted(conversationId, 10);
             List<AgentRequest.Message> contextMessages = buildContextMessages(recentMessages);
             agentRequest.setMessages(trimToTokenBudget(contextMessages, 8000));
+        } else {
+            SessionWorkingMemory workingMemory = sessionMemoryService.rebuildWorkingMemory(conversation);
+            agentRequest.setHistoryDialogue(workingMemory.getHistoryDialogue());
+            agentRequest.setMessages(buildWorkingMemoryMessages(workingMemory));
+            agentRequest.setSessionFiles(sessionArtifactRestoreSupport.mergeFiles(
+                    workingMemory.getRestoredFiles(),
+                    currentRequestFiles));
+        }
+
+        if (agentRequest.getSessionFiles() == null) {
+            agentRequest.setSessionFiles(currentRequestFiles);
         }
 
         // 5. 创建SseEmitter
@@ -132,14 +171,20 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         AtomicInteger seqCounter = new AtomicInteger(1);
 
         // 7. 发起异步请求并处理流
-        executeStreamWithPersistence(agentRequest, emitter, messageId, conversationId,
+        executeStreamWithPersistence(agentRequest, emitter, conversation, messageId, conversationId,
                 sessionId, requestId, convTitle, currentMessageCount, query,
                 responseBuffer, thoughtBuffer, finalDetailEvents, seqCounter);
 
         return emitter;
     }
 
+    @Override
+    public boolean stop(String requestId) {
+        return activeSessionStreamRegistry.requestStop(requestId);
+    }
+
     private void executeStreamWithPersistence(AgentRequest autoReq, SseEmitter sseEmitter,
+                                               AgentConversation conversation,
                                                Long messageId, Long conversationId,
                                                String sessionId, String requestId,
                                                String convTitle, int currentMessageCount,
@@ -157,17 +202,26 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 .callTimeout(reactorConfig.getSseClientConnectTimeout(), TimeUnit.SECONDS)
                 .build();
 
-        client.newCall(request).enqueue(new Callback() {
+        Call call = client.newCall(request);
+        activeSessionStreamRegistry.register(sessionId, requestId, messageId, call, sseEmitter);
+
+        call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 log.error("onFailure requestId={}, error={}", autoReq.getRequestId(), e.getMessage(), e);
+                boolean forceStopped = activeSessionStreamRegistry.isStopRequested(requestId) || call.isCanceled();
                 try {
-                    persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
-                            convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
+                    persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
+                            convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, forceStopped ? "partial" : "error");
                 } catch (Exception ex) {
                     log.error("持久化错误状态失败", ex);
                 } finally {
-                    sseEmitter.completeWithError(e);
+                    activeSessionStreamRegistry.unregister(requestId);
+                    if (forceStopped) {
+                        sseEmitter.complete();
+                    } else {
+                        sseEmitter.completeWithError(e);
+                    }
                 }
             }
 
@@ -179,8 +233,9 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
                 if (responseBody == null) {
                     log.error("{} empty response body", autoReq.getRequestId());
-                    persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                    persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
                             convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
+                    activeSessionStreamRegistry.unregister(requestId);
                     sseEmitter.completeWithError(new IllegalStateException("empty response body"));
                     return;
                 }
@@ -190,8 +245,9 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 try {
                     if (!response.isSuccessful()) {
                             log.error("{} response failed: {}", autoReq.getRequestId(), responseBody.string());
-                            persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                            persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
                                 convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
+                        activeSessionStreamRegistry.unregister(requestId);
                         sseEmitter.completeWithError(new IllegalStateException("upstream response failed"));
                         return;
                     }
@@ -242,11 +298,12 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 } catch (Exception e) {
                     log.error("{} stream exception", autoReq.getRequestId(), e);
                     try {
-                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                        persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
                                 convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                     } catch (Exception ex) {
                         log.error("持久化错误状态失败", ex);
                     } finally {
+                        activeSessionStreamRegistry.unregister(requestId);
                         sseEmitter.completeWithError(e);
                     }
                     return;
@@ -255,18 +312,21 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 // --- 流结束: 持久化完整消息 ---
                 try {
                     if (streamCompleted) {
-                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                        persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
                                 convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "completed");
                         log.info("消息持久化完成 messageId={}, conversationId={}", messageId, conversationId);
                     } else {
-                        persistTurnAndEvents(messageId, conversationId, query, currentMessageCount,
+                        persistTurnAndEvents(messageId, conversation, conversationId, query, currentMessageCount,
                                 convTitle, responseBuffer, thoughtBuffer, finalDetailEvents, "error");
                         sseEmitter.completeWithError(new IllegalStateException("stream closed before completion"));
                     }
                 } catch (Exception e) {
                     log.error("流结束持久化失败 messageId={}", messageId, e);
+                    activeSessionStreamRegistry.unregister(requestId);
                     sseEmitter.completeWithError(e);
+                    return;
                 }
+                activeSessionStreamRegistry.unregister(requestId);
             }
         });
     }
@@ -305,7 +365,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
     }
 
-    private void persistTurnAndEvents(Long messageId, Long conversationId, String query,
+    private void persistTurnAndEvents(Long messageId, AgentConversation conversation, Long conversationId, String query,
                                           int currentMessageCount, String convTitle,
                                           StringBuilder responseBuffer, StringBuilder thoughtBuffer,
                                           Map<String, OrderedEvent> finalDetailEvents,
@@ -349,6 +409,82 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             update.setTitle(query.length() > 50 ? query.substring(0, 50) + "..." : query);
         }
         conversationDao.updateById(update);
+
+        if ("completed".equals(status) && conversation != null) {
+            sessionMemoryService.refreshSessionMemory(conversation);
+        }
+    }
+
+    private SessionGuardResult validateSessionGuard(AgentConversation conversation,
+                                                    ConversationAgentType convAgentType) {
+        if (conversation == null) {
+            return null;
+        }
+        if (!Objects.equals(conversation.getAgentType(), convAgentType.getCode())) {
+            return SessionGuardResult.of(
+                    "mode_conflict",
+                    "当前会话已绑定 REACT/PLAN_SOLVE，请新建会话后再切换模式");
+        }
+        return null;
+    }
+
+    private SessionGuardResult validateBusyGuard(AgentConversation conversation) {
+        if (conversation == null) {
+            return null;
+        }
+        if (messageDao.countStreamingByConversationId(conversation.getId()) > 0) {
+            return SessionGuardResult.of(
+                    "session_busy",
+                    "当前会话仍在执行中，请等待完成或先停止当前轮次");
+        }
+        return null;
+    }
+
+    private SseEmitter emitGuardError(String requestId, String status, String errorMsg) {
+        GptProcessResult result = GptProcessResult.builder()
+                .status(status)
+                .response("")
+                .responseAll("")
+                .finished(true)
+                .responseType("markdown")
+                .traceId(requestId)
+                .reqId(requestId)
+                .encrypted(false)
+                .packageType("result")
+                .errorMsg(errorMsg)
+                .build();
+
+        SseEmitter emitter = SseUtil.build(TimeUnit.MINUTES.toMillis(5), requestId);
+        try {
+            emitter.send(result);
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+        return emitter;
+    }
+
+    private List<AgentRequest.Message> buildWorkingMemoryMessages(SessionWorkingMemory workingMemory) {
+        if (workingMemory == null || workingMemory.getRecentTurns() == null || workingMemory.getRecentTurns().isEmpty()) {
+            return List.of();
+        }
+
+        List<AgentRequest.Message> messages = new ArrayList<>();
+        for (SessionTurnMemory turn : workingMemory.getRecentTurns()) {
+            if (StringUtils.hasText(turn.getUserMessage())) {
+                messages.add(AgentRequest.Message.builder()
+                        .role("user")
+                        .content(turn.getUserMessage())
+                        .build());
+            }
+            if (StringUtils.hasText(turn.getAssistantMessage())) {
+                messages.add(AgentRequest.Message.builder()
+                        .role("assistant")
+                        .content(turn.getAssistantMessage())
+                        .build());
+            }
+        }
+        return messages;
     }
 
     private List<OrderedEvent> projectFinalDetailEvents(AgentResponse agentResponse,
@@ -1210,6 +1346,12 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
         private boolean success() {
             return role != null;
+        }
+    }
+
+    private record SessionGuardResult(String status, String errorMsg) {
+        private static SessionGuardResult of(String status, String errorMsg) {
+            return new SessionGuardResult(status, errorMsg);
         }
     }
 

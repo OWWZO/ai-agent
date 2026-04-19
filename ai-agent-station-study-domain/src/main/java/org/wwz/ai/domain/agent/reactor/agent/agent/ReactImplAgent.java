@@ -103,19 +103,23 @@ public class ReactImplAgent extends ReActAgent {
 
         // 步骤5：初始化系统提示词（核心指令，指导大模型的决策逻辑）
         // 替换占位符：{{tools}}=工具列表、{{query}}=用户查询、{{date}}=日期信息、{{basePrompt}}=基础提示词
-        setSystemPrompt(reactorConfig.getReactSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
+        setSystemPrompt(injectHistoryDialogue(
+                reactorConfig.getReactSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString())
                 .replace("{{query}}", context.getQuery())
                 .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt()));
+                .replace("{{basePrompt}}", context.getBasePrompt()),
+                context.getHistoryDialogue()));
 
         // 步骤6：初始化下一步提示词（每次思考阶段发送给大模型的决策提示词）
         // 占位符替换规则同系统提示词，保证提示词包含完整的上下文信息
-        setNextStepPrompt(reactorConfig.getReactNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
+        setNextStepPrompt(injectHistoryDialogue(
+                reactorConfig.getReactNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString())
                 .replace("{{query}}", context.getQuery())
                 .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt()));
+                .replace("{{basePrompt}}", context.getBasePrompt()),
+                context.getHistoryDialogue()));
 
         // 步骤7：保存提示词快照（防止后续动态替换{{files}}导致原始提示词丢失）
         setSystemPromptSnapshot(getSystemPrompt());
@@ -126,6 +130,7 @@ public class ReactImplAgent extends ReActAgent {
         setMaxSteps(reactorConfig.getReactMaxSteps()); // 最大执行步数（防止无限循环）
         setLlm(new LLM(reactorConfig.getReactModelName(), "")); // 初始化大模型实例（指定ReAct专用模型）
         setContext(context); // 绑定智能体上下文
+        preloadMemory(context.getPreloadedMessages());
 
         // 步骤9：初始化可用工具集合（从上下文加载当前请求可调用的所有工具）
         availableTools = context.getToolCollection();

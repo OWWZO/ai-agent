@@ -47,16 +47,16 @@ public class AgentMessageController {
     }
 
     /**
-     * 强制停止流式回答 (预留，后续实现)
+     * 强制停止流式回答
      */
     @PostMapping("/stop")
     public Response<Boolean> stop(@RequestParam("requestId") String requestId) {
-        // TODO: 实现强制停止逻辑（取消OkHttp请求、标记消息状态）
         log.info("强制停止请求 requestId={}", requestId);
+        boolean stopped = agentStreamPersistService.stop(requestId);
         return Response.<Boolean>builder()
                 .code(ResponseCode.SUCCESS.getCode())
-                .info("success")
-                .data(true)
+                .info(stopped ? "success" : "request not found or already finished")
+                .data(stopped)
                 .build();
     }
 

@@ -5,11 +5,21 @@ import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
+import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
+import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
+import org.wwz.ai.domain.agent.reactor.service.impl.AgentSessionMemoryServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageEventServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageServiceImpl;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryCompactionService;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryBuilder;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -94,6 +104,142 @@ public class ConversationHistoryPersistenceTest {
         Assert.assertEquals(Integer.valueOf(1), message.getStatus());
     }
 
+    @Test
+    public void test_refreshSessionMemorySkipsWhenNoCompletedTurns() {
+        AgentSessionMemoryServiceImpl service = new AgentSessionMemoryServiceImpl();
+        AtomicReference<AgentSessionMemory> upserted = new AtomicReference<>();
+        ReflectionTestUtils.setField(service, "reactorConfig", buildSessionMemoryConfig());
+        ReflectionTestUtils.setField(service, "sessionMemoryDao", new StubSessionMemoryDao(upserted));
+        ReflectionTestUtils.setField(service, "messageDao", new StubMessageDao(new AtomicReference<>()) {
+            @Override
+            public List<AgentMessage> queryCompletedByConversationId(Long conversationId) {
+                return List.of();
+            }
+        });
+        ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao(new AtomicReference<>(), new AtomicReference<>()));
+        ReflectionTestUtils.setField(service, "workingMemoryAssembler", new SessionWorkingMemoryAssembler());
+        ReflectionTestUtils.setField(service, "compactionService", buildCompactionService());
+
+        service.refreshSessionMemory(AgentConversation.builder()
+                .id(1L)
+                .sessionId("sess-err-001")
+                .agentType(2)
+                .build());
+
+        Assert.assertNull(upserted.get());
+    }
+
+    @Test
+    public void test_compactionArtifactsComeFromNormalizedPayload() {
+        SessionMemoryCompactionService compactionService = buildCompactionService();
+        AgentConversation conversation = AgentConversation.builder()
+                .id(1L)
+                .sessionId("sess-artifact-001")
+                .agentType(2)
+                .build();
+        AgentMessage message = AgentMessage.builder()
+                .id(11L)
+                .conversationId(1L)
+                .requestId("req-artifact")
+                .sortOrder(0)
+                .query("整理报告")
+                .response("报告已生成")
+                .status(1)
+                .agentType(2)
+                .build();
+        AgentMessageEvent event = AgentMessageEvent.builder()
+                .messageId(11L)
+                .seqNo(1)
+                .payloadJson("""
+                        {"messageType":"task","resultMap":{"resultMap":{"fileInfo":[{"fileName":"normalized.html","downloadUrl":"https://file.example.com/normalized","domainUrl":"https://file.example.com/normalized","resourceKey":"normalized"}]}}}
+                        """)
+                .status("completed")
+                .build();
+
+        SessionMemoryCompactionService.CompactionResult result = compactionService.compact(
+                conversation,
+                null,
+                List.of(
+                        message,
+                        AgentMessage.builder()
+                                .id(12L)
+                                .conversationId(1L)
+                                .requestId("req-artifact-2")
+                                .sortOrder(1)
+                                .query("继续整理")
+                                .response("继续完成")
+                                .status(1)
+                                .agentType(2)
+                                .build(),
+                        AgentMessage.builder()
+                                .id(13L)
+                                .conversationId(1L)
+                                .requestId("req-artifact-3")
+                                .sortOrder(2)
+                                .query("再补一段")
+                                .response("再补一段完成")
+                                .status(1)
+                                .agentType(2)
+                                .build()),
+                java.util.Map.of(11L, List.of(event)));
+
+        Assert.assertNotNull(result);
+        Assert.assertTrue(result.getArtifactRefsJson().contains("normalized.html"));
+        Assert.assertFalse(result.getArtifactRefsJson().contains("fileInfo"));
+    }
+
+    private ReactorConfig buildSessionMemoryConfig() {
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "sessionMemoryEnabled", true);
+        ReflectionTestUtils.setField(config, "sessionMemoryCompactionThresholdTokens", 1);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowTurns", 2);
+        ReflectionTestUtils.setField(config, "sessionMemorySummaryMaxLength", 800);
+        return config;
+    }
+
+    private SessionMemoryCompactionService buildCompactionService() {
+        SessionMemoryCompactionService service = new SessionMemoryCompactionService();
+        ReflectionTestUtils.setField(service, "reactorConfig", buildSessionMemoryConfig());
+        ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
+        return service;
+    }
+
+    private static class StubSessionMemoryDao implements IAgentSessionMemoryDao {
+
+        private final AtomicReference<AgentSessionMemory> upserted;
+
+        private StubSessionMemoryDao(AtomicReference<AgentSessionMemory> upserted) {
+            this.upserted = upserted;
+        }
+
+        @Override
+        public int insert(AgentSessionMemory sessionMemory) {
+            return 0;
+        }
+
+        @Override
+        public int updateById(AgentSessionMemory sessionMemory) {
+            return 0;
+        }
+
+        @Override
+        public AgentSessionMemory queryBySessionId(String sessionId) {
+            return null;
+        }
+
+        @Override
+        public int upsert(AgentSessionMemory sessionMemory) {
+            upserted.set(sessionMemory);
+            return 1;
+        }
+
+        @Override
+        public int softDeleteBySessionId(String sessionId) {
+            return 0;
+        }
+    }
+
     private static class StubMessageEventDao implements IAgentMessageEventDao {
 
         private final AtomicReference<List<AgentMessageEvent>> inserted;
@@ -113,6 +259,16 @@ public class ConversationHistoryPersistenceTest {
 
         @Override
         public List<AgentMessageEvent> queryByMessageId(Long messageId) {
+            return List.of();
+        }
+
+        @Override
+        public List<AgentMessageEvent> queryByMessageIds(List<Long> messageIds) {
+            return List.of();
+        }
+
+        @Override
+        public List<AgentMessageEvent> queryArtifactEventsByMessageIds(List<Long> messageIds) {
             return List.of();
         }
 
@@ -155,6 +311,21 @@ public class ConversationHistoryPersistenceTest {
         @Override
         public List<AgentMessage> queryRecentCompleted(Long conversationId, int limit) {
             return List.of();
+        }
+
+        @Override
+        public List<AgentMessage> queryCompletedAfterSortOrder(Long conversationId, Integer afterSortOrder, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<AgentMessage> queryCompletedByConversationId(Long conversationId) {
+            return List.of();
+        }
+
+        @Override
+        public int countStreamingByConversationId(Long conversationId) {
+            return 0;
         }
 
         @Override

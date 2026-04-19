@@ -81,6 +81,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                 for (String task : planningResults) {
                     ExecutorAgent slaveExecutor = new ExecutorAgent(agentContext);
                     slaveExecutor.setState(executor.getState());
+                    slaveExecutor.getMemory().clear();
                     slaveExecutor.getMemory().addMessages(executor.getMemory().getMessages());
                     slaveExecutors.add(slaveExecutor);
 

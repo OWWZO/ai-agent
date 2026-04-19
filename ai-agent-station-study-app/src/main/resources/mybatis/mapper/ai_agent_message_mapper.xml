@@ -68,6 +68,40 @@
         LIMIT #{limit}
     </select>
 
+    <select id="queryCompletedAfterSortOrder" resultMap="AgentMessageMap">
+        SELECT *
+        FROM (
+                 SELECT *
+                 FROM ai_agent_message
+                 WHERE conversation_id = #{conversationId}
+                   AND status = 1
+                   AND deleted = 0
+                   <if test="afterSortOrder != null">
+                       AND sort_order &gt; #{afterSortOrder}
+                   </if>
+                 ORDER BY sort_order DESC
+                 LIMIT #{limit}
+             ) recent_completed
+        ORDER BY sort_order ASC
+    </select>
+
+    <select id="queryCompletedByConversationId" resultMap="AgentMessageMap">
+        SELECT *
+        FROM ai_agent_message
+        WHERE conversation_id = #{conversationId}
+          AND status = 1
+          AND deleted = 0
+        ORDER BY sort_order ASC
+    </select>
+
+    <select id="countStreamingByConversationId" resultType="int">
+        SELECT COUNT(*)
+        FROM ai_agent_message
+        WHERE conversation_id = #{conversationId}
+          AND status = 0
+          AND deleted = 0
+    </select>
+
     <select id="queryMaxSortOrder" resultType="java.lang.Integer">
         SELECT COALESCE(MAX(sort_order), -1)
         FROM ai_agent_message

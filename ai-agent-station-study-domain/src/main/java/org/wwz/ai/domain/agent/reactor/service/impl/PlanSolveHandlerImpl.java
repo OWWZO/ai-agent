@@ -99,6 +99,7 @@ public class PlanSolveHandlerImpl implements AgentHandlerService {
                     // 同步主执行Agent的状态到子Agent
                     slaveExecutor.setState(executor.getState());
                     // 同步主执行Agent的内存消息到子Agent，保证上下文一致
+                    slaveExecutor.getMemory().clear();
                     slaveExecutor.getMemory().addMessages(executor.getMemory().getMessages());
                     // 将子Agent加入列表，用于后续合并内存和状态
                     slaveExecutors.add(slaveExecutor);

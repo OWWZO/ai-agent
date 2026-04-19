@@ -108,18 +108,22 @@ public class PlanningAgent extends ReActAgent {
         String nextPromptKey = "default";
 
         // 5. 初始化系统提示词：替换模板中的占位符（工具列表、用户查询、日期、SOP提示词）
-        setSystemPrompt(reactorConfig.getPlannerSystemPromptMap().getOrDefault(promptKey, PlanningPrompt.SYSTEM_PROMPT)
+        setSystemPrompt(injectHistoryDialogue(
+                reactorConfig.getPlannerSystemPromptMap().getOrDefault(promptKey, PlanningPrompt.SYSTEM_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString()) // 替换工具列表占位符
                 .replace("{{query}}", context.getQuery())   // 替换用户查询占位符
                 .replace("{{date}}", context.getDateInfo()) // 替换日期信息占位符
-                .replace("{{sopPrompt}}", context.getSopPrompt())); // 替换SOP（标准作业流程）提示词占位符
+                .replace("{{sopPrompt}}", context.getSopPrompt()),
+                context.getHistoryDialogue())); // 替换SOP（标准作业流程）提示词占位符
 
         // 6. 初始化下一步提示词：逻辑同系统提示词
-        setNextStepPrompt(reactorConfig.getPlannerNextStepPromptMap().getOrDefault(nextPromptKey, PlanningPrompt.NEXT_STEP_PROMPT)
+        setNextStepPrompt(injectHistoryDialogue(
+                reactorConfig.getPlannerNextStepPromptMap().getOrDefault(nextPromptKey, PlanningPrompt.NEXT_STEP_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString())
                 .replace("{{query}}", context.getQuery())
                 .replace("{{date}}", context.getDateInfo())
-                .replace("{{sopPrompt}}", context.getSopPrompt()));
+                .replace("{{sopPrompt}}", context.getSopPrompt()),
+                context.getHistoryDialogue()));
 
         // 7. 保存提示词快照：避免后续动态替换{{files}}后丢失原始模板
         setSystemPromptSnapshot(getSystemPrompt());
@@ -133,6 +137,7 @@ public class PlanningAgent extends ReActAgent {
         // 9. 关联上下文&配置计划更新开关
         setContext(context); // 绑定智能体上下文
         setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
+        preloadMemory(context.getPreloadedMessages());
 
         // 10. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
         availableTools.addTool(planningTool);

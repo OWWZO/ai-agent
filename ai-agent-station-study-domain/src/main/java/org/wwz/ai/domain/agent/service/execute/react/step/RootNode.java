@@ -5,9 +5,13 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.dto.File;
+import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
+import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
+import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
@@ -15,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -43,15 +48,18 @@ public class RootNode extends AbstractExecuteSupport {
 
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
-                .sessionId(request.getRequestId())
+                .sessionId(request.getSessionId())
                 .printer(printer)
                 .query(request.getQuery())
                 .task("")
                 .dateInfo(DateUtil.CurrentDateInfo())
-                .productFiles(new ArrayList<>())
+                .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
+                .restoredFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
                 .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
+                .historyDialogue(request.getHistoryDialogue())
+                .preloadedMessages(new ArrayList<>(convertMessages(request.getMessages())))
                 .agentType(request.getAgentType())
                 .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
                 .templateType("dataAgent".equals(request.getOutputStyle()) ? "fix" : "empty")
@@ -66,6 +74,42 @@ public class RootNode extends AbstractExecuteSupport {
 
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
         return agentToolCollectionFactory.buildForReact(agentContext, request);
+    }
+
+    private List<File> convertFiles(List<FileInformation> sessionFiles) {
+        if (sessionFiles == null || sessionFiles.isEmpty()) {
+            return List.of();
+        }
+        List<File> files = new ArrayList<>(sessionFiles.size());
+        for (FileInformation sessionFile : sessionFiles) {
+            files.add(File.builder()
+                    .fileName(sessionFile.getFileName())
+                    .description(sessionFile.getFileDesc())
+                    .ossUrl(sessionFile.getOssUrl())
+                    .domainUrl(sessionFile.getDomainUrl())
+                    .fileSize(sessionFile.getFileSize())
+                    .originFileName(sessionFile.getOriginFileName())
+                    .originOssUrl(sessionFile.getOriginOssUrl())
+                    .originDomainUrl(sessionFile.getOriginDomainUrl())
+                    .isInternalFile(Boolean.FALSE)
+                    .build());
+        }
+        return files;
+    }
+
+    private List<Message> convertMessages(List<AgentRequest.Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<Message> result = new ArrayList<>(messages.size());
+        for (AgentRequest.Message message : messages) {
+            RoleType role = "assistant".equalsIgnoreCase(message.getRole()) ? RoleType.ASSISTANT : RoleType.USER;
+            result.add(Message.builder()
+                    .role(role)
+                    .content(message.getContent())
+                    .build());
+        }
+        return result;
     }
 
     @Override

@@ -23,4 +23,9 @@ public interface IAgentStreamPersistService {
     SseEmitter sendAndPersist(String sessionId, String requestId, String deviceId,
                               String query, Integer deepThink, String outputStyle, String filesJson,
                               String aiAgentId);
+
+    /**
+     * 停止指定请求的流式执行
+     */
+    boolean stop(String requestId);
 }

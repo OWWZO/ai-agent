@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
-import { buildReplayTaskData, handleTaskData, combineData } from "@/utils/chat";
+import { buildReplayTaskData, buildTaskFromEventData, handleTaskData, combineData } from "@/utils/chat";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -577,6 +577,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           const isPlanThoughtEvent = eventData?.messageType === "plan_thought";
           const isPlanThoughtFinal = Boolean(eventData?.resultMap?.isFinal || finished);
           currentChat = combineData(eventData || {}, currentChat);
+          // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
+          // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
+          if (eventData?.resultMap?.messageType === "result") {
+            currentChat.conclusion = buildTaskFromEventData(eventData) as any;
+          }
           if (shouldRefreshWorkspaceTask(eventData)) {
             scheduleWorkspaceStreamTask(currentChat, finished);
           }

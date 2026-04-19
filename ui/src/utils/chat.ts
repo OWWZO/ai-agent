@@ -34,7 +34,7 @@ const taskRenderCache = new WeakMap<object, TaskRenderCacheEntry>();
  * 实时 SSE 的文件类事件会把 artifactRefs 放在 eventData 顶层，
  * 这里统一折叠进任务对象，保证工作区和历史回放走同一套取文件逻辑。
  */
-function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Task {
+export function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Task {
   const artifactRefs = Array.isArray(eventData.artifactRefs)
     ? [...eventData.artifactRefs]
     : undefined;

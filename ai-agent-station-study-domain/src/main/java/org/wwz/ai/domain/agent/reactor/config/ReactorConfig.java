@@ -296,5 +296,16 @@ public class ReactorConfig {
     @Value("${spring.ai.agent.chat.default-role-id:}")
     private String chatDefaultRoleId;
 
+    @Value("${autobots.autoagent.session-memory.enabled:true}")
+    private Boolean sessionMemoryEnabled;
+
+    @Value("${autobots.autoagent.session-memory.compaction-threshold-tokens:12000}")
+    private Integer sessionMemoryCompactionThresholdTokens;
+
+    @Value("${autobots.autoagent.session-memory.recent-window-turns:2}")
+    private Integer sessionMemoryRecentWindowTurns;
+
+    @Value("${autobots.autoagent.session-memory.summary-max-length:4000}")
+    private Integer sessionMemorySummaryMaxLength;
 
 }

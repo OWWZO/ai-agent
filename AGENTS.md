@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-16
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-19
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -13,6 +13,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 现有文件服务稳定资源引用 (005-fix-history-replay)
 - Java 17（Spring Boot 多模块主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis DAO + Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、ahooks、现有 `ActionView/FilePreview/Dialogue` 组件链 (005-fix-history-replay)
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`）+ 文件服务稳定 `artifactRefs` 引用 (005-fix-history-replay)
+- Java 17（Spring Boot 多模块主链路） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、OkHttp、MySQL 8、现有 ReAct / PlanSolve Agent 框架 (006-session-context-memory)
+- MySQL（既有 `ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`，新增会话记忆摘要快照表） (006-session-context-memory)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -60,9 +62,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 006-session-context-memory: Added Java 17（Spring Boot 多模块主链路） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、OkHttp、MySQL 8、现有 ReAct / PlanSolve Agent 框架
 - 005-fix-history-replay: Added Java 17（Spring Boot 多模块主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis DAO + Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、ahooks、现有 `ActionView/FilePreview/Dialogue` 组件链
 - 005-fix-history-replay: Added Java 17（后端主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5
-- 004-conversation-history-refactor: Added Java 17（Spring Boot 多模块主链路）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `reactor-tool` 文件上传能力
 
 
 <!-- MANUAL ADDITIONS START -->

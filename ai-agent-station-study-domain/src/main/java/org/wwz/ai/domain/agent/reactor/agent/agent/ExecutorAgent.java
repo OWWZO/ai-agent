@@ -51,18 +51,22 @@ public class ExecutorAgent extends ReActAgent {
         String promptKey = "default";
         String sopPromptKey = "default";
         String nextPromptKey = "default";
-        setSystemPrompt(reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
+        setSystemPrompt(injectHistoryDialogue(
+                reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString())
                 .replace("{{query}}", context.getQuery())
                 .replace("{{date}}", context.getDateInfo())
                 .replace("{{sopPrompt}}", context.getSopPrompt())
-                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")));
-        setNextStepPrompt(reactorConfig.getExecutorNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
+                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
+                context.getHistoryDialogue()));
+        setNextStepPrompt(injectHistoryDialogue(
+                reactorConfig.getExecutorNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
                 .replace("{{tools}}", toolPrompt.toString())
                 .replace("{{query}}", context.getQuery())
                 .replace("{{date}}", context.getDateInfo())
                 .replace("{{sopPrompt}}", context.getSopPrompt())
-                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")));
+                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
+                context.getHistoryDialogue()));
 
         setSystemPromptSnapshot(getSystemPrompt());
         setNextStepPromptSnapshot(getNextStepPrompt());
@@ -73,6 +77,7 @@ public class ExecutorAgent extends ReActAgent {
 
         setContext(context);
         setMaxObserve(Integer.parseInt(reactorConfig.getMaxObserve()));
+        preloadMemory(context.getPreloadedMessages());
 
         // 初始化工具集合
         availableTools = context.getToolCollection();

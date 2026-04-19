@@ -18,5 +18,10 @@ public interface IAgentMessageEventDao {
 
     List<AgentMessageEvent> queryByMessageIds(@Param("messageIds") List<Long> messageIds);
 
+    /**
+     * 批量查询带 artifact payload 的最终事件，供会话记忆重建使用。
+     */
+    List<AgentMessageEvent> queryArtifactEventsByMessageIds(@Param("messageIds") List<Long> messageIds);
+
     int deleteByMessageId(@Param("messageId") Long messageId);
 }
