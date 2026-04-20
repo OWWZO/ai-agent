@@ -510,6 +510,56 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
     const handleMessage = (data: MESSAGE.Answer) => {
       const { finished, resultMap, packageType, status } = data;
+      const isTerminalGuardError =
+        Boolean(finished) &&
+        packageType === "result" &&
+        Boolean(data.errorMsg) &&
+        !resultMap?.eventData;
+
+      if (isTerminalGuardError) {
+        const errorText = data.errorMsg || "当前请求处理失败，请稍后重试";
+        currentChat.loading = false;
+        setLoading(false);
+
+        if (isChatMode) {
+          currentChat.response = errorText;
+          syncRunningConversation();
+          return;
+        }
+
+        currentChat.tip = errorText;
+        currentChat.conclusion = {
+          id: `${currentChat.requestId}-guard-error`,
+          messageId: `${currentChat.requestId}-guard-error`,
+          requestId: currentChat.requestId,
+          messageTime: String(Date.now()),
+          messageType: "task_summary",
+          finish: true,
+          isFinal: true,
+          result: errorText,
+          resultMap: {
+            taskSummary: errorText,
+            fileList: [],
+            isFinal: true,
+          },
+        } as CHAT.Task;
+
+        const taskData = handleTaskData(
+          currentChat,
+          normalizedDeepThink,
+          currentChat.multiAgent
+        );
+        setTaskList(taskData.taskList);
+        runningConversation = {
+          ...runningConversation,
+          chatList: runningConversation.chatList.map((chat) =>
+            chat.requestId === currentChat.requestId ? { ...currentChat } : chat
+          ),
+        };
+        commitConversation(conversationId, runningConversation);
+        return;
+      }
+
       if (["roleUnavailable", "roleSwitchRejected", "noAvailableChatRole"].includes(status)) {
         currentChat.response = data.errorMsg || "当前角色暂不可用";
         currentChat.loading = false;

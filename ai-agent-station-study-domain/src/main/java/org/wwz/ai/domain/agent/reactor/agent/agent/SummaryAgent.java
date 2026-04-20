@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class SummaryAgent extends BaseAgent {
     private String requestId;
     private Integer messageSizeLimit;
+    private Double summaryTemperature;
     public static final String logFlag = "summaryTaskResult";
 
     public SummaryAgent(AgentContext context) {
@@ -37,6 +38,7 @@ public class SummaryAgent extends BaseAgent {
         setRequestId(context.getRequestId());
         setLlm(new LLM(context.getAgentType() == 3 ? reactorConfig.getPlannerModelName() : reactorConfig.getReactModelName(), ""));
         setMessageSizeLimit(reactorConfig.getMessageSizeLimit());
+        setSummaryTemperature(reactorConfig.getSummaryTemperature());
     }
 
     /**
@@ -93,11 +95,11 @@ public class SummaryAgent extends BaseAgent {
 
         String[] parts1 = llmResponse.split("\\$\\$\\$");
         if (parts1.length < 2) {
-            return TaskSummaryResult.builder().taskSummary(parts1[0]).build();
+            return TaskSummaryResult.builder().taskSummary(parts1[0].trim()).build();
         }
 
-        String summary = parts1[0];
-        String fileNames = parts1[1];
+        String summary = parts1[0].trim();
+        String fileNames = parts1[1].trim();
 
         List<File> files = context.getProductFiles();
         if (!CollectionUtils.isEmpty(files)) {
@@ -189,7 +191,7 @@ public class SummaryAgent extends BaseAgent {
                         Collections.singletonList(userMessage),
                         Collections.emptyList(),
                         true,
-                        0.1);
+                        getSummaryTemperature());
                 llmResponse = summaryFuture.get();
             } finally {
                 if (enableSummaryStreamPush) {

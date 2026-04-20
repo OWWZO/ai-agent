@@ -1,0 +1,54 @@
+{
+  "sessionIdPrefix": "manual-compaction",
+  "deviceId": "manual-compaction-device",
+  "title": "手工压缩验证会话",
+  "agentType": 1,
+  "productType": "html",
+  "sessionMemoryEnabled": true,
+  "compactionThresholdTokens": 1,
+  "hardLimitTokens": 8000,
+  "recentWindowMaxTokens": 600,
+  "recentWindowMinMessages": 2,
+  "summaryMaxLength": 4000,
+  "maxConsecutiveFailures": 3,
+  "circuitOpenSeconds": 600,
+  "expectedSnapshotCount": 2,
+  "phases": [
+    {
+      "name": "phase-1-initial-history",
+      "triggerPrepare": true,
+      "turns": [
+        {
+          "query": "第一轮：整理当前项目里与 session memory、上下文压缩、最近窗口保留、tool_use 与 tool_result 连续性相关的所有背景信息，请给出非常详细的说明，包含现有不足和下一步改造方向。",
+          "response": "第一轮回答：我们已经完成会话账本、最终事件账本、结构化 transcript 恢复、artifactRefs 归档与恢复等基础能力。当前重点是把压缩从请求完成后后移刷新改成请求开始前 preflight 决策，并且需要把旧的流水账摘要升级成结构化 session memory。除此之外，还要保证压缩后保留最近真实上下文窗口，不能拆断 tool_use 和 tool_result，超长结果不能全文回灌，而是要保留关键结论和稳定引用。"
+        },
+        {
+          "query": "第二轮：请继续详细解释 free-code 风格 session memory 的目标 section，并说明为什么它比旧版字符串拼接摘要更适合多轮续聊。",
+          "response": "第二轮回答：free-code 风格的目标不是生成一段无法追溯的摘要，而是生成带固定 section 的结构化工作记忆，例如 Session Title、Current State、Task specification、Files and Functions、Workflow、Errors & Corrections、Codebase and System Documentation、Learnings、Key results、Worklog。这样做的价值在于模型后续续聊时可以按块消费上下文，而不是依赖一段混杂状态、过程、结论、文件引用的冗长文本。"
+        },
+        {
+          "query": "第三轮：请继续说明 append-only snapshot 的价值，并解释为什么不能覆盖上一轮压缩记录。",
+          "response": "第三轮回答：append-only 的核心价值在于保留完整的压缩演进历史。每一次压缩快照都代表当时系统对会话上下文的一次结构化归纳，如果直接覆盖旧数据，就丢失了分析链路，也无法回溯压缩边界如何前移。对于故障排查、提示词质量分析、压缩效果比对、历史重建一致性验证来说，旧版本快照必须保留。运行时只读取最新一条，但分析时可以查看完整历史。"
+        },
+        {
+          "query": "第四轮：请继续说明请求前压缩失败时的降级与拒绝策略，以及为什么要在占位消息插入前完成判断。",
+          "response": "第四轮回答：请求前压缩失败时，如果当前上下文仍低于 hard limit，可以降级继续执行；如果仍超过 hard limit，就必须拒绝本轮请求，而且这个拒绝必须发生在占位消息插入之前，否则会污染会话账本，制造一条实际上没有可执行上下文的空轮次。把判断前移到 preflight，可以保证失败路径干净，同时让真正的主执行只在上下文安全时发生。"
+        }
+      ]
+    },
+    {
+      "name": "phase-2-follow-up-history",
+      "triggerPrepare": true,
+      "turns": [
+        {
+          "query": "第五轮：请继续补充最近窗口 token 预算裁剪的规则，并强调为什么不能再使用固定 recent-window-turns 作为主策略。",
+          "response": "第五轮回答：最近窗口应该以 token 预算为主，而不是固定 N 轮。因为真实业务里每一轮长度差异很大，有的轮次可能只是一句追问，有的轮次可能带长报告、代码块、工具结果和文件引用。固定 recent-window-turns 会导致有时保留太少，有时保留太多，无法稳定控制上下文成本。token 预算可以更贴近真实体量，再配合最小消息窗口和 tool_use/tool_result 不拆断规则，才能保证续聊质量。"
+        },
+        {
+          "query": "第六轮：请继续说明在线续聊与历史重开为什么必须共享同一套“最新 snapshot + 最近窗口”的重建语义。",
+          "response": "第六轮回答：如果在线续聊与历史重开走两套不同的记忆重建语义，用户会遇到同一会话在两个入口表现不一致的问题。在线续聊看到的是最新 snapshot 加最近窗口，而历史重开如果重新回灌旧 turn 或读取旧快照，就会造成 Current State、Errors & Corrections、Key results 等结构化记忆失真。因此两条路径必须统一成同一套最新 snapshot + 最近窗口的加载规则。"
+        }
+      ]
+    }
+  ]
+}

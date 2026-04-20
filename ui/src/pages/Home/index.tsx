@@ -11,6 +11,7 @@ import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
 import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
+import { groupConversationHistoryItems } from "@/utils/conversationHistoryGroups";
 import {
   hasLocalConversationContent,
   isDraftConversation,
@@ -575,11 +576,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     });
   }, [searchQuery, threadListItems]);
 
-  const todayFilteredItems = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return filteredThreadItems.filter((item) => item.updatedAt >= today.getTime()).slice(0, 20);
-  }, [filteredThreadItems]);
+  const groupedFilteredThreadItems = useMemo(
+    () => groupConversationHistoryItems(filteredThreadItems),
+    [filteredThreadItems]
+  );
 
   const openSearchPanel = useCallback(() => {
     setSearchPanelOpen(true);
@@ -766,23 +766,33 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 <span className="text-[16px] leading-none tracking-tight">新聊天</span>
               </button>
 
-              <div className="mb-3 px-2 text-[16px] leading-none text-[var(--chat-text-muted)]">今天</div>
-              {todayFilteredItems.length ? (
-                <div className="space-y-1">
-                  {todayFilteredItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        handleSelectConversation(item.id);
-                        closeSearchPanel();
-                      }}
-                      className="flex w-full items-center gap-3 rounded-[12px] px-3 py-3 text-left text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-surface-soft)]"
-                    >
-                      <MessageCircleIcon className="h-6 w-6 shrink-0 text-[var(--chat-text-soft)]" />
-                      <span className="truncate text-[16px] leading-none tracking-tight">{item.title}</span>
-                    </button>
-                  ))}
+              {filteredThreadItems.length ? (
+                <div className="space-y-4">
+                  {groupedFilteredThreadItems.map((group) =>
+                    group.items.length ? (
+                      <div key={group.key}>
+                        <div className="mb-3 px-2 text-[16px] leading-none text-[var(--chat-text-muted)]">
+                          {group.label}
+                        </div>
+                        <div className="space-y-1">
+                          {group.items.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                handleSelectConversation(item.id);
+                                closeSearchPanel();
+                              }}
+                              className="flex w-full items-center gap-3 rounded-[12px] px-3 py-3 text-left text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-surface-soft)]"
+                            >
+                              <MessageCircleIcon className="h-6 w-6 shrink-0 text-[var(--chat-text-soft)]" />
+                              <span className="truncate text-[16px] leading-none tracking-tight">{item.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null
+                  )}
                 </div>
               ) : (
                 <div className="rounded-[12px] border border-dashed border-[var(--chat-border)] px-4 py-6 text-[16px] text-[var(--chat-text-muted)]">

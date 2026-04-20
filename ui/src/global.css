@@ -191,7 +191,7 @@
 @layer base {
   html {
     font-family: var(--font-sans);
-    font-size: 15px;
+    font-size: 16px;
     color: var(--chat-text);
     background: var(--chat-bg);
     color-scheme: light;
@@ -490,7 +490,7 @@ ol {
 }
 
 [data-slot="prompt-input-textarea"] {
-  font-size: 15px !important;
+  font-size: 16px !important;
   line-height: 1.6 !important;
   color: #1d1d1f !important;
 }
@@ -1041,6 +1041,8 @@ ol {
 
 .ai-chat-markdown,
 .markdown-body {
+  font-size: 1rem;
+  line-height: 1.85;
   word-break: break-word;
   overflow-wrap: anywhere;
 }

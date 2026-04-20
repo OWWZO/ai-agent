@@ -110,7 +110,7 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 const ThinkingIndicator = memo(() => {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-foreground">思考中</span>
+      <span className="text-[12px] text-muted-foreground/80">思考中</span>
       <div className="flex items-center gap-0.5" aria-hidden>
         <span className="h-1 w-1 rounded-full bg-primary/60" />
         <span className="h-1 w-1 rounded-full bg-primary/80" />
@@ -127,9 +127,9 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
     return <ThinkingIndicator />;
   }
   if (duration === undefined) {
-    return <span className="text-xs text-foreground">思考完成</span>;
+    return <span className="text-[12px] text-muted-foreground/80">思考完成</span>;
   }
-  return <span className="text-xs text-foreground">已思考 {duration} 秒</span>;
+  return <span className="text-[12px] text-muted-foreground/80">已思考 {duration} 秒</span>;
 };
 
 export const ReasoningTrigger = memo(
@@ -139,7 +139,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 text-foreground text-sm transition-colors hover:text-foreground rounded-lg p-2 -m-2 hover:bg-muted/50",
+          "flex w-full items-center gap-2 rounded-lg p-2 -m-2 text-[13px] text-muted-foreground/88 transition-colors hover:bg-muted/30 hover:text-foreground/82",
           className
         )}
         {...props}
@@ -187,11 +187,12 @@ export const ReasoningContent = memo(
         )}
         {...props}
       >
-        <div className="mt-4 text-sm text-foreground">
+        <div className="mt-3.5">
           <MessageResponse
             isStreaming={isStreaming}
             animateByChars={false}
             showStreamingCursor={false}
+            className="text-[12px] leading-6 text-foreground/62 [&_p]:text-[12px] [&_p]:leading-6 [&_li]:text-[12px] [&_li]:leading-6 [&_ol]:leading-6 [&_ul]:leading-6 [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px] [&_blockquote]:text-foreground/56 [&_code]:text-[11.5px]"
           >
             {children}
           </MessageResponse>

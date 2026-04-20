@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import { groupConversationHistoryItems } from "@/utils/conversationHistoryGroups";
 
 interface ResizableSidebarProps {
   items: LocalThreadListItem[];
@@ -111,11 +112,10 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
     }
   }, [isCollapsed, onCollapsedChange, defaultWidth]);
 
-  const todayItems = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return items.filter((item) => item.updatedAt >= today.getTime()).slice(0, 12);
-  }, [items]);
+  const groupedItems = useMemo(
+    () => groupConversationHistoryItems(items),
+    [items]
+  );
 
   if (isCollapsed) {
     return (
@@ -263,26 +263,32 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
         <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--chat-text-muted)]">
           Chats
         </div>
-        <div className="mb-1 text-[12px] text-[var(--chat-text-muted)]">Today</div>
-        {todayItems.length ? (
-          todayItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelect(item.id)}
-              className={classNames(
-                "mb-1 flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
-                item.isActive
-                  ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-                  : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-              )}
-            >
-              <span className="truncate">{item.title}</span>
-            </button>
-          ))
+        {items.length ? (
+          groupedItems.map((group) =>
+            group.items.length ? (
+              <div key={group.key} className="mb-3 last:mb-0">
+                <div className="mb-1 text-[12px] text-[var(--chat-text-muted)]">{group.label}</div>
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onSelect(item.id)}
+                    className={classNames(
+                      "mb-1 flex w-full items-center rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors last:mb-0",
+                      item.isActive
+                        ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
+                        : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                    )}
+                  >
+                    <span className="truncate">{item.title}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null
+          )
         ) : (
           <div className="rounded-lg border border-dashed border-[var(--chat-border)] px-3 py-3 text-[12px] text-[var(--chat-text-muted)]">
-            暂无今日对话
+            暂无历史对话
           </div>
         )}
       </div>

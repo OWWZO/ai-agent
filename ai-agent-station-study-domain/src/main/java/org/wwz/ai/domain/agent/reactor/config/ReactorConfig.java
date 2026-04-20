@@ -221,6 +221,9 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.summary.system_prompt:}")
     private String summarySystemPrompt;
 
+    @Value("${autobots.autoagent.summary.temperature:0.7}")
+    private Double summaryTemperature;
+
     @Value("${autobots.autoagent.digital_employee_prompt:}")
     private String digitalEmployeePrompt;
 

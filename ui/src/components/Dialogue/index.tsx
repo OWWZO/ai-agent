@@ -7,10 +7,10 @@ import { getTaskFiles } from "@/utils/historyArtifacts";
 import {
   Message,
   MessageContent,
-  MessageResponse,
   MessageActions,
   MessageAction,
 } from "@/components/ai-elements/message";
+import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -32,6 +32,7 @@ import {
   Layers,
   SearchIcon,
 } from "lucide-react";
+import { normalizeMarkdownForDisplay } from "@/utils/markdown";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -223,7 +224,7 @@ const ToolItem: FC<{
     case "tool_thought": {
       const streamingThought = !tool.resultMap?.isFinal;
       return (
-        <div className="mt-[8px]">
+        <div className="mt-[8px] rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/38 px-3 py-2.5">
           <Reasoning isStreaming={streamingThought} defaultOpen>
             <ReasoningTrigger />
             <ReasoningContent>{tool.toolThought || ""}</ReasoningContent>
@@ -424,8 +425,12 @@ const ConclusionSection: FC<{
   );
   return (
     <div className="mb-[8px]">
-      <div className="mb-[8px]">
-        <MessageResponse isStreaming={summaryStreaming}>{summary}</MessageResponse>
+      <div className="mb-[8px] rounded-2xl bg-white/72 px-1 py-1">
+        <MarkdownRenderer
+          markDownContent={summary}
+          isStreaming={summaryStreaming}
+          className="text-[15px] leading-8"
+        />
       </div>
       <AttachmentList
         files={attachmentFiles}
@@ -470,14 +475,14 @@ const DialogueComponent: FC<Props> = (props) => {
 
   const handleCopy = useCallback(() => {
     if (!chat.response) return;
-    navigator.clipboard.writeText(chat.response).then(() => {
+    navigator.clipboard.writeText(normalizeMarkdownForDisplay(chat.response)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   }, [chat.response]);
 
   return (
-    <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
+    <div className="flex h-full flex-col text-[15px] font-normal text-[#111827]">
       {/* 附件 */}
       {(chat.files || []).length ? (
         <div className="mt-6 flex w-full justify-end">
@@ -498,7 +503,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 提示 */}
       {chat.tip ? (
-        <div className="mt-5 w-full text-[14px] text-muted-foreground">
+        <div className="mt-5 w-full text-[15px] text-muted-foreground">
           {chat.tip}
         </div>
       ) : null}
@@ -508,7 +513,10 @@ const DialogueComponent: FC<Props> = (props) => {
         <div className="mt-6 flex w-full justify-start">
           <Message from="assistant" className="w-full max-w-full">
             <MessageContent>
-              <MessageResponse isStreaming={chat.loading}>{chat.response}</MessageResponse>
+              <MarkdownRenderer
+                markDownContent={chat.response}
+                isStreaming={chat.loading}
+              />
             </MessageContent>
             {!chat.loading ? (
               <MessageActions className="mt-2">
@@ -541,9 +549,9 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
-        <div className="mt-6 w-full overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 p-3 shadow-[var(--shadow-sm)] ring-0">
+        <div className="mt-6 w-full overflow-hidden rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/40 p-3 shadow-[var(--shadow-sm)] ring-0">
           <Reasoning isStreaming={chat.loading} defaultOpen className="not-prose mb-0">
-            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/60" />
+            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/32" />
             <ReasoningContent>{thoughtText}</ReasoningContent>
           </Reasoning>
         </div>

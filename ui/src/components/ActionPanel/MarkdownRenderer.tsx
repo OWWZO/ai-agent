@@ -10,6 +10,7 @@ import {
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block';
 import { MessageResponse } from '@/components/ai-elements/message';
+import { normalizeMarkdownForDisplay } from '@/utils/markdown';
 import type { BundledLanguage } from 'shiki';
 import { bundledLanguages } from 'shiki';
 
@@ -61,19 +62,20 @@ const MarkdownRenderer: ReactorType.FC<{
   isStreaming?: boolean;
 }> = (props) => {
   const { markDownContent, className, isStreaming = false } = props;
+  const normalizedContent = normalizeMarkdownForDisplay(markDownContent);
 
   const { scrollToBottom } = usePanelContext() || {};
   const lastScrollAtRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!isStreaming || !markDownContent) return;
+    if (!isStreaming || !normalizedContent) return;
     const now = Date.now();
     if (now - lastScrollAtRef.current < 80) return;
     lastScrollAtRef.current = now;
     scrollToBottom?.();
-  }, [markDownContent, scrollToBottom, isStreaming]);
+  }, [normalizedContent, scrollToBottom, isStreaming]);
 
-  if (!markDownContent) {
+  if (!normalizedContent) {
     return <Empty description="暂无内容" className='mx-auto mt-32' />;
   }
 
@@ -85,7 +87,7 @@ const MarkdownRenderer: ReactorType.FC<{
           showStreamingCursor={false}
           disableAutoScroll
         >
-          {markDownContent}
+          {normalizedContent}
         </MessageResponse>
       </div>
     );
@@ -94,7 +96,7 @@ const MarkdownRenderer: ReactorType.FC<{
   return (
     <div className={classNames('w-full markdown-body', className)}>
       <ReactMarkdown remarkPlugins={[gfm]} components={{ code: CodeBlock }}>
-        {markDownContent}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );

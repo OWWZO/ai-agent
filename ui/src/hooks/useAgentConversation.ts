@@ -70,11 +70,39 @@ export function useAgentConversation() {
     async (pageNo = 1, pageSize = 50) => {
       try {
         setApiLoading(true);
-        const data: any = await conversationApi.list(pageNo, pageSize);
-        if (data) {
-          setRemoteConversations(data.list || []);
-          setRemoteTotal(data.total || 0);
+        const firstPage: any = await conversationApi.list(pageNo, pageSize);
+        if (!firstPage) {
+          return;
         }
+
+        const firstPageList = Array.isArray(firstPage.list) ? firstPage.list : [];
+        const total = Math.max(Number(firstPage.total) || 0, firstPageList.length);
+        if (firstPageList.length >= total || total <= pageSize) {
+          setRemoteConversations(firstPageList);
+          setRemoteTotal(total);
+          return;
+        }
+
+        // 按总数补齐剩余分页，确保历史列表展示的是完整会话集合。
+        const totalPages = Math.ceil(total / pageSize);
+        const remainingPages = Array.from(
+          { length: Math.max(totalPages - pageNo, 0) },
+          (_, index) => pageNo + index + 1
+        );
+        const remainingResults = await Promise.all(
+          remainingPages.map((currentPage) =>
+            conversationApi.list(currentPage, pageSize)
+          )
+        );
+        const mergedList = [
+          ...firstPageList,
+          ...remainingResults.flatMap((pageData: any) =>
+            Array.isArray(pageData?.list) ? pageData.list : []
+          ),
+        ];
+
+        setRemoteConversations(mergedList);
+        setRemoteTotal(total);
       } catch (e) {
         console.error("加载会话列表失败", e);
       } finally {
