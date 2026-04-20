@@ -61,11 +61,33 @@ public final class SessionMemoryFixtureFactory {
 
     public static List<AgentMessageEvent> buildRecentWindowEvents() {
         return List.of(
-                SessionMemoryTestSupport.artifactEvent(
-                        104L,
+                SessionEventPayloadFixtureBuilder.toolThoughtEvent(
+                        103L,
                         1,
-                        "summary-report.html",
-                        "https://file.example.com/summary-report")
+                        "tool-search-1",
+                        "deep_search",
+                        JSONObject.parseObject("""
+                                {"query":"Spring AI MCP"}
+                                """),
+                        "需要复用上一轮搜索继续补充",
+                        "task-search",
+                        1),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        103L,
+                        2,
+                        "deep_search",
+                        "report",
+                        "tool-search-1",
+                        "deep_search",
+                        JSONObject.parseObject("""
+                                {"query":"Spring AI MCP"}
+                                """),
+                        "已生成 MCP 对比摘要，详见稳定引用",
+                        "task-search",
+                        1,
+                        List.of(SessionEventPayloadFixtureBuilder.artifactRef(
+                                "summary-report.html",
+                                "https://file.example.com/summary-report")))
         );
     }
 

@@ -302,7 +302,7 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.session-memory.compaction-threshold-tokens:12000}")
     private Integer sessionMemoryCompactionThresholdTokens;
 
-    @Value("${autobots.autoagent.session-memory.recent-window-turns:2}")
+    @Value("${autobots.autoagent.session-memory.recent-window-turns:10}")
     private Integer sessionMemoryRecentWindowTurns;
 
     @Value("${autobots.autoagent.session-memory.summary-max-length:4000}")

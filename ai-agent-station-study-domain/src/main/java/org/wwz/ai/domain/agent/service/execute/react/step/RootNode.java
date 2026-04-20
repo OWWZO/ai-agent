@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
+import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.factory.AgentToolCollectionFactory;
@@ -103,13 +104,129 @@ public class RootNode extends AbstractExecuteSupport {
         }
         List<Message> result = new ArrayList<>(messages.size());
         for (AgentRequest.Message message : messages) {
-            RoleType role = "assistant".equalsIgnoreCase(message.getRole()) ? RoleType.ASSISTANT : RoleType.USER;
-            result.add(Message.builder()
-                    .role(role)
-                    .content(message.getContent())
-                    .build());
+            result.add(convertMessage(message));
         }
         return result;
+    }
+
+    private Message convertMessage(AgentRequest.Message message) {
+        if (message == null) {
+            return Message.builder()
+                    .role(RoleType.USER)
+                    .content(null)
+                    .build();
+        }
+        return Message.builder()
+                .role(resolveRoleType(message))
+                .content(buildHistoryMessageContent(message))
+                .build();
+    }
+
+    private RoleType resolveRoleType(AgentRequest.Message message) {
+        if (hasStructuredToolTrace(message)) {
+            return RoleType.ASSISTANT;
+        }
+        return resolveRoleType(message == null ? null : message.getRole());
+    }
+
+    private RoleType resolveRoleType(String role) {
+        if ("assistant".equalsIgnoreCase(role)) {
+            return RoleType.ASSISTANT;
+        }
+        if ("tool".equalsIgnoreCase(role)) {
+            // ReAct 续聊历史中的 tool 角色仅作为文本上下文使用，避免网关继续按工具返回项校验 call_id。
+            return RoleType.ASSISTANT;
+        }
+        return RoleType.USER;
+    }
+
+    /**
+     * 历史续聊消息保留工具调用文本，但不再把旧的 tool_call 结构直接发给 LLM，
+     * 避免网关将其误判为未闭合的原生 function-call 链路。
+     */
+    private String buildHistoryMessageContent(AgentRequest.Message message) {
+        if (message == null) {
+            return null;
+        }
+        if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+            return joinParts(
+                    message.getContent(),
+                    buildToolUseSummary(message.getToolCalls()));
+        }
+        if (message.getToolCallId() != null && !message.getToolCallId().isBlank()) {
+            return joinParts(
+                    prefixLabel("历史工具结果", message.getContent()),
+                    buildArtifactHint(message));
+        }
+        return message.getContent();
+    }
+
+    private boolean hasStructuredToolTrace(AgentRequest.Message message) {
+        if (message == null) {
+            return false;
+        }
+        return (message.getToolCalls() != null && !message.getToolCalls().isEmpty())
+                || (message.getToolCallId() != null && !message.getToolCallId().isBlank());
+    }
+
+    private String buildToolUseSummary(List<ToolCall> toolCalls) {
+        List<String> parts = new ArrayList<>(toolCalls.size());
+        for (ToolCall toolCall : toolCalls) {
+            if (toolCall == null || toolCall.getFunction() == null) {
+                continue;
+            }
+            List<String> oneCallParts = new ArrayList<>(2);
+            if (toolCall.getFunction().getName() != null && !toolCall.getFunction().getName().isBlank()) {
+                oneCallParts.add("历史工具调用：" + toolCall.getFunction().getName());
+            }
+            if (toolCall.getFunction().getArguments() != null && !toolCall.getFunction().getArguments().isBlank()) {
+                oneCallParts.add("参数：" + toolCall.getFunction().getArguments());
+            }
+            String oneCall = joinParts(oneCallParts.toArray(new String[0]));
+            if (oneCall != null && !oneCall.isBlank()) {
+                parts.add(oneCall);
+            }
+        }
+        if (parts.isEmpty()) {
+            return "历史工具调用";
+        }
+        return String.join("\n", parts);
+    }
+
+    private String buildArtifactHint(AgentRequest.Message message) {
+        if (message.getFiles() == null || message.getFiles().isEmpty()) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        for (FileInformation file : message.getFiles()) {
+            if (file != null && file.getFileName() != null && !file.getFileName().isBlank()) {
+                names.add(file.getFileName());
+            }
+        }
+        if (names.isEmpty()) {
+            return null;
+        }
+        return "关联文件：" + String.join("、", names);
+    }
+
+    private String prefixLabel(String label, String content) {
+        if (content == null || content.isBlank()) {
+            return label;
+        }
+        return label + "：\n" + content;
+    }
+
+    private String joinParts(String... parts) {
+        List<String> values = new ArrayList<>();
+        for (String part : parts) {
+            if (part != null && !part.isBlank()) {
+                values.add(part);
+            }
+        }
+        if (values.isEmpty()) {
+            return null;
+        }
+        return String.join("\n", values);
     }
 
     @Override

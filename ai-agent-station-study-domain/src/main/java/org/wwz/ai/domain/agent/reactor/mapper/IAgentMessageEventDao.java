@@ -23,5 +23,10 @@ public interface IAgentMessageEventDao {
      */
     List<AgentMessageEvent> queryArtifactEventsByMessageIds(@Param("messageIds") List<Long> messageIds);
 
+    /**
+     * 批量查询完整最终事件，供 transcript working memory 重建使用。
+     */
+    List<AgentMessageEvent> queryFinalEventsByMessageIds(@Param("messageIds") List<Long> messageIds);
+
     int deleteByMessageId(@Param("messageId") Long messageId);
 }

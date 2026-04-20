@@ -128,13 +128,33 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         }
         List<Message> result = new ArrayList<>(messages.size());
         for (AgentRequest.Message message : messages) {
-            RoleType role = "assistant".equalsIgnoreCase(message.getRole()) ? RoleType.ASSISTANT : RoleType.USER;
-            result.add(Message.builder()
-                    .role(role)
-                    .content(message.getContent())
-                    .build());
+            result.add(convertMessage(message));
         }
         return result;
+    }
+
+    private Message convertMessage(AgentRequest.Message message) {
+        RoleType role = resolveRoleType(message == null ? null : message.getRole());
+        Message.MessageBuilder builder = Message.builder()
+                .role(role)
+                .content(message == null ? null : message.getContent());
+        if (message != null && message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+            builder.toolCalls(message.getToolCalls());
+        }
+        if (message != null && Objects.nonNull(message.getToolCallId())) {
+            builder.toolCallId(message.getToolCallId());
+        }
+        return builder.build();
+    }
+
+    private RoleType resolveRoleType(String role) {
+        if ("assistant".equalsIgnoreCase(role)) {
+            return RoleType.ASSISTANT;
+        }
+        if ("tool".equalsIgnoreCase(role)) {
+            return RoleType.TOOL;
+        }
+        return RoleType.USER;
     }
 
     @Override

@@ -18,6 +18,7 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
+import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -47,6 +48,8 @@ public class SessionWorkingMemoryAssembler {
     private SessionMemoryPromptFormatter promptFormatter;
     @Resource
     private SessionArtifactRestoreSupport artifactRestoreSupport;
+    @Resource
+    private SessionTranscriptBlockAssembler transcriptBlockAssembler;
 
     public SessionWorkingMemory assemble(AgentConversation conversation) {
         SessionWorkingMemory workingMemory = SessionWorkingMemory.builder()
@@ -111,7 +114,7 @@ public class SessionWorkingMemoryAssembler {
         }
 
         Map<Long, List<AgentMessageEvent>> eventMap = new LinkedHashMap<>();
-        for (AgentMessageEvent event : messageEventDao.queryArtifactEventsByMessageIds(messageIds)) {
+        for (AgentMessageEvent event : messageEventDao.queryFinalEventsByMessageIds(messageIds)) {
             eventMap.computeIfAbsent(event.getMessageId(), key -> new ArrayList<>()).add(event);
         }
         for (List<AgentMessageEvent> events : eventMap.values()) {
@@ -128,17 +131,25 @@ public class SessionWorkingMemoryAssembler {
 
         List<SessionTurnMemory> turnMemories = new ArrayList<>(recentMessages.size());
         for (AgentMessage message : recentMessages) {
-            if (!StringUtils.hasText(message.getResponse())) {
-                continue;
+            try {
+                turnMemories.add(transcriptBlockAssembler.buildTurnMemory(
+                        message,
+                        eventMap.get(message.getId())));
+            } catch (Exception e) {
+                // 单轮 transcript 恢复失败时退化为旧版 query/response，避免整次续聊失忆。
+                log.warn("组装最近窗口 turn 失败，退化为 query/response messageId={}, requestId={}",
+                        message == null ? null : message.getId(),
+                        message == null ? null : message.getRequestId(),
+                        e);
+                turnMemories.add(SessionTurnMemory.builder()
+                        .messageId(message == null ? null : message.getId())
+                        .requestId(message == null ? null : message.getRequestId())
+                        .sortOrder(message == null ? null : message.getSortOrder())
+                        .userMessage(message == null ? null : message.getQuery())
+                        .assistantMessage(message == null ? null : message.getResponse())
+                        .finalAnswer(message == null ? null : message.getResponse())
+                        .build());
             }
-            turnMemories.add(SessionTurnMemory.builder()
-                    .messageId(message.getId())
-                    .requestId(message.getRequestId())
-                    .sortOrder(message.getSortOrder())
-                    .userMessage(message.getQuery())
-                    .assistantMessage(message.getResponse())
-                    .artifactRefs(new ArrayList<>(artifactRestoreSupport.extractArtifactRefs(eventMap.get(message.getId()))))
-                    .build());
         }
         return turnMemories;
     }
@@ -167,7 +178,16 @@ public class SessionWorkingMemoryAssembler {
         if (!CollectionUtils.isEmpty(workingMemory.getRecentTurns())) {
             for (SessionTurnMemory turn : workingMemory.getRecentTurns()) {
                 textLength += safeLength(turn.getUserMessage());
-                textLength += safeLength(turn.getAssistantMessage());
+                textLength += safeLength(turn.getFinalAnswer());
+                if (!CollectionUtils.isEmpty(turn.getBlocks())) {
+                    for (TranscriptContextBlock block : turn.getBlocks()) {
+                        if (block == null) {
+                            continue;
+                        }
+                        textLength += safeLength(block.getText());
+                        textLength += safeLength(block.getToolArgumentsJson());
+                    }
+                }
             }
         }
         return textLength / 3;

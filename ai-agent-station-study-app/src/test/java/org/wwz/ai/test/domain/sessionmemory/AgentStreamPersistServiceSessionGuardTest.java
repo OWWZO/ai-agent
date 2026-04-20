@@ -37,8 +37,9 @@ public class AgentStreamPersistServiceSessionGuardTest {
                         .title("已有会话")
                         .build());
         StubMessageService messageService = new StubMessageService();
+        StubSessionMemoryService sessionMemoryService = new StubSessionMemoryService();
 
-        injectMinimalDependencies(service, conversationService, messageService, 0);
+        injectMinimalDependencies(service, conversationService, messageService, sessionMemoryService, 0);
 
         SseEmitter emitter = service.sendAndPersist(
                 SessionMemoryTestSupport.SESSION_ID,
@@ -53,6 +54,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
         Assert.assertNotNull(emitter);
         Assert.assertEquals(0, messageService.insertPlaceholderCount.get());
         Assert.assertEquals(0, conversationService.createConversationCount.get());
+        Assert.assertEquals(0, sessionMemoryService.rebuildCount.get());
     }
 
     @Test
@@ -67,8 +69,9 @@ public class AgentStreamPersistServiceSessionGuardTest {
                         .title("已有会话")
                         .build());
         StubMessageService messageService = new StubMessageService();
+        StubSessionMemoryService sessionMemoryService = new StubSessionMemoryService();
 
-        injectMinimalDependencies(service, conversationService, messageService, 1);
+        injectMinimalDependencies(service, conversationService, messageService, sessionMemoryService, 1);
 
         SseEmitter emitter = service.sendAndPersist(
                 SessionMemoryTestSupport.SESSION_ID,
@@ -83,11 +86,13 @@ public class AgentStreamPersistServiceSessionGuardTest {
         Assert.assertNotNull(emitter);
         Assert.assertEquals(0, messageService.insertPlaceholderCount.get());
         Assert.assertEquals(0, conversationService.createConversationCount.get());
+        Assert.assertEquals(0, sessionMemoryService.rebuildCount.get());
     }
 
     private void injectMinimalDependencies(AgentStreamPersistServiceImpl service,
                                            StubConversationService conversationService,
                                            StubMessageService messageService,
+                                           StubSessionMemoryService sessionMemoryService,
                                            int streamingCount) {
         ReflectionTestUtils.setField(service, "conversationService", conversationService);
         ReflectionTestUtils.setField(service, "messageService", messageService);
@@ -96,7 +101,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
         ReflectionTestUtils.setField(service, "conversationDao", new StubConversationDao());
         ReflectionTestUtils.setField(service, "fixRoleService", new StubFixRoleService());
         ReflectionTestUtils.setField(service, "handlerMap", Map.of());
-        ReflectionTestUtils.setField(service, "sessionMemoryService", new StubSessionMemoryService());
+        ReflectionTestUtils.setField(service, "sessionMemoryService", sessionMemoryService);
         ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
     }
 
@@ -361,8 +366,12 @@ public class AgentStreamPersistServiceSessionGuardTest {
     }
 
     private static class StubSessionMemoryService implements IAgentSessionMemoryService {
+
+        private final AtomicInteger rebuildCount = new AtomicInteger();
+
         @Override
         public org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory rebuildWorkingMemory(AgentConversation conversation) {
+            rebuildCount.incrementAndGet();
             return org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory.builder()
                     .historyDialogue("")
                     .build();

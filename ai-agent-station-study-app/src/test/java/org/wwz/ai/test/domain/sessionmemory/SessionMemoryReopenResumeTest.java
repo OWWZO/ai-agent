@@ -15,6 +15,7 @@ import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentSessionMemoryServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
 
 import java.util.ArrayList;
@@ -40,6 +41,8 @@ public class SessionMemoryReopenResumeTest {
         Assert.assertEquals(Integer.valueOf(2), Integer.valueOf(workingMemory.getRecentTurns().size()));
         Assert.assertEquals(Integer.valueOf(2), workingMemory.getBoundarySortOrder());
         Assert.assertTrue(workingMemory.getHistoryDialogue().contains("历史摘要"));
+        Assert.assertTrue(workingMemory.getRecentTurns().get(0).getBlocks().stream()
+                .anyMatch(block -> block != null && Boolean.TRUE.equals(block.getReferenceOnly())));
         SessionMemoryTestSupport.assertFileNames(
                 workingMemory.getRestoredFiles(),
                 "existing-report.html",
@@ -110,6 +113,9 @@ public class SessionMemoryReopenResumeTest {
         ReflectionTestUtils.setField(assembler, "messageEventDao", new StubMessageEventDao(events));
         ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
+        SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", transcriptBlockAssembler);
 
         AgentSessionMemoryServiceImpl service = new AgentSessionMemoryServiceImpl();
         ReflectionTestUtils.setField(service, "reactorConfig", buildConfig());
@@ -258,6 +264,11 @@ public class SessionMemoryReopenResumeTest {
 
         @Override
         public List<AgentMessageEvent> queryArtifactEventsByMessageIds(List<Long> messageIds) {
+            return queryByMessageIds(messageIds);
+        }
+
+        @Override
+        public List<AgentMessageEvent> queryFinalEventsByMessageIds(List<Long> messageIds) {
             return queryByMessageIds(messageIds);
         }
 

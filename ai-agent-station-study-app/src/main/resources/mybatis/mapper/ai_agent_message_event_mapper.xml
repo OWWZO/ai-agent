@@ -65,6 +65,17 @@
         ORDER BY message_id ASC, seq_no ASC
     </select>
 
+    <select id="queryFinalEventsByMessageIds" resultMap="AgentMessageEventMap">
+        SELECT *
+        FROM ai_agent_message_event
+        WHERE deleted = 0
+          AND message_id IN
+        <foreach collection="messageIds" item="messageId" open="(" separator="," close=")">
+            #{messageId}
+        </foreach>
+        ORDER BY message_id ASC, seq_no ASC
+    </select>
+
     <update id="deleteByMessageId">
         UPDATE ai_agent_message_event
         SET deleted = 1

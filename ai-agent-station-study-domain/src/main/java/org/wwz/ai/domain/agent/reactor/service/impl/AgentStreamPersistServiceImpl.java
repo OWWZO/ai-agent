@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
+import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
 import org.wwz.ai.domain.agent.reactor.agent.enums.ConversationAgentType;
 import org.wwz.ai.domain.agent.reactor.agent.enums.MessageStatus;
@@ -19,6 +20,7 @@ import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
+import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -471,20 +473,112 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
         List<AgentRequest.Message> messages = new ArrayList<>();
         for (SessionTurnMemory turn : workingMemory.getRecentTurns()) {
-            if (StringUtils.hasText(turn.getUserMessage())) {
-                messages.add(AgentRequest.Message.builder()
-                        .role("user")
-                        .content(turn.getUserMessage())
-                        .build());
+            if (turn.getBlocks() == null || turn.getBlocks().isEmpty()) {
+                appendFallbackTurnMessages(messages, turn);
+                continue;
             }
-            if (StringUtils.hasText(turn.getAssistantMessage())) {
-                messages.add(AgentRequest.Message.builder()
-                        .role("assistant")
-                        .content(turn.getAssistantMessage())
-                        .build());
+            int appendedBefore = messages.size();
+            for (TranscriptContextBlock block : turn.getBlocks()) {
+                try {
+                    AgentRequest.Message requestMessage = toWorkingMemoryMessage(block);
+                    if (requestMessage != null) {
+                        messages.add(requestMessage);
+                    }
+                } catch (Exception e) {
+                    log.warn("构建 working memory 预装消息失败，已跳过该 block requestId={}, blockType={}, sourceMessageId={}, sourceSeqNo={}",
+                            turn.getRequestId(),
+                            block == null ? null : block.getBlockType(),
+                            block == null ? null : block.getSourceMessageId(),
+                            block == null ? null : block.getSourceSeqNo(),
+                            e);
+                }
+            }
+            if (messages.size() == appendedBefore) {
+                // 如果结构化 block 全部跳过，继续回退到旧版 query/response，避免整个 turn 丢失。
+                appendFallbackTurnMessages(messages, turn);
             }
         }
         return messages;
+    }
+
+    private void appendFallbackTurnMessages(List<AgentRequest.Message> messages, SessionTurnMemory turn) {
+        if (StringUtils.hasText(turn.getUserMessage())) {
+            messages.add(AgentRequest.Message.builder()
+                    .role("user")
+                    .messageType("user_input")
+                    .content(turn.getUserMessage())
+                    .build());
+        }
+        if (StringUtils.hasText(turn.getAssistantMessage())) {
+            messages.add(AgentRequest.Message.builder()
+                    .role("assistant")
+                    .messageType("assistant_answer")
+                    .content(turn.getAssistantMessage())
+                    .build());
+        }
+    }
+
+    private AgentRequest.Message toWorkingMemoryMessage(TranscriptContextBlock block) {
+        if (block == null || block.getBlockType() == null) {
+            return null;
+        }
+        return switch (block.getBlockType()) {
+            case USER_INPUT -> AgentRequest.Message.builder()
+                    .role("user")
+                    .messageType("user_input")
+                    .content(block.getText())
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(block.getReferenceOnly())
+                    .build();
+            case ASSISTANT_THOUGHT -> AgentRequest.Message.builder()
+                    .role("assistant")
+                    .messageType("assistant_thought")
+                    .content(block.getText())
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(block.getReferenceOnly())
+                    .build();
+            case TOOL_USE -> AgentRequest.Message.builder()
+                    .role("assistant")
+                    .messageType("tool_use")
+                    .content(block.getText())
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id(block.getToolUseId())
+                            .type("function")
+                            .function(ToolCall.Function.builder()
+                                    .name(block.getToolName())
+                                    .arguments(block.getToolArgumentsJson())
+                                    .build())
+                            .build()))
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(Boolean.FALSE)
+                    .build();
+            case TOOL_RESULT -> AgentRequest.Message.builder()
+                    .role("tool")
+                    .messageType("tool_result")
+                    .content(block.getText())
+                    .toolCallId(block.getToolUseId())
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(block.getReferenceOnly())
+                    .files(block.getArtifactRefs() == null ? List.of()
+                            : sessionArtifactRestoreSupport.toFiles(block.getArtifactRefs()))
+                    .build();
+            case ASSISTANT_ANSWER -> AgentRequest.Message.builder()
+                    .role("assistant")
+                    .messageType("assistant_answer")
+                    .content(block.getText())
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(block.getReferenceOnly())
+                    .build();
+            case ARTIFACT_REFERENCE -> AgentRequest.Message.builder()
+                    .role(StringUtils.hasText(block.getRole()) ? block.getRole() : "assistant")
+                    .messageType("artifact_reference")
+                    .content(block.getText())
+                    .artifactRefs(block.getArtifactRefs())
+                    .referenceOnly(block.getReferenceOnly())
+                    .files(block.getArtifactRefs() == null ? List.of()
+                            : sessionArtifactRestoreSupport.toFiles(block.getArtifactRefs()))
+                    .build();
+        };
     }
 
     private List<OrderedEvent> projectFinalDetailEvents(AgentResponse agentResponse,
@@ -1356,7 +1450,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
     }
 
     private Request buildHttpRequest(AgentRequest autoReq) {
-        String url = "http://127.0.0.1:8080/AutoAgent";
+        String url = "http://127.0.0.1:8100/AutoAgent";
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json"),
                 JSONObject.toJSONString(autoReq)

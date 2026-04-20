@@ -63,27 +63,8 @@ public class SessionArtifactRestoreSupport {
 
         List<JSONObject> artifactRefs = new ArrayList<>();
         for (AgentMessageEvent event : events) {
-            if (!StringUtils.hasText(event.getPayloadJson())) {
-                continue;
-            }
-            JSONObject payload;
-            try {
-                payload = ConversationEventPayloadNormalizer.normalizePayload(
-                        JSON.parseObject(event.getPayloadJson()));
-            } catch (Exception e) {
-                continue;
-            }
-            JSONArray refs = payload.getJSONArray("artifactRefs");
-            if (refs == null || refs.isEmpty()) {
-                continue;
-            }
-            for (Object item : refs) {
-                if (item instanceof JSONObject) {
-                    artifactRefs.add((JSONObject) item);
-                } else if (item instanceof Map) {
-                    artifactRefs.add(new JSONObject(new LinkedHashMap<>((Map<String, Object>) item)));
-                }
-            }
+            JSONObject payload = ConversationEventPayloadNormalizer.normalizePayloadJson(event.getPayloadJson());
+            artifactRefs.addAll(ConversationEventPayloadNormalizer.extractNormalizedArtifactRefs(payload));
         }
         return deduplicateArtifactRefs(artifactRefs);
     }

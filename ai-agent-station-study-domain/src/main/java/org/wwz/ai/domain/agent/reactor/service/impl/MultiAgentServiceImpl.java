@@ -196,7 +196,7 @@ public class MultiAgentServiceImpl implements IMultiAgentService {
     private Request buildHttpRequest(AgentRequest autoReq) {
         String reqId = autoReq.getRequestId();
         autoReq.setRequestId(autoReq.getRequestId());
-        String url = "http://127.0.0.1:8080/AutoAgent";
+        String url = "http://127.0.0.1:8100/AutoAgent";
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json"),
                 JSONObject.toJSONString(autoReq)

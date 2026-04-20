@@ -1,7 +1,7 @@
-# Specification Quality Checklist: ReAct / PlanSolve 会话上下文记忆
+# Specification Quality Checklist: ReAct / PlanSolve 完整链路会话上下文复原
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-04-18
+**Created**: 2026-04-19
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -31,4 +31,6 @@
 
 ## Notes
 
-- 当前规格已满足进入 `/speckit.plan` 或直接实现前的质量要求。
+- 本次规格已从“摘要优先的会话记忆”重写为“基于完整事件账本的上下文复原”，不存在遗留的 `NEEDS CLARIFICATION` 标记。
+- Brownfield 上下文中保留了既有表名与模块名，用于明确影响边界与数据契约；其余条目均保持为 WHAT / WHY 级别的规格描述。
+- 当前规格已满足进入 `/speckit.plan` 的质量要求。

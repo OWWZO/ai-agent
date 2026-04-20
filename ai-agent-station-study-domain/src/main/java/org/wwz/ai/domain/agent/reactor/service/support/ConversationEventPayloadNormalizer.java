@@ -2,7 +2,9 @@ package org.wwz.ai.domain.agent.reactor.service.support;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,67 @@ public final class ConversationEventPayloadNormalizer {
             pruneLegacyArtifactFields(normalized);
         }
         return normalized;
+    }
+
+    public static JSONObject normalizePayloadJson(String payloadJson) {
+        if (!StringUtils.hasText(payloadJson)) {
+            return new JSONObject(new LinkedHashMap<>());
+        }
+        try {
+            Object payload = com.alibaba.fastjson.JSON.parse(payloadJson);
+            Object normalizedPayload = normalizePayload(payload);
+            if (normalizedPayload instanceof JSONObject) {
+                return (JSONObject) normalizedPayload;
+            }
+            if (normalizedPayload instanceof Map<?, ?> normalizedMap) {
+                return new JSONObject(new LinkedHashMap<>((Map<String, Object>) normalizedMap));
+            }
+        } catch (Exception ignored) {
+            // 读取历史脏数据时退化为空对象，避免中断整轮上下文恢复。
+        }
+        return new JSONObject(new LinkedHashMap<>());
+    }
+
+    public static List<JSONObject> extractNormalizedArtifactRefs(JSONObject payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        JSONArray refs = payload.getJSONArray("artifactRefs");
+        if (refs == null || refs.isEmpty()) {
+            return List.of();
+        }
+        List<JSONObject> normalizedRefs = new ArrayList<>();
+        for (Object item : refs) {
+            if (item instanceof JSONObject) {
+                normalizedRefs.add((JSONObject) item);
+            } else if (item instanceof Map<?, ?> itemMap) {
+                normalizedRefs.add(new JSONObject(new LinkedHashMap<>((Map<String, Object>) itemMap)));
+            }
+        }
+        return normalizedRefs;
+    }
+
+    public static boolean isReferenceOnly(JSONObject payload,
+                                          String eventType,
+                                          String eventSubType,
+                                          String contentText) {
+        if (payload != null && payload.getBooleanValue("referenceOnly")) {
+            return true;
+        }
+        if ("deep_search".equalsIgnoreCase(eventType) && "report".equalsIgnoreCase(eventSubType)) {
+            return true;
+        }
+        if (StringUtils.hasText(contentText) && contentText.length() >= 400) {
+            return true;
+        }
+        if (payload == null) {
+            return false;
+        }
+        return switch (safeLower(eventType)) {
+            case "html", "markdown", "code", "ppt", "file", "browser", "data_analysis" ->
+                    !extractNormalizedArtifactRefs(payload).isEmpty();
+            default -> false;
+        };
     }
 
     private static JSONArray extractArtifactRefs(Map<String, Object> payloadMap) {
@@ -200,5 +263,9 @@ public final class ConversationEventPayloadNormalizer {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static String safeLower(String value) {
+        return value == null ? "" : value.toLowerCase();
     }
 }

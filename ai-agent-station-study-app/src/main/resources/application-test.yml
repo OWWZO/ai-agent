@@ -1,5 +1,5 @@
 server:
-  port: 8091
+  port: 8100
 
 # 线程池配置
 thread:
@@ -41,7 +41,7 @@ autobots:
     session-memory:
       enabled: true
       compaction-threshold-tokens: 80
-      recent-window-turns: 2
+      recent-window-turns: 10
       summary-max-length: 800
     skill:
       enabled: false

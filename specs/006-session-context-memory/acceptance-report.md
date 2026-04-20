@@ -1,69 +1,47 @@
-# Acceptance Report: ReAct / PlanSolve 会话上下文记忆
+# Acceptance Report: ReAct / PlanSolve 完整链路会话上下文复原
 
 ## 1. 自动化回归状态
 
-以下自动化回归已完成：
-
 | 项目 | 命令 | 结果 |
 |------|------|------|
-| 会话记忆专项测试 | `mvn -pl ai-agent-station-study-app -am -DskipTests=false -DskipITs "-Dtest=SessionWorkingMemoryAssemblerTest,AgentStreamPersistServiceSessionGuardTest,SessionMemoryCompactionServiceTest,ConversationHistoryPersistenceTest,SessionMemoryReopenResumeTest,AgentMessageStopAndResumeTest,ConversationHistoryArtifactTest" test` | 通过，18/18 |
-| 应用模块全量自动化回归 | `mvn -pl ai-agent-station-study-app -am -DskipTests=false -DskipITs test` | 通过，161/161 |
+| transcript / working memory 定向回归 | `mvn -pl ai-agent-station-study-app -am -DskipTests=false "-Dtest=SessionWorkingMemoryAssemblerTest,SessionMemoryReopenResumeTest,ConversationHistoryPersistenceTest,ConversationHistoryArtifactTest,AgentStreamPersistServiceSessionGuardTest,AgentMessageStopAndResumeTest,AgentStreamPersistWorkingMemoryMessagesTest,SessionTranscriptBlockAssemblerTest" test` | 通过，21/21 |
+| 应用模块全量回归 | `mvn -pl ai-agent-station-study-app -am -DskipTests=false test` | 未作为本次交付门禁继续执行。首次尝试暴露 `application-dev.yml` 中 `summary.system_prompt` 的非法多行 YAML，已改为合法 block scalar；修复后再次全量执行时，用户因赶时间主动中断，不再继续跑非关键测试。 |
 
-## 2. 手工验收待办
+## 2. 当前已确认结论
 
-以下项目需要在真实服务环境中手工执行。按当前交付约定，这些项目已在 `tasks.md` 中按用户要求直接勾选，但真实环境执行人与最终结果仍以本表为准：
+- working memory 现在会在 snapshot 边界之后，直接从 `ai_agent_message + ai_agent_message_event` 恢复 ordered transcript blocks，而不是只保留 `query + response`。
+- `AgentRequest.Message` 已能携带 `messageType / toolCalls / toolCallId / artifactRefs / referenceOnly / files`，并继续传到 ReAct / PlanSolve 的内部 `agent.dto.Message`。
+- `deep_search report`、文件产物、长输出结果会以 `referenceOnly + artifactRefs/files` 形式进入上下文，不再把整段正文直接塞回 working memory。
+- 历史重开回放与写入侧 payload 规范化共用 `ConversationEventPayloadNormalizer`，legacy `fileInfo/fileList` 会统一收口到 `artifactRefs`。
+- `FORCE_STOPPED` 轮次不会触发 session memory refresh；模式冲突、会话并发冲突的守卫测试仍然通过。
+- 为了避免单条脏 event 拖垮整轮续聊，`SessionTranscriptBlockAssembler`、`SessionWorkingMemoryAssembler`、`AgentStreamPersistServiceImpl` 已补充按轮/按块的日志与降级兜底。
 
-| 任务 | 场景 | 模式 | 执行人 | 结果 | 备注 |
-|------|------|------|--------|------|------|
-| T016 | 同会话续聊 | REACT | 用户 | 待用户线下验证 |  |
-| T016 | 同会话续聊 | PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T016 | 模式冲突拒绝 | REACT -> PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T016 | 模式冲突拒绝 | PLAN_SOLVE -> REACT | 用户 | 待用户线下验证 |  |
-| T016 | 同会话并发拒绝 | REACT | 用户 | 待用户线下验证 |  |
-| T016 | 同会话并发拒绝 | PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T023 | 长会话压缩 | REACT | 用户 | 待用户线下验证 |  |
-| T023 | 长会话压缩 | PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T029 | 历史重开续聊 | REACT | 用户 | 待用户线下验证 |  |
-| T029 | 历史重开续聊 | PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T029 | stop 后不进入记忆 | REACT | 用户 | 待用户线下验证 |  |
-| T029 | stop 后不进入记忆 | PLAN_SOLVE | 用户 | 待用户线下验证 |  |
-| T032 | 最终全链路回归 | ReAct / PlanSolve 汇总 | 用户 | 待用户线下验证 | 自动化 `mvn` 回归已完成 |
+## 3. 尚未执行的手工验收
 
-## 3. 验收记录要点
+以下 quickstart 场景尚未在真实服务环境中逐项手工跑完：
 
-每个手工样本建议至少记录以下信息：
-
-- `sessionId`
-- `requestId`
-- `outputStyle / deepThink`
-- 是否命中 `historyDialogue`
-- 是否命中最近窗口预装消息
-- 是否恢复历史文件或 `artifactRefs`
-- 是否生成或更新 `ai_agent_session_memory`
-- `boundary_sort_order` 是否按预期推进
-- 是否正确排除 `ERROR / FORCE_STOPPED`
+| 任务 | Quickstart 章节 | 状态 |
+|------|------------------|------|
+| T012 | 第 2、6、7 节 | 待手工验证 |
+| T016 | 第 3 节 | 待手工验证 |
+| T021 | 第 4、5、8 节 | 待手工验证 |
+| T024 | 最终全链路汇总 | 待手工验证 |
 
 ## 4. 数据库核对 SQL
 
 ```sql
-SELECT id, session_id, agent_type, message_count, last_message_preview
-FROM ai_agent_conversation
-WHERE session_id IN ('sess-react-001', 'sess-plan-001');
+SELECT session_id, boundary_sort_order, source_turn_count
+FROM ai_agent_session_memory
+WHERE session_id IN ('sess-react-ledger-001', 'sess-plan-ledger-001');
 ```
 
 ```sql
 SELECT request_id, sort_order, status, force_stop, started_at, finished_at
 FROM ai_agent_message
 WHERE conversation_id = (
-  SELECT id FROM ai_agent_conversation WHERE session_id = 'sess-react-001'
+  SELECT id FROM ai_agent_conversation WHERE session_id = 'sess-react-ledger-001'
 )
 ORDER BY sort_order;
-```
-
-```sql
-SELECT session_id, boundary_sort_order, source_turn_count, last_compacted_at
-FROM ai_agent_session_memory
-WHERE session_id IN ('sess-react-001', 'sess-plan-001');
 ```
 
 ```sql
@@ -72,7 +50,7 @@ FROM ai_agent_message_event
 WHERE message_id IN (
   SELECT id FROM ai_agent_message
   WHERE conversation_id = (
-    SELECT id FROM ai_agent_conversation WHERE session_id = 'sess-react-001'
+    SELECT id FROM ai_agent_conversation WHERE session_id = 'sess-react-ledger-001'
   )
 )
 ORDER BY message_id, seq_no;

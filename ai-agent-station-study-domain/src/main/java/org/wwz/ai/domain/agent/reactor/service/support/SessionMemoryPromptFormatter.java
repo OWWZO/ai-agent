@@ -7,6 +7,8 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
+import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptBlockType;
+import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,9 +94,41 @@ public class SessionMemoryPromptFormatter {
                     .append("轮 用户：")
                     .append(defaultText(turn.getUserMessage()))
                     .append("；助手：")
-                    .append(defaultText(turn.getAssistantMessage()));
+                    .append(defaultText(firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage())));
+            String transcriptSummary = summarizeBlocks(turn.getBlocks());
+            if (StringUtils.hasText(transcriptSummary)) {
+                builder.append("；链路：").append(transcriptSummary);
+            }
         }
         return builder.toString();
+    }
+
+    private String summarizeBlocks(List<TranscriptContextBlock> blocks) {
+        if (CollectionUtils.isEmpty(blocks)) {
+            return "";
+        }
+
+        List<String> summaries = new ArrayList<>();
+        for (TranscriptContextBlock block : blocks) {
+            if (block == null || block.getBlockType() == null) {
+                continue;
+            }
+            if (TranscriptBlockType.USER_INPUT == block.getBlockType()
+                    || TranscriptBlockType.ASSISTANT_ANSWER == block.getBlockType()) {
+                continue;
+            }
+            String label = switch (block.getBlockType()) {
+                case ASSISTANT_THOUGHT -> "思考";
+                case TOOL_USE -> "工具调用";
+                case TOOL_RESULT -> Boolean.TRUE.equals(block.getReferenceOnly()) ? "工具结果(引用)" : "工具结果";
+                case ARTIFACT_REFERENCE -> "产物引用";
+                default -> null;
+            };
+            if (StringUtils.hasText(label)) {
+                summaries.add(label);
+            }
+        }
+        return summaries.isEmpty() ? "" : String.join(" -> ", summaries);
     }
 
     private String resolveCategoryLabel(String category) {
@@ -112,5 +146,14 @@ public class SessionMemoryPromptFormatter {
 
     private String defaultText(String text) {
         return StringUtils.hasText(text) ? text.trim() : "无";
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 }

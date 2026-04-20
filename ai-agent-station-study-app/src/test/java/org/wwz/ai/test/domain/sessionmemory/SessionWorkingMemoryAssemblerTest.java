@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
 
 import java.util.List;
@@ -34,12 +35,17 @@ public class SessionWorkingMemoryAssemblerTest {
         ReflectionTestUtils.setField(assembler, "messageEventDao", eventDao);
         ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
+        ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", buildTranscriptAssembler());
 
         SessionWorkingMemory workingMemory = assembler.assemble(buildConversation());
 
         Assert.assertEquals("用户要求后续输出都使用中文表格。", workingMemory.getSummaryText());
         Assert.assertEquals(Integer.valueOf(2), Integer.valueOf(workingMemory.getFacts().size()));
         Assert.assertEquals(Integer.valueOf(2), Integer.valueOf(workingMemory.getRecentTurns().size()));
+        Assert.assertTrue(workingMemory.getRecentTurns().get(0).getBlocks().stream()
+                .anyMatch(block -> block != null && "TOOL_USE".equals(String.valueOf(block.getBlockType()))));
+        Assert.assertTrue(workingMemory.getRecentTurns().get(0).getBlocks().stream()
+                .anyMatch(block -> block != null && Boolean.TRUE.equals(block.getReferenceOnly())));
         SessionMemoryTestSupport.assertFileNames(
                 workingMemory.getRestoredFiles(),
                 "existing-report.html",
@@ -49,7 +55,7 @@ public class SessionWorkingMemoryAssemblerTest {
         Assert.assertTrue(workingMemory.getHistoryDialogue().contains("中文表格"));
         Assert.assertEquals(1, sessionMemoryDao.queryCount.get());
         Assert.assertEquals(1, messageDao.queryAfterBoundaryCount.get());
-        Assert.assertEquals(1, eventDao.queryArtifactBatchCount.get());
+        Assert.assertEquals(1, eventDao.queryFinalBatchCount.get());
     }
 
     @Test
@@ -72,6 +78,7 @@ public class SessionWorkingMemoryAssemblerTest {
         ReflectionTestUtils.setField(assembler, "messageEventDao", eventDao);
         ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
+        ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", buildTranscriptAssembler());
 
         SessionWorkingMemory workingMemory = assembler.assemble(buildConversation());
 
@@ -81,7 +88,13 @@ public class SessionWorkingMemoryAssemblerTest {
         Assert.assertEquals(1, workingMemory.getRecentTurns().size());
         Assert.assertEquals(1, sessionMemoryDao.queryCount.get());
         Assert.assertEquals(1, messageDao.queryAfterBoundaryCount.get());
-        Assert.assertEquals(1, eventDao.queryArtifactBatchCount.get());
+        Assert.assertEquals(1, eventDao.queryFinalBatchCount.get());
+    }
+
+    private SessionTranscriptBlockAssembler buildTranscriptAssembler() {
+        SessionTranscriptBlockAssembler assembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        return assembler;
     }
 
     private ReactorConfig buildConfig() {
@@ -197,10 +210,10 @@ public class SessionWorkingMemoryAssemblerTest {
         }
     }
 
-    private static class StubMessageEventDao implements IAgentMessageEventDao {
+        private static class StubMessageEventDao implements IAgentMessageEventDao {
 
         private final List<AgentMessageEvent> events;
-        private final AtomicInteger queryArtifactBatchCount = new AtomicInteger();
+        private final AtomicInteger queryFinalBatchCount = new AtomicInteger();
 
         private StubMessageEventDao(List<AgentMessageEvent> events) {
             this.events = events;
@@ -223,7 +236,12 @@ public class SessionWorkingMemoryAssemblerTest {
 
         @Override
         public List<AgentMessageEvent> queryArtifactEventsByMessageIds(List<Long> messageIds) {
-            queryArtifactBatchCount.incrementAndGet();
+            return events;
+        }
+
+        @Override
+        public List<AgentMessageEvent> queryFinalEventsByMessageIds(List<Long> messageIds) {
+            queryFinalBatchCount.incrementAndGet();
             return events;
         }
 

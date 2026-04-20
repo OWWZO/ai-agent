@@ -273,6 +273,11 @@ public class ConversationHistoryPersistenceTest {
         }
 
         @Override
+        public List<AgentMessageEvent> queryFinalEventsByMessageIds(List<Long> messageIds) {
+            return List.of();
+        }
+
+        @Override
         public int deleteByMessageId(Long messageId) {
             deletedMessageId.set(messageId);
             return 0;

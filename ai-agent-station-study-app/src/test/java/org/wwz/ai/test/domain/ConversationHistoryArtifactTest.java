@@ -118,4 +118,50 @@ public class ConversationHistoryArtifactTest {
         Assert.assertEquals("file-summary", refs.getJSONObject(0).getString("resourceKey"));
         Assert.assertNull(normalized.getJSONObject("resultMap").getJSONObject("resultMap").get("fileInfo"));
     }
+
+    @Test
+    public void test_legacyFileInfoIsNormalizedToArtifactRefsDuringReplay() {
+        ConversationReplayAssembler assembler = new ConversationReplayAssembler();
+        AgentMessage message = AgentMessage.builder()
+                .id(3L)
+                .requestId("req-003")
+                .sortOrder(1)
+                .query("继续打开旧报告")
+                .agentType(2)
+                .status(1)
+                .forceStop(0)
+                .build();
+
+        AgentMessageEvent event = AgentMessageEvent.builder()
+                .messageId(3L)
+                .seqNo(1)
+                .eventType("html")
+                .eventSubType("report")
+                .title("旧版报告")
+                .payloadJson("""
+                        {
+                          "messageType":"html",
+                          "resultMap":{
+                            "resultMap":{
+                              "fileInfo":[
+                                {
+                                  "fileName":"legacy-report.html",
+                                  "domainUrl":"https://file.example.com/legacy-report",
+                                  "downloadUrl":"https://file.example.com/download/legacy-report",
+                                  "resourceKey":"legacy-report"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                        """)
+                .status("completed")
+                .build();
+
+        List<ConversationTurnDetail> turns = assembler.assembleTurns(List.of(message), Map.of(3L, List.of(event)));
+        JSONObject payload = (JSONObject) turns.get(0).getEvents().get(0).getPayload();
+
+        Assert.assertEquals("legacy-report", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
+        Assert.assertNull(payload.getJSONObject("resultMap").getJSONObject("resultMap").get("fileInfo"));
+    }
 }
