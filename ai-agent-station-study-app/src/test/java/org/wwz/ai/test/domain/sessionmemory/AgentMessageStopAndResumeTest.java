@@ -16,6 +16,8 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentSessionMemoryService;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.ActiveSessionStreamRegistry;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryDecisionType;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 
 import java.util.LinkedHashMap;
@@ -86,7 +88,7 @@ public class AgentMessageStopAndResumeTest {
         Assert.assertEquals(1, messageService.forceStopCount.get());
         Assert.assertEquals(0, messageService.completeCount.get());
         Assert.assertEquals(0, messageService.errorCount.get());
-        Assert.assertEquals(0, sessionMemoryService.refreshCount.get());
+        Assert.assertEquals(0, sessionMemoryService.prepareCount.get());
         Assert.assertEquals(1, conversationDao.incrementMessageCount.get());
         Assert.assertEquals(1, conversationDao.updateConversationCount.get());
     }
@@ -214,18 +216,24 @@ public class AgentMessageStopAndResumeTest {
 
     private static class StubSessionMemoryService implements IAgentSessionMemoryService {
 
-        private final AtomicInteger refreshCount = new AtomicInteger();
+        private final AtomicInteger prepareCount = new AtomicInteger();
+
+        @Override
+        public SessionMemoryPreparationResult prepareForRequest(AgentConversation conversation) {
+            prepareCount.incrementAndGet();
+            return SessionMemoryPreparationResult.builder()
+                    .decisionType(SessionMemoryDecisionType.BYPASS)
+                    .workingMemory(SessionWorkingMemory.builder()
+                            .historyDialogue("")
+                            .build())
+                    .build();
+        }
 
         @Override
         public SessionWorkingMemory rebuildWorkingMemory(AgentConversation conversation) {
             return SessionWorkingMemory.builder()
                     .historyDialogue("")
                     .build();
-        }
-
-        @Override
-        public void refreshSessionMemory(AgentConversation conversation) {
-            refreshCount.incrementAndGet();
         }
     }
 }

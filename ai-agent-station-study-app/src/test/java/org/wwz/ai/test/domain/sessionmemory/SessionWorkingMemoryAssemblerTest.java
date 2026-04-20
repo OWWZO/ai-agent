@@ -13,6 +13,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
@@ -36,6 +37,7 @@ public class SessionWorkingMemoryAssemblerTest {
         ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
         ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", buildTranscriptAssembler());
+        ReflectionTestUtils.setField(assembler, "tokenEstimator", new SessionMemoryTokenEstimator());
 
         SessionWorkingMemory workingMemory = assembler.assemble(buildConversation());
 
@@ -54,7 +56,7 @@ public class SessionWorkingMemoryAssemblerTest {
         Assert.assertTrue(workingMemory.getHistoryDialogue().contains("历史摘要"));
         Assert.assertTrue(workingMemory.getHistoryDialogue().contains("中文表格"));
         Assert.assertEquals(1, sessionMemoryDao.queryCount.get());
-        Assert.assertEquals(1, messageDao.queryAfterBoundaryCount.get());
+        Assert.assertEquals(1, messageDao.queryCompletedCount.get());
         Assert.assertEquals(1, eventDao.queryFinalBatchCount.get());
     }
 
@@ -79,6 +81,7 @@ public class SessionWorkingMemoryAssemblerTest {
         ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
         ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", buildTranscriptAssembler());
+        ReflectionTestUtils.setField(assembler, "tokenEstimator", new SessionMemoryTokenEstimator());
 
         SessionWorkingMemory workingMemory = assembler.assemble(buildConversation());
 
@@ -87,7 +90,7 @@ public class SessionWorkingMemoryAssemblerTest {
         Assert.assertTrue(workingMemory.getHistoryDialogue().contains("最近对话片段"));
         Assert.assertEquals(1, workingMemory.getRecentTurns().size());
         Assert.assertEquals(1, sessionMemoryDao.queryCount.get());
-        Assert.assertEquals(1, messageDao.queryAfterBoundaryCount.get());
+        Assert.assertEquals(1, messageDao.queryCompletedCount.get());
         Assert.assertEquals(1, eventDao.queryFinalBatchCount.get());
     }
 
@@ -101,6 +104,8 @@ public class SessionWorkingMemoryAssemblerTest {
         ReactorConfig config = new ReactorConfig();
         ReflectionTestUtils.setField(config, "sessionMemoryCompactionThresholdTokens", 12000);
         ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowTurns", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMinMessages", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMaxTokens", 4000);
         ReflectionTestUtils.setField(config, "sessionMemorySummaryMaxLength", 4000);
         return config;
     }
@@ -139,8 +144,8 @@ public class SessionWorkingMemoryAssemblerTest {
         }
 
         @Override
-        public int upsert(AgentSessionMemory sessionMemory) {
-            return 0;
+        public List<AgentSessionMemory> queryHistoryBySessionId(String sessionId) {
+            return List.of();
         }
 
         @Override
@@ -152,7 +157,7 @@ public class SessionWorkingMemoryAssemblerTest {
     private static class StubMessageDao implements IAgentMessageDao {
 
         private final List<AgentMessage> recentMessages;
-        private final AtomicInteger queryAfterBoundaryCount = new AtomicInteger();
+        private final AtomicInteger queryCompletedCount = new AtomicInteger();
 
         private StubMessageDao(List<AgentMessage> recentMessages) {
             this.recentMessages = recentMessages;
@@ -185,12 +190,12 @@ public class SessionWorkingMemoryAssemblerTest {
 
         @Override
         public List<AgentMessage> queryCompletedAfterSortOrder(Long conversationId, Integer afterSortOrder, int limit) {
-            queryAfterBoundaryCount.incrementAndGet();
             return recentMessages;
         }
 
         @Override
         public List<AgentMessage> queryCompletedByConversationId(Long conversationId) {
+            queryCompletedCount.incrementAndGet();
             return recentMessages;
         }
 

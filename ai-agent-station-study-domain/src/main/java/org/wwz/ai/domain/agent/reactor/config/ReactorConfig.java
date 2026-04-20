@@ -305,6 +305,21 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.session-memory.recent-window-turns:10}")
     private Integer sessionMemoryRecentWindowTurns;
 
+    @Value("${autobots.autoagent.session-memory.hard-limit-tokens:20000}")
+    private Integer sessionMemoryHardLimitTokens;
+
+    @Value("${autobots.autoagent.session-memory.recent-window-max-tokens:4000}")
+    private Integer sessionMemoryRecentWindowMaxTokens;
+
+    @Value("${autobots.autoagent.session-memory.recent-window-min-messages:4}")
+    private Integer sessionMemoryRecentWindowMinMessages;
+
+    @Value("${autobots.autoagent.session-memory.max-consecutive-failures:3}")
+    private Integer sessionMemoryMaxConsecutiveFailures;
+
+    @Value("${autobots.autoagent.session-memory.circuit-open-seconds:600}")
+    private Integer sessionMemoryCircuitOpenSeconds;
+
     @Value("${autobots.autoagent.session-memory.summary-max-length:4000}")
     private Integer sessionMemorySummaryMaxLength;
 

@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentSessionMemoryServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
@@ -116,6 +117,7 @@ public class SessionMemoryReopenResumeTest {
         SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
         ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", transcriptBlockAssembler);
+        ReflectionTestUtils.setField(assembler, "tokenEstimator", new SessionMemoryTokenEstimator());
 
         AgentSessionMemoryServiceImpl service = new AgentSessionMemoryServiceImpl();
         ReflectionTestUtils.setField(service, "reactorConfig", buildConfig());
@@ -128,6 +130,8 @@ public class SessionMemoryReopenResumeTest {
         ReflectionTestUtils.setField(config, "sessionMemoryEnabled", true);
         ReflectionTestUtils.setField(config, "sessionMemoryCompactionThresholdTokens", 12000);
         ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowTurns", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMinMessages", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMaxTokens", 4000);
         ReflectionTestUtils.setField(config, "sessionMemorySummaryMaxLength", 4000);
         return config;
     }
@@ -164,8 +168,8 @@ public class SessionMemoryReopenResumeTest {
         }
 
         @Override
-        public int upsert(AgentSessionMemory sessionMemory) {
-            return 0;
+        public List<AgentSessionMemory> queryHistoryBySessionId(String sessionId) {
+            return List.of();
         }
 
         @Override

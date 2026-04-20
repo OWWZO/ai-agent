@@ -10,7 +10,10 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryCompactionService;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryGenerator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryBuilder;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,11 +23,16 @@ import java.util.Map;
 public class SessionMemoryCompactionServiceTest {
 
     @Test
-    public void test_compactionKeepsRecentWindowAndShrinksPayload() {
+    public void test_compactionKeepsRecentWindowAndShrinksPayload() throws Exception {
         SessionMemoryCompactionService service = new SessionMemoryCompactionService();
-        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(200));
+        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(200, 2500));
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
+        ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
+        SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(service, "transcriptBlockAssembler", transcriptBlockAssembler);
+        ReflectionTestUtils.setField(service, "tokenEstimator", new SessionMemoryTokenEstimator());
 
         AgentConversation conversation = AgentConversation.builder()
                 .id(SessionMemoryTestSupport.CONVERSATION_ID)
@@ -69,11 +77,16 @@ public class SessionMemoryCompactionServiceTest {
     }
 
     @Test
-    public void test_compactionBoundaryMovesForwardFromExistingSnapshot() {
+    public void test_compactionBoundaryMovesForwardFromExistingSnapshot() throws Exception {
         SessionMemoryCompactionService service = new SessionMemoryCompactionService();
-        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(120));
+        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(120, 1500));
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
+        ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
+        SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(service, "transcriptBlockAssembler", transcriptBlockAssembler);
+        ReflectionTestUtils.setField(service, "tokenEstimator", new SessionMemoryTokenEstimator());
 
         AgentConversation conversation = AgentConversation.builder()
                 .id(SessionMemoryTestSupport.CONVERSATION_ID)
@@ -107,12 +120,45 @@ public class SessionMemoryCompactionServiceTest {
         Assert.assertTrue(result.getSummaryText().contains("已有摘要"));
     }
 
-    private ReactorConfig buildConfig(int thresholdTokens) {
+    private ReactorConfig buildConfig(int thresholdTokens, int recentWindowMaxTokens) {
         ReactorConfig config = new ReactorConfig();
         ReflectionTestUtils.setField(config, "sessionMemoryCompactionThresholdTokens", thresholdTokens);
         ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowTurns", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMinMessages", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMaxTokens", recentWindowMaxTokens);
         ReflectionTestUtils.setField(config, "sessionMemorySummaryMaxLength", 1200);
         return config;
+    }
+
+    private static class StubSummaryGenerator implements SessionMemorySummaryGenerator {
+        @Override
+        public String generate(GenerationRequest request) {
+            String existingSummary = request.getExistingSummary() == null ? "" : request.getExistingSummary();
+            return """
+                    # Session Title
+                    压缩测试
+
+                    # Current State
+                    %s
+
+                    # Task specification
+
+                    # Files and Functions
+
+                    # Workflow
+
+                    # Errors & Corrections
+
+                    # Codebase and System Documentation
+
+                    # Learnings
+
+                    # Key results
+
+                    # Worklog
+                    compacted
+                    """.formatted(existingSummary);
+        }
     }
 
     private int estimateTokens(List<AgentMessage> messages) {

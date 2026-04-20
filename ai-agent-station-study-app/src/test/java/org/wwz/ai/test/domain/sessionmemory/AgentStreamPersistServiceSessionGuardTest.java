@@ -15,6 +15,8 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentSessionMemoryService;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
 import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryDecisionType;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
@@ -86,6 +88,42 @@ public class AgentStreamPersistServiceSessionGuardTest {
         Assert.assertNotNull(emitter);
         Assert.assertEquals(0, messageService.insertPlaceholderCount.get());
         Assert.assertEquals(0, conversationService.createConversationCount.get());
+        Assert.assertEquals(0, sessionMemoryService.rebuildCount.get());
+    }
+
+    @Test
+    public void test_rejectsPreflightContextLimitWithoutInsertingPlaceholder() {
+        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        StubConversationService conversationService = new StubConversationService(
+                AgentConversation.builder()
+                        .id(1001L)
+                        .sessionId(SessionMemoryTestSupport.SESSION_ID)
+                        .agentType(2)
+                        .messageCount(2)
+                        .title("已有会话")
+                        .build());
+        StubMessageService messageService = new StubMessageService();
+        StubSessionMemoryService sessionMemoryService = new StubSessionMemoryService();
+        sessionMemoryService.preparationResult = SessionMemoryPreparationResult.builder()
+                .decisionType(SessionMemoryDecisionType.REJECTED)
+                .rejectReason("当前会话上下文过长且压缩失败，请稍后重试或新建会话")
+                .build();
+
+        injectMinimalDependencies(service, conversationService, messageService, sessionMemoryService, 0);
+
+        SseEmitter emitter = service.sendAndPersist(
+                SessionMemoryTestSupport.SESSION_ID,
+                "req-context-limit",
+                SessionMemoryTestSupport.DEVICE_ID,
+                "继续补充，但这轮应该在 preflight 就被拦截",
+                0,
+                "html",
+                null,
+                null);
+
+        Assert.assertNotNull(emitter);
+        Assert.assertEquals(0, messageService.insertPlaceholderCount.get());
+        Assert.assertEquals(1, sessionMemoryService.prepareCount.get());
         Assert.assertEquals(0, sessionMemoryService.rebuildCount.get());
     }
 
@@ -367,7 +405,20 @@ public class AgentStreamPersistServiceSessionGuardTest {
 
     private static class StubSessionMemoryService implements IAgentSessionMemoryService {
 
+        private SessionMemoryPreparationResult preparationResult = SessionMemoryPreparationResult.builder()
+                .decisionType(SessionMemoryDecisionType.BYPASS)
+                .workingMemory(org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory.builder()
+                        .historyDialogue("")
+                        .build())
+                .build();
+        private final AtomicInteger prepareCount = new AtomicInteger();
         private final AtomicInteger rebuildCount = new AtomicInteger();
+
+        @Override
+        public SessionMemoryPreparationResult prepareForRequest(AgentConversation conversation) {
+            prepareCount.incrementAndGet();
+            return preparationResult;
+        }
 
         @Override
         public org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory rebuildWorkingMemory(AgentConversation conversation) {
@@ -375,10 +426,6 @@ public class AgentStreamPersistServiceSessionGuardTest {
             return org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory.builder()
                     .historyDialogue("")
                     .build();
-        }
-
-        @Override
-        public void refreshSessionMemory(AgentConversation conversation) {
         }
     }
 }

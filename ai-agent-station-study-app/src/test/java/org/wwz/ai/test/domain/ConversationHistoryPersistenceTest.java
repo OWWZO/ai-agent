@@ -10,6 +10,8 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentSessionMemoryDao;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryDecisionType;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentSessionMemoryServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageEventServiceImpl;
@@ -17,8 +19,11 @@ import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryCompactionService;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryGenerator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormatter;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryBuilder;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.time.LocalDateTime;
@@ -105,11 +110,11 @@ public class ConversationHistoryPersistenceTest {
     }
 
     @Test
-    public void test_refreshSessionMemorySkipsWhenNoCompletedTurns() {
+    public void test_prepareForRequestBypassesWhenNoCompletedTurns() {
         AgentSessionMemoryServiceImpl service = new AgentSessionMemoryServiceImpl();
-        AtomicReference<AgentSessionMemory> upserted = new AtomicReference<>();
+        AtomicReference<AgentSessionMemory> insertedSnapshot = new AtomicReference<>();
         ReflectionTestUtils.setField(service, "reactorConfig", buildSessionMemoryConfig());
-        ReflectionTestUtils.setField(service, "sessionMemoryDao", new StubSessionMemoryDao(upserted));
+        ReflectionTestUtils.setField(service, "sessionMemoryDao", new StubSessionMemoryDao(insertedSnapshot));
         ReflectionTestUtils.setField(service, "messageDao", new StubMessageDao(new AtomicReference<>()) {
             @Override
             public List<AgentMessage> queryCompletedByConversationId(Long conversationId) {
@@ -117,20 +122,22 @@ public class ConversationHistoryPersistenceTest {
             }
         });
         ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao(new AtomicReference<>(), new AtomicReference<>()));
-        ReflectionTestUtils.setField(service, "workingMemoryAssembler", new SessionWorkingMemoryAssembler());
+        ReflectionTestUtils.setField(service, "workingMemoryAssembler", buildWorkingMemoryAssembler());
         ReflectionTestUtils.setField(service, "compactionService", buildCompactionService());
 
-        service.refreshSessionMemory(AgentConversation.builder()
+        SessionMemoryPreparationResult result = service.prepareForRequest(AgentConversation.builder()
                 .id(1L)
                 .sessionId("sess-err-001")
                 .agentType(2)
                 .build());
 
-        Assert.assertNull(upserted.get());
+        Assert.assertEquals(SessionMemoryDecisionType.BYPASS, result.getDecisionType());
+        Assert.assertEquals(Integer.valueOf(0), result.getEstimatedTokens());
+        Assert.assertNull(insertedSnapshot.get());
     }
 
     @Test
-    public void test_compactionArtifactsComeFromNormalizedPayload() {
+    public void test_compactionArtifactsComeFromNormalizedPayload() throws Exception {
         SessionMemoryCompactionService compactionService = buildCompactionService();
         AgentConversation conversation = AgentConversation.builder()
                 .id(1L)
@@ -193,6 +200,11 @@ public class ConversationHistoryPersistenceTest {
         ReflectionTestUtils.setField(config, "sessionMemoryEnabled", true);
         ReflectionTestUtils.setField(config, "sessionMemoryCompactionThresholdTokens", 1);
         ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowTurns", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMinMessages", 2);
+        ReflectionTestUtils.setField(config, "sessionMemoryRecentWindowMaxTokens", 30);
+        ReflectionTestUtils.setField(config, "sessionMemoryHardLimitTokens", 2000);
+        ReflectionTestUtils.setField(config, "sessionMemoryMaxConsecutiveFailures", 3);
+        ReflectionTestUtils.setField(config, "sessionMemoryCircuitOpenSeconds", 600);
         ReflectionTestUtils.setField(config, "sessionMemorySummaryMaxLength", 800);
         return config;
     }
@@ -202,20 +214,38 @@ public class ConversationHistoryPersistenceTest {
         ReflectionTestUtils.setField(service, "reactorConfig", buildSessionMemoryConfig());
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
+        ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
+        SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(service, "transcriptBlockAssembler", transcriptBlockAssembler);
+        ReflectionTestUtils.setField(service, "tokenEstimator", new SessionMemoryTokenEstimator());
         return service;
+    }
+
+    private SessionWorkingMemoryAssembler buildWorkingMemoryAssembler() {
+        SessionWorkingMemoryAssembler assembler = new SessionWorkingMemoryAssembler();
+        ReflectionTestUtils.setField(assembler, "reactorConfig", buildSessionMemoryConfig());
+        ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(assembler, "promptFormatter", new SessionMemoryPromptFormatter());
+        SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+        ReflectionTestUtils.setField(assembler, "transcriptBlockAssembler", transcriptBlockAssembler);
+        ReflectionTestUtils.setField(assembler, "tokenEstimator", new SessionMemoryTokenEstimator());
+        return assembler;
     }
 
     private static class StubSessionMemoryDao implements IAgentSessionMemoryDao {
 
-        private final AtomicReference<AgentSessionMemory> upserted;
+        private final AtomicReference<AgentSessionMemory> inserted;
 
-        private StubSessionMemoryDao(AtomicReference<AgentSessionMemory> upserted) {
-            this.upserted = upserted;
+        private StubSessionMemoryDao(AtomicReference<AgentSessionMemory> inserted) {
+            this.inserted = inserted;
         }
 
         @Override
         public int insert(AgentSessionMemory sessionMemory) {
-            return 0;
+            inserted.set(sessionMemory);
+            return 1;
         }
 
         @Override
@@ -229,9 +259,8 @@ public class ConversationHistoryPersistenceTest {
         }
 
         @Override
-        public int upsert(AgentSessionMemory sessionMemory) {
-            upserted.set(sessionMemory);
-            return 1;
+        public List<AgentSessionMemory> queryHistoryBySessionId(String sessionId) {
+            return List.of();
         }
 
         @Override
@@ -341,6 +370,37 @@ public class ConversationHistoryPersistenceTest {
         @Override
         public int softDeleteByConversationId(Long conversationId) {
             return 0;
+        }
+    }
+
+    private static class StubSummaryGenerator implements SessionMemorySummaryGenerator {
+        @Override
+        public String generate(GenerationRequest request) {
+            return """
+                    # Session Title
+                    历史任务压缩
+
+                    # Current State
+                    继续推进当前任务
+
+                    # Task specification
+                    保留用户需求
+
+                    # Files and Functions
+
+                    # Workflow
+
+                    # Errors & Corrections
+
+                    # Codebase and System Documentation
+
+                    # Learnings
+
+                    # Key results
+
+                    # Worklog
+                    已完成一轮压缩
+                    """;
         }
     }
 }

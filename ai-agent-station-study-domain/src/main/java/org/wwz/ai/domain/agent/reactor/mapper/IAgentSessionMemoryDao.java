@@ -16,10 +16,7 @@ public interface IAgentSessionMemoryDao {
 
     AgentSessionMemory queryBySessionId(@Param("sessionId") String sessionId);
 
-    /**
-     * 使用 session_id 唯一键原地刷新当前会话快照。
-     */
-    int upsert(AgentSessionMemory sessionMemory);
+    java.util.List<AgentSessionMemory> queryHistoryBySessionId(@Param("sessionId") String sessionId);
 
     int softDeleteBySessionId(@Param("sessionId") String sessionId);
 }

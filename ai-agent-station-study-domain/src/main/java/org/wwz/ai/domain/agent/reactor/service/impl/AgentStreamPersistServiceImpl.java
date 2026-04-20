@@ -18,6 +18,7 @@ import org.wwz.ai.domain.agent.reactor.handler.AgentResponseHandler;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
@@ -121,6 +122,30 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             }
         }
 
+        SessionWorkingMemory preparedWorkingMemory = null;
+        if (ConversationAgentType.CHAT != convAgentType) {
+            SessionMemoryPreparationResult preparationResult = sessionMemoryService.prepareForRequest(conversation);
+            if (preparationResult != null && preparationResult.shouldReject()) {
+                return emitGuardError(
+                        requestId,
+                        "context_limit_exceeded",
+                        StringUtils.hasText(preparationResult.getRejectReason())
+                                ? preparationResult.getRejectReason()
+                                : "当前会话上下文过长且压缩失败，请稍后重试或新建会话");
+            }
+            preparedWorkingMemory = preparationResult == null
+                    ? sessionMemoryService.rebuildWorkingMemory(conversation)
+                    : preparationResult.getWorkingMemory();
+            log.info("session memory preflight sessionId={}, requestId={}, decision={}, estimatedTokens={}, postCompactionTokens={}, snapshotVersionId={}, reason={}",
+                    conversation.getSessionId(),
+                    requestId,
+                    preparationResult == null ? "UNKNOWN" : preparationResult.getDecisionType(),
+                    preparationResult == null ? null : preparationResult.getEstimatedTokens(),
+                    preparationResult == null ? null : preparationResult.getPostCompactionTokens(),
+                    preparationResult == null ? null : preparationResult.getSnapshotVersionId(),
+                    preparationResult == null ? null : preparationResult.getReason());
+        }
+
         // 2. 插入占位消息
         AgentMessage placeholderMessage = messageService.insertPlaceholder(
                 conversation.getId(), requestId, query, convAgentType.getCode(), filesJson);
@@ -150,7 +175,9 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             List<AgentRequest.Message> contextMessages = buildContextMessages(recentMessages);
             agentRequest.setMessages(trimToTokenBudget(contextMessages, 8000));
         } else {
-            SessionWorkingMemory workingMemory = sessionMemoryService.rebuildWorkingMemory(conversation);
+            SessionWorkingMemory workingMemory = preparedWorkingMemory == null
+                    ? sessionMemoryService.rebuildWorkingMemory(conversation)
+                    : preparedWorkingMemory;
             agentRequest.setHistoryDialogue(workingMemory.getHistoryDialogue());
             agentRequest.setMessages(buildWorkingMemoryMessages(workingMemory));
             agentRequest.setSessionFiles(sessionArtifactRestoreSupport.mergeFiles(
@@ -412,9 +439,6 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
         conversationDao.updateById(update);
 
-        if ("completed".equals(status) && conversation != null) {
-            sessionMemoryService.refreshSessionMemory(conversation);
-        }
     }
 
     private SessionGuardResult validateSessionGuard(AgentConversation conversation,

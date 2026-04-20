@@ -53,49 +53,16 @@
         FROM ai_agent_session_memory
         WHERE session_id = #{sessionId}
           AND deleted = 0
+        ORDER BY id DESC
+        LIMIT 1
     </select>
 
-    <insert id="upsert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory">
-        INSERT INTO ai_agent_session_memory (
-            conversation_id, session_id, agent_type, summary_text, facts_json, artifact_refs_json,
-            boundary_message_id, boundary_sort_order, source_turn_count, last_compacted_at,
-            create_time, update_time, deleted
-        ) VALUES (
-            #{conversationId}, #{sessionId}, #{agentType}, #{summaryText}, #{factsJson}, #{artifactRefsJson},
-            #{boundaryMessageId}, #{boundarySortOrder}, #{sourceTurnCount}, #{lastCompactedAt},
-            now(), now(), 0
-        )
-        ON DUPLICATE KEY UPDATE
-            conversation_id = VALUES(conversation_id),
-            agent_type = VALUES(agent_type),
-            summary_text = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(summary_text)
-                ELSE summary_text
-            END,
-            facts_json = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(facts_json)
-                ELSE facts_json
-            END,
-            artifact_refs_json = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(artifact_refs_json)
-                ELSE artifact_refs_json
-            END,
-            boundary_message_id = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(boundary_message_id)
-                ELSE boundary_message_id
-            END,
-            boundary_sort_order = GREATEST(COALESCE(boundary_sort_order, -1), COALESCE(VALUES(boundary_sort_order), -1)),
-            source_turn_count = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(source_turn_count)
-                ELSE source_turn_count
-            END,
-            last_compacted_at = CASE
-                WHEN VALUES(boundary_sort_order) >= COALESCE(boundary_sort_order, -1) THEN VALUES(last_compacted_at)
-                ELSE last_compacted_at
-            END,
-            deleted = 0,
-            update_time = now()
-    </insert>
+    <select id="queryHistoryBySessionId" resultMap="AgentSessionMemoryMap">
+        SELECT *
+        FROM ai_agent_session_memory
+        WHERE session_id = #{sessionId}
+        ORDER BY id DESC
+    </select>
 
     <update id="softDeleteBySessionId">
         UPDATE ai_agent_session_memory

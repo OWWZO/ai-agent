@@ -18,7 +18,6 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
-import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -50,8 +49,20 @@ public class SessionWorkingMemoryAssembler {
     private SessionArtifactRestoreSupport artifactRestoreSupport;
     @Resource
     private SessionTranscriptBlockAssembler transcriptBlockAssembler;
+    @Resource
+    private SessionMemoryTokenEstimator tokenEstimator;
 
     public SessionWorkingMemory assemble(AgentConversation conversation) {
+        AgentSessionMemory snapshot = sessionMemoryDao.queryBySessionId(conversation.getSessionId());
+        List<AgentMessage> completedMessages = messageDao.queryCompletedByConversationId(conversation.getId());
+        Map<Long, List<AgentMessageEvent>> eventMap = loadEventMap(completedMessages);
+        return assemble(conversation, snapshot, completedMessages, eventMap);
+    }
+
+    public SessionWorkingMemory assemble(AgentConversation conversation,
+                                         AgentSessionMemory snapshot,
+                                         List<AgentMessage> completedMessages,
+                                         Map<Long, List<AgentMessageEvent>> eventMap) {
         SessionWorkingMemory workingMemory = SessionWorkingMemory.builder()
                 .conversationId(conversation.getId())
                 .sessionId(conversation.getSessionId())
@@ -64,7 +75,6 @@ public class SessionWorkingMemoryAssembler {
                 .needsCompaction(false)
                 .build();
 
-        AgentSessionMemory snapshot = sessionMemoryDao.queryBySessionId(conversation.getSessionId());
         int boundarySortOrder = snapshot != null && snapshot.getBoundarySortOrder() != null
                 ? snapshot.getBoundarySortOrder()
                 : -1;
@@ -74,11 +84,7 @@ public class SessionWorkingMemoryAssembler {
             workingMemory.setFacts(parseFacts(snapshot.getFactsJson()));
         }
 
-        List<AgentMessage> recentMessages = messageDao.queryCompletedAfterSortOrder(
-                conversation.getId(),
-                boundarySortOrder,
-                reactorConfig.getSessionMemoryRecentWindowTurns());
-        Map<Long, List<AgentMessageEvent>> eventMap = loadEventMap(recentMessages);
+        List<AgentMessage> recentMessages = filterRecentMessages(completedMessages, boundarySortOrder);
         workingMemory.setRecentTurns(buildRecentTurns(recentMessages, eventMap));
 
         List<FileInformation> restoredFiles = artifactRestoreSupport.restoreFiles(
@@ -88,7 +94,7 @@ public class SessionWorkingMemoryAssembler {
         workingMemory.setRestoredFiles(restoredFiles);
         workingMemory.setHistoryDialogue(promptFormatter.format(workingMemory));
 
-        int estimatedTokens = estimateWorkingMemoryTokens(workingMemory);
+        int estimatedTokens = tokenEstimator.estimateWorkingMemoryTokens(workingMemory);
         workingMemory.setEstimatedTokens(estimatedTokens);
         workingMemory.setNeedsCompaction(estimatedTokens > reactorConfig.getSessionMemoryCompactionThresholdTokens());
         log.info("重建会话工作记忆 sessionId={}, snapshotBoundary={}, recentTurns={}, restoredFiles={}, estimatedTokens={}",
@@ -98,6 +104,18 @@ public class SessionWorkingMemoryAssembler {
                 workingMemory.getRestoredFiles().size(),
                 estimatedTokens);
         return workingMemory;
+    }
+
+    private List<AgentMessage> filterRecentMessages(List<AgentMessage> completedMessages, int boundarySortOrder) {
+        if (CollectionUtils.isEmpty(completedMessages)) {
+            return List.of();
+        }
+        return completedMessages.stream()
+                .filter(message -> message != null
+                        && message.getSortOrder() != null
+                        && message.getSortOrder() > boundarySortOrder)
+                .sorted(Comparator.comparing(AgentMessage::getSortOrder))
+                .collect(Collectors.toList());
     }
 
     private Map<Long, List<AgentMessageEvent>> loadEventMap(List<AgentMessage> recentMessages) {
@@ -165,35 +183,5 @@ public class SessionWorkingMemoryAssembler {
             log.warn("解析会话记忆 facts 失败，退化为空列表 factsJson={}", factsJson, e);
             return List.of();
         }
-    }
-
-    private int estimateWorkingMemoryTokens(SessionWorkingMemory workingMemory) {
-        int textLength = 0;
-        if (StringUtils.hasText(workingMemory.getSummaryText())) {
-            textLength += workingMemory.getSummaryText().length();
-        }
-        if (StringUtils.hasText(workingMemory.getHistoryDialogue())) {
-            textLength += workingMemory.getHistoryDialogue().length();
-        }
-        if (!CollectionUtils.isEmpty(workingMemory.getRecentTurns())) {
-            for (SessionTurnMemory turn : workingMemory.getRecentTurns()) {
-                textLength += safeLength(turn.getUserMessage());
-                textLength += safeLength(turn.getFinalAnswer());
-                if (!CollectionUtils.isEmpty(turn.getBlocks())) {
-                    for (TranscriptContextBlock block : turn.getBlocks()) {
-                        if (block == null) {
-                            continue;
-                        }
-                        textLength += safeLength(block.getText());
-                        textLength += safeLength(block.getToolArgumentsJson());
-                    }
-                }
-            }
-        }
-        return textLength / 3;
-    }
-
-    private int safeLength(String text) {
-        return text == null ? 0 : text.length();
     }
 }
