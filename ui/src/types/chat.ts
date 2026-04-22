@@ -53,11 +53,13 @@ declare global {
       url: string;
       type: string;
       size: number;
+      previewUrl?: string;
       downloadUrl?: string;
       missing?: boolean;
       missingReason?: string;
       resourceKey?: string;
       mimeType?: string | null;
+      originFileName?: string;
     };
 
     export type TInputInfo = {

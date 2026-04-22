@@ -74,8 +74,13 @@ import {
 // Provider Context & Types
 // ============================================================================
 
+export type PromptInputAttachmentItem = FileUIPart & {
+  id: string;
+  file?: File;
+};
+
 export type AttachmentsContext = {
-  files: (FileUIPart & { id: string })[];
+  files: PromptInputAttachmentItem[];
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
@@ -150,9 +155,7 @@ export function PromptInputProvider({
   const clearInput = useCallback(() => setTextInput(""), []);
 
   // ----- attachments state (global when wrapped)
-  const [attachmentFiles, setAttachmentFiles] = useState<
-    (FileUIPart & { id: string })[]
-  >([]);
+  const [attachmentFiles, setAttachmentFiles] = useState<PromptInputAttachmentItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
 
@@ -170,6 +173,7 @@ export function PromptInputProvider({
           url: URL.createObjectURL(file),
           mediaType: file.type,
           filename: file.name,
+          file,
         }))
       )
     );
@@ -277,7 +281,7 @@ export const usePromptInputAttachments = () => {
 };
 
 export type PromptInputAttachmentProps = HTMLAttributes<HTMLDivElement> & {
-  data: FileUIPart & { id: string };
+  data: PromptInputAttachmentItem;
   className?: string;
 };
 
@@ -376,7 +380,7 @@ export type PromptInputAttachmentsProps = Omit<
   HTMLAttributes<HTMLDivElement>,
   "children"
 > & {
-  children: (attachment: FileUIPart & { id: string }) => ReactNode;
+  children: (attachment: PromptInputAttachmentItem) => ReactNode;
 };
 
 export function PromptInputAttachments({
@@ -445,10 +449,12 @@ export type PromptInputProps = Omit<
   // Minimal constraints
   maxFiles?: number;
   maxFileSize?: number; // bytes
+  convertBlobUrlsOnSubmit?: boolean;
   onError?: (err: {
     code: "max_files" | "max_file_size" | "accept";
     message: string;
   }) => void;
+  onAttachmentsAdded?: (attachments: PromptInputAttachmentItem[]) => void;
   onSubmit: (
     message: PromptInputMessage,
     event: FormEvent<HTMLFormElement>
@@ -463,7 +469,9 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  convertBlobUrlsOnSubmit = true,
   onError,
+  onAttachmentsAdded,
   onSubmit,
   children,
   ...props
@@ -477,7 +485,7 @@ export const PromptInput = ({
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // ----- Local attachments (only used when no provider)
-  const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
+  const [items, setItems] = useState<PromptInputAttachmentItem[]>([]);
   const files = usingProvider ? controller.attachments.files : items;
 
   // Keep a ref to files for cleanup on unmount (avoids stale closure)
@@ -498,13 +506,20 @@ export const PromptInput = ({
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      const fileType = f.type.toLowerCase();
+      const fileName = f.name.toLowerCase();
 
       return patterns.some((pattern) => {
-        if (pattern.endsWith("/*")) {
-          const prefix = pattern.slice(0, -1); // e.g: image/* -> image/
-          return f.type.startsWith(prefix);
+        const normalizedPattern = pattern.toLowerCase();
+        if (normalizedPattern.endsWith("/*")) {
+          const prefix = normalizedPattern.slice(0, -1); // e.g: image/* -> image/
+          return fileType.startsWith(prefix);
         }
-        return f.type === pattern;
+        // 兼容 `.pdf`、`.md` 这类扩展名声明，避免附件校验与原生 input accept 行为不一致。
+        if (normalizedPattern.startsWith(".")) {
+          return fileName.endsWith(normalizedPattern);
+        }
+        return fileType === normalizedPattern;
       });
     },
     [accept]
@@ -545,7 +560,7 @@ export const PromptInput = ({
             message: "Too many files. Some were not added.",
           });
         }
-        const next: (FileUIPart & { id: string })[] = [];
+        const next: PromptInputAttachmentItem[] = [];
         for (const file of capped) {
           next.push({
             id: nanoid(),
@@ -553,12 +568,16 @@ export const PromptInput = ({
             url: URL.createObjectURL(file),
             mediaType: file.type,
             filename: file.name,
+            file,
           });
+        }
+        if (next.length) {
+          onAttachmentsAdded?.(next);
         }
         return prev.concat(next);
       });
     },
-    [matchesAccept, maxFiles, maxFileSize, onError]
+    [matchesAccept, maxFiles, maxFileSize, onAttachmentsAdded, onError]
   );
 
   const removeLocal = useCallback(
@@ -725,19 +744,24 @@ export const PromptInput = ({
     }
 
     // Convert blob URLs to data URLs asynchronously
-    Promise.all(
-      files.map(async ({ id, ...item }) => {
-        if (item.url && item.url.startsWith("blob:")) {
-          const dataUrl = await convertBlobUrlToDataUrl(item.url);
-          // If conversion failed, keep the original blob URL
-          return {
-            ...item,
-            url: dataUrl ?? item.url,
-          };
-        }
-        return item;
-      })
-    )
+    const prepareFiles = convertBlobUrlsOnSubmit
+      ? Promise.all(
+          files.map(async ({ id, ...item }) => {
+            if (item.url && item.url.startsWith("blob:")) {
+              const dataUrl = await convertBlobUrlToDataUrl(item.url);
+              return {
+                ...item,
+                url: dataUrl ?? item.url,
+              };
+            }
+            return item;
+          })
+        )
+      : Promise.resolve(
+          files.map(({ id, ...item }) => item)
+        );
+
+    prepareFiles
       .then((convertedFiles: FileUIPart[]) => {
         try {
           const result = onSubmit({ text, files: convertedFiles }, event);

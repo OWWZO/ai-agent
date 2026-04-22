@@ -631,6 +631,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           >
             <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
               <GeneralInput
+                key={`welcome-input-${currentConversation.sessionId}`}
+                sessionId={currentConversation.sessionId}
                 placeholder={product.placeholder}
                 showBtn={true}
                 size="big"

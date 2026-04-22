@@ -86,11 +86,13 @@ public class SessionArtifactRestoreSupport {
             ref.put("artifactType", file.getFileType());
             ref.put("displayName", firstNonBlank(file.getFileName(), file.getOriginFileName(), "未命名文件"));
             ref.put("description", file.getFileDesc());
-            ref.put("resourceKey", firstNonBlank(file.getOriginOssUrl(), file.getOssUrl(), file.getDomainUrl(), file.getFileName()));
+            ref.put("resourceKey", firstNonBlank(file.getResourceKey(), file.getOriginOssUrl(), file.getOssUrl(), file.getDomainUrl(), file.getFileName()));
             ref.put("downloadUrl", firstNonBlank(file.getOssUrl(), file.getDomainUrl()));
             ref.put("previewUrl", firstNonBlank(file.getDomainUrl(), file.getOssUrl()));
             ref.put("fileSize", file.getFileSize());
+            ref.put("mimeType", file.getMimeType());
             ref.put("originFileName", file.getOriginFileName());
+            ref.put("originFileUrl", file.getOriginFileUrl());
             ref.put("originOssUrl", file.getOriginOssUrl());
             ref.put("originDomainUrl", file.getOriginDomainUrl());
             ref.put("missing", false);
@@ -119,8 +121,10 @@ public class SessionArtifactRestoreSupport {
                         .fileDesc(firstNonBlank(file.getString("fileDesc"), file.getString("description")))
                         .ossUrl(firstNonBlank(file.getString("ossUrl"), file.getString("downloadUrl"), file.getString("url")))
                         .domainUrl(firstNonBlank(file.getString("domainUrl"), file.getString("previewUrl"), file.getString("url")))
-                        .fileSize(file.getInteger("fileSize"))
-                        .fileType(file.getString("fileType"))
+                        .fileSize(firstNumber(file.get("fileSize"), file.get("size")))
+                        .fileType(firstNonBlank(file.getString("fileType"), file.getString("type")))
+                        .resourceKey(firstNonBlank(file.getString("resourceKey"), file.getString("downloadUrl"), file.getString("domainUrl"), file.getString("url")))
+                        .mimeType(file.getString("mimeType"))
                         .originFileName(file.getString("originFileName"))
                         .originFileUrl(file.getString("originFileUrl"))
                         .originOssUrl(file.getString("originOssUrl"))
@@ -191,7 +195,10 @@ public class SessionArtifactRestoreSupport {
                     .domainUrl(domainUrl)
                     .fileSize(ref.getInteger("fileSize"))
                     .fileType(ref.getString("artifactType"))
+                    .resourceKey(ref.getString("resourceKey"))
+                    .mimeType(ref.getString("mimeType"))
                     .originFileName(ref.getString("originFileName"))
+                    .originFileUrl(ref.getString("originFileUrl"))
                     .originOssUrl(ref.getString("originOssUrl"))
                     .originDomainUrl(ref.getString("originDomainUrl"))
                     .build());
@@ -228,7 +235,9 @@ public class SessionArtifactRestoreSupport {
                 continue;
             }
             String deduplicatedKey = firstNonBlank(
+                    file.getResourceKey(),
                     file.getOriginOssUrl(),
+                    file.getOriginFileUrl(),
                     file.getOssUrl(),
                     file.getDomainUrl(),
                     file.getFileName());
@@ -267,6 +276,22 @@ public class SessionArtifactRestoreSupport {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
                 return value;
+            }
+        }
+        return null;
+    }
+
+    private Integer firstNumber(Object... values) {
+        for (Object value : values) {
+            if (value instanceof Number) {
+                return ((Number) value).intValue();
+            }
+            if (value == null) {
+                continue;
+            }
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
             }
         }
         return null;

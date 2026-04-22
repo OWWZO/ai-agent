@@ -16,6 +16,8 @@ public class FileInformation {
     private String domainUrl;
     private Integer fileSize;
     private String fileType;
+    private String resourceKey;
+    private String mimeType;
     private String originFileName;
     private String originFileUrl;
     private String originOssUrl;
