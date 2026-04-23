@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.reactor.service.support;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 
@@ -50,9 +51,9 @@ public class SessionMemorySummaryBuilder {
             builder.append("- 第")
                     .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                     .append("轮：用户提出“")
-                    .append(abbreviate(turn.getUserMessage(), 80))
-                    .append("”；系统已回应“")
-                    .append(abbreviate(turn.getAssistantMessage(), 120))
+                    .append(StringUtil.abbreviate(turn.getUserMessage(), 80, true))
+                    .append(“”；系统已回应””)
+                    .append(StringUtil.abbreviate(turn.getAssistantMessage(), 120, true))
                     .append("”。");
         }
 
@@ -107,13 +108,13 @@ public class SessionMemorySummaryBuilder {
             String userMessage = normalize(turn.getUserMessage());
             String assistantMessage = normalize(turn.getAssistantMessage());
             if (userMessage != null) {
-                addFact(factBuckets, "goal", abbreviate(userMessage, 120));
+                addFact(factBuckets, "goal", StringUtil.abbreviate(userMessage, 120, true));
                 if (containsConstraintSignal(userMessage)) {
-                    addFact(factBuckets, "constraint", abbreviate(userMessage, 120));
+                    addFact(factBuckets, "constraint", StringUtil.abbreviate(userMessage, 120, true));
                 }
             }
             if (assistantMessage != null) {
-                addFact(factBuckets, "conclusion", abbreviate(assistantMessage, 160));
+                addFact(factBuckets, "conclusion", StringUtil.abbreviate(assistantMessage, 160, true));
             }
         }
 
@@ -184,14 +185,6 @@ public class SessionMemorySummaryBuilder {
                 || userMessage.contains("格式")
                 || userMessage.contains("中文")
                 || userMessage.contains("表格");
-    }
-
-    private String abbreviate(String text, int maxLength) {
-        String normalized = normalize(text);
-        if (normalized == null) {
-            return "";
-        }
-        return normalized.length() > maxLength ? normalized.substring(0, maxLength) : normalized;
     }
 
     private String normalize(String text) {

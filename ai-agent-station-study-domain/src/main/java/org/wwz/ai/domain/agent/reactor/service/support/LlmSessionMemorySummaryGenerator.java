@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -111,7 +112,7 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
         if (CollectionUtils.isEmpty(request.getArtifactRefs())) {
             builder.append("[]");
         } else {
-            builder.append(abbreviate(JSON.toJSONString(request.getArtifactRefs(), true), MAX_ARTIFACT_REF_LENGTH));
+            builder.append(StringUtil.abbreviate(JSON.toJSONString(request.getArtifactRefs(), true), MAX_ARTIFACT_REF_LENGTH, true));
         }
 
         builder.append("\n\n## 边界信息\n");
@@ -124,7 +125,7 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
         builder.append("\n### Turn ")
                 .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                 .append('\n');
-        builder.append("- User: ").append(abbreviate(turn.getUserMessage(), MAX_TURN_TEXT_LENGTH)).append('\n');
+        builder.append("- User: ").append(StringUtil.abbreviate(turn.getUserMessage(), MAX_TURN_TEXT_LENGTH, true)).append('\n');
         if (!CollectionUtils.isEmpty(turn.getBlocks())) {
             builder.append("- Transcript:\n");
             for (TranscriptContextBlock block : turn.getBlocks()) {
@@ -134,22 +135,22 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
                 builder.append("  - ")
                         .append(block.getBlockType() == null ? "UNKNOWN" : block.getBlockType().name())
                         .append(": ")
-                        .append(abbreviate(block.getText(), MAX_BLOCK_TEXT_LENGTH));
+                        .append(StringUtil.abbreviate(block.getText(), MAX_BLOCK_TEXT_LENGTH, true));
                 if (StringUtils.hasText(block.getToolName())) {
                     builder.append(" | tool=").append(block.getToolName());
                 }
                 if (StringUtils.hasText(block.getToolArgumentsJson())) {
-                    builder.append(" | args=").append(abbreviate(block.getToolArgumentsJson(), MAX_BLOCK_TEXT_LENGTH));
+                    builder.append(" | args=").append(StringUtil.abbreviate(block.getToolArgumentsJson(), MAX_BLOCK_TEXT_LENGTH, true));
                 }
                 if (!CollectionUtils.isEmpty(block.getArtifactRefs())) {
                     builder.append(" | refs=")
-                            .append(abbreviate(JSON.toJSONString(block.getArtifactRefs()), MAX_BLOCK_TEXT_LENGTH));
+                            .append(StringUtil.abbreviate(JSON.toJSONString(block.getArtifactRefs()), MAX_BLOCK_TEXT_LENGTH, true));
                 }
                 builder.append('\n');
             }
         }
         builder.append("- Final answer: ")
-                .append(abbreviate(firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage()), MAX_TURN_TEXT_LENGTH))
+                .append(StringUtil.abbreviate(firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage()), MAX_TURN_TEXT_LENGTH, true))
                 .append('\n');
         return builder.toString();
     }
@@ -163,11 +164,4 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
         return "";
     }
 
-    private String abbreviate(String text, int maxLength) {
-        if (!StringUtils.hasText(text)) {
-            return "";
-        }
-        String normalized = text.trim().replaceAll("\\s+", " ");
-        return normalized.length() > maxLength ? normalized.substring(0, maxLength) : normalized;
-    }
 }

@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
@@ -258,7 +259,7 @@ public class SessionTranscriptBlockAssembler {
         String toolName = firstNonBlank(descriptor.toolName(), event == null ? null : event.getTitle(), "tool");
         String argumentsText = descriptor.toolArgumentsJson();
         if (StringUtils.hasText(argumentsText)) {
-            return "准备调用 " + toolName + "，参数：" + abbreviate(argumentsText, 160);
+            return "准备调用 " + toolName + "，参数：" + StringUtil.abbreviate(argumentsText, 160);
         }
         return "准备调用 " + toolName;
     }
@@ -423,12 +424,6 @@ public class SessionTranscriptBlockAssembler {
         return null;
     }
 
-    private String abbreviate(String value, int maxLength) {
-        if (!StringUtils.hasText(value)) {
-            return value;
-        }
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
-    }
 
     private String lower(String value) {
         return value == null ? "" : value.toLowerCase();
