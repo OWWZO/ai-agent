@@ -210,7 +210,7 @@ public class SessionArtifactRestoreSupport {
      * 序列化为快照中的 artifactRefs_json。
      */
     public String toArtifactRefsJson(List<JSONObject> artifactRefs) {
-        return JSON.toJSONString(deduplicateArtifactRefs(artifactRefs));
+        return JSON.toJSONString(artifactRefs);
     }
 
     /**
@@ -248,7 +248,7 @@ public class SessionArtifactRestoreSupport {
         }
     }
 
-    private List<JSONObject> deduplicateArtifactRefs(List<JSONObject> artifactRefs) {
+    public List<JSONObject> deduplicateArtifactRefs(List<JSONObject> artifactRefs) {
         if (CollectionUtils.isEmpty(artifactRefs)) {
             return List.of();
         }

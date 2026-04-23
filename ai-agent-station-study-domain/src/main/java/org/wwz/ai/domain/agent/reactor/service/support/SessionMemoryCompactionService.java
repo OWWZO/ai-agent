@@ -193,16 +193,14 @@ public class SessionMemoryCompactionService {
         List<JSONObject> artifactRefs = new ArrayList<>(artifactRestoreSupport.parseArtifactRefs(
                 snapshot == null ? null : snapshot.getArtifactRefsJson()));
         if (CollectionUtils.isEmpty(completedMessages) || CollectionUtils.isEmpty(compactedMessageIds)) {
-            return new ArrayList<>(artifactRestoreSupport.parseArtifactRefs(
-                    artifactRestoreSupport.toArtifactRefsJson(artifactRefs)));
+            return artifactRestoreSupport.deduplicateArtifactRefs(artifactRefs);
         }
         List<AgentMessage> compactedMessages = completedMessages.stream()
                 .filter(message -> message != null && compactedMessageIds.contains(message.getId()))
                 .sorted(Comparator.comparing(AgentMessage::getSortOrder))
                 .collect(Collectors.toList());
         artifactRefs.addAll(artifactRestoreSupport.collectArtifactRefs(compactedMessages, eventMap));
-        return new ArrayList<>(artifactRestoreSupport.parseArtifactRefs(
-                artifactRestoreSupport.toArtifactRefsJson(artifactRefs)));
+        return artifactRestoreSupport.deduplicateArtifactRefs(artifactRefs);
     }
 
     private PreservedWindowSelection selectPreservedTurns(List<SessionTurnMemory> eligibleTurns) {
