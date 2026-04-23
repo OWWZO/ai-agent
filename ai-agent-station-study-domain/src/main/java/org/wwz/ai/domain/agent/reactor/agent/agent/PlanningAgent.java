@@ -17,7 +17,6 @@ import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.prompt.PlanningPrompt;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.PlanningTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
@@ -97,49 +96,32 @@ public class PlanningAgent extends ReActAgent {
         ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
         ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
 
+        setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
         // 3. 构建工具提示词：拼接所有可用工具的名称+描述，用于填充提示词模板
-        StringBuilder toolPrompt = new StringBuilder();
-        for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
-            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
-        }
+        String toolPrompt = buildToolPrompt(context.getToolCollection());
+        initializePrompts(
+                reactorConfig.getPlannerSystemPromptMap(),
+                reactorConfig.getPlannerNextStepPromptMap(),
+                PlanningPrompt.SYSTEM_PROMPT,
+                PlanningPrompt.NEXT_STEP_PROMPT,
+                toolPrompt,
+                "{{sopPrompt}}",
+                context.getSopPrompt());
 
-        // 4. 加载提示词模板（默认使用"default"键，无则使用PlanningPrompt中的默认值）
-        String promptKey = "default";
-        String nextPromptKey = "default";
-
-        // 5. 初始化系统提示词：替换模板中的占位符（工具列表、用户查询、日期、SOP提示词）
-        setSystemPrompt(injectHistoryDialogue(
-                reactorConfig.getPlannerSystemPromptMap().getOrDefault(promptKey, PlanningPrompt.SYSTEM_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString()) // 替换工具列表占位符
-                .replace("{{query}}", context.getQuery())   // 替换用户查询占位符
-                .replace("{{date}}", context.getDateInfo()) // 替换日期信息占位符
-                .replace("{{sopPrompt}}", context.getSopPrompt()),
-                context.getHistoryDialogue())); // 替换SOP（标准作业流程）提示词占位符
-
-        // 6. 初始化下一步提示词：逻辑同系统提示词
-        setNextStepPrompt(injectHistoryDialogue(
-                reactorConfig.getPlannerNextStepPromptMap().getOrDefault(nextPromptKey, PlanningPrompt.NEXT_STEP_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString())
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{sopPrompt}}", context.getSopPrompt()),
-                context.getHistoryDialogue()));
-
-        // 7. 保存提示词快照：避免后续动态替换{{files}}后丢失原始模板
+        // 4. 保存提示词快照：避免后续动态替换{{files}}后丢失原始模板
         setSystemPromptSnapshot(getSystemPrompt());
         setNextStepPromptSnapshot(getNextStepPrompt());
 
-        // 8. 设置智能体运行依赖
+        // 5. 设置智能体运行依赖
         setPrinter(context.printer); // 设置输出器：用于向用户/前端推送执行过程（如plan、task、plan_thought）
         setMaxSteps(reactorConfig.getPlannerMaxSteps()); // 设置最大执行步骤：防止无限循环
         setLlm(new LLM(reactorConfig.getPlannerModelName(), "")); // 初始化大模型实例（指定模型名称）
 
-        // 9. 关联上下文&配置计划更新开关
-        setContext(context); // 绑定智能体上下文
+        // 6. 关联上下文&配置计划更新开关
         setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
         preloadMemory(context.getPreloadedMessages());
 
-        // 10. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
+        // 7. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
         availableTools.addTool(planningTool);
         planningTool.setAgentContext(context);
     }

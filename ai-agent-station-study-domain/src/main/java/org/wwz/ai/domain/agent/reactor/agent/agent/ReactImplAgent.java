@@ -13,7 +13,6 @@ import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.prompt.ToolCallPrompt;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -89,52 +88,32 @@ public class ReactImplAgent extends ReActAgent {
         // 步骤2：加载Spring上下文和核心配置
         ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
         ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class); // 全局配置Bean（包含ReAct相关配置）
+        setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
 
         // 步骤3：构建工具描述提示词（整合所有可用工具的名称+描述，供大模型决策参考）
-        StringBuilder toolPrompt = new StringBuilder();
-        for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
-            // 格式化工具信息："工具名：xxx 工具描述：xxx\n"，让大模型清晰识别可用工具
-            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
-        }
+        String toolPrompt = buildToolPrompt(context.getToolCollection());
+        initializePrompts(
+                reactorConfig.getReactSystemPromptMap(),
+                reactorConfig.getReactNextStepPromptMap(),
+                ToolCallPrompt.SYSTEM_PROMPT,
+                ToolCallPrompt.NEXT_STEP_PROMPT,
+                toolPrompt,
+                null,
+                null);
 
-        // 步骤4：定义提示词配置键（默认使用"default"，可通过配置扩展多套提示词）
-        String promptKey = "default";
-        String nextPromptKey = "default";
-
-        // 步骤5：初始化系统提示词（核心指令，指导大模型的决策逻辑）
-        // 替换占位符：{{tools}}=工具列表、{{query}}=用户查询、{{date}}=日期信息、{{basePrompt}}=基础提示词
-        setSystemPrompt(injectHistoryDialogue(
-                reactorConfig.getReactSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString())
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt()),
-                context.getHistoryDialogue()));
-
-        // 步骤6：初始化下一步提示词（每次思考阶段发送给大模型的决策提示词）
-        // 占位符替换规则同系统提示词，保证提示词包含完整的上下文信息
-        setNextStepPrompt(injectHistoryDialogue(
-                reactorConfig.getReactNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString())
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt()),
-                context.getHistoryDialogue()));
-
-        // 步骤7：保存提示词快照（防止后续动态替换{{files}}导致原始提示词丢失）
+        // 步骤4：保存提示词快照（防止后续动态替换{{files}}导致原始提示词丢失）
         setSystemPromptSnapshot(getSystemPrompt());
         setNextStepPromptSnapshot(getNextStepPrompt());
 
-        // 步骤8：初始化输出器和核心配置
+        // 步骤5：初始化输出器和核心配置
         setPrinter(context.printer); // 响应输出器（推送tool_thought/tool_result给客户端）
         setMaxSteps(reactorConfig.getReactMaxSteps()); // 最大执行步数（防止无限循环）
         setLlm(new LLM(reactorConfig.getReactModelName(), "")); // 初始化大模型实例（指定ReAct专用模型）
-        setContext(context); // 绑定智能体上下文
         preloadMemory(context.getPreloadedMessages());
 
-        // 步骤9：初始化可用工具集合（从上下文加载当前请求可调用的所有工具）
+        // 步骤6：初始化可用工具集合（从上下文加载当前请求可调用的所有工具）
         availableTools = context.getToolCollection();
-        // 步骤10：设置数字员工专属提示词（业务定制化指令，如角色设定、回复风格等）
+        // 步骤7：设置数字员工专属提示词（业务定制化指令，如角色设定、回复风格等）
         setDigitalEmployeePrompt(reactorConfig.getDigitalEmployeePrompt());
     }
 

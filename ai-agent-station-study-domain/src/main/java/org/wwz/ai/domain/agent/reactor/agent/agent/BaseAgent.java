@@ -17,6 +17,7 @@ import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
+import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 
@@ -196,6 +197,54 @@ public abstract class BaseAgent {
         return normalizedTemplate + "\n\n## 用户历史对话信息\n<history_dialogue>\n"
                 + normalizedHistory
                 + "\n</history_dialogue>";
+    }
+
+    /**
+     * 从工具集合构建工具描述提示词。
+     */
+    protected String buildToolPrompt(ToolCollection tools) {
+        if (tools == null || tools.getToolMap() == null || tools.getToolMap().isEmpty()) {
+            return "";
+        }
+        StringBuilder toolPrompt = new StringBuilder();
+        for (BaseTool tool : tools.getToolMap().values()) {
+            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
+        }
+        return toolPrompt.toString();
+    }
+
+    /**
+     * 初始化系统提示词和下一步提示词，统一处理标准占位符替换。
+     */
+    protected void initializePrompts(Map<String, String> systemPromptMap,
+                                     Map<String, String> nextStepPromptMap,
+                                     String defaultSystemPrompt,
+                                     String defaultNextStepPrompt,
+                                     String toolPrompt,
+                                     String extraPlaceholder,
+                                     String extraValue) {
+        String promptKey = "default";
+        String nextPromptKey = "default";
+
+        String systemTemplate = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt)
+                .replace("{{tools}}", toolPrompt)
+                .replace("{{query}}", context.getQuery())
+                .replace("{{date}}", context.getDateInfo())
+                .replace("{{basePrompt}}", context.getBasePrompt());
+        if (extraPlaceholder != null) {
+            systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue);
+        }
+        setSystemPrompt(injectHistoryDialogue(systemTemplate, context.getHistoryDialogue()));
+
+        String nextTemplate = nextStepPromptMap.getOrDefault(nextPromptKey, defaultNextStepPrompt)
+                .replace("{{tools}}", toolPrompt)
+                .replace("{{query}}", context.getQuery())
+                .replace("{{date}}", context.getDateInfo())
+                .replace("{{basePrompt}}", context.getBasePrompt());
+        if (extraPlaceholder != null) {
+            nextTemplate = nextTemplate.replace(extraPlaceholder, extraValue);
+        }
+        setNextStepPrompt(injectHistoryDialogue(nextTemplate, context.getHistoryDialogue()));
     }
 
     /**
