@@ -53,13 +53,17 @@ public class SessionTranscriptBlockAssembler {
 
     public SessionTurnMemory buildTurnMemory(AgentMessage message,
                                              List<AgentMessageEvent> events) {
+        if (message == null) {
+            return SessionTurnMemory.builder().build();
+        }
+
         List<TranscriptContextBlock> blocks = new ArrayList<>();
         List<JSONObject> aggregatedArtifactRefs = new ArrayList<>();
 
         blocks.add(buildUserInputBlock(message));
 
         List<JSONObject> uploadedArtifactRefs = artifactRestoreSupport.normalizeFilesToArtifactRefs(
-                artifactRestoreSupport.parseFiles(message == null ? null : message.getFilesJson()));
+                artifactRestoreSupport.parseFiles(message.getFilesJson()));
         if (!uploadedArtifactRefs.isEmpty()) {
             aggregatedArtifactRefs.addAll(uploadedArtifactRefs);
             blocks.add(buildArtifactReferenceBlock(message, null, "用户上传文件", "user", uploadedArtifactRefs, false));
@@ -74,7 +78,7 @@ public class SessionTranscriptBlockAssembler {
                     blocks.addAll(buildEventBlocks(message, event, registry, aggregatedArtifactRefs));
                 } catch (Exception e) {
                     log.warn("恢复 transcript 事件失败，已跳过该 event messageId={}, seqNo={}, eventType={}, eventSubType={}",
-                            message == null ? null : message.getId(),
+                            message.getId(),
                             event == null ? null : event.getSeqNo(),
                             event == null ? null : event.getEventType(),
                             event == null ? null : event.getEventSubType(),
@@ -83,7 +87,7 @@ public class SessionTranscriptBlockAssembler {
             }
         }
 
-        if (StringUtils.hasText(message == null ? null : message.getResponse())) {
+        if (StringUtils.hasText(message.getResponse())) {
             blocks.add(TranscriptContextBlock.builder()
                     .blockType(TranscriptBlockType.ASSISTANT_ANSWER)
                     .sourceMessageId(message.getId())
@@ -94,12 +98,12 @@ public class SessionTranscriptBlockAssembler {
         }
 
         return SessionTurnMemory.builder()
-                .messageId(message == null ? null : message.getId())
-                .requestId(message == null ? null : message.getRequestId())
-                .sortOrder(message == null ? null : message.getSortOrder())
-                .userMessage(message == null ? null : message.getQuery())
-                .assistantMessage(message == null ? null : message.getResponse())
-                .finalAnswer(message == null ? null : message.getResponse())
+                .messageId(message.getId())
+                .requestId(message.getRequestId())
+                .sortOrder(message.getSortOrder())
+                .userMessage(message.getQuery())
+                .assistantMessage(message.getResponse())
+                .finalAnswer(message.getResponse())
                 .artifactRefs(new ArrayList<>(deduplicateArtifactRefs(aggregatedArtifactRefs)))
                 .blocks(blocks)
                 .build();
@@ -108,9 +112,9 @@ public class SessionTranscriptBlockAssembler {
     private TranscriptContextBlock buildUserInputBlock(AgentMessage message) {
         return TranscriptContextBlock.builder()
                 .blockType(TranscriptBlockType.USER_INPUT)
-                .sourceMessageId(message == null ? null : message.getId())
+                .sourceMessageId(message.getId())
                 .role("user")
-                .text(message == null ? null : message.getQuery())
+                .text(message.getQuery())
                 .referenceOnly(false)
                 .build();
     }
