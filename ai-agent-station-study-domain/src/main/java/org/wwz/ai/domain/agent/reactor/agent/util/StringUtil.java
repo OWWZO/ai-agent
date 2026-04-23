@@ -130,6 +130,35 @@ public class StringUtil {
         return result.toString();
     }
 
+    /**
+     * 截断文本到指定最大长度，支持空白字符归一化。
+     *
+     * @param text      原始文本，允许 null 或空串
+     * @param maxLength 最大长度（字符数），必须 > 0
+     * @param normalize 是否先将空白字符归一化为单个空格
+     * @return 截断后的文本，若输入为 null/空则返回空串
+     */
+    public static String abbreviate(String text, int maxLength, boolean normalize) {
+        if (!org.springframework.util.StringUtils.hasText(text)) {
+            return "";
+        }
+        if (maxLength <= 0) {
+            return "";
+        }
+        String result = text.trim();
+        if (normalize) {
+            result = result.replaceAll("\\s+", " ");
+        }
+        return result.length() > maxLength ? result.substring(0, maxLength) : result;
+    }
+
+    /**
+     * 截断文本到指定最大长度（不归一化空白）。
+     */
+    public static String abbreviate(String text, int maxLength) {
+        return abbreviate(text, maxLength, false);
+    }
+
     public static String getUUID() {
         UUID uuid = UUID.randomUUID();
         return uuid.toString();
