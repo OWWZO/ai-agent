@@ -10,7 +10,10 @@ import {
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block';
 import { MessageResponse } from '@/components/ai-elements/message';
-import { normalizeMarkdownForDisplay } from '@/utils/markdown';
+import {
+  normalizeMarkdownForDisplay,
+  type MarkdownNormalizationScope,
+} from '@/utils/markdown';
 import type { BundledLanguage } from 'shiki';
 import { bundledLanguages } from 'shiki';
 
@@ -44,8 +47,8 @@ const CodeBlock: ReactorType.FC<{
     const codeString = Array.isArray(children)
       ? children.join('')
       : typeof children === 'string'
-      ? children
-      : String(children);
+        ? children
+        : String(children);
 
     return (
       <ShadcnCodeBlock code={codeString.trim()} language={safeLanguage}>
@@ -60,9 +63,15 @@ const CodeBlock: ReactorType.FC<{
 const MarkdownRenderer: ReactorType.FC<{
   markDownContent?: string;
   isStreaming?: boolean;
+  normalizationScope?: MarkdownNormalizationScope;
 }> = (props) => {
-  const { markDownContent, className, isStreaming = false } = props;
-  const normalizedContent = normalizeMarkdownForDisplay(markDownContent);
+  const {
+    markDownContent,
+    className,
+    isStreaming = false,
+    normalizationScope = 'default',
+  } = props;
+  const normalizedContent = normalizeMarkdownForDisplay(markDownContent, { scope: normalizationScope });
 
   const { scrollToBottom } = usePanelContext() || {};
   const lastScrollAtRef = useRef<number>(0);
@@ -107,5 +116,6 @@ export default memo(
   (prevProps, nextProps) =>
     prevProps.markDownContent === nextProps.markDownContent &&
     prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.normalizationScope === nextProps.normalizationScope &&
     prevProps.className === nextProps.className
 );

@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-20
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-23
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -19,6 +19,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - MySQL 既有 `ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`、`ai_agent_session_memory`；本期无新增表/列 (006-session-context-memory)
 - Java 17（仅后端主链路，本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、现有 Reactor `LLM`/`ChatClient` 装配能力、OkHttp SSE、既有 rich transcript 组装链路 (007-freecode-session-compaction)
 - MySQL 既有 `ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`、`ai_agent_session_memory`；其中 `ai_agent_session_memory` 演进为同一 `session_id` 的多版本快照 (007-freecode-session-compaction)
+- TypeScript 5.7 + React 19（仅 `ui/`，本期不改 Java / Python 子系统） + Vite 6、Ant Design 5、react-markdown 10.1.0、remark-gfm 4.0.1、streamdown 2.5.0、现有 `ai-elements` 消息渲染组件链 (008-fix-summary-markdown)
+- N/A（纯前端展示修复，不新增数据库、接口持久化或文件存储） (008-fix-summary-markdown)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -66,9 +68,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 008-fix-summary-markdown: Added TypeScript 5.7 + React 19（仅 `ui/`，本期不改 Java / Python 子系统） + Vite 6、Ant Design 5、react-markdown 10.1.0、remark-gfm 4.0.1、streamdown 2.5.0、现有 `ai-elements` 消息渲染组件链
 - 007-freecode-session-compaction: Added Java 17（仅后端主链路，本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、现有 Reactor `LLM`/`ChatClient` 装配能力、OkHttp SSE、既有 rich transcript 组装链路
 - 006-session-context-memory: Added Java 17（仅后端主链路，本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、OkHttp SSE、现有 ReAct / PlanSolve Agent 框架
-- 006-session-context-memory: Added Java 17（Spring Boot 多模块主链路） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、OkHttp、MySQL 8、现有 ReAct / PlanSolve Agent 框架
 
 
 <!-- MANUAL ADDITIONS START -->

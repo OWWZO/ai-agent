@@ -36,7 +36,8 @@ public class SummaryAgent extends BaseAgent {
 
         setContext(context);
         setRequestId(context.getRequestId());
-        setLlm(new LLM(context.getAgentType() == 3 ? reactorConfig.getPlannerModelName() : reactorConfig.getReactModelName(), ""));
+        // 总结阶段允许单独指定模型；未配置时保持原有兼容逻辑。
+        setLlm(new LLM(resolveSummaryModelName(reactorConfig), ""));
         setMessageSizeLimit(reactorConfig.getMessageSizeLimit());
         setSummaryTemperature(reactorConfig.getSummaryTemperature());
     }
@@ -80,9 +81,31 @@ public class SummaryAgent extends BaseAgent {
                 .replace("{{query}}", query);
     }
 
-    // 提取消息创建逻辑
+    // 构建总结阶段的 system prompt。
     private Message createSystemMessage(String content) {
-        return Message.userMessage(content, null); // 如果需要更复杂的消息构建，可扩展
+        // 总结约束必须以 system role 注入，否则模型对格式和协议的遵循度会显著下降。
+        return Message.systemMessage(content, null);
+    }
+
+    /**
+     * 构建总结阶段的最小 user 指令。
+     * 某些 OpenAI 兼容网关不接受“仅 system、无 user”的请求，这里补一条稳定指令做兼容。
+     */
+    private Message createSummaryInstructionMessage() {
+        return Message.userMessage("请基于系统提供的完整上下文，严格按照输出协议生成最终总结。", null);
+    }
+
+    /**
+     * 解析总结阶段实际使用的模型。
+     * 优先使用 summary.model_name，未配置时沿用历史逻辑，避免影响现网链路。
+     */
+    private String resolveSummaryModelName(ReactorConfig reactorConfig) {
+        if (StringUtils.isNotBlank(reactorConfig.getSummaryModelName())) {
+            return reactorConfig.getSummaryModelName().trim();
+        }
+        return context.getAgentType() == 3
+                ? reactorConfig.getPlannerModelName()
+                : reactorConfig.getReactModelName();
     }
 
     /**
@@ -166,18 +189,12 @@ public class SummaryAgent extends BaseAgent {
                 sb.append(String.format("role:%s content:%s\n", message.getRole(), content));
             }
 
-            // 3. 构建LLM系统提示词：将格式化的消息和用户查询注入预设模板，生成最终发给LLM的提示词
+            // 3. 构建总结阶段提示词：system 负责约束与上下文，user 负责触发最终生成。
             String formattedPrompt = formatSystemPrompt(sb.toString(), query);
-            // 将格式化后的提示词转为LLM可识别的System角色消息
-            Message userMessage = createSystemMessage(formattedPrompt);
+            Message systemMessage = createSystemMessage(formattedPrompt);
+            Message summaryInstruction = createSummaryInstructionMessage();
 
-            // 4. 异步调用LLM生成总结：使用CompletableFuture异步执行，提升性能（此处get()转为同步等待结果）
-            // 参数说明：
-            // - context：Agent上下文（含请求ID、LLM配置等）
-            // - Collections.singletonList(userMessage)：发给LLM的消息列表（仅系统提示词）
-            // - Collections.emptyList()：无图片等多模态内容
-            // - false：不启用流式返回
-            // - 0.01：LLM温度参数（越低结果越固定，适合总结类场景）
+            // 4. 异步调用LLM生成总结：总结阶段使用独立 system prompt 与独立温度配置。
             boolean enableSummaryStreamPush = Boolean.TRUE.equals(context.getIsStream());
             String previousStreamMessageType = context.getStreamMessageType();
             if (enableSummaryStreamPush) {
@@ -188,8 +205,8 @@ public class SummaryAgent extends BaseAgent {
             try {
                 CompletableFuture<String> summaryFuture = getLlm().ask(
                         context,
-                        Collections.singletonList(userMessage),
-                        Collections.emptyList(),
+                        Collections.singletonList(summaryInstruction),
+                        Collections.singletonList(systemMessage),
                         true,
                         getSummaryTemperature());
                 llmResponse = summaryFuture.get();

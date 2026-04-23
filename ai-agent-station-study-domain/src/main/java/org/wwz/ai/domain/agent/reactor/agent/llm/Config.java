@@ -21,10 +21,18 @@ public class Config {
     public static LLMSettings getLLMConfig(String modelName) {
         ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
         ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
-        if (Objects.nonNull(reactorConfig.getLlmSettingsMap())) {
-            return reactorConfig.getLlmSettingsMap().getOrDefault(modelName, getDefaultConfig(applicationContext));
+        String normalizedModelName = modelName == null ? "" : modelName.trim();
+        if (Objects.nonNull(reactorConfig.getLlmSettingsMap()) && !normalizedModelName.isBlank()) {
+            LLMSettings settings = reactorConfig.getLlmSettingsMap().get(normalizedModelName);
+            if (settings != null) {
+                return settings;
+            }
         }
-        return getDefaultConfig(applicationContext);
+        LLMSettings defaultConfig = getDefaultConfig(applicationContext);
+        if (!normalizedModelName.isBlank()) {
+            defaultConfig.setModel(normalizedModelName);
+        }
+        return defaultConfig;
     }
 
     /**

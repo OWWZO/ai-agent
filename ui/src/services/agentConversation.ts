@@ -617,6 +617,7 @@ const buildHistoryConclusionFallback = (
     result: summary,
     resultMap: {
       taskSummary: summary,
+      result: summary,
       isFinal: true,
       fileInfo: [],
     } as MESSAGE.ResultMap,

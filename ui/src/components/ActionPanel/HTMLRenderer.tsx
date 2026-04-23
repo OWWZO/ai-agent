@@ -96,7 +96,13 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   }, [error, htmlUrl, missingReason, stopLoading]);
 
   if (!htmlUrl && outputCode) {
-    return <MarkdownRenderer markDownContent={outputCode} isStreaming={isStreaming} />;
+    return (
+      <MarkdownRenderer
+        markDownContent={outputCode}
+        isStreaming={isStreaming}
+        normalizationScope="default"
+      />
+    );
   }
 
   if (htmlUrl) {

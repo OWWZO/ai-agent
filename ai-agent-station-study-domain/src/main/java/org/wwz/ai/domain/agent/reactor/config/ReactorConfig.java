@@ -177,8 +177,9 @@ public class ReactorConfig {
     private Map<String, LLMSettings> llmSettingsMap;
     @Value("${llm.settings:{}}")
     public void setLLMSettingsMap(String jsonStr) {
-        this.llmSettingsMap = JSON.parseObject(jsonStr, new TypeReference<Map<String, LLMSettings>>() {
+        Map<String, LLMSettings> rawSettings = JSON.parseObject(jsonStr, new TypeReference<Map<String, LLMSettings>>() {
         });
+        this.llmSettingsMap = normalizeLlmSettingsMap(rawSettings);
     }
 
     @Value("${autobots.autoagent.planner.max_steps:40}")
@@ -213,6 +214,9 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.summary.system_prompt:}")
     private String summarySystemPrompt;
+
+    @Value("${autobots.autoagent.summary.model_name:}")
+    private String summaryModelName;
 
     @Value("${autobots.autoagent.summary.temperature:0.7}")
     private Double summaryTemperature;
@@ -365,6 +369,42 @@ public class ReactorConfig {
             return new HashMap<>();
         }
         return JSON.parseObject(json, new TypeReference<Map<String, Object>>() {});
+    }
+
+    /**
+     * 对 llm.settings 的 key 和 model 字段做规范化，避免配置里混入首尾空格导致模型配置失效。
+     */
+    private static Map<String, LLMSettings> normalizeLlmSettingsMap(Map<String, LLMSettings> rawSettings) {
+        Map<String, LLMSettings> normalizedSettings = new HashMap<>();
+        if (rawSettings == null || rawSettings.isEmpty()) {
+            return normalizedSettings;
+        }
+
+        rawSettings.forEach((modelName, settings) -> {
+            if (settings == null) {
+                return;
+            }
+
+            String normalizedModelName = StringUtils.hasText(modelName) ? modelName.trim() : "";
+            if (!StringUtils.hasText(normalizedModelName)) {
+                return;
+            }
+
+            normalizedSettings.put(normalizedModelName, LLMSettings.builder()
+                    .model(StringUtils.hasText(settings.getModel()) ? settings.getModel().trim() : normalizedModelName)
+                    .maxTokens(settings.getMaxTokens())
+                    .temperature(settings.getTemperature())
+                    .apiType(settings.getApiType())
+                    .apiKey(settings.getApiKey())
+                    .apiVersion(settings.getApiVersion())
+                    .baseUrl(settings.getBaseUrl())
+                    .interfaceUrl(settings.getInterfaceUrl())
+                    .functionCallType(settings.getFunctionCallType())
+                    .maxInputTokens(settings.getMaxInputTokens())
+                    .extParams(settings.getExtParams())
+                    .build());
+        });
+        return normalizedSettings;
     }
 
 }

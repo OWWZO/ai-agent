@@ -89,7 +89,13 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
     );
   }
 
-  return <MarkdownRenderer markDownContent={markStr} className={className} />;
+  return (
+    <MarkdownRenderer
+      markDownContent={markStr}
+      className={className}
+      normalizationScope="default"
+    />
+  );
 });
 
 FileRenderer.displayName = 'FileRenderer';

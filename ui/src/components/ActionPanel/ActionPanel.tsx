@@ -50,7 +50,11 @@ const StreamingMarkdownWrapper = memo(({
     <div
       className="flex min-h-full flex-col"
     >
-      <MarkdownRenderer markDownContent={content} isStreaming={isStreaming} />
+      <MarkdownRenderer
+        markDownContent={content}
+        isStreaming={isStreaming}
+        normalizationScope="default"
+      />
       <div
         aria-hidden
         className="shrink-0 transition-[height] duration-300 ease-out"

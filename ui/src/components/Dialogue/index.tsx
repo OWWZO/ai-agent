@@ -32,7 +32,10 @@ import {
   Layers,
   SearchIcon,
 } from "lucide-react";
-import { normalizeMarkdownForDisplay } from "@/utils/markdown";
+import {
+  normalizeMarkdownForDisplay,
+  type MarkdownNormalizationScope,
+} from "@/utils/markdown";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -413,10 +416,25 @@ function resolveTaskSummaryText(task?: CHAT.Task) {
   );
 }
 
+/**
+ * 结构化总结单独启用增强规范化，避免误伤普通聊天和其他 Markdown 预览场景。
+ */
+function resolveConclusionMarkdownScope(
+  chat: CHAT.ChatItem,
+  deepThink: boolean
+): MarkdownNormalizationScope {
+  const isStructuredConversation =
+    chat.agentType === 1 || chat.agentType === 2 || deepThink;
+  return chat.conclusion && isStructuredConversation
+    ? "structured_summary"
+    : "default";
+}
+
 const ConclusionSection: FC<{
   chat: CHAT.ChatItem;
   changeFile?: (file: CHAT.TFile) => void;
-}> = ({ chat, changeFile }) => {
+  normalizationScope: MarkdownNormalizationScope;
+}> = ({ chat, changeFile, normalizationScope }) => {
   const summary = resolveTaskSummaryText(chat.conclusion) || "任务已完成";
   const summaryStreaming =
     !!chat.loading && chat.conclusion?.messageType === "agent_stream";
@@ -430,6 +448,7 @@ const ConclusionSection: FC<{
         <MarkdownRenderer
           markDownContent={summary}
           isStreaming={summaryStreaming}
+          normalizationScope={normalizationScope}
           className="text-[15px] leading-8"
         />
       </div>
@@ -459,6 +478,7 @@ const DialogueComponent: FC<Props> = (props) => {
   const isPlanSolveMessage = chat.agentType === 1 || deepThink;
   const isReactType = !isPlanSolveMessage;
   const thoughtText = streamingThought ?? chat.thought ?? "";
+  const conclusionMarkdownScope = resolveConclusionMarkdownScope(chat, deepThink);
   const hasAssistantPayload =
     !!chat.response ||
     !!thoughtText ||
@@ -476,7 +496,9 @@ const DialogueComponent: FC<Props> = (props) => {
 
   const handleCopy = useCallback(() => {
     if (!chat.response) return;
-    navigator.clipboard.writeText(normalizeMarkdownForDisplay(chat.response)).then(() => {
+    navigator.clipboard.writeText(
+      normalizeMarkdownForDisplay(chat.response, { scope: "default" })
+    ).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -517,6 +539,7 @@ const DialogueComponent: FC<Props> = (props) => {
               <MarkdownRenderer
                 markDownContent={chat.response}
                 isStreaming={chat.loading}
+                normalizationScope="default"
               />
             </MessageContent>
             {!chat.loading ? (
@@ -581,7 +604,11 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* 结论 */}
       {chat.conclusion ? (
         <div className="w-full">
-          <ConclusionSection chat={chat} changeFile={changeFile} />
+          <ConclusionSection
+            chat={chat}
+            changeFile={changeFile}
+            normalizationScope={conclusionMarkdownScope}
+          />
         </div>
       ) : null}
 
