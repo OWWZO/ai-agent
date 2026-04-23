@@ -252,10 +252,8 @@ public class AgentSessionMemoryServiceImpl implements IAgentSessionMemoryService
         if (sessionId == null) {
             return new CompactionGuardrailState();
         }
-        CompactionGuardrailState state = guardrailStateMap.computeIfAbsent(
-                sessionId,
-                key -> new CompactionGuardrailState());
-        if (!isCircuitWindowActive(state)) {
+        CompactionGuardrailState state = guardrailStateMap.get(sessionId);
+        if (state == null || !isCircuitWindowActive(state)) {
             guardrailStateMap.remove(sessionId);
             return new CompactionGuardrailState();
         }

@@ -52,7 +52,7 @@ public class SessionMemorySummaryBuilder {
                     .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                     .append("轮：用户提出“")
                     .append(StringUtil.abbreviate(turn.getUserMessage(), 80, true))
-                    .append(“”；系统已回应””)
+                    .append("“”；系统已回应“”")
                     .append(StringUtil.abbreviate(turn.getAssistantMessage(), 120, true))
                     .append("”。");
         }

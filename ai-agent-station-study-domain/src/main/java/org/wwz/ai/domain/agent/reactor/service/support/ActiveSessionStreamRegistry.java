@@ -70,6 +70,7 @@ public class ActiveSessionStreamRegistry {
 
     /**
      * 获取当前活跃流数量（主要用于监控和调试）。
+     * 注意：cleanUp() 是异步清理的启发式触发，不保证立即完成，size() 返回的是近似值。
      */
     public long getActiveCount() {
         activeStreams.cleanUp();

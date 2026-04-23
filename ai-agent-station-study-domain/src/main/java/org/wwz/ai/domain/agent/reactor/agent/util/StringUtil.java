@@ -10,6 +10,7 @@ public class StringUtil {
     private static final String NUMBER = "0123456789";
     private static final String DATA_FOR_RANDOM_STRING = CHAR_LOWER + NUMBER;
     private static final SecureRandom random = new SecureRandom();
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     public static String generateRandomString(int length) {
         if (length < 1) throw new IllegalArgumentException();
@@ -143,11 +144,11 @@ public class StringUtil {
             return "";
         }
         if (maxLength <= 0) {
-            return "";
+            throw new IllegalArgumentException("maxLength must be positive, got: " + maxLength);
         }
         String result = text.trim();
         if (normalize) {
-            result = result.replaceAll("\\s+", " ");
+            result = WHITESPACE_PATTERN.matcher(result).replaceAll(" ");
         }
         return result.length() > maxLength ? result.substring(0, maxLength) : result;
     }

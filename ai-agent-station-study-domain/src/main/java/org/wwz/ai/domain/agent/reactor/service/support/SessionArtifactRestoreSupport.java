@@ -248,6 +248,10 @@ public class SessionArtifactRestoreSupport {
         }
     }
 
+    /**
+     * 基于 resourceKey/downloadUrl/previewUrl/displayName 去重 artifact 引用。
+     * 保留首次出现顺序，返回新列表，不修改输入列表。
+     */
     public List<JSONObject> deduplicateArtifactRefs(List<JSONObject> artifactRefs) {
         if (CollectionUtils.isEmpty(artifactRefs)) {
             return List.of();
