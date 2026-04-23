@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
@@ -84,11 +85,11 @@ public class SessionArtifactRestoreSupport {
             }
             JSONObject ref = new JSONObject(new LinkedHashMap<>());
             ref.put("artifactType", file.getFileType());
-            ref.put("displayName", firstNonBlank(file.getFileName(), file.getOriginFileName(), "未命名文件"));
+            ref.put("displayName", StringUtil.firstNonBlank(file.getFileName(), file.getOriginFileName(), "未命名文件"));
             ref.put("description", file.getFileDesc());
-            ref.put("resourceKey", firstNonBlank(file.getResourceKey(), file.getOriginOssUrl(), file.getOssUrl(), file.getDomainUrl(), file.getFileName()));
-            ref.put("downloadUrl", firstNonBlank(file.getOssUrl(), file.getDomainUrl()));
-            ref.put("previewUrl", firstNonBlank(file.getDomainUrl(), file.getOssUrl()));
+            ref.put("resourceKey", StringUtil.firstNonBlank(file.getResourceKey(), file.getOriginOssUrl(), file.getOssUrl(), file.getDomainUrl(), file.getFileName()));
+            ref.put("downloadUrl", StringUtil.firstNonBlank(file.getOssUrl(), file.getDomainUrl()));
+            ref.put("previewUrl", StringUtil.firstNonBlank(file.getDomainUrl(), file.getOssUrl()));
             ref.put("fileSize", file.getFileSize());
             ref.put("mimeType", file.getMimeType());
             ref.put("originFileName", file.getOriginFileName());
@@ -117,13 +118,13 @@ public class SessionArtifactRestoreSupport {
                 }
                 JSONObject file = (JSONObject) item;
                 files.add(FileInformation.builder()
-                        .fileName(firstNonBlank(file.getString("fileName"), file.getString("name")))
-                        .fileDesc(firstNonBlank(file.getString("fileDesc"), file.getString("description")))
-                        .ossUrl(firstNonBlank(file.getString("ossUrl"), file.getString("downloadUrl"), file.getString("url")))
-                        .domainUrl(firstNonBlank(file.getString("domainUrl"), file.getString("previewUrl"), file.getString("url")))
+                        .fileName(StringUtil.firstNonBlank(file.getString("fileName"), file.getString("name")))
+                        .fileDesc(StringUtil.firstNonBlank(file.getString("fileDesc"), file.getString("description")))
+                        .ossUrl(StringUtil.firstNonBlank(file.getString("ossUrl"), file.getString("downloadUrl"), file.getString("url")))
+                        .domainUrl(StringUtil.firstNonBlank(file.getString("domainUrl"), file.getString("previewUrl"), file.getString("url")))
                         .fileSize(firstNumber(file.get("fileSize"), file.get("size")))
-                        .fileType(firstNonBlank(file.getString("fileType"), file.getString("type")))
-                        .resourceKey(firstNonBlank(file.getString("resourceKey"), file.getString("downloadUrl"), file.getString("domainUrl"), file.getString("url")))
+                        .fileType(StringUtil.firstNonBlank(file.getString("fileType"), file.getString("type")))
+                        .resourceKey(StringUtil.firstNonBlank(file.getString("resourceKey"), file.getString("downloadUrl"), file.getString("domainUrl"), file.getString("url")))
                         .mimeType(file.getString("mimeType"))
                         .originFileName(file.getString("originFileName"))
                         .originFileUrl(file.getString("originFileUrl"))
@@ -173,13 +174,13 @@ public class SessionArtifactRestoreSupport {
                 continue;
             }
 
-            String domainUrl = firstNonBlank(ref.getString("previewUrl"), ref.getString("downloadUrl"));
-            String ossUrl = firstNonBlank(ref.getString("downloadUrl"), ref.getString("previewUrl"));
+            String domainUrl = StringUtil.firstNonBlank(ref.getString("previewUrl"), ref.getString("downloadUrl"));
+            String ossUrl = StringUtil.firstNonBlank(ref.getString("downloadUrl"), ref.getString("previewUrl"));
             if (!StringUtils.hasText(domainUrl) && !StringUtils.hasText(ossUrl)) {
                 continue;
             }
 
-            String deduplicatedKey = firstNonBlank(
+            String deduplicatedKey = StringUtil.firstNonBlank(
                     ref.getString("resourceKey"),
                     ossUrl,
                     domainUrl,
@@ -189,7 +190,7 @@ public class SessionArtifactRestoreSupport {
             }
 
             files.add(FileInformation.builder()
-                    .fileName(firstNonBlank(ref.getString("displayName"), ref.getString("fileName")))
+                    .fileName(StringUtil.firstNonBlank(ref.getString("displayName"), ref.getString("fileName")))
                     .fileDesc(ref.getString("description"))
                     .ossUrl(ossUrl)
                     .domainUrl(domainUrl)
@@ -234,7 +235,7 @@ public class SessionArtifactRestoreSupport {
             if (file == null) {
                 continue;
             }
-            String deduplicatedKey = firstNonBlank(
+            String deduplicatedKey = StringUtil.firstNonBlank(
                     file.getResourceKey(),
                     file.getOriginOssUrl(),
                     file.getOriginFileUrl(),
@@ -263,7 +264,7 @@ public class SessionArtifactRestoreSupport {
             if (ref == null) {
                 continue;
             }
-            String deduplicatedKey = firstNonBlank(
+            String deduplicatedKey = StringUtil.firstNonBlank(
                     ref.getString("resourceKey"),
                     ref.getString("downloadUrl"),
                     ref.getString("previewUrl"),
@@ -274,15 +275,6 @@ public class SessionArtifactRestoreSupport {
             deduplicatedRefs.add(ref);
         }
         return deduplicatedRefs;
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value;
-            }
-        }
-        return null;
     }
 
     private Integer firstNumber(Object... values) {

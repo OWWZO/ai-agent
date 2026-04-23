@@ -165,6 +165,18 @@ public class StringUtil {
         return uuid.toString();
     }
 
+    /**
+     * 返回参数中第一个非空白字符串，没找到则返回 null。
+     */
+    public static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (org.springframework.util.StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
     public static void main(String[] args) {
 
         System.out.println(getUUID());

@@ -150,18 +150,9 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
             }
         }
         builder.append("- Final answer: ")
-                .append(StringUtil.abbreviate(firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage()), MAX_TURN_TEXT_LENGTH, true))
+                .append(StringUtil.abbreviate(StringUtil.firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage()), MAX_TURN_TEXT_LENGTH, true))
                 .append('\n');
         return builder.toString();
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return "";
     }
 
 }

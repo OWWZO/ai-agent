@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.reactor.service.support;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
@@ -94,7 +95,7 @@ public class SessionMemoryPromptFormatter {
                     .append("轮 用户：")
                     .append(defaultText(turn.getUserMessage()))
                     .append("；助手：")
-                    .append(defaultText(firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage())));
+                    .append(defaultText(StringUtil.firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage())));
             String transcriptSummary = summarizeBlocks(turn.getBlocks());
             if (StringUtils.hasText(transcriptSummary)) {
                 builder.append("；链路：").append(transcriptSummary);
@@ -148,12 +149,4 @@ public class SessionMemoryPromptFormatter {
         return StringUtils.hasText(text) ? text.trim() : "无";
     }
 
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
-    }
 }

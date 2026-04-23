@@ -219,7 +219,7 @@ public class SessionTranscriptBlockAssembler {
         if (payload == null || payload.isEmpty()) {
             return false;
         }
-        return StringUtils.hasText(firstNonBlank(
+        return StringUtils.hasText(StringUtil.firstNonBlank(
                 findString(payload, "answer"),
                 findString(payload, "summary"),
                 findString(payload, "toolResult"),
@@ -247,7 +247,7 @@ public class SessionTranscriptBlockAssembler {
     }
 
     private String resolveThoughtText(AgentMessageEvent event, JSONObject payload) {
-        return firstNonBlank(
+        return StringUtil.firstNonBlank(
                 event == null ? null : event.getContentText(),
                 findString(payload, "planThought"),
                 findString(payload, "toolThought"),
@@ -256,7 +256,7 @@ public class SessionTranscriptBlockAssembler {
     }
 
     private String resolveToolUsePreview(AgentMessageEvent event, ToolCallDescriptor descriptor) {
-        String toolName = firstNonBlank(descriptor.toolName(), event == null ? null : event.getTitle(), "tool");
+        String toolName = StringUtil.firstNonBlank(descriptor.toolName(), event == null ? null : event.getTitle(), "tool");
         String argumentsText = descriptor.toolArgumentsJson();
         if (StringUtils.hasText(argumentsText)) {
             return "准备调用 " + toolName + "，参数：" + StringUtil.abbreviate(argumentsText, 160);
@@ -265,7 +265,7 @@ public class SessionTranscriptBlockAssembler {
     }
 
     private String resolveToolResultText(AgentMessageEvent event, List<JSONObject> artifactRefs) {
-        String resultText = firstNonBlank(
+        String resultText = StringUtil.firstNonBlank(
                 event == null ? null : event.getContentText(),
                 event == null ? null : event.getTitle());
         if (StringUtils.hasText(resultText)) {
@@ -284,13 +284,13 @@ public class SessionTranscriptBlockAssembler {
         String fallbackToolUseId = String.format("%s:%s",
                 message == null ? "unknown" : String.valueOf(message.getId()),
                 event == null || event.getSeqNo() == null ? "0" : event.getSeqNo());
-        String toolUseId = firstNonBlank(
+        String toolUseId = StringUtil.firstNonBlank(
                 findString(payload, "toolUseId"),
                 findString(payload, "toolCallId"),
                 findNestedString(payload, "toolCall", "id"),
                 findNestedString(payload, "tool", "id"),
                 fallbackToolUseId);
-        String toolName = firstNonBlank(
+        String toolName = StringUtil.firstNonBlank(
                 findString(payload, "toolName"),
                 findNestedString(payload, "toolCall", "function", "name"),
                 findNestedString(payload, "tool", "name"),
@@ -385,7 +385,7 @@ public class SessionTranscriptBlockAssembler {
     private String joinArtifactNames(List<JSONObject> artifactRefs) {
         List<String> fileNames = new ArrayList<>();
         for (JSONObject artifactRef : artifactRefs) {
-            String displayName = firstNonBlank(
+            String displayName = StringUtil.firstNonBlank(
                     artifactRef == null ? null : artifactRef.getString("displayName"),
                     artifactRef == null ? null : artifactRef.getString("resourceKey"));
             if (StringUtils.hasText(displayName)) {
@@ -402,7 +402,7 @@ public class SessionTranscriptBlockAssembler {
         List<JSONObject> deduplicatedRefs = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (JSONObject artifactRef : artifactRefs) {
-            String key = firstNonBlank(
+            String key = StringUtil.firstNonBlank(
                     artifactRef == null ? null : artifactRef.getString("resourceKey"),
                     artifactRef == null ? null : artifactRef.getString("downloadUrl"),
                     artifactRef == null ? null : artifactRef.getString("previewUrl"),
@@ -413,15 +413,6 @@ public class SessionTranscriptBlockAssembler {
             deduplicatedRefs.add(artifactRef);
         }
         return deduplicatedRefs;
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
     }
 
 
