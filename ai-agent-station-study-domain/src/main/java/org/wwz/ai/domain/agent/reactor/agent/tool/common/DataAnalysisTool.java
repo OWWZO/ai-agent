@@ -47,8 +47,8 @@ public class DataAnalysisTool implements BaseTool {
     @Override
     public Map<String, Object> toParams() {
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
-        if (!reactorConfig.getDataAnalysisToolPamras().isEmpty()) {
-            return reactorConfig.getDataAnalysisToolPamras();
+        if (!reactorConfig.getDataAnalysisToolParams().isEmpty()) {
+            return reactorConfig.getDataAnalysisToolParams();
         }
 
         Map<String, Object> taskParam = new HashMap<>();

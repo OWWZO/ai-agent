@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
 
 import java.util.HashMap;
@@ -20,50 +21,43 @@ public class ReactorConfig {
     private Map<String, String> plannerSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.planner.system_prompt:{}}")
     public void setPlannerSystemPromptMap(String list) {
-        plannerSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.plannerSystemPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> plannerNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.planner.next_step_prompt:{}}")
     public void setPlannerNextStepPromptMap(String list) {
-        plannerNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.plannerNextStepPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> executorSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.system_prompt:{}}")
     public void setExecutorSystemPromptMap(String list) {
-        executorSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.executorSystemPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> executorNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.next_step_prompt:{}}")
     public void setExecutorNextStepPromptMap(String list) {
-        executorNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.executorNextStepPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> executorSopPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.executor.sop_prompt:{}}")
     public void setExecutorSopPromptMap(String list) {
-        executorSopPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.executorSopPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> reactSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.react.system_prompt:{}}")
     public void setReactSystemPromptMap(String list) {
-        reactSystemPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.reactSystemPromptMap = parseStringMap(list);
     }
 
     private Map<String, String> reactNextStepPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.react.next_step_prompt:{}}")
     public void setReactNextStepPromptMap(String list) {
-        reactNextStepPromptMap = JSON.parseObject(list, new TypeReference<Map<String, String>>() {
-        });
+        this.reactNextStepPromptMap = parseStringMap(list);
     }
 
     @Value("${autobots.autoagent.planner.model_name:qwen-vl-max}")
@@ -99,52 +93,52 @@ public class ReactorConfig {
     private Map<String, Object> planToolParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.plan_tool.params:{}}")
     public void setPlanToolParams(String jsonStr) {
-        this.planToolParams = JSON.parseObject(jsonStr, Map.class);
+        this.planToolParams = parseObjectMap(jsonStr);
     }
 
     /**
      * codeAgent 配置
      */
-    private Map<String, Object> codeAgentPamras = new HashMap<>();
+    private Map<String, Object> codeAgentParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.code_agent.params:{}}")
-    public void setCodeAgentPamras(String jsonStr) {
-        this.codeAgentPamras = JSON.parseObject(jsonStr, Map.class);
+    public void setCodeAgentParams(String jsonStr) {
+        this.codeAgentParams = parseObjectMap(jsonStr);
     }
 
     /**
      * reportTool 配置
      */
-    private Map<String, Object> reportToolPamras = new HashMap<>();
+    private Map<String, Object> reportToolParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.report_tool.params:{}}")
-    public void setHtmlToolPamras(String jsonStr) {
-        this.reportToolPamras = JSON.parseObject(jsonStr, Map.class);
+    public void setReportToolParams(String jsonStr) {
+        this.reportToolParams = parseObjectMap(jsonStr);
     }
 
     /**
      * fileTool 配置
      */
-    private Map<String, Object> fileToolPamras = new HashMap<>();
+    private Map<String, Object> fileToolParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.file_tool.params:{}}")
-    public void setFileoolPamras(String jsonStr) {
-        this.fileToolPamras = JSON.parseObject(jsonStr, Map.class);
+    public void setFileToolParams(String jsonStr) {
+        this.fileToolParams = parseObjectMap(jsonStr);
     }
 
     /**
      * DeepSearchTool 配置
      */
-    private Map<String, Object> deepSearchToolPamras = new HashMap<>();
+    private Map<String, Object> deepSearchToolParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.deep_search.params:{}}")
-    public void setDeepSearchToolPamras(String jsonStr) {
-        this.deepSearchToolPamras = JSON.parseObject(jsonStr, Map.class);
+    public void setDeepSearchToolParams(String jsonStr) {
+        this.deepSearchToolParams = parseObjectMap(jsonStr);
     }
 
     /**
      * DataAnalysisTool 配置
      */
-    private Map<String, Object> dataAnalysisToolPamras = new HashMap<>();
+    private Map<String, Object> dataAnalysisToolParams = new HashMap<>();
     @Value("${autobots.autoagent.tool.data_analysis_tool.params:{}}")
-    public void setDtaAnalysisToolPamras(String jsonStr) {
-        this.dataAnalysisToolPamras = JSON.parseObject(jsonStr, Map.class);
+    public void setDataAnalysisToolParams(String jsonStr) {
+        this.dataAnalysisToolParams = parseObjectMap(jsonStr);
     }
 
     @Value("${autobots.autoagent.tool.file_tool.truncate_len:5000}")
@@ -174,8 +168,7 @@ public class ReactorConfig {
     private Map<String, String> multiAgentToolListMap = new HashMap<>();
     @Value("${autobots.autoagent.tool_list:{}}")
     public void setMultiAgentToolList(String list) {
-        multiAgentToolListMap = JSON.parseObject(list, new TypeReference<>() {
-        });
+        this.multiAgentToolListMap = parseStringMap(list);
     }
 
     /**
@@ -195,16 +188,16 @@ public class ReactorConfig {
     private Integer executorMaxSteps;
 
     @Value("${autobots.autoagent.react.max_steps:40}")
-    private Integer reactMaxSteps;;
+    private Integer reactMaxSteps;
 
     @Value("${autobots.autoagent.executor.max_observe:10000}")
     private String maxObserve;
 
     @Value("${autobots.autoagent.code_interpreter_url:}")
-    private String CodeInterpreterUrl;
+    private String codeInterpreterUrl;
 
     @Value("${autobots.autoagent.deep_search_url:}")
-    private String DeepSearchUrl;
+    private String deepSearchUrl;
 
     @Value("${autobots.autoagent.mcp_client_url:}")
     private String mcpClientUrl;
@@ -257,22 +250,19 @@ public class ReactorConfig {
     private Map<String, String> sensitivePatterns = new HashMap<>();
     @Value("${autobots.autoagent.sensitive_patterns:{}}")
     public void setSensitivePatterns(String jsonStr) {
-        this.sensitivePatterns = JSON.parseObject(jsonStr, new TypeReference<Map<String, String>>() {
-        });
+        this.sensitivePatterns = parseStringMap(jsonStr);
     }
 
     private Map<String, String> outputStylePrompts = new HashMap<>();
     @Value("${autobots.autoagent.output_style_prompts:{}}")
     public void setOutputStylePrompts(String jsonStr) {
-        this.outputStylePrompts = JSON.parseObject(jsonStr, new TypeReference<Map<String, String>>() {
-        });
+        this.outputStylePrompts = parseStringMap(jsonStr);
     }
 
     private Map<String, String> messageInterval = new HashMap<>();
     @Value("${autobots.autoagent.message_interval:{}}")
     public void setMessageInterval(String jsonStr) {
-        this.messageInterval = JSON.parseObject(jsonStr, new TypeReference<Map<String, String>>() {
-        });
+        this.messageInterval = parseStringMap(jsonStr);
     }
 
     private String structParseToolSystemPrompt = "";
@@ -362,5 +352,19 @@ public class ReactorConfig {
      */
     @Value("${autobots.autoagent.session-memory.summary-max-length:4000}")
     private Integer sessionMemorySummaryMaxLength;
+
+    private static Map<String, String> parseStringMap(String json) {
+        if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {
+            return new HashMap<>();
+        }
+        return JSON.parseObject(json, new TypeReference<Map<String, String>>() {});
+    }
+
+    private static Map<String, Object> parseObjectMap(String json) {
+        if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {
+            return new HashMap<>();
+        }
+        return JSON.parseObject(json, new TypeReference<Map<String, Object>>() {});
+    }
 
 }

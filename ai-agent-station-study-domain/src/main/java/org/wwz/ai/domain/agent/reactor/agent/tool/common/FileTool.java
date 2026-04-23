@@ -41,8 +41,8 @@ public class FileTool implements BaseTool {
     public Map<String, Object> toParams() {
 
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
-        if (!reactorConfig.getFileToolDesc().isEmpty()) {
-            return reactorConfig.getFileToolPamras();
+        if (!reactorConfig.getFileToolParams().isEmpty()) {
+            return reactorConfig.getFileToolParams();
         }
 
         Map<String, Object> command = new HashMap<>();

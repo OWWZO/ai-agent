@@ -46,8 +46,8 @@ public class CodeInterpreterTool implements BaseTool {
     public Map<String, Object> toParams() {
 
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
-        if (!reactorConfig.getCodeAgentPamras().isEmpty()) {
-            return reactorConfig.getCodeAgentPamras();
+        if (!reactorConfig.getCodeAgentParams().isEmpty()) {
+            return reactorConfig.getCodeAgentParams();
         }
 
         Map<String, Object> taskParam = new HashMap<>();

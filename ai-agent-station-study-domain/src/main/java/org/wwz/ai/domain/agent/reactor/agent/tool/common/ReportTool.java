@@ -46,8 +46,8 @@ public class ReportTool implements BaseTool {
     public Map<String, Object> toParams() {
 
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
-        if (!reactorConfig.getReportToolPamras().isEmpty()) {
-            return reactorConfig.getReportToolPamras();
+        if (!reactorConfig.getReportToolParams().isEmpty()) {
+            return reactorConfig.getReportToolParams();
         }
 
         Map<String, Object> taskParam = new HashMap<>();

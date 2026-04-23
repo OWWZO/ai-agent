@@ -67,8 +67,8 @@ public class DeepSearchTool implements BaseTool {
     public Map<String, Object> toParams() {
 
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
-        if (!reactorConfig.getDeepSearchToolPamras().isEmpty()) {
-            return reactorConfig.getDeepSearchToolPamras();
+        if (!reactorConfig.getDeepSearchToolParams().isEmpty()) {
+            return reactorConfig.getDeepSearchToolParams();
         }
 
         Map<String, Object> taskParam = new HashMap<>();
