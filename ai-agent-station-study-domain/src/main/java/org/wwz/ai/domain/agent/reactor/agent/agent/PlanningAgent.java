@@ -45,6 +45,8 @@ import java.util.concurrent.CompletableFuture;
 @EqualsAndHashCode(callSuper = true)
 public class PlanningAgent extends ReActAgent {
 
+    private static final String STEP_STATUS_COMPLETED = "completed";
+
     /**
      * 大模型返回的工具调用列表（记录需要执行的工具及参数）
      */
@@ -95,8 +97,8 @@ public class PlanningAgent extends ReActAgent {
         // 2. 获取Spring上下文及配置（ReactorConfig是业务自定义的配置类，包含大模型、提示词等配置）
         ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
         ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
-
         setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
+
         // 3. 构建工具提示词：拼接所有可用工具的名称+描述，用于填充提示词模板
         String toolPrompt = buildToolPrompt(context.getToolCollection());
         initializePrompts(
@@ -280,13 +282,8 @@ public class PlanningAgent extends ReActAgent {
      */
     private String getNextTask() {
         // 1. 检查计划所有步骤是否都已完成
-        boolean allComplete = true;
-        for (String status : planningTool.getPlan().getStepStatus()) {
-            if (!"completed".equals(status)) { // 存在未完成步骤
-                allComplete = false;
-                break;
-            }
-        }
+        boolean allComplete = planningTool.getPlan().getStepStatus().stream()
+                .allMatch(STEP_STATUS_COMPLETED::equals);
 
         // 2. 所有步骤完成：标记智能体状态为FINISHED，推送计划结果，返回"finish"
         if (allComplete) {

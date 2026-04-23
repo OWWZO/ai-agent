@@ -276,6 +276,7 @@ const ToolItem: FC<{
         tool.resultMap?.messageType !== "report";
       const isSummarizing = tool.messageType === "deep_search" && tool.resultMap?.messageType === "report";
       const isDeepSearchInline = isSearching || isSummarizing;
+
       return (
         <div
           className={
@@ -343,7 +344,7 @@ const TimeLineContent: FC<{
   <>
     {tasks.map((t, i) => (
       <div key={t.id || t.messageId || t.taskId || i} className="overflow-hidden">
-        {!isReactType ? <div className="font-[500]">{t.task}</div> : null}
+        {!isReactType && t.task ? <div className="font-[500]">{t.task}</div> : null}
         {(t.children || []).map((tool, j) => (
           <div key={tool.id || tool.messageId || tool.taskId || j}>
             <ToolItem

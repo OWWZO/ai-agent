@@ -534,6 +534,70 @@ function ensureSearchResult(resultMap: MESSAGE.ResultMap) {
   }
 }
 
+type TimelineTaskContainer = {
+  hidden: boolean;
+  task?: string;
+  children: CHAT.Task[];
+  __placeholder?: boolean;
+} & Partial<MESSAGE.Task>;
+
+/**
+ * 某些任务组里工具事件会早于 task 父节点到达，
+ * 这里先创建一个临时容器承接左侧时间线子项，避免查询分解等阶段被直接丢弃。
+ */
+function ensureTimelineTaskContainer(
+  taskGroup: TimelineTaskContainer[],
+  task?: MESSAGE.Task
+): TimelineTaskContainer {
+  const lastContainer = taskGroup[taskGroup.length - 1];
+  if (lastContainer) {
+    return lastContainer;
+  }
+
+  const placeholder: TimelineTaskContainer = {
+    hidden: false,
+    task: task?.task || "",
+    taskId: task?.taskId,
+    messageId: task?.messageId,
+    messageTime: task?.messageTime,
+    children: [],
+    __placeholder: true,
+  };
+  taskGroup.push(placeholder);
+  return placeholder;
+}
+
+/**
+ * task 父节点晚到时，用正式 task 信息回填占位容器，
+ * 保留之前已经挂上的工具子项。
+ */
+function upsertTimelineTaskContainer(
+  taskGroup: TimelineTaskContainer[],
+  task: MESSAGE.Task
+): TimelineTaskContainer {
+  const lastContainer = taskGroup[taskGroup.length - 1];
+  if (lastContainer?.__placeholder) {
+    const children = lastContainer.children || [];
+    Object.assign(lastContainer, {
+      ...task,
+      task: task.task,
+      hidden: false,
+      children,
+    });
+    delete lastContainer.__placeholder;
+    return lastContainer;
+  }
+
+  const nextContainer: TimelineTaskContainer = {
+    ...task,
+    task: task.task,
+    hidden: false,
+    children: [],
+  };
+  taskGroup.push(nextContainer);
+  return nextContainer;
+}
+
 function handleNonStreamingMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem,
@@ -592,11 +656,12 @@ export const handleTaskData = (
     (item: MESSAGE.Task[]) => item && item?.length > 0
   ) ?? [];
 
-  const chatList: any = !deepThink
+  const chatList: TimelineTaskContainer[][] = !deepThink
     ? [
       [
         {
           hidden: false,
+          task: "",
           children: [],
         },
       ],
@@ -604,6 +669,8 @@ export const handleTaskData = (
     : Array.from({ length: validTasks?.length || 0 }, () => []);
 
   validTasks?.forEach((taskGroup, groupIndex) => {
+    const timelineTaskGroup = chatList[groupIndex];
+
     taskGroup?.forEach((task, taskIndex) => {
       const time = task.messageTime;
       const id = time?.concat(String(taskIndex));
@@ -618,19 +685,14 @@ export const handleTaskData = (
       const processedInfo = processTaskForRender(task, id);
 
       if (task.messageType === "task") {
-        chatList[groupIndex].push({
-          ...task,
-          task: task.task,
-          hidden: false,
-          children: [],
-        });
+        upsertTimelineTaskContainer(timelineTaskGroup, task);
       // 深度研究里的 task_summary 属于任务级总结，必须保留在时间线中；
       // 只有请求级 result 才应该落在底部最终结论区。
       } else if (
         task?.messageType !== "result" &&
         !isCodeOutputOnly
       ) {
-        chatList[groupIndex]?.at(-1)?.children.push(...processedInfo);
+        ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
       }
 
       if (
@@ -658,7 +720,7 @@ export const handleTaskData = (
       ? currentChat.conclusion
       : undefined;
 
-  currentChat.tasks = chatList;
+  currentChat.tasks = chatList as unknown as CHAT.Task[][];
   currentChat.plan = plan;
   currentChat.conclusion =
     (requestConclusion as CHAT.Task | undefined) ||
@@ -686,7 +748,7 @@ export const handleTaskData = (
     currentChat,
     plan,
     taskList,
-    chatList,
+    chatList: chatList as unknown as CHAT.Task[][],
   };
 };
 
@@ -862,15 +924,22 @@ function processTaskForRender(task: any, baseId: string): CHAT.Task[] {
  * @returns 处理后的任务信息数组
  */
 function processDeepSearchTask(task: any, baseId: string): CHAT.Task[] {
-  const showTypes = ['extend', 'search'];
-  if (task.resultMap.messageType === "report") {
+  const messageType = task.resultMap?.messageType;
+  if (messageType === "report") {
     return [
       createRenderTask(task, baseId),
     ];
   }
 
-  if (showTypes.includes(task.resultMap.messageType!)) {
-    return task.resultMap.searchResult!.query.map((query: string, index: number) => {
+  if (messageType === "extend" || messageType === "search") {
+    const queries = task.resultMap?.searchResult?.query || [];
+
+    // 查询分解和检索阶段都按 query 拆分；没有真实 query 时不制造伪占位项。
+    if (!queries.length) {
+      return [];
+    }
+
+    return queries.map((query: string, index: number) => {
       const rawDocs = task.resultMap.searchResult?.docs?.[index];
       const searchResult = {
         query: query,
