@@ -23,7 +23,6 @@ import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
@@ -99,7 +98,7 @@ public abstract class BaseAgent {
         setState(AgentState.IDLE);
 
         // 若用户查询非空，将查询添加到Agent记忆（USER角色消息）
-        if (!query.isEmpty()) {
+        if (query != null && !query.isEmpty()) {
             updateMemory(RoleType.USER, query, null);
         }
 
@@ -225,16 +224,20 @@ public abstract class BaseAgent {
             // 打印日志：记录请求ID、工具名称、参数、执行结果（便于调试）
             log.info("{} execute tool: {} {} result {}", context.getRequestId(), name, args, result);
 
-            // 3. 格式化结果：非空则转为字符串返回（工具执行结果需保证可转为字符串）
-            if (Objects.nonNull(result)) {
-                return (String) result;
+            // 3. 格式化结果：字符串直接返回，其他对象序列化为JSON字符串
+            if (result == null) {
+                return "Tool " + name + " Error.";
             }
+            if (result instanceof String strResult) {
+                return strResult;
+            }
+            return mapper.writeValueAsString(result);
         } catch (Exception e) {
             // 捕获工具执行异常：打印错误日志，后续返回工具错误提示
             log.error("{} execute tool {} failed ", context.getRequestId(), name, e);
         }
         // 工具执行失败（参数解析/执行/结果为空）：返回标准化错误提示
-        return "Tool" + name + " Error.";
+        return "Tool " + name + " Error.";
     }
 
     /**
