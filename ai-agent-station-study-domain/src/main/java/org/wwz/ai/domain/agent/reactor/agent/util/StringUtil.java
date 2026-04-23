@@ -11,6 +11,10 @@ public class StringUtil {
     private static final String DATA_FOR_RANDOM_STRING = CHAR_LOWER + NUMBER;
     private static final SecureRandom random = new SecureRandom();
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9\\._%\\+\\-]+@[a-zA-Z0-9\\.-]+\\.[a-zA-Z]{2,}");
+    private static final Pattern ID_PATTERN = Pattern.compile("(?:[^\\dA-Za-z_]|^)((?:[1-6][1-7]|50|71|81|82)\\d{4}(?:19|20)\\d{2}(?:0[1-9]|10|11|12)(?:[0-2][1-9]|10|20|30|31)\\d{3}[0-9Xx])(?:[^\\dA-Za-z_]|$)");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("(?:[^\\dA-Za-z_]|^)(1[3456789]\\d{9})(?:[^\\dA-Za-z_]|$)");
+    private static final Pattern BANKCARD_PATTERN = Pattern.compile("(?:[^\\dA-Za-z_]|^)(62(?:\\d{14}|\\d{17}))(?:[^\\dA-Za-z_]|$)");
 
     public static String generateRandomString(int length) {
         if (length < 1) throw new IllegalArgumentException();
@@ -45,8 +49,7 @@ public class StringUtil {
 
     public static String textDesensitization(String content, Map<String, String> sensitivePatternsMapping) {
         // 邮箱地址脱敏
-        Pattern emailPattern = Pattern.compile("[a-zA-Z0-9\\._%\\+\\-]+@[a-zA-Z0-9\\.-]+\\.[a-zA-Z]{2,}");
-        Matcher emailMatcher = emailPattern.matcher(content);
+        Matcher emailMatcher = EMAIL_PATTERN.matcher(content);
         while (emailMatcher.find()) {
             String snippet = emailMatcher.group();
             int maskIdx = snippet.indexOf("@");
@@ -58,24 +61,21 @@ public class StringUtil {
         }
 
         // 身份证号脱敏
-        Pattern idPattern = Pattern.compile("(?:[^\\dA-Za-z_]|^)((?:[1-6][1-7]|50|71|81|82)\\d{4}(?:19|20)\\d{2}(?:0[1-9]|10|11|12)(?:[0-2][1-9]|10|20|30|31)\\d{3}[0-9Xx])(?:[^\\dA-Za-z_]|$)");
-        Matcher idMatcher = idPattern.matcher(content);
+        Matcher idMatcher = ID_PATTERN.matcher(content);
         while (idMatcher.find()) {
             String snippet = idMatcher.group(1);
             content = content.replace(snippet, snippet.substring(0, 12) + "✿✿✿✿✿✿");
         }
 
         // 手机号脱敏
-        Pattern phonePattern = Pattern.compile("(?:[^\\dA-Za-z_]|^)(1[3456789]\\d{9})(?:[^\\dA-Za-z_]|$)");
-        Matcher phoneMatcher = phonePattern.matcher(content);
+        Matcher phoneMatcher = PHONE_PATTERN.matcher(content);
         while (phoneMatcher.find()) {
             String snippet = phoneMatcher.group(1);
             content = content.replace(snippet, snippet.substring(0, 3) + "✿✿✿✿" + snippet.substring(7));
         }
 
         // 银行卡号脱敏
-        Pattern bankcardPattern = Pattern.compile("(?:[^\\dA-Za-z_]|^)(62(?:\\d{14}|\\d{17}))(?:[^\\dA-Za-z_]|$)");
-        Matcher bankcardMatcher = bankcardPattern.matcher(content);
+        Matcher bankcardMatcher = BANKCARD_PATTERN.matcher(content);
         while (bankcardMatcher.find()) {
             String snippet = bankcardMatcher.group(1);
             if (luhnBankCardVerify(snippet)) {
