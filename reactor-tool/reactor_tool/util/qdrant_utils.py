@@ -23,6 +23,14 @@ openai.api_key = "your-openai-key"
 
 load_dotenv()
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_embedding(text):
     response = openai.Embedding.create(
         input=text,
@@ -91,14 +99,14 @@ class QdrantRecall(object):
         
         self.distance = Distance.COSINE
         self.vector_size = 1024
+        prefer_grpc = _env_bool("TR_QDRANT_PREFER_GRPC", True)
         
         # 初始化 Qdrant 客户端
         self.client = QdrantClient(
             host=host,
             grpc_port=int(port),
             timeout=int(timeout),
-            https=False,
-            prefer_grpc=True,
+            prefer_grpc=prefer_grpc,
             api_key=api_key,
         )
         

@@ -109,6 +109,7 @@ public class BaseAgentResponseHandler {
                 message.setTaskOrder(eventResult.getTaskOrder().getAndIncrement());
                 message.setMessageType("task");
                 message.setMessageOrder(1);
+                // knowledge / markdown / deep_search 等结构化流式结果需要在同一 task 内保持独立递增顺序。
                 if (eventResult.getStreamTaskMessageType().contains(agentResponse.getMessageType())) {
                     String orderKey = eventResult.getTaskId() + ":" + agentResponse.getMessageType();
                     message.setMessageOrder(eventResult.getAndIncrOrder(orderKey));

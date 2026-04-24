@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "multimodalagent_tool parameters",
+  "description": "Java Agent 运行时暴露给大模型的多模态知识检索工具参数约定。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "查询所需要的 question，需要在知识库中进行检索的检索短语或句子。"
+    }
+  },
+  "required": [
+    "question"
+  ],
+  "x-tool-name": "multimodalagent_tool",
+  "x-tool-alias": "multimodalagent",
+  "x-enabled-agent-modes": [
+    "REACT",
+    "PLAN_SOLVE"
+  ],
+  "x-disabled-output-styles": [
+    "dataAgent"
+  ],
+  "x-stream-message-types": [
+    "knowledge",
+    "markdown"
+  ],
+  "x-final-artifact-format": "markdown"
+}

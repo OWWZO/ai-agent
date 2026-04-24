@@ -72,6 +72,7 @@ public class EventResult {
     private List<String> streamTaskMessageType = new ArrayList<String>() {{
         add("html");
         add("markdown");
+        add("knowledge");
         add("deep_search");
         add("tool_thought");
         add("data_analysis");

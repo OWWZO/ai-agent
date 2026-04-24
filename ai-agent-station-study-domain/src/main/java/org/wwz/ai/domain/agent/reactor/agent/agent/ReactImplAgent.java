@@ -221,7 +221,7 @@ public class ReactImplAgent extends ReActAgent {
             String result = toolResults.get(command.getId()); // 根据工具调用ID获取执行结果
 
             // 步骤3.1：特殊工具结果不推送（如代码解释器、报表工具等，避免前端展示冗余信息）
-            if (!Arrays.asList("code_interpreter", "report_tool", "file_tool", "deep_search", "data_analysis").contains(command.getFunction().getName())) {
+            if (!Arrays.asList("code_interpreter", "report_tool", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis").contains(command.getFunction().getName())) {
                 // 推送工具结果到客户端：包含工具名、参数、执行结果
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                         .toolName(command.getFunction().getName())

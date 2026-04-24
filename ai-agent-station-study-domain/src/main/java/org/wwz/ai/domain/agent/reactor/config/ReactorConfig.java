@@ -84,6 +84,9 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.deep_search_tool.desc:}")
     private String deepSearchToolDesc;
 
+    @Value("${autobots.autoagent.tool.multimodalagent_tool.desc:}")
+    private String multiModalAgentDesc;
+
     @Value("${autobots.autoagent.tool.data_analysis_tool.desc:}")
     private String dataAnalysisToolDesc;
 
@@ -130,6 +133,15 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.deep_search.params:{}}")
     public void setDeepSearchToolParams(String jsonStr) {
         this.deepSearchToolParams = parseObjectMap(jsonStr);
+    }
+
+    /**
+     * MultiModalAgentTool 配置
+     */
+    private Map<String, Object> multiModalAgentParams = new HashMap<>();
+    @Value("${autobots.autoagent.tool.multimodalagent_tool.params:{}}")
+    public void setMultiModalAgentParams(String jsonStr) {
+        this.multiModalAgentParams = parseObjectMap(jsonStr);
     }
 
     /**
@@ -199,6 +211,9 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.deep_search_url:}")
     private String deepSearchUrl;
+
+    @Value("${autobots.autoagent.multimodalagent_url:}")
+    private String multiModalAgentUrl;
 
     @Value("${autobots.autoagent.mcp_client_url:}")
     private String mcpClientUrl;

@@ -109,4 +109,64 @@ public class SessionTranscriptBlockAssemblerTest {
         Assert.assertEquals(1, turnMemory.getArtifactRefs().size());
         Assert.assertEquals("deepsearch-report.html", turnMemory.getArtifactRefs().get(0).getString("displayName"));
     }
+
+    @Test
+    public void test_buildTurnMemory_keepsKnowledgeAndMarkdownChainForMrag() {
+        SessionTranscriptBlockAssembler assembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+
+        AgentMessage message = SessionMemoryTestSupport.completedMessage(
+                601L,
+                "req-mrag-transcript-001",
+                4,
+                "总结多模态检索核心能力",
+                "我已经补充了图文混合知识库的关键结论。",
+                null);
+
+        List<TranscriptContextBlock> blocks = assembler.buildTurnMemory(message, List.of(
+                SessionEventPayloadFixtureBuilder.toolThoughtEvent(
+                        601L,
+                        1,
+                        "tool-mrag-1",
+                        "multimodalagent_tool",
+                        JSONObject.parseObject("{\"question\":\"总结多模态检索核心能力\"}"),
+                        "先调用 MRAG 检索图文混合内容",
+                        "task-mrag-1",
+                        1),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        601L,
+                        2,
+                        "knowledge",
+                        "knowledge",
+                        "tool-mrag-1",
+                        "multimodalagent_tool",
+                        JSONObject.parseObject("{\"question\":\"总结多模态检索核心能力\"}"),
+                        "多模态检索会先召回图文片段。",
+                        "task-mrag-1",
+                        1,
+                        List.of()),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        601L,
+                        3,
+                        "markdown",
+                        "report",
+                        "tool-mrag-1",
+                        "multimodalagent_tool",
+                        JSONObject.parseObject("{\"question\":\"总结多模态检索核心能力\"}"),
+                        "最终结果支持 Markdown 图片引用。",
+                        "task-mrag-1",
+                        1,
+                        List.of(SessionEventPayloadFixtureBuilder.artifactRef(
+                                "多模态检索结果.md",
+                                "https://file.example.com/mrag-result.md"))))
+        )
+                .getBlocks();
+
+        Assert.assertEquals(6, blocks.size());
+        Assert.assertEquals(TranscriptBlockType.TOOL_USE, blocks.get(2).getBlockType());
+        Assert.assertEquals("multimodalagent_tool", blocks.get(2).getToolName());
+        Assert.assertEquals("tool-mrag-1", blocks.get(3).getToolUseId());
+        Assert.assertEquals("multimodalagent_tool", blocks.get(3).getToolName());
+        Assert.assertEquals("多模态检索结果.md", blocks.get(4).getArtifactRefs().get(0).getString("displayName"));
+    }
 }

@@ -20,8 +20,9 @@ load_dotenv()  # 加载 .env 文件
 class QdrantRecall(object):
     def __init__(self):
         QDRANT_HOST = os.getenv("TR_QDRANT_HOST")
-        QDRANT_PORT = int(os.getenv("TR_QDRANT_PORT", 443))
+        QDRANT_PORT = int(os.getenv("TR_QDRANT_PORT", 6334))
         QDRANT_API_KEY = os.getenv("TR_QDRANT_API_KEY")
+        prefer_grpc = os.getenv("TR_QDRANT_PREFER_GRPC", "true").lower() in {"1", "true", "yes", "on"}
         
         self.collection_name = os.getenv("TR_QDRANT_COLLECTION_NAME")
         self.qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K', 20))
@@ -33,8 +34,7 @@ class QdrantRecall(object):
             host=QDRANT_HOST,
             grpc_port=int(QDRANT_PORT),
             timeout=self.qdrant_timeout,
-            https=False,
-            prefer_grpc=True,
+            prefer_grpc=prefer_grpc,
             api_key=QDRANT_API_KEY,
         )
         self.client = client

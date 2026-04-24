@@ -13,8 +13,9 @@ import threading
 import time
 
 from dotenv import load_dotenv
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from jinja2 import Template
+from loguru import logger
 from sse_starlette import ServerSentEvent, EventSourceResponse
 
 from reactor_tool.model.code import ActionOutput, CodeOuput
@@ -28,19 +29,11 @@ from reactor_tool.model.protocal import (
     NL2SQLRequest,
     SopChooseRequest,
     ScriptRunnerRequest,
+    MultimodalRAGRequest,
 )
 from reactor_tool.util.file_util import upload_file
-from reactor_tool.util.llm_util import ask_llm
 from reactor_tool.util.prompt_util import get_prompt
-from reactor_tool.tool.report import report
-from reactor_tool.tool.code_interpreter import code_interpreter_agent
 from reactor_tool.util.middleware_util import RequestHandlerRoute
-from reactor_tool.tool.deepsearch import DeepSearch
-from reactor_tool.tool.auto_analysis import AutoAnalysisAgent
-from reactor_tool.tool.nl2sql import NL2SQLAgent
-from reactor_tool.tool.table_rag import TableRAGAgent
-from reactor_tool.tool.plan_sop import PlanSOP
-from reactor_tool.tool.script_runner import run_script_request
 load_dotenv()
 
 
@@ -52,6 +45,9 @@ router = APIRouter(route_class=RequestHandlerRoute)
 async def post_code_interpreter(
     body: CIRequest,
 ):
+    # 按需导入重型依赖，避免仅使用轻量路由时被 smolagents 等可选依赖阻塞。
+    from reactor_tool.tool.code_interpreter import code_interpreter_agent
+
      # 处理文件路径
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
@@ -190,6 +186,8 @@ async def post_code_interpreter(
 async def post_report(
     body: ReportRequest,
 ):
+    from reactor_tool.tool.report import report
+
     # 处理文件路径
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
@@ -294,6 +292,8 @@ async def post_deepsearch(
     body: DeepSearchRequest,
 ):
     """深度搜索端点"""
+    from reactor_tool.tool.deepsearch import DeepSearch
+
     deepsearch = DeepSearch(engines=body.search_engines)
     async def _stream():
         async for chunk in deepsearch.run(
@@ -313,6 +313,8 @@ async def post_deepsearch(
 async def post_table_rag(
     body: TableRAGRequest,
 ):
+    from reactor_tool.tool.table_rag import TableRAGAgent
+
     request_id = body.request_id
     query = body.query
     modelCodeList = body.model_code_list
@@ -343,6 +345,8 @@ async def post_table_rag(
 @router.post("/cal_engine")
 async def cal_engine(body: CalEngineRequest):
     """根据用户获取数据和用户 query 生成指标计算公式"""
+    from reactor_tool.util.llm_util import ask_llm
+
     prompt = Template(get_prompt("analysis")["cal_engine_prompt"]).render(
         query=body.query,
         data=body.data,
@@ -355,6 +359,8 @@ async def cal_engine(body: CalEngineRequest):
 
 @router.post("/auto_analysis")
 async def auto_analysis(body: AutoAnalysisRequest):
+    from reactor_tool.tool.auto_analysis import AutoAnalysisAgent
+
     if body.stream:
         queue = asyncio.Queue()
         async def _stream(queue):
@@ -395,6 +401,8 @@ async def post_nl2sql(body: NL2SQLRequest):
     """
     text_2_sql
     """
+    from reactor_tool.tool.nl2sql import NL2SQLAgent
+
     nl2sql_queue = asyncio.Queue()
     if body.stream:
         async def _stream(queue):
@@ -434,6 +442,8 @@ async def post_nl2sql(body: NL2SQLRequest):
 async def post_sop_recall(
     body: SopChooseRequest,
 ):
+    from reactor_tool.tool.plan_sop import PlanSOP
+
     request_id = body.request_id
     query = body.query
     sop_list = body.sop_list
@@ -446,7 +456,107 @@ async def post_sop_recall(
 @router.post("/script_runner")
 async def post_script_runner(body: ScriptRunnerRequest):
     """skill 脚本执行端点"""
+    from reactor_tool.tool.script_runner import run_script_request
+
     response = await run_script_request(body)
     return response.model_dump(by_alias=True)
+
+
+def _build_mrag_chunk(content: str, finish_reason: str | None = None) -> dict:
+    """统一输出与 Java 侧兼容的 OpenAI SSE 片段结构。"""
+    return {
+        "id": "chatcmpl-mrag",
+        "choices": [
+            {
+                "delta": {
+                    "content": content,
+                },
+                "finishReason": finish_reason,
+                "index": 0,
+            }
+        ],
+        "created": int(time.time()),
+        "model": "mrag-agent",
+        "object": "chat.completion.chunk",
+    }
+
+
+def build_mrag_agent(kb_id: str):
+    """按需加载 MRAG 实现，避免在未安装检索依赖时阻塞服务启动。"""
+    from reactor_tool.tool.mrag.query import AgenticRAG
+
+    return AgenticRAG(kb_id=kb_id, n_round=3)
+
+
+def _normalize_mrag_chunk(chunk) -> dict | None:
+    """兼容 OpenAI SDK chunk、字典和纯文本三种返回形态。"""
+    if chunk is None:
+        return None
+
+    if isinstance(chunk, str):
+        return _build_mrag_chunk(chunk)
+
+    if isinstance(chunk, dict):
+        choices = chunk.get("choices") or []
+        if not choices:
+            return chunk
+        choice = choices[0] or {}
+        delta = choice.get("delta") or {}
+        return _build_mrag_chunk(
+            delta.get("content", ""),
+            choice.get("finishReason") or choice.get("finish_reason"),
+        )
+
+    choices = getattr(chunk, "choices", None)
+    if choices:
+        choice = choices[0]
+        delta = getattr(choice, "delta", None)
+        return _build_mrag_chunk(
+            getattr(delta, "content", "") or "",
+            getattr(choice, "finish_reason", None) or getattr(choice, "finishReason", None),
+        )
+
+    model_dump = getattr(chunk, "model_dump", None)
+    if callable(model_dump):
+        return _normalize_mrag_chunk(model_dump())
+
+    return _build_mrag_chunk(str(chunk))
+
+
+@router.post("/mragQuery")
+async def post_mrag_query(body: MultimodalRAGRequest):
+    """MRAG 多模态知识检索端点。"""
+    kb_id = (body.kb_id or os.getenv("DEFAULT_KB_ID", "")).strip()
+    if not kb_id:
+        raise HTTPException(status_code=500, detail="DEFAULT_KB_ID is not configured")
+
+    agent = build_mrag_agent(kb_id)
+
+    def generator():
+        has_payload = False
+        try:
+            for chunk in agent.run(body.question, body.image_urls):
+                payload = _normalize_mrag_chunk(chunk)
+                if not payload:
+                    continue
+                has_payload = True
+                yield json.dumps(payload, ensure_ascii=False)
+        except TimeoutError:
+            logger.exception("mragQuery timeout")
+            yield json.dumps(_build_mrag_chunk("MRAG 检索超时，请稍后重试。", "stop"), ensure_ascii=False)
+        except Exception as e:
+            logger.exception("mragQuery failed")
+            yield json.dumps(_build_mrag_chunk(f"MRAG 检索失败：{e}", "stop"), ensure_ascii=False)
+        else:
+            if not has_payload:
+                yield json.dumps(_build_mrag_chunk("MRAG 未返回有效内容。", "stop"), ensure_ascii=False)
+
+        yield "[DONE]"
+
+    return EventSourceResponse(
+        generator(),
+        ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),
+        ping=15,
+    )
 
 

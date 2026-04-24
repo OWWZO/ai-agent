@@ -61,6 +61,7 @@ public class AgentToolCollectionFactoryTest {
                         "code_interpreter",
                         "report_tool",
                         "deep_search",
+                        "multimodalagent_tool",
                         "skill_tool",
                         "read_tool",
                         "list_directory_tool",
@@ -98,6 +99,56 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+    }
+
+    @Test
+    public void shouldNotIncludeMultiModalAgentWhenRemovedFromDefaultList() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report\"}");
+
+        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder()
+                        .enabled(false)
+                        .reactEnabled(false)
+                        .planSolveEnabled(false)
+                        .build(),
+                Mockito.mock(SkillScriptRunnerClient.class)
+        );
+
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+    }
+
+    @Test
+    public void shouldKeepDataAgentToolingStableWithoutMultiModalAgent() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+                buildReactorConfig(),
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder()
+                        .enabled(false)
+                        .reactEnabled(false)
+                        .planSolveEnabled(false)
+                        .build(),
+                Mockito.mock(SkillScriptRunnerClient.class)
+        );
+
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("dataAgent"));
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("report_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("data_analysis"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
     }
 
     private DefaultSkillRegistry createRegistry(boolean reactEnabled, boolean planSolveEnabled) throws Exception {
@@ -117,7 +168,7 @@ public class AgentToolCollectionFactoryTest {
 
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report,multimodalagent\"}");
         return reactorConfig;
     }
 

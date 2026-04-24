@@ -164,4 +164,47 @@ public class ConversationHistoryArtifactTest {
         Assert.assertEquals("legacy-report", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
         Assert.assertNull(payload.getJSONObject("resultMap").getJSONObject("resultMap").get("fileInfo"));
     }
+
+    @Test
+    public void test_mragMarkdownArtifactCanReplayThroughExistingPayload() {
+        ConversationReplayAssembler assembler = new ConversationReplayAssembler();
+        AgentMessage message = AgentMessage.builder()
+                .id(4L)
+                .requestId("req-004")
+                .sortOrder(1)
+                .query("总结多模态检索核心能力")
+                .agentType(2)
+                .status(1)
+                .forceStop(0)
+                .build();
+
+        AgentMessageEvent event = AgentMessageEvent.builder()
+                .messageId(4L)
+                .seqNo(1)
+                .eventType("markdown")
+                .eventSubType("report")
+                .title("多模态检索结果")
+                .payloadJson("""
+                        {
+                          "messageType":"markdown",
+                          "artifactRefs":[
+                            {
+                              "displayName":"多模态检索结果.md",
+                              "resourceKey":"mrag-result-md",
+                              "downloadUrl":"https://file.example.com/download/mrag-result-md",
+                              "previewUrl":"https://file.example.com/preview/mrag-result-md",
+                              "missing":false
+                            }
+                          ]
+                        }
+                        """)
+                .status("completed")
+                .build();
+
+        List<ConversationTurnDetail> turns = assembler.assembleTurns(List.of(message), Map.of(4L, List.of(event)));
+        JSONObject payload = (JSONObject) turns.get(0).getEvents().get(0).getPayload();
+
+        Assert.assertEquals("mrag-result-md", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
+        Assert.assertEquals("多模态检索结果.md", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("displayName"));
+    }
 }

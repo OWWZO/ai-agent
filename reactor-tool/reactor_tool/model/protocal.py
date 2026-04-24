@@ -11,7 +11,7 @@ import hashlib
 from typing import Dict, Optional, Literal, List, Any
 
 
-from pydantic import BaseModel, Field, computed_field, ConfigDict
+from pydantic import BaseModel, Field, computed_field, ConfigDict, field_validator
 
 
 class StreamMode(BaseModel):
@@ -168,3 +168,19 @@ class ScriptRunnerResponse(BaseModel):
     stderr: str = Field(default="", description="错误输出")
     summary: str = Field(default="", description="执行摘要")
     file_info: List[ScriptRunnerFileInfo] = Field(default_factory=list, alias="fileInfo", description="产出文件")
+
+
+class MultimodalRAGRequest(BaseModel):
+    """MRAG 查询请求"""
+
+    question: str = Field(default="", min_length=1, description="文本检索问题")
+    image_urls: List[str] = Field(default_factory=list, description="图片 URL 列表")
+    kb_id: Optional[str] = Field(default="", description="知识库 ID，缺省时回退默认知识库")
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        normalized = value.strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("question 不能为空")
+        return normalized

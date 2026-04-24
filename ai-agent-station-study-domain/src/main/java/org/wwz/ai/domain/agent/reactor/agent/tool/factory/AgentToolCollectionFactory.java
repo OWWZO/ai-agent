@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.common.CodeInterpreterTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.DataAnalysisTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.FileTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.ReportTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.GlobTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.GrepTool;
@@ -68,7 +69,7 @@ public class AgentToolCollectionFactory {
             toolCollection.addTool(fileTool);
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,code,report")
+                            .getOrDefault("default", "search,code,report,multimodalagent")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -88,6 +89,11 @@ public class AgentToolCollectionFactory {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();
                 deepSearchTool.setAgentContext(agentContext);
                 toolCollection.addTool(deepSearchTool);
+            }
+            if (agentToolList.contains("multimodalagent")) {
+                MultiModalAgent multiModalAgent = new MultiModalAgent();
+                multiModalAgent.setAgentContext(agentContext);
+                toolCollection.addTool(multiModalAgent);
             }
             if (agentToolList.contains("data_analysis")) {
                 DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
