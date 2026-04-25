@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+
+# MCP config contains absolute paths, don't commit
+.claude/settings.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store

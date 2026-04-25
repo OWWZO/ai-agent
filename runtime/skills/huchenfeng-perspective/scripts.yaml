@@ -1,0 +1,9 @@
+scripts:
+  search:
+    path: scripts/search.py
+    runtime: python
+    description: 从 490 份户晨风直播文字稿向量索引中语义检索相关原始语录，并生成 markdown 结果文件。
+  build_index:
+    path: scripts/build_index.py
+    runtime: python
+    description: 从新的户晨风直播文字稿目录重建向量索引，默认覆盖 tools/vector_index.json。

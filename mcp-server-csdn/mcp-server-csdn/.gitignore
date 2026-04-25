@@ -2,12 +2,6 @@ target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
-node_modules/
-dist/
-coverage/
-*.log
-.env
-.env.*
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
@@ -43,19 +37,5 @@ build/
 ### Mac OS ###
 .DS_Store
 /.idea/
-/ai-agent-station-study-app/data/
+/.local-config
 /data/
-/ai-agent-station-study-app/.local-config
-__pycache__/
-*.pyc
-.venv/
-venv/
-# Runtime skills — exclude generated files but keep source code
-runtime/skills/*/__pycache__/
-runtime/skills/*/*.pyc
-runtime/skills/*/.venv/
-runtime/skills/*/output/
-runtime/skills/*/tools/vector_index.json
-Thumbs.db
-*.tmp
-*.swp
