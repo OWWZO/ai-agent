@@ -3,7 +3,6 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
 import org.wwz.ai.domain.agent.reactor.data.TableColumn;
@@ -109,9 +108,7 @@ public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, C
      * 按模型编码清理历史 schema，避免应用每次启动重复初始化后越积越多。
      */
     public void cleanModelSchema(String modelCode) {
-        LambdaQueryWrapper<ChatModelSchema> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ChatModelSchema::getModelCode, modelCode);
-        remove(queryWrapper);
+        baseMapper.deletePhysicalByModelCode(modelCode);
     }
 
     /**

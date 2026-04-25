@@ -55,3 +55,21 @@ autobots:
       max-glob-results: 100
       max-grep-matches: 100
       default-script-timeout-seconds: 120
+  data-agent:
+    agent-url: http://127.0.0.1:1601
+    force-refresh: false
+    es-config:
+      enable: false
+      host: 127.0.0.1:9200
+      scheme: http
+      user: user
+      password: pwd
+      apiKey:
+    qdrantConfig:
+      enable: false
+      url: https://test-qdrant.example.com
+      embeddingUrl: http://127.0.0.1:1601/v1/tool/embedding/text
+      host: 127.0.0.1
+      port: 6334
+      apiKey: test-key
+      preferGrpc: true

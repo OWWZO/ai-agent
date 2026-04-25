@@ -10,6 +10,9 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sse_starlette.sse import AppStatus
+
+from reactor_tool.tool.mrag.storage.qdrant_vector_store import QdrantVectorStore
 
 if "litellm" not in sys.modules:
     litellm_stub = types.ModuleType("litellm")
@@ -33,9 +36,16 @@ tool_router = tool_module.router
 class MragApiTest(unittest.TestCase):
 
     def setUp(self):
+        # sse-starlette 会缓存全局退出事件；测试之间复用时需要重置，避免事件循环串用。
+        AppStatus.should_exit = False
+        AppStatus.should_exit_event = None
         app = FastAPI()
         app.include_router(tool_router, prefix="/v1/tool")
         self.client = TestClient(app)
+
+    def tearDown(self):
+        AppStatus.should_exit = False
+        AppStatus.should_exit_event = None
 
     def test_should_stream_openai_compatible_chunks_and_done(self):
         with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-test"}, clear=False):
@@ -113,6 +123,31 @@ class MragApiTest(unittest.TestCase):
         error_chunk = json.loads(events[0])
         self.assertEqual("stop", error_chunk["choices"][0]["finishReason"])
         self.assertIn("MRAG 检索失败", error_chunk["choices"][0]["delta"]["content"])
+
+    def test_should_build_mrag_qdrant_client_from_shared_config(self):
+        with patch.dict(
+            os.environ,
+            {
+                "QDRANT_URL": "https://shared-qdrant.example.com",
+                "QDRANT_PORT": "6334",
+                "QDRANT_API_KEY": "shared-key",
+                "QDRANT_PREFER_GRPC": "true",
+            },
+            clear=False,
+        ):
+            with patch("reactor_tool.tool.mrag.storage.qdrant_vector_store.build_qdrant_client") as build_client:
+                sentinel_client = object()
+                build_client.return_value = sentinel_client
+
+                vector_store = QdrantVectorStore(config={})
+
+        self.assertIs(sentinel_client, vector_store.client)
+        build_client.assert_called_once()
+        _, kwargs = build_client.call_args
+        self.assertEqual("https://shared-qdrant.example.com", kwargs["url"])
+        self.assertEqual(6334, kwargs["port"])
+        self.assertEqual("shared-key", kwargs["api_key"])
+        self.assertTrue(kwargs["prefer_grpc"])
 
 
 if __name__ == "__main__":

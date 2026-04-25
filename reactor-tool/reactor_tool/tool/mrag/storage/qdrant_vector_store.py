@@ -30,6 +30,7 @@ from .base_vector_store import BaseVectorStore, BaseCollectionVectorStore
 from .models.image_chunk_model import ImageChunkModel
 from .models.text_chunk_model import TextChunkModel
 from ..utils.logger_utils import logger
+from reactor_tool.util.qdrant_utils import build_qdrant_client, resolve_shared_qdrant_config
 
 dotenv.load_dotenv()
 
@@ -60,22 +61,21 @@ class QdrantVectorStore(BaseVectorStore):
 
     def _create_client(self) -> QdrantClient:
         """创建 Qdrant 客户端"""
-        url = os.getenv("QDRANT_URL")
-        port = int(os.getenv("QDRANT_PORT"))
-        api_key = os.getenv("QDRANT_API_KEY")
         timeout = float(os.getenv("QDRANT_TIMEOUT", "30"))
-        prefer_grpc = _env_bool("QDRANT_PREFER_GRPC", True)
+        config = resolve_shared_qdrant_config()
 
         logger.info(
-            f"Creating Qdrant client with url: {url}, port: {port}, prefer_grpc: {prefer_grpc}"
+            f"Creating Qdrant client with url: {config.get('url')}, host: {config.get('host')}, "
+            f"port: {config.get('port')}, prefer_grpc: {config.get('prefer_grpc')}"
         )
 
-        client = QdrantClient(
-            url=url,
-            grpc_port=port,
+        client = build_qdrant_client(
+            url=config.get("url"),
+            host=config.get("host"),
+            port=config.get("port"),
             timeout=timeout,
-            prefer_grpc=prefer_grpc,
-            api_key=api_key,
+            prefer_grpc=config.get("prefer_grpc"),
+            api_key=config.get("api_key"),
         )
         return client
 

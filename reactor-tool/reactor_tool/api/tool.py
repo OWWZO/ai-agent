@@ -8,12 +8,14 @@
 import asyncio
 import contextvars
 import json
+import math
 import os
 import threading
 import time
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from jinja2 import Template
 from loguru import logger
 from sse_starlette import ServerSentEvent, EventSourceResponse
@@ -30,6 +32,8 @@ from reactor_tool.model.protocal import (
     SopChooseRequest,
     ScriptRunnerRequest,
     MultimodalRAGRequest,
+    EmbeddingProxyRequest,
+    EmbeddingProxyResponse,
 )
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.prompt_util import get_prompt
@@ -39,6 +43,28 @@ load_dotenv()
 
 
 router = APIRouter(route_class=RequestHandlerRoute)
+
+
+def _error_response(status_code: int, message: str) -> JSONResponse:
+    """统一错误响应结构，便于 Java 侧直连排障。"""
+    return JSONResponse(status_code=status_code, content={"message": message})
+
+
+def _normalize_vector(vector: list[float]) -> list[float]:
+    """按 L2 范数归一化单条向量。"""
+    if not vector:
+        return vector
+    norm = math.sqrt(sum(component * component for component in vector))
+    if norm <= 0:
+        return vector
+    return [float(component / norm) for component in vector]
+
+
+def _normalize_vector_batch(vectors: list[list[float]], normalize: bool) -> list[list[float]]:
+    """根据请求参数决定是否执行批量归一化。"""
+    if not normalize:
+        return vectors
+    return [_normalize_vector(vector) for vector in vectors]
 
 
 @router.post("/code_interpreter")
@@ -307,6 +333,30 @@ async def post_deepsearch(
         yield ServerSentEvent(data="[DONE]")
 
     return EventSourceResponse(_stream(), ping_message_factory=lambda: ServerSentEvent(data="heartbeat"), ping=15)
+
+
+@router.post("/embedding/text")
+async def post_text_embedding(body: EmbeddingProxyRequest):
+    """共享文本向量代理端点。"""
+    from reactor_tool.tool.mrag.embedding.text_embedding import get_text_embedding_model
+
+    try:
+        embedding_model = get_text_embedding_model()
+        vectors = embedding_model.encode_text_batch(body.inputs)
+        normalized_vectors = _normalize_vector_batch(vectors, body.normalize)
+        dimension = len(normalized_vectors[0]) if normalized_vectors else None
+        response = EmbeddingProxyResponse(
+            vectors=normalized_vectors,
+            dimension=dimension,
+            model=os.getenv("TEXT_EMBEDDING_MODEL_NAME"),
+        )
+        return response.model_dump()
+    except TimeoutError:
+        logger.exception("embedding/text timeout")
+        return _error_response(504, "共享文本向量服务调用超时")
+    except Exception as exc:
+        logger.exception("embedding/text failed")
+        return _error_response(502, f"共享文本向量服务调用失败: {exc}")
 
 
 @router.post("/table_rag")

@@ -2,6 +2,7 @@ package org.wwz.ai.domain.agent.reactor.config;
 
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
@@ -16,6 +17,7 @@ import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
 import org.wwz.ai.domain.agent.reactor.data.jdbc.connection.JdbcConnectionFactory;
 import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
+import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
 import org.wwz.ai.domain.agent.reactor.service.QdrantService;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
@@ -34,6 +36,8 @@ public class DataAgentInitRunner implements CommandLineRunner {
     private ChatModelInfoService chatModelInfoService;
     @Autowired
     private ColumnValueSyncService columnValueSyncService;
+    @Autowired
+    private EmbeddingService embeddingService;
     @Autowired(required = false)
     private SkillRegistry skillRegistry;
 
@@ -41,6 +45,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         log.info("dataAgent config:{}", dataAgentConfig);
+        boolean forceRefresh = Boolean.TRUE.equals(dataAgentConfig.getForceRefresh());
         
         // H2数据库初始化：如果配置为H2且存在初始化脚本，则执行初始化
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
@@ -60,21 +65,21 @@ public class DataAgentInitRunner implements CommandLineRunner {
             }
         }
 
-        try {
-            chatModelInfoService.initModelInfo(dataAgentConfig);
-        } catch (Exception e) {
-            log.error("Failed to init model info", e);
-        }
+        prepareQdrantCapability(forceRefresh);
+        prepareEsCapability(forceRefresh);
 
-        QdrantConfig qdrantConfig = dataAgentConfig.getQdrantConfig();
-        if (qdrantConfig.getEnable()) {
-            qdrantService.createCosineCollection(DataAgentConstants.SCHEMA_COLLECTION_NAME, 1024);
-            log.info("qdrant collection init success");
-        }
-        EsConfig esConfig = dataAgentConfig.getEsConfig();
-        if (esConfig.getEnable()) {
-            columnValueSyncService.initColumnValueIndex();
-            log.info("column value es index init success");
+        try {
+            if (forceRefresh) {
+                chatModelInfoService.refreshModelInfo(dataAgentConfig);
+            } else {
+                chatModelInfoService.initModelInfo(dataAgentConfig);
+            }
+        } catch (Exception e) {
+            if (forceRefresh) {
+                log.error("强制刷新失败，终止启动流程", e);
+                throw e;
+            }
+            log.error("Failed to init model info", e);
         }
 
         if (skillRegistry != null) {
@@ -84,6 +89,73 @@ public class DataAgentInitRunner implements CommandLineRunner {
             } catch (Exception e) {
                 log.error("Failed to init skill registry", e);
             }
+        }
+    }
+
+    private void prepareQdrantCapability(boolean forceRefresh) throws Exception {
+        QdrantConfig qdrantConfig = dataAgentConfig.getQdrantConfig();
+        if (!Boolean.TRUE.equals(qdrantConfig.getEnable())) {
+            return;
+        }
+        try {
+            if (!embeddingService.healthCheck()) {
+                throw new IllegalStateException("共享文本向量代理不可用");
+            }
+            int dimension = resolveEmbeddingDimension();
+            if (forceRefresh) {
+                qdrantService.recreateCosineCollection(DataAgentConstants.SCHEMA_COLLECTION_NAME, dimension);
+            } else {
+                qdrantService.createCosineCollection(DataAgentConstants.SCHEMA_COLLECTION_NAME, dimension);
+            }
+            log.info("qdrant collection init success");
+        } catch (Exception e) {
+            handleCapabilityFailure("qdrant", forceRefresh, e);
+            qdrantConfig.setEnable(false);
+            if (forceRefresh) {
+                throw e;
+            }
+        }
+    }
+
+    private void prepareEsCapability(boolean forceRefresh) throws Exception {
+        EsConfig esConfig = dataAgentConfig.getEsConfig();
+        if (!Boolean.TRUE.equals(esConfig.getEnable())) {
+            return;
+        }
+        try {
+            if (forceRefresh) {
+                columnValueSyncService.recreateColumnValueIndex();
+            } else {
+                columnValueSyncService.initColumnValueIndex();
+            }
+            log.info("column value es index init success");
+        } catch (Exception e) {
+            handleCapabilityFailure("es", forceRefresh, e);
+            esConfig.setEnable(false);
+            if (forceRefresh) {
+                throw e;
+            }
+        }
+    }
+
+    private void handleCapabilityFailure(String capability, boolean forceRefresh, Exception e) {
+        if (forceRefresh) {
+            log.error("{} capability force-refresh failed", capability, e);
+            return;
+        }
+        log.warn("{} capability degraded and disabled: {}", capability, e.getMessage(), e);
+    }
+
+    private int resolveEmbeddingDimension() {
+        String dimension = System.getenv("TEXT_EMBEDDING_DIMENSION");
+        if (StringUtils.isBlank(dimension)) {
+            return 1024;
+        }
+        try {
+            return Integer.parseInt(dimension);
+        } catch (NumberFormatException e) {
+            log.warn("TEXT_EMBEDDING_DIMENSION 非法，回退默认值 1024: {}", dimension);
+            return 1024;
         }
     }
 }

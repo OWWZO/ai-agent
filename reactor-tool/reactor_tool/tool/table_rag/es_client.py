@@ -9,6 +9,36 @@ from reactor_tool.util.log_util import logger
 # 加载 .env 文件
 load_dotenv()
 
+
+def _trimmed(value):
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _resolve_es_url(host, scheme):
+    normalized_host = _trimmed(host)
+    if not normalized_host:
+        raise ValueError("Elasticsearch host is required (TR_ES_CONFIGS_HOST)")
+    if "://" in normalized_host:
+        return normalized_host.rstrip("/")
+    normalized_scheme = _trimmed(scheme) or "http"
+    return f"{normalized_scheme}://{normalized_host}"
+
+
+def _resolve_auth_kwargs(config):
+    api_key = _trimmed(config.get("api_key"))
+    if api_key:
+        return {"api_key": api_key}
+
+    user = _trimmed(config.get("user"))
+    password = config.get("password")
+    if user:
+        return {"http_auth": (user, password or "")}
+    return {}
+
+
 def get_docs(func):
     def wrapper(*args, **kwargs):
         doc = func(*args, **kwargs)["hits"]["hits"]
@@ -30,17 +60,11 @@ class ElasticsearchClient:
     def __init__(self, config):
         host = config.get("host")
         scheme = config.get("scheme", "http")
-
-        if not host or (isinstance(host, str) and not host.strip()):
-            raise ValueError("Elasticsearch host is required (TR_ES_CONFIGS_HOST)")
-
-        es_url = f"{scheme}://{host}"
-        user = config.get("user")
-        password = config.get("password")
-        http_auth = (user, password) if (user and password) else None
+        es_url = _resolve_es_url(host, scheme)
+        auth_kwargs = _resolve_auth_kwargs(config)
 
         try:
-            self._client = Elasticsearch(es_url, http_auth=http_auth)
+            self._client = Elasticsearch(es_url, **auth_kwargs)
             self._thread_pool = ThreadPoolExecutor(max_workers=8)
         except Exception as e:
             logger.error(f"[ElasticsearchClient] Failed to connect: {e}")
@@ -148,10 +172,11 @@ def main():
     config = {}
     config["host"] = os.getenv("TR_ES_CONFIGS_HOST")
     config["port"] = os.getenv("port")
-    config["scheme"] = "http"
+    config["scheme"] = os.getenv("TR_ES_CONFIGS_SCHEME", "http")
     config["user"] = os.getenv("TR_ES_CONFIGS_USER")
     config["password"] = os.getenv("TR_ES_CONFIGS_PASSWORD")
-    es_index = config.get("TR_ES_CONFIGS_INDEX", None)
+    config["api_key"] = os.getenv("TR_ES_CONFIGS_API_KEY")
+    es_index = os.getenv("TR_ES_CONFIGS_INDEX", None)
     
     es_client = ElasticsearchClient(config)
     print(config)

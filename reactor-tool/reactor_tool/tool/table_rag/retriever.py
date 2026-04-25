@@ -10,9 +10,18 @@ import requests
 from reactor_tool.util.log_util import logger
 from reactor_tool.tool.table_rag.es_client import ElasticsearchClient
 from reactor_tool.tool.table_rag.qdrant_recall import get_qd_recall, get_qd_server_recall
+from reactor_tool.util.qdrant_utils import has_direct_qdrant_config, resolve_table_rag_qdrant_config
 
 # 加载 .env 文件
 load_dotenv()
+
+
+def _first_non_blank_env(*names, default=None):
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
 
 
 def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
@@ -65,12 +74,13 @@ class Retriever:
     def get_es_client(self):
         # 读取环境变量
         config = {}
-        config["host"] = os.getenv("TR_ES_CONFIGS_HOST")
+        config["host"] = _first_non_blank_env("TR_ES_CONFIGS_HOST", "DATA_AGENT_ES_HOST")
         config["port"] = os.getenv("port")
-        config["scheme"] = "http"
-        config["user"] = os.getenv("TR_ES_CONFIGS_USER")
-        config["password"] = os.getenv("TR_ES_CONFIGS_PASSWORD")
-        self.es_index = os.getenv("TR_ES_CONFIGS_INDEX", None)
+        config["scheme"] = _first_non_blank_env("TR_ES_CONFIGS_SCHEME", "DATA_AGENT_ES_SCHEME", default="http")
+        config["user"] = _first_non_blank_env("TR_ES_CONFIGS_USER", "DATA_AGENT_ES_USER")
+        config["password"] = _first_non_blank_env("TR_ES_CONFIGS_PASSWORD", "DATA_AGENT_ES_PASSWORD")
+        config["api_key"] = _first_non_blank_env("TR_ES_CONFIGS_API_KEY", "DATA_AGENT_ES_API_KEY")
+        self.es_index = _first_non_blank_env("TR_ES_CONFIGS_INDEX", default="reactor_model_column_value")
 
         # 未配置 ES 时不初始化客户端，避免因无 ES 导致 table_rag 报错
         host = config.get("host")
@@ -103,14 +113,16 @@ class Retriever:
             return {}
 
     async def qdrant_recall(self, query, model_code_list):
-        QDRANT_ENABLE = os.getenv("TR_QDRANT_ENABLE", "false").lower() == "true"
-        TR_QDRANT_HOST = os.getenv("TR_QDRANT_HOST", None)
+        qdrant_enable_env = os.getenv("TR_QDRANT_ENABLE")
+        if qdrant_enable_env is None:
+            qdrant_enable_env = os.getenv("DATA_AGENT_QDRANT_ENABLE", "false")
+        QDRANT_ENABLE = qdrant_enable_env.lower() == "true"
         TR_QDRANT_URL = os.getenv("TR_QDRANT_URL", None)
         if not QDRANT_ENABLE:
             return []
         if TR_QDRANT_URL:
             data = get_qd_server_recall(query, model_code_list)
-        elif TR_QDRANT_HOST:
+        elif has_direct_qdrant_config(resolve_table_rag_qdrant_config()):
             data = get_qd_recall(query, model_code_list)
         else:
             data = []

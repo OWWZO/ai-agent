@@ -17,7 +17,14 @@ public class Es7HighLevelClientConfig {
     @Bean(name = "dataAgentEsClient")
     public RestHighLevelClient dataAgentEsClient() {
         EsConfig esConfig = dataAgentConfig.getEsConfig();
-        return ESUtil.buildRestClient(esConfig.getHost(), esConfig.getUser(), esConfig.getPassword(), 30000);
+        return ESUtil.buildRestClient(
+                esConfig.getHost(),
+                esConfig.getUser(),
+                esConfig.getPassword(),
+                esConfig.getApiKey(),
+                30000,
+                esConfig.getScheme()
+        );
     }
 
 

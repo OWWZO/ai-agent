@@ -184,3 +184,31 @@ class MultimodalRAGRequest(BaseModel):
         if not normalized:
             raise ValueError("question 不能为空")
         return normalized
+
+
+class EmbeddingProxyRequest(BaseModel):
+    """共享文本向量代理请求"""
+
+    inputs: List[str] = Field(min_length=1, description="需要批量向量化的文本列表")
+    normalize: bool = Field(default=True, description="是否执行 L2 归一化")
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_inputs(cls, value: List[str]) -> List[str]:
+        normalized_inputs = []
+        for item in value or []:
+            normalized = item.strip() if item is not None else ""
+            if not normalized:
+                raise ValueError("inputs 中不能包含空字符串")
+            normalized_inputs.append(normalized)
+        if not normalized_inputs:
+            raise ValueError("inputs 不能为空")
+        return normalized_inputs
+
+
+class EmbeddingProxyResponse(BaseModel):
+    """共享文本向量代理返回"""
+
+    vectors: List[List[float]] = Field(default_factory=list, description="批量向量结果")
+    dimension: Optional[int] = Field(default=None, description="向量维度")
+    model: Optional[str] = Field(default=None, description="实际使用的模型名称")

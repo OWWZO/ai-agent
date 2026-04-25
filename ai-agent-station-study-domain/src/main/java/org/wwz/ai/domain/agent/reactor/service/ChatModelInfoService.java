@@ -3,7 +3,6 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.qdrant.client.grpc.Points;
 import lombok.extern.slf4j.Slf4j;
@@ -64,14 +63,25 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
 
 
     public void initModelInfo(DataAgentConfig dataAgentConfig) throws Exception {
+        initModelInfo(dataAgentConfig, false);
+    }
+
+    public void refreshModelInfo(DataAgentConfig dataAgentConfig) throws Exception {
+        initModelInfo(dataAgentConfig, true);
+    }
+
+    private void initModelInfo(DataAgentConfig dataAgentConfig, boolean forceRefresh) throws Exception {
         List<DataAgentModelConfig> tableList = dataAgentConfig.getModelList();
         if (CollectionUtils.isEmpty(tableList)) {
             log.warn("dataAgent.tableList is empty");
             return;
         }
-        if (hasActiveModelMetadata(tableList)) {
+        if (!forceRefresh && hasActiveModelMetadata(tableList)) {
             log.info("检测到问数模型元数据已存在，跳过本次初始化");
             return;
+        }
+        if (forceRefresh) {
+            cleanStaleModelMetadata(tableList.stream().map(DataAgentModelConfig::getId).collect(Collectors.toSet()));
         }
         for (DataAgentModelConfig modelConfig : tableList) {
             List<TableColumn> tableSchema = getModelSchema(modelConfig);
@@ -122,10 +132,17 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
      * 清理同一模型编码下的历史元数据，避免重复初始化。
      */
     public void cleanModelMetadata(String modelCode) {
-        LambdaQueryWrapper<ChatModelInfo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ChatModelInfo::getCode, modelCode);
-        remove(queryWrapper);
+        baseMapper.deletePhysicalByCode(modelCode);
         chatModelSchemaService.cleanModelSchema(modelCode);
+    }
+
+    public void cleanStaleModelMetadata(Set<String> activeModelCodes) {
+        List<ChatModelInfo> modelList = listDistinctModels();
+        for (ChatModelInfo modelInfo : modelList) {
+            if (!activeModelCodes.contains(modelInfo.getCode())) {
+                cleanModelMetadata(modelInfo.getCode());
+            }
+        }
     }
 
 

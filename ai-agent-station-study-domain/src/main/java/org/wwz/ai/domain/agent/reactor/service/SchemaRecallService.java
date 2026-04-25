@@ -52,7 +52,7 @@ public class SchemaRecallService {
         SearchRequest searchRequest = new SearchRequest(DataAgentConstants.COLUMN_VALUE_ES_INDEX);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-        boolQueryBuilder.filter(QueryBuilders.termsQuery("model_code", req.getModelCodeList()));
+        boolQueryBuilder.filter(QueryBuilders.termsQuery("modelCode", req.getModelCodeList()));
         boolQueryBuilder.must(QueryBuilders.matchQuery("value", req.getQuery()));
         sourceBuilder.query(boolQueryBuilder);
         sourceBuilder.sort(SortBuilders.scoreSort().order(SortOrder.DESC));

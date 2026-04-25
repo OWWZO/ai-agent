@@ -11,6 +11,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "autobots.data-agent")
 public class DataAgentConfig {
     private String agentUrl;
+    private Boolean forceRefresh = false;
     private List<DataAgentModelConfig> modelList;
     private QdrantConfig qdrantConfig;
     private DbConfig dbConfig;

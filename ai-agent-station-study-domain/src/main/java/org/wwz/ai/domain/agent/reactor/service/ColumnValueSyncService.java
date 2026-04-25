@@ -43,7 +43,23 @@ public class ColumnValueSyncService {
             return;
         }
         log.info("es index 不存在，开始创建");
-        ESUtil.createIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX, DataAgentConstants.COLUMN_VALUE_ES_MAPPING);
+        boolean created = ESUtil.createIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX, DataAgentConstants.COLUMN_VALUE_ES_MAPPING);
+        if (!created) {
+            throw new IllegalStateException("创建 ES 列值索引失败: " + DataAgentConstants.COLUMN_VALUE_ES_INDEX);
+        }
+    }
+
+    public void recreateColumnValueIndex() {
+        if (ESUtil.isExistsIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX)) {
+            boolean deleted = ESUtil.deleteIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX);
+            if (!deleted) {
+                throw new IllegalStateException("删除 ES 列值索引失败: " + DataAgentConstants.COLUMN_VALUE_ES_INDEX);
+            }
+        }
+        boolean created = ESUtil.createIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX, DataAgentConstants.COLUMN_VALUE_ES_MAPPING);
+        if (!created) {
+            throw new IllegalStateException("重建 ES 列值索引失败: " + DataAgentConstants.COLUMN_VALUE_ES_INDEX);
+        }
     }
 
     public String getTableName(ChatModelInfo modelInfo) {

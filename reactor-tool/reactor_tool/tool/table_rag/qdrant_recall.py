@@ -1,28 +1,28 @@
 
 import os
-import openai
-
 import time
 import requests
 import json
 
 from dotenv import load_dotenv
 from typing import List, Optional
-from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
 
 from reactor_tool.util.log_util import logger, timer
-from reactor_tool.util.qdrant_utils import EmbeddingClient
+from reactor_tool.util.qdrant_utils import (
+    EmbeddingClient,
+    build_qdrant_client,
+    has_direct_qdrant_config,
+    resolve_table_rag_qdrant_config,
+)
+from reactor_tool.tool.mrag.embedding.text_embedding import get_text_embedding_model
 
 load_dotenv()  # 加载 .env 文件
 
 
 class QdrantRecall(object):
     def __init__(self):
-        QDRANT_HOST = os.getenv("TR_QDRANT_HOST")
-        QDRANT_PORT = int(os.getenv("TR_QDRANT_PORT", 6334))
-        QDRANT_API_KEY = os.getenv("TR_QDRANT_API_KEY")
-        prefer_grpc = os.getenv("TR_QDRANT_PREFER_GRPC", "true").lower() in {"1", "true", "yes", "on"}
+        qdrant_config = resolve_table_rag_qdrant_config()
         
         self.collection_name = os.getenv("TR_QDRANT_COLLECTION_NAME")
         self.qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K', 20))
@@ -30,12 +30,13 @@ class QdrantRecall(object):
         self.qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD', 0.6))
         self.qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT', 30))
         
-        client = QdrantClient(
-            host=QDRANT_HOST,
-            grpc_port=int(QDRANT_PORT),
+        client = build_qdrant_client(
+            url=qdrant_config.get("url"),
+            host=qdrant_config.get("host"),
+            port=qdrant_config.get("port"),
             timeout=self.qdrant_timeout,
-            prefer_grpc=prefer_grpc,
-            api_key=QDRANT_API_KEY,
+            prefer_grpc=qdrant_config.get("prefer_grpc"),
+            api_key=qdrant_config.get("api_key"),
         )
         self.client = client
         
@@ -95,8 +96,11 @@ def get_qd_server_recall(query, model_code_list):
 @timer("table_rag")
 def get_qd_recall(query, model_code_list):
     embedding_url = os.getenv("TR_EMBEDDING_URL")
-    emb_client = EmbeddingClient(embedding_url)
-    query_vector = emb_client.get_vector(query)
+    if embedding_url:
+        emb_client = EmbeddingClient(embedding_url)
+        query_vector = emb_client.get_vector(query)
+    else:
+        query_vector = get_text_embedding_model().encode_text_batch([query])[0]
     
     qd_client = QdrantRecall()
     recall = qd_client.search(query_vector, model_code_list)

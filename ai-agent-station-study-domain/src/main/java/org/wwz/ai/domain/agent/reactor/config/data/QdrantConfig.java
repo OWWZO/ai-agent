@@ -4,9 +4,11 @@ import lombok.Data;
 
 @Data
 public class QdrantConfig {
-    private Boolean enable;
+    private Boolean enable = false;
+    private String url;
     private String host;
-    private int port;
+    private Integer port = 6334;
     private String apiKey;
     private String embeddingUrl;
+    private Boolean preferGrpc = true;
 }

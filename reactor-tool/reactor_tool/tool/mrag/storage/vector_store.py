@@ -98,6 +98,7 @@ class VectorStore:
                 store_type=self.store_type,
                 vector_store=self.base_store
             )
+            self._ensure_collection_ready(self._text_store, self.config.text_collection)
             logger.debug("Created text vector store")
         return self._text_store
 
@@ -112,6 +113,7 @@ class VectorStore:
                 store_type=self.store_type,
                 vector_store=self.base_store
             )
+            self._ensure_collection_ready(self._image_store, self.config.image_collection)
             logger.debug("Created image vector store")
         return self._image_store
 
@@ -126,8 +128,18 @@ class VectorStore:
                 store_type=self.store_type,
                 vector_store=self.base_store
             )
+            self._ensure_collection_ready(self._page_store, self.config.page_collection)
             logger.debug("Created page vector store")
         return self._page_store
+
+    def _ensure_collection_ready(self, store, collection_name: str):
+        """首次获取集合包装器时，顺手保证底层 collection 已就绪。"""
+        try:
+            store.create_collection()
+            logger.info(f"向量集合已就绪: {collection_name}")
+        except Exception as e:
+            logger.error(f"初始化向量集合失败: {collection_name}, error={e}")
+            raise
 
     # ==================== 集合管理 ====================
 

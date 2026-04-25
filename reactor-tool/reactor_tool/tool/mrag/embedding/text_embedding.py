@@ -58,8 +58,8 @@ class OpenAITextEmbedding(TextEmbedding):
 
 def get_text_embedding_model() -> TextEmbedding:
     """获取文本embedding模型"""
-    embedding_type = os.getenv("TEXT_EMBEDDING_TYPE")
-    if embedding_type.lower() == "openai":
+    embedding_type = (os.getenv("TEXT_EMBEDDING_TYPE") or "").strip().lower()
+    if embedding_type in {"openai", "openai_compatible", "openai-compatible"}:
         return OpenAITextEmbedding()
     else:
         raise ValueError(f"不支持的文本embedding模型: {embedding_type}")

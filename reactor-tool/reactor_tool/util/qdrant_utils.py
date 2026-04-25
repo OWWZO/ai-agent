@@ -4,6 +4,7 @@ import json
 import requests
 
 from typing import Optional, List
+from urllib.parse import urlparse
 
 
 import openai
@@ -29,6 +30,92 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _trimmed_env(name: str) -> Optional[str]:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _env_int(name: str, default: int) -> int:
+    value = _trimmed_env(name)
+    if value is None:
+        return default
+    return int(value)
+
+
+def resolve_shared_qdrant_config() -> dict:
+    """解析共享 Qdrant 配置。"""
+    return {
+        "url": _trimmed_env("QDRANT_URL"),
+        "host": _trimmed_env("QDRANT_HOST"),
+        "port": _env_int("QDRANT_PORT", 6334),
+        "api_key": _trimmed_env("QDRANT_API_KEY"),
+        "prefer_grpc": _env_bool("QDRANT_PREFER_GRPC", True),
+    }
+
+
+def resolve_data_agent_qdrant_config() -> dict:
+    """解析 DataAgent 专属 Qdrant 配置，不再回退共享 MRAG 配置。"""
+    override_url = _trimmed_env("DATA_AGENT_QDRANT_URL")
+    override_host = _trimmed_env("DATA_AGENT_QDRANT_HOST")
+    return {
+        "url": None if override_host else override_url,
+        "host": override_host,
+        "port": _env_int("DATA_AGENT_QDRANT_PORT", 6334),
+        "api_key": _trimmed_env("DATA_AGENT_QDRANT_API_KEY"),
+        "prefer_grpc": _env_bool("DATA_AGENT_QDRANT_PREFER_GRPC", True),
+    }
+
+
+def resolve_table_rag_qdrant_config() -> dict:
+    """解析 table_rag 直连 Qdrant 配置，优先级为 TR_QDRANT_* > DATA_AGENT_QDRANT_*。"""
+    data_agent_config = resolve_data_agent_qdrant_config()
+    override_host = _trimmed_env("TR_QDRANT_HOST")
+    return {
+        "url": None if override_host else data_agent_config["url"],
+        "host": override_host or data_agent_config["host"],
+        "port": _env_int("TR_QDRANT_PORT", data_agent_config["port"]),
+        "api_key": _trimmed_env("TR_QDRANT_API_KEY") or data_agent_config["api_key"],
+        "prefer_grpc": _env_bool("TR_QDRANT_PREFER_GRPC", data_agent_config["prefer_grpc"]),
+    }
+
+
+def has_direct_qdrant_config(config: dict) -> bool:
+    """判断是否存在可用于直连的 Qdrant 配置。"""
+    return bool(config.get("url") or config.get("host"))
+
+
+def build_qdrant_client(
+    *,
+    url: Optional[str],
+    host: Optional[str],
+    port: int,
+    api_key: Optional[str],
+    prefer_grpc: bool,
+    timeout: float,
+) -> QdrantClient:
+    """根据 url/host 二选一创建 Qdrant 客户端。"""
+    client_kwargs = {
+        "grpc_port": int(port),
+        "timeout": timeout,
+        "prefer_grpc": prefer_grpc,
+        "api_key": api_key,
+    }
+    if url:
+        parsed = urlparse(url)
+        if parsed.scheme:
+            client_kwargs["url"] = url
+        else:
+            client_kwargs["host"] = url
+    elif host:
+        client_kwargs["host"] = host
+    else:
+        raise ValueError("Qdrant host/url is required")
+    return QdrantClient(**client_kwargs)
 
 
 def get_embedding(text):
@@ -102,9 +189,10 @@ class QdrantRecall(object):
         prefer_grpc = _env_bool("TR_QDRANT_PREFER_GRPC", True)
         
         # 初始化 Qdrant 客户端
-        self.client = QdrantClient(
+        self.client = build_qdrant_client(
+            url=None,
             host=host,
-            grpc_port=int(port),
+            port=int(port),
             timeout=int(timeout),
             prefer_grpc=prefer_grpc,
             api_key=api_key,

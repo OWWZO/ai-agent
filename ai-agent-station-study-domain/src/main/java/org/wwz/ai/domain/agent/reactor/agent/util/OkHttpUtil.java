@@ -16,6 +16,9 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class OkHttpUtil {
+    private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 30L;
+    private static final long DEFAULT_READ_TIMEOUT_SECONDS = 300L;
+    private static final long DEFAULT_WRITE_TIMEOUT_SECONDS = 300L;
     private static volatile OkHttpClient okHttpClient;
 
     public static OkHttpClient getOkHttpClient() {
@@ -23,9 +26,9 @@ public class OkHttpUtil {
             synchronized (OkHttpUtil.class) {
                 if (okHttpClient == null) {
                     okHttpClient = new OkHttpClient.Builder()
-                            .connectTimeout(30, TimeUnit.SECONDS)
-                            .readTimeout(3000000, TimeUnit.SECONDS) // 增加到 300s
-                            .writeTimeout(600000, TimeUnit.SECONDS)
+                            .connectTimeout(DEFAULT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            .readTimeout(DEFAULT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            .writeTimeout(DEFAULT_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                             .connectionPool(new ConnectionPool(1000, 10, TimeUnit.MINUTES))
                             .build();
                 }
@@ -42,8 +45,9 @@ public class OkHttpUtil {
             synchronized (OkHttpClient.class) {
                 if (sseHttpClient == null) {
                     sseHttpClient = new OkHttpClient.Builder()
-                            .connectTimeout(300000, TimeUnit.SECONDS)
-                            .readTimeout(100000, TimeUnit.SECONDS)
+                            .connectTimeout(DEFAULT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            // SSE 连接需要保持长连接，读取超时设为 0 表示不限制
+                            .readTimeout(0, TimeUnit.SECONDS)
                             .connectionPool(new ConnectionPool(1000, 10, TimeUnit.MINUTES))
                             .build();
                 }
