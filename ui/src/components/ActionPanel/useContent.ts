@@ -1,3 +1,4 @@
+import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
 import { PanelItemType } from "./type";
 
 const useContent =  (taskItem?: PanelItemType) => {
@@ -38,6 +39,15 @@ const useContent =  (taskItem?: PanelItemType) => {
       break;
     case 'deep_search':
     case 'report':
+      // 查询分解阶段还没有搜索结果文档，用 Markdown 先把待检索子查询展示出来。
+      if (
+        messageType === 'deep_search' &&
+        resolveDeepSearchStage(resultMap?.messageType) === 'extend' &&
+        !resultMap?.answer
+      ) {
+        markDownContent = buildDeepSearchExtendMarkdown(resultMap?.searchResult?.query);
+        break;
+      }
       markDownContent = resultMap.answer || '';
       break;
     // case 'data_analysis':

@@ -33,4 +33,5 @@ declare global {
   }
 
   const SERVICE_BASE_URL: string;
+  const REACTOR_TOOL_BASE_URL: string;
 }

@@ -2,13 +2,13 @@ import { copyText, downloadFile, formatTimestamp, showMessage } from "@/utils";
 import { keyBy } from "lodash";
 import React, { useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
-import { FileRenderer, HTMLRenderer, PanelItemType, TableRenderer } from "../ActionPanel";
+import { FileRenderer, HTMLRenderer, ImageRenderer, PanelItemType, TableRenderer } from "../ActionPanel";
 import { useBoolean, useMemoizedFn } from "ahooks";
 import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getTaskFiles } from "@/utils/historyArtifacts";
+import { getTaskFiles, isImageFileLike } from "@/utils/historyArtifacts";
 import {
   FileText,
   Download,
@@ -94,6 +94,7 @@ const FileList: React.FC<{
     fileItem && "missingReason" in fileItem ? fileItem.missingReason : undefined;
   const downloadUrl =
     fileItem && "downloadUrl" in fileItem ? fileItem.downloadUrl : undefined;
+  const isImageFile = Boolean(fileItem && isImageFileLike(fileItem));
 
   const copy = useMemoizedFn(async () => {
     if (!fileItem?.url) return;
@@ -178,6 +179,17 @@ const FileList: React.FC<{
 
   // File Detail View
   const renderContent = () => {
+    if (isImageFile) {
+      return (
+        <ImageRenderer
+          imageUrl={fileItem.url}
+          fileName={fileItem.name}
+          missingReason={missingReason}
+          className="h-full"
+        />
+      );
+    }
+
     switch (fileItem.type) {
       case 'ppt':
       case 'html':
@@ -224,7 +236,7 @@ const FileList: React.FC<{
             </TooltipContent>
           </Tooltip>
 
-          {!['xlsx', 'xls'].includes(fileItem.type) && (
+          {!isImageFile && !['xlsx', 'xls'].includes(fileItem.type) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

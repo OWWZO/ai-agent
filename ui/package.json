@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build --mode production",
+    "test": "vitest run",
     "lint": "eslint .",
     "fix": "eslint . --fix",
     "preview": "vite preview"
@@ -94,6 +95,7 @@
     "typescript-eslint": "^8.22.0",
     "unique-commit-id": "^1.0.0",
     "vite": "^6.1.0",
-    "vite-plugin-mock": "^3.0.2"
+    "vite-plugin-mock": "^3.0.2",
+    "vitest": "^4.1.5"
   }
 }

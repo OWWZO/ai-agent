@@ -1,4 +1,9 @@
 import { getPrimaryTaskFile, normalizeHistoryFile } from "@/utils/historyArtifacts";
+import {
+  formatDeepSearchQueryText,
+  resolveDeepSearchActionText,
+  resolveDeepSearchStage,
+} from "@/utils/deepSearch";
 
 export const combineData = (
   eventData: MESSAGE.EventData,
@@ -44,6 +49,55 @@ export function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Ta
     ...(artifactRefs?.length ? { artifactRefs } : {}),
     ...eventData.resultMap,
   } as MESSAGE.Task;
+}
+
+function isImageGenerationToolResultTask(task?: Partial<MESSAGE.Task>) {
+  return task?.messageType === "tool_result" &&
+    task?.toolResult?.toolName === "image_generation_tool";
+}
+
+function isImageGenerationFileTask(task?: Partial<MESSAGE.Task>) {
+  return task?.messageType === "file" &&
+    task?.resultMap?.command === "生成图片";
+}
+
+function findLastTaskIndex(
+  tasks: MESSAGE.Task[],
+  matcher: (task: MESSAGE.Task) => boolean
+) {
+  for (let index = tasks.length - 1; index >= 0; index -= 1) {
+    if (matcher(tasks[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 图像生成会先后发 file / tool_result 两类事件。
+ * 前端统一把它们折叠成一个 tool_result 任务，既保留“工具调用”语义，又带上图片产物引用。
+ */
+function mergeImageGenerationToolTask(
+  toolTask: MESSAGE.Task,
+  fileTask: MESSAGE.Task
+): MESSAGE.Task {
+  const artifactRefs = Array.isArray(fileTask.artifactRefs)
+    ? [...fileTask.artifactRefs]
+    : Array.isArray(toolTask.artifactRefs)
+      ? [...toolTask.artifactRefs]
+      : undefined;
+  const mergedFileInfo = Array.isArray(fileTask.resultMap?.fileInfo)
+    ? [...fileTask.resultMap.fileInfo]
+    : toolTask.resultMap?.fileInfo;
+
+  return {
+    ...toolTask,
+    ...(artifactRefs?.length ? { artifactRefs } : {}),
+    resultMap: {
+      ...(toolTask.resultMap || {}),
+      ...(mergedFileInfo?.length ? { fileInfo: mergedFileInfo } : {}),
+    },
+  };
 }
 
 /**
@@ -160,7 +214,7 @@ function handleTaskMessageByType(
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "deep_search":
-      handleDeepSearchMessage(eventData, currentChat, taskIndex, toolIndex);
+      handleDeepSearchMessage(eventData, currentChat, taskIndex);
       break;
     default:
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
@@ -293,23 +347,23 @@ function handleContentMessage(
   if (taskIndex !== -1) {
     // 更新
     if (toolIndex !== -1) {
+      const targetTool = currentChat.multiAgent.tasks[taskIndex][toolIndex];
       // 已完成
       if (eventData.resultMap.resultMap.isFinal) {
-        currentChat.multiAgent.tasks[taskIndex][toolIndex].resultMap =
-                    {
-                      ...eventData.resultMap.resultMap,
-                      codeOutput: eventData.resultMap.resultMap.data,
-                    };
+        targetTool.resultMap = {
+          ...eventData.resultMap.resultMap,
+          codeOutput:
+            eventData.resultMap.resultMap.data ||
+            eventData.resultMap.resultMap.codeOutput ||
+            targetTool.resultMap?.codeOutput ||
+            "",
+        };
+        mergeTaskArtifactRefs(targetTool, eventData);
       } else {
         // 进行中
-        currentChat.multiAgent.tasks[taskIndex][
-          toolIndex
-        ].resultMap.isFinal = false;
-
-        currentChat.multiAgent.tasks[taskIndex][
-          toolIndex
-        ].resultMap.codeOutput +=
-                    eventData.resultMap.resultMap?.data || "";
+        targetTool.resultMap.isFinal = false;
+        targetTool.resultMap.codeOutput += eventData.resultMap.resultMap?.data || "";
+        mergeTaskArtifactRefs(targetTool, eventData);
       }
     } else {
       eventData.resultMap.resultMap = initializeResultMap(eventData.resultMap.resultMap);
@@ -357,7 +411,7 @@ export function handleExistingTask(
   resultMap: any
 ) {
   if (toolIndex !== -1) {
-    updateExistingTool(currentChat, taskIndex, toolIndex, resultMap);
+    updateExistingTool(currentChat, taskIndex, toolIndex, resultMap, eventData);
   } else {
     addNewTool(currentChat, taskIndex, eventData, resultMap);
   }
@@ -374,18 +428,20 @@ function updateExistingTool(
   currentChat: CHAT.ChatItem,
   taskIndex: number,
   toolIndex: number,
-  resultMap: any
+  resultMap: any,
+  eventData?: MESSAGE.EventData
 ) {
   const tool = currentChat.multiAgent.tasks[taskIndex][toolIndex];
   if (resultMap.isFinal) {
     tool.resultMap = {
       ...resultMap,
-      codeOutput: resultMap.data
+      codeOutput: resultMap.data || resultMap.codeOutput || tool.resultMap?.codeOutput || "",
     };
   } else {
     tool.resultMap.isFinal = false;
     tool.resultMap.codeOutput += resultMap.data || '';
   }
+  mergeTaskArtifactRefs(tool, eventData);
 }
 
 /**
@@ -405,6 +461,22 @@ function addNewTool(
     ...buildTaskFromEventData(eventData),
     resultMap: resultMap,
   } as MESSAGE.Task);
+}
+
+function mergeTaskArtifactRefs(targetTask: MESSAGE.Task | undefined, eventData?: MESSAGE.EventData) {
+  if (!targetTask || !eventData) {
+    return;
+  }
+
+  const artifactRefs = Array.isArray(eventData.artifactRefs)
+    ? [...eventData.artifactRefs]
+    : [];
+
+  if (!artifactRefs.length) {
+    return;
+  }
+
+  targetTask.artifactRefs = artifactRefs as any;
 }
 
 /**
@@ -436,10 +508,18 @@ export function handleNewTask(
 function handleDeepSearchMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem,
-  taskIndex: number,
-  toolIndex: number
+  taskIndex: number
 ) {
   const resultMap = eventData.resultMap.resultMap;
+  const stage = resolveDeepSearchStage(resultMap?.messageType);
+  const toolIndex =
+    taskIndex === -1
+      ? -1
+      : findDeepSearchToolIndex(
+        currentChat.multiAgent.tasks[taskIndex] || [],
+        eventData.messageId,
+        stage
+      );
 
   if (taskIndex !== -1) {
     if (toolIndex !== -1) {
@@ -450,6 +530,29 @@ function handleDeepSearchMessage(
   } else {
     addNewTask(currentChat, eventData);
   }
+}
+
+/**
+ * deep_search 的查询分解/搜索完成会复用同一条工具记录，
+ * 但总结阶段必须单独占一条记录，否则会把左侧“搜索完成”卡片直接覆盖成“正在总结”。
+ */
+function findDeepSearchToolIndex(
+  taskGroup: MESSAGE.Task[],
+  messageId: string | undefined,
+  stage: ReturnType<typeof resolveDeepSearchStage>
+): number {
+  return taskGroup.findIndex((item) => {
+    if (item.messageType !== "deep_search" || item.messageId !== messageId) {
+      return false;
+    }
+
+    const itemStage = resolveDeepSearchStage(item.resultMap?.messageType);
+    if (stage === "report") {
+      return itemStage === "report";
+    }
+
+    return itemStage !== "report";
+  });
 }
 
 /**
@@ -613,11 +716,37 @@ function handleNonStreamingMessage(
   currentChat: CHAT.ChatItem,
   taskIndex: number,
 ) {
+  const nextTask = buildTaskFromEventData(eventData);
+
   if (taskIndex !== -1) {
-    currentChat.multiAgent.tasks[taskIndex].push(buildTaskFromEventData(eventData));
+    const taskGroup = currentChat.multiAgent.tasks[taskIndex];
+
+    if (isImageGenerationToolResultTask(nextTask)) {
+      const fileTaskIndex = findLastTaskIndex(taskGroup, isImageGenerationFileTask);
+      if (fileTaskIndex !== -1) {
+        taskGroup[fileTaskIndex] = mergeImageGenerationToolTask(
+          nextTask,
+          taskGroup[fileTaskIndex]
+        );
+        return;
+      }
+    }
+
+    if (isImageGenerationFileTask(nextTask)) {
+      const toolTaskIndex = findLastTaskIndex(taskGroup, isImageGenerationToolResultTask);
+      if (toolTaskIndex !== -1) {
+        taskGroup[toolTaskIndex] = mergeImageGenerationToolTask(
+          taskGroup[toolTaskIndex],
+          nextTask
+        );
+        return;
+      }
+    }
+
+    taskGroup.push(nextTask);
   } else {
     currentChat.multiAgent.tasks.push([
-      buildTaskFromEventData(eventData),
+      nextTask,
     ]);
   }
 
@@ -689,9 +818,6 @@ export const handleTaskData = (
         task?.messageType === "code" &&
         (task.resultMap?.codeOutput || !task.resultMap?.code);
 
-      const isDeepSearchExtend =
-        task?.messageType === "deep_search" &&
-        task.resultMap.messageType === "extend";
       const processedInfo = processTaskForRender(task, id);
 
       if (task.messageType === "task") {
@@ -707,8 +833,7 @@ export const handleTaskData = (
 
       if (
         TOOL_TYPES.includes(task?.messageType) &&
-        !isCodeOutputOnly &&
-        !isDeepSearchExtend
+        !isCodeOutputOnly
       ) {
         taskList.push(...processedInfo);
       }
@@ -1065,6 +1190,7 @@ export const buildAction = (task: CHAT.Task) => {
    */
   function handleToolResult(task: CHAT.Task) {
     const toolName = task?.toolResult?.toolName;
+    const primaryFile = getPrimaryTaskFile(task);
 
     switch (toolName) {
       case TOOL_NAMES.WEB_SEARCH:
@@ -1080,6 +1206,13 @@ export const buildAction = (task: CHAT.Task) => {
           action: "正在执行代码",
           tool: "编辑器",
           name: "执行代码"
+        };
+
+      case "image_generation_tool":
+        return {
+          action: "生成图片",
+          tool: "图片生成",
+          name: primaryFile?.name || toolName
         };
 
       default:
@@ -1111,16 +1244,17 @@ export const buildAction = (task: CHAT.Task) => {
    * @returns 动作信息对象
    */
   function handleDeepSearchTask(task: any) {
-    const isReport = task.resultMap.messageType === "report";
-    const searchFinished = Boolean(task?.resultMap?.searchFinish || task?.resultMap?.isFinal);
+    const stage = resolveDeepSearchStage(task?.resultMap?.messageType);
+    const queryText =
+      stage === "report"
+        ? formatDeepSearchQueryText(task?.resultMap?.query) ||
+          formatDeepSearchQueryText(task?.resultMap?.searchResult?.query)
+        : formatDeepSearchQueryText(task?.resultMap?.searchResult?.query);
+
     return {
-      action: isReport
-        ? (task?.resultMap?.isFinal ? "总结完成" : "正在总结")
-        : (searchFinished ? "搜索完成" : "正在搜索"),
+      action: resolveDeepSearchActionText(stage, task?.resultMap?.isFinal),
       tool: "深度搜索",
-      name: isReport
-        ? task?.resultMap?.query || ""
-        : task?.resultMap?.searchResult?.query || ""
+      name: queryText
     };
   }
 };

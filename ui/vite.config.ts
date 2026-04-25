@@ -49,6 +49,7 @@ export default defineConfig(({ command, mode }) => {
     define: {
       // 一定要序列化，否则打包时会报错
       SERVICE_BASE_URL: JSON.stringify(env.SERVICE_BASE_URL),
+      REACTOR_TOOL_BASE_URL: JSON.stringify(env.REACTOR_TOOL_BASE_URL || ''),
     },
     build: {
       outDir: 'dist',

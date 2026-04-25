@@ -31,6 +31,7 @@ from reactor_tool.model.protocal import (
     NL2SQLRequest,
     SopChooseRequest,
     ScriptRunnerRequest,
+    ImageGenerationRequest,
     MultimodalRAGRequest,
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
@@ -311,6 +312,94 @@ async def post_report(
         file_info = [await upload_file(content=content, file_name=body.file_name, request_id=body.request_id,
                                  file_type="html" if body.file_type == "ppt" else body.file_type)]
         return {"code": 200, "data": content, "fileInfo": file_info, "requestId": body.request_id}
+
+
+@router.post("/image_generation")
+async def post_image_generation(body: ImageGenerationRequest):
+    """图片生成端点，支持文生图与图生图两种模式。"""
+    from reactor_tool.tool.image_generation import generate_images
+
+    def _normalize_image_reference(reference: str) -> str:
+        normalized = (reference or "").strip()
+        if not normalized:
+            return ""
+        if normalized.startswith("/") or normalized.startswith("http") or normalized.startswith("data:"):
+            return normalized
+
+        file_server_url = (os.getenv("FILE_SERVER_URL") or "").rstrip("/")
+        if not file_server_url:
+            return normalized
+        return f"{file_server_url}/preview/{body.request_id}/{normalized}"
+
+    if body.file_names:
+        body.file_names = [
+            normalized
+            for reference in body.file_names
+            if (normalized := _normalize_image_reference(reference))
+        ]
+    if body.mask_file_names:
+        body.mask_file_names = [
+            _normalize_image_reference(reference) for reference in body.mask_file_names
+        ]
+
+    async def _run_generation():
+        try:
+            return await generate_images(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("image_generation request failed")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    async def _stream():
+        yield ServerSentEvent(
+            data=json.dumps(
+                {
+                    "requestId": body.request_id,
+                    "data": "开始执行图片生成任务...",
+                    "isFinal": False,
+                },
+                ensure_ascii=False,
+            )
+        )
+        try:
+            result = await _run_generation()
+        except HTTPException as exc:
+            yield ServerSentEvent(
+                data=json.dumps(
+                    {
+                        "requestId": body.request_id,
+                        "data": exc.detail,
+                        "isFinal": True,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            yield ServerSentEvent(data="[DONE]")
+            return
+
+        yield ServerSentEvent(
+            data=json.dumps(
+                {
+                    **result,
+                    "isFinal": True,
+                },
+                ensure_ascii=False,
+            )
+        )
+        yield ServerSentEvent(data="[DONE]")
+
+    if body.stream:
+        return EventSourceResponse(
+            _stream(),
+            ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),
+            ping=15,
+        )
+
+    result = await _run_generation()
+    return result
 
 
 @router.post("/deepsearch")

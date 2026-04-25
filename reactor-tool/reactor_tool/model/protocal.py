@@ -170,6 +170,57 @@ class ScriptRunnerResponse(BaseModel):
     file_info: List[ScriptRunnerFileInfo] = Field(default_factory=list, alias="fileInfo", description="产出文件")
 
 
+class ImageGenerationRequest(BaseModel):
+    """图片生成请求协议"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", description="Request ID")
+    prompt: str = Field(description="图片生成或编辑提示词")
+    mode: Optional[Literal["images", "edits"]] = Field(default=None, description="生成模式")
+    file_names: List[str] = Field(default_factory=list, alias="fileNames", description="参考图列表")
+    mask_file_names: List[str] = Field(default_factory=list, alias="maskFileNames", description="涂抹参考图列表")
+    file_name: Optional[str] = Field(default=None, alias="fileName", description="输出文件名")
+    file_description: Optional[str] = Field(default=None, alias="fileDescription", description="输出文件描述")
+    base_url: Optional[str] = Field(default=None, alias="baseUrl", description="上游 OpenAI 兼容服务地址")
+    api_key: Optional[str] = Field(default=None, alias="apiKey", description="上游 API Key")
+    model: Optional[str] = Field(default=None, description="图片模型名称")
+    size: Optional[str] = Field(default=None, description="输出尺寸")
+    n: int = Field(default=1, ge=1, le=10, description="期望生成张数")
+    timeout_seconds: int = Field(default=300, alias="timeoutSeconds", ge=10, le=1800, description="超时时间，单位秒")
+    stream: bool = Field(default=False, description="是否返回 SSE 流")
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, value: str) -> str:
+        normalized = value.strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("prompt 不能为空")
+        return normalized
+
+    @field_validator("file_names", mode="before")
+    @classmethod
+    def normalize_file_names(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.replace("，", ",").split(",") if item.strip()]
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("mask_file_names", mode="before")
+    @classmethod
+    def normalize_mask_file_names(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.replace("，", ",").split(",")]
+        if isinstance(value, list):
+            return ["" if item is None else str(item).strip() for item in value]
+        return value
+
+
 class MultimodalRAGRequest(BaseModel):
     """MRAG 查询请求"""
 

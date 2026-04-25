@@ -1,7 +1,8 @@
 import { isHTML, isValidJSON } from "@/utils";
+import { buildDeepSearchResultItems } from "@/utils/deepSearch";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
-import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
+import { getPrimaryTaskFile, isImageFileLike } from "@/utils/historyArtifacts";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
   if (!taskItem) {
@@ -39,18 +40,7 @@ export const getSearchList = (taskItem?: PanelItemType) => {
     }));
   }
   if (messageType === 'deep_search' && resultMap.messageType === 'search') {
-    const list = resultMap?.searchResult?.docs || [];
-    return list.map(item => {
-      const ele = Array.isArray(item) ? item[0] : item;
-      if (!ele) {
-        return null;
-      }
-      return {
-        name: ele.title || ele.link || '搜索结果',
-        pageContent: ele.content || '',
-        url: ele.link || ''
-      };
-    }).filter((item): item is SearchListItem => Boolean(item));
+    return buildDeepSearchResultItems(resultMap?.searchResult?.docs) as SearchListItem[];
   }
   return [];
 };
@@ -68,6 +58,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const { messageType, toolResult, resultMap } = taskItem;
     const primaryFile = getPrimaryTaskFile(taskItem);
     const fileName = primaryFile?.name || '';
+    const isImageFile = isImageFileLike(primaryFile);
 
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {
@@ -75,12 +66,20 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     } else if (messageType === 'tool_result' && toolResult?.toolName === 'code_interpreter' && toolResult.toolResult) {
       isHtml = isHTML(toolResult.toolResult);
     }
+    const useImage =
+      isImageFile &&
+      (
+        messageType === 'file' ||
+        (messageType === 'tool_result' && toolResult?.toolName === 'image_generation_tool')
+      );
+
     return {
       useBrowser: messageType === 'browser',
       useCode: messageType === 'code',
       useHtml: messageType === 'html',
+      useImage,
       useExcel: messageType === 'file' && (fileName.includes('.csv') || fileName.includes('.xlsx')),
-      useFile: taskItem.messageType === 'file' && !(fileName.includes('.csv') || fileName.includes('.xlsx')),
+      useFile: taskItem.messageType === 'file' && !isImageFile && !(fileName.includes('.csv') || fileName.includes('.xlsx')),
       useJSON: messageType === 'tool_result' && toolResult?.toolResult && isValidJSON(toolResult.toolResult),
       isHtml,
       searchList,

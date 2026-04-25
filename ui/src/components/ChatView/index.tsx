@@ -7,10 +7,11 @@ import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
-import { RESULT_TYPES, productList, defaultProduct } from "@/utils/constants";
+import { productList, defaultProduct } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import { Modal } from "antd";
+import { shouldRenderDeepSearchWorkspace } from "@/utils/deepSearch";
 import {
   Conversation,
   ConversationContent,
@@ -48,6 +49,24 @@ const resolveConversationAgentType = (
 
 const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set(["task_summary", "result", "tool_thought"]);
 
+const isWorkspaceRenderableTask = (
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) => {
+  if (!task) {
+    return false;
+  }
+
+  if (WORKSPACE_HIDDEN_MESSAGE_TYPES.has(task.messageType || "")) {
+    return false;
+  }
+
+  if (task.messageType === "deep_search") {
+    return shouldRenderDeepSearchWorkspace(task.resultMap?.messageType);
+  }
+
+  return true;
+};
+
 const shouldRefreshWorkspaceTask = (eventData?: MESSAGE.EventData) => {
   if (!eventData) {
     return false;
@@ -74,8 +93,8 @@ const getLatestRenderableTask = (chat: CHAT.ChatItem): CHAT.Task | undefined => 
     const group = groups[i] || [];
     for (let j = group.length - 1; j >= 0; j -= 1) {
       const item = group[j] as CHAT.Task | undefined;
-      // 工作区只跟随真正可预览的任务，思考过程留在左侧时间线展示。
-      if (!item || WORKSPACE_HIDDEN_MESSAGE_TYPES.has(item.messageType)) {
+      // 工作区只跟随真正属于右侧详情面的任务。
+      if (!isWorkspaceRenderableTask(item)) {
         continue;
       }
       return item;
@@ -335,9 +354,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       latestTask ? cloneWorkspaceTask(latestTask) : undefined
     );
     setShowAction(
-      replayTaskData.taskList.some(
-        (task) => !RESULT_TYPES.includes(task.messageType)
-      )
+      replayTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
     );
   }, [conversation.chatList, conversation.deepThink, conversation.id, loading]);
 
@@ -424,6 +441,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
     commitConversation(conversationId, runningConversation);
     setLoading(true);
+    // 新一轮请求开始后，工作区恢复自动跟随，避免仍停留在上一轮手动点开的旧任务上，
+    // 导致 report_tool 最终生成的 html 无法自动切到预览。
+    setActiveTask(undefined);
+    actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
 
     const syncRunningConversation = () => {
       const newChatList = [...runningConversation.chatList];
@@ -433,6 +454,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         chatList: newChatList,
       };
       commitConversation(conversationId, runningConversation);
+    };
+
+    /**
+     * 流式任务会先把原始事件累积在 multiAgent.tasks，再由 handleTaskData 派生出左侧时间线需要的 chat.tasks。
+     * 这里在节流刷新任务视图时，把派生后的 chat 一并回写到会话快照，避免左侧对话区一直停留在旧数据。
+     */
+    const syncDerivedConversationSnapshot = (nextChat: CHAT.ChatItem) => {
+      const newChatList = [...runningConversation.chatList];
+      newChatList.splice(newChatList.length - 1, 1, { ...nextChat });
+      runningConversation = {
+        ...runningConversation,
+        chatList: newChatList,
+      };
+      pendingConversation = runningConversation;
     };
 
     const params = {
@@ -464,6 +499,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           normalizedDeepThink,
           currentChat.multiAgent
         );
+        syncDerivedConversationSnapshot(pendingTaskData.currentChat);
         taskDataDirty = false;
       }
       const shouldFlushConversation =
@@ -665,7 +701,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     };
 
     const openAction = (tasks: CHAT.Task[]) => {
-      if (tasks.filter((item) => !RESULT_TYPES.includes(item.messageType)).length) {
+      if (tasks.some((item) => isWorkspaceRenderableTask(item))) {
         setShowAction(true);
       }
     };
@@ -693,6 +729,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const changeTask = (task: CHAT.Task) => {
+    setIsRightCollapsed(false);
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     changeActionStatus(true);
     setActiveTask(task);
@@ -703,11 +740,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const changeFile = (file: CHAT.TFile) => {
+    setIsRightCollapsed(false);
     changeActionStatus(true);
     actionViewRef.current?.setFilePreview(file);
   };
 
   const changePlan = () => {
+    setIsRightCollapsed(false);
     changeActionStatus(true);
     actionViewRef.current?.openPlanView();
   };

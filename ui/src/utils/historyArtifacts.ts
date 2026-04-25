@@ -31,6 +31,26 @@ const toExtension = (name: string, fallbackType?: string) => {
   return (fallbackType || "").toLowerCase();
 };
 
+const IMAGE_FILE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "svg",
+  "svg+xml",
+  "avif",
+  "ico",
+]);
+
+const normalizeExtension = (value?: string | null) => {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, "");
+};
+
 /**
  * 历史详情里既可能返回旧 fileInfo，也可能只返回 canonical artifactRefs。
  * 这里统一归一化成前端稳定的文件结构，避免各组件自己写一套兜底逻辑。
@@ -106,6 +126,30 @@ export const artifactRefsToFileInfo = (artifactRefs?: unknown[]) => {
       missingReason: file.missingReason,
       resourceKey: file.resourceKey,
     }));
+};
+
+/**
+ * 图片文件既可能带 mimeType，也可能只能从扩展名识别。
+ * 统一收口后，附件列表和工作区预览就不会各自维护一套判断规则。
+ */
+export const isImageFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+
+  if (fileLike.mimeType?.toLowerCase().startsWith("image/")) {
+    return true;
+  }
+
+  const normalizedType = normalizeExtension(fileLike.type);
+  if (IMAGE_FILE_EXTENSIONS.has(normalizedType)) {
+    return true;
+  }
+
+  const normalizedNameExtension = normalizeExtension(fileLike.name.split(".").pop());
+  return IMAGE_FILE_EXTENSIONS.has(normalizedNameExtension);
 };
 
 const readNestedResultMap = (taskLike: any) => {

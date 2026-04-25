@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.common.CodeInterpreterTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.DataAnalysisTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.FileTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.ReportTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.GlobTool;
@@ -94,6 +95,11 @@ public class AgentToolCollectionFactory {
                 MultiModalAgent multiModalAgent = new MultiModalAgent();
                 multiModalAgent.setAgentContext(agentContext);
                 toolCollection.addTool(multiModalAgent);
+            }
+            if (agentToolList.contains("image_generation")) {
+                ImageGenerationTool imageGenerationTool = new ImageGenerationTool();
+                imageGenerationTool.setAgentContext(agentContext);
+                toolCollection.addTool(imageGenerationTool);
             }
             if (agentToolList.contains("data_analysis")) {
                 DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();

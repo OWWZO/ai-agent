@@ -1,5 +1,6 @@
 import api from "./index";
 import { combineData, handleTaskData } from "@/utils/chat";
+import { resolveDeepSearchStage } from "@/utils/deepSearch";
 import { artifactRefsToFileInfo } from "@/utils/historyArtifacts";
 
 const DEFAULT_DEVICE_ID = "device-default";
@@ -270,29 +271,6 @@ const resolveTaskMessageType = (
   return event.eventType;
 };
 
-const resolveDeepSearchStage = (
-  event: ConversationEventItem,
-  resultMap: Record<string, any>
-) => {
-  if (
-    typeof resultMap.messageType === "string" &&
-    resultMap.messageType &&
-    ["extend", "search", "report"].includes(resultMap.messageType)
-  ) {
-    return resultMap.messageType;
-  }
-
-  if (
-    typeof event.eventSubType === "string" &&
-    event.eventSubType &&
-    ["extend", "search", "report"].includes(event.eventSubType)
-  ) {
-    return event.eventSubType;
-  }
-
-  return "search";
-};
-
 const normalizeSearchResult = (value: unknown) => {
   const searchResult = cloneRecord(value);
   const queries = Array.isArray(searchResult.query)
@@ -324,8 +302,8 @@ const normalizeTaskInnerResultMap = (
 
   if (taskMessageType === "deep_search") {
     nextInnerResultMap.messageType = resolveDeepSearchStage(
-      event,
-      nextInnerResultMap
+      nextInnerResultMap.messageType,
+      event.eventSubType
     );
     nextInnerResultMap.searchResult = normalizeSearchResult(
       nextInnerResultMap.searchResult
@@ -475,20 +453,8 @@ const normalizeTaskPayload = (
   const taskMessageType = resolveTaskMessageType(payload, event, payloadResultMap);
   const messageId = payload.messageId || event.messageIdExt || fallbackMessageId;
   const outerResultMap = isAgentResponseLikeTaskResultMap(payloadResultMap)
-    ? normalizeTaskOuterResultMap(
-        taskMessageType,
-        payloadResultMap,
-        event,
-        messageId,
-        artifactFileInfo
-      )
-    : buildLegacyTaskOuterResultMap(
-        taskMessageType,
-        payloadResultMap,
-        event,
-        messageId,
-        artifactFileInfo
-      );
+    ? normalizeTaskOuterResultMap(taskMessageType, payloadResultMap, event, messageId, artifactFileInfo)
+    : buildLegacyTaskOuterResultMap(taskMessageType, payloadResultMap, event, messageId, artifactFileInfo);
 
   return {
     ...payload,
@@ -516,13 +482,13 @@ const normalizeHistoryPayload = (
   }
 
   const payloadMessageType = mergedPayload.messageType || event.eventType;
-  const payloadWithMessageType =
-    mergedPayload.messageType === payloadMessageType
-      ? mergedPayload
-      : {
-          ...mergedPayload,
-          messageType: payloadMessageType,
-        };
+  let payloadWithMessageType = mergedPayload;
+  if (mergedPayload.messageType !== payloadMessageType) {
+    payloadWithMessageType = {
+      ...mergedPayload,
+      messageType: payloadMessageType,
+    };
+  }
 
   if (payloadMessageType === "plan") {
     return {

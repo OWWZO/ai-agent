@@ -16,6 +16,11 @@ import {
   Maximize2,
   Search,
 } from "lucide-react";
+import {
+  resolveDeepSearchStage,
+  resolveDeepSearchTitle,
+  shouldRenderDeepSearchWorkspace,
+} from "@/utils/deepSearch";
 import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
 
 const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
@@ -145,7 +150,12 @@ const FilePreview: React.FC<{
 }> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp }) => {
   const taskList = useMemo(() => {
     return taskListProp?.filter(
-      (item) => !["task_summary", "result"].includes(item.messageType)
+      (item) =>
+        !["task_summary", "result"].includes(item.messageType) &&
+        (
+          item.messageType !== "deep_search" ||
+          shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
+        )
     );
   }, [taskListProp]);
 
@@ -181,7 +191,7 @@ const FilePreview: React.FC<{
     setCurActiveTaskIndex(Math.max(0, realActiveTaskIndex - 1));
   });
 
-  const { useHtml, useExcel } = useMsgTypes(taskItem) || {};
+  const { useHtml, useExcel, useImage } = useMsgTypes(taskItem) || {};
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const artifactMissing = Boolean(primaryFile?.missing);
 
@@ -189,47 +199,42 @@ const FilePreview: React.FC<{
     if (!taskItem) return "";
     const { messageType, resultMap } = taskItem;
     if (messageType === "tool_result") {
+      if (
+        taskItem.toolResult?.toolName === "image_generation_tool" &&
+        primaryFile?.name
+      ) {
+        return primaryFile.name;
+      }
       return taskItem.toolResult?.toolName || "工具执行";
     }
     if (messageType === "file" || messageType === "html") {
       return primaryFile?.name || messageType;
     }
     if (messageType === "deep_search") {
-      if (resultMap?.messageType === "report") {
-        return resultMap?.query || "深度搜索";
-      }
-      if (resultMap?.messageType === "search") {
-        const q = resultMap?.searchResult?.query;
-        if (Array.isArray(q)) {
-          const queryText = q
-            .map((item) => String(item || "").trim())
-            .filter(Boolean)
-            .join(" / ");
-          if (queryText) {
-            return `检索：${queryText}`;
-          }
-        } else if (q != null) {
-          const queryText = String(q).trim();
-          if (queryText) {
-            return `检索：${queryText}`;
-          }
-        }
-        return "网页检索";
-      }
-      return "深度搜索";
+      const stage = resolveDeepSearchStage(resultMap?.messageType);
+      const titleQueries =
+        stage === "report" ? resultMap?.query : resultMap?.searchResult?.query;
+      return resolveDeepSearchTitle(stage, titleQueries);
     }
     return messageType;
   }, [primaryFile, taskItem]);
 
   const headerLeadingIcon = useMemo(() => {
     if (!taskItem) return undefined;
-    if (taskItem.messageType === "deep_search" && taskItem.resultMap?.messageType === "search") {
+    const deepSearchStage =
+      taskItem.messageType === "deep_search"
+        ? resolveDeepSearchStage(taskItem.resultMap?.messageType)
+        : undefined;
+    if (
+      taskItem.messageType === "deep_search" &&
+      (deepSearchStage === "extend" || deepSearchStage === "search")
+    ) {
       return <Search className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />;
     }
     return undefined;
   }, [taskItem]);
 
-  const canPreview = !artifactMissing && (useHtml || useExcel);
+  const canPreview = !artifactMissing && (useHtml || useExcel || useImage);
   const taskRenderKey = useMemo(() => getStableTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State

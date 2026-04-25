@@ -6,6 +6,9 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import okhttp3.sse.EventSource;
+import okhttp3.sse.EventSourceListener;
+import okhttp3.sse.EventSources;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchRequest;
@@ -16,9 +19,7 @@ import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +27,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Data
@@ -47,9 +50,9 @@ public class DeepSearchTool implements BaseTool {
 
     private AgentContext agentContext;
     /**
-     * 当前正在执行的 deep_search HTTP 调用，用于超时后主动取消。
+     * 当前正在执行的 deep_search SSE 连接，用于超时后主动取消。
      */
-    private volatile Call activeCall;
+    private volatile EventSource activeEventSource;
 
     @Override
     public String getName() {
@@ -113,8 +116,8 @@ public class DeepSearchTool implements BaseTool {
 
             return object;
         } catch (TimeoutException e) {
-            if (activeCall != null && !activeCall.isCanceled()) {
-                activeCall.cancel();
+            if (activeEventSource != null) {
+                activeEventSource.cancel();
             }
             log.error("{} deep_search timeout after {} minutes", agentContext.getRequestId(), DEEP_SEARCH_TIMEOUT_MINUTES, e);
             return "deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。";
@@ -122,7 +125,7 @@ public class DeepSearchTool implements BaseTool {
 
             log.error("{} deep_search agent error", agentContext.getRequestId(), e);
         } finally {
-            activeCall = null;
+            activeEventSource = null;
         }
         return null;
     }
@@ -151,124 +154,136 @@ public class DeepSearchTool implements BaseTool {
             log.info("{} deep_search request {}", agentContext.getRequestId(), JSONObject.toJSONString(searchRequest));
             Request.Builder requestBuilder = new Request.Builder()
                     .url(url)
+                    .header("Accept", "text/event-stream")
+                    .header("Cache-Control", "no-cache")
                     .post(body);
             Request request = requestBuilder.build();
 
             String[] interval = reactorConfig.getMessageInterval().getOrDefault("search", "5,20").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
-
-            Call call = client.newCall(request);
-            activeCall = call;
-            call.enqueue(new Callback() {
+            AtomicInteger index = new AtomicInteger(1);
+            AtomicReference<String> resultRef = new AtomicReference<>("搜索结果为空");
+            AtomicReference<String> messageIdRef = new AtomicReference<>("");
+            StringBuilder stringBuilderIncr = new StringBuilder();
+            StringBuilder stringBuilderAll = new StringBuilder();
+            String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
+            EventSource.Factory factory = EventSources.createFactory(client);
+            activeEventSource = factory.newEventSource(request, new EventSourceListener() {
                 @Override
-                public void onFailure(Call call, IOException e) {
-                    log.error("{} deep_search on failure", agentContext.getRequestId(), e);
-                    future.completeExceptionally(e);
+                public void onOpen(EventSource eventSource, Response response) {
+                    log.info("{} deep_search response {} {} {}", agentContext.getRequestId(), response, response.code(), response.body());
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) {
+                public void onEvent(EventSource eventSource, String id, String type, String data) {
+                    try {
+                        if ("[DONE]".equals(data)) {
+                            return;
+                        }
+                        if (data.startsWith("heartbeat")) {
+                            return;
+                        }
+                        int currentIndex = index.get();
+                        if (currentIndex == 1 || currentIndex % 100 == 0) {
+                            log.info("{} deep_search recv data: {}", agentContext.getRequestId(), data);
+                        }
+                        DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
+                        FileTool fileTool = new FileTool();
+                        fileTool.setAgentContext(agentContext);
+                        // 使用标准 SSE 客户端逐条消费事件，避免 extend 被上游缓冲后延迟透传。
+                        if (searchResponse.getIsFinal()) {
+                            if (agentContext.getIsStream()) {
+                                searchResponse.setAnswer(stringBuilderAll.toString());
+                            }
+                            if (searchResponse.getAnswer().isEmpty()) {
+                                log.error("{} deep search answer empty", agentContext.getRequestId());
+                                resultRef.set("搜索结果为空");
+                                return;
+                            }
+                            String fileName = StringUtil.removeSpecialChars(searchResponse.getQuery() + "的搜索结果.md");
+                            String fileDesc = searchResponse.getAnswer()
+                                    .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
+                            FileRequest fileRequest = FileRequest.builder()
+                                    .requestId(agentContext.getRequestId())
+                                    .fileName(fileName)
+                                    .description(fileDesc)
+                                    .content(searchResponse.getAnswer())
+                                    .build();
+                            fileTool.uploadFile(fileRequest, false, false);
+                            resultRef.set(searchResponse.getAnswer()
+                                    .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolMessageTruncateLen())));
 
-                    log.info("{} deep_search response {} {} {}", agentContext.getRequestId(), response, response.code(), response.body());
-                    try (ResponseBody responseBody = response.body()) {
-                        if (!response.isSuccessful() || responseBody == null) {
-                            log.error("{} deep_search request error", agentContext.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                             return;
                         }
 
-                        int index = 1;
-                        StringBuilder stringBuilderIncr = new StringBuilder();
-                        StringBuilder stringBuilderAll = new StringBuilder();
-                        String line;
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(responseBody.byteStream()));
-                        String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
-                        String result = "搜索结果为空"; // 默认输出
-                        String messageId = "";
-                        while ((line = reader.readLine()) != null) {
-                            if (line.startsWith("data: ")) {
-                                String data = line.substring(6);
-                                if (data.equals("[DONE]")) {
-                                    break;
-                                }
-                                if (data.startsWith("heartbeat")) {
-                                    continue;
-                                }
-                                if (index == 1 || index % 100 == 0) {
-                                    log.info("{} deep_search recv data: {}", agentContext.getRequestId(), data);
-                                }
-                                DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
-                                FileTool fileTool = new FileTool();
-                                fileTool.setAgentContext(agentContext);
-                                // 上传搜索内容到文件中
-                                if (searchResponse.getIsFinal()) {
-                                    if (agentContext.getIsStream()) {
-                                        searchResponse.setAnswer(stringBuilderAll.toString());
-                                    }
-                                    if (searchResponse.getAnswer().isEmpty()) {
-                                        log.error("{} deep search answer empty", agentContext.getRequestId());
-                                        break;
-                                    }
-                                    String fileName = StringUtil.removeSpecialChars(searchResponse.getQuery() + "的搜索结果.md");
-                                    String fileDesc = searchResponse.getAnswer()
-                                            .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
-                                    FileRequest fileRequest = FileRequest.builder()
-                                            .requestId(agentContext.getRequestId())
-                                            .fileName(fileName)
-                                            .description(fileDesc)
-                                            .content(searchResponse.getAnswer())
-                                            .build();
-                                    fileTool.uploadFile(fileRequest, false, false);
-                                    result = searchResponse.getAnswer().
-                                            substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolMessageTruncateLen()));
-
-                                    agentContext.getPrinter().send(messageId, "deep_search", searchResponse, digitalEmployee, true);
-
-                                } else {
-                                    Map<String, Object> contentMap = new HashMap<>();
-                                    for (int idx = 0; idx < searchResponse.getSearchResult().getQuery().size(); idx++) {
-                                        contentMap.put(searchResponse.getSearchResult().getQuery().get(idx), searchResponse.getSearchResult().getDocs().get(idx));
-                                    }
-
-                                    if ("extend".equals(searchResponse.getMessageType())) {
-                                        messageId = StringUtil.getUUID();
-                                        searchResponse.setSearchFinish(false);
-                                        agentContext.getPrinter().send(messageId, "deep_search", searchResponse, digitalEmployee, true);
-                                    } else if ("search".equals(searchResponse.getMessageType())) {
-                                        searchResponse.setSearchFinish(true);
-                                        agentContext.getPrinter().send(messageId, "deep_search", searchResponse, digitalEmployee, true);
-                                        FileRequest fileRequest = FileRequest.builder()
-                                                .requestId(agentContext.getRequestId())
-                                                .fileName(searchResponse.getQuery() + "_search_result.txt")
-                                                .description(searchResponse.getQuery() + "...")
-                                                .content(JSON.toJSONString(contentMap))
-                                                .build();
-                                        fileTool.uploadFile(fileRequest, false, true);
-                                    } else if ("report".equals(searchResponse.getMessageType())) {
-                                        if (index == 1) {
-                                            messageId = StringUtil.getUUID();
-                                        }
-                                        stringBuilderIncr.append(searchResponse.getAnswer());
-                                        stringBuilderAll.append(searchResponse.getAnswer());
-                                        if (index == firstInterval || index % sendInterval == 0) {
-                                            searchResponse.setAnswer(stringBuilderIncr.toString());
-                                            agentContext.getPrinter().send(messageId, "deep_search", searchResponse, digitalEmployee, false);
-                                            stringBuilderIncr.setLength(0);
-                                        }
-                                        index++;
-                                    }
-                                }
+                        Map<String, Object> contentMap = new HashMap<>();
+                        if (searchResponse.getSearchResult() != null
+                                && searchResponse.getSearchResult().getQuery() != null
+                                && searchResponse.getSearchResult().getDocs() != null) {
+                            for (int idx = 0; idx < searchResponse.getSearchResult().getQuery().size(); idx++) {
+                                contentMap.put(searchResponse.getSearchResult().getQuery().get(idx),
+                                        searchResponse.getSearchResult().getDocs().get(idx));
                             }
                         }
-                        future.complete(result);
-                        activeCall = null;
 
+                        if ("extend".equals(searchResponse.getMessageType())) {
+                            messageIdRef.set(StringUtil.getUUID());
+                            searchResponse.setSearchFinish(false);
+                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                        } else if ("search".equals(searchResponse.getMessageType())) {
+                            searchResponse.setSearchFinish(true);
+                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            FileRequest fileRequest = FileRequest.builder()
+                                    .requestId(agentContext.getRequestId())
+                                    .fileName(searchResponse.getQuery() + "_search_result.txt")
+                                    .description(searchResponse.getQuery() + "...")
+                                    .content(JSON.toJSONString(contentMap))
+                                    .build();
+                            fileTool.uploadFile(fileRequest, false, true);
+                        } else if ("report".equals(searchResponse.getMessageType())) {
+                            if (currentIndex == 1 && messageIdRef.get().isEmpty()) {
+                                messageIdRef.set(StringUtil.getUUID());
+                            }
+                            stringBuilderIncr.append(searchResponse.getAnswer());
+                            stringBuilderAll.append(searchResponse.getAnswer());
+                            if (currentIndex == firstInterval || currentIndex % sendInterval == 0) {
+                                searchResponse.setAnswer(stringBuilderIncr.toString());
+                                agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
+                                stringBuilderIncr.setLength(0);
+                            }
+                            index.incrementAndGet();
+                        }
                     } catch (Exception e) {
                         log.error("{} deep_search request error", agentContext.getRequestId(), e);
-                        future.completeExceptionally(e);
-                    } finally {
-                        activeCall = null;
+                        if (!future.isDone()) {
+                            future.completeExceptionally(e);
+                        }
+                        eventSource.cancel();
+                    }
+                }
+
+                @Override
+                public void onClosed(EventSource eventSource) {
+                    activeEventSource = null;
+                    if (!future.isDone()) {
+                        future.complete(resultRef.get());
+                    }
+                }
+
+                @Override
+                public void onFailure(EventSource eventSource, Throwable t, Response response) {
+                    activeEventSource = null;
+                    if (t == null && response == null) {
+                        if (!future.isDone()) {
+                            future.complete(resultRef.get());
+                        }
+                        return;
+                    }
+                    log.error("{} deep_search on failure", agentContext.getRequestId(), t);
+                    if (!future.isDone()) {
+                        future.completeExceptionally(t instanceof Exception ? (Exception) t : new RuntimeException(t));
                     }
                 }
             });

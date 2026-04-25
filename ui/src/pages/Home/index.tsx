@@ -3,6 +3,7 @@ import { Drawer, Image } from "antd";
 import classNames from "classnames";
 import { motion } from "motion/react";
 import { Edit3Icon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import ChatView from "@/components/ChatView";
 import GeneralInput from "@/components/GeneralInput";
@@ -160,6 +161,7 @@ const CaseCard = memo((props: CaseCardProps) => {
 });
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
+  const navigate = useNavigate();
   const initialRef = useRef<InitialState>(createInitialState());
 
   // ---- API 会话管理（渐进式迁移）----
@@ -590,6 +592,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     setSearchPanelOpen(false);
   }, []);
 
+  const openWorkspace = useCallback(() => {
+    navigate("/workspace/image-generation");
+  }, [navigate]);
+
   const renderWelcome = () => {
     return (
       <div className="h-full w-full px-6 md:px-12 lg:px-16">
@@ -812,6 +818,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
             items={threadListItems}
             onCreate={createNewChat}
             onSearchOpen={openSearchPanel}
+            onWorkspaceOpen={openWorkspace}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={isSidebarCollapsed}
@@ -836,6 +843,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
             items={threadListItems}
             onCreate={createNewChat}
             onSearchOpen={openSearchPanel}
+            onWorkspaceOpen={openWorkspace}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={false}

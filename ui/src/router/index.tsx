@@ -6,11 +6,14 @@ import { Loading } from '@/components';
 // 使用常量存储路由路径
 const ROUTES = {
   HOME: '/',
+  WORKSPACE: '/workspace',
+  WORKSPACE_IMAGE_GENERATION: '/workspace/image-generation',
   NOT_FOUND: '*',
 };
 
 // 使用 React.lazy 懒加载组件
 const Home = React.lazy(() => import('@/pages/Home'));
+const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 
 // 创建路由配置
@@ -24,6 +27,18 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading loading={true} className="h-full"/>}>
             <Home />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.WORKSPACE,
+        element: <Navigate to={ROUTES.WORKSPACE_IMAGE_GENERATION} replace />,
+      },
+      {
+        path: ROUTES.WORKSPACE_IMAGE_GENERATION,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <WorkspaceImageGeneration />
           </Suspense>
         ),
       },

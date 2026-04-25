@@ -1,6 +1,7 @@
 import { iconType } from "@/utils/constants";
 import docxIcon from "@/assets/icon/docx.png";
 import { Tooltip } from "antd";
+import { isImageFileLike } from "@/utils/historyArtifacts";
 
 type Props = {
   files?: CHAT.TFile[];
@@ -29,8 +30,7 @@ const AttachmentList: ReactorType.FC<Props> = (props) => {
 
   const combinIcon = (f: CHAT.TFile) => {
     const fileType = f.type?.toLowerCase?.() || "";
-    const imgType = ["jpg", "png", "jpeg", "gif", "webp", "bmp", "svg"];
-    if (imgType.includes(fileType) && f.url) {
+    if (isImageFileLike(f) && f.url) {
       return f.url;
     } else {
       return iconType[fileType] || docxIcon;

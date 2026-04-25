@@ -3,6 +3,11 @@ import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon } from "@/utils/chat";
+import {
+  buildDeepSearchPreviewModel,
+  resolveDeepSearchStage,
+  shouldRenderDeepSearchPreview,
+} from "@/utils/deepSearch";
 import { getTaskFiles } from "@/utils/historyArtifacts";
 import {
   Message,
@@ -120,9 +125,18 @@ const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
+      initial={{
+        opacity: 0,
+        y: 10
+      }}
+      animate={{
+        opacity: 1,
+        y: 0
+      }}
+      transition={{
+        duration: 0.24,
+        ease: [0.25, 0.46, 0.45, 0.94]
+      }}
       className="overflow-hidden rounded-2xl bg-[var(--chat-surface-soft)]/90 px-4 py-4 shadow-[var(--shadow-sm)] ring-0"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -155,8 +169,14 @@ const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
           return (
             <motion.div
               key={`${stage}-${index}`}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{
+                opacity: 0,
+                x: -6
+              }}
+              animate={{
+                opacity: 1,
+                x: 0
+              }}
               transition={{
                 delay: Math.min(index * 0.06, 0.36),
                 duration: 0.22,
@@ -267,17 +287,20 @@ const ToolItem: FC<{
     }
     default: {
       const loadingType = ["html", "markdown", "data_analysis"];
+      const deepSearchStage =
+        tool.messageType === "deep_search"
+          ? resolveDeepSearchStage(tool.resultMap?.messageType)
+          : undefined;
       const loading =
         !tool.resultMap?.isFinal &&
         ((tool.messageType === "deep_search" &&
-          (tool.resultMap.messageType === "extend" ||
-            tool.resultMap.messageType === "report")) ||
+          (deepSearchStage === "extend" || deepSearchStage === "report")) ||
           loadingType.includes(tool.messageType));
       const isSearching =
         tool.messageType === "deep_search" &&
-        !tool.resultMap?.isFinal &&
-        tool.resultMap?.messageType !== "report";
-      const isSummarizing = tool.messageType === "deep_search" && tool.resultMap?.messageType === "report";
+        deepSearchStage !== "report";
+      const isSummarizing =
+        tool.messageType === "deep_search" && deepSearchStage === "report";
       const isDeepSearchInline = isSearching || isSummarizing;
 
       return (
@@ -337,31 +360,141 @@ const ToolItem: FC<{
 
 ToolItem.displayName = "ToolItem";
 
+const DeepSearchPreviewItem: FC<{
+  tool: CHAT.Task;
+  changeActiveChat: (task: CHAT.Task) => void;
+}> = memo(({ tool, changeActiveChat }) => {
+  const model = useMemo(() => buildDeepSearchPreviewModel(tool), [tool]);
+
+  if (!model) {
+    return null;
+  }
+
+  const clickable = model.interactive;
+  const handleClick = () => {
+    if (clickable) {
+      changeActiveChat(tool);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 8,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      transition={{
+        duration: 0.2,
+        ease: [0.25, 0.46, 0.45, 0.94],
+      }}
+      className={[
+        "mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/18",
+        "bg-[var(--chat-surface-soft)]/72 px-4 py-3 shadow-[var(--shadow-xs)] ring-0",
+        clickable
+          ? "cursor-pointer transition-all duration-200 hover:bg-[var(--chat-surface-muted)]/78 hover:shadow-[var(--shadow-sm)]"
+          : "",
+      ].join(" ")}
+      onClick={handleClick}
+      onKeyDown={(event) => {
+        if (!clickable) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleClick();
+        }
+      }}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/90 text-[var(--chat-text-muted)]">
+          {model.loading ? (
+            <LoaderCircleIcon className="size-4 animate-spin" />
+          ) : (
+            <SearchIcon className="size-4" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="truncate text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]"
+            >
+              {model.query}
+            </span>
+            <span className="inline-flex shrink-0 items-center rounded-full bg-[var(--chat-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
+              {model.statusLabel}
+            </span>
+          </div>
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--chat-text-soft)]">
+            {model.description}
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
+DeepSearchPreviewItem.displayName = "DeepSearchPreviewItem";
+
 const TimeLineContent: FC<{
   tasks: CHAT.Task[];
   isReactType: boolean;
   changeActiveChat: (task: CHAT.Task) => void;
   changePlan?: () => void;
   changeFile?: (file: CHAT.TFile) => void;
-}> = ({ tasks, isReactType, changeActiveChat, changePlan, changeFile }) => (
-  <>
-    {tasks.map((t, i) => (
-      <div key={t.id || t.messageId || t.taskId || i} className="overflow-hidden">
-        {!isReactType && t.task ? <div className="font-[500]">{t.task}</div> : null}
-        {(t.children || []).map((tool, j) => (
-          <div key={tool.id || tool.messageId || tool.taskId || j}>
-            <ToolItem
-              tool={tool}
-              changePlan={changePlan}
-              changeActiveChat={changeActiveChat}
-              changeFile={changeFile}
-            />
+}> = ({ tasks, isReactType, changeActiveChat, changePlan, changeFile }) => {
+  return (
+    <>
+      {tasks.map((task, taskIndex) => {
+        return (
+          <div
+            key={task.id || task.messageId || task.taskId || taskIndex}
+            className="overflow-hidden"
+          >
+            {!isReactType && task.task ? (
+              <div className="font-[500]">{task.task}</div>
+            ) : null}
+            {(task.children || []).map((tool, index) => {
+              const stage =
+                tool.messageType === "deep_search"
+                  ? resolveDeepSearchStage(tool.resultMap?.messageType)
+                  : undefined;
+              const shouldRenderPreview =
+                tool.messageType === "deep_search" &&
+                shouldRenderDeepSearchPreview(stage);
+
+              return (
+                <div
+                  key={tool.id || tool.messageId || tool.taskId || index}
+                  className="overflow-hidden"
+                >
+                  {shouldRenderPreview ? (
+                    <DeepSearchPreviewItem
+                      tool={tool}
+                      changeActiveChat={changeActiveChat}
+                    />
+                  ) : (
+                    <ToolItem
+                      tool={tool}
+                      changePlan={changePlan}
+                      changeActiveChat={changeActiveChat}
+                      changeFile={changeFile}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-    ))}
-  </>
-);
+        );
+      })}
+    </>
+  );
+};
 
 const TimeLine: FC<{
   chat: CHAT.ChatItem;

@@ -87,6 +87,9 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.multimodalagent_tool.desc:}")
     private String multiModalAgentDesc;
 
+    @Value("${autobots.autoagent.tool.image_generation_tool.desc:}")
+    private String imageGenerationToolDesc;
+
     @Value("${autobots.autoagent.tool.data_analysis_tool.desc:}")
     private String dataAnalysisToolDesc;
 
@@ -142,6 +145,15 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.multimodalagent_tool.params:{}}")
     public void setMultiModalAgentParams(String jsonStr) {
         this.multiModalAgentParams = parseObjectMap(jsonStr);
+    }
+
+    /**
+     * ImageGenerationTool 配置
+     */
+    private Map<String, Object> imageGenerationToolParams = new HashMap<>();
+    @Value("${autobots.autoagent.tool.image_generation_tool.params:{}}")
+    public void setImageGenerationToolParams(String jsonStr) {
+        this.imageGenerationToolParams = parseObjectMap(jsonStr);
     }
 
     /**
@@ -214,6 +226,9 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.multimodalagent_url:}")
     private String multiModalAgentUrl;
+
+    @Value("${autobots.autoagent.image_generation_url:}")
+    private String imageGenerationUrl;
 
     @Value("${autobots.autoagent.mcp_client_url:}")
     private String mcpClientUrl;

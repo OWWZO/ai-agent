@@ -25,6 +25,7 @@ interface ResizableSidebarProps {
   items: LocalThreadListItem[];
   onCreate: () => void;
   onSearchOpen?: () => void;
+  onWorkspaceOpen?: () => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   isCollapsed: boolean;
@@ -50,6 +51,7 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
   items,
   onCreate,
   onSearchOpen,
+  onWorkspaceOpen,
   onSelect,
   onDelete: _onDelete,
   isCollapsed,
@@ -153,6 +155,8 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
                         ? onCreate
                         : item.key === "search"
                           ? onSearchOpen
+                          : item.key === "workspace"
+                            ? onWorkspaceOpen
                           : undefined
                     }
                     className={classNames(
@@ -210,6 +214,8 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
                 ? onCreate
                 : item.key === "search"
                   ? onSearchOpen
+                  : item.key === "workspace"
+                    ? onWorkspaceOpen
                   : undefined
             }
             className={classNames(

@@ -7,6 +7,7 @@ import useContent from "./useContent";
 import MarkdownRenderer from "./MarkdownRenderer";
 import TableRenderer from "./TableRenderer";
 import FileRenderer from "./FileRenderer";
+import ImageRenderer from "./ImageRenderer";
 import SearchListRenderer from "./SearchListRenderer";
 import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
@@ -90,7 +91,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   const panelNode = useMemo(() => {
     const renderContent = () => {
       if (!taskItem) return null;
-      const { useHtml, useCode, useFile, isHtml, useExcel, useJSON, searchList, usePpt } = msgTypes || {};
+      const { useHtml, useCode, useFile, useImage, isHtml, useExcel, useJSON, searchList, usePpt } = msgTypes || {};
 
       if (searchList?.length) {
         return (
@@ -131,6 +132,18 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
           <ContentWrapper key="excel">
             <TableRenderer
               fileUrl={primaryFile?.url || ""}
+              fileName={primaryFile?.name}
+              missingReason={missingReason}
+            />
+          </ContentWrapper>
+        );
+      }
+
+      if (useImage) {
+        return (
+          <ContentWrapper key="image">
+            <ImageRenderer
+              imageUrl={primaryFile?.url || ""}
               fileName={primaryFile?.name}
               missingReason={missingReason}
             />
