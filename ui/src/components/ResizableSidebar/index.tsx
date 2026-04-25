@@ -4,7 +4,6 @@ import {
   ChevronRightIcon,
   HashIcon,
   LayoutGridIcon,
-  MessageSquarePlus,
   PencilLineIcon,
   SearchIcon,
   StickyNoteIcon,
@@ -190,13 +189,7 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
       className="relative flex h-full flex-col border-r border-[var(--chat-border)] bg-[var(--chat-surface)]"
       style={{ width }}
     >
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--chat-text)] text-[var(--chat-surface)]">
-            <MessageSquarePlus className="h-4.5 w-4.5" />
-          </div>
-          <div className="text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">Open WebUI</div>
-        </div>
+      <div className="flex items-center justify-end px-4 pb-2 pt-4">
         <Button
           variant="ghost"
           size="icon"

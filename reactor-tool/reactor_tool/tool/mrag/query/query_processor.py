@@ -17,8 +17,11 @@
 """
 import json
 import os
+import re
 import tempfile
 from typing import List, Dict
+
+import json_repair
 
 from ..generation import PromptManager
 from ..generation.llm import LLMClient
@@ -42,6 +45,67 @@ tools = [
 
 class QueryProcessor:
     """查询处理器类"""
+
+    @staticmethod
+    def _parse_json_object(result_str: str) -> Dict:
+        """
+        从 LLM 输出中稳健提取 JSON 对象。
+
+        兼容：
+        1. ```json ... ``` 包裹
+        2. 裸 JSON
+        3. JSON 前后夹带解释文本
+        4. 轻微格式缺陷，通过 json_repair 做兜底修复
+        """
+        if not result_str or not result_str.strip():
+            raise RuntimeError("LLM 返回结果为空，无法解析 JSON。")
+
+        cleaned_str = result_str.strip()
+        candidates: list[str] = []
+
+        # 优先提取 ```json``` 代码块，兼容模型按示例输出 fenced JSON 的场景。
+        fenced_matches = re.findall(r"```json\s*([\s\S]*?)\s*```", cleaned_str, flags=re.IGNORECASE)
+        if fenced_matches:
+            candidates.extend(match.strip() for match in fenced_matches if match and match.strip())
+
+        # 再兼容普通 ``` ... ``` 包裹，避免模型省略 json 标识符时直接失败。
+        plain_fenced_matches = re.findall(r"```\s*([\s\S]*?)\s*```", cleaned_str)
+        if plain_fenced_matches:
+            candidates.extend(match.strip() for match in plain_fenced_matches if match and match.strip())
+
+        # 裸 JSON 是 gpt-5.2 在当前供应商下更常见的返回形式，也要直接尝试。
+        candidates.append(cleaned_str)
+
+        # 如果前后有解释文本，截取最外层对象再次尝试。
+        start_idx = cleaned_str.find("{")
+        end_idx = cleaned_str.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            candidates.append(cleaned_str[start_idx:end_idx + 1].strip())
+
+        tried_candidates = set()
+        for candidate in candidates:
+            if not candidate or candidate in tried_candidates:
+                continue
+            tried_candidates.add(candidate)
+
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+            # 使用 json_repair 兼容轻微缺损 JSON，避免大模型少量格式漂移直接打断主流程。
+            try:
+                repaired = json_repair.loads(candidate)
+                if isinstance(repaired, dict):
+                    return repaired
+            except Exception:
+                continue
+
+        preview = cleaned_str[:300].replace("\n", "\\n")
+        logger.error(f"无法从 LLM 输出中提取有效 JSON，原始内容片段: {preview}")
+        raise RuntimeError("解析 LLM 返回的 JSON 失败。")
 
     @staticmethod
     @time_it
@@ -113,10 +177,7 @@ class QueryProcessor:
                                        temperature=0.01,
                                        )
 
-        l_pos = resp.find("```json")
-        r_pos = resp.rfind("```", l_pos + 1)
-        resp = resp[l_pos + 7:r_pos]
-        next_instruction = json.loads(resp)
+        next_instruction = QueryProcessor._parse_json_object(resp)
         logger.info("next_instruction: ", next_instruction)
         return next_instruction
 

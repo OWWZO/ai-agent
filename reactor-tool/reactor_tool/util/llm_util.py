@@ -37,6 +37,10 @@ _LITELLM_DASHSCOPE_MODELS = {
 }
 
 DASHSCOPE_API_BASE_DEFAULT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+OPENAI_COMPAT_DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) "
+    "Gecko/20100101 Firefox/148.0"
+)
 
 
 def _normalize_api_base(api_base: str) -> str:
@@ -92,6 +96,15 @@ def _is_dashscope_api_base(api_base: str) -> bool:
 
 def _is_official_openai_api_base(api_base: str) -> bool:
     return bool(api_base) and "api.openai.com" in api_base.lower()
+
+
+def _build_openai_compat_headers(existing_headers: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """为 OpenAI 兼容网关补齐稳定请求头，避免第三方供应商拦截。"""
+    headers = dict(existing_headers or {})
+    lower_header_keys = {str(k).lower() for k in headers.keys()}
+    if "user-agent" not in lower_header_keys:
+        headers["User-Agent"] = os.getenv("OPENAI_COMPAT_USER_AGENT", OPENAI_COMPAT_DEFAULT_USER_AGENT)
+    return headers
 
 
 def _is_permission_or_policy_block_error(err: Exception) -> bool:
@@ -329,7 +342,9 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
         return {"model": model, **kwargs}
 
     explicit_api_base = kwargs.get("api_base")
-    env_api_base = os.getenv("DASHSCOPE_API_BASE") or os.getenv("OPENAI_BASE_URL")
+    env_dashscope_api_base = os.getenv("DASHSCOPE_API_BASE")
+    env_openai_api_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+    explicit_dashscope = bool(explicit_api_base) and _is_dashscope_api_base(str(explicit_api_base))
 
     # ===== DashScope =====
     use_dashscope = False
@@ -338,21 +353,19 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
         prefix, rest = model.split("/", 1)
         if prefix == "dashscope" and rest:
             use_dashscope = True
-            api_base_raw = explicit_api_base or env_api_base or DASHSCOPE_API_BASE_DEFAULT
-        elif explicit_api_base and _is_dashscope_api_base(explicit_api_base):
+            api_base_raw = explicit_api_base or env_dashscope_api_base or DASHSCOPE_API_BASE_DEFAULT
+        elif explicit_dashscope:
             use_dashscope = True
             api_base_raw = explicit_api_base
-        elif env_api_base and _is_dashscope_api_base(env_api_base):
-            use_dashscope = True
-            api_base_raw = env_api_base
         else:
             return {"model": model, **kwargs}
     elif model in _LITELLM_DASHSCOPE_MODELS or model.startswith("qwen"):
         use_dashscope = True
-        api_base_raw = explicit_api_base or env_api_base or DASHSCOPE_API_BASE_DEFAULT
-    elif env_api_base and _is_dashscope_api_base(env_api_base) and not explicit_api_base:
+        # 只有 Qwen / DashScope 模型才自动复用 DashScope 环境，避免 gpt-* 被错误劫持到 DashScope。
+        api_base_raw = explicit_api_base or env_dashscope_api_base or DASHSCOPE_API_BASE_DEFAULT
+    elif explicit_dashscope:
         use_dashscope = True
-        api_base_raw = env_api_base
+        api_base_raw = explicit_api_base
 
     if use_dashscope and api_base_raw:
         kwargs.pop("api_base", None)
@@ -402,8 +415,7 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
 
     # ===== Generic OpenAI-compatible gateways =====
     # example: OPENAI_BASE_URL=https://your-gateway/v1/chat/completions
-    openai_env_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
-    openai_compat_base = kwargs.pop("api_base", None) or openai_env_base
+    openai_compat_base = kwargs.pop("api_base", None) or env_openai_api_base
     if openai_compat_base and not _is_dashscope_api_base(openai_compat_base):
         api_base = _normalize_openai_compat_api_base(openai_compat_base)
         api_key = kwargs.pop("api_key", None) or os.getenv("OPENAI_API_KEY")
@@ -486,6 +498,8 @@ async def ask_llm(
         merged_headers.update(params.get("extra_headers"))
     if isinstance(extra_headers, dict):
         merged_headers.update(extra_headers)
+    if params.get("custom_llm_provider") in {"openai", "openai_like"}:
+        merged_headers = _build_openai_compat_headers(merged_headers)
     lower_header_keys = {str(k).lower() for k in merged_headers.keys()}
     if "content-type" not in lower_header_keys:
         merged_headers["Content-Type"] = "application/json"

@@ -110,11 +110,19 @@ function handleTaskMessage(
  * @param messageId 消息ID
  * @returns 工具索引，如果未找到则返回-1
  */
-function findToolIndex(tasks: MESSAGE.Task[][], taskIndex: number, messageId: string | undefined): number {
+function findToolIndex(
+  tasks: MESSAGE.Task[][],
+  taskIndex: number,
+  messageId: string | undefined,
+  messageType: string | undefined
+): number {
   if (taskIndex === -1) return -1;
 
   return tasks[taskIndex]?.findIndex(
-    (item: MESSAGE.Task) => item.messageId === messageId
+    // 同一个工具在流式过程中会复用 messageId，但像 multimodalagent_tool 会在同一 messageId 下
+    // 先发 knowledge 增量、再发 markdown 成果；这里需要把 messageType 一起纳入主键，避免串并项。
+    (item: MESSAGE.Task) =>
+      item.messageId === messageId && item.messageType === messageType
   );
 }
 
@@ -133,7 +141,8 @@ function handleTaskMessageByType(
   const toolIndex = findToolIndex(
     currentChat.multiAgent.tasks!,
     taskIndex,
-    eventData.messageId
+    eventData.messageId,
+    messageType
   );
 
   switch (messageType) {
@@ -146,6 +155,7 @@ function handleTaskMessageByType(
     case "html":
     case "markdown":
     case "ppt":
+    case "knowledge":
     case "data_analysis":
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
       break;

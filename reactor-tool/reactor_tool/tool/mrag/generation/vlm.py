@@ -6,6 +6,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from .llm import _build_openai_compatible_headers, _normalize_openai_compatible_base_url
 from reactor_tool.tool.mrag.utils import download_utils
 from reactor_tool.tool.mrag.utils.logger_utils import logger
 
@@ -19,10 +20,12 @@ class VLLMClient:
     def __init__(self, base_url=None, model_name=None, api_key=None):
         self.api_key = api_key or os.getenv("VLM_API_KEY")
         self.model_name = model_name or os.getenv("VLM_MODEL_NAME")
-        self.model_base_url = base_url or os.getenv("VLM_MODEL_BASE_URL")
+        # 兼容把 base url 写成具体接口路径的场景，切换到 Java 同款供应商配置时自动归一化。
+        self.model_base_url = _normalize_openai_compatible_base_url(base_url or os.getenv("VLM_MODEL_BASE_URL"))
         self.client = OpenAI(
             api_key=self.api_key,
-            base_url=self.model_base_url
+            base_url=self.model_base_url,
+            default_headers=_build_openai_compatible_headers(),
         )
         logger.info(f"VLM Client {self.model_base_url}")
 
@@ -96,16 +99,27 @@ class VLLMClient:
             }
         ]
 
+    def _build_extra_body(self):
+        """仅对 Qwen / DashScope 视觉模型透传专属参数，避免污染 OpenAI 兼容请求。"""
+        model_name = (self.model_name or "").lower()
+        if model_name.startswith("qwen") or model_name.startswith("dashscope/"):
+            return {"enable_thinking": False}
+        return None
+
     def completions(self, messages, temperature=0, stream=False, max_tokens: int = None):
         # logger.info(f"VLM completions {messages[:1]}")
-        completion = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=temperature,
-            stream=stream,
-            max_tokens=max_tokens,
-            extra_body={"enable_thinking": False}
-        )
+        request_kwargs = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": stream,
+            "max_tokens": max_tokens,
+        }
+        extra_body = self._build_extra_body()
+        if extra_body:
+            request_kwargs["extra_body"] = extra_body
+
+        completion = self.client.chat.completions.create(**request_kwargs)
         if stream:
             return completion
         return completion.choices[0].message.content
@@ -133,8 +147,8 @@ if __name__ == '__main__':
             ]
         }
     ]
-    os.environ.setdefault("VLM_API_KEY", "")
-    os.environ.setdefault("VLM_MODEL_NAME", "OpenGVLab/InternVL3_5-8B-MPO")
-    os.environ.setdefault("VLM_MODEL_BASE_URL", "http://internvl3d5-8b-mpo-4090d-svc.jd.local/v1")
+    os.environ.setdefault("VLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+    os.environ.setdefault("VLM_MODEL_NAME", "gpt-5.2")
+    os.environ.setdefault("VLM_MODEL_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     llm = VLLMClient()
     print(llm.completions(messages))

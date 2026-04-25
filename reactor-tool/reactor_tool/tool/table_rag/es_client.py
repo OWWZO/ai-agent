@@ -1,4 +1,6 @@
 import os
+import os
+
 from dotenv import load_dotenv
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -62,6 +64,10 @@ class ElasticsearchClient:
         scheme = config.get("scheme", "http")
         es_url = _resolve_es_url(host, scheme)
         auth_kwargs = _resolve_auth_kwargs(config)
+        analyzer_env = os.getenv("TR_ES_QUERY_ANALYZER")
+        # 默认沿用 ik_max_word；如果用户显式配置为空串，则表示关闭自定义 analyzer，交给索引 mapping 处理。
+        self._query_analyzer = "ik_max_word" if analyzer_env is None else _trimmed(analyzer_env)
+        self._query_analyzer_available = self._query_analyzer is not None
 
         try:
             self._client = Elasticsearch(es_url, **auth_kwargs)
@@ -70,43 +76,77 @@ class ElasticsearchClient:
             logger.error(f"[ElasticsearchClient] Failed to connect: {e}")
             raise
 
+    @staticmethod
+    def _is_missing_analyzer_error(error: Exception) -> bool:
+        error_text = str(error).lower()
+        return "analyzer" in error_text and "not found" in error_text
+
+    @staticmethod
+    def _build_search_request_body(query, model_code_list, size, analyzer=None):
+        value_match = {"query": query}
+        if analyzer:
+            value_match["analyzer"] = analyzer
+
+        return {
+            "size": size,
+            "query": {
+                "bool": {
+                    "must": {
+                        "match": {
+                            "value": value_match
+                        }
+                    },
+                    "filter": [
+                        {
+                          "terms": {
+                            "modelCode": model_code_list,
+                            "boost": 1
+                          }
+                        }
+                      ],
+                }
+            },
+            "sort": [
+                {
+                    "_score": {
+                        "order": "desc"
+                    }
+                }
+            ]
+        }
+
     def search_body(self, index, search_body):
         def _query_by_ids(search_body):
             query = search_body.get("query", "这是一个es测试")
             model_code_list = search_body.get("model_code_list", [])
             size = search_body.get("size", 20)
-            body = {
-                "size": size,
-                "query": {
-                    "bool": {
-                        "must": {
-                            "match": {
-                                "value": {
-                                      "query": query,
-                                      "analyzer": "ik_max_word"
-                                    }
-                            }
-                        },
-                        "filter": [
-                            {
-                              "terms": {
-                                "modelCode": model_code_list,
-                                "boost": 1
-                              }
-                            }
-                          ],
-                    }
-                },
-                "sort": [
-                    {
-                        "_score": {
-                            "order": "desc"
-                        }
-                    }
-                ]
-            }
-            
-            doc = self._client.search(index=index, body=body)
+            analyzer = self._query_analyzer if self._query_analyzer_available else None
+            body = self._build_search_request_body(
+                query=query,
+                model_code_list=model_code_list,
+                size=size,
+                analyzer=analyzer,
+            )
+
+            try:
+                doc = self._client.search(index=index, body=body)
+            except Exception as error:
+                if analyzer and self._is_missing_analyzer_error(error):
+                    logger.warning(
+                        f"[ElasticsearchClient] analyzer '{analyzer}' not found, "
+                        f"fallback to index default analyzer. index={index}"
+                    )
+                    # 记录一次后续直接走无 analyzer 查询，避免 PlanSolve/table_rag 重复刷错。
+                    self._query_analyzer_available = False
+                    body = self._build_search_request_body(
+                        query=query,
+                        model_code_list=model_code_list,
+                        size=size,
+                        analyzer=None,
+                    )
+                    doc = self._client.search(index=index, body=body)
+                else:
+                    raise
             logger.debug(f"elastic body {body} search result length {len(doc['hits']['hits'])}")
             return {hit['_id']: hit.get("_source") for hit in doc['hits']['hits']}
 

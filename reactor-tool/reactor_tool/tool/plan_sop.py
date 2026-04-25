@@ -30,6 +30,14 @@ DEFAULT_NO_SOP_SIMILARITY_THRESHOLD = 0.2
 MAX_RECALL_SOP_NUMBER = 5
 HIGH_RECALL_SOP_NUMBER = 2
 
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """统一解析环境变量布尔值，避免 'false' 被当成真值。"""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 def safe_literal_eval(input_str):
     try:
         # 尝试解析字符串
@@ -125,7 +133,7 @@ class PlanSOP(object):
         return dedup_sops
 
     def sop_choose(self, query, sop_list=[]):
-        SOP_QDRANT_ENABLE = os.getenv('SOP_QDRANT_ENABLE', "").lower() == "true"
+        SOP_QDRANT_ENABLE = _env_flag("SOP_QDRANT_ENABLE", default=False)
         if not SOP_QDRANT_ENABLE and sop_list:
             name_scores = get_rerank(query=query, doc_list=[sop["sop_name"] for sop in sop_list], request_id=self.request_id, url=self.bge_rerank_url)
             step_scores = get_rerank(query=query, doc_list=[sop["sop_string"] for sop in sop_list],
@@ -195,48 +203,56 @@ class PlanSOP(object):
         }
         qdrant_url = os.getenv('TR_QDRANT_URL', None)
         collection_name = os.getenv('SOP_COLLECTION_NAME', None)
-        SOP_QDRANT_ENABLE = os.getenv('SOP_QDRANT_ENABLE', None)
+        SOP_QDRANT_ENABLE = _env_flag("SOP_QDRANT_ENABLE", default=False)
         if SOP_QDRANT_ENABLE:
-            if qdrant_url:
-                _sops = get_qd_server_recall(query,
-                                             filters,
-                                             collection_name,
-                                             qdrant_url=qdrant_url,
-                                             limit=self.max_recall_sop_number,
-                                             threshhold=-1,
-                                             timeout=0.5 * 100000000) #毫秒
-            else:
-                qdrant_recall_obj = QdrantRecall(
-                    host=os.getenv('QDRANT_HOST'),
-                    port=os.getenv("QDRANT_PORT", None),
-                    api_key=os.getenv("QDRANT_API_KEY", None),
-                    collection_name=collection_name,
-                    qdrant_limit=self.max_recall_sop_number,
-                    threshhold=-1,
-                    timeout=0.5 * 100000000
-                )
-                embedding_url = os.getenv("EMBEDDING_URL")
-                emb_client = EmbeddingClient(embedding_url)
-                query_vector = emb_client.get_vector(query)
-                _sops = qdrant_recall_obj.search(query_vector, filters)
-
+            try:
+                if qdrant_url:
+                    _sops = get_qd_server_recall(query,
+                                                 filters,
+                                                 collection_name,
+                                                 qdrant_url=qdrant_url,
+                                                 limit=self.max_recall_sop_number,
+                                                 threshhold=-1,
+                                                 timeout=0.5 * 100000000) #毫秒
+                else:
+                    qdrant_recall_obj = QdrantRecall(
+                        host=os.getenv('QDRANT_HOST'),
+                        port=os.getenv("QDRANT_PORT", None),
+                        api_key=os.getenv("QDRANT_API_KEY", None),
+                        collection_name=collection_name,
+                        qdrant_limit=self.max_recall_sop_number,
+                        threshhold=-1,
+                        timeout=0.5 * 100000000
+                    )
+                    embedding_url = os.getenv("EMBEDDING_URL")
+                    emb_client = EmbeddingClient(embedding_url)
+                    query_vector = emb_client.get_vector(query)
+                    _sops = qdrant_recall_obj.search(query_vector, filters)
+            except Exception as error:
+                logger.warning(f"SOP qdrant 召回失败，降级到默认 SOP。error={error}")
+                _sops = self._build_default_sops()
         else:
-            logger.warning(f"对于无法使用qdrant时，使用默认值")
-            _sops = [
-                {
-                    "vector_type": "sop_string",
-                    "description": "对销售数据进行综合分析",
-                    "sop_name": "对销售数据进行综合分析",
-                    "sop_json_string": "{\"sop_desc\": \"对销售数据进行综合分析\", \"sop_name\": \"对销售数据进行综合分析\", \"sop_steps\": [{\"steps\": [\"使用分析工具，按月/季度/年统计销售额、利润等，识别周期性变化。\"], \"title\": \"进行销售趋势分析\"}, {\"steps\": [\"使用分析工具，对公司、消费者、小型企业等不同客户群体进行对比分析。\"], \"title\": \"进行客户细分分析\"}, {\"steps\": [\"使用分析工具，对地区/城市进行分析：挖掘区域市场差异，发现潜力市场。\"], \"title\": \"销售客户细分分析\"}, {\"steps\": [\"使用分析工具，对销售产品类别分析：家具、技术、办公用品等类别的销售表现、利润贡献。\"], \"title\": \"销售产品类别分析\"}, {\"steps\": [\"基于前面步骤的分析和结论，进行汇总展示最终的 HTML 报告\"], \"title\": \"报告呈现\"}]}",
-                    "sop_string": "对销售数据进行综合分析\n对销售数据进行综合分析进行销售趋势分析使用分析工具，按月/季度/年统计销售额、利润等，识别周期性变化。\n进行客户细分分析使用分析工具，对公司、消费者、小型企业等不同客户群体进行对比分析。\n销售客户细分分析使用分析工具，对地区/城市进行分析：挖掘区域市场差异，发现潜力市场。\n销售产品类别分析使用分析工具，对销售产品类别分析：家具、技术、办公用品等类别的销售表现、利润贡献。\n报告呈现基于前面步骤的分析和结论，进行汇总展示最终的 HTML 报告",
-                    "sop_id": "1",
-                    "sop_type": "list",
-                    "score": 0.636863648891449
-                }
-            ]
+            logger.info("SOP_QDRANT_ENABLE 未开启，使用默认 SOP。")
+            _sops = self._build_default_sops()
         logger.info(f"sn: {self.request_id} recall res {_sops}")
         recall_sops = [SOPDict(**t) for t in _sops]
         return recall_sops
+
+    @staticmethod
+    def _build_default_sops():
+        """qdrant 不可用时的兜底 SOP，保证 PlanSolve 至少能继续规划。"""
+        return [
+            {
+                "vector_type": "sop_string",
+                "description": "对销售数据进行综合分析",
+                "sop_name": "对销售数据进行综合分析",
+                "sop_json_string": "{\"sop_desc\": \"对销售数据进行综合分析\", \"sop_name\": \"对销售数据进行综合分析\", \"sop_steps\": [{\"steps\": [\"使用分析工具，按月/季度/年统计销售额、利润等，识别周期性变化。\"], \"title\": \"进行销售趋势分析\"}, {\"steps\": [\"使用分析工具，对公司、消费者、小型企业等不同客户群体进行对比分析。\"], \"title\": \"进行客户细分分析\"}, {\"steps\": [\"使用分析工具，对地区/城市进行分析：挖掘区域市场差异，发现潜力市场。\"], \"title\": \"销售客户细分分析\"}, {\"steps\": [\"使用分析工具，对销售产品类别分析：家具、技术、办公用品等类别的销售表现、利润贡献。\"], \"title\": \"销售产品类别分析\"}, {\"steps\": [\"基于前面步骤的分析和结论，进行汇总展示最终的 HTML 报告\"], \"title\": \"报告呈现\"}]}",
+                "sop_string": "对销售数据进行综合分析\n对销售数据进行综合分析进行销售趋势分析使用分析工具，按月/季度/年统计销售额、利润等，识别周期性变化。\n进行客户细分分析使用分析工具，对公司、消费者、小型企业等不同客户群体进行对比分析。\n销售客户细分分析使用分析工具，对地区/城市进行分析：挖掘区域市场差异，发现潜力市场。\n销售产品类别分析使用分析工具，对销售产品类别分析：家具、技术、办公用品等类别的销售表现、利润贡献。\n报告呈现基于前面步骤的分析和结论，进行汇总展示最终的 HTML 报告",
+                "sop_id": "1",
+                "sop_type": "list",
+                "score": 0.636863648891449
+            }
+        ]
 
 
     def _get_filter_mode(self, recall_sops):
