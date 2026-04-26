@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_message (
     sort_order       INT          NOT NULL DEFAULT 0 COMMENT '轮次序号(0-based)',
     query            TEXT         NOT NULL COMMENT '用户问题',
     files_json       JSON         NULL     COMMENT '上传文件列表JSON [{name,url,type,size}]',
+    generated_files_json JSON     NULL     COMMENT '本轮生成文件列表JSON，结构复用 FileInformation',
     agent_type       TINYINT      NOT NULL COMMENT '0=CHAT, 1=PLAN_SOLVE, 2=REACT',
     response         MEDIUMTEXT   NULL     COMMENT '单轮最终回答/上下文文本',
     metrics_json     JSON         NULL     COMMENT '执行指标',
@@ -83,15 +84,21 @@ CREATE TABLE IF NOT EXISTS ai_agent_message_event (
     display_area    VARCHAR(32)  NOT NULL DEFAULT 'timeline' COMMENT '展示区域',
     task_id         VARCHAR(64)  NULL     COMMENT '关联taskId',
     task_order      INT          NULL     COMMENT '任务内顺序',
+    tool_use_id     VARCHAR(128) NULL     COMMENT '工具调用实例ID',
+    tool_name       VARCHAR(128) NULL     COMMENT '工具名称',
+    tool_arguments_json JSON     NULL     COMMENT '工具参数快照JSON',
     title           VARCHAR(256) NULL     COMMENT '显示标题',
     content_text    MEDIUMTEXT   NULL     COMMENT '展示文本',
-    payload_json    JSON         NULL     COMMENT '最终可见块的结构化快照，包含 canonical payload 与 artifactRefs',
+    reference_only  TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否只保留引用，不内联正文',
+    artifact_refs_json JSON      NULL     COMMENT '标准化产物引用JSON',
+    structured_data_json JSON    NULL     COMMENT '标准化结构化事实JSON',
+    payload_json    JSON         NULL     COMMENT '扩展字段JSON，仅承载未标准化的最小补充信息',
     status          VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'completed/partial/error',
     create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     deleted         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_message_seq (message_id, seq_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 最终可见细节块快照表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI Agent 事件事实账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_session_memory (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -136,3 +143,31 @@ CREATE TABLE IF NOT EXISTS sales_data (
     discount DECIMAL(10, 4) DEFAULT NULL COMMENT '折扣',
     profit DECIMAL(10, 4) DEFAULT NULL COMMENT '利润'
 );
+
+CREATE TABLE IF NOT EXISTS ai_agent_image_generation_record (
+    id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    request_id         VARCHAR(64)  NOT NULL COMMENT '单次生成请求ID',
+    result_index       INT          NOT NULL DEFAULT 0 COMMENT '同批次结果图序号(0-based)',
+    device_id          VARCHAR(128) NOT NULL COMMENT '匿名设备标识',
+    user_id            BIGINT       NULL     COMMENT '认证用户ID(预留)',
+    prompt             TEXT         NOT NULL COMMENT '生成提示词',
+    mode               VARCHAR(16)  NOT NULL COMMENT '生成模式 images/edits',
+    size               VARCHAR(32)  NULL     COMMENT '输出尺寸',
+    batch_count        INT          NOT NULL DEFAULT 1 COMMENT '本批次生成图片总数',
+    source_image_count INT          NOT NULL DEFAULT 0 COMMENT '参考图数量',
+    mask_image_count   INT          NOT NULL DEFAULT 0 COMMENT '蒙版图数量',
+    used_fallback      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否走兼容降级接口',
+    file_name          VARCHAR(255) NULL     COMMENT '结果图片文件名',
+    oss_url            VARCHAR(1024) NULL    COMMENT '文件下载地址或对象存储地址',
+    domain_url         VARCHAR(1024) NULL    COMMENT '文件预览地址',
+    download_url       VARCHAR(1024) NULL    COMMENT '稳定下载地址',
+    file_size          BIGINT       NULL     COMMENT '文件大小(字节)',
+    mime_type          VARCHAR(128) NULL     COMMENT '结果图片MIME类型',
+    create_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted            TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_request_result (request_id, result_index),
+    KEY idx_device_create (device_id, deleted, create_time DESC),
+    KEY idx_user_create (user_id, deleted, create_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='生图工作台结果明细表';

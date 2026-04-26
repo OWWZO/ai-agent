@@ -41,6 +41,7 @@ public class SessionMemoryPreparationServiceTest {
         Assert.assertEquals(SessionMemoryDecisionType.BYPASS, result.getDecisionType());
         Assert.assertEquals(Integer.valueOf(600), result.getEstimatedTokens());
         Assert.assertEquals(0, sessionMemoryDao.insertCount.get());
+        Assert.assertEquals(1, assembler.buildFactEventMapCount.get());
     }
 
     @Test
@@ -136,7 +137,6 @@ public class SessionMemoryPreparationServiceTest {
         ReflectionTestUtils.setField(service, "reactorConfig", buildConfig());
         ReflectionTestUtils.setField(service, "sessionMemoryDao", sessionMemoryDao);
         ReflectionTestUtils.setField(service, "messageDao", new StubMessageDao());
-        ReflectionTestUtils.setField(service, "messageEventDao", new StubMessageEventDao());
         ReflectionTestUtils.setField(service, "workingMemoryAssembler", assembler);
         ReflectionTestUtils.setField(service, "compactionService", compactionService);
         return service;
@@ -287,9 +287,16 @@ public class SessionMemoryPreparationServiceTest {
 
     private static class StubWorkingMemoryAssembler extends SessionWorkingMemoryAssembler {
         private final Deque<SessionWorkingMemory> memories = new ArrayDeque<>();
+        private final AtomicInteger buildFactEventMapCount = new AtomicInteger();
 
         private StubWorkingMemoryAssembler(SessionWorkingMemory... memories) {
             this.memories.addAll(List.of(memories));
+        }
+
+        @Override
+        public Map<Long, List<AgentMessageEvent>> buildFactEventMap(List<AgentMessage> messages) {
+            buildFactEventMapCount.incrementAndGet();
+            return Map.of();
         }
 
         @Override

@@ -12,16 +12,18 @@ import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
 import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.trigger.http.agent.AgentConversationController;
+import org.wwz.ai.trigger.http.agent.vo.ArtifactReferenceRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationDetailRespVO;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class ConversationHistoryDetailApiTest {
 
     @Test
-    public void test_detailReturnsTurnsAndEvents() {
+    public void test_detailReturnsCanonicalProjectedPayloadAndGeneratedFiles() {
         AgentConversationController controller = new AgentConversationController();
         ReflectionTestUtils.setField(controller, "conversationService", new StubConversationService());
         ReflectionTestUtils.setField(controller, "fixRoleService", new StubFixRoleService());
@@ -35,9 +37,24 @@ public class ConversationHistoryDetailApiTest {
         Assert.assertNotNull(response.getData());
         Assert.assertEquals(1, response.getData().getTurns().size());
         Assert.assertEquals(1, response.getData().getTurns().get(0).getEvents().size());
-        Assert.assertEquals("plan", response.getData().getTurns().get(0).getEvents().get(0).getEventType());
-        Assert.assertEquals("final_state", response.getData().getTurns().get(0).getEvents().get(0).getEventSubType());
+        Assert.assertNotNull(response.getData().getTurns().get(0).getFiles());
+        Assert.assertNotNull(response.getData().getTurns().get(0).getGeneratedFiles());
+        Assert.assertEquals("markdown", response.getData().getTurns().get(0).getEvents().get(0).getEventType());
+        Assert.assertEquals("report", response.getData().getTurns().get(0).getEvents().get(0).getEventSubType());
         Assert.assertEquals(Integer.valueOf(1), response.getData().getTurns().get(0).getEvents().get(0).getIsFinal());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> generatedFiles = (List<Map<String, Object>>) response.getData().getTurns().get(0).getGeneratedFiles();
+        Assert.assertEquals("report-html", generatedFiles.get(0).get("resourceKey"));
+
+        Map<String, Object> payload = response.getData().getTurns().get(0).getEvents().get(0).getPayload();
+        Assert.assertEquals("task", payload.get("messageType"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resultMap = (Map<String, Object>) payload.get("resultMap");
+        Assert.assertEquals("markdown", resultMap.get("messageType"));
+        @SuppressWarnings("unchecked")
+        List<ArtifactReferenceRespVO> artifactRefs = (List<ArtifactReferenceRespVO>) payload.get("artifactRefs");
+        Assert.assertEquals("report-html", artifactRefs.get(0).getResourceKey());
     }
 
     @Test
@@ -78,6 +95,18 @@ public class ConversationHistoryDetailApiTest {
                             .requestId("req-001")
                             .sortOrder(0)
                             .query("分析销量")
+                            .files(List.of(java.util.Map.of(
+                                    "name", "销量原始数据.xlsx",
+                                    "url", "https://file.example.com/input.xlsx",
+                                    "type", "xlsx"
+                            )))
+                            .generatedFiles(List.of(java.util.Map.of(
+                                    "fileName", "销量分析报告.md",
+                                    "previewUrl", "https://file.example.com/report.html",
+                                    "downloadUrl", "https://file.example.com/download/report.html",
+                                    "fileType", "markdown",
+                                    "resourceKey", "report-html"
+                            )))
                             .agentType(1)
                             .status(1)
                             .forceStop(0)
@@ -85,21 +114,30 @@ public class ConversationHistoryDetailApiTest {
                             .events(List.of(
                                     ConversationEventDetail.builder()
                                             .seqNo(1)
-                                            .eventType("plan")
-                                            .eventSubType("final_state")
-                                            .displayArea("timeline")
-                                            .title("执行计划")
-                                            .contentText("全部计划已完成")
+                                            .eventType("markdown")
+                                            .eventSubType("report")
+                                            .displayArea("workspace")
+                                            .title("销量分析报告")
+                                            .contentText("已生成最终 Markdown 报告，请通过稳定引用打开。")
                                             .status("completed")
                                             .isFinal(1)
                                             .payload(java.util.Map.of(
-                                                    "messageType", "plan",
-                                                    "messageId", "plan-final-1",
+                                                    "messageType", "task",
+                                                    "messageId", "semantic-tool-result-1",
+                                                    "taskId", "task-1",
+                                                    "taskOrder", 1,
                                                     "resultMap", java.util.Map.of(
-                                                            "title", "执行计划",
-                                                            "steps", List.of("确认范围", "检索资料", "整理结论"),
-                                                            "stepStatus", List.of("completed", "completed", "completed")
-                                                    )))
+                                                            "messageType", "markdown",
+                                                            "answer", "已生成最终 Markdown 报告，请通过稳定引用打开。",
+                                                            "isFinal", true
+                                                    ),
+                                                    "artifactRefs", List.of(java.util.Map.of(
+                                                            "displayName", "销量分析报告.md",
+                                                            "resourceKey", "report-html",
+                                                            "previewUrl", "https://file.example.com/report.html",
+                                                            "downloadUrl", "https://file.example.com/download/report.html",
+                                                            "missing", false
+                                                    ))))
                                             .build()
                             ))
                             .build()

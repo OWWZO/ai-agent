@@ -12,14 +12,17 @@ import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 将消息账本与事件流装配为历史详情模型。
+ * 将消息账本与事件事实流装配为历史详情模型。
  */
 @Slf4j
 @Component
 public class ConversationReplayAssembler {
+
+    private final ConversationEventFactSupport factSupport = new ConversationEventFactSupport();
 
     public List<ConversationTurnDetail> assembleTurns(List<AgentMessage> messages,
                                                       Map<Long, List<AgentMessageEvent>> eventMap) {
@@ -33,6 +36,7 @@ public class ConversationReplayAssembler {
                         .sortOrder(message.getSortOrder())
                         .query(message.getQuery())
                         .files(parseJson(message.getFilesJson()))
+                        .generatedFiles(parseJson(message.getGeneratedFilesJson()))
                         .agentType(message.getAgentType())
                         .response(message.getResponse())
                         .status(message.getStatus())
@@ -51,53 +55,30 @@ public class ConversationReplayAssembler {
         }
 
         return events.stream()
-                .map(event -> {
-                    Object payload = normalizePayload(parseJson(event.getPayloadJson()));
-                    return ConversationEventDetail.builder()
-                            .seqNo(event.getSeqNo())
-                            .eventType(event.getEventType())
-                            .eventSubType(event.getEventSubType())
-                            .displayArea(event.getDisplayArea())
-                            .taskId(event.getTaskId())
-                            .taskOrder(event.getTaskOrder())
-                            .messageIdExt(extractMessageId(payload))
-                            .title(event.getTitle())
-                            .contentText(event.getContentText())
-                            .payload(payload)
-                            .isFinal(1)
-                            .status(event.getStatus())
-                            .build();
-                })
+                .map(this::toEventDetail)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 统一把旧 fileInfo/fileList 兜底转换为 artifactRefs，避免前端继续感知旧字段。
-     */
-    private Object normalizePayload(Object payload) {
-        return ConversationEventPayloadNormalizer.normalizePayload(payload);
-    }
-
-    @SuppressWarnings("unchecked")
-    private String extractMessageId(Object payload) {
-        if (!(payload instanceof Map)) {
+    private ConversationEventDetail toEventDetail(AgentMessageEvent event) {
+        ConversationEventFactSupport.ProjectedHistoryEvent projected = factSupport.projectHistoryEvent(event);
+        if (projected == null) {
             return null;
         }
-
-        Map<String, Object> payloadMap = (Map<String, Object>) payload;
-        Object directMessageId = payloadMap.get("messageId");
-        if (directMessageId != null) {
-            return String.valueOf(directMessageId);
-        }
-
-        Object resultMapObj = payloadMap.get("resultMap");
-        if (resultMapObj instanceof Map) {
-            Object nestedMessageId = ((Map<String, Object>) resultMapObj).get("messageId");
-            if (nestedMessageId != null) {
-                return String.valueOf(nestedMessageId);
-            }
-        }
-        return null;
+        return ConversationEventDetail.builder()
+                .seqNo(event.getSeqNo())
+                .eventType(projected.eventType())
+                .eventSubType(projected.eventSubType())
+                .displayArea(projected.displayArea())
+                .taskId(projected.taskId())
+                .taskOrder(projected.taskOrder())
+                .messageIdExt(projected.messageId())
+                .title(event.getTitle())
+                .contentText(event.getContentText())
+                .payload(projected.payload())
+                .isFinal(1)
+                .status(event.getStatus())
+                .build();
     }
 
     private Object parseJson(String json) {

@@ -11,8 +11,14 @@
         <result column="display_area" property="displayArea"/>
         <result column="task_id" property="taskId"/>
         <result column="task_order" property="taskOrder"/>
+        <result column="tool_use_id" property="toolUseId"/>
+        <result column="tool_name" property="toolName"/>
+        <result column="tool_arguments_json" property="toolArgumentsJson"/>
         <result column="title" property="title"/>
         <result column="content_text" property="contentText"/>
+        <result column="reference_only" property="referenceOnly"/>
+        <result column="artifact_refs_json" property="artifactRefsJson"/>
+        <result column="structured_data_json" property="structuredDataJson"/>
         <result column="payload_json" property="payloadJson"/>
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
@@ -23,14 +29,16 @@
         INSERT INTO ai_agent_message_event (
             message_id, seq_no,
             event_type, event_sub_type, display_area, task_id, task_order,
-            title, content_text, payload_json,
+            tool_use_id, tool_name, tool_arguments_json,
+            title, content_text, reference_only, artifact_refs_json, structured_data_json, payload_json,
             status, create_time, deleted
         ) VALUES
         <foreach collection="events" item="item" separator=",">
             (
                 #{item.messageId}, #{item.seqNo},
                 #{item.eventType}, #{item.eventSubType}, #{item.displayArea}, #{item.taskId}, #{item.taskOrder},
-                #{item.title}, #{item.contentText}, #{item.payloadJson},
+                #{item.toolUseId}, #{item.toolName}, #{item.toolArgumentsJson},
+                #{item.title}, #{item.contentText}, #{item.referenceOnly}, #{item.artifactRefsJson}, #{item.structuredDataJson}, #{item.payloadJson},
                 #{item.status}, now(), #{item.deleted}
             )
         </foreach>
@@ -43,6 +51,7 @@
     </select>
 
     <select id="queryByMessageIds" resultMap="AgentMessageEventMap">
+        <!-- 历史详情需要按 turn + seq_no 顺序读取完整事实块，再由后端投影成实时兼容 payload。 -->
         SELECT *
         FROM ai_agent_message_event
         WHERE deleted = 0
@@ -54,10 +63,12 @@
     </select>
 
     <select id="queryArtifactEventsByMessageIds" resultMap="AgentMessageEventMap">
+        <!-- 生成文件索引和稳定资源恢复只依赖标准化 artifact_refs_json。 -->
         SELECT *
         FROM ai_agent_message_event
         WHERE deleted = 0
-          AND payload_json IS NOT NULL
+          AND event_type IN ('tool_result', 'artifact_reference')
+          AND artifact_refs_json IS NOT NULL
           AND message_id IN
         <foreach collection="messageIds" item="messageId" open="(" separator="," close=")">
             #{messageId}
@@ -66,6 +77,7 @@
     </select>
 
     <select id="queryFinalEventsByMessageIds" resultMap="AgentMessageEventMap">
+        <!-- 会话记忆恢复直接消费完整事实块，不再依赖前端快照语义。 -->
         SELECT *
         FROM ai_agent_message_event
         WHERE deleted = 0

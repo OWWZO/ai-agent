@@ -45,6 +45,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         Map<String, Object> taskResult = new HashMap<>();
         taskResult.put("taskSummary", result.getTaskSummary());
 
+        //如果llm没有输出文件名 就用内存里记录的文件 去除掉中间文件然后翻转 发送给前端
         if (CollectionUtils.isEmpty(result.getFiles())) {
             if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
                 List<File> fileResponses = agentContext.getProductFiles();
@@ -53,6 +54,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
                 taskResult.put("fileList", fileResponses);
             }
         } else {
+            //llm输出了 就发它输出的
             taskResult.put("fileList", result.getFiles());
         }
 

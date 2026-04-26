@@ -8,7 +8,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 按到达顺序缓存的事件模型
+ * 按到达顺序缓存的事实块模型。
+ * 这里只表达后端真实发生过的语义事件，不再承担前端最终态快照职责。
  */
 @Data
 @Builder
@@ -25,6 +26,12 @@ public class OrderedEvent {
     private String taskId;
     private Integer taskOrder;
     private String messageIdExt;
+    private String toolUseId;
+    private String toolName;
+    private String toolArgumentsJson;
+    private boolean referenceOnly;
+    private String artifactRefsJson;
+    private String structuredDataJson;
     private boolean isFinal;
     private String title;
     private String contentText;

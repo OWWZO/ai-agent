@@ -575,10 +575,6 @@ public class LLM {
             int timeout
     ) {
         try {
-//            // 渐进改造：所有非流式工具调用（无论 functionCallType）统一走 Spring AI + BeanOutputConverter
-//            if (!stream) {
-//                return askToolWithChatClientStructParse(context, messages, systemMsgs, tools, toolChoice, temperature);
-//            }
 
             // 校验工具选择策略的合法性，非法值直接抛出参数异常
             if (!ToolChoice.isValid(toolChoice)) {

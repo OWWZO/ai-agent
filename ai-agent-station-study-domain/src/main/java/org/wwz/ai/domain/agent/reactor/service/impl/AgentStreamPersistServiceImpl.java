@@ -91,6 +91,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         ConversationAgentType convAgentType = ConversationAgentType.resolve(outputStyle, deepThink);
         AgentConversation conversation = conversationService.getBySessionId(sessionId);
         FixRoleVO resolvedRole = null;
+        //chat模式匹配对应的agent角色
         if (ConversationAgentType.CHAT == convAgentType) {
             ChatRoleResolution resolution = resolveChatRole(conversation, aiAgentId);
             if (!resolution.success()) {
@@ -106,16 +107,19 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         if (conversation == null) {
+            //创建会话
             conversation = conversationService.createConversation(
                     sessionId, deviceId, null, convAgentType.getCode(), outputStyle,
                     resolvedRole != null ? resolvedRole.getAgentId() : null,
                     resolvedRole != null ? resolvedRole.getAgentName() : null);
         } else if (resolvedRole != null && shouldBindChatRole(conversation, resolvedRole)) {
+            //绑定角色
             conversation = conversationService.bindChatRole(
                     conversation, resolvedRole.getAgentId(), resolvedRole.getAgentName());
         }
 
         if (ConversationAgentType.CHAT != convAgentType) {
+            //检查是否有正在进行中的对话
             SessionGuardResult guardResult = validateBusyGuard(conversation);
             if (guardResult != null) {
                 return emitGuardError(requestId, guardResult.status(), guardResult.errorMsg());
@@ -178,11 +182,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             SessionWorkingMemory workingMemory = preparedWorkingMemory == null
                     ? sessionMemoryService.rebuildWorkingMemory(conversation)
                     : preparedWorkingMemory;
-            agentRequest.setHistoryDialogue(workingMemory.getHistoryDialogue());
-            agentRequest.setMessages(buildWorkingMemoryMessages(workingMemory));
-            agentRequest.setSessionFiles(sessionArtifactRestoreSupport.mergeFiles(
-                    workingMemory.getRestoredFiles(),
-                    currentRequestFiles));
+            applyStructuredWorkingMemory(agentRequest, workingMemory, currentRequestFiles);
         }
 
         if (agentRequest.getSessionFiles() == null) {
@@ -404,6 +404,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         if (!finalOrderedEvents.isEmpty()) {
             messageEventService.persistEvents(finalOrderedEvents, messageId, status);
         }
+        String generatedFilesJson = buildGeneratedFilesJson(finalOrderedEvents);
 
         JSONObject metrics = new JSONObject();
         metrics.put("detail_count", finalOrderedEvents.size());
@@ -415,14 +416,14 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
 
         switch (status) {
             case "completed":
-                messageService.completeMessage(messageId, response, metricsJson);
+                messageService.completeMessage(messageId, response, metricsJson, generatedFilesJson);
                 break;
             case "partial":
-                messageService.markForceStop(messageId, response, metricsJson);
+                messageService.markForceStop(messageId, response, metricsJson, generatedFilesJson);
                 break;
             case "error":
             default:
-                messageService.markError(messageId, response, metricsJson);
+                messageService.markError(messageId, response, metricsJson, generatedFilesJson);
                 break;
         }
 
@@ -439,6 +440,21 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
         conversationDao.updateById(update);
 
+    }
+
+    private String buildGeneratedFilesJson(List<OrderedEvent> finalOrderedEvents) {
+        if (finalOrderedEvents == null || finalOrderedEvents.isEmpty()) {
+            return "[]";
+        }
+
+        List<JSONObject> artifactRefs = new ArrayList<>();
+        for (OrderedEvent orderedEvent : finalOrderedEvents) {
+            artifactRefs.addAll(sessionArtifactRestoreSupport.parseArtifactRefs(orderedEvent.getArtifactRefsJson()));
+        }
+
+        List<FileInformation> generatedFiles = sessionArtifactRestoreSupport.toFiles(
+                sessionArtifactRestoreSupport.deduplicateArtifactRefs(artifactRefs));
+        return JSON.toJSONString(generatedFiles);
     }
 
     private SessionGuardResult validateSessionGuard(AgentConversation conversation,
@@ -488,6 +504,29 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             emitter.completeWithError(e);
         }
         return emitter;
+    }
+
+    /**
+     * 非 Chat 模式统一把事实账本恢复出的工作记忆灌入请求。
+     * 这样 historyDialogue、结构化消息和会话级文件都共享同一份恢复结果，避免后续再各走各的装配分支。
+     */
+    private void applyStructuredWorkingMemory(AgentRequest agentRequest,
+                                              SessionWorkingMemory workingMemory,
+                                              List<FileInformation> currentRequestFiles) {
+        agentRequest.setHistoryDialogue(workingMemory == null ? null : workingMemory.getHistoryDialogue());
+        agentRequest.setMessages(buildWorkingMemoryMessages(workingMemory));
+        agentRequest.setSessionFiles(buildSessionFiles(workingMemory, currentRequestFiles));
+    }
+
+    /**
+     * 历史恢复出的稳定文件优先级高于本轮新上传文件；若恢复为空，则退化为当前请求文件。
+     */
+    private List<FileInformation> buildSessionFiles(SessionWorkingMemory workingMemory,
+                                                    List<FileInformation> currentRequestFiles) {
+        if (workingMemory == null) {
+            return currentRequestFiles;
+        }
+        return sessionArtifactRestoreSupport.mergeFiles(workingMemory.getRestoredFiles(), currentRequestFiles);
     }
 
     private List<AgentRequest.Message> buildWorkingMemoryMessages(SessionWorkingMemory workingMemory) {
@@ -613,128 +652,441 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             return Collections.emptyList();
         }
 
+        // 这里不再把“前端结束时看到的完整 UI 结构”直接落库，
+        // 而是把后端真实发生过的思考、计划快照、工具调用、工具结果拆成事实块。
         JSONObject normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(eventDataMap);
+        String taskId = valueToString(eventDataMap.get("taskId"));
+        Integer taskOrder = convertToInteger(eventDataMap.get("taskOrder"));
+        String messageId = resolvePayloadMessageId(normalizedPayload, eventDataMap);
+        ToolCallDescriptor toolDescriptor = resolveSemanticToolCallDescriptor(messageId, taskId, taskOrder, rawMessageType, normalizedPayload);
+        List<OrderedEvent> factEvents = new ArrayList<>();
+
+        if ("plan_thought".equals(rawMessageType)) {
+            factEvents.add(buildAssistantThoughtFactEvent(
+                    seqCounter.getAndIncrement(),
+                    "plan",
+                    taskId,
+                    taskOrder,
+                    messageId,
+                    resolveEventTitle(agentResponse),
+                    extractContentText(agentResponse),
+                    null));
+            return factEvents;
+        }
+
         String payloadMessageType = resolvePayloadMessageType(eventDataMap);
-
-        // 只有初始化计划仍然作为独立 plan 块持久化。
-        // 任务执行过程中更新的 plan 在 live eventData 里属于 task 子块，
-        // 否则历史重开时会把“已完成计划块”错误回放成顶部 plan 面板。
         if ("plan".equals(payloadMessageType)) {
-            return List.of(buildPlanFinalEvent(agentResponse, seqCounter));
-        }
-        if ("deep_search".equals(rawMessageType) && "search".equals(resolveEventSubType(agentResponse))) {
-            return buildDeepSearchSearchEvents(agentResponse, normalizedPayload, eventDataMap, seqCounter);
+            factEvents.add(buildPlanSnapshotFactEvent(
+                    seqCounter.getAndIncrement(),
+                    "plan",
+                    null,
+                    null,
+                    messageId,
+                    resolvePlanDisplayTitle(agentResponse.getPlan()),
+                    extractPlanContentText(agentResponse.getPlan()),
+                    JSON.parseObject(JSON.toJSONString(agentResponse.getPlan()))));
+            return factEvents;
         }
 
-        return List.of(buildProjectedEvent(
-                resolveFinalDetailKey(agentResponse, eventDataMap, normalizedPayload, null),
+        if ("task".equals(rawMessageType)) {
+            factEvents.add(buildPlanSnapshotFactEvent(
+                    seqCounter.getAndIncrement(),
+                    "task",
+                    taskId,
+                    taskOrder,
+                    messageId,
+                    resolveEventTitle(agentResponse),
+                    extractContentText(agentResponse),
+                    normalizedPayload.getJSONObject("resultMap")));
+            return factEvents;
+        }
+
+        if ("tool_thought".equals(rawMessageType)) {
+            factEvents.add(buildAssistantThoughtFactEvent(
+                    seqCounter.getAndIncrement(),
+                    "tool",
+                    taskId,
+                    taskOrder,
+                    messageId,
+                    resolveEventTitle(agentResponse),
+                    extractContentText(agentResponse),
+                    toolDescriptor));
+            if (toolDescriptor.hasToolCall()) {
+                factEvents.add(buildToolUseFactEvent(
+                        seqCounter.getAndIncrement(),
+                        taskId,
+                        taskOrder,
+                        messageId,
+                        rawMessageType,
+                        toolDescriptor));
+            }
+            return factEvents;
+        }
+
+        if (shouldPersistArtifactReferenceFact(rawMessageType, normalizedPayload)) {
+            factEvents.add(buildArtifactReferenceFactEvent(
+                    seqCounter.getAndIncrement(),
+                    taskId,
+                    taskOrder,
+                    messageId,
+                    resolveEventTitle(agentResponse),
+                    extractContentText(agentResponse),
+                    normalizedPayload));
+            return factEvents;
+        }
+
+        if (!shouldPersistToolResultFact(rawMessageType, normalizedPayload)) {
+            return Collections.emptyList();
+        }
+
+        String canonicalToolResultSubType = resolveCanonicalToolResultSubType(rawMessageType, agentResponse, normalizedPayload);
+        factEvents.add(buildToolResultFactEvent(
                 seqCounter.getAndIncrement(),
                 rawMessageType,
-                resolveFinalEventSubType(agentResponse),
-                resolveFinalDisplayArea(rawMessageType, resolveEventSubType(agentResponse)),
-                valueToString(eventDataMap.get("taskId")),
-                convertToInteger(eventDataMap.get("taskOrder")),
-                valueToString(normalizedPayload.get("messageId")),
+                canonicalToolResultSubType,
+                resolveFinalDisplayArea(rawMessageType, canonicalToolResultSubType),
+                taskId,
+                taskOrder,
+                messageId,
+                toolDescriptor,
                 resolveEventTitle(agentResponse),
                 extractContentText(agentResponse),
                 normalizedPayload));
+        return factEvents;
     }
 
-    private OrderedEvent buildPlanFinalEvent(AgentResponse agentResponse, AtomicInteger seqCounter) {
-        JSONObject payload = new JSONObject(new LinkedHashMap<>());
-        payload.put("messageType", "plan");
-        payload.put("messageOrder", 1);
-        payload.put("messageId", agentResponse.getMessageId());
-        payload.put("taskId", null);
-        payload.put("taskOrder", null);
-        payload.put("resultMap", JSON.parseObject(JSON.toJSONString(agentResponse.getPlan())));
+    private OrderedEvent buildAssistantThoughtFactEvent(int seqNo,
+                                                        String thoughtType,
+                                                        String taskId,
+                                                        Integer taskOrder,
+                                                        String messageId,
+                                                        String title,
+                                                        String contentText,
+                                                        ToolCallDescriptor toolDescriptor) {
         return buildProjectedEvent(
-                "plan",
-                seqCounter.getAndIncrement(),
-                "plan",
-                "final_state",
+                "assistant_thought|" + thoughtType + "|" + defaultString(taskId) + "|" + defaultString(messageId),
+                seqNo,
+                "assistant_thought",
+                thoughtType,
                 "timeline",
+                taskId,
+                taskOrder,
+                messageId,
+                title,
+                contentText,
+                toolDescriptor,
+                false,
                 null,
                 null,
-                agentResponse.getMessageId(),
-                resolvePlanDisplayTitle(agentResponse.getPlan()),
-                extractPlanContentText(agentResponse.getPlan()),
-                ConversationEventPayloadNormalizer.normalizePayload(payload));
+                null);
     }
 
-    private List<OrderedEvent> buildDeepSearchSearchEvents(AgentResponse agentResponse,
-                                                           JSONObject normalizedPayload,
-                                                           Map<String, Object> eventDataMap,
-                                                           AtomicInteger seqCounter) {
-        JSONObject outerResultMap = normalizedPayload.getJSONObject("resultMap");
-        JSONObject nestedResultMap = outerResultMap == null ? null : outerResultMap.getJSONObject("resultMap");
-        JSONObject searchResult = nestedResultMap == null ? null : nestedResultMap.getJSONObject("searchResult");
-        List<String> queries = extractStringList(searchResult == null ? null : searchResult.get("query"));
-        List<Object> docs = extractObjectList(searchResult == null ? null : searchResult.get("docs"));
-        if (queries.isEmpty()) {
-            return List.of(buildProjectedEvent(
-                    resolveFinalDetailKey(agentResponse, eventDataMap, normalizedPayload, null),
-                    seqCounter.getAndIncrement(),
-                    "deep_search",
-                    "search",
-                    "timeline",
-                    valueToString(eventDataMap.get("taskId")),
-                    convertToInteger(eventDataMap.get("taskOrder")),
-                    valueToString(normalizedPayload.get("messageId")),
-                    resolveDeepSearchSearchTitle(buildDeepSearchText(agentResponse)),
-                    buildDeepSearchText(agentResponse),
-                    normalizedPayload));
+    private OrderedEvent buildPlanSnapshotFactEvent(int seqNo,
+                                                    String snapshotType,
+                                                    String taskId,
+                                                    Integer taskOrder,
+                                                    String messageId,
+                                                    String title,
+                                                    String contentText,
+                                                    JSONObject resultData) {
+        return buildProjectedEvent(
+                "plan_snapshot|" + snapshotType + "|" + defaultString(taskId) + "|" + defaultString(messageId),
+                seqNo,
+                "plan_snapshot",
+                snapshotType,
+                "timeline",
+                taskId,
+                taskOrder,
+                messageId,
+                title,
+                contentText,
+                null,
+                false,
+                null,
+                buildStructuredDataJson(resultData),
+                null);
+    }
+
+    private OrderedEvent buildToolUseFactEvent(int seqNo,
+                                               String taskId,
+                                               Integer taskOrder,
+                                               String messageId,
+                                               String rawMessageType,
+                                               ToolCallDescriptor toolDescriptor) {
+        return buildProjectedEvent(
+                "tool_use|" + defaultString(toolDescriptor.toolUseId()),
+                seqNo,
+                "tool_use",
+                resolveCanonicalToolUseSubType(toolDescriptor, rawMessageType),
+                "timeline",
+                taskId,
+                taskOrder,
+                messageId,
+                "准备调用 " + defaultString(toolDescriptor.toolName()),
+                buildToolUseContent(toolDescriptor),
+                toolDescriptor,
+                false,
+                null,
+                null,
+                null);
+    }
+
+    private OrderedEvent buildToolResultFactEvent(int seqNo,
+                                                  String sourceType,
+                                                  String canonicalSubType,
+                                                  String displayArea,
+                                                  String taskId,
+                                                  Integer taskOrder,
+                                                  String messageId,
+                                                  ToolCallDescriptor toolDescriptor,
+                                                  String title,
+                                                  String contentText,
+                                                  JSONObject normalizedPayload) {
+        String artifactRefsJson = buildArtifactRefsJson(normalizedPayload);
+        String structuredDataJson = buildStructuredDataJson(cloneJson(normalizedPayload.getJSONObject("resultMap")));
+        boolean referenceOnly = ConversationEventPayloadNormalizer.isReferenceOnly(
+                normalizedPayload,
+                sourceType,
+                canonicalSubType,
+                contentText);
+        return buildProjectedEvent(
+                resolveToolResultFactKey(sourceType, canonicalSubType, taskId, messageId, toolDescriptor.toolUseId()),
+                seqNo,
+                "tool_result",
+                canonicalSubType,
+                displayArea,
+                taskId,
+                taskOrder,
+                messageId,
+                title,
+                contentText,
+                toolDescriptor,
+                referenceOnly,
+                artifactRefsJson,
+                structuredDataJson,
+                buildExtensionPayload(normalizedPayload));
+    }
+
+    private OrderedEvent buildArtifactReferenceFactEvent(int seqNo,
+                                                         String taskId,
+                                                         Integer taskOrder,
+                                                         String messageId,
+                                                         String title,
+                                                         String contentText,
+                                                         JSONObject normalizedPayload) {
+        String resolvedContentText = StringUtils.hasText(contentText)
+                ? contentText
+                : "已生成或更新产物";
+        return buildProjectedEvent(
+                "artifact_reference|" + defaultString(taskId) + "|" + defaultString(messageId),
+                seqNo,
+                "artifact_reference",
+                "generated_file",
+                "workspace",
+                taskId,
+                taskOrder,
+                messageId,
+                StringUtils.hasText(title) ? title : "生成文件",
+                resolvedContentText,
+                null,
+                true,
+                buildArtifactRefsJson(normalizedPayload),
+                null,
+                buildExtensionPayload(normalizedPayload));
+    }
+
+    private boolean shouldPersistArtifactReferenceFact(String rawMessageType,
+                                                       JSONObject normalizedPayload) {
+        if (!"result".equals(rawMessageType)) {
+            return false;
         }
+        return !ConversationEventPayloadNormalizer.extractNormalizedArtifactRefs(normalizedPayload).isEmpty();
+    }
 
-        List<OrderedEvent> events = new ArrayList<>();
-        for (int index = 0; index < queries.size(); index++) {
-            String queryText = queries.get(index);
-            JSONObject payload = cloneJson(normalizedPayload);
-            String syntheticMessageId = buildSyntheticMessageId(agentResponse.getMessageId(), queryText, index);
-            payload.put("messageId", syntheticMessageId);
+    private boolean shouldPersistToolResultFact(String rawMessageType, JSONObject normalizedPayload) {
+        return !"agent_stream".equals(rawMessageType) && !"result".equals(rawMessageType);
+    }
 
-            JSONObject payloadOuterResultMap = payload.getJSONObject("resultMap");
-            if (payloadOuterResultMap != null) {
-                payloadOuterResultMap.put("messageId", syntheticMessageId);
-                JSONObject payloadNestedResultMap = payloadOuterResultMap.getJSONObject("resultMap");
-                if (payloadNestedResultMap != null) {
-                    JSONArray queryArray = new JSONArray();
-                    queryArray.add(queryText);
-                    payloadNestedResultMap.put("query", queryArray);
+    private ToolCallDescriptor resolveSemanticToolCallDescriptor(String messageId,
+                                                                 String taskId,
+                                                                 Integer taskOrder,
+                                                                 String rawMessageType,
+                                                                 JSONObject normalizedPayload) {
+        String fallbackToolUseId = StringUtils.hasText(messageId)
+                ? messageId
+                : defaultString(taskId) + ":" + defaultString(taskOrder == null ? null : String.valueOf(taskOrder));
+        String explicitToolUseId = valueToString(firstNonNull(
+                findRaw(normalizedPayload, "toolUseId"),
+                findRaw(normalizedPayload, "toolCallId"),
+                findNestedRaw(normalizedPayload, "toolCall", "id"),
+                findNestedRaw(normalizedPayload, "tool", "id")));
+        String toolUseId = StringUtils.hasText(explicitToolUseId) ? explicitToolUseId : fallbackToolUseId;
+        String toolName = valueToString(firstNonNull(
+                findRaw(normalizedPayload, "toolName"),
+                findNestedRaw(normalizedPayload, "toolCall", "function", "name"),
+                findNestedRaw(normalizedPayload, "tool", "name"),
+                rawMessageType));
+        Object toolArguments = firstNonNull(
+                findRaw(normalizedPayload, "toolArguments"),
+                findNestedRaw(normalizedPayload, "toolCall", "function", "arguments"),
+                findRaw(normalizedPayload, "arguments"),
+                findRaw(normalizedPayload, "toolParam"));
+        String argumentsJson = stringifyToolArguments(toolArguments);
+        return new ToolCallDescriptor(toolUseId, toolName, argumentsJson);
+    }
 
-                    JSONObject payloadSearchResult = payloadNestedResultMap.getJSONObject("searchResult");
-                    if (payloadSearchResult == null) {
-                        payloadSearchResult = new JSONObject(new LinkedHashMap<>());
-                        payloadNestedResultMap.put("searchResult", payloadSearchResult);
-                    }
-                    payloadSearchResult.put("query", queryArray);
-                    JSONArray docsArray = new JSONArray();
-                    Object docsItem = index < docs.size() ? docs.get(index) : null;
-                    if (docsItem instanceof List) {
-                        docsArray.addAll((List<?>) docsItem);
-                    } else if (docsItem != null) {
-                        docsArray.add(docsItem);
-                    }
-                    JSONArray nestedDocsArray = new JSONArray();
-                    nestedDocsArray.add(docsArray);
-                    payloadSearchResult.put("docs", nestedDocsArray);
-                }
+    private String buildToolUseContent(ToolCallDescriptor descriptor) {
+        if (StringUtils.hasText(descriptor.toolArgumentsJson())) {
+            return "准备调用 " + defaultString(descriptor.toolName()) + "，参数：" + descriptor.toolArgumentsJson();
+        }
+        return "准备调用 " + defaultString(descriptor.toolName());
+    }
+
+    private String resolveCanonicalToolUseSubType(ToolCallDescriptor descriptor,
+                                                  String rawMessageType) {
+        String toolName = StringUtils.hasText(descriptor.toolName()) ? descriptor.toolName() : rawMessageType;
+        if (!StringUtils.hasText(toolName)) {
+            return "tool";
+        }
+        return switch (toolName) {
+            case "multimodalagent_tool" -> "knowledge";
+            case "report_tool", "file_tool" -> "file_generation";
+            default -> toolName.endsWith("_tool") ? toolName.substring(0, toolName.length() - 5) : toolName;
+        };
+    }
+
+    private String resolveCanonicalToolResultSubType(String rawMessageType,
+                                                     AgentResponse agentResponse,
+                                                     JSONObject normalizedPayload) {
+        return switch (rawMessageType) {
+            case "deep_search" -> "deep_search." + defaultString(firstNonBlank(
+                    resolveEventSubType(agentResponse),
+                    extractNestedMessageType(normalizedPayload),
+                    "report"));
+            case "browser" -> "browser.result";
+            case "knowledge" -> "knowledge.answer";
+            case "markdown" -> "markdown.report";
+            case "html" -> "html.page";
+            case "ppt" -> "ppt.deck";
+            case "code" -> "code.bundle";
+            case "file" -> "file.output";
+            case "data_analysis" -> "data_analysis.output";
+            default -> rawMessageType + "." + defaultString(firstNonBlank(
+                    extractNestedMessageType(normalizedPayload),
+                    "result"));
+        };
+    }
+
+    private String extractNestedMessageType(JSONObject normalizedPayload) {
+        if (normalizedPayload == null) {
+            return null;
+        }
+        JSONObject resultMap = normalizedPayload.getJSONObject("resultMap");
+        if (resultMap == null) {
+            return null;
+        }
+        String directMessageType = valueToString(resultMap.get("messageType"));
+        if (StringUtils.hasText(directMessageType)) {
+            return directMessageType;
+        }
+        JSONObject nestedResultMap = resultMap.getJSONObject("resultMap");
+        return nestedResultMap == null ? null : valueToString(nestedResultMap.get("messageType"));
+    }
+
+    private String resolveToolResultFactKey(String sourceType,
+                                            String sourceSubType,
+                                            String taskId,
+                                            String messageId,
+                                            String toolUseId) {
+        if ("deep_search".equals(sourceType) && "deep_search.search".equals(sourceSubType)) {
+            return "tool_result|" + sourceType + "|" + sourceSubType + "|" + defaultString(messageId);
+        }
+        if (StringUtils.hasText(toolUseId)) {
+            return "tool_result|" + defaultString(toolUseId) + "|" + sourceType + "|" + defaultString(sourceSubType);
+        }
+        return "tool_result|" + sourceType + "|" + defaultString(taskId) + "|" + defaultString(messageId);
+    }
+
+    private Object findRaw(JSONObject payload, String key) {
+        for (JSONObject candidate : candidateObjects(payload)) {
+            if (candidate != null && candidate.containsKey(key)) {
+                return candidate.get(key);
             }
-
-            events.add(buildProjectedEvent(
-                    resolveFinalDetailKey(agentResponse, eventDataMap, payload, queryText),
-                    seqCounter.getAndIncrement(),
-                    "deep_search",
-                    "search",
-                    "timeline",
-                    valueToString(eventDataMap.get("taskId")),
-                    convertToInteger(eventDataMap.get("taskOrder")),
-                    syntheticMessageId,
-                    resolveDeepSearchSearchTitle(queryText),
-                    buildDeepSearchSearchContent(queryText, nestedResultMap == null ? null : valueToString(nestedResultMap.get("answer"))),
-                    payload));
         }
-        return events;
+        return null;
+    }
+
+    private Object findNestedRaw(JSONObject payload, String... path) {
+        for (JSONObject candidate : candidateObjects(payload)) {
+            Object current = candidate;
+            boolean found = true;
+            for (String segment : path) {
+                if (!(current instanceof JSONObject currentJson) || !currentJson.containsKey(segment)) {
+                    found = false;
+                    break;
+                }
+                current = currentJson.get(segment);
+            }
+            if (found) {
+                return current;
+            }
+        }
+        return null;
+    }
+
+    private List<JSONObject> candidateObjects(JSONObject payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        List<JSONObject> candidates = new ArrayList<>();
+        candidates.add(payload);
+        JSONObject outerResultMap = payload.getJSONObject("resultMap");
+        if (outerResultMap != null) {
+            candidates.add(outerResultMap);
+            JSONObject nestedResultMap = outerResultMap.getJSONObject("resultMap");
+            if (nestedResultMap != null) {
+                candidates.add(nestedResultMap);
+            }
+        }
+        return candidates;
+    }
+
+    private Object firstNonNull(Object... values) {
+        for (Object value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String stringifyToolArguments(Object toolArguments) {
+        if (toolArguments == null) {
+            return null;
+        }
+        if (toolArguments instanceof String stringValue) {
+            return stringValue;
+        }
+        return JSON.toJSONString(toolArguments);
+    }
+
+    private Object parseJsonObject(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            return JSON.parse(json);
+        } catch (Exception ignored) {
+            return json;
+        }
+    }
+
+    private record ToolCallDescriptor(String toolUseId,
+                                      String toolName,
+                                      String toolArgumentsJson) {
+        private boolean hasToolCall() {
+            return StringUtils.hasText(toolName) || StringUtils.hasText(toolArgumentsJson);
+        }
     }
 
     private OrderedEvent buildProjectedEvent(String eventKey,
@@ -747,7 +1099,11 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                                             String messageIdExt,
                                             String title,
                                             String contentText,
-                                            JSONObject payload) {
+                                            ToolCallDescriptor toolDescriptor,
+                                            boolean referenceOnly,
+                                            String artifactRefsJson,
+                                            String structuredDataJson,
+                                            String payloadJson) {
         return OrderedEvent.builder()
                 .dedupKey(eventKey)
                 .seqNo(seqNo)
@@ -757,12 +1113,74 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
                 .taskId(taskId)
                 .taskOrder(taskOrder)
                 .messageIdExt(messageIdExt)
+                .toolUseId(toolDescriptor == null ? null : toolDescriptor.toolUseId())
+                .toolName(toolDescriptor == null ? null : toolDescriptor.toolName())
+                .toolArgumentsJson(normalizeJsonString(toolDescriptor == null ? null : toolDescriptor.toolArgumentsJson()))
+                .referenceOnly(referenceOnly)
+                .artifactRefsJson(artifactRefsJson)
+                .structuredDataJson(structuredDataJson)
                 .isFinal(true)
                 .title(title)
                 .contentText(contentText)
-                .payloadJson(payload == null ? null : payload.toJSONString())
+                .payloadJson(payloadJson)
                 .eventTime(LocalDateTime.now())
                 .build();
+    }
+
+    private String buildArtifactRefsJson(JSONObject normalizedPayload) {
+        List<JSONObject> artifactRefs = sessionArtifactRestoreSupport.deduplicateArtifactRefs(
+                ConversationEventPayloadNormalizer.extractNormalizedArtifactRefs(normalizedPayload));
+        if (artifactRefs.isEmpty()) {
+            return null;
+        }
+        return JSON.toJSONString(artifactRefs);
+    }
+
+    private String buildStructuredDataJson(JSONObject structuredData) {
+        if (structuredData == null || structuredData.isEmpty()) {
+            return null;
+        }
+        return JSON.toJSONString(structuredData);
+    }
+
+    /**
+     * payload_json 只保留当前没有标准列归属、但读取侧仍可能需要的最小扩展信息。
+     */
+    private String buildExtensionPayload(JSONObject normalizedPayload) {
+        if (normalizedPayload == null || normalizedPayload.isEmpty()) {
+            return null;
+        }
+
+        JSONObject extensionPayload = new JSONObject(new LinkedHashMap<>());
+        copyIfPresent(normalizedPayload, extensionPayload, "messageTime");
+        copyIfPresent(normalizedPayload, extensionPayload, "digitalEmployee");
+        copyIfPresent(normalizedPayload, extensionPayload, "errorMessage");
+        copyIfPresent(normalizedPayload, extensionPayload, "agentType");
+        return extensionPayload.isEmpty() ? null : extensionPayload.toJSONString();
+    }
+
+    private void copyIfPresent(JSONObject source, JSONObject target, String key) {
+        if (source != null && source.containsKey(key) && source.get(key) != null) {
+            target.put(key, source.get(key));
+        }
+    }
+
+    private String normalizeJsonString(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            Object parsed = JSON.parse(json);
+            if (parsed instanceof JSONObject jsonObject && jsonObject.isEmpty()) {
+                return null;
+            }
+            if (parsed instanceof JSONArray jsonArray && jsonArray.isEmpty()) {
+                return null;
+            }
+            return JSON.toJSONString(parsed);
+        } catch (Exception ignored) {
+            return json;
+        }
     }
 
     private void upsertFinalDetailEvent(Map<String, OrderedEvent> finalDetailEvents, OrderedEvent currentEvent) {
@@ -791,6 +1209,15 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         return value == null ? "" : value;
     }
 
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private boolean shouldPersistFinalDetail(AgentResponse agentResponse, String messageType) {
         if (!StringUtils.hasText(messageType)) {
             return false;
@@ -809,35 +1236,6 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         }
 
         return true;
-    }
-
-    private String resolveFinalDetailKey(AgentResponse agentResponse,
-                                         Map<String, Object> eventDataMap,
-                                         JSONObject normalizedPayload,
-                                         String searchQuery) {
-        String messageType = agentResponse.getMessageType();
-        String payloadMessageType = resolvePayloadMessageType(eventDataMap);
-        String taskId = defaultString(valueToString(eventDataMap.get("taskId")));
-        String payloadMessageId = defaultString(resolvePayloadMessageId(normalizedPayload, eventDataMap));
-
-        if ("plan".equals(payloadMessageType)) {
-            return "plan";
-        }
-        if ("task".equals(payloadMessageType)) {
-            String taskMessageType = resolveTaskMessageType(normalizedPayload, messageType);
-            if ("task".equals(taskMessageType)) {
-                return "task|" + taskId;
-            }
-            if ("deep_search".equals(taskMessageType) && "search".equals(resolveEventSubType(agentResponse))) {
-                return "deep_search|search|" + taskId + "|" + defaultString(searchQuery);
-            }
-            return taskMessageType + "|" + taskId + "|" + payloadMessageId;
-        }
-        if ("deep_search".equals(messageType) && "search".equals(resolveEventSubType(agentResponse))) {
-            return "deep_search|search|" + taskId
-                    + "|" + defaultString(searchQuery);
-        }
-        return messageType + "|" + taskId + "|" + payloadMessageId;
     }
 
     private String resolvePayloadMessageType(Map<String, Object> eventDataMap) {
@@ -890,13 +1288,6 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
             default:
                 return "timeline";
         }
-    }
-
-    private String resolveFinalEventSubType(AgentResponse resp) {
-        if (Arrays.asList("plan", "plan_thought", "task", "tool_thought", "task_summary").contains(resp.getMessageType())) {
-            return "final_state";
-        }
-        return resolveEventSubType(resp);
     }
 
     private String resolveEventSubType(AgentResponse resp) {
@@ -1413,7 +1804,7 @@ public class AgentStreamPersistServiceImpl implements IAgentStreamPersistService
         JSONObject metrics = new JSONObject();
         metrics.put("status", status);
         metrics.put("role_error", true);
-        messageService.markError(placeholderMessage.getId(), errorMsg, metrics.toJSONString());
+        messageService.markError(placeholderMessage.getId(), errorMsg, metrics.toJSONString(), "[]");
 
         conversationDao.incrementMessageCount(targetConversation.getId());
         updateConversationSnapshot(targetConversation, query, errorMsg);

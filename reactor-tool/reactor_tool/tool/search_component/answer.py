@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
+#
 # Author: liumin.423
 # Date:   2025/7/9
 # =====================
@@ -18,7 +18,7 @@ async def answer_question(query: str, search_content: str):
     prompt_template = get_prompt("deepsearch")["answer_prompt"]
 
     model = os.getenv("SEARCH_ANSWER_MODEL", "gpt-4.1")
-    answer_length = os.getenv("SEARCH_ANSWER_LENGTH", "10000")
+    answer_length = os.getenv("SEARCH_ANSWER_LENGTH", "1000")
 
     prompt = prompt_template.format(
         query=query,

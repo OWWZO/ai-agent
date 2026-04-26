@@ -105,17 +105,17 @@ public class AgentMessageStopAndResumeTest {
         }
 
         @Override
-        public void completeMessage(Long messageId, String response, String metricsJson) {
+        public void completeMessage(Long messageId, String response, String metricsJson, String generatedFilesJson) {
             completeCount.incrementAndGet();
         }
 
         @Override
-        public void markError(Long messageId, String partialResponse, String metricsJson) {
+        public void markError(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson) {
             errorCount.incrementAndGet();
         }
 
         @Override
-        public void markForceStop(Long messageId, String partialResponse, String metricsJson) {
+        public void markForceStop(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson) {
             forceStopCount.incrementAndGet();
         }
 

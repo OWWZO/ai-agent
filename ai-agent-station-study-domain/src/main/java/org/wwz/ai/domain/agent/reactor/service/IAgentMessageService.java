@@ -18,17 +18,17 @@ public interface IAgentMessageService {
     /**
      * 流式完成后更新消息全量数据
      */
-    void completeMessage(Long messageId, String response, String metricsJson);
+    void completeMessage(Long messageId, String response, String metricsJson, String generatedFilesJson);
 
     /**
      * 标记消息为错误状态
      */
-    void markError(Long messageId, String partialResponse, String metricsJson);
+    void markError(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson);
 
     /**
      * 标记消息为强制停止
      */
-    void markForceStop(Long messageId, String partialResponse, String metricsJson);
+    void markForceStop(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson);
 
     /**
      * 查询最近N轮已完成消息(滑动窗口上下文)

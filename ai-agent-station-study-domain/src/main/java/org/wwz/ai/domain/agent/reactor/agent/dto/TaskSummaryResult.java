@@ -12,6 +12,8 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class TaskSummaryResult {
+    //llm最终输出
     private String taskSummary;
+    //附带当前对话请求的最终产生的交付给用户的文件 非中间文件
     private List<File> files;
 }

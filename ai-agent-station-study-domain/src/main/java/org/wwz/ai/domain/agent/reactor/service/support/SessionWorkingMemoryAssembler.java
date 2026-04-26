@@ -55,7 +55,7 @@ public class SessionWorkingMemoryAssembler {
     public SessionWorkingMemory assemble(AgentConversation conversation) {
         AgentSessionMemory snapshot = sessionMemoryDao.queryBySessionId(conversation.getSessionId());
         List<AgentMessage> completedMessages = messageDao.queryCompletedByConversationId(conversation.getId());
-        Map<Long, List<AgentMessageEvent>> eventMap = loadEventMap(completedMessages);
+        Map<Long, List<AgentMessageEvent>> eventMap = buildFactEventMap(completedMessages);
         return assemble(conversation, snapshot, completedMessages, eventMap);
     }
 
@@ -118,12 +118,16 @@ public class SessionWorkingMemoryAssembler {
                 .collect(Collectors.toList());
     }
 
-    private Map<Long, List<AgentMessageEvent>> loadEventMap(List<AgentMessage> recentMessages) {
-        if (CollectionUtils.isEmpty(recentMessages)) {
+    /**
+     * 把一批 turn 账本对应的事实块账本按 message_id 分组。
+     * 历史详情、会话记忆预检、压缩后重建都应复用这条入口，避免各处再拼一套事件装载规则。
+     */
+    public Map<Long, List<AgentMessageEvent>> buildFactEventMap(List<AgentMessage> messages) {
+        if (CollectionUtils.isEmpty(messages)) {
             return Map.of();
         }
 
-        List<Long> messageIds = recentMessages.stream()
+        List<Long> messageIds = messages.stream()
                 .map(AgentMessage::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());

@@ -2,10 +2,12 @@ package org.wwz.ai.test.domain.sessionmemory;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 
 import java.util.List;
+import java.util.Map;
 
 public class SessionArtifactRestoreSupportTest {
 
@@ -69,5 +71,40 @@ public class SessionArtifactRestoreSupportTest {
         Assert.assertEquals(2, mergedFiles.size());
         Assert.assertEquals("方案A.pdf", mergedFiles.get(0).getFileName());
         Assert.assertEquals("方案B.xlsx", mergedFiles.get(1).getFileName());
+    }
+
+    @Test
+    public void test_collectArtifactRefs_includesGeneratedFilesJson() {
+        AgentMessage message = AgentMessage.builder()
+                .id(1L)
+                .filesJson("""
+                        [
+                          {
+                            "name":"上传资料.pdf",
+                            "url":"https://file.example.com/upload/preview.pdf",
+                            "downloadUrl":"https://file.example.com/upload/download.pdf",
+                            "type":"pdf",
+                            "resourceKey":"upload-pdf"
+                          }
+                        ]
+                        """)
+                .generatedFilesJson("""
+                        [
+                          {
+                            "fileName":"结论报告.md",
+                            "domainUrl":"https://file.example.com/generated/report.md",
+                            "ossUrl":"https://file.example.com/generated/report-download.md",
+                            "fileType":"markdown",
+                            "resourceKey":"generated-report"
+                          }
+                        ]
+                        """)
+                .build();
+
+        List<com.alibaba.fastjson.JSONObject> refs = support.collectArtifactRefs(List.of(message), Map.of());
+
+        Assert.assertEquals(2, refs.size());
+        Assert.assertEquals("upload-pdf", refs.get(0).getString("resourceKey"));
+        Assert.assertEquals("generated-report", refs.get(1).getString("resourceKey"));
     }
 }

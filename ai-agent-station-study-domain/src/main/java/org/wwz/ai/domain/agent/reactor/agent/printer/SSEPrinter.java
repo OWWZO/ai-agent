@@ -28,16 +28,26 @@ public class SSEPrinter implements Printer {
         this.agentType = agentType;
     }
 
+    //TODO:包含重复逻辑
     @Override
     public void send(String messageId, String messageType, Object message, String digitalEmployee, Boolean isFinal) {
         try {
+
+            //若未传消息ID，自动生成UUID
             if (Objects.isNull(messageId)) {
                 messageId = StringUtil.getUUID();
             }
+
+            // 打印发送日志：请求ID、消息类型、内容、数字员工标识
             log.info("{} sse send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
+
+            // "result" 类型标记流程结束
             boolean finish = "result".equals(messageType);
+
+            // 构建基础响应对象
             Map<String, Object> resultMap = new HashMap<>();
-            resultMap.put("agentType", agentType);
+            resultMap.put("agentType", agentType);// 放入Agent类型标识
+
             AgentResponse response = AgentResponse.builder()
                     .requestId(request.getRequestId())
                     .messageId(messageId)
@@ -47,9 +57,12 @@ public class SSEPrinter implements Printer {
                     .finish(finish)
                     .isFinal(isFinal)
                     .build();
+
             if (!StringUtils.isEmpty(digitalEmployee)) {
                 response.setDigitalEmployee(digitalEmployee);
             }
+
+            // 根据消息类型，将 message 放入对应字段
             switch (messageType) {
                 case "tool_thought":
                     response.setToolThought((String) message);
@@ -72,6 +85,7 @@ public class SSEPrinter implements Printer {
                     response.setPlanThought((String) message);
                     break;
                 case "plan":
+                    //TODO：有优化的地方
                     AgentResponse.Plan plan = new AgentResponse.Plan();
                     BeanUtils.copyProperties(message, plan);
                     response.setPlan(AgentResponse.formatSteps(plan));
@@ -94,7 +108,7 @@ public class SSEPrinter implements Printer {
                 case "agent_stream":
                     response.setResult((String) message);
                     break;
-                case "result":
+                case "result":  // 最终结果（支持String/Map/对象三种格式）
                     if (message instanceof String) {
                         response.setResult((String) message);
                     } else if (message instanceof Map) {
@@ -104,6 +118,7 @@ public class SSEPrinter implements Printer {
                         response.setResultMap(taskResult);
                         response.setResult(summary != null ? summary.toString() : null);
                     } else {
+                        // 其他对象类型，先转JSON再处理
                         Map<String, Object> taskResult = JSON.parseObject(JSON.toJSONString(message));
                         response.setResultMap(taskResult);
                         response.setResult(taskResult.get("taskSummary").toString());
@@ -114,6 +129,7 @@ public class SSEPrinter implements Printer {
                     break;
             }
 
+            // 通过SSE发射器推送至客户端
             emitter.send(response);
 
         } catch (Exception e) {

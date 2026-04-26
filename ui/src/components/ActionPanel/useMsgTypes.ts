@@ -59,6 +59,14 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const primaryFile = getPrimaryTaskFile(taskItem);
     const fileName = primaryFile?.name || '';
     const isImageFile = isImageFileLike(primaryFile);
+    const normalizedFileName = fileName.toLowerCase();
+    const normalizedMimeType = (primaryFile?.mimeType || '').toLowerCase();
+    const isHtmlFile = normalizedFileName.endsWith('.html')
+      || normalizedFileName.endsWith('.htm')
+      || normalizedMimeType.includes('text/html');
+    const isPptFile = normalizedFileName.endsWith('.ppt')
+      || normalizedFileName.endsWith('.pptx');
+    const useExcel = !!primaryFile && (normalizedFileName.includes('.csv') || normalizedFileName.includes('.xlsx'));
 
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {
@@ -66,24 +74,33 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     } else if (messageType === 'tool_result' && toolResult?.toolName === 'code_interpreter' && toolResult.toolResult) {
       isHtml = isHTML(toolResult.toolResult);
     }
+    const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
+    const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFile);
     const useImage =
       isImageFile &&
       (
         messageType === 'file' ||
         (messageType === 'tool_result' && toolResult?.toolName === 'image_generation_tool')
       );
+    const useFile =
+      !!primaryFile &&
+      !useImage &&
+      !useExcel &&
+      !useHtml &&
+      !usePpt;
+    const useCode = messageType === 'code' && !useFile;
 
     return {
       useBrowser: messageType === 'browser',
-      useCode: messageType === 'code',
-      useHtml: messageType === 'html',
+      useCode,
+      useHtml,
       useImage,
-      useExcel: messageType === 'file' && (fileName.includes('.csv') || fileName.includes('.xlsx')),
-      useFile: taskItem.messageType === 'file' && !isImageFile && !(fileName.includes('.csv') || fileName.includes('.xlsx')),
+      useExcel,
+      useFile,
       useJSON: messageType === 'tool_result' && toolResult?.toolResult && isValidJSON(toolResult.toolResult),
       isHtml,
       searchList,
-      usePpt: messageType === 'ppt'
+      usePpt
     };
   }, [searchList, taskItem]);
 };

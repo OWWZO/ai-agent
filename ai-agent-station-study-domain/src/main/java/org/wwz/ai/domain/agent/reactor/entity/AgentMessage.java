@@ -36,6 +36,9 @@ public class AgentMessage {
     /** 上传文件列表JSON */
     private String filesJson;
 
+    /** 本轮生成文件列表JSON */
+    private String generatedFilesJson;
+
     /** 0=CHAT, 1=PLAN_SOLVE, 2=REACT */
     private Integer agentType;
 

@@ -22,7 +22,6 @@ export type ImageGenerationToolResponse = {
 };
 
 export type GenerationConfig = {
-  toolBaseUrl: string;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -57,6 +56,24 @@ export type ResultImageItem = {
   url: string;
   label: string;
   downloadUrl?: string;
+};
+
+export type ImageGenerationHistoryBatch = {
+  requestId: string;
+  prompt: string;
+  mode: string;
+  size?: string | null;
+  batchCount?: number | null;
+  sourceImageCount?: number | null;
+  maskImageCount?: number | null;
+  usedFallback?: boolean | null;
+  createdAt?: string | null;
+  images: ToolFileInfo[];
+};
+
+export type ImageGenerationHistoryPage = {
+  total: number;
+  list: ImageGenerationHistoryBatch[];
 };
 
 export type UserMessage = {

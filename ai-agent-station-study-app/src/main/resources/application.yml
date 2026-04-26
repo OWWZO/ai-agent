@@ -16,6 +16,8 @@ spring:
 
 autobots:
   autoagent:
+    # 生图工作台与图片工具统一通过该地址转发到 reactor-tool
+    image_generation_url: "http://127.0.0.1:1601"
     skill:
       enabled: false
       # 默认从当前服务工作目录下的 runtime/skills 加载运行时技能

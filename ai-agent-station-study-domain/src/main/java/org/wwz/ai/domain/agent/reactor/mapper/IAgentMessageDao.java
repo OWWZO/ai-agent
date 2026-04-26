@@ -19,12 +19,12 @@ public interface IAgentMessageDao {
     AgentMessage queryByRequestId(@Param("requestId") String requestId);
 
     /**
-     * 按会话ID查询所有消息(按轮次正序)
+     * 按会话ID查询所有 turn 账本，按轮次正序返回。
      */
     List<AgentMessage> queryByConversationId(@Param("conversationId") Long conversationId);
 
     /**
-     * 按会话ID查询最近N轮已完成的消息(按轮次倒序)
+     * 按会话ID查询最近 N 轮已完成消息，按轮次倒序返回，供 Chat 滑动窗口使用。
      */
     List<AgentMessage> queryRecentCompleted(@Param("conversationId") Long conversationId,
                                             @Param("limit") int limit);
@@ -37,7 +37,7 @@ public interface IAgentMessageDao {
                                                     @Param("limit") int limit);
 
     /**
-     * 查询当前会话的全部已完成消息，供压缩阶段使用。
+     * 查询当前会话的全部已完成 turn 账本，供事实账本恢复与压缩阶段复用。
      */
     List<AgentMessage> queryCompletedByConversationId(@Param("conversationId") Long conversationId);
 

@@ -179,4 +179,77 @@ public class SessionTranscriptBlockAssemblerTest {
         Assert.assertEquals("multimodalagent_tool", blocks.get(4).getToolName());
         Assert.assertEquals("多模态检索结果.md", blocks.get(5).getArtifactRefs().get(0).getString("displayName"));
     }
+
+    @Test
+    public void test_buildTurnMemory_avoidsDuplicatingGeneratedFilesWhenSemanticFactAlreadyCarriesArtifact() {
+        SessionTranscriptBlockAssembler assembler = new SessionTranscriptBlockAssembler();
+        ReflectionTestUtils.setField(assembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
+
+        AgentMessage message = SessionMemoryTestSupport.completedMessage(
+                701L,
+                "req-semantic-transcript-001",
+                5,
+                "继续补充最终总结",
+                "我已经把最终总结补充完成。",
+                null);
+        message.setGeneratedFilesJson("""
+                [
+                  {
+                    "fileName":"semantic-report.md",
+                    "domainUrl":"https://file.example.com/semantic-report.md",
+                    "ossUrl":"https://file.example.com/download/semantic-report.md",
+                    "fileType":"markdown",
+                    "resourceKey":"semantic-report.md"
+                  }
+                ]
+                """);
+
+        List<TranscriptContextBlock> blocks = assembler.buildTurnMemory(message, List.of(
+                SessionEventPayloadFixtureBuilder.semanticAssistantThoughtEvent(
+                        701L,
+                        1,
+                        "tool",
+                        "tool-semantic-1",
+                        "deep_search",
+                        JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                        "先整理要继续复用的搜索条件",
+                        "task-semantic-1",
+                        1),
+                SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
+                        701L,
+                        2,
+                        "tool-semantic-1",
+                        "deep_search",
+                        JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                        "task-semantic-1",
+                        1),
+                SessionEventPayloadFixtureBuilder.semanticToolResultEvent(
+                        701L,
+                        3,
+                        "markdown",
+                        "report",
+                        "tool-semantic-1",
+                        "deep_search",
+                        JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                        "已生成最终 Markdown 报告，请通过稳定引用读取正文。",
+                        "task-semantic-1",
+                        1,
+                        List.of(SessionEventPayloadFixtureBuilder.artifactRef(
+                                "semantic-report.md",
+                                "https://file.example.com/semantic-report.md")))))
+                .getBlocks();
+
+        Assert.assertEquals(List.of(
+                TranscriptBlockType.USER_INPUT,
+                TranscriptBlockType.ASSISTANT_THOUGHT,
+                TranscriptBlockType.TOOL_USE,
+                TranscriptBlockType.TOOL_RESULT,
+                TranscriptBlockType.ARTIFACT_REFERENCE,
+                TranscriptBlockType.ASSISTANT_ANSWER), blocks.stream()
+                .map(TranscriptContextBlock::getBlockType)
+                .collect(Collectors.toList()));
+        Assert.assertEquals("tool-semantic-1", blocks.get(2).getToolUseId());
+        Assert.assertEquals("tool-semantic-1", blocks.get(3).getToolUseId());
+        Assert.assertEquals("semantic-report.md", blocks.get(4).getArtifactRefs().get(0).getString("displayName"));
+    }
 }

@@ -19,34 +19,16 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * 把消息账本和最终事件账本恢复成有序 transcript blocks。
+ * 把消息账本和事件事实账本恢复成有序 transcript blocks。
  */
 @Slf4j
 @Component
 public class SessionTranscriptBlockAssembler {
 
-    private static final Set<String> THOUGHT_EVENT_TYPES = Set.of(
-            "plan_thought",
-            "tool_thought",
-            "plan",
-            "task",
-            "task_summary");
-
-    private static final Set<String> RESULT_EVENT_TYPES = Set.of(
-            "tool_result",
-            "deep_search",
-            "html",
-            "markdown",
-            "code",
-            "ppt",
-            "file",
-            "knowledge",
-            "data_analysis",
-            "browser");
+    private final ConversationEventFactSupport factSupport = new ConversationEventFactSupport();
 
     @Resource
     private SessionArtifactRestoreSupport artifactRestoreSupport;
@@ -69,13 +51,15 @@ public class SessionTranscriptBlockAssembler {
             blocks.add(buildArtifactReferenceBlock(message, null, "用户上传文件", "user", uploadedArtifactRefs, false));
         }
 
-        ToolInvocationRegistry registry = new ToolInvocationRegistry();
+        List<JSONObject> generatedArtifactRefs = artifactRestoreSupport.normalizeFilesToArtifactRefs(
+                artifactRestoreSupport.parseFiles(message.getGeneratedFilesJson()));
+
         if (!CollectionUtils.isEmpty(events)) {
             List<AgentMessageEvent> orderedEvents = new ArrayList<>(events);
             orderedEvents.sort(Comparator.comparing(AgentMessageEvent::getSeqNo, Comparator.nullsLast(Integer::compareTo)));
             for (AgentMessageEvent event : orderedEvents) {
                 try {
-                    blocks.addAll(buildEventBlocks(message, event, registry, aggregatedArtifactRefs));
+                    blocks.addAll(buildEventBlocks(message, event, aggregatedArtifactRefs));
                 } catch (Exception e) {
                     log.warn("恢复 transcript 事件失败，已跳过该 event messageId={}, seqNo={}, eventType={}, eventSubType={}",
                             message.getId(),
@@ -85,6 +69,22 @@ public class SessionTranscriptBlockAssembler {
                             e);
                 }
             }
+        }
+
+        // generated_files_json 只作为 turn 级索引兜底。
+        // 如果事实事件已经带回同一产物，这里不再重复塞进上下文。
+        List<JSONObject> fallbackGeneratedArtifactRefs = excludeKnownArtifactRefs(
+                generatedArtifactRefs,
+                aggregatedArtifactRefs);
+        if (!fallbackGeneratedArtifactRefs.isEmpty()) {
+            aggregatedArtifactRefs.addAll(fallbackGeneratedArtifactRefs);
+            blocks.add(buildArtifactReferenceBlock(
+                    message,
+                    null,
+                    "本轮生成文件",
+                    "assistant",
+                    fallbackGeneratedArtifactRefs,
+                    true));
         }
 
         if (StringUtils.hasText(message.getResponse())) {
@@ -121,118 +121,127 @@ public class SessionTranscriptBlockAssembler {
 
     private List<TranscriptContextBlock> buildEventBlocks(AgentMessage message,
                                                           AgentMessageEvent event,
-                                                          ToolInvocationRegistry registry,
                                                           List<JSONObject> aggregatedArtifactRefs) {
+        if (!factSupport.isSemanticFactEvent(event)) {
+            return List.of();
+        }
+
+        ConversationEventFactSupport.ConversationEventFact fact = factSupport.readFact(event);
         List<TranscriptContextBlock> blocks = new ArrayList<>();
-        JSONObject payload = ConversationEventPayloadNormalizer.normalizePayloadJson(
-                event == null ? null : event.getPayloadJson());
-        List<JSONObject> eventArtifactRefs = ConversationEventPayloadNormalizer.extractNormalizedArtifactRefs(payload);
+        List<JSONObject> eventArtifactRefs = new ArrayList<>(fact.artifactRefs());
         if (!eventArtifactRefs.isEmpty()) {
             aggregatedArtifactRefs.addAll(eventArtifactRefs);
         }
 
-        String eventType = lower(event == null ? null : event.getEventType());
-        String eventSubType = lower(event == null ? null : event.getEventSubType());
-        ToolCallDescriptor descriptor = resolveToolCallDescriptor(message, event, payload);
-        String matchedToolUseId = null;
-        if (!THOUGHT_EVENT_TYPES.contains(eventType) && !descriptor.explicitToolUseId()) {
-            matchedToolUseId = registry.resolveForResult(descriptor.toolUseId(), descriptor.toolName(),
-                    event == null ? null : event.getTaskId(), event == null ? null : event.getTaskOrder());
-        }
-        if (StringUtils.hasText(matchedToolUseId) && !matchedToolUseId.equals(descriptor.toolUseId())) {
-            descriptor = descriptor.withToolUseId(matchedToolUseId);
-        }
-
-        if (THOUGHT_EVENT_TYPES.contains(eventType)) {
-            String thoughtText = resolveThoughtText(event, payload);
-            if (StringUtils.hasText(thoughtText)) {
-                blocks.add(TranscriptContextBlock.builder()
-                        .blockType(TranscriptBlockType.ASSISTANT_THOUGHT)
-                        .sourceMessageId(message == null ? null : message.getId())
-                        .sourceSeqNo(event == null ? null : event.getSeqNo())
-                        .role("assistant")
-                        .text(thoughtText)
-                        .referenceOnly(false)
-                        .build());
+        switch (fact.eventType()) {
+            case "assistant_thought" -> appendAssistantThought(blocks, message, event, fact);
+            case "plan_snapshot" -> appendPlanSnapshot(blocks, message, event, fact);
+            case "tool_use" -> blocks.add(buildToolUseBlock(message, event, fact));
+            case "tool_result" -> appendToolResult(blocks, message, event, fact, eventArtifactRefs);
+            case "artifact_reference" -> appendArtifactReference(blocks, message, event, fact, eventArtifactRefs);
+            default -> {
+                return List.of();
             }
-        }
-
-        if (descriptor.hasToolCall() && registry.shouldEmitToolUse(descriptor.toolUseId())) {
-            blocks.add(TranscriptContextBlock.builder()
-                    .blockType(TranscriptBlockType.TOOL_USE)
-                    .sourceMessageId(message == null ? null : message.getId())
-                    .sourceSeqNo(event == null ? null : event.getSeqNo())
-                    .role("assistant")
-                    .text(resolveToolUsePreview(event, descriptor))
-                    .toolUseId(descriptor.toolUseId())
-                    .toolName(descriptor.toolName())
-                    .toolArgumentsJson(descriptor.toolArgumentsJson())
-                    .referenceOnly(false)
-                    .build());
-            registry.register(descriptor.toolUseId(), descriptor.toolName(),
-                    event == null ? null : event.getTaskId(), event == null ? null : event.getTaskOrder());
-        }
-
-        if (shouldEmitToolResult(eventType, eventSubType, payload, eventArtifactRefs)) {
-            boolean referenceOnly = ConversationEventPayloadNormalizer.isReferenceOnly(
-                    payload,
-                    event == null ? null : event.getEventType(),
-                    event == null ? null : event.getEventSubType(),
-                    event == null ? null : event.getContentText());
-            blocks.add(TranscriptContextBlock.builder()
-                    .blockType(TranscriptBlockType.TOOL_RESULT)
-                    .sourceMessageId(message == null ? null : message.getId())
-                    .sourceSeqNo(event == null ? null : event.getSeqNo())
-                    .role("tool")
-                    .text(resolveToolResultText(event, eventArtifactRefs))
-                    .toolUseId(descriptor.toolUseId())
-                    .toolName(descriptor.toolName())
-                    .resultPayloadJson(payload.isEmpty() ? null : payload.toJSONString())
-                    .artifactRefs(new ArrayList<>(eventArtifactRefs))
-                    .referenceOnly(referenceOnly)
-                    .build());
-        }
-
-        if (!eventArtifactRefs.isEmpty()) {
-            blocks.add(buildArtifactReferenceBlock(
-                    message,
-                    event,
-                    "历史产物引用",
-                    shouldEmitToolResult(eventType, eventSubType, payload, eventArtifactRefs) ? "tool" : "assistant",
-                    eventArtifactRefs,
-                    ConversationEventPayloadNormalizer.isReferenceOnly(
-                            payload,
-                            event == null ? null : event.getEventType(),
-                            event == null ? null : event.getEventSubType(),
-                            event == null ? null : event.getContentText())));
         }
         return blocks;
     }
 
-    private boolean shouldEmitToolResult(String eventType,
-                                         String eventSubType,
-                                         JSONObject payload,
+    private void appendAssistantThought(List<TranscriptContextBlock> blocks,
+                                        AgentMessage message,
+                                        AgentMessageEvent event,
+                                        ConversationEventFactSupport.ConversationEventFact fact) {
+        if (!StringUtils.hasText(fact.contentText())) {
+            return;
+        }
+        blocks.add(TranscriptContextBlock.builder()
+                .blockType(TranscriptBlockType.ASSISTANT_THOUGHT)
+                .sourceMessageId(message.getId())
+                .sourceSeqNo(event.getSeqNo())
+                .role("assistant")
+                .text(fact.contentText())
+                .referenceOnly(false)
+                .build());
+    }
+
+    private void appendPlanSnapshot(List<TranscriptContextBlock> blocks,
+                                    AgentMessage message,
+                                    AgentMessageEvent event,
+                                    ConversationEventFactSupport.ConversationEventFact fact) {
+        String planSummary = StringUtil.firstNonBlank(fact.contentText(), fact.title());
+        if (!StringUtils.hasText(planSummary)) {
+            return;
+        }
+        blocks.add(TranscriptContextBlock.builder()
+                .blockType(TranscriptBlockType.ASSISTANT_THOUGHT)
+                .sourceMessageId(message.getId())
+                .sourceSeqNo(event.getSeqNo())
+                .role("assistant")
+                .text(planSummary)
+                .referenceOnly(false)
+                .build());
+    }
+
+    private TranscriptContextBlock buildToolUseBlock(AgentMessage message,
+                                                     AgentMessageEvent event,
+                                                     ConversationEventFactSupport.ConversationEventFact fact) {
+        return TranscriptContextBlock.builder()
+                .blockType(TranscriptBlockType.TOOL_USE)
+                .sourceMessageId(message.getId())
+                .sourceSeqNo(event.getSeqNo())
+                .role("assistant")
+                .text(resolveToolUsePreview(fact))
+                .toolUseId(fact.toolUseId())
+                .toolName(fact.toolName())
+                .toolArgumentsJson(fact.toolArgumentsJson())
+                .referenceOnly(false)
+                .build();
+    }
+
+    private void appendToolResult(List<TranscriptContextBlock> blocks,
+                                  AgentMessage message,
+                                  AgentMessageEvent event,
+                                  ConversationEventFactSupport.ConversationEventFact fact,
+                                  List<JSONObject> artifactRefs) {
+        blocks.add(TranscriptContextBlock.builder()
+                .blockType(TranscriptBlockType.TOOL_RESULT)
+                .sourceMessageId(message.getId())
+                .sourceSeqNo(event.getSeqNo())
+                .role("tool")
+                .text(resolveToolResultText(fact, artifactRefs))
+                .toolUseId(fact.toolUseId())
+                .toolName(fact.toolName())
+                .toolArgumentsJson(fact.toolArgumentsJson())
+                .resultPayloadJson(buildToolResultPayloadJson(fact, artifactRefs))
+                .artifactRefs(new ArrayList<>(artifactRefs))
+                .referenceOnly(fact.referenceOnly())
+                .build());
+
+        if (!artifactRefs.isEmpty()) {
+            blocks.add(buildArtifactReferenceBlock(
+                    message,
+                    event,
+                    "历史产物引用",
+                    "tool",
+                    artifactRefs,
+                    fact.referenceOnly()));
+        }
+    }
+
+    private void appendArtifactReference(List<TranscriptContextBlock> blocks,
+                                         AgentMessage message,
+                                         AgentMessageEvent event,
+                                         ConversationEventFactSupport.ConversationEventFact fact,
                                          List<JSONObject> artifactRefs) {
-        if (RESULT_EVENT_TYPES.contains(eventType)) {
-            return true;
+        if (artifactRefs.isEmpty()) {
+            return;
         }
-        if ("result".equals(eventType) || "agent_stream".equals(eventType)) {
-            return false;
-        }
-        if (!CollectionUtils.isEmpty(artifactRefs)) {
-            return true;
-        }
-        if (payload == null || payload.isEmpty()) {
-            return false;
-        }
-        return StringUtils.hasText(StringUtil.firstNonBlank(
-                findString(payload, "answer"),
-                findString(payload, "summary"),
-                findString(payload, "toolResult"),
-                findString(payload, "data"),
-                findString(payload, "command"),
-                findString(payload, "codeOutput")))
-                || "search".equals(eventSubType);
+        blocks.add(buildArtifactReferenceBlock(
+                message,
+                event,
+                "历史产物引用",
+                "assistant",
+                artifactRefs,
+                fact.referenceOnly()));
     }
 
     private TranscriptContextBlock buildArtifactReferenceBlock(AgentMessage message,
@@ -252,28 +261,18 @@ public class SessionTranscriptBlockAssembler {
                 .build();
     }
 
-    private String resolveThoughtText(AgentMessageEvent event, JSONObject payload) {
-        return StringUtil.firstNonBlank(
-                event == null ? null : event.getContentText(),
-                findString(payload, "planThought"),
-                findString(payload, "toolThought"),
-                findString(payload, "task"),
-                findString(payload, "title"));
-    }
-
-    private String resolveToolUsePreview(AgentMessageEvent event, ToolCallDescriptor descriptor) {
-        String toolName = StringUtil.firstNonBlank(descriptor.toolName(), event == null ? null : event.getTitle(), "tool");
-        String argumentsText = descriptor.toolArgumentsJson();
+    private String resolveToolUsePreview(ConversationEventFactSupport.ConversationEventFact fact) {
+        String toolName = StringUtil.firstNonBlank(fact.toolName(), fact.title(), "tool");
+        String argumentsText = fact.toolArgumentsJson();
         if (StringUtils.hasText(argumentsText)) {
             return "准备调用 " + toolName + "，参数：" + StringUtil.abbreviate(argumentsText, 160);
         }
         return "准备调用 " + toolName;
     }
 
-    private String resolveToolResultText(AgentMessageEvent event, List<JSONObject> artifactRefs) {
-        String resultText = StringUtil.firstNonBlank(
-                event == null ? null : event.getContentText(),
-                event == null ? null : event.getTitle());
+    private String resolveToolResultText(ConversationEventFactSupport.ConversationEventFact fact,
+                                         List<JSONObject> artifactRefs) {
+        String resultText = StringUtil.firstNonBlank(fact.contentText(), fact.title());
         if (StringUtils.hasText(resultText)) {
             return resultText;
         }
@@ -283,109 +282,37 @@ public class SessionTranscriptBlockAssembler {
         return "已完成历史工具结果恢复";
     }
 
-    private ToolCallDescriptor resolveToolCallDescriptor(AgentMessage message,
-                                                         AgentMessageEvent event,
-                                                         JSONObject payload) {
-        String eventType = lower(event == null ? null : event.getEventType());
-        String fallbackToolUseId = String.format("%s:%s",
-                message == null ? "unknown" : String.valueOf(message.getId()),
-                event == null || event.getSeqNo() == null ? "0" : event.getSeqNo());
-        String explicitToolUseId = StringUtil.firstNonBlank(
-                findString(payload, "toolUseId"),
-                findString(payload, "toolCallId"),
-                findNestedString(payload, "toolCall", "id"),
-                findNestedString(payload, "tool", "id"));
-        String toolUseId = StringUtils.hasText(explicitToolUseId) ? explicitToolUseId : fallbackToolUseId;
-        String toolName = StringUtil.firstNonBlank(
-                findString(payload, "toolName"),
-                findNestedString(payload, "toolCall", "function", "name"),
-                findNestedString(payload, "tool", "name"),
-                needsFallbackToolName(eventType) ? eventType : null);
-        Object toolArguments = firstNonNull(
-                findRaw(payload, "toolArguments"),
-                findNestedRaw(payload, "toolCall", "function", "arguments"),
-                findRaw(payload, "arguments"),
-                findRaw(payload, "toolParam"));
-        String argumentsJson = stringifyToolArguments(toolArguments);
-        return new ToolCallDescriptor(toolUseId, toolName, argumentsJson, StringUtils.hasText(explicitToolUseId));
-    }
-
-    private boolean needsFallbackToolName(String eventType) {
-        return "tool_thought".equals(eventType)
-                || RESULT_EVENT_TYPES.contains(eventType);
-    }
-
-    private Object findRaw(JSONObject payload, String key) {
-        for (JSONObject candidate : candidateObjects(payload)) {
-            if (candidate != null && candidate.containsKey(key)) {
-                return candidate.get(key);
+    private String buildToolResultPayloadJson(ConversationEventFactSupport.ConversationEventFact fact,
+                                              List<JSONObject> artifactRefs) {
+        JSONObject structuredData = factSupport.parseObject(fact.structuredData() == null
+                ? null
+                : fact.structuredData().toJSONString());
+        if (structuredData.isEmpty()) {
+            JSONObject fallback = new JSONObject(new LinkedHashMap<>());
+            fallback.put("messageType", resolveResultMessageType(fact));
+            if (StringUtils.hasText(fact.contentText())) {
+                fallback.put("answer", fact.contentText());
             }
-        }
-        return null;
-    }
-
-    private Object findNestedRaw(JSONObject payload, String... path) {
-        for (JSONObject candidate : candidateObjects(payload)) {
-            Object current = candidate;
-            boolean found = true;
-            for (String segment : path) {
-                if (!(current instanceof JSONObject currentJson) || !currentJson.containsKey(segment)) {
-                    found = false;
-                    break;
-                }
-                current = currentJson.get(segment);
+            fallback.put("isFinal", true);
+            if (!artifactRefs.isEmpty()) {
+                fallback.put("artifactRefs", artifactRefs);
             }
-            if (found) {
-                return current;
-            }
+            return fallback.toJSONString();
         }
-        return null;
+        if (!StringUtils.hasText(structuredData.getString("messageType"))) {
+            structuredData.put("messageType", resolveResultMessageType(fact));
+        }
+        structuredData.putIfAbsent("isFinal", true);
+        return structuredData.toJSONString();
     }
 
-    private String findString(JSONObject payload, String key) {
-        Object value = findRaw(payload, key);
-        return value == null ? null : String.valueOf(value);
-    }
-
-    private String findNestedString(JSONObject payload, String... path) {
-        Object value = findNestedRaw(payload, path);
-        return value == null ? null : String.valueOf(value);
-    }
-
-    private List<JSONObject> candidateObjects(JSONObject payload) {
-        if (payload == null) {
-            return List.of();
+    private String resolveResultMessageType(ConversationEventFactSupport.ConversationEventFact fact) {
+        String canonicalSubType = fact.eventSubType();
+        if (!StringUtils.hasText(canonicalSubType)) {
+            return StringUtil.firstNonBlank(fact.toolName(), "task");
         }
-        List<JSONObject> candidates = new ArrayList<>();
-        candidates.add(payload);
-        JSONObject outerResultMap = payload.getJSONObject("resultMap");
-        if (outerResultMap != null) {
-            candidates.add(outerResultMap);
-            JSONObject nestedResultMap = outerResultMap.getJSONObject("resultMap");
-            if (nestedResultMap != null) {
-                candidates.add(nestedResultMap);
-            }
-        }
-        return candidates;
-    }
-
-    private Object firstNonNull(Object... values) {
-        for (Object value : values) {
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private String stringifyToolArguments(Object toolArguments) {
-        if (toolArguments == null) {
-            return null;
-        }
-        if (toolArguments instanceof String stringValue) {
-            return stringValue;
-        }
-        return JSON.toJSONString(toolArguments);
+        int splitIndex = canonicalSubType.indexOf('.');
+        return splitIndex < 0 ? canonicalSubType : canonicalSubType.substring(0, splitIndex);
     }
 
     private String joinArtifactNames(List<JSONObject> artifactRefs) {
@@ -408,11 +335,7 @@ public class SessionTranscriptBlockAssembler {
         List<JSONObject> deduplicatedRefs = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (JSONObject artifactRef : artifactRefs) {
-            String key = StringUtil.firstNonBlank(
-                    artifactRef == null ? null : artifactRef.getString("resourceKey"),
-                    artifactRef == null ? null : artifactRef.getString("downloadUrl"),
-                    artifactRef == null ? null : artifactRef.getString("previewUrl"),
-                    artifactRef == null ? null : artifactRef.getString("displayName"));
+            String key = artifactRefKey(artifactRef);
             if (!StringUtils.hasText(key) || !seen.add(key)) {
                 continue;
             }
@@ -421,65 +344,37 @@ public class SessionTranscriptBlockAssembler {
         return deduplicatedRefs;
     }
 
+    private List<JSONObject> excludeKnownArtifactRefs(List<JSONObject> candidateArtifactRefs,
+                                                      List<JSONObject> knownArtifactRefs) {
+        if (CollectionUtils.isEmpty(candidateArtifactRefs)) {
+            return List.of();
+        }
 
-    private String lower(String value) {
-        return value == null ? "" : value.toLowerCase();
+        Set<String> seen = new LinkedHashSet<>();
+        for (JSONObject knownArtifactRef : knownArtifactRefs) {
+            String knownKey = artifactRefKey(knownArtifactRef);
+            if (StringUtils.hasText(knownKey)) {
+                seen.add(knownKey);
+            }
+        }
+
+        List<JSONObject> filteredArtifactRefs = new ArrayList<>();
+        for (JSONObject candidateArtifactRef : candidateArtifactRefs) {
+            String candidateKey = artifactRefKey(candidateArtifactRef);
+            if (!StringUtils.hasText(candidateKey) || seen.contains(candidateKey)) {
+                continue;
+            }
+            seen.add(candidateKey);
+            filteredArtifactRefs.add(candidateArtifactRef);
+        }
+        return filteredArtifactRefs;
     }
 
-    private record ToolCallDescriptor(String toolUseId,
-                                      String toolName,
-                                      String toolArgumentsJson,
-                                      boolean explicitToolUseId) {
-        private boolean hasToolCall() {
-            return StringUtils.hasText(toolName) || StringUtils.hasText(toolArgumentsJson);
-        }
-
-        private ToolCallDescriptor withToolUseId(String newToolUseId) {
-            return new ToolCallDescriptor(newToolUseId, toolName, toolArgumentsJson, explicitToolUseId);
-        }
-    }
-
-    private static class ToolInvocationRegistry {
-        /**
-         * 同一轮里一个 toolUseId 可能对应多段结果（例如 knowledge + markdown）。
-         * 因此这里保留已见调用，避免第一段结果后又把后续结果误恢复成新的 TOOL_USE。
-         */
-        private final Map<String, ToolInvocationState> invocationStates = new LinkedHashMap<>();
-        private final Set<String> emittedToolUseIds = new LinkedHashSet<>();
-
-        private boolean shouldEmitToolUse(String toolUseId) {
-            return StringUtils.hasText(toolUseId) && !emittedToolUseIds.contains(toolUseId);
-        }
-
-        private void register(String toolUseId, String toolName, String taskId, Integer taskOrder) {
-            if (!StringUtils.hasText(toolUseId)) {
-                return;
-            }
-            invocationStates.put(toolUseId, new ToolInvocationState(toolUseId, toolName, taskId, taskOrder));
-            emittedToolUseIds.add(toolUseId);
-        }
-
-        private String resolveForResult(String explicitToolUseId,
-                                        String toolName,
-                                        String taskId,
-                                        Integer taskOrder) {
-            if (StringUtils.hasText(explicitToolUseId) && invocationStates.containsKey(explicitToolUseId)) {
-                return explicitToolUseId;
-            }
-            List<ToolInvocationState> states = new ArrayList<>(invocationStates.values());
-            for (int i = states.size() - 1; i >= 0; i--) {
-                ToolInvocationState state = states.get(i);
-                boolean sameTask = StringUtils.hasText(taskId) && taskId.equals(state.taskId())
-                        && (taskOrder == null || taskOrder.equals(state.taskOrder()));
-                boolean sameTool = StringUtils.hasText(toolName) && toolName.equalsIgnoreCase(state.toolName());
-                if (sameTask || sameTool) {
-                    return state.toolUseId();
-                }
-            }
-            return explicitToolUseId;
-        }
-    }
-
-    private record ToolInvocationState(String toolUseId, String toolName, String taskId, Integer taskOrder) {
+    private String artifactRefKey(JSONObject artifactRef) {
+        return StringUtil.firstNonBlank(
+                artifactRef == null ? null : artifactRef.getString("resourceKey"),
+                artifactRef == null ? null : artifactRef.getString("downloadUrl"),
+                artifactRef == null ? null : artifactRef.getString("previewUrl"),
+                artifactRef == null ? null : artifactRef.getString("displayName"));
     }
 }

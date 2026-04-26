@@ -115,9 +115,11 @@ public class SummaryAgent extends BaseAgent {
         if (StringUtils.isEmpty(llmResponse)) {
             log.error("requestId: {} pattern matcher failed for response is null", requestId);
         }
-
+//
+         //用$$$分割响应：前半=摘要，后半=文件名
         String[] parts1 = llmResponse.split("\\$\\$\\$");
         if (parts1.length < 2) {
+            // 无$$$分隔符，整段作为摘要返回
             return TaskSummaryResult.builder().taskSummary(parts1[0].trim()).build();
         }
 
@@ -126,19 +128,21 @@ public class SummaryAgent extends BaseAgent {
 
         List<File> files = context.getProductFiles();
         if (!CollectionUtils.isEmpty(files)) {
-            Collections.reverse(files);
+            Collections.reverse(files);// 反转列表，优先匹配最新文件
         } else {
             log.error("requestId: {} llmResponse:{} productFile list is empty", requestId, llmResponse);
-            // 文件列表为空，交付物中不显示文件
+            // 无文件，仅返回摘要
             return TaskSummaryResult.builder().taskSummary(summary).build();
         }
+        // 模糊匹配文件名
         List<File> product = new ArrayList<>();
         String[] items = fileNames.split("、");
         for (String item : items) {
             String trimmedItem = item.trim();
-            if (StringUtils.isBlank(trimmedItem)) {
+            if (StringUtils.isBlank(trimmedItem)) {// 跳过空项
                 continue;
             }
+            // 遍历文件列表，查找包含匹配的文件
             for (File file : files) {
                 if (item.contains(file.getFileName().trim())) {
                     log.info("requestId: {} add file:{}", requestId, file);
@@ -147,7 +151,7 @@ public class SummaryAgent extends BaseAgent {
                 }
             }
         }
-
+        // 返回摘要+关联文件
         return TaskSummaryResult.builder().taskSummary(summary).files(product).build();
     }
 
@@ -162,8 +166,6 @@ public class SummaryAgent extends BaseAgent {
      * @return TaskSummaryResult 任务总结结果对象（包含总结文本、产物文件列表等，异常时返回兜底值）
      */
     public TaskSummaryResult summaryTaskResult(List<Message> messages, String query) {
-        // 记录方法开始执行时间，便于后续统计耗时（可扩展打印耗时日志）
-        long startTime = System.currentTimeMillis();
 
         // 1. 参数校验：消息列表为空 或 用户查询为空时，返回空总结结果（避免空指针/无意义的LLM调用）
         if (CollectionUtils.isEmpty(messages) || StringUtils.isEmpty(query)) {
@@ -189,9 +191,14 @@ public class SummaryAgent extends BaseAgent {
                 sb.append(String.format("role:%s content:%s\n", message.getRole(), content));
             }
 
-            // 3. 构建总结阶段提示词：system 负责约束与上下文，user 负责触发最终生成。
+            // 消息拼入提示词占位
             String formattedPrompt = formatSystemPrompt(sb.toString(), query);
+            //构建总结阶段的 system prompt。
             Message systemMessage = createSystemMessage(formattedPrompt);
+            /**
+             * 构建总结阶段的最小 user 指令。
+             * 某些 OpenAI 兼容网关不接受“仅 system、无 user”的请求，这里补一条稳定指令做兼容。
+             */
             Message summaryInstruction = createSummaryInstructionMessage();
 
             // 4. 异步调用LLM生成总结：总结阶段使用独立 system prompt 与独立温度配置。
@@ -201,6 +208,7 @@ public class SummaryAgent extends BaseAgent {
                 context.setStreamMessageType("agent_stream");
             }
 
+            //TODO:优化
             String llmResponse;
             try {
                 CompletableFuture<String> summaryFuture = getLlm().ask(

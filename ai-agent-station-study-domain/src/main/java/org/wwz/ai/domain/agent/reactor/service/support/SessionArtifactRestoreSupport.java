@@ -25,6 +25,8 @@ import java.util.Set;
 @Component
 public class SessionArtifactRestoreSupport {
 
+    private final ConversationEventFactSupport factSupport = new ConversationEventFactSupport();
+
     /**
      * 从快照和最近窗口恢复稳定文件。
      */
@@ -49,13 +51,14 @@ public class SessionArtifactRestoreSupport {
         List<JSONObject> artifactRefs = new ArrayList<>();
         for (AgentMessage message : messages) {
             artifactRefs.addAll(normalizeFilesToArtifactRefs(parseFiles(message.getFilesJson())));
+            artifactRefs.addAll(normalizeFilesToArtifactRefs(parseFiles(message.getGeneratedFilesJson())));
             artifactRefs.addAll(extractArtifactRefs(eventMap == null ? null : eventMap.get(message.getId())));
         }
         return deduplicateArtifactRefs(artifactRefs);
     }
 
     /**
-     * 从事件 payload 中提取标准化 artifact 引用。
+     * 从事件事实列中提取标准化 artifact 引用。
      */
     public List<JSONObject> extractArtifactRefs(List<AgentMessageEvent> events) {
         if (CollectionUtils.isEmpty(events)) {
@@ -64,8 +67,7 @@ public class SessionArtifactRestoreSupport {
 
         List<JSONObject> artifactRefs = new ArrayList<>();
         for (AgentMessageEvent event : events) {
-            JSONObject payload = ConversationEventPayloadNormalizer.normalizePayloadJson(event.getPayloadJson());
-            artifactRefs.addAll(ConversationEventPayloadNormalizer.extractNormalizedArtifactRefs(payload));
+            artifactRefs.addAll(factSupport.readFact(event).artifactRefs());
         }
         return deduplicateArtifactRefs(artifactRefs);
     }

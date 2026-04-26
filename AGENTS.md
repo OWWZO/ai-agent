@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-25
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-26
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -25,6 +25,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - 复用现有 MySQL 会话/事件持久化、现有文件服务或本地 `FILE_SERVER_URL` 产物存储、MRAG 所需知识库/向量索引由 `reactor-tool` 侧承接 (008-fix-summary-markdown)
 - Java 17（`ai-agent-station-study-domain` / `ai-agent-station-study-app`） + Python 3.11（`reactor-tool`）；本期不改 `ui/` + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 既有配置装配、OkHttp 4.9.3、FastAPI、Pydantic v2、qdrant-client、MRAG 现有文本 embedding 适配层 (010-unify-cloud-vector-env)
 - 复用既有 MySQL 问数模型元数据；远端 Qdrant collection `reactor_model_schema`；远端 Elasticsearch index `reactor_model_column_value`；无新增表/列 (010-unify-cloud-vector-env)
+- Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 仅做最小适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `combineData / handleTaskData / FilePreview` 渲染链 (011-transcript-fact-persistence)
+- MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`、`ai_agent_session_memory`）+ 现有稳定文件引用能力 (011-transcript-fact-persistence)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -72,9 +74,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 011-transcript-fact-persistence: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 仅做最小适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `combineData / handleTaskData / FilePreview` 渲染链
 - 010-unify-cloud-vector-env: Added Java 17（`ai-agent-station-study-domain` / `ai-agent-station-study-app`） + Python 3.11（`reactor-tool`）；本期不改 `ui/` + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 既有配置装配、OkHttp 4.9.3、FastAPI、Pydantic v2、qdrant-client、MRAG 现有文本 embedding 适配层
 - 008-fix-summary-markdown: Added Java 17（`ai-agent-station-study-domain` / `ai-agent-station-study-app`） + Python 3.11（`reactor-tool`）；本期不改 `ui/` + Spring Boot 3.4.3、Spring AI 1.1.4、OkHttp 4.9.3、FastJSON 1.2.83、FastAPI、Pydantic v2、sse-starlette、qdrant-client、fastembed，以及 MRAG 实现实际依赖的最小补集
-- 008-fix-summary-markdown: Added TypeScript 5.7 + React 19（仅 `ui/`，本期不改 Java / Python 子系统） + Vite 6、Ant Design 5、react-markdown 10.1.0、remark-gfm 4.0.1、streamdown 2.5.0、现有 `ai-elements` 消息渲染组件链
 
 
 <!-- MANUAL ADDITIONS START -->

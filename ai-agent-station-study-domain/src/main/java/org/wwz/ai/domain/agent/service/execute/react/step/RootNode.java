@@ -42,7 +42,7 @@ public class RootNode extends AbstractExecuteSupport {
 
         dynamicContext.setStep(0);
         Printer printer = new SSEPrinter(
-                (SseEmitter) dynamicContext.getEmitter(),
+            dynamicContext.getEmitter(),
                 request,
                 request.getAgentType()
         );

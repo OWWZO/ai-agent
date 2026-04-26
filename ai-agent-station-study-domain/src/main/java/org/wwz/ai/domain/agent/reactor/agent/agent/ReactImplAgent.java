@@ -130,9 +130,11 @@ public class ReactImplAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
-        // 步骤1：动态替换提示词中的{{files}}占位符（文件信息可能实时更新，需每次思考时替换）
-        String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), true); // 格式化产品文件信息（如内容、路径、类型）
-        setSystemPrompt(getSystemPromptSnapshot().replace("{{files}}", filesStr)); // 从快照恢复原始提示词，替换文件信息
+        //将文件信息格式化成字符串
+        String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), true);
+
+        //然后拼进提示词
+        setSystemPrompt(getSystemPromptSnapshot().replace("{{files}}", filesStr));
         setNextStepPrompt(getNextStepPromptSnapshot().replace("{{files}}", filesStr));
 
         // 步骤2：补充用户消息（保证对话历史的最后一条是用户消息，符合大模型对话规范）

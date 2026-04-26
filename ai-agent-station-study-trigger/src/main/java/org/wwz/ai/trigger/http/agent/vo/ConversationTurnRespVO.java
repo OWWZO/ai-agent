@@ -13,6 +13,7 @@ public class ConversationTurnRespVO {
     private Integer sortOrder;
     private String query;
     private Object files;
+    private Object generatedFiles;
     private Integer agentType;
     private String response;
     private Integer status;

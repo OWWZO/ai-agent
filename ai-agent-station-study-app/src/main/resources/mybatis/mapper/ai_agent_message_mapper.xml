@@ -9,6 +9,7 @@
         <result column="sort_order" property="sortOrder"/>
         <result column="query" property="query"/>
         <result column="files_json" property="filesJson"/>
+        <result column="generated_files_json" property="generatedFilesJson"/>
         <result column="agent_type" property="agentType"/>
         <result column="response" property="response"/>
         <result column="metrics_json" property="metricsJson"/>
@@ -24,13 +25,13 @@
     <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentMessage" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_message (
             conversation_id, request_id, sort_order,
-            query, files_json, agent_type,
+            query, files_json, generated_files_json, agent_type,
             response, metrics_json,
             status, force_stop, started_at, finished_at,
             create_time, update_time, deleted
         ) VALUES (
             #{conversationId}, #{requestId}, #{sortOrder},
-            #{query}, #{filesJson}, #{agentType},
+            #{query}, #{filesJson}, #{generatedFilesJson}, #{agentType},
             #{response}, #{metricsJson},
             #{status}, #{forceStop}, #{startedAt}, #{finishedAt}, now(), now(), 0
         )
@@ -44,6 +45,7 @@
             <if test="status != null">status = #{status},</if>
             <if test="forceStop != null">force_stop = #{forceStop},</if>
             <if test="filesJson != null">files_json = #{filesJson},</if>
+            <if test="generatedFilesJson != null">generated_files_json = #{generatedFilesJson},</if>
             <if test="startedAt != null">started_at = #{startedAt},</if>
             <if test="finishedAt != null">finished_at = #{finishedAt},</if>
             update_time = now()
@@ -56,6 +58,7 @@
     </select>
 
     <select id="queryByConversationId" parameterType="java.lang.Long" resultMap="AgentMessageMap">
+        <!-- 历史详情读取 turn 账本，不再从事件 payload 中提取生成文件。 -->
         SELECT * FROM ai_agent_message
         WHERE conversation_id = #{conversationId} AND deleted = 0
         ORDER BY sort_order ASC
@@ -86,6 +89,7 @@
     </select>
 
     <select id="queryCompletedByConversationId" resultMap="AgentMessageMap">
+        <!-- 会话记忆与压缩只消费已完成 turn，保持与事实块账本恢复口径一致。 -->
         SELECT *
         FROM ai_agent_message
         WHERE conversation_id = #{conversationId}

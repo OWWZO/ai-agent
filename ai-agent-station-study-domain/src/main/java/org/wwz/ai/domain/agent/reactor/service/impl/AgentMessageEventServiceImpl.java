@@ -1,14 +1,12 @@
 package org.wwz.ai.domain.agent.reactor.service.impl;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONException;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentMessageEventDao;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
-import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
+import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventFactSupport;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
@@ -19,6 +17,8 @@ import java.util.List;
  */
 @Service
 public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
+
+    private final ConversationEventFactSupport factSupport = new ConversationEventFactSupport();
 
     @Resource
     private IAgentMessageEventDao messageEventDao;
@@ -40,9 +40,15 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
                     .displayArea(StringUtils.defaultIfBlank(orderedEvent.getDisplayArea(), "timeline"))
                     .taskId(orderedEvent.getTaskId())
                     .taskOrder(orderedEvent.getTaskOrder())
+                    .toolUseId(orderedEvent.getToolUseId())
+                    .toolName(orderedEvent.getToolName())
+                    .toolArgumentsJson(factSupport.normalizeJsonString(orderedEvent.getToolArgumentsJson()))
                     .title(resolveTitle(orderedEvent))
                     .contentText(orderedEvent.getContentText())
-                    .payloadJson(normalizePayloadJson(orderedEvent.getPayloadJson()))
+                    .referenceOnly(orderedEvent.isReferenceOnly())
+                    .artifactRefsJson(factSupport.normalizeJsonString(orderedEvent.getArtifactRefsJson()))
+                    .structuredDataJson(factSupport.normalizeJsonString(orderedEvent.getStructuredDataJson()))
+                    .payloadJson(factSupport.normalizeJsonString(orderedEvent.getPayloadJson()))
                     .status(finalStatus)
                     .deleted(0)
                     .build());
@@ -58,51 +64,57 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
 
         String eventType = StringUtils.defaultString(orderedEvent.getEventType());
         switch (eventType) {
-            case "plan_thought":
-                return "思考中";
-            case "plan":
-                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "任务计划"), 50);
-            case "task":
-                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "执行任务"), 50);
-            case "deep_search":
-                return resolveDeepSearchTitle(orderedEvent);
-            case "html":
-            case "markdown":
-            case "code":
-            case "ppt":
-                return "正在生成" + eventType;
-            case "data_analysis":
-                return "数据分析";
-            case "browser":
-                return "浏览页面";
-            case "file":
-                return "生成文件";
-            case "knowledge":
-                return "知识库结果";
-            case "tool_thought":
-                return "推理中";
+            case "assistant_thought":
+                return resolveAssistantThoughtTitle(orderedEvent);
+            case "plan_snapshot":
+                return resolvePlanSnapshotTitle(orderedEvent);
+            case "tool_use":
+                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "准备调用工具"), 50);
             case "tool_result":
-                return "工具调用";
-            case "agent_stream":
-                return "总结";
-            case "result":
-                return "完成";
-            case "task_summary":
-                return "任务总结";
+                return resolveToolResultTitle(orderedEvent);
+            case "artifact_reference":
+                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "产物引用"), 50);
             default:
                 return StringUtils.defaultIfBlank(orderedEvent.getContentText(), eventType);
         }
     }
 
-    private String resolveDeepSearchTitle(OrderedEvent orderedEvent) {
+    private String resolveAssistantThoughtTitle(OrderedEvent orderedEvent) {
+        if ("tool".equalsIgnoreCase(orderedEvent.getEventSubType())) {
+            return "推理中";
+        }
+        return "思考中";
+    }
+
+    private String resolvePlanSnapshotTitle(OrderedEvent orderedEvent) {
+        if ("task".equalsIgnoreCase(orderedEvent.getEventSubType())) {
+            return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "执行任务"), 50);
+        }
+        return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "执行计划"), 50);
+    }
+
+    private String resolveToolResultTitle(OrderedEvent orderedEvent) {
         String subType = StringUtils.defaultString(orderedEvent.getEventSubType());
-        if ("report".equals(subType)) {
-            return "总结完成";
+        switch (subType) {
+            case "deep_search.search":
+                return "搜索完成";
+            case "deep_search.report":
+                return "总结完成";
+            case "html.page":
+            case "markdown.report":
+            case "code.bundle":
+            case "ppt.deck":
+            case "file.output":
+                return "生成文件";
+            case "data_analysis.output":
+                return "数据分析";
+            case "browser.result":
+                return "浏览页面";
+            case "knowledge.answer":
+                return "知识库结果";
+            default:
+                return abbreviate(StringUtils.defaultIfBlank(orderedEvent.getContentText(), "工具结果"), 50);
         }
-        if ("search".equals(subType)) {
-            return "搜索完成";
-        }
-        return "深度搜索";
     }
 
     private String abbreviate(String text, int maxLen) {
@@ -112,21 +124,4 @@ public class AgentMessageEventServiceImpl implements IAgentMessageEventService {
         return text.length() > maxLen ? text.substring(0, maxLen) : text;
     }
 
-    /**
-     * 事件服务统一负责 payloadJson 的最终收口，
-     * 这样即便未来不是通过当前 SSE 持久化链路写入，也能保持 artifact 缺失态语义一致。
-     */
-    private String normalizePayloadJson(String payloadJson) {
-        if (StringUtils.isBlank(payloadJson)) {
-            return payloadJson;
-        }
-
-        try {
-            Object payload = JSON.parse(payloadJson);
-            Object normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(payload);
-            return JSON.toJSONString(normalizedPayload);
-        } catch (JSONException e) {
-            return payloadJson;
-        }
-    }
 }

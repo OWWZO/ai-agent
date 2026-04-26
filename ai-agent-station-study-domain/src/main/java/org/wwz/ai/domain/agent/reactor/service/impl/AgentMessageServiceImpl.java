@@ -40,11 +40,12 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void completeMessage(Long messageId, String response, String metricsJson) {
+    public void completeMessage(Long messageId, String response, String metricsJson, String generatedFilesJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(response);
         update.setMetricsJson(metricsJson);
+        update.setGeneratedFilesJson(generatedFilesJson);
         update.setStatus(MessageStatus.COMPLETED.getCode());
         update.setFinishedAt(LocalDateTime.now());
         messageDao.updateById(update);
@@ -52,11 +53,12 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void markError(Long messageId, String partialResponse, String metricsJson) {
+    public void markError(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(partialResponse);
         update.setMetricsJson(metricsJson);
+        update.setGeneratedFilesJson(generatedFilesJson);
         update.setStatus(MessageStatus.ERROR.getCode());
         update.setFinishedAt(LocalDateTime.now());
         messageDao.updateById(update);
@@ -64,11 +66,12 @@ public class AgentMessageServiceImpl implements IAgentMessageService {
     }
 
     @Override
-    public void markForceStop(Long messageId, String partialResponse, String metricsJson) {
+    public void markForceStop(Long messageId, String partialResponse, String metricsJson, String generatedFilesJson) {
         AgentMessage update = new AgentMessage();
         update.setId(messageId);
         update.setResponse(partialResponse);
         update.setMetricsJson(metricsJson);
+        update.setGeneratedFilesJson(generatedFilesJson);
         update.setStatus(MessageStatus.FORCE_STOPPED.getCode());
         update.setForceStop(1);
         update.setFinishedAt(LocalDateTime.now());

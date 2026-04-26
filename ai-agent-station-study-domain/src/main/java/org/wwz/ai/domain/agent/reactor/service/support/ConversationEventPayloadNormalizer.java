@@ -14,6 +14,11 @@ import java.util.Map;
  */
 public final class ConversationEventPayloadNormalizer {
 
+    private static final List<String> HEAVY_CONTENT_KEYS = List.of(
+            "answer", "data", "code", "codeOutput", "content", "contents",
+            "html", "markdown", "messages", "message", "pageContent", "page_content",
+            "reportContent", "reportHtml", "reportMarkdown");
+
     private ConversationEventPayloadNormalizer() {
     }
 
@@ -37,6 +42,7 @@ public final class ConversationEventPayloadNormalizer {
             normalized.put("artifactRefs", artifactRefs);
             pruneLegacyArtifactFields(normalized);
         }
+        compactReferencePayload(normalized, artifactRefs);
         return normalized;
     }
 
@@ -194,6 +200,65 @@ public final class ConversationEventPayloadNormalizer {
                 removeArtifactFields(nestedResultMap);
             }
         }
+    }
+
+    private static void compactReferencePayload(JSONObject payload, JSONArray artifactRefs) {
+        if (payload == null || artifactRefs == null || artifactRefs.isEmpty()) {
+            return;
+        }
+
+        String messageType = safeLower(resolveMessageType(payload));
+        if (!isReferencePayloadMessageType(messageType)) {
+            return;
+        }
+
+        payload.put("referenceOnly", true);
+        removeHeavyContentFields(payload);
+
+        Map<String, Object> outerResultMap = asMap(payload.get("resultMap"));
+        if (outerResultMap != null) {
+            removeHeavyContentFields(outerResultMap);
+            Map<String, Object> nestedResultMap = asMap(outerResultMap.get("resultMap"));
+            if (nestedResultMap != null) {
+                removeHeavyContentFields(nestedResultMap);
+            }
+        }
+    }
+
+    private static boolean isReferencePayloadMessageType(String messageType) {
+        return switch (messageType) {
+            case "html", "markdown", "code", "ppt", "file", "browser", "data_analysis" -> true;
+            default -> false;
+        };
+    }
+
+    private static void removeHeavyContentFields(Map<String, Object> payloadMap) {
+        if (payloadMap == null || payloadMap.isEmpty()) {
+            return;
+        }
+        for (String heavyKey : HEAVY_CONTENT_KEYS) {
+            payloadMap.remove(heavyKey);
+        }
+    }
+
+    private static String resolveMessageType(Map<String, Object> payloadMap) {
+        String messageType = valueToString(payloadMap.get("messageType"));
+        if (messageType != null) {
+            return messageType;
+        }
+
+        Map<String, Object> outerResultMap = asMap(payloadMap.get("resultMap"));
+        if (outerResultMap == null) {
+            return null;
+        }
+
+        messageType = valueToString(outerResultMap.get("messageType"));
+        if (messageType != null) {
+            return messageType;
+        }
+
+        Map<String, Object> nestedResultMap = asMap(outerResultMap.get("resultMap"));
+        return nestedResultMap == null ? null : valueToString(nestedResultMap.get("messageType"));
     }
 
     private static void removeArtifactFields(Map<String, Object> targetMap) {

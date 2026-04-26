@@ -39,21 +39,28 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     private void doExecute(AgentRequest request, SseEmitter emitter) throws Exception {
 
+        //获取到root节点
         StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultReactAgentExecuteStrategyFactory.armoryStrategyHandler();
 
+        //构建上下文
         DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext = DefaultReactAgentExecuteStrategyFactory.DynamicContext.builder()
                 .emitter(emitter)
                 .build();
 
+        //传入动态上下文 触发链式调用
         String result = executeHandler.apply(request, dynamicContext);
         log.info("ReactAgent execute result: {}", result);
     }
 
     private void applyOutputStyle(AgentRequest request) {
+        //获取最终的产物展示方式的prompt
         Map<String, String> outputStyleMap = reactorConfig.getOutputStylePrompts();
+        // 判断用户是否选择了特定的输出风格
         if (StringUtils.isNotEmpty(request.getOutputStyle())) {
+            // 从配置中查找该风格对应的提示词，找不到则返回空字符串
             String append = outputStyleMap.computeIfAbsent(request.getOutputStyle(), k -> "");
+            // 将风格提示词追加到用户原始查询后面
             request.setQuery(request.getQuery() + append);
         }
     }

@@ -185,7 +185,7 @@ const FilePreview: React.FC<{
     setCurActiveTaskIndex(Math.max(0, realActiveTaskIndex - 1));
   });
 
-  const { useHtml, useExcel, useImage } = useMsgTypes(taskItem) || {};
+  const { useFile, useHtml, useExcel, useImage } = useMsgTypes(taskItem) || {};
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const artifactMissing = Boolean(primaryFile?.missing);
 
@@ -201,7 +201,7 @@ const FilePreview: React.FC<{
       }
       return taskItem.toolResult?.toolName || "工具执行";
     }
-    if (messageType === "file" || messageType === "html") {
+    if (["file", "html", "markdown", "code", "ppt", "data_analysis"].includes(messageType)) {
       return primaryFile?.name || messageType;
     }
     if (messageType === "deep_search") {
@@ -228,7 +228,7 @@ const FilePreview: React.FC<{
     return undefined;
   }, [taskItem]);
 
-  const canPreview = !artifactMissing && (useHtml || useExcel || useImage);
+  const canPreview = !artifactMissing && (useFile || useHtml || useExcel || useImage);
   const taskRenderKey = useMemo(() => getStableTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State

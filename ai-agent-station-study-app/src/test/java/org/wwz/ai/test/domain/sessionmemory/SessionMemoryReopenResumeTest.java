@@ -1,5 +1,6 @@
 package org.wwz.ai.test.domain.sessionmemory;
 
+import com.alibaba.fastjson.JSONObject;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -67,22 +68,12 @@ public class SessionMemoryReopenResumeTest {
         AgentMessageEvent artifactEvent = AgentMessageEvent.builder()
                 .messageId(301L)
                 .seqNo(1)
-                .payloadJson("""
-                        {
-                          "messageType":"task",
-                          "resultMap":{
-                            "resultMap":{
-                              "fileInfo":[
-                                {
-                                  "fileName":"legacy-report.html",
-                                  "domainUrl":"https://file.example.com/legacy-report",
-                                  "downloadUrl":"https://file.example.com/legacy-report",
-                                  "resourceKey":"legacy-report"
-                                }
-                              ]
-                            }
-                          }
-                        }
+                .eventType("artifact_reference")
+                .eventSubType("generated_file")
+                .displayArea("workspace")
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"legacy-report.html","resourceKey":"legacy-report","downloadUrl":"https://file.example.com/legacy-report","previewUrl":"https://file.example.com/legacy-report","missing":false}]
                         """)
                 .status("completed")
                 .build();
@@ -102,6 +93,80 @@ public class SessionMemoryReopenResumeTest {
                 workingMemory.getRestoredFiles(),
                 "fallback-report.md",
                 "legacy-report.html");
+    }
+
+    @Test
+    public void test_reopenConversation_restoresSemanticToolChainAndGeneratedFiles() {
+        AgentMessage completedMessage = SessionMemoryTestSupport.completedMessage(
+                401L,
+                "req-reopen-semantic-001",
+                1,
+                "继续沿用上一轮事实补完报告",
+                "我已经沿用上一轮事实补完最终报告。",
+                null);
+        completedMessage.setGeneratedFilesJson("""
+                [
+                  {
+                    "fileName":"semantic-report.md",
+                    "domainUrl":"https://file.example.com/semantic-report.md",
+                    "ossUrl":"https://file.example.com/download/semantic-report.md",
+                    "fileType":"markdown",
+                    "resourceKey":"semantic-report.md"
+                  }
+                ]
+                """);
+
+        AgentSessionMemoryServiceImpl service = buildService(
+                null,
+                List.of(completedMessage),
+                List.of(
+                        SessionEventPayloadFixtureBuilder.semanticAssistantThoughtEvent(
+                                401L,
+                                1,
+                                "tool",
+                                "tool-reopen-1",
+                                "deep_search",
+                                JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                                "先恢复上一轮 deep_search 的搜索条件",
+                                "task-reopen-1",
+                                1),
+                        SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
+                                401L,
+                                2,
+                                "tool-reopen-1",
+                                "deep_search",
+                                JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                                "task-reopen-1",
+                                1),
+                        SessionEventPayloadFixtureBuilder.semanticToolResultEvent(
+                                401L,
+                                3,
+                                "markdown",
+                                "report",
+                                "tool-reopen-1",
+                                "deep_search",
+                                JSONObject.parseObject("{\"query\":\"Spring AI MCP\"}"),
+                                "已恢复最终 Markdown 报告，请按稳定引用读取。",
+                                "task-reopen-1",
+                                1,
+                                List.of(SessionEventPayloadFixtureBuilder.artifactRef(
+                                        "semantic-report.md",
+                                        "https://file.example.com/semantic-report.md")))));
+
+        SessionWorkingMemory workingMemory = service.rebuildWorkingMemory(buildConversation());
+
+        Assert.assertEquals(1, workingMemory.getRecentTurns().size());
+        Assert.assertEquals("tool-reopen-1", workingMemory.getRecentTurns().get(0).getBlocks().stream()
+                .filter(block -> block != null && block.getBlockType() == org.wwz.ai.domain.agent.reactor.model.memory.TranscriptBlockType.TOOL_RESULT)
+                .findFirst()
+                .orElseThrow()
+                .getToolUseId());
+        Assert.assertEquals(1, workingMemory.getRecentTurns().get(0).getBlocks().stream()
+                .filter(block -> block != null && block.getBlockType() == org.wwz.ai.domain.agent.reactor.model.memory.TranscriptBlockType.ARTIFACT_REFERENCE)
+                .count());
+        SessionMemoryTestSupport.assertFileNames(
+                workingMemory.getRestoredFiles(),
+                "semantic-report.md");
     }
 
     private AgentSessionMemoryServiceImpl buildService(AgentSessionMemory snapshot,

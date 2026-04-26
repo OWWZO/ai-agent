@@ -6,6 +6,7 @@ import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
+import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptBlockType;
@@ -88,6 +89,54 @@ public class AgentStreamPersistWorkingMemoryMessagesTest {
         Assert.assertEquals(2, messages.size());
         Assert.assertEquals("user_input", messages.get(0).getMessageType());
         Assert.assertEquals("assistant_answer", messages.get(1).getMessageType());
+    }
+
+    @Test
+    public void test_applyStructuredWorkingMemory_usesSameRestoredLedgerForHistoryMessagesAndFiles() {
+        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
+
+        JSONObject artifactRef = SessionEventPayloadFixtureBuilder.artifactRef(
+                "summary-report.html",
+                "https://file.example.com/summary-report");
+        SessionWorkingMemory workingMemory = SessionWorkingMemory.builder()
+                .historyDialogue("历史摘要：已经完成 deep_search 并生成 summary-report.html")
+                .restoredFiles(List.of(FileInformation.builder()
+                        .fileName("summary-report.html")
+                        .domainUrl("https://file.example.com/summary-report")
+                        .ossUrl("https://file.example.com/download/summary-report")
+                        .resourceKey("summary-report-html")
+                        .fileType("html")
+                        .build()))
+                .recentTurns(List.of(SessionTurnMemory.builder()
+                        .blocks(List.of(
+                                block(TranscriptBlockType.USER_INPUT, "user", "继续完善总结", null, null, null, null, false),
+                                block(TranscriptBlockType.TOOL_RESULT, "tool", "已生成稳定报告引用",
+                                        "tool-search-1", "deep_search", null, List.of(artifactRef), true)))
+                        .build()))
+                .build();
+        List<FileInformation> currentRequestFiles = List.of(FileInformation.builder()
+                .fileName("input.pdf")
+                .domainUrl("https://file.example.com/input.pdf")
+                .ossUrl("https://file.example.com/download/input.pdf")
+                .resourceKey("input-pdf")
+                .fileType("pdf")
+                .build());
+
+        AgentRequest request = new AgentRequest();
+        ReflectionTestUtils.invokeMethod(service,
+                "applyStructuredWorkingMemory",
+                request,
+                workingMemory,
+                currentRequestFiles);
+
+        Assert.assertEquals("历史摘要：已经完成 deep_search 并生成 summary-report.html", request.getHistoryDialogue());
+        Assert.assertEquals(2, request.getMessages().size());
+        Assert.assertEquals("user_input", request.getMessages().get(0).getMessageType());
+        Assert.assertEquals("tool_result", request.getMessages().get(1).getMessageType());
+        Assert.assertEquals(2, request.getSessionFiles().size());
+        Assert.assertEquals("summary-report.html", request.getSessionFiles().get(0).getFileName());
+        Assert.assertEquals("input.pdf", request.getSessionFiles().get(1).getFileName());
     }
 
     @Test

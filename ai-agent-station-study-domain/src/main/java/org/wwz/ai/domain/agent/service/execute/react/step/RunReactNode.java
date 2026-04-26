@@ -33,6 +33,7 @@ public class RunReactNode extends AbstractExecuteSupport {
 
         ReActAgent executor = new ReactImplAgent(agentContext);
         SummaryAgent summary = new SummaryAgent(agentContext);
+
         summary.setSystemPrompt(summary.getSystemPrompt().replace("{{query}}", requestParameter.getQuery()));
 
         executor.run(requestParameter.getQuery());

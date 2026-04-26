@@ -378,3 +378,18 @@ export function resolveDownloadUrl(fileInfo: ToolFileInfo): string {
     ""
   );
 }
+
+export function formatHistoryTime(rawTime?: string | null): string {
+  if (!rawTime) {
+    return "未知时间";
+  }
+
+  const date = new Date(rawTime);
+  if (Number.isNaN(date.getTime())) {
+    return rawTime;
+  }
+
+  return date.toLocaleString("zh-CN", {
+    hour12: false,
+  });
+}

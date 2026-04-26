@@ -8,7 +8,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * AI Agent 消息最终细节表 PO
+ * AI Agent 单轮事实块账本 PO。
+ * payload_json 只记录未标准化的最小扩展信息，不再承载事件主语义。
  */
 @Data
 @Builder
@@ -24,8 +25,14 @@ public class AgentMessageEvent {
     private String displayArea;
     private String taskId;
     private Integer taskOrder;
+    private String toolUseId;
+    private String toolName;
+    private String toolArgumentsJson;
     private String title;
     private String contentText;
+    private Boolean referenceOnly;
+    private String artifactRefsJson;
+    private String structuredDataJson;
     private String payloadJson;
     private String status;
     private LocalDateTime createTime;

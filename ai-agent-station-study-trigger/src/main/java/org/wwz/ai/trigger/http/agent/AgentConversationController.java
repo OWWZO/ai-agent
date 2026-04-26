@@ -238,6 +238,7 @@ public class AgentConversationController {
                 .sortOrder(turn.getSortOrder())
                 .query(turn.getQuery())
                 .files(turn.getFiles())
+                .generatedFiles(turn.getGeneratedFiles())
                 .agentType(turn.getAgentType())
                 .response(turn.getResponse())
                 .status(turn.getStatus())

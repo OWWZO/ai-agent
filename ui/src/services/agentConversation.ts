@@ -1,7 +1,7 @@
 import api from "./index";
 import { combineData, handleTaskData } from "@/utils/chat";
 import { resolveDeepSearchStage } from "@/utils/deepSearch";
-import { artifactRefsToFileInfo } from "@/utils/historyArtifacts";
+import { artifactRefsToFileInfo, normalizeHistoryFile } from "@/utils/historyArtifacts";
 
 const DEFAULT_DEVICE_ID = "device-default";
 
@@ -78,6 +78,7 @@ export interface ConversationTurnItem {
   sortOrder: number;
   query: string;
   files?: CHAT.TFile[];
+  generatedFiles?: CHAT.TFile[];
   agentType: number;
   status: number;
   forceStop: number;
@@ -216,6 +217,16 @@ const normalizeArtifactRefs = (artifactRefs?: any[]): ArtifactReferenceItem[] =>
       missingReason: artifact.missingReason || (missing ? "引用资源不存在或已失效" : null),
     };
   });
+};
+
+const normalizeTurnFiles = (files?: unknown[]): CHAT.TFile[] => {
+  if (!Array.isArray(files) || !files.length) {
+    return [];
+  }
+
+  return files
+    .map((file) => normalizeHistoryFile(file))
+    .filter((file): file is CHAT.TFile => Boolean(file));
 };
 
 const cloneRecord = (value: unknown): Record<string, any> => {
@@ -674,7 +685,8 @@ export function restoreTurn(sessionId: string, turn: ConversationTurnItem): CHAT
     sessionId,
     requestId: turn.requestId,
     query: turn.query,
-    files: Array.isArray(turn.files) ? turn.files : [],
+    files: normalizeTurnFiles(turn.files),
+    generatedFiles: normalizeTurnFiles(turn.generatedFiles),
     response: isStructuredTurn ? undefined : turn.response || undefined,
     loading: false,
     forceStop: turn.forceStop === 1,

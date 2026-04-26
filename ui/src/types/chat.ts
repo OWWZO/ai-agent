@@ -5,6 +5,7 @@ declare global {
       Pick<MESSAGE.Question, "sessionId" | "query" | "requestId">,
       {
         files: TFile[];
+        generatedFiles?: TFile[];
         plan?: MESSAGE.Plan;
         forceStop: boolean;
         tip?: string;

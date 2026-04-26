@@ -31,12 +31,16 @@ public class ConversationHistoryArtifactTest {
         AgentMessageEvent event = AgentMessageEvent.builder()
                 .messageId(1L)
                 .seqNo(1)
-                .eventType("deep_search")
-                .eventSubType("report")
+                .eventType("tool_result")
+                .eventSubType("markdown.report")
                 .displayArea("workspace")
                 .title("总结完成")
-                .payloadJson("""
-                        {"messageType":"task","messageId":"artifact-1","artifactRefs":[{"resourceKey":"file-001","downloadUrl":"https://file.example.com/download/001","missing":false}]}
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"report.md","resourceKey":"file-001","downloadUrl":"https://file.example.com/download/001","previewUrl":"https://file.example.com/download/001","missing":false}]
+                        """)
+                .structuredDataJson("""
+                        {"messageType":"markdown","answer":"请通过稳定引用查看报告正文","isFinal":true}
                         """)
                 .status("completed")
                 .build();
@@ -48,7 +52,7 @@ public class ConversationHistoryArtifactTest {
         JSONArray refs = ((JSONObject) payload).getJSONArray("artifactRefs");
         Assert.assertEquals("file-001", refs.getJSONObject(0).getString("resourceKey"));
         Assert.assertEquals("https://file.example.com/download/001", refs.getJSONObject(0).getString("downloadUrl"));
-        Assert.assertEquals("artifact-1", turns.get(0).getEvents().get(0).getMessageIdExt());
+        Assert.assertEquals("history:1:1", turns.get(0).getEvents().get(0).getMessageIdExt());
         Assert.assertEquals(Integer.valueOf(1), turns.get(0).getEvents().get(0).getIsFinal());
     }
 
@@ -68,12 +72,16 @@ public class ConversationHistoryArtifactTest {
         AgentMessageEvent event = AgentMessageEvent.builder()
                 .messageId(2L)
                 .seqNo(1)
-                .eventType("deep_search")
-                .eventSubType("report")
+                .eventType("tool_result")
+                .eventSubType("markdown.report")
                 .displayArea("workspace")
                 .title("内容缺失")
-                .payloadJson("""
-                        {"messageType":"task","messageId":"artifact-404","artifactRefs":[{"resourceKey":"file-404","missing":true,"missingReason":"resource not found"}]}
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"缺失文件.md","resourceKey":"file-404","missing":true,"missingReason":"resource not found"}]
+                        """)
+                .structuredDataJson("""
+                        {"messageType":"markdown","answer":"资源已失效","isFinal":true}
                         """)
                 .status("error")
                 .build();
@@ -120,7 +128,7 @@ public class ConversationHistoryArtifactTest {
     }
 
     @Test
-    public void test_legacyFileInfoIsNormalizedToArtifactRefsDuringReplay() {
+    public void test_semanticArtifactRefsReplayWithoutLegacyFileInfoFallback() {
         ConversationReplayAssembler assembler = new ConversationReplayAssembler();
         AgentMessage message = AgentMessage.builder()
                 .id(3L)
@@ -135,25 +143,16 @@ public class ConversationHistoryArtifactTest {
         AgentMessageEvent event = AgentMessageEvent.builder()
                 .messageId(3L)
                 .seqNo(1)
-                .eventType("html")
-                .eventSubType("report")
+                .eventType("tool_result")
+                .eventSubType("html.page")
+                .displayArea("workspace")
                 .title("旧版报告")
-                .payloadJson("""
-                        {
-                          "messageType":"html",
-                          "resultMap":{
-                            "resultMap":{
-                              "fileInfo":[
-                                {
-                                  "fileName":"legacy-report.html",
-                                  "domainUrl":"https://file.example.com/legacy-report",
-                                  "downloadUrl":"https://file.example.com/download/legacy-report",
-                                  "resourceKey":"legacy-report"
-                                }
-                              ]
-                            }
-                          }
-                        }
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"legacy-report.html","resourceKey":"legacy-report","downloadUrl":"https://file.example.com/download/legacy-report","previewUrl":"https://file.example.com/legacy-report","missing":false}]
+                        """)
+                .structuredDataJson("""
+                        {"messageType":"html","answer":"请通过稳定引用打开旧版报告","isFinal":true}
                         """)
                 .status("completed")
                 .build();
@@ -162,7 +161,7 @@ public class ConversationHistoryArtifactTest {
         JSONObject payload = (JSONObject) turns.get(0).getEvents().get(0).getPayload();
 
         Assert.assertEquals("legacy-report", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
-        Assert.assertNull(payload.getJSONObject("resultMap").getJSONObject("resultMap").get("fileInfo"));
+        Assert.assertEquals("html", payload.getJSONObject("resultMap").getString("messageType"));
     }
 
     @Test
@@ -181,22 +180,16 @@ public class ConversationHistoryArtifactTest {
         AgentMessageEvent event = AgentMessageEvent.builder()
                 .messageId(4L)
                 .seqNo(1)
-                .eventType("markdown")
-                .eventSubType("report")
+                .eventType("tool_result")
+                .eventSubType("markdown.report")
+                .displayArea("workspace")
                 .title("多模态检索结果")
-                .payloadJson("""
-                        {
-                          "messageType":"markdown",
-                          "artifactRefs":[
-                            {
-                              "displayName":"多模态检索结果.md",
-                              "resourceKey":"mrag-result-md",
-                              "downloadUrl":"https://file.example.com/download/mrag-result-md",
-                              "previewUrl":"https://file.example.com/preview/mrag-result-md",
-                              "missing":false
-                            }
-                          ]
-                        }
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"多模态检索结果.md","resourceKey":"mrag-result-md","downloadUrl":"https://file.example.com/download/mrag-result-md","previewUrl":"https://file.example.com/preview/mrag-result-md","missing":false}]
+                        """)
+                .structuredDataJson("""
+                        {"messageType":"markdown","answer":"请通过稳定引用查看多模态检索结果","isFinal":true}
                         """)
                 .status("completed")
                 .build();
@@ -206,5 +199,181 @@ public class ConversationHistoryArtifactTest {
 
         Assert.assertEquals("mrag-result-md", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
         Assert.assertEquals("多模态检索结果.md", payload.getJSONArray("artifactRefs").getJSONObject(0).getString("displayName"));
+    }
+
+    @Test
+    public void test_filePayloadIsCompactedToReferenceOnlyShape() {
+        JSONObject payload = JSONObject.parseObject("""
+                {
+                  "messageType":"markdown",
+                  "resultMap":{
+                    "messageType":"markdown",
+                    "resultMap":{
+                      "messageType":"markdown",
+                      "codeOutput":"# 完整正文",
+                      "data":"# 完整正文",
+                      "answer":"不应再内联"
+                    }
+                  },
+                  "artifactRefs":[
+                    {
+                      "displayName":"report.md",
+                      "resourceKey":"report-md",
+                      "previewUrl":"https://file.example.com/preview/report.md",
+                      "downloadUrl":"https://file.example.com/download/report.md"
+                    }
+                  ]
+                }
+                """);
+
+        JSONObject normalized = ConversationEventPayloadNormalizer.normalizePayload(payload);
+        JSONObject nestedResultMap = normalized.getJSONObject("resultMap").getJSONObject("resultMap");
+
+        Assert.assertTrue(normalized.getBooleanValue("referenceOnly"));
+        Assert.assertNull(nestedResultMap.get("codeOutput"));
+        Assert.assertNull(nestedResultMap.get("data"));
+        Assert.assertNull(nestedResultMap.get("answer"));
+        Assert.assertEquals("report-md", normalized.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
+    }
+
+    @Test
+    public void test_generatedFilesAreExposedSeparatelyInConversationTurn() {
+        ConversationReplayAssembler assembler = new ConversationReplayAssembler();
+        AgentMessage message = AgentMessage.builder()
+                .id(5L)
+                .requestId("req-005")
+                .sortOrder(2)
+                .query("生成结果文件")
+                .filesJson("""
+                        [
+                          {
+                            "name":"输入资料.pdf",
+                            "url":"https://file.example.com/input.pdf",
+                            "downloadUrl":"https://file.example.com/input-download.pdf",
+                            "type":"pdf"
+                          }
+                        ]
+                        """)
+                .generatedFilesJson("""
+                        [
+                          {
+                            "fileName":"输出结果.md",
+                            "domainUrl":"https://file.example.com/output.md",
+                            "ossUrl":"https://file.example.com/output-download.md",
+                            "fileType":"markdown",
+                            "resourceKey":"output-md"
+                          }
+                        ]
+                        """)
+                .agentType(2)
+                .status(1)
+                .forceStop(0)
+                .build();
+
+        List<ConversationTurnDetail> turns = assembler.assembleTurns(List.of(message), Map.of(5L, List.of()));
+
+        JSONObject uploadFile = ((JSONArray) turns.get(0).getFiles()).getJSONObject(0);
+        JSONObject generatedFile = ((JSONArray) turns.get(0).getGeneratedFiles()).getJSONObject(0);
+        Assert.assertEquals("输入资料.pdf", uploadFile.getString("name"));
+        Assert.assertEquals("输出结果.md", generatedFile.getString("fileName"));
+        Assert.assertEquals("output-md", generatedFile.getString("resourceKey"));
+    }
+
+    @Test
+    public void test_semanticFactEventsReplayToCanonicalTaskPayload() {
+        ConversationReplayAssembler assembler = new ConversationReplayAssembler();
+        AgentMessage message = AgentMessage.builder()
+                .id(6L)
+                .requestId("req-006")
+                .sortOrder(3)
+                .query("继续补充历史结论")
+                .generatedFilesJson("""
+                        [
+                          {
+                            "fileName":"semantic-report.md",
+                            "domainUrl":"https://file.example.com/semantic-report.md",
+                            "ossUrl":"https://file.example.com/download/semantic-report.md",
+                            "fileType":"markdown",
+                            "resourceKey":"semantic-report-md"
+                          }
+                        ]
+                        """)
+                .agentType(2)
+                .status(1)
+                .forceStop(0)
+                .build();
+
+        AgentMessageEvent thoughtEvent = AgentMessageEvent.builder()
+                .messageId(6L)
+                .seqNo(1)
+                .eventType("assistant_thought")
+                .eventSubType("tool")
+                .displayArea("timeline")
+                .taskId("task-6")
+                .taskOrder(1)
+                .toolUseId("tool-semantic-6")
+                .toolName("deep_search")
+                .toolArgumentsJson("""
+                        {"query":"Spring AI MCP"}
+                        """)
+                .contentText("先复用上一轮 deep_search 的搜索条件")
+                .status("completed")
+                .build();
+        AgentMessageEvent toolUseEvent = AgentMessageEvent.builder()
+                .messageId(6L)
+                .seqNo(2)
+                .eventType("tool_use")
+                .eventSubType("deep_search")
+                .displayArea("timeline")
+                .taskId("task-6")
+                .taskOrder(1)
+                .toolUseId("tool-semantic-6")
+                .toolName("deep_search")
+                .toolArgumentsJson("""
+                        {"query":"Spring AI MCP"}
+                        """)
+                .status("completed")
+                .build();
+        AgentMessageEvent resultEvent = AgentMessageEvent.builder()
+                .messageId(6L)
+                .seqNo(3)
+                .eventType("tool_result")
+                .eventSubType("markdown.report")
+                .displayArea("workspace")
+                .taskId("task-6")
+                .taskOrder(1)
+                .toolUseId("tool-semantic-6")
+                .toolName("deep_search")
+                .toolArgumentsJson("""
+                        {"query":"Spring AI MCP"}
+                        """)
+                .contentText("已生成最终 Markdown 报告，请通过稳定引用打开。")
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [{"displayName":"semantic-report.md","resourceKey":"semantic-report-md","downloadUrl":"https://file.example.com/download/semantic-report.md","previewUrl":"https://file.example.com/semantic-report.md","missing":false}]
+                        """)
+                .structuredDataJson("""
+                        {"messageType":"markdown","answer":"已生成最终 Markdown 报告，请通过稳定引用打开。","isFinal":true}
+                        """)
+                .status("completed")
+                .build();
+
+        List<ConversationTurnDetail> turns = assembler.assembleTurns(
+                List.of(message),
+                Map.of(6L, List.of(thoughtEvent, toolUseEvent, resultEvent)));
+
+        Assert.assertEquals(1, turns.size());
+        Assert.assertEquals(2, turns.get(0).getEvents().size());
+
+        JSONObject thoughtPayload = (JSONObject) turns.get(0).getEvents().get(0).getPayload();
+        Assert.assertEquals("task", turns.get(0).getEvents().get(0).getEventType());
+        Assert.assertEquals("task", thoughtPayload.getString("messageType"));
+        Assert.assertEquals("tool_thought", thoughtPayload.getJSONObject("resultMap").getString("messageType"));
+
+        JSONObject resultPayload = (JSONObject) turns.get(0).getEvents().get(1).getPayload();
+        Assert.assertEquals("markdown", turns.get(0).getEvents().get(1).getEventType());
+        Assert.assertEquals("task", resultPayload.getString("messageType"));
+        Assert.assertEquals("semantic-report-md", resultPayload.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
+        Assert.assertEquals("semantic-report.md", ((JSONArray) turns.get(0).getGeneratedFiles()).getJSONObject(0).getString("fileName"));
     }
 }

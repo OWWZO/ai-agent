@@ -65,9 +65,10 @@ public class AiAgentController implements IAiAgentService {
      * @return
      */
     private ScheduledFuture<?> startHeartbeat(SseEmitter emitter, String requestId) {
+        // 定时执行任务：首次延迟 HEARTBEAT_INTERVAL 后执行，之后每隔相同时间循环执行
         return executor.scheduleAtFixedRate(() -> {
             try {
-                // 发送心跳消息
+                // 发送心跳消息 防止被nginx 网关误杀
                 log.info("{} send heartbeat", requestId);
                 emitter.send("heartbeat");
             } catch (Exception e) {
@@ -79,26 +80,27 @@ public class AiAgentController implements IAiAgentService {
     }
 
     /**
-     * 注册SSE事件
+     * 防止心跳任务在连接断开后继续运行，造成内存泄漏。
      * @param emitter
      * @param requestId
      * @param heartbeatFuture
      */
     private void registerSSEMonitor(SseEmitter emitter, String requestId, ScheduledFuture<?> heartbeatFuture) {
-        // 监听SSE异常事件
+        // 连接正常完成时触发（客户端主动关闭或服务端complete）
         emitter.onCompletion(() -> {
             log.info("{} SSE connection completed normally", requestId);
+            //取消对应的周期性事件 下面同理
             heartbeatFuture.cancel(true);
         });
 
-        // 监听连接超时事件
+        //连接超时时触发（超过SseEmitter设置的超时时间）
         emitter.onTimeout(() -> {
             log.info("{} SSE connection timed out", requestId);
             heartbeatFuture.cancel(true);
             emitter.complete();
         });
 
-        // 监听连接错误事件
+        // 连接发生异常时触发（网络中断、客户端异常关闭等）
         emitter.onError((ex) -> {
             log.info("{} SSE connection error: ", requestId, ex);
             heartbeatFuture.cancel(true);
@@ -120,9 +122,10 @@ public class AiAgentController implements IAiAgentService {
         Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
 
         SseEmitter emitter = new SseEmitter(AUTO_AGENT_SSE_TIMEOUT);
-        // SSE心跳
+        // 定义定时任务规则 定时发送心跳包
         ScheduledFuture<?> heartbeatFuture = startHeartbeat(emitter, request.getRequestId());
-        // 监听SSE事件
+
+        // 注册后续各种事件的处理逻辑
         registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
 
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
@@ -131,6 +134,8 @@ public class AiAgentController implements IAiAgentService {
                 // 使用 IAgentDispatchService 进行策略调度
                 // AgentRequest 直接传入，避免不必要的转换
                 agentDispatchService.dispatch(request, emitter);
+
+                //调用emitter对应方法触发资源回收
                 emitter.complete();
             } catch (Exception e) {
                 log.error("{} auto agent error", request.getRequestId(), e);
@@ -223,19 +228,19 @@ public class AiAgentController implements IAiAgentService {
                         .data(false)
                         .build();
             }
-            
+
             // 调用装配服务
             armoryService.acceptArmoryAgent(request.getAgentId());
-            
+
             log.info("装配智能体成功，agentId：{}", request.getAgentId());
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info("装配成功")
                     .data(true)
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("装配智能体失败，agentId：{}，错误信息：{}", 
+            log.error("装配智能体失败，agentId：{}，错误信息：{}",
                     request != null ? request.getAgentId() : "null", e.getMessage(), e);
             return Response.<Boolean>builder()
                     .code(ResponseCode.UN_ERROR.getCode())
@@ -253,7 +258,7 @@ public class AiAgentController implements IAiAgentService {
         try {
             // 调用装配服务查询可用智能体
             List<AiAgentVO> aiAgentVOList = armoryService.queryAvailableAgents();
-            
+
             // 转换为响应DTO
             List<AiAgentResponseDTO> responseList = new ArrayList<>();
             for (AiAgentVO aiAgentVO : aiAgentVOList) {
@@ -267,14 +272,14 @@ public class AiAgentController implements IAiAgentService {
                         .build();
                 responseList.add(responseDTO);
             }
-            
+
             log.info("查询可用智能体列表成功，共{}个智能体", responseList.size());
             return Response.<List<AiAgentResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info("查询成功")
                     .data(responseList)
                     .build();
-                    
+
         } catch (Exception e) {
             log.error("查询可用智能体列表失败，错误信息：{}", e.getMessage(), e);
             return Response.<List<AiAgentResponseDTO>>builder()
@@ -300,19 +305,19 @@ public class AiAgentController implements IAiAgentService {
                         .data(false)
                         .build();
             }
-            
+
             // 调用装配服务
             armoryService.acceptArmoryAgentClientModelApi(request.getApiId());
-            
+
             log.info("装配API成功，apiId：{}", request.getApiId());
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info("装配成功")
                     .data(true)
                     .build();
-                    
+
         } catch (Exception e) {
-            log.error("装配API失败，apiId：{}，错误信息：{}", 
+            log.error("装配API失败，apiId：{}，错误信息：{}",
                     request != null ? request.getApiId() : "null", e.getMessage(), e);
             return Response.<Boolean>builder()
                     .code(ResponseCode.UN_ERROR.getCode())

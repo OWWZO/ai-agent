@@ -54,12 +54,6 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
         String planningResult = planning.run(agentContext.getQuery());
 
-//        if (planning.getState().equals(AgentState.FINISHED)) {
-//            sendSummaryResult(agentContext, summary,Message.assistantMessage(planningResult,null), requestParameter);
-//
-//            dynamicContext.setStep(2);
-//            return "success";
-//        }
         int stepIdx = 0;
         int maxStepNum = reactorConfig.getPlannerMaxSteps() != null ? reactorConfig.getPlannerMaxSteps() : 5;
 
