@@ -134,9 +134,12 @@ public class SessionTranscriptBlockAssembler {
         String eventType = lower(event == null ? null : event.getEventType());
         String eventSubType = lower(event == null ? null : event.getEventSubType());
         ToolCallDescriptor descriptor = resolveToolCallDescriptor(message, event, payload);
-        String matchedToolUseId = registry.resolveForResult(descriptor.toolUseId(), descriptor.toolName(),
-                event == null ? null : event.getTaskId(), event == null ? null : event.getTaskOrder());
-        if (StringUtils.hasText(matchedToolUseId)) {
+        String matchedToolUseId = null;
+        if (!THOUGHT_EVENT_TYPES.contains(eventType) && !descriptor.explicitToolUseId()) {
+            matchedToolUseId = registry.resolveForResult(descriptor.toolUseId(), descriptor.toolName(),
+                    event == null ? null : event.getTaskId(), event == null ? null : event.getTaskOrder());
+        }
+        if (StringUtils.hasText(matchedToolUseId) && !matchedToolUseId.equals(descriptor.toolUseId())) {
             descriptor = descriptor.withToolUseId(matchedToolUseId);
         }
 
@@ -188,7 +191,6 @@ public class SessionTranscriptBlockAssembler {
                     .artifactRefs(new ArrayList<>(eventArtifactRefs))
                     .referenceOnly(referenceOnly)
                     .build());
-            registry.close(descriptor.toolUseId());
         }
 
         if (!eventArtifactRefs.isEmpty()) {
@@ -288,12 +290,12 @@ public class SessionTranscriptBlockAssembler {
         String fallbackToolUseId = String.format("%s:%s",
                 message == null ? "unknown" : String.valueOf(message.getId()),
                 event == null || event.getSeqNo() == null ? "0" : event.getSeqNo());
-        String toolUseId = StringUtil.firstNonBlank(
+        String explicitToolUseId = StringUtil.firstNonBlank(
                 findString(payload, "toolUseId"),
                 findString(payload, "toolCallId"),
                 findNestedString(payload, "toolCall", "id"),
-                findNestedString(payload, "tool", "id"),
-                fallbackToolUseId);
+                findNestedString(payload, "tool", "id"));
+        String toolUseId = StringUtils.hasText(explicitToolUseId) ? explicitToolUseId : fallbackToolUseId;
         String toolName = StringUtil.firstNonBlank(
                 findString(payload, "toolName"),
                 findNestedString(payload, "toolCall", "function", "name"),
@@ -305,7 +307,7 @@ public class SessionTranscriptBlockAssembler {
                 findRaw(payload, "arguments"),
                 findRaw(payload, "toolParam"));
         String argumentsJson = stringifyToolArguments(toolArguments);
-        return new ToolCallDescriptor(toolUseId, toolName, argumentsJson);
+        return new ToolCallDescriptor(toolUseId, toolName, argumentsJson, StringUtils.hasText(explicitToolUseId));
     }
 
     private boolean needsFallbackToolName(String eventType) {
@@ -424,38 +426,47 @@ public class SessionTranscriptBlockAssembler {
         return value == null ? "" : value.toLowerCase();
     }
 
-    private record ToolCallDescriptor(String toolUseId, String toolName, String toolArgumentsJson) {
+    private record ToolCallDescriptor(String toolUseId,
+                                      String toolName,
+                                      String toolArgumentsJson,
+                                      boolean explicitToolUseId) {
         private boolean hasToolCall() {
             return StringUtils.hasText(toolName) || StringUtils.hasText(toolArgumentsJson);
         }
 
         private ToolCallDescriptor withToolUseId(String newToolUseId) {
-            return new ToolCallDescriptor(newToolUseId, toolName, toolArgumentsJson);
+            return new ToolCallDescriptor(newToolUseId, toolName, toolArgumentsJson, explicitToolUseId);
         }
     }
 
     private static class ToolInvocationRegistry {
-        private final Map<String, ToolInvocationState> openInvocations = new LinkedHashMap<>();
+        /**
+         * 同一轮里一个 toolUseId 可能对应多段结果（例如 knowledge + markdown）。
+         * 因此这里保留已见调用，避免第一段结果后又把后续结果误恢复成新的 TOOL_USE。
+         */
+        private final Map<String, ToolInvocationState> invocationStates = new LinkedHashMap<>();
+        private final Set<String> emittedToolUseIds = new LinkedHashSet<>();
 
         private boolean shouldEmitToolUse(String toolUseId) {
-            return StringUtils.hasText(toolUseId) && !openInvocations.containsKey(toolUseId);
+            return StringUtils.hasText(toolUseId) && !emittedToolUseIds.contains(toolUseId);
         }
 
         private void register(String toolUseId, String toolName, String taskId, Integer taskOrder) {
             if (!StringUtils.hasText(toolUseId)) {
                 return;
             }
-            openInvocations.put(toolUseId, new ToolInvocationState(toolUseId, toolName, taskId, taskOrder));
+            invocationStates.put(toolUseId, new ToolInvocationState(toolUseId, toolName, taskId, taskOrder));
+            emittedToolUseIds.add(toolUseId);
         }
 
         private String resolveForResult(String explicitToolUseId,
                                         String toolName,
                                         String taskId,
                                         Integer taskOrder) {
-            if (StringUtils.hasText(explicitToolUseId) && openInvocations.containsKey(explicitToolUseId)) {
+            if (StringUtils.hasText(explicitToolUseId) && invocationStates.containsKey(explicitToolUseId)) {
                 return explicitToolUseId;
             }
-            List<ToolInvocationState> states = new ArrayList<>(openInvocations.values());
+            List<ToolInvocationState> states = new ArrayList<>(invocationStates.values());
             for (int i = states.size() - 1; i >= 0; i--) {
                 ToolInvocationState state = states.get(i);
                 boolean sameTask = StringUtils.hasText(taskId) && taskId.equals(state.taskId())
@@ -466,13 +477,6 @@ public class SessionTranscriptBlockAssembler {
                 }
             }
             return explicitToolUseId;
-        }
-
-        private void close(String toolUseId) {
-            if (!StringUtils.hasText(toolUseId)) {
-                return;
-            }
-            openInvocations.remove(toolUseId);
         }
     }
 

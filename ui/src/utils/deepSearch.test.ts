@@ -73,7 +73,7 @@ describe("deepSearch utils", () => {
     expect(shouldRenderDeepSearchPreview("report")).toBe(false);
     expect(shouldRenderDeepSearchWorkspace("extend")).toBe(false);
     expect(shouldRenderDeepSearchWorkspace("search")).toBe(true);
-    expect(shouldRenderDeepSearchWorkspace("report")).toBe(false);
+    expect(shouldRenderDeepSearchWorkspace("report")).toBe(true);
   });
 
   it("为 extend 阶段构建左侧紧凑查询预览模型", () => {

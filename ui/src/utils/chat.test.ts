@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAction, buildReplayTaskData, combineData, handleTaskData } from "./chat";
+import {
+  buildAction,
+  buildReplayTaskData,
+  combineData,
+  getStableTaskIdentity,
+  handleTaskData,
+} from "./chat";
 import {
   buildDeepSearchPreviewModel,
   shouldRenderDeepSearchWorkspace,
@@ -222,6 +228,11 @@ describe("chat deep_search progress", () => {
     );
 
     expect(reportModels.every((item) => item === undefined)).toBe(true);
+    expect(
+      reportChildren.every((item) =>
+        shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
+      )
+    ).toBe(true);
   });
 
   it("历史回放会恢复左侧预览与右侧详情的阶段分工", () => {
@@ -291,6 +302,30 @@ describe("chat deep_search progress", () => {
     expect(previewModels[0]?.stage).toBe("search");
     expect(previewModels[1]?.stage).toBe("search");
     expect(previewModels[2]).toBeUndefined();
+  });
+
+  it("deep_search 的稳定标识会区分 search 卡片和 report 卡片", () => {
+    const currentChat = {
+      sessionId: "session-1",
+      requestId: "req-1",
+      query: "原始问题",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createDeepSearchEvent("search"), currentChat);
+    combineData(createDeepSearchEvent("report"), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList[0]?.messageId).toBe(taskList[2]?.messageId);
+    expect(getStableTaskIdentity(taskList[0])).not.toBe(
+      getStableTaskIdentity(taskList[2])
+    );
   });
 
   it("html 最终包会把 artifact 引用合并回现有任务，供右侧直接预览", () => {

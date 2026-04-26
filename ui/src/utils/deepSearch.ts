@@ -96,7 +96,8 @@ export function shouldRenderDeepSearchPreview(stage: unknown): boolean {
 }
 
 export function shouldRenderDeepSearchWorkspace(stage: unknown): boolean {
-  return resolveDeepSearchStage(stage) === "search";
+  const normalizedStage = resolveDeepSearchStage(stage);
+  return normalizedStage === "search" || normalizedStage === "report";
 }
 
 function formatCountLabel(count: number, unit: string): string {

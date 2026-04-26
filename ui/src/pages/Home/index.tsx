@@ -3,11 +3,11 @@ import { Drawer, Image } from "antd";
 import classNames from "classnames";
 import { motion } from "motion/react";
 import { Edit3Icon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-
 import ChatView from "@/components/ChatView";
 import GeneralInput from "@/components/GeneralInput";
-import ResizableSidebar from "@/components/ResizableSidebar";
+import ResizableSidebar, { type SidebarView } from "@/components/ResizableSidebar";
+import WorkspaceMRag from "@/pages/WorkspaceMRag";
+import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import type { LocalThreadListItem } from "@/components/assistant-ui/thread-list";
@@ -19,7 +19,6 @@ import {
   resolveConversationHistories,
 } from "@/utils/chatHistory";
 import { useAgentConversation } from "@/hooks/useAgentConversation";
-import { ROUTES } from "@/router/routes";
 
 type HomeProps = Record<string, never>;
 
@@ -162,7 +161,6 @@ const CaseCard = memo((props: CaseCardProps) => {
 });
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
-  const navigate = useNavigate();
   const initialRef = useRef<InitialState>(createInitialState());
 
   // ---- API 会话管理（渐进式迁移）----
@@ -199,6 +197,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [activeView, setActiveView] = useState<SidebarView>("chat");
 
   const defaultFixRole = useMemo(
     () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
@@ -352,6 +351,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   const createNewChat = useCallback(() => {
+    setActiveView("chat");
     const existedEmpty = sortedConversations.find(
       (item) => isDraftConversation(item) && (remoteMessageCountMap.get(item.sessionId) ?? 0) === 0
     );
@@ -430,6 +430,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
+      setActiveView("chat");
       setCurrentConversationId(conversationId);
       setHistoryDrawerOpen(false);
       setInputInfo({ ...EMPTY_INPUT });
@@ -593,9 +594,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     setSearchPanelOpen(false);
   }, []);
 
-  const openWorkspace = useCallback(() => {
-    navigate(ROUTES.WORKSPACE_MRAG);
-  }, [navigate]);
+  const handleFolderClick = useCallback((view: SidebarView) => {
+    setActiveView(view);
+  }, []);
 
   const renderWelcome = () => {
     return (
@@ -819,11 +820,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
             items={threadListItems}
             onCreate={createNewChat}
             onSearchOpen={openSearchPanel}
-            onWorkspaceOpen={openWorkspace}
+            onWorkspaceOpen={() => handleFolderClick("mrag")}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={isSidebarCollapsed}
             onCollapsedChange={setIsSidebarCollapsed}
+            activeView={activeView}
+            onFolderClick={handleFolderClick}
             defaultWidth={240}
             minWidth={240}
             maxWidth={420}
@@ -844,11 +847,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
             items={threadListItems}
             onCreate={createNewChat}
             onSearchOpen={openSearchPanel}
-            onWorkspaceOpen={openWorkspace}
+            onWorkspaceOpen={() => handleFolderClick("mrag")}
             onSelect={handleSelectConversation}
             onDelete={handleDeleteConversation}
             isCollapsed={false}
             onCollapsedChange={() => {}}
+            activeView={activeView}
+            onFolderClick={handleFolderClick}
           />
         </Drawer>
 
@@ -866,7 +871,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
           {/* Content */}
           <div className="min-h-0 flex-1 overflow-auto">
-            {!hasConversationContent && inputInfo.message.length === 0 ? (
+            {activeView === "mrag" ? (
+              <WorkspaceMRag embedded />
+            ) : activeView === "image-generation" ? (
+              <WorkspaceImageGeneration embedded />
+            ) : !hasConversationContent && inputInfo.message.length === 0 ? (
               renderWelcome()
             ) : detailLoading ? (
               <div className="flex h-full items-center justify-center">

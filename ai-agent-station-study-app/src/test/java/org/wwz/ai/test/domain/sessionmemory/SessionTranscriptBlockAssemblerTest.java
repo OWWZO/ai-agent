@@ -162,11 +162,21 @@ public class SessionTranscriptBlockAssemblerTest {
         )
                 .getBlocks();
 
-        Assert.assertEquals(6, blocks.size());
-        Assert.assertEquals(TranscriptBlockType.TOOL_USE, blocks.get(2).getBlockType());
+        Assert.assertEquals(List.of(
+                TranscriptBlockType.USER_INPUT,
+                TranscriptBlockType.ASSISTANT_THOUGHT,
+                TranscriptBlockType.TOOL_USE,
+                TranscriptBlockType.TOOL_RESULT,
+                TranscriptBlockType.TOOL_RESULT,
+                TranscriptBlockType.ARTIFACT_REFERENCE,
+                TranscriptBlockType.ASSISTANT_ANSWER), blocks.stream()
+                .map(TranscriptContextBlock::getBlockType)
+                .collect(Collectors.toList()));
         Assert.assertEquals("multimodalagent_tool", blocks.get(2).getToolName());
         Assert.assertEquals("tool-mrag-1", blocks.get(3).getToolUseId());
         Assert.assertEquals("multimodalagent_tool", blocks.get(3).getToolName());
-        Assert.assertEquals("多模态检索结果.md", blocks.get(4).getArtifactRefs().get(0).getString("displayName"));
+        Assert.assertEquals("tool-mrag-1", blocks.get(4).getToolUseId());
+        Assert.assertEquals("multimodalagent_tool", blocks.get(4).getToolName());
+        Assert.assertEquals("多模态检索结果.md", blocks.get(5).getArtifactRefs().get(0).getString("displayName"));
     }
 }

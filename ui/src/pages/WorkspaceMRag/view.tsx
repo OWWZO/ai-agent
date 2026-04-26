@@ -24,11 +24,11 @@ import {
   formatFileDocCount,
   formatWorkspaceDateTime,
   resolveFileStatusMeta,
-  resolveSourceSummary,
   toPrettyJson,
 } from "./utils";
 
 export type WorkspaceMRagViewProps = {
+  embedded?: boolean;
   toolBaseUrlDraft: string;
   activeToolBaseUrl: string;
   onToolBaseUrlChange: (value: string) => void;
@@ -68,76 +68,43 @@ export type WorkspaceMRagViewProps = {
   onClearQueryResult: () => void;
 };
 
-type SectionShellProps = {
-  title: string;
-  description: string;
-  badge: string;
-  children: ReactNode;
-  actions?: ReactNode;
-};
+/* ------------------------------------------------------------------ */
+/*  Button                                                            */
+/* ------------------------------------------------------------------ */
 
-type ActionButtonProps = {
+function ActionButton(props: {
   label: string;
   icon: ReactNode;
   onClick?: () => void;
   href?: string;
   loading?: boolean;
   disabled?: boolean;
-  variant?: "primary" | "secondary" | "danger";
-};
-
-function SectionShell(props: SectionShellProps) {
-  const { title, description, badge, actions, children } = props;
-
-  return (
-    <section className="rounded-[30px] border border-white/70 bg-white/88 shadow-[0_24px_80px_-44px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-      <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[12px] font-medium text-sky-700">
-              <span>{badge}</span>
-            </div>
-            <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-slate-900">
-              {title}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
-          </div>
-          {actions ? <div className="shrink-0">{actions}</div> : null}
-        </div>
-      </div>
-      <div className="px-5 py-5 sm:px-6">{children}</div>
-    </section>
-  );
-}
-
-function ActionButton(props: ActionButtonProps) {
+  variant?: "primary" | "secondary" | "danger" | "ghost";
+}) {
   const { label, icon, onClick, href, loading, disabled, variant = "secondary" } = props;
 
   const className = classNames(
-    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
+    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200",
     variant === "primary" &&
-      "bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-300",
+      "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-40",
     variant === "secondary" &&
-      "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 disabled:text-slate-300",
+      "border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)] disabled:opacity-40",
     variant === "danger" &&
-      "border border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:text-rose-700 disabled:text-rose-300"
+      "border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700",
+    variant === "ghost" &&
+      "text-[var(--chat-text-muted)] hover:text-[var(--chat-text)] hover:bg-[var(--chat-surface-soft)]"
   );
 
   const content = (
     <>
-      {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : icon}
+      {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : icon}
       <span>{label}</span>
     </>
   );
 
   if (href) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className={classNames(className, disabled && "pointer-events-none opacity-50")}
-      >
+      <a href={href} target="_blank" rel="noreferrer" className={classNames(className, disabled && "pointer-events-none opacity-40")}>
         {content}
       </a>
     );
@@ -149,6 +116,10 @@ function ActionButton(props: ActionButtonProps) {
     </button>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Knowledge Base Card                                               */
+/* ------------------------------------------------------------------ */
 
 function KnowledgeBaseItem(props: {
   knowledgeBase: KnowledgeBase;
@@ -162,31 +133,33 @@ function KnowledgeBaseItem(props: {
       type="button"
       onClick={onSelect}
       className={classNames(
-        "w-full rounded-[22px] border px-4 py-4 text-left transition",
+        "group w-full rounded-xl border px-4 py-3 text-left transition-all duration-200",
         selected
-          ? "border-sky-200 bg-sky-50/90 shadow-[0_18px_36px_-28px_rgba(14,116,144,0.6)]"
-          : "border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white"
+          ? "border-[var(--primary)]/20 bg-[var(--primary)]/5"
+          : "border-[var(--chat-border)] bg-[var(--chat-surface)] hover:border-[var(--chat-border-strong)] hover:bg-[var(--chat-surface-soft)]"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold text-slate-900">
+          <div className="truncate text-[14px] font-semibold text-[var(--chat-text)]">
             {knowledgeBase.name}
           </div>
-          <div className="mt-1 text-[12px] text-slate-500">
+          <div className="mt-0.5 text-[12px] text-[var(--chat-text-muted)]">
             {knowledgeBase.description || "暂无描述"}
           </div>
         </div>
         <span
           className={classNames(
-            "rounded-full px-2.5 py-1 text-[11px] font-semibold",
-            selected ? "bg-white text-sky-700" : "bg-white text-slate-500"
+            "shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium",
+            selected
+              ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+              : "bg-[var(--chat-surface-soft)] text-[var(--chat-text-muted)]"
           )}
         >
           {knowledgeBase.chunkType}
         </span>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-slate-400">
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--chat-text-muted)]">
         <span>创建于 {formatWorkspaceDateTime(knowledgeBase.createdAt)}</span>
         <span>更新于 {formatWorkspaceDateTime(knowledgeBase.updatedAt)}</span>
       </div>
@@ -194,7 +167,11 @@ function KnowledgeBaseItem(props: {
   );
 }
 
-function FileRecordCard(props: {
+/* ------------------------------------------------------------------ */
+/*  File Row                                                          */
+/* ------------------------------------------------------------------ */
+
+function FileRecordRow(props: {
   file: KnowledgeBaseFile;
   onDelete: (fileId: string) => void;
 }) {
@@ -203,83 +180,104 @@ function FileRecordCard(props: {
   const isWebSource = file.sourceType === "url";
 
   return (
-    <article className="rounded-[24px] border border-slate-200 bg-slate-50/75 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[16px] font-semibold text-slate-900">
-              {file.title}
-            </span>
-            <span
-              className={classNames(
-                "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                statusMeta.className
-              )}
-            >
-              {statusMeta.label}
-            </span>
-          </div>
-          <div className="mt-2 break-all text-[13px] leading-6 text-slate-500">
-            {file.sourceUrl}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-slate-400">
-            <span className="rounded-full bg-white px-2.5 py-1">
-              {isWebSource ? "网页来源" : `文件 ${file.fileExt || "未知"}`}
-            </span>
-            <span className="rounded-full bg-white px-2.5 py-1">
-              {formatFileDocCount(file)}
-            </span>
-            <span className="rounded-full bg-white px-2.5 py-1">
-              来源 {resolveSourceSummary(file.sourceUrl)}
-            </span>
-            <span className="rounded-full bg-white px-2.5 py-1">
-              更新时间 {formatWorkspaceDateTime(file.updatedAt)}
-            </span>
-          </div>
-          {file.errorMessage ? (
-            <div className="mt-3 rounded-[18px] border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-600">
-              {file.errorMessage}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {isWebSource ? (
-            <ActionButton
-              href={file.sourceUrl}
-              label="打开原链接"
-              icon={<ExternalLink className="h-4 w-4" />}
-            />
-          ) : (
-            <>
-              <ActionButton
-                href={file.previewUrl}
-                label="预览"
-                icon={<ExternalLink className="h-4 w-4" />}
-                disabled={!file.previewUrl}
-              />
-              <ActionButton
-                href={file.downloadUrl}
-                label="下载"
-                icon={<ArrowLeft className="h-4 w-4 rotate-[135deg]" />}
-                disabled={!file.downloadUrl}
-              />
-            </>
-          )}
-          <ActionButton
-            label="删除"
-            icon={<Trash2 className="h-4 w-4" />}
-            variant="danger"
-            onClick={() => onDelete(file.id)}
-          />
-        </div>
+    <div className="group flex items-start gap-4 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4 transition-all hover:border-[var(--chat-border-strong)] hover:shadow-[var(--shadow-sm)]">
+      {/* Source type indicator */}
+      <div className={classNames(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+        isWebSource ? "bg-sky-50 text-sky-600" : "bg-[var(--chat-surface-soft)] text-[var(--chat-text-muted)]"
+      )}>
+        {isWebSource ? <Globe className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}
       </div>
-    </article>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[14px] font-medium text-[var(--chat-text)]">
+            {file.title}
+          </span>
+          <span className={classNames("shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium", statusMeta.className)}>
+            {statusMeta.label}
+          </span>
+        </div>
+        <div className="mt-1 truncate text-[12px] text-[var(--chat-text-muted)]">
+          {file.sourceUrl}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="rounded-md bg-[var(--chat-surface-soft)] px-2 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+            {isWebSource ? "网页" : file.fileExt?.toUpperCase() || "文件"}
+          </span>
+          <span className="rounded-md bg-[var(--chat-surface-soft)] px-2 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+            {formatFileDocCount(file)}
+          </span>
+          <span className="rounded-md bg-[var(--chat-surface-soft)] px-2 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+            {formatWorkspaceDateTime(file.updatedAt)}
+          </span>
+        </div>
+        {file.errorMessage ? (
+          <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-1.5 text-[12px] text-rose-600">
+            {file.errorMessage}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {isWebSource ? (
+          <a
+            href={file.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+            title="打开原链接"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : (
+          <>
+            {file.previewUrl && (
+              <a
+                href={file.previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                title="预览"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+            {file.downloadUrl && (
+              <a
+                href={file.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                title="下载"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 rotate-[135deg]" />
+              </a>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => onDelete(file.id)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-muted)] transition-colors hover:bg-rose-50 hover:text-rose-600"
+          title="删除"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Main View                                                         */
+/* ------------------------------------------------------------------ */
+
 export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
   const {
+    embedded,
     toolBaseUrlDraft,
     activeToolBaseUrl,
     onToolBaseUrlChange,
@@ -319,365 +317,321 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
     onClearQueryResult,
   } = props;
 
-  const selectedKnowledgeBaseName =
-    selectedKnowledgeBase?.name || "尚未选择知识库";
+  const selectedKnowledgeBaseName = selectedKnowledgeBase?.name || "尚未选择";
 
   return (
-    <div className="relative min-h-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef6ff_100%)] text-slate-700">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-35"
-        style={{
-          backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute left-[-12%] top-[-18%] h-[34rem] w-[34rem] rounded-full"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(186,230,253,0.72) 0%, rgba(248,250,252,0) 72%)",
-          filter: "blur(30px)",
-        }}
-      />
-      <div className="pointer-events-none absolute bottom-[-10rem] right-[-10rem] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle,rgba(224,231,255,0.72)_0%,rgba(248,250,252,0)_72%)] blur-3xl" />
+    <div className="flex h-full flex-col bg-[var(--page-gradient)] text-[var(--chat-text)]">
+      {/* ── Header ── */}
+      <div className="shrink-0 border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-5 py-3 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1480px] flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left: icon + title */}
+          <div className="flex items-center gap-3">
+            {!embedded && (
+              <Link
+                to={ROUTES.HOME}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--chat-border)] text-[var(--chat-text-muted)] transition hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            )}
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
+              <DatabaseZap className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <h1 className="text-[15px] font-semibold tracking-tight text-[var(--chat-text)]">
+                MRAG 文件工作台
+              </h1>
+              <p className="text-[12px] text-[var(--chat-text-muted)]">
+                知识库管理、文件入库与检索调试
+              </p>
+            </div>
+          </div>
 
-      <div className="relative z-10 mx-auto flex min-h-full max-w-[1480px] flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <header className="sticky top-4 z-20 mb-6 overflow-hidden rounded-[28px] border border-white/70 bg-white/82 shadow-[0_20px_60px_-32px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-          <div className="flex flex-col gap-4 px-5 py-4 sm:px-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex items-center gap-3">
-                <Link
-                  to={ROUTES.HOME}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0f766e_0%,#0ea5e9_55%,#2563eb_100%)] text-white shadow-[0_16px_32px_-20px_rgba(14,116,144,0.8)]">
-                  <DatabaseZap className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Workspace
-                  </div>
-                  <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 sm:text-[24px]">
-                    MRAG 文件工作台
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    知识库列表、文件入库状态、原始资料访问与检索调试
-                  </p>
-                </div>
+          {/* Right: Tool URL */}
+          <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-2">
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[var(--chat-text-muted)]">
+                Tool URL
+              </span>
+              <input
+                value={toolBaseUrlDraft}
+                onChange={(e) => onToolBaseUrlChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onApplyToolBaseUrl();
+                  }
+                }}
+                placeholder="http://127.0.0.1:1601"
+                className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
+              />
+            </div>
+            <ActionButton
+              label="连接"
+              icon={<Link2 className="h-3.5 w-3.5" />}
+              onClick={onApplyToolBaseUrl}
+              variant="primary"
+            />
+            <span className="hidden rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--chat-text-muted)] lg:inline-flex">
+              {activeToolBaseUrl || "未配置"}
+            </span>
+            {!embedded && <WorkspaceToolSwitcher />}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto flex h-full max-w-[1480px] flex-col gap-0 lg:flex-row">
+          {/* ── Left: Knowledge Bases ── */}
+          <div className="flex h-full w-full shrink-0 flex-col border-b border-[var(--chat-border)] bg-[var(--chat-surface)] lg:w-[300px] lg:border-b-0 lg:border-r">
+            {/* KB Header */}
+            <div className="flex items-center justify-between border-b border-[var(--chat-border)] px-4 py-3">
+              <div className="text-[12px] font-semibold uppercase tracking-wider text-[var(--chat-text-muted)]">
+                知识库
               </div>
-
-              <WorkspaceToolSwitcher className="max-w-full xl:max-w-[720px]" />
+              <ActionButton
+                label="刷新"
+                icon={<RefreshCcw className="h-3.5 w-3.5" />}
+                onClick={onRefreshKnowledgeBases}
+                loading={knowledgeBasesLoading}
+                variant="ghost"
+              />
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <label className="flex min-w-0 items-center gap-3 rounded-[22px] border border-slate-200 bg-slate-50/85 px-4 py-3">
-                <span className="shrink-0 text-[12px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Tool URL
-                </span>
+            {/* KB List */}
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="space-y-2">
+                {knowledgeBasesError ? (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                    {knowledgeBasesError}
+                  </div>
+                ) : null}
+
+                {knowledgeBases.length ? (
+                  knowledgeBases.map((kb) => (
+                    <KnowledgeBaseItem
+                      key={kb.id}
+                      knowledgeBase={kb}
+                      selected={kb.id === selectedKnowledgeBaseId}
+                      onSelect={() => onSelectKnowledgeBase(kb.id)}
+                    />
+                  ))
+                ) : knowledgeBasesLoading ? (
+                  <div className="flex items-center justify-center py-8 text-[13px] text-[var(--chat-text-muted)]">
+                    <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                    正在加载...
+                  </div>
+                ) : (
+                  <Empty description="还没有知识库" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                )}
+              </div>
+            </div>
+
+            {/* Create KB */}
+            <div className="shrink-0 border-t border-[var(--chat-border)] p-3">
+              <div className="text-[12px] font-semibold text-[var(--chat-text-soft)]">新建知识库</div>
+              <div className="mt-2 space-y-2">
                 <input
-                  value={toolBaseUrlDraft}
-                  onChange={(event) => onToolBaseUrlChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      onApplyToolBaseUrl();
-                    }
-                  }}
-                  placeholder="http://127.0.0.1:1601"
-                  className="min-w-0 flex-1 border-none bg-transparent text-[14px] text-slate-700 outline-none placeholder:text-slate-400"
+                  value={createKnowledgeBaseName}
+                  onChange={(e) => onCreateKnowledgeBaseNameChange(e.target.value)}
+                  placeholder="名称，如：产品资料库"
+                  className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none transition placeholder:text-[var(--chat-text-muted)] focus:border-[var(--primary)]/30"
                 />
-              </label>
-              <div className="flex flex-wrap gap-2">
+                <textarea
+                  value={createKnowledgeBaseDesc}
+                  onChange={(e) => onCreateKnowledgeBaseDescChange(e.target.value)}
+                  rows={2}
+                  placeholder="用途描述（可选）"
+                  className="w-full resize-none rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none transition placeholder:text-[var(--chat-text-muted)] focus:border-[var(--primary)]/30"
+                />
                 <ActionButton
-                  label="应用地址"
-                  icon={<Link2 className="h-4 w-4" />}
-                  onClick={onApplyToolBaseUrl}
+                  label="创建"
+                  icon={<DatabaseZap className="h-3.5 w-3.5" />}
+                  onClick={onCreateKnowledgeBase}
+                  loading={creatingKnowledgeBase}
+                  disabled={!createKnowledgeBaseName.trim()}
                   variant="primary"
                 />
-                <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-[12px] text-slate-500">
-                  当前连接：{activeToolBaseUrl || "未配置"}
-                </div>
               </div>
             </div>
           </div>
-        </header>
 
-        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <SectionShell
-            badge="Knowledge Bases"
-            title="知识库"
-            description="选择当前工作知识库，或新建一个 MRAG 文件库。"
-            actions={
-              <ActionButton
-                label="刷新"
-                icon={<RefreshCcw className="h-4 w-4" />}
-                onClick={onRefreshKnowledgeBases}
-                loading={knowledgeBasesLoading}
-              />
-            }
-          >
-            <div className="space-y-4">
-              {knowledgeBasesError ? (
-                <div className="rounded-[18px] border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
-                  {knowledgeBasesError}
-                </div>
-              ) : null}
-
-              {knowledgeBases.length ? (
-                <div className="space-y-3">
-                  {knowledgeBases.map((knowledgeBase) => (
-                    <KnowledgeBaseItem
-                      key={knowledgeBase.id}
-                      knowledgeBase={knowledgeBase}
-                      selected={knowledgeBase.id === selectedKnowledgeBaseId}
-                      onSelect={() => onSelectKnowledgeBase(knowledgeBase.id)}
-                    />
-                  ))}
-                </div>
-              ) : knowledgeBasesLoading ? (
-                <div className="flex items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-sm text-slate-400">
-                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                  正在加载知识库...
-                </div>
-              ) : (
-                <Empty
-                  description="还没有知识库，先在下方创建一个。"
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+          {/* ── Right: Content ── */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Tabs */}
+            <div className="flex shrink-0 items-center gap-1 border-b border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2">
+              <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--chat-text-muted)]">
+                {selectedKnowledgeBase ? selectedKnowledgeBaseName : "文件工作区"}
+              </span>
+              <span className="ml-2 rounded-md bg-[var(--chat-surface-soft)] px-2 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+                {files.length} 个文件
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <ActionButton
+                  label="刷新文件"
+                  icon={<RefreshCcw className="h-3.5 w-3.5" />}
+                  onClick={onRefreshFiles}
+                  loading={filesLoading}
+                  disabled={!selectedKnowledgeBase}
+                  variant="ghost"
                 />
-              )}
-
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                <div className="text-[14px] font-semibold text-slate-900">创建知识库</div>
-                <div className="mt-3 space-y-3">
-                  <input
-                    value={createKnowledgeBaseName}
-                    onChange={(event) =>
-                      onCreateKnowledgeBaseNameChange(event.target.value)
-                    }
-                    placeholder="例如：产品资料库"
-                    className="w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-200"
-                  />
-                  <textarea
-                    value={createKnowledgeBaseDesc}
-                    onChange={(event) =>
-                      onCreateKnowledgeBaseDescChange(event.target.value)
-                    }
-                    rows={3}
-                    placeholder="补充这个知识库的用途，方便后续识别。"
-                    className="w-full resize-none rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-200"
-                  />
-                  <ActionButton
-                    label="创建并切换"
-                    icon={<DatabaseZap className="h-4 w-4" />}
-                    onClick={onCreateKnowledgeBase}
-                    loading={creatingKnowledgeBase}
-                    disabled={!createKnowledgeBaseName.trim()}
-                    variant="primary"
-                  />
-                </div>
               </div>
             </div>
-          </SectionShell>
 
-          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-            <SectionShell
-              badge="Files"
-              title={selectedKnowledgeBase ? `${selectedKnowledgeBaseName} 的资料` : "文件工作区"}
-              description="上传原始文件或网页链接，查看入库状态，并直接访问原始资料。"
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton
-                    label="刷新文件"
-                    icon={<RefreshCcw className="h-4 w-4" />}
-                    onClick={onRefreshFiles}
-                    loading={filesLoading}
-                    disabled={!selectedKnowledgeBase}
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {!selectedKnowledgeBase ? (
+                <div className="flex h-full items-center justify-center">
+                  <Empty
+                    description="从左侧选择一个知识库开始管理文件"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
                   />
                 </div>
-              }
-            >
-              {!selectedKnowledgeBase ? (
-                <Empty
-                  description="先从左侧选一个知识库，再开始上传或添加网页。"
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
               ) : (
-                <div className="space-y-5">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                      <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-900">
-                        <UploadCloud className="h-4 w-4 text-sky-600" />
-                        <span>本地文件上传</span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        走两段式上传，先保存原文件，再发起入库任务，方便后续预览和下载。
-                      </p>
-                      <div className="mt-4">
-                        <ActionButton
-                          label="选择文件并入库"
-                          icon={<UploadCloud className="h-4 w-4" />}
-                          onClick={onUploadFiles}
-                          loading={uploadingFiles}
-                          variant="primary"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                      <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-900">
-                        <Globe className="h-4 w-4 text-sky-600" />
-                        <span>网页链接入库</span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        输入一个可访问的网页地址，系统会抓取正文并写入当前知识库。
-                      </p>
-                      <div className="mt-4 flex flex-col gap-3">
-                        <input
-                          value={webUrl}
-                          onChange={(event) => onWebUrlChange(event.target.value)}
-                          placeholder="https://example.com/article"
-                          className="w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-200"
-                        />
-                        <ActionButton
-                          label="提交链接"
-                          icon={<Globe className="h-4 w-4" />}
-                          onClick={onAddWebUrl}
-                          loading={addingWebUrl}
-                          disabled={!webUrl.trim()}
-                        />
-                      </div>
+                <div className="mx-auto max-w-[900px] space-y-4">
+                  {/* Upload toolbar */}
+                  <div className="flex flex-wrap gap-2">
+                    <ActionButton
+                      label="上传文件"
+                      icon={<UploadCloud className="h-3.5 w-3.5" />}
+                      onClick={onUploadFiles}
+                      loading={uploadingFiles}
+                      variant="secondary"
+                    />
+                    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1.5">
+                      <Globe className="h-3.5 w-3.5 shrink-0 text-[var(--chat-text-muted)]" />
+                      <input
+                        value={webUrl}
+                        onChange={(e) => onWebUrlChange(e.target.value)}
+                        placeholder="输入网页链接..."
+                        className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
+                      />
+                      <ActionButton
+                        label="添加"
+                        icon={<Link2 className="h-3.5 w-3.5" />}
+                        onClick={onAddWebUrl}
+                        loading={addingWebUrl}
+                        disabled={!webUrl.trim()}
+                        variant="primary"
+                      />
                     </div>
                   </div>
 
                   {filesError ? (
-                    <div className="rounded-[18px] border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
+                    <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
                       {filesError}
                     </div>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-400">
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                      当前知识库：{selectedKnowledgeBaseName}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                      文件数：{files.length}
-                    </span>
-                  </div>
-
+                  {/* File list */}
                   {files.length ? (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {files.map((file) => (
-                        <FileRecordCard key={file.id} file={file} onDelete={onDeleteFile} />
+                        <FileRecordRow key={file.id} file={file} onDelete={onDeleteFile} />
                       ))}
                     </div>
                   ) : filesLoading ? (
-                    <div className="flex items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-sm text-slate-400">
+                    <div className="flex items-center justify-center py-12 text-[13px] text-[var(--chat-text-muted)]">
                       <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                      正在刷新文件状态...
+                      正在刷新文件...
                     </div>
                   ) : (
-                    <Empty
-                      description="当前知识库还没有文件或网页记录。"
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    />
+                    <div className="flex items-center justify-center py-12">
+                      <Empty description="当前知识库还没有文件" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    </div>
                   )}
+
+                  {/* ── Retrieval ── */}
+                  <div className="mt-6 border-t border-[var(--chat-border)] pt-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--chat-text-muted)]">
+                        检索调试
+                      </span>
+                      {(queryAnswer || queryError || queryRawChunks.length > 0) && (
+                        <ActionButton
+                          label="清空"
+                          icon={<Trash2 className="h-3.5 w-3.5" />}
+                          onClick={onClearQueryResult}
+                          variant="ghost"
+                        />
+                      )}
+                    </div>
+
+                    {/* Query input */}
+                    <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4 shadow-[var(--shadow-sm)]">
+                      <textarea
+                        value={question}
+                        onChange={(e) => onQuestionChange(e.target.value)}
+                        rows={3}
+                        placeholder="输入问题，例如：这份资料里对接流程的关键步骤是什么？"
+                        className="w-full resize-none rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-3 text-[14px] leading-6 text-[var(--chat-text)] outline-none transition placeholder:text-[var(--chat-text-muted)] focus:border-[var(--primary)]/30"
+                      />
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="text-[12px] text-[var(--chat-text-muted)]">
+                          针对「{selectedKnowledgeBaseName}」检索
+                        </span>
+                        <div className="flex gap-2">
+                          {querying ? (
+                            <ActionButton
+                              label="停止"
+                              icon={<Square className="h-3.5 w-3.5" />}
+                              onClick={onStopQuery}
+                              variant="secondary"
+                            />
+                          ) : (
+                            <ActionButton
+                              label="开始检索"
+                              icon={<Search className="h-3.5 w-3.5" />}
+                              onClick={onSubmitQuery}
+                              disabled={!selectedKnowledgeBase || !question.trim()}
+                              variant="primary"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Query result */}
+                    {(queryAnswer || queryError || querying) && (
+                      <div className="mt-3 rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4 shadow-[var(--shadow-sm)]">
+                        {queryError ? (
+                          <div className="text-[13px] text-rose-600">{queryError}</div>
+                        ) : queryAnswer ? (
+                          <MarkdownRenderer
+                            markDownContent={queryAnswer}
+                            isStreaming={querying}
+                            className="text-[14px] leading-7"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center py-8 text-[13px] text-[var(--chat-text-muted)]">
+                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                            正在检索...
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Raw chunks debug */}
+                    {queryRawChunks.length > 0 && (
+                      <details className="mt-3 overflow-hidden rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)]">
+                        <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-[13px] font-medium text-[var(--chat-text-soft)]">
+                          <span className="inline-flex items-center gap-2">
+                            <DatabaseZap className="h-3.5 w-3.5" />
+                            调试原始 SSE Chunk
+                          </span>
+                          <span className="text-[11px] text-[var(--chat-text-muted)]">
+                            共 {queryRawChunks.length} 条
+                          </span>
+                        </summary>
+                        <pre className="max-h-[240px] overflow-auto border-t border-[var(--chat-border)] px-4 py-3 whitespace-pre-wrap font-mono text-[11px] leading-5 text-[var(--chat-text-muted)]">
+                          {toPrettyJson(queryRawChunks)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
                 </div>
               )}
-            </SectionShell>
-
-            <SectionShell
-              badge="Retrieval Debugger"
-              title="检索调试"
-              description="针对当前知识库发起一次 MRAG 查询，查看流式回答和最终结果。首期只展示回答结果，不展示 chunk 明细浏览器。"
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <ActionButton
-                    label="清空结果"
-                    icon={<Trash2 className="h-4 w-4" />}
-                    onClick={onClearQueryResult}
-                    disabled={!queryAnswer && !queryError && !queryRawChunks.length}
-                  />
-                </div>
-              }
-            >
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-400">
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                      当前知识库：{selectedKnowledgeBaseName}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
-                      返回类型：回答流
-                    </span>
-                  </div>
-                  <textarea
-                    value={question}
-                    onChange={(event) => onQuestionChange(event.target.value)}
-                    rows={6}
-                    placeholder="输入一个问题，例如：这份资料里对接流程的关键步骤是什么？"
-                    className="mt-4 w-full resize-none rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-sky-200"
-                  />
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <ActionButton
-                      label="开始检索"
-                      icon={<Search className="h-4 w-4" />}
-                      onClick={onSubmitQuery}
-                      loading={querying}
-                      disabled={!selectedKnowledgeBase || !question.trim()}
-                      variant="primary"
-                    />
-                    <ActionButton
-                      label="停止"
-                      icon={<Square className="h-4 w-4" />}
-                      onClick={onStopQuery}
-                      disabled={!querying}
-                    />
-                  </div>
-                </div>
-
-                {queryError ? (
-                  <div className="rounded-[18px] border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
-                    {queryError}
-                  </div>
-                ) : null}
-
-                <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-                  {queryAnswer ? (
-                    <MarkdownRenderer
-                      markDownContent={queryAnswer}
-                      isStreaming={querying}
-                      className="min-h-[280px] text-[14px] leading-7"
-                    />
-                  ) : querying ? (
-                    <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-400">
-                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                      正在接收回答流...
-                    </div>
-                  ) : (
-                    <div className="flex min-h-[280px] items-center justify-center text-center text-sm text-slate-400">
-                      发起一次检索后，这里会持续展示流式回答和最终结果。
-                    </div>
-                  )}
-                </div>
-
-                <details className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50/80">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700">
-                    <span className="inline-flex items-center gap-2">
-                      <DatabaseZap className="h-4 w-4" />
-                      <span>调试原始 SSE Chunk</span>
-                    </span>
-                    <span className="text-xs font-medium text-slate-400">
-                      共 {queryRawChunks.length} 条
-                    </span>
-                  </summary>
-                  <pre className="max-h-[280px] overflow-auto border-t border-slate-200 px-4 py-4 whitespace-pre-wrap font-mono text-[12px] leading-6 text-slate-600">
-                    {toPrettyJson(queryRawChunks)}
-                  </pre>
-                </details>
-              </div>
-            </SectionShell>
+            </div>
           </div>
         </div>
       </div>

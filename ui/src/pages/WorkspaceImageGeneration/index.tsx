@@ -56,12 +56,6 @@ import {
 
 type StatusTone = "default" | "success" | "error";
 
-const backgroundDotStyle = {
-  backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)",
-  backgroundSize: "32px 32px",
-  opacity: 0.3,
-} as const;
-
 const createDefaultConfig = (): GenerationConfig => ({
   toolBaseUrl: buildDefaultToolBaseUrl(),
   baseUrl: "https://www.openclaudecode.cn",
@@ -92,7 +86,11 @@ const loadStoredConfig = (): GenerationConfig => {
   }
 };
 
-const WorkspaceImageGeneration: ReactorType.FC = () => {
+interface WorkspaceImageGenerationProps {
+  embedded?: boolean;
+}
+
+const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = ({ embedded }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("generate");
   const [config, setConfig] = useState<GenerationConfig>(() => loadStoredConfig());
   const [statusText, setStatusText] = useState("");
@@ -669,39 +667,34 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
   };
 
   return (
-    <div className="relative min-h-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef6ff_100%)] text-slate-700">
-      <div className="pointer-events-none absolute inset-0" style={backgroundDotStyle} />
-      <div
-        className="pointer-events-none absolute left-[-10%] top-[-20%] h-[34rem] w-[34rem] rounded-full"
-        style={{ background: "radial-gradient(circle, rgba(191,219,254,0.75) 0%, rgba(248,250,252,0) 72%)", filter: "blur(30px)" }}
-      />
-      <div className="pointer-events-none absolute bottom-[-10rem] right-[-8rem] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle,rgba(224,242,254,0.8)_0%,rgba(248,250,252,0)_72%)] blur-3xl" />
-
-      <div className="relative z-10 mx-auto flex min-h-full max-w-[1280px] flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <header className="sticky top-4 z-20 mb-6 overflow-hidden rounded-[28px] border border-white/70 bg-white/82 shadow-[0_20px_60px_-32px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-          <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div className="flex items-center gap-3">
+    <div className="flex h-full flex-col bg-[var(--page-gradient)] text-[var(--chat-text)]">
+      {/* Header */}
+      <div className="shrink-0 border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-5 py-3 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            {!embedded && (
               <Link
                 to="/"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--chat-border)] text-[var(--chat-text-muted)] transition hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Link>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1d4ed8_0%,#3b82f6_52%,#60a5fa_100%)] text-white shadow-[0_16px_32px_-20px_rgba(37,99,235,0.8)]">
-                <WandSparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                  Workspace
-                </div>
-                <h1 className="text-[18px] font-semibold tracking-tight text-slate-900 sm:text-[22px]">
-                  米醋画图
-                </h1>
-              </div>
+            )}
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
+              <WandSparkles className="h-4.5 w-4.5" />
             </div>
-            <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
-              <WorkspaceToolSwitcher />
-              <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-100/80 p-1 sm:w-auto">
+            <div>
+              <h1 className="text-[15px] font-semibold tracking-tight text-[var(--chat-text)]">
+                米醋画图
+              </h1>
+              <p className="text-[12px] text-[var(--chat-text-muted)]">
+                AI 图像生成工作台
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!embedded && <WorkspaceToolSwitcher />}
+            <div className="inline-flex rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-0.5">
                 {([
                   { key: "decode", label: "Base64 解析", icon: Code2 },
                   { key: "generate", label: "API 生成", icon: Sparkles },
@@ -711,10 +704,10 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                     type="button"
                     onClick={() => setActiveTab(item.key)}
                     className={classNames(
-                      "inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] px-4 py-2.5 text-sm font-medium transition sm:flex-none",
+                      "inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition sm:flex-none",
                       activeTab === item.key
-                        ? "bg-white text-slate-900 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.6)]"
-                        : "text-slate-500 hover:text-slate-800"
+                        ? "bg-[var(--chat-surface)] text-[var(--chat-text)] shadow-sm"
+                        : "text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -724,20 +717,20 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
               </div>
             </div>
           </div>
-        </header>
+        </div>
 
         {activeTab === "decode" ? (
-          <section className="workspace-fade-enter mx-auto w-full max-w-[980px]">
-            <div className="rounded-[32px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_-44px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-8">
+          <section className="workspace-fade-enter mx-auto w-full max-w-[980px] p-4">
+            <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-8">
               <div className="mb-6 flex flex-col gap-2">
-                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[12px] font-medium text-sky-700">
+                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--primary)]/15 bg-[var(--primary)]/8 px-3 py-1 text-[12px] font-medium text-[var(--primary)]">
                   <Code2 className="h-3.5 w-3.5" />
                   <span>Base64 预览与下载</span>
                 </div>
-                <h2 className="text-[26px] font-semibold tracking-tight text-slate-900">
+                <h2 className="text-[22px] font-semibold tracking-tight text-[var(--chat-text)]">
                   粘贴 Base64 编码或 Data URL
                 </h2>
-                <p className="text-sm leading-6 text-slate-500">
+                <p className="text-sm leading-6 text-[var(--chat-text-muted)]">
                   会自动识别纯 Base64 和 `data:image/...;base64,...` 两种格式，方便快速校验图片内容。
                 </p>
               </div>
@@ -746,14 +739,14 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                 value={decodeInput}
                 onChange={(event) => setDecodeInput(event.target.value)}
                 placeholder="把 Base64 内容粘贴到这里..."
-                className="min-h-[240px] w-full rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4 font-mono text-[13px] leading-6 text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                className="min-h-[240px] w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-4 font-mono text-[13px] leading-6 text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:bg-[var(--chat-surface)] focus:ring-2 focus:ring-[var(--primary)]/10"
               />
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <button
                   type="button"
                   onClick={handleDecode}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--primary)]/90"
                 >
                   <RefreshCcw className="h-4 w-4" />
                   <span>解析预览</span>
@@ -765,7 +758,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                     setDecodeResult(null);
                     setDecodeNotice("", "default");
                   }}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-3 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
                 >
                   <Trash2 className="h-4 w-4" />
                   <span>清空</span>
@@ -778,7 +771,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                     "mt-4 text-sm font-medium",
                     decodeStatusTone === "success" && "text-emerald-600",
                     decodeStatusTone === "error" && "text-rose-600",
-                    decodeStatusTone === "default" && "text-slate-500"
+                    decodeStatusTone === "default" && "text-[var(--chat-text-muted)]"
                   )}
                 >
                   {decodeStatus}
@@ -788,33 +781,33 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
               {decodeResult ? (
                 <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
                   <div
-                    className="overflow-hidden rounded-[26px] border border-slate-200 p-4"
+                    className="overflow-hidden rounded-xl border border-[var(--chat-border)] p-4"
                     style={checkerboardStyle}
                   >
                     <img
                       src={decodeResult.dataUrl}
                       alt="Base64 preview"
-                      className="mx-auto max-h-[420px] w-full rounded-[18px] object-contain"
+                      className="mx-auto max-h-[420px] w-full rounded-lg object-contain"
                     />
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-5">
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--chat-text-muted)]">
                         图片信息
                       </div>
-                      <div className="space-y-3 text-sm text-slate-600">
+                      <div className="space-y-3 text-sm text-[var(--chat-text-soft)]">
                         <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Mime</div>
-                          <div className="mt-1 font-mono text-[13px]">{decodeResult.mimeType}</div>
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">Mime</div>
+                          <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{decodeResult.mimeType}</div>
                         </div>
                         <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">体积估算</div>
-                          <div className="mt-1 font-mono text-[13px]">{formatBytes(decodeResult.byteLength)}</div>
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">体积估算</div>
+                          <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{formatBytes(decodeResult.byteLength)}</div>
                         </div>
                         <div>
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Base64 长度</div>
-                          <div className="mt-1 font-mono text-[13px]">{decodeResult.base64Length}</div>
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">Base64 长度</div>
+                          <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{decodeResult.base64Length}</div>
                         </div>
                       </div>
                     </div>
@@ -827,7 +820,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                           `base64-preview.${decodeResult.fileExtension}`
                         )
                       }
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-3 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
                     >
                       <Download className="h-4 w-4" />
                       <span>下载图片</span>
@@ -839,37 +832,37 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
           </section>
         ) : (
           <section className="workspace-fade-enter grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-            <div className="space-y-6">
-              <div className="rounded-[32px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_-44px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-6">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--chat-text-muted)]">
                       API Config
                     </div>
-                    <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-slate-900">
+                    <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--chat-text)]">
                       接口与模型配置
                     </h2>
                   </div>
-                  <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">
+                  <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
                     Reactor Tool
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                       Base URL
                     </span>
                     <input
                       value={config.baseUrl}
                       onChange={(event) => updateConfig("baseUrl", event.target.value)}
                       placeholder="https://..."
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                       API Key
                     </span>
                     <input
@@ -877,29 +870,29 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                       value={config.apiKey}
                       onChange={(event) => updateConfig("apiKey", event.target.value)}
                       placeholder="sk-..."
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono tracking-wide text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono tracking-wide text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                       Model
                     </span>
                     <input
                       value={config.model}
                       onChange={(event) => updateConfig("model", event.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                       Endpoint 模式
                     </span>
                     <select
                       value={config.mode}
                       onChange={(event) => updateConfig("mode", event.target.value as RequestMode)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                     >
                       <option value="images">文生图</option>
                       <option value="edits">图生图</option>
@@ -907,20 +900,20 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                     </select>
                   </label>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                         Size
                       </span>
                       <input
                         value={config.size}
                         onChange={(event) => updateConfig("size", event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                       />
                     </label>
 
                     <label className="block">
-                      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
                         N (张数)
                       </span>
                       <input
@@ -931,7 +924,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                         onChange={(event) =>
                           updateConfig("n", Math.max(1, Math.min(10, Number(event.target.value) || 1)))
                         }
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-mono text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                       />
                     </label>
                   </div>
@@ -943,7 +936,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                       "mt-4 text-sm font-medium",
                       statusTone === "success" && "text-emerald-600",
                       statusTone === "error" && "text-rose-600",
-                      statusTone === "default" && "text-slate-500"
+                      statusTone === "default" && "text-[var(--chat-text-muted)]"
                     )}
                   >
                     {statusText}
@@ -952,17 +945,17 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
               </div>
 
               {config.mode === "edits" ? (
-                <div className="rounded-[32px] border border-white/70 bg-white/88 p-5 shadow-[0_24px_80px_-44px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-6">
+                <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-6">
                   <div className="mb-4 flex items-start justify-between gap-4">
                     <div>
-                      <h3 className="text-[18px] font-semibold tracking-tight text-slate-900">
+                      <h3 className="text-base font-semibold tracking-tight text-[var(--chat-text)]">
                         参考图像
                       </h3>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                      <p className="mt-1 text-sm leading-6 text-[var(--chat-text-muted)]">
                         支持多张图片、拖拽上传和局部涂抹编辑。未编辑时会把整张图片作为参考图。
                       </p>
                     </div>
-                    <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">
+                    <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
                       多图 · 蒙版
                     </div>
                   </div>
@@ -975,16 +968,16 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                         void addFiles(event.dataTransfer.files);
                       }
                     }}
-                    className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[26px] border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center transition hover:border-blue-300 hover:bg-blue-50/60"
+                    className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-8 text-center transition hover:border-[var(--primary)]/30 hover:bg-[var(--primary)]/5"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-slate-200">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--chat-surface-soft)] text-[var(--primary)] shadow-sm ring-1 ring-[var(--chat-border)]">
                       <UploadCloud className="h-5 w-5" />
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-slate-700">
+                      <div className="text-sm font-semibold text-[var(--chat-text)]">
                         点击、拖拽或 `Ctrl + V` 粘贴图片
                       </div>
-                      <div className="mt-1 text-xs text-slate-400">
+                      <div className="mt-1 text-xs text-[var(--chat-text-muted)]">
                         支持 PNG / JPG / WEBP 等常见格式
                       </div>
                     </div>
@@ -1007,14 +1000,14 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                       {images.map((item, index) => (
                         <div
                           key={item.id}
-                          className="group relative overflow-hidden rounded-[20px] border border-slate-200 bg-slate-100"
+                          className="group relative overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]"
                         >
                           <img
                             src={item.objectUrl}
                             alt={`参考图 ${index + 1}`}
                             className="aspect-square w-full object-cover"
                           />
-                          <div className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-slate-700 shadow-sm">
+                          <div className="absolute left-2 top-2 rounded-full bg-[var(--chat-surface)]/90 px-2 py-0.5 text-[11px] font-semibold text-[var(--chat-text)] shadow-sm">
                             #{index + 1}
                           </div>
                           {item.maskDataUrl ? (
@@ -1026,7 +1019,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                             <button
                               type="button"
                               onClick={() => openEditor(item.id)}
-                              className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow"
+                              className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-white shadow"
                             >
                               <ImagePlus className="h-3.5 w-3.5" />
                               <span>{item.maskDataUrl ? "修改涂抹" : "编辑涂抹"}</span>
@@ -1046,16 +1039,16 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                   ) : null}
 
                   {editingImage ? (
-                    <div className="mt-4 rounded-[26px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="mt-4 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-700">
+                        <div className="text-sm font-semibold text-[var(--chat-text)]">
                           编辑第 {images.findIndex((item) => item.id === editingImage.id) + 1} 张（可选）
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={clearCurrentMask}
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 transition hover:border-rose-200 hover:text-rose-600"
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[12px] font-semibold text-[var(--chat-text-soft)] transition hover:border-rose-200 hover:text-rose-600"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             <span>清除涂抹</span>
@@ -1063,7 +1056,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                           <button
                             type="button"
                             onClick={closeEditor}
-                            className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-blue-700"
+                            className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--primary)]/90"
                           >
                             <Sparkles className="h-3.5 w-3.5" />
                             <span>完成</span>
@@ -1071,7 +1064,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                         </div>
                       </div>
 
-                      <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white p-3">
+                      <div className="overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-3">
                         <div className="relative mx-auto w-fit">
                           <img
                             ref={editorImageRef}
@@ -1082,25 +1075,25 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                               // 图片重新布局后触发 useEffect 中的同步逻辑。
                               setImages((previous) => [...previous]);
                             }}
-                            className="block max-h-[360px] max-w-full select-none rounded-[16px]"
+                            className="block max-h-[360px] max-w-full select-none rounded-lg"
                           />
                           <canvas
                             ref={maskCanvasRef}
-                            className="absolute inset-0 cursor-crosshair rounded-[16px] touch-none"
+                            className="absolute inset-0 cursor-crosshair rounded-lg touch-none"
                           />
                         </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <div className="inline-flex rounded-full bg-slate-100 p-1">
+                        <div className="inline-flex rounded-full bg-[var(--chat-surface-muted)] p-1">
                           <button
                             type="button"
                             onClick={() => setToolMode("brush")}
                             className={classNames(
                               "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition",
                               toolMode === "brush"
-                                ? "bg-white text-slate-800 shadow-sm"
-                                : "text-slate-500"
+                                ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)] shadow-sm"
+                                : "text-[var(--chat-text-muted)]"
                             )}
                           >
                             <Brush className="h-3.5 w-3.5" />
@@ -1112,8 +1105,8 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                             className={classNames(
                               "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition",
                               toolMode === "eraser"
-                                ? "bg-white text-slate-800 shadow-sm"
-                                : "text-slate-500"
+                                ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)] shadow-sm"
+                                : "text-[var(--chat-text-muted)]"
                             )}
                           >
                             <Eraser className="h-3.5 w-3.5" />
@@ -1121,7 +1114,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                           </button>
                         </div>
 
-                        <div className="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-[12px] font-medium text-slate-600">
+                        <div className="inline-flex items-center gap-3 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-2 text-[12px] font-medium text-[var(--chat-text-soft)]">
                           <span>笔刷大小</span>
                           <input
                             type="range"
@@ -1131,7 +1124,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                             value={brushSize}
                             onChange={(event) => setBrushSize(Number(event.target.value))}
                           />
-                          <span className="font-mono text-slate-800">{brushSize}</span>
+                          <span className="font-mono text-[var(--chat-text)]">{brushSize}</span>
                         </div>
                       </div>
                     </div>
@@ -1141,21 +1134,21 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
             </div>
 
             <div className="min-w-0">
-              <div className="rounded-[32px] border border-white/70 bg-white/88 shadow-[0_24px_80px_-44px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-                <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+              <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] shadow-sm">
+                <div className="border-b border-[var(--chat-border)] px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--chat-text-muted)]">
                         Result Stream
                       </div>
-                      <h3 className="mt-1 text-[20px] font-semibold tracking-tight text-slate-900">
+                      <h3 className="mt-1 text-lg font-semibold tracking-tight text-[var(--chat-text)]">
                         生成记录
                       </h3>
                     </div>
                     <button
                       type="button"
                       onClick={clearMessages}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
                     >
                       <Trash2 className="h-4 w-4" />
                       <span>清空记录</span>
@@ -1169,10 +1162,10 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                       {messages.map((message) =>
                         message.role === "user" ? (
                           <div key={message.id} className="flex flex-col items-end gap-2">
-                            <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-500">
+                            <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
                               User
                             </div>
-                            <div className="max-w-[92%] rounded-[26px] rounded-br-md bg-[linear-gradient(135deg,#2563eb_0%,#3b82f6_100%)] px-4 py-3 text-sm leading-6 text-white shadow-[0_20px_40px_-28px_rgba(37,99,235,0.9)]">
+                            <div className="max-w-[92%] rounded-2xl rounded-br-md bg-[var(--primary)] px-4 py-3 text-sm leading-6 text-white shadow-sm">
                               {message.mode === "edits" && message.images.length ? (
                                 <div className="mb-3 flex flex-wrap gap-2">
                                   {message.images.map((imageUrl, index) => (
@@ -1180,7 +1173,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                                       key={`${message.id}-${index}`}
                                       src={imageUrl}
                                       alt={`参考图 ${index + 1}`}
-                                      className="h-14 w-14 rounded-xl object-cover ring-1 ring-white/25"
+                                      className="h-14 w-14 rounded-lg object-cover ring-1 ring-white/25"
                                     />
                                   ))}
                                 </div>
@@ -1190,13 +1183,13 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                           </div>
                         ) : (
                           <div key={message.id} className="flex flex-col items-start gap-2">
-                            <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--chat-text-muted)]">
                               Assistant
                             </div>
-                            <div className="max-w-[96%] rounded-[26px] rounded-bl-md border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
+                            <div className="max-w-[96%] rounded-2xl rounded-bl-md border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-4 text-sm text-[var(--chat-text)] shadow-sm">
                               {message.status === "loading" ? (
-                                <div className="inline-flex items-center gap-3 text-slate-500">
-                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                                <div className="inline-flex items-center gap-3 text-[var(--chat-text-muted)]">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)]/10 text-[var(--primary)]">
                                     <Sparkles className="h-4 w-4 animate-pulse" />
                                   </span>
                                   <span className="font-medium">正在生成图像...</span>
@@ -1208,22 +1201,22 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                                   {message.images.length ? (
                                     <div className="grid gap-3 sm:grid-cols-2">
                                       {message.images.map((item) => (
-                                        <div key={item.url} className="overflow-hidden rounded-[20px] border border-slate-200 bg-slate-50">
+                                        <div key={item.url} className="overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]">
                                           <div className="p-2" style={checkerboardStyle}>
                                             <img
                                               src={item.url}
                                               alt={item.label}
-                                              className="mx-auto max-h-[280px] w-full rounded-[14px] object-contain"
+                                              className="mx-auto max-h-[280px] w-full rounded-lg object-contain"
                                             />
                                           </div>
-                                          <div className="flex items-center justify-between gap-3 px-3 py-3 text-[12px] text-slate-500">
-                                            <span className="truncate font-medium text-slate-700">{item.label}</span>
+                                          <div className="flex items-center justify-between gap-3 px-3 py-3 text-[12px] text-[var(--chat-text-muted)]">
+                                            <span className="truncate font-medium text-[var(--chat-text)]">{item.label}</span>
                                             {item.downloadUrl ? (
                                               <a
                                                 href={item.downloadUrl}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="inline-flex items-center gap-1 font-semibold text-blue-600 transition hover:text-blue-700"
+                                                className="inline-flex items-center gap-1 font-semibold text-[var(--primary)] transition hover:text-[var(--primary)]/80"
                                               >
                                                 <Download className="h-3.5 w-3.5" />
                                                 <span>打开</span>
@@ -1236,19 +1229,19 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                                   ) : null}
 
                                   {message.summary ? (
-                                    <div className={classNames(message.images.length && "mt-3", "leading-6 text-slate-700")}>
+                                    <div className={classNames(message.images.length && "mt-3", "leading-6 text-[var(--chat-text)]")}>
                                       {message.summary}
                                     </div>
                                   ) : null}
 
                                   {message.text ? (
-                                    <pre className="mt-3 overflow-auto rounded-[18px] bg-slate-50 px-4 py-3 whitespace-pre-wrap text-[13px] leading-6 text-slate-600">
+                                    <pre className="mt-3 overflow-auto rounded-xl bg-[var(--chat-surface-muted)] px-4 py-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--chat-text-soft)]">
                                       {message.text}
                                     </pre>
                                   ) : null}
 
                                   {message.error ? (
-                                    <div className="mt-3 rounded-[18px] border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
+                                    <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
                                       {message.error}
                                     </div>
                                   ) : null}
@@ -1260,14 +1253,14 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                       )}
                     </div>
                   ) : (
-                    <div className="flex h-full min-h-[320px] items-center justify-center rounded-[26px] border border-dashed border-slate-200 bg-slate-50/70 px-8 py-12 text-center text-sm font-medium text-slate-400">
+                    <div className="flex h-full min-h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/70 px-8 py-12 text-center text-sm font-medium text-[var(--chat-text-muted)]">
                       在下方输入 Prompt 发起生图请求
                     </div>
                   )}
                 </div>
 
-                <div className="border-t border-slate-200/80 px-5 py-4 sm:px-6">
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-3">
+                <div className="border-t border-[var(--chat-border)] px-5 py-4 sm:px-6">
+                  <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3">
                     <textarea
                       value={prompt}
                       onChange={(event) => setPrompt(event.target.value)}
@@ -1282,17 +1275,17 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                           ? "描述如何使用或修改这些图片，例如：把第一张图里的天空替换成晚霞，并保留建筑细节"
                           : "描述你要生成的画面内容..."
                       }
-                      className="min-h-[120px] w-full resize-none rounded-[22px] border-none bg-transparent px-3 py-3 text-[15px] leading-7 text-slate-700 outline-none placeholder:text-slate-400"
+                      className="min-h-[120px] w-full resize-none rounded-xl border-none bg-transparent px-3 py-3 text-[15px] leading-7 text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
                     />
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <div className="rounded-full bg-slate-100 px-3 py-1.5 text-[12px] text-slate-500">
+                      <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1.5 text-[12px] text-[var(--chat-text-muted)]">
                         当前模式：{config.mode === "images" ? "文生图" : config.mode === "edits" ? "图生图" : "对话"}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => setPrompt("")}
-                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                          className="inline-flex items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-2 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
                         >
                           <Trash2 className="h-4 w-4" />
                           <span>清空输入</span>
@@ -1300,7 +1293,7 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                         <button
                           type="button"
                           onClick={() => void handleSend()}
-                          className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                          className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--primary)]/90"
                         >
                           <SendHorizontal className="h-4 w-4" />
                           <span>发送</span>
@@ -1309,15 +1302,15 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                     </div>
                   </div>
 
-                  <details className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50/80">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700">
+                  <details className="mt-4 overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)]/80">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[var(--chat-text)]">
                       <span className="inline-flex items-center gap-2">
                         <Code2 className="h-4 w-4" />
                         <span>原始响应调试面板</span>
                       </span>
-                      <span className="text-xs font-medium text-slate-400">展开查看</span>
+                      <span className="text-xs font-medium text-[var(--chat-text-muted)]">展开查看</span>
                     </summary>
-                    <pre className="max-h-[320px] overflow-auto border-t border-slate-200 px-4 py-4 whitespace-pre-wrap font-mono text-[12px] leading-6 text-slate-600">
+                    <pre className="max-h-[320px] overflow-auto border-t border-[var(--chat-border)] px-4 py-4 whitespace-pre-wrap font-mono text-[12px] leading-6 text-[var(--chat-text-soft)]">
                       {toPrettyJson(debugPayload)}
                     </pre>
                   </details>
@@ -1326,7 +1319,6 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
             </div>
           </section>
         )}
-      </div>
     </div>
   );
 };

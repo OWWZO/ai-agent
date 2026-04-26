@@ -22,21 +22,15 @@ import {
   shouldRenderDeepSearchWorkspace,
 } from "@/utils/deepSearch";
 import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
+import { getStableTaskIdentity } from "@/utils/chat";
 
 const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
   if (!taskItem) {
     return "empty";
   }
 
-  // 优先使用流式前后都稳定不变的标识，避免同一任务被误判为新内容导致面板闪烁。
-  return (
-    taskItem.messageId ||
-    (taskItem.taskId && taskItem.messageTime
-      ? `${taskItem.taskId}:${taskItem.messageTime}`
-      : undefined) ||
-    taskItem.id ||
-    "empty"
-  );
+  // deep_search 的不同阶段可能复用 messageId，这里复用统一稳定键，避免预览面板串到别的卡片。
+  return getStableTaskIdentity(taskItem) || "empty";
 };
 
 // 空状态动画组件

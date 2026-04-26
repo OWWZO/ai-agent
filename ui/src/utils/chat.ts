@@ -51,6 +51,25 @@ export function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Ta
   } as MESSAGE.Task;
 }
 
+/**
+ * deep_search 的 search/report 可能复用同一个 messageId，
+ * 工作区同步时优先使用前端派生的 render id，避免不同卡片互相串位。
+ */
+export function getStableTaskIdentity(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return "";
+  }
+
+  return (
+    task.id ||
+    task.messageId ||
+    (task.taskId && task.messageTime ? `${task.taskId}:${task.messageTime}` : "") ||
+    ""
+  );
+}
+
 function isImageGenerationToolResultTask(task?: Partial<MESSAGE.Task>) {
   return task?.messageType === "tool_result" &&
     task?.toolResult?.toolName === "image_generation_tool";

@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  DatabaseZap,
   HashIcon,
   LayoutGridIcon,
   PencilLineIcon,
   SearchIcon,
   StickyNoteIcon,
+  WandSparkles,
 } from "lucide-react";
 import classNames from "classnames";
 import { motion } from "motion/react";
@@ -21,6 +23,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { groupConversationHistoryItems } from "@/utils/conversationHistoryGroups";
 
+export type SidebarView = "chat" | "mrag" | "image-generation";
+
 interface ResizableSidebarProps {
   items: LocalThreadListItem[];
   onCreate: () => void;
@@ -30,6 +34,8 @@ interface ResizableSidebarProps {
   onDelete: (id: string) => void;
   isCollapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  activeView?: SidebarView;
+  onFolderClick?: (view: SidebarView) => void;
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
@@ -42,9 +48,26 @@ const navItems = [
   { key: "workspace", label: "Workspace", icon: LayoutGridIcon },
 ];
 
-const folders = [
-  { key: "finance", label: "Finance", emoji: "💵" },
-  { key: "study", label: "Study", emoji: "📕" },
+type StaticFolder = {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+};
+
+const staticFolders: StaticFolder[] = [
+  { key: "finance", label: "Finance", icon: "💵" },
+  { key: "study", label: "Study", icon: "📕" },
+];
+
+type WorkspaceFolder = {
+  key: Exclude<SidebarView, "chat">;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+const workspaceFolders: WorkspaceFolder[] = [
+  { key: "mrag", label: "MRAG 工作台", icon: DatabaseZap },
+  { key: "image-generation", label: "米醋画图", icon: WandSparkles },
 ];
 
 const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
@@ -56,6 +79,8 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
   onDelete: _onDelete,
   isCollapsed,
   onCollapsedChange,
+  activeView = "chat",
+  onFolderClick,
   defaultWidth = 300,
   minWidth = 240,
   maxWidth = 420,
@@ -176,6 +201,32 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
 
           <Separator className="mx-auto my-2 w-8 bg-[var(--chat-border)]/60" />
 
+          <div className="flex flex-col items-center gap-2 p-3">
+            {workspaceFolders.map((folder) => {
+              const Icon = folder.icon;
+              return (
+                <Tooltip key={folder.key}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onFolderClick?.(folder.key)}
+                      className={classNames(
+                        "h-10 w-10 rounded-xl transition-colors",
+                        activeView === folder.key
+                          ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                          : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]"
+                      )}
+                    >
+                      <Icon className="h-4.5 w-4.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{folder.label}</TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+
           <div className="mt-auto flex flex-col items-center gap-2 p-3 pb-4">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-xs font-semibold text-[var(--chat-text-soft)]">
               {items.length > 99 ? "99+" : items.length}
@@ -248,16 +299,36 @@ const ResizableSidebar: React.FC<ResizableSidebarProps> = ({
         <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--chat-text-muted)]">
           Folders
         </div>
-        {folders.map((folder) => (
+        {staticFolders.map((folder) => (
           <button
             key={folder.key}
             type="button"
             className="mb-1.5 flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-[14px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
           >
-            <span className="text-[14px]">{folder.emoji}</span>
+            <span className="text-[14px]">{folder.icon}</span>
             <span>{folder.label}</span>
           </button>
         ))}
+        {workspaceFolders.map((folder) => {
+          const Icon = folder.icon;
+          const isActive = activeView === folder.key;
+          return (
+            <button
+              key={folder.key}
+              type="button"
+              onClick={() => onFolderClick?.(folder.key)}
+              className={classNames(
+                "mb-1.5 flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-[14px] transition-colors",
+                isActive
+                  ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
+                  : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{folder.label}</span>
+            </button>
+          );
+        })}
 
         <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--chat-text-muted)]">
           Chats

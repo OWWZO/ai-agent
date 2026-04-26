@@ -67,12 +67,19 @@ public class SessionMemoryCompactionServiceTest {
                 eventMap);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(Integer.valueOf(7), result.getBoundarySortOrder());
-        Assert.assertEquals(Integer.valueOf(8), result.getSourceTurnCount());
+        Assert.assertTrue(result.getPostCompactionTokens() < result.getEstimatedTokens());
+        Assert.assertTrue(result.getPreservedTurnCount() >= 2);
+        Assert.assertEquals(Integer.valueOf(completedMessages.size()),
+                Integer.valueOf(result.getCompactedTurnCount() + result.getPreservedTurnCount()));
+        Assert.assertEquals(completedMessages.get(result.getCompactedTurnCount() - 1).getSortOrder(),
+                result.getBoundarySortOrder());
+        Assert.assertEquals(result.getCompactedTurnCount(), result.getSourceTurnCount());
         Assert.assertTrue(result.getArtifactRefsJson().contains("compact-report.html"));
 
         int fullPayloadTokens = estimateTokens(completedMessages);
-        int compactedPayloadTokens = estimateCompactedTokens(result.getSummaryText(), completedMessages.subList(8, 10));
+        int compactedPayloadTokens = estimateCompactedTokens(
+                result.getSummaryText(),
+                completedMessages.subList(result.getCompactedTurnCount(), completedMessages.size()));
         Assert.assertTrue(compactedPayloadTokens * 100 <= fullPayloadTokens * 40);
     }
 
@@ -114,9 +121,15 @@ public class SessionMemoryCompactionServiceTest {
                 Map.of());
 
         Assert.assertNotNull(result);
+        Assert.assertTrue(result.getPostCompactionTokens() < result.getEstimatedTokens());
         Assert.assertTrue(result.getBoundarySortOrder() > snapshot.getBoundarySortOrder());
-        Assert.assertEquals(Integer.valueOf(5), result.getBoundarySortOrder());
-        Assert.assertEquals(Integer.valueOf(6), result.getSourceTurnCount());
+        Assert.assertTrue(result.getPreservedTurnCount() >= 2);
+        Assert.assertEquals(Integer.valueOf(completedMessages.size()),
+                Integer.valueOf(result.getCompactedTurnCount() + result.getPreservedTurnCount()));
+        Assert.assertEquals(completedMessages.get(result.getCompactedTurnCount() - 1).getSortOrder(),
+                result.getBoundarySortOrder());
+        Assert.assertEquals(Integer.valueOf(snapshot.getSourceTurnCount() + result.getCompactedTurnCount()),
+                result.getSourceTurnCount());
         Assert.assertTrue(result.getSummaryText().contains("已有摘要"));
     }
 

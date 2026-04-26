@@ -151,7 +151,7 @@ autobots:
   autoagent:
     session-memory:
       enabled: true
-      compaction-threshold-tokens: 12000
+      compaction-threshold-tokens: 120
       recent-window-turns: 10
       summary-max-length: 4000
     planner:

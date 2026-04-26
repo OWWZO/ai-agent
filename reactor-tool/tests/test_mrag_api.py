@@ -89,6 +89,43 @@ class MragApiTest(unittest.TestCase):
         self.assertIsNone(first_chunk["choices"][0]["finishReason"])
         self.assertEqual("stop", second_chunk["choices"][0]["finishReason"])
 
+    def test_should_allow_agent_to_append_image_markdown_as_plain_string_chunk(self):
+        with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-test"}, clear=False):
+            with patch.object(tool_module, "build_mrag_agent") as build_mrag_agent:
+                agent = build_mrag_agent.return_value
+                agent.run.return_value = iter([
+                    {
+                        "choices": [
+                            {
+                                "delta": {"content": "命中了知识库中的图片结果。"},
+                                "finishReason": None,
+                                "index": 0,
+                            }
+                        ]
+                    },
+                    "\n\n![图片](http://127.0.0.1:1601/preview/req/cat.png)",
+                ])
+
+                with self.client.stream(
+                        "POST",
+                        "/v1/tool/mragQuery",
+                        json={"question": "有没有猫的图片", "image_urls": []},
+                ) as response:
+                    lines = [line for line in response.iter_lines() if line]
+
+        self.assertEqual(200, response.status_code)
+        events = [line.removeprefix("data: ") for line in lines if line.startswith("data: ")]
+        self.assertEqual("[DONE]", events[-1])
+
+        first_chunk = json.loads(events[0])
+        second_chunk = json.loads(events[1])
+        self.assertEqual("命中了知识库中的图片结果。", first_chunk["choices"][0]["delta"]["content"])
+        self.assertEqual(
+            "\n\n![图片](http://127.0.0.1:1601/preview/req/cat.png)",
+            second_chunk["choices"][0]["delta"]["content"],
+        )
+        self.assertIsNone(second_chunk["choices"][0]["finishReason"])
+
     def test_should_reject_blank_question(self):
         response = self.client.post(
             "/v1/tool/mragQuery",

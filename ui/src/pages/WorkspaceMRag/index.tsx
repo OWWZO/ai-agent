@@ -51,7 +51,11 @@ function resolveSelectedKnowledgeBaseId(
   return knowledgeBases[0]?.id || "";
 }
 
-const WorkspaceMRag: ReactorType.FC = () => {
+interface WorkspaceMRagProps {
+  embedded?: boolean;
+}
+
+const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
   const initialWorkspaceState = useMemo(() => loadMRagWorkspaceStoredState(), []);
   const [workspaceState, setWorkspaceState] = useState(initialWorkspaceState);
   const [toolBaseUrlDraft, setToolBaseUrlDraft] = useState(
@@ -448,6 +452,7 @@ const WorkspaceMRag: ReactorType.FC = () => {
         }}
       />
       <WorkspaceMRagView
+        embedded={embedded}
         toolBaseUrlDraft={toolBaseUrlDraft}
         activeToolBaseUrl={workspaceState.toolBaseUrl}
         onToolBaseUrlChange={setToolBaseUrlDraft}

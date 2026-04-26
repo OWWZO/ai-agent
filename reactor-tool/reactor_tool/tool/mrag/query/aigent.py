@@ -123,6 +123,33 @@ class AgenticRAG:
                 context += f"\n[ref {i + 1} start]\n{doc['payload']['text']}\n[ref {i + 1} end]\n"
         return context
 
+    @staticmethod
+    def extract_answer_image_urls(page_chunks: List[Dict], image_chunks: List[Dict] = None) -> List[str]:
+        """从召回结果中提取可直接回答的图片 URL。
+
+        首期 MRAG 前端不会上传查询图片，这里的图片 URL 来自知识库召回结果。
+        因此回答阶段不能依赖请求体中的 image_urls，而应该从 page/image chunk 中兜底提取。
+        """
+        collected_urls = []
+        visited_urls = set()
+        merged_chunks = list(page_chunks or [])
+        if image_chunks:
+            merged_chunks.extend(image_chunks)
+
+        for chunk in merged_chunks:
+            payload = chunk.get("payload", {})
+            image_url = payload.get("image_url")
+            if not image_url or image_url in visited_urls:
+                continue
+            visited_urls.add(image_url)
+            collected_urls.append(image_url)
+        return collected_urls
+
+    @staticmethod
+    def build_image_markdown(image_url: str) -> str:
+        """返回附加到回答末尾的 Markdown 图片片段。"""
+        return f"\n\n![图片]({image_url})"
+
     @time_it
     def multi_retrieval(self, questions: List[str]):
         # 多路检索查询
@@ -243,6 +270,7 @@ class AgenticRAG:
 
         # page_chunks 过滤
         page_chunks = page_chunks[:1]
+        answer_image_urls = self.extract_answer_image_urls(page_chunks, image_chunks)
 
         # 3. 文本重排
         logger.info("开始重排阶段")
@@ -261,16 +289,12 @@ class AgenticRAG:
         if not text_chunks:
             logger.info("没有找到文本检索结果")
 
-            if page_chunks:
+            if answer_image_urls:
                 logger.info("使用图片问答")
-                image_urls = [page_chunk['payload']['image_url'] for page_chunk in page_chunks]
-                chunk = None
-                for chunk in self.vlm_answer(question, image_urls):
+                for chunk in self.vlm_answer(question, answer_image_urls):
                     yield chunk
-                # 返回图片链接
-                if chunk:
-                    chunk.choices[0].delta.content = f"\n\n![图片]({image_urls[0]})"
-                    yield chunk
+                # 不复用大模型最后一个 chunk，避免 SDK 结束包 choices 为空时再次崩溃。
+                yield self.build_image_markdown(answer_image_urls[0])
                 return
 
             logger.info("使用LLM回答")
@@ -279,7 +303,7 @@ class AgenticRAG:
 
         context = self.build_ref_context(text_chunks)
 
-        if not page_chunks:
+        if not answer_image_urls:
             logger.info("没有找到图片, 使用LLM回答")
             prompt = PromptManager.TEXT_PROMPT.format(context=context, question=question)
             messages = LLMClient().convert_messages(prompt)
@@ -290,17 +314,13 @@ class AgenticRAG:
 
         logger.info("使用多模态模型回答")
         prompt = PromptManager.IMAGE_PROMPT.format(context=context, question=question)
-        image_paths = [page_chunk['payload']['image_url'] for page_chunk in page_chunks]
-
-        image_path = image_paths[0]
+        image_path = answer_image_urls[0]
 
         client = VLLMClient()
         messages = client.convert_messages_with_image_path(prompt, image_path)
 
         response = client.completions(messages, stream=True)
-        chunk  = None
         for chunk in response:
             yield chunk
-        if chunk:
-            chunk.choices[0].delta.content = f"\n\n![图片]({image_path})"
-            yield chunk
+        # 追加独立的 Markdown 图片结果，避免依赖供应商 SDK chunk 结构。
+        yield self.build_image_markdown(image_path)

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
-import { buildReplayTaskData, buildTaskFromEventData, handleTaskData, combineData } from "@/utils/chat";
+import {
+  buildReplayTaskData,
+  buildTaskFromEventData,
+  handleTaskData,
+  combineData,
+  getStableTaskIdentity,
+} from "@/utils/chat";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -111,16 +117,7 @@ const cloneWorkspaceTask = (task: CHAT.Task): CHAT.Task => {
 };
 
 const getTaskStableKey = (task?: CHAT.Task) => {
-  if (!task) {
-    return "";
-  }
-
-  return (
-    task.messageId ||
-    (task.taskId && task.messageTime ? `${task.taskId}:${task.messageTime}` : "") ||
-    task.id ||
-    ""
-  );
+  return getStableTaskIdentity(task);
 };
 
 const ChatView: ReactorType.FC<Props> = (props) => {
