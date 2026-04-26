@@ -2,17 +2,11 @@ import React, { Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Layout from '@/layout/index';
 import { Loading } from '@/components';
-
-// 使用常量存储路由路径
-const ROUTES = {
-  HOME: '/',
-  WORKSPACE: '/workspace',
-  WORKSPACE_IMAGE_GENERATION: '/workspace/image-generation',
-  NOT_FOUND: '*',
-};
+import { ROUTES } from './routes';
 
 // 使用 React.lazy 懒加载组件
 const Home = React.lazy(() => import('@/pages/Home'));
+const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
 const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 
@@ -32,7 +26,15 @@ const router = createBrowserRouter([
       },
       {
         path: ROUTES.WORKSPACE,
-        element: <Navigate to={ROUTES.WORKSPACE_IMAGE_GENERATION} replace />,
+        element: <Navigate to={ROUTES.WORKSPACE_MRAG} replace />,
+      },
+      {
+        path: ROUTES.WORKSPACE_MRAG,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <WorkspaceMRag />
+          </Suspense>
+        ),
       },
       {
         path: ROUTES.WORKSPACE_IMAGE_GENERATION,

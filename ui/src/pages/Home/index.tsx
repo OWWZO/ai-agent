@@ -19,6 +19,7 @@ import {
   resolveConversationHistories,
 } from "@/utils/chatHistory";
 import { useAgentConversation } from "@/hooks/useAgentConversation";
+import { ROUTES } from "@/router/routes";
 
 type HomeProps = Record<string, never>;
 
@@ -593,7 +594,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   }, []);
 
   const openWorkspace = useCallback(() => {
-    navigate("/workspace/image-generation");
+    navigate(ROUTES.WORKSPACE_MRAG);
   }, [navigate]);
 
   const renderWelcome = () => {

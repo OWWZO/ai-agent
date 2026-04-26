@@ -22,6 +22,7 @@ import {
   requestDirectChat,
   requestImageGenerationTool,
 } from "@/services/imageGeneration";
+import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
 
 import type {
   AssistantMessage,
@@ -698,27 +699,29 @@ const WorkspaceImageGeneration: ReactorType.FC = () => {
                 </h1>
               </div>
             </div>
-
-            <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-100/80 p-1 sm:w-auto">
-              {([
-                { key: "decode", label: "Base64 解析", icon: Code2 },
-                { key: "generate", label: "API 生成", icon: Sparkles },
-              ] as const).map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setActiveTab(item.key)}
-                  className={classNames(
-                    "inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] px-4 py-2.5 text-sm font-medium transition sm:flex-none",
-                    activeTab === item.key
-                      ? "bg-white text-slate-900 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.6)]"
-                      : "text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </button>
-              ))}
+            <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
+              <WorkspaceToolSwitcher />
+              <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-100/80 p-1 sm:w-auto">
+                {([
+                  { key: "decode", label: "Base64 解析", icon: Code2 },
+                  { key: "generate", label: "API 生成", icon: Sparkles },
+                ] as const).map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveTab(item.key)}
+                    className={classNames(
+                      "inline-flex flex-1 items-center justify-center gap-2 rounded-[14px] px-4 py-2.5 text-sm font-medium transition sm:flex-none",
+                      activeTab === item.key
+                        ? "bg-white text-slate-900 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.6)]"
+                        : "text-slate-500 hover:text-slate-800"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </header>

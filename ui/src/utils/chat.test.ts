@@ -102,7 +102,7 @@ function createDeepSearchEvent(stage: DeepSearchStage): MESSAGE.EventData {
         fileInfo: [],
       },
     },
-  } as MESSAGE.EventData;
+  } as unknown as MESSAGE.EventData;
 }
 
 function createHtmlEvent(options?: {
@@ -131,7 +131,7 @@ function createHtmlEvent(options?: {
         fileInfo: [],
       },
     },
-  } as MESSAGE.EventData;
+  } as unknown as MESSAGE.EventData;
 }
 
 describe("chat deep_search progress", () => {
