@@ -213,24 +213,81 @@ TurnWriter.save(turn) + TranscriptBlockWriter.batchInsert(blocks)
 数据库
 ```
 
-**映射规则（严格，无兜底）**：
+**原始类型 → BlockType 归类映射**：
+
+| 原始流式类型 | 语义角色 | 映射到 BlockType |
+|---|---|---|
+| `user_input` | 用户输入 | `USER_INPUT` |
+| `plan_thought` | 计划思考 | `ASSISTANT_THOUGHT` |
+| `tool_thought` | 工具调用前思考 | `ASSISTANT_THOUGHT` |
+| `plan` | 计划快照（步骤描述） | `ASSISTANT_THOUGHT` |
+| `task` | 任务执行声明 | `TOOL_USE` |
+| `result`（无 artifact） | 工具执行结果 | `TOOL_RESULT` |
+| `result`（有 artifact） | 产物生成 | `ARTIFACT_REFERENCE` |
+| `deep_search` | 搜索结果 | `TOOL_RESULT` |
+| `knowledge` | 知识库结果 | `TOOL_RESULT` |
+| `browser` | 浏览器结果 | `TOOL_RESULT` |
+| `data_analysis` | 数据分析结果 | `TOOL_RESULT` |
+| `html` | HTML 产物 | `ARTIFACT_REFERENCE` |
+| `markdown` | Markdown 产物 | `ARTIFACT_REFERENCE` |
+| `code` | 代码产物 | `ARTIFACT_REFERENCE` |
+| `ppt` | PPT 产物 | `ARTIFACT_REFERENCE` |
+| `file` | 文件产物 | `ARTIFACT_REFERENCE` |
+| `assistant_answer` | 最终回答 | `ASSISTANT_ANSWER` |
+
+**归类逻辑（按语义角色分发，不是兜底兼容）**：
 
 ```java
 public class TranscriptBlockMapper {
     public List<TranscriptBlock> map(AgentResponse response) {
-        return switch (response.getMessageType()) {
-            case "user_input" -> List.of(userInputBlock(response));
-            case "assistant_thought" -> List.of(thoughtBlock(response));
-            case "tool_use" -> List.of(toolUseBlock(response));
-            case "tool_result" -> List.of(toolResultBlock(response));
-            case "artifact" -> List.of(artifactBlock(response));
-            case "assistant_answer" -> List.of(answerBlock(response));
-            default -> throw new IllegalArgumentException(
-                "Unknown message type: " + response.getMessageType());
-        };
+        String type = response.getMessageType();
+
+        if (isThoughtType(type)) {
+            return List.of(assistantThoughtBlock(response));
+        }
+        if (isToolUseType(type, response)) {
+            return List.of(toolUseBlock(response));
+        }
+        if (isArtifactType(type, response)) {
+            return List.of(artifactBlock(response));
+        }
+        if (isToolResultType(type, response)) {
+            return List.of(toolResultBlock(response));
+        }
+        if ("assistant_answer".equals(type)) {
+            return List.of(answerBlock(response));
+        }
+        if ("user_input".equals(type)) {
+            return List.of(userInputBlock(response));
+        }
+
+        throw new IllegalArgumentException("Unknown message type: " + type);
+    }
+
+    private boolean isThoughtType(String type) {
+        return Set.of("plan_thought", "tool_thought", "plan").contains(type);
+    }
+
+    private boolean isToolUseType(String type, AgentResponse response) {
+        return "task".equals(type) || response.getToolUseId() != null;
+    }
+
+    private boolean isArtifactType(String type, AgentResponse response) {
+        return Set.of("html", "markdown", "code", "ppt", "file").contains(type)
+            || ("result".equals(type) && response.hasArtifact());
+    }
+
+    private boolean isToolResultType(String type, AgentResponse response) {
+        return Set.of("result", "deep_search", "knowledge", "browser", "data_analysis")
+            .contains(type) && !response.hasArtifact();
     }
 }
 ```
+
+**关键区别：归类 vs 兼容**
+- **兼容**：不知道是什么，fallback 到一个默认值
+- **归类**：明确知道原始类型的语义，分到对应的语义桶
+- 新增原始类型时必须明确语义归属，否则抛异常
 
 ### 4.2 读取流（构建 LLM 上下文）
 
