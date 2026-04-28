@@ -122,10 +122,12 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
 
     private String renderTurn(SessionTurnMemory turn) {
         StringBuilder builder = new StringBuilder();
+        String userInputText = StringUtil.firstNonBlank(turn.getUserInputText(), "无用户输入");
+        String assistantAnswerText = StringUtil.firstNonBlank(turn.getAssistantAnswerText(), "无最终回答");
         builder.append("\n### Turn ")
                 .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                 .append('\n');
-        builder.append("- User: ").append(StringUtil.abbreviate(turn.getUserMessage(), MAX_TURN_TEXT_LENGTH, true)).append('\n');
+        builder.append("- User: ").append(StringUtil.abbreviate(userInputText, MAX_TURN_TEXT_LENGTH, true)).append('\n');
         if (!CollectionUtils.isEmpty(turn.getBlocks())) {
             builder.append("- Transcript:\n");
             for (TranscriptContextBlock block : turn.getBlocks()) {
@@ -150,7 +152,7 @@ public class LlmSessionMemorySummaryGenerator implements SessionMemorySummaryGen
             }
         }
         builder.append("- Final answer: ")
-                .append(StringUtil.abbreviate(StringUtil.firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage()), MAX_TURN_TEXT_LENGTH, true))
+                .append(StringUtil.abbreviate(assistantAnswerText, MAX_TURN_TEXT_LENGTH, true))
                 .append('\n');
         return builder.toString();
     }

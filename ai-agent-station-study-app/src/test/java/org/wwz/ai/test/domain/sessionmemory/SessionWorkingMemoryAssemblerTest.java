@@ -42,7 +42,7 @@ public class SessionWorkingMemoryAssemblerTest {
         SessionWorkingMemory workingMemory = assembler.assemble(buildConversation());
 
         Assert.assertEquals("用户要求后续输出都使用中文表格。", workingMemory.getSummaryText());
-        Assert.assertEquals(Integer.valueOf(2), Integer.valueOf(workingMemory.getFacts().size()));
+        Assert.assertEquals(Integer.valueOf(0), Integer.valueOf(workingMemory.getFacts().size()));
         Assert.assertEquals(Integer.valueOf(2), Integer.valueOf(workingMemory.getRecentTurns().size()));
         Assert.assertTrue(workingMemory.getRecentTurns().get(0).getBlocks().stream()
                 .anyMatch(block -> block != null && "TOOL_USE".equals(String.valueOf(block.getBlockType()))));

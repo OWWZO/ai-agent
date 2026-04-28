@@ -12,15 +12,12 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
-import org.wwz.ai.domain.agent.reactor.service.IAgentSessionMemoryService;
-import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.ActiveSessionStreamRegistry;
 import org.wwz.ai.domain.agent.reactor.mapper.IAgentConversationDao;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryDecisionType;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
+import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistCoordinator;
+import org.wwz.ai.domain.agent.reactor.service.support.PersistCoordinator;
+import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,7 +38,7 @@ public class AgentMessageStopAndResumeTest {
                 call,
                 new SseEmitter());
 
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         ReflectionTestUtils.setField(service, "activeSessionStreamRegistry", registry);
 
         boolean stopped = service.stop(SessionMemoryTestSupport.REQUEST_ID);
@@ -52,16 +49,15 @@ public class AgentMessageStopAndResumeTest {
     }
 
     @Test
-    public void test_forceStoppedTurnDoesNotRefreshSessionMemory() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+    public void test_forceStoppedTurnPersistsPartialStatus() {
+        PersistCoordinator service = new PersistCoordinator();
         StubMessageService messageService = new StubMessageService();
         StubConversationDao conversationDao = new StubConversationDao();
-        StubSessionMemoryService sessionMemoryService = new StubSessionMemoryService();
 
+        ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
         ReflectionTestUtils.setField(service, "messageEventService", new StubMessageEventService());
         ReflectionTestUtils.setField(service, "messageService", messageService);
         ReflectionTestUtils.setField(service, "conversationDao", conversationDao);
-        ReflectionTestUtils.setField(service, "sessionMemoryService", sessionMemoryService);
 
         AgentConversation conversation = AgentConversation.builder()
                 .id(SessionMemoryTestSupport.CONVERSATION_ID)
@@ -71,24 +67,18 @@ public class AgentMessageStopAndResumeTest {
                 .messageCount(3)
                 .build();
 
-        ReflectionTestUtils.invokeMethod(
-                service,
-                "persistTurnAndEvents",
+        service.persistTurn(
                 2001L,
                 conversation,
-                SessionMemoryTestSupport.CONVERSATION_ID,
+                List.of(),
                 "继续补充，但这轮会被停止",
-                3,
-                "历史会话",
-                new StringBuilder("部分回答"),
-                new StringBuilder("部分思考"),
-                new LinkedHashMap<String, OrderedEvent>(),
+                "部分回答",
+                "部分思考",
                 "partial");
 
         Assert.assertEquals(1, messageService.forceStopCount.get());
         Assert.assertEquals(0, messageService.completeCount.get());
         Assert.assertEquals(0, messageService.errorCount.get());
-        Assert.assertEquals(0, sessionMemoryService.prepareCount.get());
         Assert.assertEquals(1, conversationDao.incrementMessageCount.get());
         Assert.assertEquals(1, conversationDao.updateConversationCount.get());
     }
@@ -214,26 +204,4 @@ public class AgentMessageStopAndResumeTest {
         }
     }
 
-    private static class StubSessionMemoryService implements IAgentSessionMemoryService {
-
-        private final AtomicInteger prepareCount = new AtomicInteger();
-
-        @Override
-        public SessionMemoryPreparationResult prepareForRequest(AgentConversation conversation) {
-            prepareCount.incrementAndGet();
-            return SessionMemoryPreparationResult.builder()
-                    .decisionType(SessionMemoryDecisionType.BYPASS)
-                    .workingMemory(SessionWorkingMemory.builder()
-                            .historyDialogue("")
-                            .build())
-                    .build();
-        }
-
-        @Override
-        public SessionWorkingMemory rebuildWorkingMemory(AgentConversation conversation) {
-            return SessionWorkingMemory.builder()
-                    .historyDialogue("")
-                    .build();
-        }
-    }
 }

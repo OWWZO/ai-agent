@@ -12,7 +12,7 @@ import org.wwz.ai.domain.agent.reactor.model.memory.SessionWorkingMemory;
 import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptBlockType;
 import org.wwz.ai.domain.agent.reactor.model.memory.TranscriptContextBlock;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
+import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistCoordinator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.Step1SopRecallAndPrepareNode;
 import org.wwz.ai.domain.agent.service.execute.react.step.RootNode;
@@ -26,7 +26,7 @@ public class AgentStreamPersistWorkingMemoryMessagesTest {
 
     @Test
     public void test_buildWorkingMemoryMessages_preservesStructuredTranscriptBlocks() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
         JSONObject artifactRef = SessionEventPayloadFixtureBuilder.artifactRef(
@@ -73,27 +73,22 @@ public class AgentStreamPersistWorkingMemoryMessagesTest {
     }
 
     @Test
-    public void test_buildWorkingMemoryMessages_fallsBackToFlatTurnWhenBlocksMissing() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+    public void test_buildWorkingMemoryMessages_skipsTurnWhenBlocksMissing() {
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
-        SessionTurnMemory legacyTurn = SessionTurnMemory.builder()
-                .userMessage("先保留旧版 query/response 兼容链路")
-                .assistantMessage("这里还是旧版扁平回答")
-                .build();
+        SessionTurnMemory emptyTurn = SessionTurnMemory.builder().build();
 
         List<AgentRequest.Message> messages = buildWorkingMemoryMessages(service, SessionWorkingMemory.builder()
-                .recentTurns(List.of(legacyTurn))
+                .recentTurns(List.of(emptyTurn))
                 .build());
 
-        Assert.assertEquals(2, messages.size());
-        Assert.assertEquals("user_input", messages.get(0).getMessageType());
-        Assert.assertEquals("assistant_answer", messages.get(1).getMessageType());
+        Assert.assertTrue(messages.isEmpty());
     }
 
     @Test
     public void test_applyStructuredWorkingMemory_usesSameRestoredLedgerForHistoryMessagesAndFiles() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
         JSONObject artifactRef = SessionEventPayloadFixtureBuilder.artifactRef(
@@ -218,7 +213,7 @@ public class AgentStreamPersistWorkingMemoryMessagesTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<AgentRequest.Message> buildWorkingMemoryMessages(AgentStreamPersistServiceImpl service,
+    private List<AgentRequest.Message> buildWorkingMemoryMessages(AgentStreamPersistCoordinator service,
                                                                   SessionWorkingMemory workingMemory) {
         return (List<AgentRequest.Message>) ReflectionTestUtils.invokeMethod(
                 service,

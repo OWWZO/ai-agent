@@ -120,13 +120,13 @@ public class SessionArtifactRestoreSupport {
                 }
                 JSONObject file = (JSONObject) item;
                 files.add(FileInformation.builder()
-                        .fileName(StringUtil.firstNonBlank(file.getString("fileName"), file.getString("name")))
-                        .fileDesc(StringUtil.firstNonBlank(file.getString("fileDesc"), file.getString("description")))
-                        .ossUrl(StringUtil.firstNonBlank(file.getString("ossUrl"), file.getString("downloadUrl"), file.getString("url")))
-                        .domainUrl(StringUtil.firstNonBlank(file.getString("domainUrl"), file.getString("previewUrl"), file.getString("url")))
-                        .fileSize(firstNumber(file.get("fileSize"), file.get("size")))
-                        .fileType(StringUtil.firstNonBlank(file.getString("fileType"), file.getString("type")))
-                        .resourceKey(StringUtil.firstNonBlank(file.getString("resourceKey"), file.getString("downloadUrl"), file.getString("domainUrl"), file.getString("url")))
+                        .fileName(file.getString("fileName"))
+                        .fileDesc(file.getString("fileDesc"))
+                        .ossUrl(file.getString("ossUrl"))
+                        .domainUrl(file.getString("domainUrl"))
+                        .fileSize(firstNumber(file.get("fileSize")))
+                        .fileType(file.getString("fileType"))
+                        .resourceKey(file.getString("resourceKey"))
                         .mimeType(file.getString("mimeType"))
                         .originFileName(file.getString("originFileName"))
                         .originFileUrl(file.getString("originFileUrl"))
@@ -192,7 +192,7 @@ public class SessionArtifactRestoreSupport {
             }
 
             files.add(FileInformation.builder()
-                    .fileName(StringUtil.firstNonBlank(ref.getString("displayName"), ref.getString("fileName")))
+                    .fileName(ref.getString("displayName"))
                     .fileDesc(ref.getString("description"))
                     .ossUrl(ossUrl)
                     .domainUrl(domainUrl)

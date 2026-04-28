@@ -43,9 +43,17 @@ public class SessionTranscriptBlockAssemblerTest {
                         "先回看第一轮检索结果",
                         "task-search-1",
                         1),
-                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
                         501L,
                         2,
+                        "tool-search-1",
+                        "deep_search",
+                        JSONObject.parseObject("{\"query\":\"Spring AI MCP 基础\"}"),
+                        "task-search-1",
+                        1),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        501L,
+                        3,
                         "deep_search",
                         "search",
                         "tool-search-1",
@@ -57,19 +65,27 @@ public class SessionTranscriptBlockAssemblerTest {
                         List.of()),
                 SessionEventPayloadFixtureBuilder.toolThoughtEvent(
                         501L,
-                        3,
+                        4,
                         "tool-search-2",
                         "deep_search",
                         JSONObject.parseObject("{\"query\":\"Spring AI skilltool\"}"),
                         "继续检索 skilltool 相关资料",
                         "task-search-2",
                         2),
+                SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
+                        501L,
+                        5,
+                        "tool-search-2",
+                        "deep_search",
+                        JSONObject.parseObject("{\"query\":\"Spring AI skilltool\"}"),
+                        "task-search-2",
+                        2),
                 SessionEventPayloadFixtureBuilder.toolResultEvent(
                         501L,
-                        4,
+                        6,
                         "deep_search",
                         "report",
-                        null,
+                        "tool-search-2",
                         "deep_search",
                         JSONObject.parseObject("{\"query\":\"Spring AI skilltool\"}"),
                         "已生成详细报告，正文不应被整段回灌到 working memory",
@@ -105,7 +121,7 @@ public class SessionTranscriptBlockAssemblerTest {
         Assert.assertTrue(Boolean.TRUE.equals(secondResult.getReferenceOnly()));
         Assert.assertEquals("deepsearch-report.html", secondResult.getArtifactRefs().get(0).getString("displayName"));
 
-        Assert.assertEquals("我已经把关键结论补充好了。", turnMemory.getFinalAnswer());
+        Assert.assertEquals("我已经把关键结论补充好了。", turnMemory.getAssistantAnswerText());
         Assert.assertEquals(1, turnMemory.getArtifactRefs().size());
         Assert.assertEquals("deepsearch-report.html", turnMemory.getArtifactRefs().get(0).getString("displayName"));
     }
@@ -133,9 +149,17 @@ public class SessionTranscriptBlockAssemblerTest {
                         "先调用 MRAG 检索图文混合内容",
                         "task-mrag-1",
                         1),
-                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
                         601L,
                         2,
+                        "tool-mrag-1",
+                        "multimodalagent_tool",
+                        JSONObject.parseObject("{\"question\":\"总结多模态检索核心能力\"}"),
+                        "task-mrag-1",
+                        1),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        601L,
+                        3,
                         "knowledge",
                         "knowledge",
                         "tool-mrag-1",
@@ -147,7 +171,7 @@ public class SessionTranscriptBlockAssemblerTest {
                         List.of()),
                 SessionEventPayloadFixtureBuilder.toolResultEvent(
                         601L,
-                        3,
+                        4,
                         "markdown",
                         "report",
                         "tool-mrag-1",

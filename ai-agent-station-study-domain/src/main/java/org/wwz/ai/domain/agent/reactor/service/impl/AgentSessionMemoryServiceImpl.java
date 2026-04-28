@@ -56,17 +56,26 @@ public class AgentSessionMemoryServiceImpl implements IAgentSessionMemoryService
                     .build();
         }
 
+        //获取压缩的信息
         AgentSessionMemory snapshot = sessionMemoryDao.queryBySessionId(conversation.getSessionId());
+
+        //查询当前会话的多个请求
         List<AgentMessage> completedMessages = messageDao.queryCompletedByConversationId(conversation.getId());
+
+        //查询构建每个请求的事件
         Map<Long, List<AgentMessageEvent>> eventMap = workingMemoryAssembler.buildFactEventMap(completedMessages);
+
+        //聚合上面的信息
         SessionWorkingMemory candidateWorkingMemory = workingMemoryAssembler.assemble(
                 conversation,
                 snapshot,
                 completedMessages,
                 eventMap);
+
         int estimatedTokens = candidateWorkingMemory.getEstimatedTokens() == null
                 ? 0
                 : candidateWorkingMemory.getEstimatedTokens();
+        //压缩
         if (estimatedTokens <= reactorConfig.getSessionMemoryCompactionThresholdTokens()) {
             resetGuardrailState(conversation.getSessionId());
             return SessionMemoryPreparationResult.builder()

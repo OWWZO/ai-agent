@@ -22,14 +22,6 @@ public class SessionTurnMemory {
     private String requestId;
     private Integer sortOrder;
     /**
-     * 兼容现有压缩链路，仍保留用户问题的扁平字段。
-     */
-    private String userMessage;
-    /**
-     * 兼容现有压缩链路，仍保留最终回答的扁平字段。
-     */
-    private String assistantMessage;
-    /**
      * 当前轮的有序 transcript blocks。
      */
     @Builder.Default
@@ -39,7 +31,41 @@ public class SessionTurnMemory {
     private List<JSONObject> artifactRefs = new ArrayList<>();
 
     /**
-     * 当前轮最终回答，供 richer message 和旧链路共同使用。
+     * 获取当前轮的用户输入文本。
      */
-    private String finalAnswer;
+    public String getUserInputText() {
+        return findFirstText(TranscriptBlockType.USER_INPUT);
+    }
+
+    /**
+     * 获取当前轮的最终回答文本。
+     */
+    public String getAssistantAnswerText() {
+        return findLastText(TranscriptBlockType.ASSISTANT_ANSWER);
+    }
+
+    private String findFirstText(TranscriptBlockType targetType) {
+        if (targetType == null || blocks == null || blocks.isEmpty()) {
+            return null;
+        }
+        for (TranscriptContextBlock block : blocks) {
+            if (block != null && targetType == block.getBlockType() && block.getText() != null && !block.getText().isBlank()) {
+                return block.getText();
+            }
+        }
+        return null;
+    }
+
+    private String findLastText(TranscriptBlockType targetType) {
+        if (targetType == null || blocks == null || blocks.isEmpty()) {
+            return null;
+        }
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            TranscriptContextBlock block = blocks.get(i);
+            if (block != null && targetType == block.getBlockType() && block.getText() != null && !block.getText().isBlank()) {
+                return block.getText();
+            }
+        }
+        return null;
+    }
 }

@@ -1,8 +1,6 @@
 package org.wwz.ai.domain.agent.reactor.service.support;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,13 +8,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionTurnMemory;
 
 import javax.annotation.Resource;
@@ -42,14 +38,13 @@ public class SessionMemoryCompactionService {
     @Resource
     private SessionArtifactRestoreSupport artifactRestoreSupport;
     @Resource
-    private SessionMemorySummaryBuilder summaryBuilder;
-    @Resource
     private SessionMemorySummaryGenerator summaryGenerator;
     @Resource
     private SessionTranscriptBlockAssembler transcriptBlockAssembler;
     @Resource
     private SessionMemoryTokenEstimator tokenEstimator;
 
+    //todo:重构
     public CompactionResult compact(AgentConversation conversation,
                                     AgentSessionMemory snapshot,
                                     List<AgentMessage> completedMessages,
@@ -59,13 +54,18 @@ public class SessionMemoryCompactionService {
             return null;
         }
 
+        //确定压缩边界 取上次压缩的最大序号，-1 表示首次压缩
         int existingBoundary = snapshot != null && snapshot.getBoundarySortOrder() != null
                 ? snapshot.getBoundarySortOrder()
                 : -1;
+
+        //只取边界之后的新消息，按序号排序
         List<AgentMessage> eligibleMessages = completedMessages.stream()
                 .filter(message -> message.getSortOrder() != null && message.getSortOrder() > existingBoundary)
                 .sorted(Comparator.comparing(AgentMessage::getSortOrder))
                 .collect(Collectors.toList());
+
+        //消息太少则不压缩，保留完整上下文
         int minWindowSize = resolveRecentWindowMinMessages();
         if (eligibleMessages.size() <= minWindowSize) {
             log.debug("跳过会话压缩 sessionId={}, eligibleTurns={}, keepWindow={}",
@@ -75,22 +75,27 @@ public class SessionMemoryCompactionService {
             return null;
         }
 
+        //消息 + 事件 → 结构化轮次记忆
         List<SessionTurnMemory> eligibleTurns = toTurnMemories(eligibleMessages, eventMap);
+        //决定哪些轮次保留原样（通常是最近 N 轮）
         PreservedWindowSelection preservedWindow = selectPreservedTurns(eligibleTurns);
         if (eligibleTurns.size() <= preservedWindow.getTurns().size()) {
             log.debug("跳过会话压缩 sessionId={}，无可归档轮次", conversation.getSessionId());
             return null;
         }
 
+        //除保留窗口外的所有历史轮次
         List<SessionTurnMemory> turnsToCompact = new ArrayList<>(
                 eligibleTurns.subList(0, eligibleTurns.size() - preservedWindow.getTurns().size()));
+
+        //收集被压缩消息ID 用于过滤已归档消息
         Set<Long> compactedMessageIds = turnsToCompact.stream()
                 .map(SessionTurnMemory::getMessageId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<SessionMemoryFact> existingFacts = parseFacts(snapshot == null ? null : snapshot.getFactsJson());
         List<JSONObject> artifactRefs = buildCompactedArtifactRefs(snapshot, completedMessages, eventMap, compactedMessageIds);
 
         SessionTurnMemory boundaryTurn = turnsToCompact.get(turnsToCompact.size() - 1);
+        //调用 LLM 将多轮对话压缩为文本摘要
         String summaryText = summaryGenerator.generate(SessionMemorySummaryGenerator.GenerationRequest.builder()
                 .sessionId(conversation.getSessionId())
                 .requestId(resolveRequestId(turnsToCompact))
@@ -101,7 +106,6 @@ public class SessionMemoryCompactionService {
                 .maxLength(reactorConfig.getSessionMemorySummaryMaxLength())
                 .boundarySortOrder(boundaryTurn.getSortOrder())
                 .build());
-        List<SessionMemoryFact> facts = summaryBuilder.buildFacts(existingFacts, turnsToCompact);
 
         int sourceTurnCount = turnsToCompact.size() + (snapshot == null || snapshot.getSourceTurnCount() == null
                 ? 0
@@ -120,9 +124,7 @@ public class SessionMemoryCompactionService {
                 .sessionId(conversation.getSessionId())
                 .agentType(conversation.getAgentType())
                 .summaryText(summaryText)
-                .factsJson(JSON.toJSONString(facts))
                 .artifactRefsJson(artifactRestoreSupport.toArtifactRefsJson(artifactRefs))
-                .boundaryMessageId(boundaryTurn.getMessageId())
                 .boundarySortOrder(boundaryTurn.getSortOrder())
                 .sourceTurnCount(sourceTurnCount)
                 .lastCompactedAt(LocalDateTime.now())
@@ -142,19 +144,6 @@ public class SessionMemoryCompactionService {
         return result;
     }
 
-    private List<SessionMemoryFact> parseFacts(String factsJson) {
-        if (!StringUtils.hasText(factsJson)) {
-            return List.of();
-        }
-        try {
-            return JSON.parseObject(factsJson, new TypeReference<List<SessionMemoryFact>>() {
-            });
-        } catch (Exception e) {
-            log.warn("解析压缩快照 facts 失败，退化为空列表 factsJson={}", factsJson, e);
-            return List.of();
-        }
-    }
-
     private List<SessionTurnMemory> toTurnMemories(List<AgentMessage> messages,
                                                    Map<Long, List<AgentMessageEvent>> eventMap) {
         List<SessionTurnMemory> turns = new ArrayList<>();
@@ -162,26 +151,9 @@ public class SessionMemoryCompactionService {
             if (message == null) {
                 continue;
             }
-            try {
-                turns.add(transcriptBlockAssembler.buildTurnMemory(
-                        message,
-                        eventMap == null ? null : eventMap.get(message.getId())));
-            } catch (Exception e) {
-                log.warn("构造压缩 transcript turn 失败，退化为 query/response messageId={}, requestId={}",
-                        message.getId(),
-                        message.getRequestId(),
-                        e);
-                turns.add(SessionTurnMemory.builder()
-                        .messageId(message.getId())
-                        .requestId(message.getRequestId())
-                        .sortOrder(message.getSortOrder())
-                        .userMessage(message.getQuery())
-                        .assistantMessage(message.getResponse())
-                        .finalAnswer(message.getResponse())
-                        .artifactRefs(new ArrayList<>(artifactRestoreSupport.extractArtifactRefs(
-                                eventMap == null ? null : eventMap.get(message.getId()))))
-                        .build());
-            }
+            turns.add(transcriptBlockAssembler.buildTurnMemory(
+                    message,
+                    eventMap == null ? null : eventMap.get(message.getId())));
         }
         return turns;
     }
@@ -260,9 +232,7 @@ public class SessionMemoryCompactionService {
         private String sessionId;
         private Integer agentType;
         private String summaryText;
-        private String factsJson;
         private String artifactRefsJson;
-        private Long boundaryMessageId;
         private Integer boundarySortOrder;
         private Integer sourceTurnCount;
         private LocalDateTime lastCompactedAt;
@@ -277,9 +247,7 @@ public class SessionMemoryCompactionService {
                     .sessionId(sessionId)
                     .agentType(agentType)
                     .summaryText(summaryText)
-                    .factsJson(factsJson)
                     .artifactRefsJson(artifactRefsJson)
-                    .boundaryMessageId(boundaryMessageId)
                     .boundarySortOrder(boundarySortOrder)
                     .sourceTurnCount(sourceTurnCount)
                     .lastCompactedAt(lastCompactedAt)

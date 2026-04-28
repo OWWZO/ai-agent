@@ -101,9 +101,6 @@ public class SessionTranscriptBlockAssembler {
                 .messageId(message.getId())
                 .requestId(message.getRequestId())
                 .sortOrder(message.getSortOrder())
-                .userMessage(message.getQuery())
-                .assistantMessage(message.getResponse())
-                .finalAnswer(message.getResponse())
                 .artifactRefs(new ArrayList<>(deduplicateArtifactRefs(aggregatedArtifactRefs)))
                 .blocks(blocks)
                 .build();

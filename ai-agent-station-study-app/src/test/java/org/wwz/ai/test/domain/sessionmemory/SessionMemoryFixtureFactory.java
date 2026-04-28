@@ -6,7 +6,6 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 
 import java.util.List;
 
@@ -29,10 +28,6 @@ public final class SessionMemoryFixtureFactory {
         return SessionMemoryTestSupport.snapshot(
                 "用户要求后续输出都使用中文表格。",
                 2,
-                102L,
-                List.of(
-                        SessionMemoryTestSupport.fact("constraint", "后续输出都使用中文表格"),
-                        SessionMemoryTestSupport.fact("goal", "继续沿用上一轮分析背景")),
                 artifactRefsJson);
     }
 
@@ -72,9 +67,19 @@ public final class SessionMemoryFixtureFactory {
                         "需要复用上一轮搜索继续补充",
                         "task-search",
                         1),
-                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                SessionEventPayloadFixtureBuilder.semanticToolUseEvent(
                         103L,
                         2,
+                        "tool-search-1",
+                        "deep_search",
+                        JSONObject.parseObject("""
+                                {"query":"Spring AI MCP"}
+                                """),
+                        "task-search",
+                        1),
+                SessionEventPayloadFixtureBuilder.toolResultEvent(
+                        103L,
+                        3,
                         "deep_search",
                         "report",
                         "tool-search-1",
@@ -89,11 +94,5 @@ public final class SessionMemoryFixtureFactory {
                                 "summary-report.html",
                                 "https://file.example.com/summary-report")))
         );
-    }
-
-    public static List<SessionMemoryFact> buildExpectedFacts() {
-        return List.of(
-                SessionMemoryTestSupport.fact("constraint", "后续输出都使用中文表格"),
-                SessionMemoryTestSupport.fact("goal", "继续沿用上一轮分析背景"));
     }
 }

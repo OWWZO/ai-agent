@@ -20,7 +20,6 @@ import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentSessionMemoryServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageEventServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentMessageServiceImpl;
-import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryCompactionService;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionWorkingMemoryAssembler;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
@@ -29,6 +28,8 @@ import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryPromptFormat
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryBuilder;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
+import org.wwz.ai.domain.agent.reactor.service.support.EventProjector;
+import org.wwz.ai.domain.agent.reactor.service.support.PersistCoordinator;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.time.LocalDateTime;
@@ -182,8 +183,8 @@ public class ConversationHistoryPersistenceTest {
                 .conversationId(1L)
                 .requestId("req-artifact")
                 .sortOrder(0)
-                .query("整理报告")
-                .response("报告已生成")
+                .query("整理报告".repeat(20))
+                .response("报告已生成".repeat(20))
                 .status(1)
                 .agentType(2)
                 .build();
@@ -208,8 +209,8 @@ public class ConversationHistoryPersistenceTest {
                                 .conversationId(1L)
                                 .requestId("req-artifact-2")
                                 .sortOrder(1)
-                                .query("继续整理")
-                                .response("继续完成")
+                                .query("继续整理".repeat(20))
+                                .response("继续完成".repeat(20))
                                 .status(1)
                                 .agentType(2)
                                 .build(),
@@ -218,8 +219,8 @@ public class ConversationHistoryPersistenceTest {
                                 .conversationId(1L)
                                 .requestId("req-artifact-3")
                                 .sortOrder(2)
-                                .query("再补一段")
-                                .response("再补一段完成")
+                                .query("再补一段".repeat(20))
+                                .response("再补一段完成".repeat(20))
                                 .status(1)
                                 .agentType(2)
                                 .build()),
@@ -232,8 +233,8 @@ public class ConversationHistoryPersistenceTest {
 
     @Test
     public void test_projectFinalDetailEvents_buildsSemanticFactBlocksForToolThought() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
-        ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
+        EventProjector projector = new EventProjector();
+        ReflectionTestUtils.setField(projector, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
         AgentResponse response = AgentResponse.builder()
                 .messageType("tool_thought")
@@ -250,9 +251,7 @@ public class ConversationHistoryPersistenceTest {
         eventDataMap.put("toolArguments", Map.of("query", "Spring AI MCP"));
 
         @SuppressWarnings("unchecked")
-        List<OrderedEvent> orderedEvents = (List<OrderedEvent>) ReflectionTestUtils.invokeMethod(
-                service,
-                "projectFinalDetailEvents",
+        List<OrderedEvent> orderedEvents = projector.project(
                 response,
                 eventDataMap,
                 new AtomicInteger(1));
@@ -268,8 +267,8 @@ public class ConversationHistoryPersistenceTest {
 
     @Test
     public void test_buildGeneratedFilesJson_readsArtifactRefsFromSemanticFactEvents() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
-        ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
+        PersistCoordinator coordinator = new PersistCoordinator();
+        ReflectionTestUtils.setField(coordinator, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
         OrderedEvent orderedEvent = OrderedEvent.builder()
                 .eventType("tool_result")
@@ -286,10 +285,7 @@ public class ConversationHistoryPersistenceTest {
                         """)
                 .build();
 
-        String generatedFilesJson = (String) ReflectionTestUtils.invokeMethod(
-                service,
-                "buildGeneratedFilesJson",
-                List.of(orderedEvent));
+        String generatedFilesJson = coordinator.buildGeneratedFilesJson(List.of(orderedEvent));
         List<FileInformation> generatedFiles = JSON.parseArray(generatedFilesJson, FileInformation.class);
 
         Assert.assertEquals(1, generatedFiles.size());
@@ -299,17 +295,18 @@ public class ConversationHistoryPersistenceTest {
 
     @Test
     public void test_projectFinalDetailEvents_reusesGenericFactShapeForNewStructuredSource() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
-        ReflectionTestUtils.setField(service, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
+        EventProjector projector = new EventProjector();
+        ReflectionTestUtils.setField(projector, "sessionArtifactRestoreSupport", new SessionArtifactRestoreSupport());
 
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("messageType", "knowledge");
         resultMap.put("answer", "已整理知识库结论");
-        resultMap.put("fileInfo", List.of(new LinkedHashMap<>(Map.of(
-                "fileName", "kb-summary.md",
-                "domainUrl", "https://file.example.com/kb-summary.md",
+        resultMap.put("artifactRefs", List.of(new LinkedHashMap<>(Map.of(
+                "displayName", "kb-summary.md",
+                "previewUrl", "https://file.example.com/kb-summary.md",
                 "downloadUrl", "https://file.example.com/download/kb-summary.md",
-                "resourceKey", "kb-summary-md"))));
+                "resourceKey", "kb-summary-md",
+                "missing", false))));
         AgentResponse response = AgentResponse.builder()
                 .messageType("knowledge")
                 .messageId("knowledge-001")
@@ -320,12 +317,10 @@ public class ConversationHistoryPersistenceTest {
         eventDataMap.put("messageId", "knowledge-001");
         eventDataMap.put("taskId", "task-knowledge-1");
         eventDataMap.put("taskOrder", 1);
-        eventDataMap.put("resultMap", new LinkedHashMap<>(resultMap));
+        eventDataMap.put("artifactRefs", resultMap.get("artifactRefs"));
 
         @SuppressWarnings("unchecked")
-        List<OrderedEvent> orderedEvents = (List<OrderedEvent>) ReflectionTestUtils.invokeMethod(
-                service,
-                "projectFinalDetailEvents",
+        List<OrderedEvent> orderedEvents = projector.project(
                 response,
                 eventDataMap,
                 new AtomicInteger(1));
@@ -356,7 +351,6 @@ public class ConversationHistoryPersistenceTest {
         SessionMemoryCompactionService service = new SessionMemoryCompactionService();
         ReflectionTestUtils.setField(service, "reactorConfig", buildSessionMemoryConfig());
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
-        ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
         ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
         SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
         ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());

@@ -14,15 +14,16 @@ public class SessionArtifactRestoreSupportTest {
     private final SessionArtifactRestoreSupport support = new SessionArtifactRestoreSupport();
 
     @Test
-    public void test_parseFiles_supportsUploadedConversationFileShape() {
+    public void test_parseFiles_supportsCanonicalConversationFileShape() {
         String filesJson = """
                 [
                   {
-                    "name":"需求说明书.pdf",
-                    "url":"https://file.example.com/preview/spec.pdf",
-                    "type":"pdf",
-                    "size":2048,
-                    "downloadUrl":"https://file.example.com/download/spec.pdf",
+                    "fileName":"需求说明书.pdf",
+                    "fileDesc":"补充规格说明",
+                    "domainUrl":"https://file.example.com/preview/spec.pdf",
+                    "ossUrl":"https://file.example.com/download/spec.pdf",
+                    "fileType":"pdf",
+                    "fileSize":2048,
                     "resourceKey":"resource-spec-pdf",
                     "mimeType":"application/pdf",
                     "originFileName":"需求说明书.pdf"
@@ -42,6 +43,7 @@ public class SessionArtifactRestoreSupportTest {
         Assert.assertEquals("resource-spec-pdf", file.getResourceKey());
         Assert.assertEquals("application/pdf", file.getMimeType());
         Assert.assertEquals("需求说明书.pdf", file.getOriginFileName());
+        Assert.assertEquals("补充规格说明", file.getFileDesc());
     }
 
     @Test
@@ -80,10 +82,10 @@ public class SessionArtifactRestoreSupportTest {
                 .filesJson("""
                         [
                           {
-                            "name":"上传资料.pdf",
-                            "url":"https://file.example.com/upload/preview.pdf",
-                            "downloadUrl":"https://file.example.com/upload/download.pdf",
-                            "type":"pdf",
+                            "fileName":"上传资料.pdf",
+                            "domainUrl":"https://file.example.com/upload/preview.pdf",
+                            "ossUrl":"https://file.example.com/upload/download.pdf",
+                            "fileType":"pdf",
                             "resourceKey":"upload-pdf"
                           }
                         ]

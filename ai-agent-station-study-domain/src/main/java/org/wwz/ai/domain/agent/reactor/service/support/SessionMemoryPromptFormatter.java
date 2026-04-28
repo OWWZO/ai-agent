@@ -93,9 +93,9 @@ public class SessionMemoryPromptFormatter {
             builder.append("\n- 第")
                     .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                     .append("轮 用户：")
-                    .append(defaultText(turn.getUserMessage()))
+                    .append(defaultText(turn.getUserInputText()))
                     .append("；助手：")
-                    .append(defaultText(StringUtil.firstNonBlank(turn.getFinalAnswer(), turn.getAssistantMessage())));
+                    .append(defaultText(turn.getAssistantAnswerText()));
             String transcriptSummary = summarizeBlocks(turn.getBlocks());
             if (StringUtils.hasText(transcriptSummary)) {
                 builder.append("；链路：").append(transcriptSummary);

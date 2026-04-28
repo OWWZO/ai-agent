@@ -8,9 +8,7 @@
         <result column="session_id" property="sessionId"/>
         <result column="agent_type" property="agentType"/>
         <result column="summary_text" property="summaryText"/>
-        <result column="facts_json" property="factsJson"/>
         <result column="artifact_refs_json" property="artifactRefsJson"/>
-        <result column="boundary_message_id" property="boundaryMessageId"/>
         <result column="boundary_sort_order" property="boundarySortOrder"/>
         <result column="source_turn_count" property="sourceTurnCount"/>
         <result column="last_compacted_at" property="lastCompactedAt"/>
@@ -21,12 +19,12 @@
 
     <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_session_memory (
-            conversation_id, session_id, agent_type, summary_text, facts_json, artifact_refs_json,
-            boundary_message_id, boundary_sort_order, source_turn_count, last_compacted_at,
+            conversation_id, session_id, agent_type, summary_text, artifact_refs_json,
+            boundary_sort_order, source_turn_count, last_compacted_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{conversationId}, #{sessionId}, #{agentType}, #{summaryText}, #{factsJson}, #{artifactRefsJson},
-            #{boundaryMessageId}, #{boundarySortOrder}, #{sourceTurnCount}, #{lastCompactedAt},
+            #{conversationId}, #{sessionId}, #{agentType}, #{summaryText}, #{artifactRefsJson},
+            #{boundarySortOrder}, #{sourceTurnCount}, #{lastCompactedAt},
             now(), now(), 0
         )
     </insert>
@@ -37,9 +35,7 @@
             <if test="conversationId != null">conversation_id = #{conversationId},</if>
             <if test="agentType != null">agent_type = #{agentType},</if>
             <if test="summaryText != null">summary_text = #{summaryText},</if>
-            <if test="factsJson != null">facts_json = #{factsJson},</if>
             <if test="artifactRefsJson != null">artifact_refs_json = #{artifactRefsJson},</if>
-            <if test="boundaryMessageId != null">boundary_message_id = #{boundaryMessageId},</if>
             <if test="boundarySortOrder != null">boundary_sort_order = #{boundarySortOrder},</if>
             <if test="sourceTurnCount != null">source_turn_count = #{sourceTurnCount},</if>
             <if test="lastCompactedAt != null">last_compacted_at = #{lastCompactedAt},</if>

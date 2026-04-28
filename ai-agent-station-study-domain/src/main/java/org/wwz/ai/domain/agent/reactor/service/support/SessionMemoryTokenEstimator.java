@@ -46,12 +46,7 @@ public class SessionMemoryTokenEstimator {
         if (turn == null) {
             return 0;
         }
-        int textLength = safeLength(turn.getUserMessage())
-                + safeLength(turn.getAssistantMessage());
-        // finalAnswer 常常与 assistantMessage 是同一份最终回答，避免重复计入导致单轮体积被放大。
-        if (!equalsNormalized(turn.getAssistantMessage(), turn.getFinalAnswer())) {
-            textLength += safeLength(turn.getFinalAnswer());
-        }
+        int textLength = 0;
         if (!CollectionUtils.isEmpty(turn.getBlocks())) {
             for (TranscriptContextBlock block : turn.getBlocks()) {
                 if (block == null) {
@@ -67,13 +62,6 @@ public class SessionMemoryTokenEstimator {
             }
         }
         return textLength;
-    }
-
-    private boolean equalsNormalized(String left, String right) {
-        if (!StringUtils.hasText(left) || !StringUtils.hasText(right)) {
-            return false;
-        }
-        return left.trim().equals(right.trim());
     }
 
     private int safeLength(String text) {

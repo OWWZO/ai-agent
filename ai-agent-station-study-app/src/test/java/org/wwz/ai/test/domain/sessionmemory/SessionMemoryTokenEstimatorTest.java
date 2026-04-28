@@ -12,18 +12,23 @@ import java.util.List;
 public class SessionMemoryTokenEstimatorTest {
 
     @Test
-    public void test_estimateTurnTokens_skipsReferenceOnlyPayloadAndDuplicateFinalAnswer() {
+    public void test_estimateTurnTokens_skipsReferenceOnlyPayload() {
         SessionMemoryTokenEstimator estimator = new SessionMemoryTokenEstimator();
         SessionTurnMemory turn = SessionTurnMemory.builder()
-                .userMessage("帮我解释什么是上帝类")
-                .assistantMessage("已为你生成 HTML 展示报告。")
-                .finalAnswer("已为你生成 HTML 展示报告。")
                 .blocks(List.of(
+                        TranscriptContextBlock.builder()
+                                .blockType(TranscriptBlockType.USER_INPUT)
+                                .text("帮我解释什么是上帝类")
+                                .build(),
                         TranscriptContextBlock.builder()
                                 .blockType(TranscriptBlockType.TOOL_RESULT)
                                 .text("已生成或更新产物：上帝类解释展示报告.html")
                                 .resultPayloadJson("x".repeat(12000))
                                 .referenceOnly(true)
+                                .build(),
+                        TranscriptContextBlock.builder()
+                                .blockType(TranscriptBlockType.ASSISTANT_ANSWER)
+                                .text("已为你生成 HTML 展示报告。")
                                 .build()))
                 .build();
 

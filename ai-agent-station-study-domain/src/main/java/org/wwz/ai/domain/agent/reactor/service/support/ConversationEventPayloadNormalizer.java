@@ -112,21 +112,7 @@ public final class ConversationEventPayloadNormalizer {
         if (directRefs instanceof List && !((List<?>) directRefs).isEmpty()) {
             return normalizeArtifactRefs((List<?>) directRefs, valueToString(payloadMap.get("messageType")));
         }
-
-        Map<String, Object> outerResultMap = asMap(payloadMap.get("resultMap"));
-        Map<String, Object> nestedResultMap = outerResultMap == null ? null : asMap(outerResultMap.get("resultMap"));
-
-        List<?> legacyRefs = firstNonEmptyList(
-                nestedResultMap == null ? null : nestedResultMap.get("fileInfo"),
-                nestedResultMap == null ? null : nestedResultMap.get("fileList"),
-                outerResultMap == null ? null : outerResultMap.get("fileInfo"),
-                outerResultMap == null ? null : outerResultMap.get("fileList"),
-                payloadMap.get("fileInfo"),
-                payloadMap.get("fileList"));
-        if (legacyRefs == null || legacyRefs.isEmpty()) {
-            return new JSONArray();
-        }
-        return normalizeArtifactRefs(legacyRefs, valueToString(payloadMap.get("messageType")));
+        return new JSONArray();
     }
 
     private static JSONArray normalizeArtifactRefs(List<?> rawRefs, String fallbackArtifactType) {
@@ -146,24 +132,9 @@ public final class ConversationEventPayloadNormalizer {
         }
 
         Map<?, ?> refMap = (Map<?, ?>) rawRef;
-        String previewUrl = firstNonBlank(
-                refMap.get("previewUrl"),
-                refMap.get("domainUrl"),
-                refMap.get("url"),
-                refMap.get("ossUrl"),
-                refMap.get("downloadUrl"));
-        String downloadUrl = firstNonBlank(
-                refMap.get("downloadUrl"),
-                refMap.get("ossUrl"),
-                refMap.get("domainUrl"),
-                refMap.get("url"));
-        String resourceKey = firstNonBlank(
-                refMap.get("resourceKey"),
-                refMap.get("ossUrl"),
-                refMap.get("downloadUrl"),
-                refMap.get("domainUrl"),
-                refMap.get("fileName"),
-                refMap.get("name"));
+        String previewUrl = firstNonBlank(refMap.get("previewUrl"));
+        String downloadUrl = firstNonBlank(refMap.get("downloadUrl"));
+        String resourceKey = firstNonBlank(refMap.get("resourceKey"));
 
         boolean missing = toBoolean(refMap.get("missing"))
                 || (isBlank(previewUrl) && isBlank(downloadUrl));
@@ -172,13 +143,8 @@ public final class ConversationEventPayloadNormalizer {
                 missing ? "引用资源不存在或已失效" : null);
 
         JSONObject normalized = new JSONObject(new LinkedHashMap<>());
-        normalized.put("artifactType", firstNonBlank(refMap.get("artifactType"), refMap.get("type"), fallbackArtifactType));
-        normalized.put("displayName", firstNonBlank(
-                refMap.get("displayName"),
-                refMap.get("fileName"),
-                refMap.get("name"),
-                resourceKey,
-                "未命名文件"));
+        normalized.put("artifactType", firstNonBlank(refMap.get("artifactType"), fallbackArtifactType));
+        normalized.put("displayName", firstNonBlank(refMap.get("displayName"), resourceKey, "未命名文件"));
         normalized.put("resourceKey", resourceKey);
         normalized.put("downloadUrl", downloadUrl);
         normalized.put("previewUrl", previewUrl);
@@ -195,10 +161,6 @@ public final class ConversationEventPayloadNormalizer {
         Map<String, Object> outerResultMap = asMap(payloadMap.get("resultMap"));
         if (outerResultMap != null) {
             removeArtifactFields(outerResultMap);
-            Map<String, Object> nestedResultMap = asMap(outerResultMap.get("resultMap"));
-            if (nestedResultMap != null) {
-                removeArtifactFields(nestedResultMap);
-            }
         }
     }
 
@@ -218,10 +180,6 @@ public final class ConversationEventPayloadNormalizer {
         Map<String, Object> outerResultMap = asMap(payload.get("resultMap"));
         if (outerResultMap != null) {
             removeHeavyContentFields(outerResultMap);
-            Map<String, Object> nestedResultMap = asMap(outerResultMap.get("resultMap"));
-            if (nestedResultMap != null) {
-                removeHeavyContentFields(nestedResultMap);
-            }
         }
     }
 
@@ -256,9 +214,7 @@ public final class ConversationEventPayloadNormalizer {
         if (messageType != null) {
             return messageType;
         }
-
-        Map<String, Object> nestedResultMap = asMap(outerResultMap.get("resultMap"));
-        return nestedResultMap == null ? null : valueToString(nestedResultMap.get("messageType"));
+        return null;
     }
 
     private static void removeArtifactFields(Map<String, Object> targetMap) {
@@ -271,15 +227,6 @@ public final class ConversationEventPayloadNormalizer {
             return null;
         }
         return (Map<String, Object>) value;
-    }
-
-    private static List<?> firstNonEmptyList(Object... candidates) {
-        for (Object candidate : candidates) {
-            if (candidate instanceof List && !((List<?>) candidate).isEmpty()) {
-                return (List<?>) candidate;
-            }
-        }
-        return null;
     }
 
     private static String firstNonBlank(Object... candidates) {

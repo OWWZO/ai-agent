@@ -21,9 +21,7 @@ public class AgentSessionMemory {
     private String sessionId;
     private Integer agentType;
     private String summaryText;
-    private String factsJson;
     private String artifactRefsJson;
-    private Long boundaryMessageId;
     private Integer boundarySortOrder;
     private Integer sourceTurnCount;
     private LocalDateTime lastCompactedAt;

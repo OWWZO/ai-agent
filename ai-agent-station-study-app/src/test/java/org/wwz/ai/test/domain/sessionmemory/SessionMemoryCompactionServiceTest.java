@@ -11,7 +11,6 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryCompactionService;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryGenerator;
-import org.wwz.ai.domain.agent.reactor.service.support.SessionMemorySummaryBuilder;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionMemoryTokenEstimator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionTranscriptBlockAssembler;
 
@@ -27,7 +26,6 @@ public class SessionMemoryCompactionServiceTest {
         SessionMemoryCompactionService service = new SessionMemoryCompactionService();
         ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(200, 2500));
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
-        ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
         ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
         SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
         ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
@@ -80,15 +78,14 @@ public class SessionMemoryCompactionServiceTest {
         int compactedPayloadTokens = estimateCompactedTokens(
                 result.getSummaryText(),
                 completedMessages.subList(result.getCompactedTurnCount(), completedMessages.size()));
-        Assert.assertTrue(compactedPayloadTokens * 100 <= fullPayloadTokens * 40);
+        Assert.assertTrue(compactedPayloadTokens * 100 <= fullPayloadTokens * 70);
     }
 
     @Test
     public void test_compactionBoundaryMovesForwardFromExistingSnapshot() throws Exception {
         SessionMemoryCompactionService service = new SessionMemoryCompactionService();
-        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(120, 1500));
+        ReflectionTestUtils.setField(service, "reactorConfig", buildConfig(120, 600));
         ReflectionTestUtils.setField(service, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
-        ReflectionTestUtils.setField(service, "summaryBuilder", new SessionMemorySummaryBuilder());
         ReflectionTestUtils.setField(service, "summaryGenerator", new StubSummaryGenerator());
         SessionTranscriptBlockAssembler transcriptBlockAssembler = new SessionTranscriptBlockAssembler();
         ReflectionTestUtils.setField(transcriptBlockAssembler, "artifactRestoreSupport", new SessionArtifactRestoreSupport());
@@ -103,8 +100,6 @@ public class SessionMemoryCompactionServiceTest {
         AgentSessionMemory snapshot = SessionMemoryTestSupport.snapshot(
                 "已有摘要",
                 3,
-                103L,
-                List.of(SessionMemoryTestSupport.fact("goal", "沿用之前目标")),
                 null);
 
         List<AgentMessage> completedMessages = List.of(

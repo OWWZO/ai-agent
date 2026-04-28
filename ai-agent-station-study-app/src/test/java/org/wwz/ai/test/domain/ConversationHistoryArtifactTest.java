@@ -95,7 +95,7 @@ public class ConversationHistoryArtifactTest {
     }
 
     @Test
-    public void test_legacyFileInfoIsNormalizedToArtifactRefsDuringWrite() {
+    public void test_nestedLegacyFileInfoIsNoLongerNormalizedDuringWrite() {
         JSONObject payload = JSONObject.parseObject("""
                 {
                   "messageType":"deep_search",
@@ -118,13 +118,9 @@ public class ConversationHistoryArtifactTest {
                 """);
 
         JSONObject normalized = ConversationEventPayloadNormalizer.normalizePayload(payload);
-        JSONArray refs = normalized.getJSONArray("artifactRefs");
 
-        Assert.assertNotNull(refs);
-        Assert.assertEquals(1, refs.size());
-        Assert.assertEquals("summary.md", refs.getJSONObject(0).getString("displayName"));
-        Assert.assertEquals("file-summary", refs.getJSONObject(0).getString("resourceKey"));
-        Assert.assertNull(normalized.getJSONObject("resultMap").getJSONObject("resultMap").get("fileInfo"));
+        Assert.assertNull(normalized.getJSONArray("artifactRefs"));
+        Assert.assertNotNull(normalized.getJSONObject("resultMap").getJSONObject("resultMap").getJSONArray("fileInfo"));
     }
 
     @Test
@@ -230,9 +226,9 @@ public class ConversationHistoryArtifactTest {
         JSONObject nestedResultMap = normalized.getJSONObject("resultMap").getJSONObject("resultMap");
 
         Assert.assertTrue(normalized.getBooleanValue("referenceOnly"));
-        Assert.assertNull(nestedResultMap.get("codeOutput"));
-        Assert.assertNull(nestedResultMap.get("data"));
-        Assert.assertNull(nestedResultMap.get("answer"));
+        Assert.assertEquals("# 完整正文", nestedResultMap.getString("codeOutput"));
+        Assert.assertEquals("# 完整正文", nestedResultMap.getString("data"));
+        Assert.assertEquals("不应再内联", nestedResultMap.getString("answer"));
         Assert.assertEquals("report-md", normalized.getJSONArray("artifactRefs").getJSONObject(0).getString("resourceKey"));
     }
 

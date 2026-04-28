@@ -13,11 +13,11 @@ import org.wwz.ai.domain.agent.reactor.service.IAgentConversationService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageEventService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentMessageService;
 import org.wwz.ai.domain.agent.reactor.service.IAgentSessionMemoryService;
-import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistServiceImpl;
 import org.wwz.ai.domain.agent.reactor.model.history.ConversationTurnDetail;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryDecisionType;
 import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryPreparationResult;
 import org.wwz.ai.domain.agent.reactor.model.multi.OrderedEvent;
+import org.wwz.ai.domain.agent.reactor.service.impl.AgentStreamPersistCoordinator;
 import org.wwz.ai.domain.agent.reactor.service.support.SessionArtifactRestoreSupport;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 
@@ -29,7 +29,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
 
     @Test
     public void test_rejectsModeConflictWithoutInsertingPlaceholder() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         StubConversationService conversationService = new StubConversationService(
                 AgentConversation.builder()
                         .id(1001L)
@@ -61,7 +61,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
 
     @Test
     public void test_rejectsBusySessionWithoutInsertingPlaceholder() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         StubConversationService conversationService = new StubConversationService(
                 AgentConversation.builder()
                         .id(1001L)
@@ -93,7 +93,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
 
     @Test
     public void test_rejectsPreflightContextLimitWithoutInsertingPlaceholder() {
-        AgentStreamPersistServiceImpl service = new AgentStreamPersistServiceImpl();
+        AgentStreamPersistCoordinator service = new AgentStreamPersistCoordinator();
         StubConversationService conversationService = new StubConversationService(
                 AgentConversation.builder()
                         .id(1001L)
@@ -127,7 +127,7 @@ public class AgentStreamPersistServiceSessionGuardTest {
         Assert.assertEquals(0, sessionMemoryService.rebuildCount.get());
     }
 
-    private void injectMinimalDependencies(AgentStreamPersistServiceImpl service,
+    private void injectMinimalDependencies(AgentStreamPersistCoordinator service,
                                            StubConversationService conversationService,
                                            StubMessageService messageService,
                                            StubSessionMemoryService sessionMemoryService,
@@ -135,7 +135,6 @@ public class AgentStreamPersistServiceSessionGuardTest {
         ReflectionTestUtils.setField(service, "conversationService", conversationService);
         ReflectionTestUtils.setField(service, "messageService", messageService);
         ReflectionTestUtils.setField(service, "messageDao", new StubMessageDao(streamingCount));
-        ReflectionTestUtils.setField(service, "messageEventService", new StubMessageEventService());
         ReflectionTestUtils.setField(service, "conversationDao", new StubConversationDao());
         ReflectionTestUtils.setField(service, "fixRoleService", new StubFixRoleService());
         ReflectionTestUtils.setField(service, "handlerMap", Map.of());

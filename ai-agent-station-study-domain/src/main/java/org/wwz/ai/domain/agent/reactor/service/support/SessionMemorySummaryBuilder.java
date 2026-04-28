@@ -45,15 +45,17 @@ public class SessionMemorySummaryBuilder {
             if (turn == null) {
                 continue;
             }
+            String userMessage = StringUtil.firstNonBlank(turn.getUserInputText(), "无用户输入");
+            String assistantMessage = StringUtil.firstNonBlank(turn.getAssistantAnswerText(), "无最终回答");
             if (builder.length() > 0) {
                 builder.append('\n');
             }
             builder.append("- 第")
                     .append(turn.getSortOrder() == null ? "?" : turn.getSortOrder())
                     .append("轮：用户提出“")
-                    .append(StringUtil.abbreviate(turn.getUserMessage(), 80, true))
+                    .append(StringUtil.abbreviate(userMessage, 80, true))
                     .append("“”；系统已回应“”")
-                    .append(StringUtil.abbreviate(turn.getAssistantMessage(), 120, true))
+                    .append(StringUtil.abbreviate(assistantMessage, 120, true))
                     .append("”。");
         }
 
@@ -105,8 +107,8 @@ public class SessionMemorySummaryBuilder {
             if (turn == null) {
                 continue;
             }
-            String userMessage = normalize(turn.getUserMessage());
-            String assistantMessage = normalize(turn.getAssistantMessage());
+            String userMessage = normalize(turn.getUserInputText());
+            String assistantMessage = normalize(turn.getAssistantAnswerText());
             if (userMessage != null) {
                 addFact(factBuckets, "goal", StringUtil.abbreviate(userMessage, 120, true));
                 if (containsConstraintSignal(userMessage)) {

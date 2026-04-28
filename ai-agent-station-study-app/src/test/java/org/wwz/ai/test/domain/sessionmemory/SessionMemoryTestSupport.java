@@ -6,7 +6,6 @@ import org.wwz.ai.domain.agent.reactor.entity.AgentMessage;
 import org.wwz.ai.domain.agent.reactor.entity.AgentMessageEvent;
 import org.wwz.ai.domain.agent.reactor.entity.AgentSessionMemory;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
-import org.wwz.ai.domain.agent.reactor.model.memory.SessionMemoryFact;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -48,33 +47,36 @@ public final class SessionMemoryTestSupport {
         return AgentMessageEvent.builder()
                 .messageId(messageId)
                 .seqNo(seqNo)
-                .eventType("deep_search")
-                .eventSubType("report")
+                .eventType("tool_result")
+                .eventSubType("html.page")
                 .displayArea("workspace")
                 .title(displayName)
-                .payloadJson("""
+                .contentText("已生成稳定引用：" + displayName)
+                .referenceOnly(true)
+                .artifactRefsJson("""
+                        [
+                          {
+                            "displayName": "%s",
+                            "resourceKey": "%s",
+                            "downloadUrl": "%s",
+                            "previewUrl": "%s",
+                            "missing": false
+                          }
+                        ]
+                        """.formatted(displayName, displayName, url, url))
+                .structuredDataJson("""
                         {
-                          "messageType": "task",
-                          "messageId": "%s",
-                          "artifactRefs": [
-                            {
-                              "displayName": "%s",
-                              "resourceKey": "%s",
-                              "downloadUrl": "%s",
-                              "previewUrl": "%s",
-                              "missing": false
-                            }
-                          ]
+                          "messageType": "html",
+                          "answer": "已生成稳定引用：%s",
+                          "isFinal": true
                         }
-                        """.formatted(displayName, displayName, displayName, url, url))
+                        """.formatted(displayName))
                 .status("completed")
                 .build();
     }
 
     public static AgentSessionMemory snapshot(String summaryText,
                                               int boundarySortOrder,
-                                              Long boundaryMessageId,
-                                              List<SessionMemoryFact> facts,
                                               String artifactRefsJson) {
         return AgentSessionMemory.builder()
                 .id(3001L)
@@ -82,19 +84,10 @@ public final class SessionMemoryTestSupport {
                 .sessionId(SESSION_ID)
                 .agentType(2)
                 .summaryText(summaryText)
-                .factsJson(JSON.toJSONString(facts))
                 .artifactRefsJson(artifactRefsJson)
                 .boundarySortOrder(boundarySortOrder)
-                .boundaryMessageId(boundaryMessageId)
                 .sourceTurnCount(boundarySortOrder + 1)
                 .deleted(0)
-                .build();
-    }
-
-    public static SessionMemoryFact fact(String category, String content) {
-        return SessionMemoryFact.builder()
-                .category(category)
-                .content(content)
                 .build();
     }
 
