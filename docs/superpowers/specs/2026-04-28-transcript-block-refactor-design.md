@@ -406,16 +406,239 @@ public class TranscriptPromptFormatter {
 
 ---
 
-## 8. 风险与应对
+## 8. 链路 2：前端历史回显（同步重构）
+
+### 8.1 设计原则
+
+- `ai_agent_transcript_block` 是**源数据**（source of truth），只服务 LLM
+- `ai_agent_display_event` 是**投影数据**，只服务前端展示
+- 通过 `DisplayEventProjector` 将 transcript_block 投影为前端友好的展示事件
+- 前端表可以随 UI 需求自由演进，不影响 LLM 链路
+
+### 8.2 新表：ai_agent_display_event
+
+```sql
+CREATE TABLE IF NOT EXISTS ai_agent_display_event (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    turn_id      BIGINT       NOT NULL COMMENT 'FK -> ai_agent_turn.id',
+    seq_no       INT          NOT NULL COMMENT '展示顺序',
+    event_type   VARCHAR(32)  NOT NULL COMMENT '前端事件类型',
+    ui_type      VARCHAR(32)  NULL     COMMENT '渲染组件类型: text/plan_card/tool_card/file_card/image',
+    title        VARCHAR(256) NULL     COMMENT '展示标题',
+    display_area VARCHAR(32)  NULL     COMMENT 'timeline / sidebar',
+    task_id      VARCHAR(64)  NULL     COMMENT '任务分组ID',
+    task_order   INT          NULL     COMMENT '任务内顺序',
+    status       VARCHAR(16)  NULL     COMMENT 'pending / running / completed / error',
+    content      JSON         NULL     COMMENT '前端渲染需要的完整数据',
+    create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted      TINYINT(1)   NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    KEY idx_turn (turn_id, seq_no)
+) ENGINE=InnoDB COMMENT='前端展示事件表';
+```
+
+### 8.3 领域模型
+
+**DisplayEvent 实体**：
+```java
+@Data
+public class DisplayEvent {
+    private Long id;
+    private Long turnId;
+    private Integer seqNo;
+    private String eventType;
+    private String uiType;
+    private String title;
+    private String displayArea;
+    private String taskId;
+    private Integer taskOrder;
+    private String status;
+    private String contentJson;
+    private LocalDateTime createTime;
+    private Integer deleted;
+}
+```
+
+### 8.4 投影逻辑
+
+```java
+@Component
+@RequiredArgsConstructor
+public class DisplayEventProjector {
+
+    public List<DisplayEvent> project(List<TranscriptBlock> blocks) {
+        return blocks.stream().map(this::projectSingle).toList();
+    }
+
+    private DisplayEvent projectSingle(TranscriptBlock block) {
+        return switch (block.getBlockType()) {
+            case USER_INPUT -> projectUserInput(block);
+            case ASSISTANT_THOUGHT -> projectThought(block);
+            case TOOL_USE -> projectToolUse(block);
+            case TOOL_RESULT -> projectToolResult(block);
+            case ARTIFACT_REFERENCE -> projectArtifact(block);
+            case ASSISTANT_ANSWER -> projectAnswer(block);
+        };
+    }
+
+    private DisplayEvent projectToolUse(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("tool_use");
+        event.setUiType("tool_card");
+        event.setTitle("调用 " + nvl(block.getToolName(), "工具"));
+        event.setDisplayArea("timeline");
+        event.setStatus("running");
+        event.setContentJson(buildJson(Map.of(
+            "toolName", nvl(block.getToolName()),
+            "arguments", safeParseJson(block.getToolArgumentsJson()),
+            "description", nvl(block.getText())
+        )));
+        return event;
+    }
+
+    private DisplayEvent projectArtifact(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("artifact");
+        event.setUiType("file_card");
+        event.setTitle("生成文件");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of(
+            "files", safeParseJson(block.getArtifactRefsJson())
+        )));
+        return event;
+    }
+
+    private DisplayEvent projectAnswer(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("assistant_answer");
+        event.setUiType("text");
+        event.setTitle("回答");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of(
+            "text", nvl(block.getText())
+        )));
+        return event;
+    }
+
+    // ... 其他投影方法
+
+    private String nvl(String s) { return s == null ? "" : s; }
+    private String nvl(String s, String d) { return s == null || s.isBlank() ? d : s; }
+}
+```
+
+### 8.5 回显流程
+
+```
+前端 GET /api/conversation/{id}/history
+  ↓
+查询 ai_agent_turn 列表（按 sort_order）
+查询 ai_agent_display_event（按 turn_id + seq_no）
+  ↓
+直接返回 List<TurnDisplayDetail>
+  ↓
+前端根据 ui_type 渲染对应组件
+```
+
+没有 `ConversationReplayAssembler` 的复杂恢复逻辑。
+
+### 8.6 触发投影的时机
+
+```java
+@EventListener
+public void onTurnCompleted(TurnCompletedEvent event) {
+    List<TranscriptBlock> blocks = transcriptBlockDao.queryByTurnId(event.getTurnId());
+    List<DisplayEvent> displayEvents = displayEventProjector.project(blocks);
+    displayEventDao.batchInsert(displayEvents);
+}
+```
+
+---
+
+## 9. 类变更清单（更新版）
+
+### 9.1 删除的旧类（约 13 个）
+
+| 类名 | 删除原因 |
+|------|---------|
+| `EventProjector` | 硬编码映射 |
+| `OrderedEvent` | 中间投影模型 |
+| `AgentMessage` | 被 `Turn` 替代 |
+| `AgentMessageEvent` | 被 `TranscriptBlock` 替代 |
+| `SessionTranscriptBlockAssembler` | 复杂恢复逻辑 |
+| `SessionArtifactRestoreSupport` | 多源文件恢复 |
+| `ConversationEventPayloadNormalizer` | 遗留字段处理 |
+| `ConversationEventFactSupport` | 事实投影兜底 |
+| `SessionWorkingMemoryAssembler` | 复杂组装逻辑 |
+| `SessionMemorySummaryBuilder` | 摘要结构校正 |
+| `ConversationReplayAssembler` | 复杂回放组装 |
+| `AgentMessageServiceImpl` | 旧消息服务 |
+| `AgentMessageEventServiceImpl` | 旧事件服务 |
+
+### 9.2 新增的核心类（约 10 个）
+
+| 类名 | 职责 |
+|------|------|
+| `Turn` / `TranscriptBlock` / `SessionMemory` | 链路 1 实体 |
+| `TranscriptBlockType` | 6 种标准类型枚举 |
+| `TranscriptBlockMapper` | AgentResponse → TranscriptBlock |
+| `TranscriptBlockDao` / `TurnDao` / `SessionMemoryDao` | 链路 1 DAO |
+| `TranscriptPromptFormatter` | Block → LLM prompt |
+| `TranscriptContextBuilder` | 直接构建 LLM 上下文 |
+| `DisplayEvent` | 链路 2 实体 |
+| `DisplayEventProjector` | TranscriptBlock → DisplayEvent |
+| `DisplayEventDao` | 链路 2 DAO |
+
+---
+
+## 10. 迁移策略（更新版）
+
+- **旧表**：`ai_agent_message`、`ai_agent_message_event` 废弃
+- **新表**：`ai_agent_turn`、`ai_agent_transcript_block`、`ai_agent_display_event` 创建
+- **历史数据**：不迁移，清空
+- **链路 1 + 链路 2**：同步重构，一次上线
+
+---
+
+## 11. 数据转换链对比
+
+### 链路 1（LLM 上下文）
+
+| 环节 | 当前（6 层） | 新设计（2 层） |
+|------|-------------|--------------|
+| 流式响应 → 内存对象 | `EventProjector.project()` | `TranscriptBlockMapper.map()` |
+| 内存对象 → 数据库 | `AgentMessageEvent` | `TranscriptBlock` |
+| 数据库 → 工作记忆 | `SessionWorkingMemoryAssembler` | 直接查询 |
+| 工作记忆 → LLM prompt | `SessionMemoryPromptFormatter` | `TranscriptPromptFormatter` |
+
+### 链路 2（前端回显）
+
+| 环节 | 当前（4 层） | 新设计（1 层） |
+|------|-------------|--------------|
+| 数据库 → 事实投影 | `ConversationEventFactSupport` | 不需要 |
+| 事实 → 历史事件 | `ConversationReplayAssembler` | 不需要 |
+| 历史事件 → 前端详情 | 多次字段映射 | `DisplayEvent` 直接消费 |
+
+---
+
+## 12. 风险与应对
 
 | 风险 | 应对 |
 |------|------|
 | 上游 Agent 产生未定义消息类型 | **设计决策**：直接抛异常，迫使上游标准化 |
-| 前端回放（链路 2）暂时不可用 | 后续独立重构，本次不影响 |
+| 链路 2 前端代码需要同步修改 | **设计决策**：B 方案接受此工作量，一次到位 |
 | 历史数据丢失 | **设计决策**：方案 A 接受此代价 |
-| 新增 block_type 需求 | 修改枚举 + 新增映射分支即可，不需要兼容逻辑 |
+| 新增 block_type 需求 | 修改枚举 + 新增映射分支（链路 1）+ 新增投影方法（链路 2） |
 
 ---
 
 *设计完成日期：2026-04-28*
-*方案：A（扁平化 TranscriptBlock）*
+*方案：B（扁平化 TranscriptBlock + 前端展示分离）*

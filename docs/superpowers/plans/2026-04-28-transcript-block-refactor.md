@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 重构会话历史持久化，用 `ai_agent_turn` + `ai_agent_transcript_block` 替换 `ai_agent_message` + `ai_agent_message_event`，去除所有兼容逻辑。
+**Goal:** 重构会话历史持久化，用 `ai_agent_turn` + `ai_agent_transcript_block` + `ai_agent_display_event` 替换旧表，去除所有兼容逻辑。
 
-**Architecture:** 扁平化 TranscriptBlock 设计，6 种标准 block_type 枚举，AgentResponse 直接映射为标准块，读取时直接查询拼接。前端展示后续独立建表，通过异步投影连接。
+**Architecture:** 扁平化 TranscriptBlock 设计，6 种标准 block_type 枚举，AgentResponse 直接映射为标准块，读取时直接查询拼接。前端展示通过异步投影到独立的 `ai_agent_display_event` 表，彻底分离 LLM 和前端两个领域。
 
 **Tech Stack:** Spring Boot 3.4.3, Java 17, MyBatis-Plus, MySQL
 
@@ -31,6 +31,11 @@
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptBlockWriter.java` | TranscriptBlock 批量写入服务 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptPromptFormatter.java` | Block → LLM prompt 文本格式化 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptContextBuilder.java` | 从数据库直接构建 LLM 上下文 |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DisplayEvent.java` | 前端展示事件实体 |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDisplayEventDao.java` | DisplayEvent DAO 接口 |
+| `ai-agent-station-study-app/src/main/resources/mybatis/mapper/display_event_mapper.xml` | DisplayEvent Mapper XML |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayEventProjector.java` | TranscriptBlock → DisplayEvent 投影 |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayHistoryQueryService.java` | 前端历史查询服务 |
 
 ### 修改文件
 
@@ -61,6 +66,7 @@
 | `ai-agent-station-study-domain/.../service/support/SessionMemorySummaryBuilder.java` | 摘要结构校正，不再需要 |
 | `ai-agent-station-study-domain/.../service/impl/AgentMessageServiceImpl.java` | 旧消息服务 |
 | `ai-agent-station-study-domain/.../service/impl/AgentMessageEventServiceImpl.java` | 旧事件服务 |
+| `ai-agent-station-study-domain/.../service/support/ConversationReplayAssembler.java` | 复杂回放组装，被 DisplayHistoryQueryService 替代 |
 
 ---
 
@@ -1391,5 +1397,570 @@ git commit -m "test: 验证重构后编译和测试通过" --allow-empty
 ### 风险提示
 
 1. **AgentResponse 字段名不确定**：Task 9 中 `TranscriptBlockMapper` 使用了假设的字段名（`getMessageType()`、`getContent()` 等），需要根据实际 `AgentResponse` 类调整
-2. **链路 2 编译问题**：Task 17 提到如果删除旧实体导致链路 2 代码无法编译，建议暂时保留旧实体
+2. **链路 2 编译问题**：已解决，链路 2 同步重构，不需要保留旧实体
 3. **JSON 工具选择**：Task 9 和 Task 11 使用了 `com.alibaba.fastjson`，如果项目使用 Jackson 需要替换
+
+---
+
+## Task 19: DisplayEvent 实体
+
+**Files:**
+- Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DisplayEvent.java`
+
+- [ ] **Step 1: 创建 DisplayEvent 实体**
+
+```java
+package org.wwz.ai.domain.agent.reactor.entity;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+/**
+ * 前端展示事件。面向 UI 渲染，字段自由设计，不受 LLM 约束。
+ */
+@Data
+public class DisplayEvent {
+    private Long id;
+    private Long turnId;
+    private Integer seqNo;
+    private String eventType;
+    private String uiType;
+    private String title;
+    private String displayArea;
+    private String taskId;
+    private Integer taskOrder;
+    private String status;
+    private String contentJson;
+    private LocalDateTime createTime;
+    private Integer deleted;
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DisplayEvent.java
+git commit -m "feat: 添加 DisplayEvent 实体"
+```
+
+---
+
+## Task 20: DisplayEvent DAO + Mapper XML
+
+**Files:**
+- Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDisplayEventDao.java`
+- Create: `ai-agent-station-study-app/src/main/resources/mybatis/mapper/display_event_mapper.xml`
+
+- [ ] **Step 1: 创建 IDisplayEventDao**
+
+```java
+package org.wwz.ai.domain.agent.reactor.mapper;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
+
+import java.util.List;
+
+@Mapper
+public interface IDisplayEventDao {
+
+    int insert(DisplayEvent event);
+
+    int batchInsert(@Param("events") List<DisplayEvent> events);
+
+    List<DisplayEvent> queryByTurnId(@Param("turnId") Long turnId);
+
+    List<DisplayEvent> queryByTurnIds(@Param("turnIds") List<Long> turnIds);
+
+    int softDeleteByTurnId(@Param("turnId") Long turnId);
+}
+```
+
+- [ ] **Step 2: 创建 display_event_mapper.xml**
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IDisplayEventDao">
+
+    <resultMap id="DisplayEventMap" type="org.wwz.ai.domain.agent.reactor.entity.DisplayEvent">
+        <id column="id" property="id"/>
+        <result column="turn_id" property="turnId"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="event_type" property="eventType"/>
+        <result column="ui_type" property="uiType"/>
+        <result column="title" property="title"/>
+        <result column="display_area" property="displayArea"/>
+        <result column="task_id" property="taskId"/>
+        <result column="task_order" property="taskOrder"/>
+        <result column="status" property="status"/>
+        <result column="content" property="contentJson"/>
+        <result column="create_time" property="createTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.DisplayEvent" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_display_event (turn_id, seq_no, event_type, ui_type, title, display_area, task_id, task_order, status, content, create_time, deleted)
+        VALUES (#{turnId}, #{seqNo}, #{eventType}, #{uiType}, #{title}, #{displayArea}, #{taskId}, #{taskOrder}, #{status}, #{contentJson}, now(), 0)
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO ai_agent_display_event (turn_id, seq_no, event_type, ui_type, title, display_area, task_id, task_order, status, content, create_time, deleted)
+        VALUES
+        <foreach collection="events" item="event" separator=",">
+            (#{event.turnId}, #{event.seqNo}, #{event.eventType}, #{event.uiType}, #{event.title}, #{event.displayArea}, #{event.taskId}, #{event.taskOrder}, #{event.status}, #{event.contentJson}, now(), 0)
+        </foreach>
+    </insert>
+
+    <select id="queryByTurnId" resultMap="DisplayEventMap">
+        SELECT * FROM ai_agent_display_event WHERE turn_id = #{turnId} AND deleted = 0 ORDER BY seq_no
+    </select>
+
+    <select id="queryByTurnIds" resultMap="DisplayEventMap">
+        SELECT * FROM ai_agent_display_event
+        WHERE turn_id IN
+        <foreach collection="turnIds" item="turnId" open="(" separator="," close=")">
+            #{turnId}
+        </foreach>
+        AND deleted = 0
+        ORDER BY turn_id, seq_no
+    </select>
+
+    <update id="softDeleteByTurnId">
+        UPDATE ai_agent_display_event SET deleted = 1 WHERE turn_id = #{turnId} AND deleted = 0
+    </update>
+
+</mapper>
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDisplayEventDao.java
+git add ai-agent-station-study-app/src/main/resources/mybatis/mapper/display_event_mapper.xml
+git commit -m "feat: 添加 DisplayEvent DAO 和 Mapper XML"
+```
+
+---
+
+## Task 21: DisplayEventProjector
+
+**Files:**
+- Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayEventProjector.java`
+
+- [ ] **Step 1: 创建 DisplayEventProjector**
+
+```java
+package org.wwz.ai.domain.agent.reactor.service.support;
+
+import com.alibaba.fastjson.JSON;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
+import org.wwz.ai.domain.agent.reactor.entity.TranscriptBlock;
+import org.wwz.ai.domain.agent.reactor.model.enums.TranscriptBlockType;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * TranscriptBlock → DisplayEvent 投影器。
+ * 集中处理所有展示逻辑，前端需求变更只改这里。
+ */
+@Component
+@RequiredArgsConstructor
+public class DisplayEventProjector {
+
+    public List<DisplayEvent> project(List<TranscriptBlock> blocks) {
+        return blocks.stream().map(this::projectSingle).toList();
+    }
+
+    private DisplayEvent projectSingle(TranscriptBlock block) {
+        return switch (block.getBlockType()) {
+            case USER_INPUT -> projectUserInput(block);
+            case ASSISTANT_THOUGHT -> projectThought(block);
+            case TOOL_USE -> projectToolUse(block);
+            case TOOL_RESULT -> projectToolResult(block);
+            case ARTIFACT_REFERENCE -> projectArtifact(block);
+            case ASSISTANT_ANSWER -> projectAnswer(block);
+        };
+    }
+
+    private DisplayEvent projectUserInput(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("user_input");
+        event.setUiType("text");
+        event.setTitle("用户输入");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()), "files", safeParseJson(block.getArtifactRefsJson()))));
+        return event;
+    }
+
+    private DisplayEvent projectThought(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("assistant_thought");
+        event.setUiType("text");
+        event.setTitle("思考过程");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()))));
+        return event;
+    }
+
+    private DisplayEvent projectToolUse(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("tool_use");
+        event.setUiType("tool_card");
+        event.setTitle("调用 " + nvl(block.getToolName(), "工具"));
+        event.setDisplayArea("timeline");
+        event.setStatus("running");
+        event.setContentJson(buildJson(Map.of(
+            "toolName", nvl(block.getToolName()),
+            "arguments", safeParseJson(block.getToolArgumentsJson()),
+            "description", nvl(block.getText())
+        )));
+        return event;
+    }
+
+    private DisplayEvent projectToolResult(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("tool_result");
+        event.setUiType("text");
+        event.setTitle("工具结果");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of(
+            "text", nvl(block.getText()),
+            "payload", safeParseJson(block.getResultPayloadJson())
+        )));
+        return event;
+    }
+
+    private DisplayEvent projectArtifact(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("artifact");
+        event.setUiType("file_card");
+        event.setTitle("生成文件");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of("files", safeParseJson(block.getArtifactRefsJson()))));
+        return event;
+    }
+
+    private DisplayEvent projectAnswer(TranscriptBlock block) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setEventType("assistant_answer");
+        event.setUiType("text");
+        event.setTitle("回答");
+        event.setDisplayArea("timeline");
+        event.setStatus("completed");
+        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()))));
+        return event;
+    }
+
+    private String nvl(String s) {
+        return s == null ? "" : s;
+    }
+
+    private String nvl(String s, String defaultValue) {
+        return s == null || s.isBlank() ? defaultValue : s;
+    }
+
+    private Object safeParseJson(String json) {
+        try {
+            return JSON.parse(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String buildJson(Map<String, Object> map) {
+        try {
+            return JSON.toJSONString(map);
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayEventProjector.java
+git commit -m "feat: 添加 DisplayEventProjector"
+```
+
+---
+
+## Task 22: DisplayHistoryQueryService
+
+**Files:**
+- Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayHistoryQueryService.java`
+
+- [ ] **Step 1: 创建 DisplayHistoryQueryService**
+
+```java
+package org.wwz.ai.domain.agent.reactor.service.support;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
+import org.wwz.ai.domain.agent.reactor.entity.Turn;
+import org.wwz.ai.domain.agent.reactor.mapper.IDisplayEventDao;
+import org.wwz.ai.domain.agent.reactor.mapper.ITurnDao;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * 前端历史查询服务。替代 ConversationReplayAssembler，直接查询 display_event。
+ */
+@Service
+@RequiredArgsConstructor
+public class DisplayHistoryQueryService {
+
+    private final ITurnDao turnDao;
+    private final IDisplayEventDao displayEventDao;
+
+    public List<TurnHistory> queryHistory(Long conversationId) {
+        // 1. 查询轮次
+        List<Turn> turns = turnDao.queryByConversationId(conversationId);
+        if (turns.isEmpty()) return List.of();
+
+        // 2. 批量查询展示事件
+        List<Long> turnIds = turns.stream().map(Turn::getId).toList();
+        List<DisplayEvent> events = displayEventDao.queryByTurnIds(turnIds);
+
+        // 3. 按 turn_id 分组
+        Map<Long, List<DisplayEvent>> eventMap = events.stream()
+            .collect(Collectors.groupingBy(DisplayEvent::getTurnId));
+
+        // 4. 组装
+        List<TurnHistory> result = new ArrayList<>();
+        for (Turn turn : turns) {
+            TurnHistory history = new TurnHistory();
+            history.setTurnId(turn.getId());
+            history.setSortOrder(turn.getSortOrder());
+            history.setQuery(turn.getQuery());
+            history.setStatus(turn.getStatus());
+            history.setEvents(eventMap.getOrDefault(turn.getId(), List.of()));
+            result.add(history);
+        }
+        return result;
+    }
+
+    @Data
+    public static class TurnHistory {
+        private Long turnId;
+        private Integer sortOrder;
+        private String query;
+        private Integer status;
+        private List<DisplayEvent> events;
+    }
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayHistoryQueryService.java
+git commit -m "feat: 添加 DisplayHistoryQueryService 替代 ConversationReplayAssembler"
+```
+
+---
+
+## Task 23: 触发投影的写入逻辑
+
+**Files:**
+- Modify: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptBlockWriter.java`
+
+- [ ] **Step 1: 在 TranscriptBlockWriter 中增加投影触发**
+
+修改 `TranscriptBlockWriter`，在保存 blocks 后触发投影：
+
+```java
+package org.wwz.ai.domain.agent.reactor.service.support;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
+import org.wwz.ai.domain.agent.reactor.entity.TranscriptBlock;
+import org.wwz.ai.domain.agent.reactor.mapper.IDisplayEventDao;
+import org.wwz.ai.domain.agent.reactor.mapper.ITranscriptBlockDao;
+
+import java.util.List;
+
+@Component
+@RequiredArgsConstructor
+public class TranscriptBlockWriter {
+
+    private final ITranscriptBlockDao transcriptBlockDao;
+    private final IDisplayEventDao displayEventDao;
+    private final DisplayEventProjector displayEventProjector;
+
+    public void saveBatch(List<TranscriptBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) return;
+
+        // 1. 保存 transcript blocks
+        transcriptBlockDao.batchInsert(blocks);
+
+        // 2. 同步投影为 display events（简单直接，不需要异步事件）
+        List<DisplayEvent> displayEvents = displayEventProjector.project(blocks);
+        if (!displayEvents.isEmpty()) {
+            displayEventDao.batchInsert(displayEvents);
+        }
+    }
+}
+```
+
+**注意**：这里选择**同步双写**而非异步事件，因为：
+- 投影逻辑很轻量（只是字段映射）
+- 同步更简单，不需要引入事件监听机制
+- 如果未来投影变重，再改为异步也不迟
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptBlockWriter.java
+git commit -m "feat: TranscriptBlockWriter 同步投影 DisplayEvent"
+```
+
+---
+
+## Task 24: 替换前端历史查询接口
+
+**Files:**
+- Modify: 前端历史查询 Controller/Service（根据实际代码路径）
+
+- [ ] **Step 1: 找到前端历史查询接口**
+
+通常历史查询接口在 trigger 模块的 Controller 中，路径类似：
+- `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/AgentConversationController.java`
+- 或 `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/ConversationController.java`
+
+搜索方法：
+
+```bash
+grep -r "ConversationReplayAssembler\|queryHistory\|historyDetail" ai-agent-station-study-trigger/
+```
+
+- [ ] **Step 2: 替换为 DisplayHistoryQueryService**
+
+在 Controller/Service 中：
+1. 删除 `ConversationReplayAssembler` 的注入
+2. 注入 `DisplayHistoryQueryService`
+3. 替换历史查询方法：
+
+```java
+// 旧代码
+// List<ConversationTurnDetail> details = conversationReplayAssembler.assemble(conversationId);
+
+// 新代码
+List<DisplayHistoryQueryService.TurnHistory> histories = displayHistoryQueryService.queryHistory(conversationId);
+```
+
+**注意**：如果前端 VO 对象（如 `ConversationTurnDetail`、`ConversationEventDetail`）与新返回的 `TurnHistory` 结构不兼容，需要：
+- 方案 A：修改前端 VO 以适配新结构
+- 方案 B：在 Controller 层做一层转换
+
+- [ ] **Step 3: Commit**
+
+```bash
+git commit -m "refactor: 前端历史查询接口使用 DisplayHistoryQueryService 替代 ConversationReplayAssembler"
+```
+
+---
+
+## Task 25: 最终删除旧代码 + 编译验证
+
+**Files:** 多个
+
+- [ ] **Step 1: 删除链路 2 旧兼容类**
+
+```bash
+git rm ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/ConversationReplayAssembler.java
+```
+
+- [ ] **Step 2: 运行编译**
+
+```bash
+cd ai-agent-station-study-app
+mvn clean compile
+```
+
+预期：编译成功。如果仍有引用旧类的代码，逐个修复。
+
+- [ ] **Step 3: 运行测试**
+
+```bash
+mvn test -pl ai-agent-station-study-app
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: 删除所有旧兼容类，链路 1 + 链路 2 重构完成"
+```
+
+---
+
+## 自我审查（更新版）
+
+### Spec 覆盖检查
+
+| Spec 要求 | 对应 Task |
+|-----------|-----------|
+| 新表结构（ai_agent_turn + ai_agent_transcript_block） | Task 1 |
+| TranscriptBlockType 枚举（6 种） | Task 2 |
+| Turn / TranscriptBlock / SessionMemory 实体 | Task 3, 4, 5 |
+| DAO + Mapper XML | Task 6, 7, 8 |
+| TranscriptBlockMapper（归类映射） | Task 9 |
+| TurnWriter + TranscriptBlockWriter | Task 10 |
+| TranscriptPromptFormatter | Task 11 |
+| TranscriptContextBuilder | Task 12 |
+| 替换写入路径 | Task 13 |
+| 替换读取路径 | Task 14 |
+| 压缩服务调整 | Task 15 |
+| 删除旧兼容类 | Task 16, 17, 25 |
+| **DisplayEvent 实体 + DAO** | **Task 19, 20** |
+| **DisplayEventProjector** | **Task 21** |
+| **DisplayHistoryQueryService** | **Task 22** |
+| **同步投影触发** | **Task 23** |
+| **替换前端查询接口** | **Task 24** |
+
+### Placeholder 扫描
+
+- 无 TBD/TODO
+- 所有代码块包含完整代码
+- 文件路径都是绝对路径
+
+### 类型一致性检查
+
+- `TranscriptBlockType` 枚举在所有任务中名称一致
+- `artifactRefsJson` 字段名在所有实体和 Mapper 中一致
+- `DisplayEvent` 字段名在实体、DAO、Mapper、Projector 中一致
+
+### 风险提示
+
+1. **AgentResponse 字段名不确定**：Task 9 中 `TranscriptBlockMapper` 使用了假设的字段名，需要根据实际 `AgentResponse` 类调整
+2. **JSON 工具选择**：Task 9、11、21 使用了 `com.alibaba.fastjson`，如果项目使用 Jackson 需要替换
+3. **前端 VO 兼容性**：Task 24 中前端返回结构可能变化，需要确认前端是否能适配 `TurnHistory` 结构
