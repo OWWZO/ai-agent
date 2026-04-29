@@ -2,7 +2,6 @@ package org.wwz.ai.domain.agent.service;
 
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
-import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 
 import java.util.List;
 
@@ -26,8 +25,4 @@ public interface IFixRoleService {
      */
     FixRoleVO queryRole(String aiAgentId);
 
-    /**
-     * 构建会话角色摘要
-     */
-    ConversationRoleVO buildConversationRole(AgentConversation conversation);
 }

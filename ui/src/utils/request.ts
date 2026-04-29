@@ -12,7 +12,7 @@ const request: AxiosInstance = axios.create({
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
-    // 自动附加设备标识(用于对话历史持久化)
+    // 兼容仍然依赖设备标识的上传与流式接口
     config.headers['X-Device-Id'] = getDeviceId();
     return config;
   },

@@ -3,9 +3,10 @@ import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-sou
 import { getDeviceId } from '@/services/agentConversation';
 
 const customHost = SERVICE_BASE_URL || '';
-/** 新端点(支持持久化) */
-const PERSIST_SSE_URL = `${customHost}/api/agent/message/send-stream`;
-const DEFAULT_SSE_URL = PERSIST_SSE_URL;
+/**
+ * 历史会话接口已下线，主聊天统一回到当前仍然保留的 Reactor SSE 入口。
+ */
+const DEFAULT_SSE_URL = `${customHost}/web/api/v1/gpt/queryAgentStreamIncr`;
 
 const SSE_HEADERS: Record<string, string> = {
   'Content-Type': 'application/json',

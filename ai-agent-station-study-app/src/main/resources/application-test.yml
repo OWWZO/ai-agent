@@ -38,11 +38,6 @@ logging:
 
 autobots:
   autoagent:
-    session-memory:
-      enabled: true
-      compaction-threshold-tokens: 80
-      recent-window-turns: 10
-      summary-max-length: 800
     skill:
       enabled: false
       # 测试环境默认指向仓库内运行时目录，便于用测试夹具覆盖

@@ -21,7 +21,7 @@ import {
   resolveDeepSearchTitle,
   shouldRenderDeepSearchWorkspace,
 } from "@/utils/deepSearch";
-import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
+import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import { getStableTaskIdentity } from "@/utils/chat";
 
 const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {

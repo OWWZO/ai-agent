@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-26
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-28
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -27,6 +27,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - 复用既有 MySQL 问数模型元数据；远端 Qdrant collection `reactor_model_schema`；远端 Elasticsearch index `reactor_model_column_value`；无新增表/列 (010-unify-cloud-vector-env)
 - Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 仅做最小适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `combineData / handleTaskData / FilePreview` 渲染链 (011-transcript-fact-persistence)
 - MySQL（`ai_agent_conversation`、`ai_agent_message`、`ai_agent_message_event`、`ai_agent_session_memory`）+ 现有稳定文件引用能力 (011-transcript-fact-persistence)
+- Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 历史消费链最小但明确的适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MyBatis-Plus 3.5.14、MySQL 8、OkHttp SSE、React 19、Vite 6、Ant Design 5、现有 `ActionView / FilePreview / Dialogue` 组件链 (012-transcript-block-refactor)
+- MySQL（新增 `ai_agent_turn`、`ai_agent_transcript_block`、`ai_agent_display_event`，重写 `ai_agent_session_memory`），外加现有稳定文件/产物引用能力 (012-transcript-block-refactor)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -74,9 +76,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 012-transcript-block-refactor: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 历史消费链最小但明确的适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MyBatis-Plus 3.5.14、MySQL 8、OkHttp SSE、React 19、Vite 6、Ant Design 5、现有 `ActionView / FilePreview / Dialogue` 组件链
 - 011-transcript-fact-persistence: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 仅做最小适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `combineData / handleTaskData / FilePreview` 渲染链
 - 010-unify-cloud-vector-env: Added Java 17（`ai-agent-station-study-domain` / `ai-agent-station-study-app`） + Python 3.11（`reactor-tool`）；本期不改 `ui/` + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 既有配置装配、OkHttp 4.9.3、FastAPI、Pydantic v2、qdrant-client、MRAG 现有文本 embedding 适配层
-- 008-fix-summary-markdown: Added Java 17（`ai-agent-station-study-domain` / `ai-agent-station-study-app`） + Python 3.11（`reactor-tool`）；本期不改 `ui/` + Spring Boot 3.4.3、Spring AI 1.1.4、OkHttp 4.9.3、FastJSON 1.2.83、FastAPI、Pydantic v2、sse-starlette、qdrant-client、fastembed，以及 MRAG 实现实际依赖的最小补集
 
 
 <!-- MANUAL ADDITIONS START -->
@@ -85,6 +87,7 @@ ai-agent-station-study/
 - 进入具体需求前，先判断影响模块，再决定是后端、前端、Python 工具单栈修改，还是跨栈联动；默认优先做最小闭环，不轻易跨模块扩散。
 - 需求涉及现有 Java 主链路时，优先阅读根级 `CLAUDE.md` 与对应模块下的 `CLAUDE.md`，再进入实现。
 - 新增接口、管理项、Agent 类型、MCP 工具、RAG 能力时，先补规格和验收标准，再落计划和任务拆分。
+- `012-transcript-block-refactor` 已切换为硬重写：运行链路只允许使用 `ai_agent_turn / ai_agent_transcript_block / ai_agent_display_event / ai_agent_session_memory`，不得再把旧 `ai_agent_message*` 账本接回主路径。
 - 未经明确需要，不主动改动 `reactor-tool/` 下的可执行文件、cookie 文件和运行产物。
 - 仓库可能存在用户未提交改动；修改前先确认文件是否已有在途变更，避免覆盖。
 <!-- MANUAL ADDITIONS END -->

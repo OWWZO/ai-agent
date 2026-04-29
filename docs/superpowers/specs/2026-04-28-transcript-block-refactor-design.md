@@ -389,9 +389,9 @@ public class TranscriptPromptFormatter {
 ## 6. 迁移策略
 
 - **旧表**：`ai_agent_message`、`ai_agent_message_event` 废弃，不再写入
-- **新表**：`ai_agent_turn`、`ai_agent_transcript_block` 创建
+- **新表**：`ai_agent_turn`、`ai_agent_transcript_block`、`ai_agent_display_event` 创建
 - **历史数据**：不迁移，清空（方案 A）
-- **前端回放（链路 2）**：不在本次范围内，后续独立重构
+- **前端回放（链路 2）**：本次同步重构，前端直接查询 `ai_agent_display_event`
 
 ---
 
@@ -415,27 +415,61 @@ public class TranscriptPromptFormatter {
 - 通过 `DisplayEventProjector` 将 transcript_block 投影为前端友好的展示事件
 - 前端表可以随 UI 需求自由演进，不影响 LLM 链路
 
-### 8.2 新表：ai_agent_display_event
+### 8.2 新表：ai_agent_display_event（同步双写，完整保留对话细节）
 
 ```sql
 CREATE TABLE IF NOT EXISTS ai_agent_display_event (
-    id           BIGINT       NOT NULL AUTO_INCREMENT,
-    turn_id      BIGINT       NOT NULL COMMENT 'FK -> ai_agent_turn.id',
-    seq_no       INT          NOT NULL COMMENT '展示顺序',
-    event_type   VARCHAR(32)  NOT NULL COMMENT '前端事件类型',
-    ui_type      VARCHAR(32)  NULL     COMMENT '渲染组件类型: text/plan_card/tool_card/file_card/image',
-    title        VARCHAR(256) NULL     COMMENT '展示标题',
-    display_area VARCHAR(32)  NULL     COMMENT 'timeline / sidebar',
-    task_id      VARCHAR(64)  NULL     COMMENT '任务分组ID',
-    task_order   INT          NULL     COMMENT '任务内顺序',
-    status       VARCHAR(16)  NULL     COMMENT 'pending / running / completed / error',
-    content      JSON         NULL     COMMENT '前端渲染需要的完整数据',
-    create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted      TINYINT(1)   NOT NULL DEFAULT 0,
+    id                  BIGINT       NOT NULL AUTO_INCREMENT,
+    turn_id             BIGINT       NOT NULL COMMENT 'FK -> ai_agent_turn.id',
+    seq_no              INT          NOT NULL COMMENT '轮内展示顺序',
+
+    -- 展示类型（前端渲染组件选择）
+    display_type        VARCHAR(32)  NOT NULL COMMENT 'user_message|thought|tool_call|tool_result|artifact|final_answer|plan|task_start|task_complete|error',
+
+    -- 任务分组（AutoAgent 多步骤）
+    task_id             VARCHAR(64)  NULL COMMENT '任务ID',
+    task_name           VARCHAR(128) NULL COMMENT '任务名称',
+    task_order          INT          NULL COMMENT '任务序号',
+
+    -- 内容（完整保留，不丢失任何对话细节）
+    title               VARCHAR(256) NULL COMMENT '显示标题',
+    content_text        MEDIUMTEXT   NULL COMMENT '展示文本（与 block.text 对应，完整保留）',
+    content_json        JSON         NULL COMMENT '结构化内容（图表、表格等额外数据）',
+
+    -- 工具信息（完整保留）
+    tool_use_id         VARCHAR(128) NULL,
+    tool_name           VARCHAR(128) NULL,
+    tool_arguments_json JSON         NULL,
+
+    -- 产物引用（完整保留）
+    artifact_refs_json  JSON         NULL,
+
+    -- 结果数据（完整保留）
+    result_payload_json JSON         NULL,
+
+    -- 状态（用于进度展示）
+    status              VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'pending|running|completed|error',
+
+    -- 展示区域
+    display_area        VARCHAR(32)  NOT NULL DEFAULT 'timeline' COMMENT 'timeline|sidebar',
+
+    -- 前端组件额外属性
+    display_props_json  JSON         NULL COMMENT '组件特定属性（颜色、图标、折叠状态等）',
+
+    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted             TINYINT(1)   NOT NULL DEFAULT 0,
+
     PRIMARY KEY (id),
-    KEY idx_turn (turn_id, seq_no)
-) ENGINE=InnoDB COMMENT='前端展示事件表';
+    UNIQUE KEY uk_turn_seq (turn_id, seq_no),
+    KEY idx_turn (turn_id, deleted, seq_no),
+    KEY idx_task (turn_id, task_id, deleted)
+) ENGINE=InnoDB COMMENT='前端展示事件表（同步双写，完整保留对话细节）';
 ```
+
+**设计要点**：
+- `content_text` / `tool_name` / `artifact_refs_json` / `result_payload_json` 等字段与 `ai_agent_transcript_block` 一一对应，**不丢失任何对话细节**
+- `display_type` / `task_id` / `status` / `display_area` / `display_props_json` 是展示专属字段，LLM 链路不需要
+- 前端可以只查此表就完整还原实时对话过程
 
 ### 8.3 领域模型
 
@@ -446,14 +480,36 @@ public class DisplayEvent {
     private Long id;
     private Long turnId;
     private Integer seqNo;
-    private String eventType;
-    private String uiType;
-    private String title;
-    private String displayArea;
+
+    // 展示类型（前端组件选择）
+    private String displayType;       // user_message|thought|tool_call|...
+
+    // 任务分组
     private String taskId;
+    private String taskName;
     private Integer taskOrder;
-    private String status;
-    private String contentJson;
+
+    // 内容（完整保留对话细节）
+    private String title;
+    private String contentText;       // 与 TranscriptBlock.text 对应
+    private String contentJson;       // 结构化额外数据
+
+    // 工具信息（完整保留）
+    private String toolUseId;
+    private String toolName;
+    private String toolArgumentsJson;
+
+    // 产物与结果（完整保留）
+    private String artifactRefsJson;
+    private String resultPayloadJson;
+
+    // 展示状态
+    private String status;            // pending|running|completed|error
+    private String displayArea;       // timeline|sidebar
+
+    // 前端组件属性
+    private String displayPropsJson;
+
     private LocalDateTime createTime;
     private Integer deleted;
 }
@@ -481,59 +537,69 @@ public class DisplayEventProjector {
         };
     }
 
+    private DisplayEvent projectUserInput(TranscriptBlock block) {
+        DisplayEvent event = createBaseEvent(block, "user_message", "用户输入", "completed");
+        event.setContentText(block.getText());
+        event.setArtifactRefsJson(block.getArtifactRefsJson());
+        return event;
+    }
+
+    private DisplayEvent projectThought(TranscriptBlock block) {
+        DisplayEvent event = createBaseEvent(block, "thought", "思考过程", "completed");
+        event.setContentText(block.getText());
+        return event;
+    }
+
     private DisplayEvent projectToolUse(TranscriptBlock block) {
-        DisplayEvent event = new DisplayEvent();
-        event.setTurnId(block.getTurnId());
-        event.setSeqNo(block.getSeqNo());
-        event.setEventType("tool_use");
-        event.setUiType("tool_card");
-        event.setTitle("调用 " + nvl(block.getToolName(), "工具"));
-        event.setDisplayArea("timeline");
-        event.setStatus("running");
-        event.setContentJson(buildJson(Map.of(
-            "toolName", nvl(block.getToolName()),
-            "arguments", safeParseJson(block.getToolArgumentsJson()),
-            "description", nvl(block.getText())
-        )));
+        DisplayEvent event = createBaseEvent(block, "tool_call", "调用 " + nvl(block.getToolName(), "工具"), "running");
+        event.setContentText(block.getText());
+        event.setToolUseId(block.getToolUseId());
+        event.setToolName(block.getToolName());
+        event.setToolArgumentsJson(block.getToolArgumentsJson());
+        return event;
+    }
+
+    private DisplayEvent projectToolResult(TranscriptBlock block) {
+        DisplayEvent event = createBaseEvent(block, "tool_result", "工具结果", "completed");
+        event.setContentText(block.getText());
+        event.setResultPayloadJson(block.getResultPayloadJson());
         return event;
     }
 
     private DisplayEvent projectArtifact(TranscriptBlock block) {
-        DisplayEvent event = new DisplayEvent();
-        event.setTurnId(block.getTurnId());
-        event.setSeqNo(block.getSeqNo());
-        event.setEventType("artifact");
-        event.setUiType("file_card");
-        event.setTitle("生成文件");
-        event.setDisplayArea("timeline");
-        event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of(
-            "files", safeParseJson(block.getArtifactRefsJson())
-        )));
+        DisplayEvent event = createBaseEvent(block, "artifact", "生成文件", "completed");
+        event.setContentText(block.getText());
+        event.setArtifactRefsJson(block.getArtifactRefsJson());
         return event;
     }
 
     private DisplayEvent projectAnswer(TranscriptBlock block) {
-        DisplayEvent event = new DisplayEvent();
-        event.setTurnId(block.getTurnId());
-        event.setSeqNo(block.getSeqNo());
-        event.setEventType("assistant_answer");
-        event.setUiType("text");
-        event.setTitle("回答");
-        event.setDisplayArea("timeline");
-        event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of(
-            "text", nvl(block.getText())
-        )));
+        DisplayEvent event = createBaseEvent(block, "final_answer", "回答", "completed");
+        event.setContentText(block.getText());
         return event;
     }
 
-    // ... 其他投影方法
+    private DisplayEvent createBaseEvent(TranscriptBlock block, String displayType, String title, String status) {
+        DisplayEvent event = new DisplayEvent();
+        event.setTurnId(block.getTurnId());
+        event.setSeqNo(block.getSeqNo());
+        event.setDisplayType(displayType);
+        event.setTitle(title);
+        event.setDisplayArea("timeline");
+        event.setStatus(status);
+        return event;
+    }
 
     private String nvl(String s) { return s == null ? "" : s; }
     private String nvl(String s, String d) { return s == null || s.isBlank() ? d : s; }
 }
 ```
+
+**投影约束**：
+- `DisplayEventProjector` 直接复制 `TranscriptBlock` 中的事实字段，**不再把所有内容重新塞进 `content_json`**
+- `content_json` 仅保留块本身已有的结构化内容；`tool_arguments_json` / `artifact_refs_json` / `result_payload_json` 分列存储
+- `task_id` / `task_name` / `task_order` 属于展示元数据，不在 `TranscriptBlock` 中持久化；如有 AutoAgent 步骤分组需求，由投影器结合上游上下文补齐
+- `display_type` / `title` / `status` / `display_area` 由投影器补齐为前端展示元数据
 
 ### 8.5 回显流程
 
@@ -545,21 +611,49 @@ public class DisplayEventProjector {
   ↓
 直接返回 List<TurnDisplayDetail>
   ↓
-前端根据 ui_type 渲染对应组件
+前端根据 display_type / display_props_json 渲染对应组件
 ```
 
 没有 `ConversationReplayAssembler` 的复杂恢复逻辑。
 
-### 8.6 触发投影的时机
+### 8.6 同步双写时机
+
+**在 `TranscriptBlockWriter.saveBatch()` 中同步投影**：
 
 ```java
-@EventListener
-public void onTurnCompleted(TurnCompletedEvent event) {
-    List<TranscriptBlock> blocks = transcriptBlockDao.queryByTurnId(event.getTurnId());
-    List<DisplayEvent> displayEvents = displayEventProjector.project(blocks);
-    displayEventDao.batchInsert(displayEvents);
+@Component
+@RequiredArgsConstructor
+public class TranscriptBlockWriter {
+
+    private final ITranscriptBlockDao transcriptBlockDao;
+    private final IDisplayEventDao displayEventDao;
+    private final DisplayEventProjector displayEventProjector;
+
+    @Transactional
+    public void saveBatch(List<TranscriptBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) return;
+
+        // 1. 保存 transcript blocks（LLM 链路源数据）
+        transcriptBlockDao.batchInsert(blocks);
+
+        // 2. 同步投影为 display events（前端展示数据，同一事务）
+        List<DisplayEvent> displayEvents = displayEventProjector.project(blocks);
+        if (!displayEvents.isEmpty()) {
+            displayEventDao.batchInsert(displayEvents);
+        }
+    }
 }
 ```
+
+**为什么选择同步双写**：
+- 投影逻辑轻量（字段映射 + 展示元数据填充），不会显著增加写入延迟
+- 同一事务保证两个表数据一致性
+- 前端查询时不需要实时计算，直接读取 `ai_agent_display_event` 即可完整还原对话
+- 如果未来投影变重，再改为异步也不迟
+
+**幂等边界**：
+- `saveBatch()` 仅用于同一 `turn` 的首次完整落库
+- 如果发生补写、重试或重放，需要先按 `turn_id` 清理 `ai_agent_transcript_block` 与 `ai_agent_display_event`，再整轮重建，避免 `(turn_id, seq_no)` 唯一键冲突
 
 ---
 

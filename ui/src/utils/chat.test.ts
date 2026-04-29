@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAction,
-  buildReplayTaskData,
+  buildConversationTaskData,
   combineData,
   getStableTaskIdentity,
   handleTaskData,
@@ -11,7 +11,7 @@ import {
   buildDeepSearchPreviewModel,
   shouldRenderDeepSearchWorkspace,
 } from "./deepSearch";
-import { getPrimaryTaskFile } from "./historyArtifacts";
+import { getPrimaryTaskFile } from "./taskArtifacts";
 
 type DeepSearchStage = "extend" | "search" | "report";
 
@@ -27,10 +27,10 @@ function createDoc(link: string, title: string, content: string): MESSAGE.Doc {
 function createDeepSearchTask(
   stage: DeepSearchStage,
   options?: {
-    historyMode?: boolean;
+    snapshotMode?: boolean;
   }
 ): MESSAGE.Task {
-  const historyMode = options?.historyMode ?? false;
+  const snapshotMode = options?.snapshotMode ?? false;
   const docs =
     stage === "search"
       ? [[createDoc("https://example.com/a", "结果A", "内容A")], [createDoc("https://example.com/b", "结果B", "内容B")]]
@@ -43,12 +43,12 @@ function createDeepSearchTask(
     requestId: "req-1",
     messageId: "msg-1",
     finish: stage === "report",
-    isFinal: historyMode || stage === "report",
+    isFinal: snapshotMode || stage === "report",
     id: "msg-1",
     resultMap: {
       messageType: stage,
       requestId: "req-1",
-      isFinal: historyMode || stage === "report",
+      isFinal: snapshotMode || stage === "report",
       searchFinish: stage === "search",
       query: stage === "report" ? "深度搜索原始问题" : undefined,
       answer: stage === "report" ? "总结内容" : "",
@@ -170,10 +170,10 @@ describe("chat deep_search progress", () => {
     expect(taskList[0].resultMap.searchResult?.docs).toHaveLength(1);
   });
 
-  it("历史回放中的 extend 阶段仍然保持正在搜索状态", () => {
-    const replayChat = createChatItem(createDeepSearchTask("extend", { historyMode: true }));
+  it("会话快照重建后的 extend 阶段仍然保持正在搜索状态", () => {
+    const snapshotChat = createChatItem(createDeepSearchTask("extend", { snapshotMode: true }));
 
-    const { taskList } = buildReplayTaskData(replayChat, false);
+    const { taskList } = buildConversationTaskData(snapshotChat, false);
 
     expect(taskList).toHaveLength(2);
     expect(taskList.map((task) => buildAction(task).action)).toEqual([
@@ -235,40 +235,40 @@ describe("chat deep_search progress", () => {
     ).toBe(true);
   });
 
-  it("历史回放会恢复左侧预览与右侧详情的阶段分工", () => {
-    const extendReplay = createChatItem(
-      createDeepSearchTask("extend", { historyMode: true })
+  it("会话快照重建会恢复左侧预览与右侧详情的阶段分工", () => {
+    const extendSnapshot = createChatItem(
+      createDeepSearchTask("extend", { snapshotMode: true })
     );
-    const extendReplayResult = buildReplayTaskData(extendReplay, false);
-    const extendReplayChildren =
-      extendReplayResult.currentChat.tasks[0]?.[0]?.children || [];
-    const extendReplayModels = extendReplayChildren.map((item) =>
+    const extendSnapshotResult = buildConversationTaskData(extendSnapshot, false);
+    const extendSnapshotChildren =
+      extendSnapshotResult.currentChat.tasks[0]?.[0]?.children || [];
+    const extendSnapshotModels = extendSnapshotChildren.map((item) =>
       buildDeepSearchPreviewModel(item)
     );
 
-    expect(extendReplayModels).toHaveLength(2);
-    expect(extendReplayModels[0]?.stage).toBe("extend");
+    expect(extendSnapshotModels).toHaveLength(2);
+    expect(extendSnapshotModels[0]?.stage).toBe("extend");
     expect(
-      extendReplayChildren.every((item) =>
+      extendSnapshotChildren.every((item) =>
         shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
       )
     ).toBe(false);
 
-    const searchReplay = createChatItem(
-      createDeepSearchTask("search", { historyMode: true })
+    const searchSnapshot = createChatItem(
+      createDeepSearchTask("search", { snapshotMode: true })
     );
-    const searchReplayResult = buildReplayTaskData(searchReplay, false);
-    const searchReplayChildren =
-      searchReplayResult.currentChat.tasks[0]?.[0]?.children || [];
-    const searchReplayModels = searchReplayChildren.map((item) =>
+    const searchSnapshotResult = buildConversationTaskData(searchSnapshot, false);
+    const searchSnapshotChildren =
+      searchSnapshotResult.currentChat.tasks[0]?.[0]?.children || [];
+    const searchSnapshotModels = searchSnapshotChildren.map((item) =>
       buildDeepSearchPreviewModel(item)
     );
 
-    expect(searchReplayModels).toHaveLength(2);
-    expect(searchReplayModels[0]?.stage).toBe("search");
-    expect(searchReplayModels[0]?.resultCount).toBe(1);
+    expect(searchSnapshotModels).toHaveLength(2);
+    expect(searchSnapshotModels[0]?.stage).toBe("search");
+    expect(searchSnapshotModels[0]?.resultCount).toBe(1);
     expect(
-      searchReplayChildren.every((item) =>
+      searchSnapshotChildren.every((item) =>
         shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
       )
     ).toBe(true);

@@ -2,7 +2,7 @@ import { isHTML, isValidJSON } from "@/utils";
 import { buildDeepSearchResultItems } from "@/utils/deepSearch";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
-import { getPrimaryTaskFile, isImageFileLike } from "@/utils/historyArtifacts";
+import { getPrimaryTaskFile, isImageFileLike } from "@/utils/taskArtifacts";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
   if (!taskItem) {

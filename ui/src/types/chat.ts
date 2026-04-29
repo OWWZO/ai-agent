@@ -133,13 +133,6 @@ declare global {
       dataChatList: Record<string, any>[];
     };
 
-    export type ConversationHistoryStore = {
-      version: number;
-      conversations: ConversationHistory[];
-    };
-
-    export type ConversationDetailCache = Record<string, ConversationHistory>;
-
     export type ModelInfo = {
       modelName: string;
       modelCode: string;

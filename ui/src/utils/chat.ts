@@ -1,4 +1,4 @@
-import { getPrimaryTaskFile, normalizeHistoryFile } from "@/utils/historyArtifacts";
+import { getPrimaryTaskFile, normalizeTaskFile } from "@/utils/taskArtifacts";
 import {
   formatDeepSearchQueryText,
   resolveDeepSearchActionText,
@@ -37,7 +37,7 @@ const taskRenderCache = new WeakMap<object, TaskRenderCacheEntry>();
 
 /**
  * 实时 SSE 的文件类事件会把 artifactRefs 放在 eventData 顶层，
- * 这里统一折叠进任务对象，保证工作区和历史回放走同一套取文件逻辑。
+ * 这里统一折叠进任务对象，保证工作区始终走同一套取文件逻辑。
  */
 export function buildTaskFromEventData(eventData: MESSAGE.EventData): MESSAGE.Task {
   const artifactRefs = Array.isArray(eventData.artifactRefs)
@@ -954,7 +954,7 @@ function clonePlanForRender(plan?: MESSAGE.Plan) {
   };
 }
 
-function cloneSearchResultForReplay(searchResult?: MESSAGE.SearchResult) {
+function cloneSearchResultSnapshot(searchResult?: MESSAGE.SearchResult) {
   if (!searchResult) {
     return searchResult;
   }
@@ -968,7 +968,7 @@ function cloneSearchResultForReplay(searchResult?: MESSAGE.SearchResult) {
   };
 }
 
-function cloneResultMapForReplay(
+function cloneResultMapSnapshot(
   resultMap?: MESSAGE.ResultMap
 ): MESSAGE.ResultMap {
   if (!resultMap) {
@@ -977,7 +977,7 @@ function cloneResultMapForReplay(
 
   return {
     ...resultMap,
-    searchResult: cloneSearchResultForReplay(resultMap.searchResult),
+    searchResult: cloneSearchResultSnapshot(resultMap.searchResult),
     fileInfo: [...(resultMap.fileInfo || [])],
     fileList: [...(resultMap.fileList || [])],
     refList: [...(resultMap.refList || [])],
@@ -985,11 +985,11 @@ function cloneResultMapForReplay(
   };
 }
 
-function cloneTaskForReplay(task: MESSAGE.Task): MESSAGE.Task {
+function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
   return {
     ...task,
     plan: clonePlanForRender(task.plan),
-    resultMap: cloneResultMapForReplay(task.resultMap),
+    resultMap: cloneResultMapSnapshot(task.resultMap),
     toolResult: task.toolResult
       ? {
         ...task.toolResult,
@@ -1002,15 +1002,15 @@ function cloneTaskForReplay(task: MESSAGE.Task): MESSAGE.Task {
 }
 
 /**
- * 为历史回放构建工作区任务数据。
- * 当前历史已经完全从 turn/event 还原，这里只负责把事件结果转成工作区视图，
- * 不再依赖 renderSnapshot 之类的旧富字段兜底。
+ * 为当前会话快照重建工作区任务数据。
+ * 这里统一把缓存下来的任务结果重新整理成界面消费结构，
+ * 避免组件层直接依赖流式过程中产生的临时对象形态。
  */
-export const buildReplayTaskData = (
+export const buildConversationTaskData = (
   chat: CHAT.ChatItem,
   deepThink?: boolean
 ) => {
-  const replayChat = {
+  const snapshotChat = {
     ...chat,
     files: [...(chat.files || [])],
     tasks: [],
@@ -1018,13 +1018,13 @@ export const buildReplayTaskData = (
       ...chat.multiAgent,
       plan: clonePlanForRender(chat.multiAgent?.plan),
       tasks: (chat.multiAgent?.tasks || []).map((group) =>
-        group.map((task) => cloneTaskForReplay(task))
+        group.map((task) => cloneTaskSnapshot(task))
       ),
     },
     timeline: [...(chat.timeline || [])],
   } as CHAT.ChatItem;
 
-  return handleTaskData(replayChat, deepThink, replayChat.multiAgent);
+  return handleTaskData(snapshotChat, deepThink, snapshotChat.multiAgent);
 };
 
 function createRenderTask(
@@ -1326,6 +1326,6 @@ export const buildAttachment = (fileList?: CHAT.FileList[]): CHAT.TFile[] => {
   }
 
   return fileList
-    .map((item) => normalizeHistoryFile(item))
+    .map((item) => normalizeTaskFile(item))
     .filter((item): item is CHAT.TFile => Boolean(item));
 };

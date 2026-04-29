@@ -40,15 +40,22 @@ public class Nl2SqlService {
     public static final String NL2SQL_URL = "/v1/tool/nl2sql";
 
     @Autowired
-    DataAgentConfig dataAgentConfig;
+    DataAgentConfig dataAgentConfig;// 配置类：存服务地址等参数
     @Autowired
-    JdbcDataProvider jdbcDataProvider;
+    JdbcDataProvider jdbcDataProvider;// JDBC工具：执行SQL用
 
+    /**
+     * 同步执行NL2SQL（自然语言查询数据）
+     * @param request 包含用户问句、数据源等信息
+     * @return 查询结果列表
+     */
     public List<ChatQueryData> runNL2SQLSync(NL2SQLReq request) throws Exception {
         AtomicReference<Throwable> err = new AtomicReference<>();
         request.setStream(false);
+        // 调AI服务：自然语言 → SQL
         String jsonResult = OkHttpUtil.postJsonBody(dataAgentConfig.getAgentUrl() + NL2SQL_URL, null, JSONObject.toJSONString(request));
         log.info("{},{} nl2sql result without sse:{}", request.getTraceId(), request.getRequestId(), jsonResult);
+        // JSON转对象，提取SQL等信息
         NL2SQLResult nl2SQLResult = JSONObject.parseObject(jsonResult, NL2SQLResult.class);
         if (err.get() != null) {
             throw new RuntimeException("sse nl2sql failed:" + err.get().getMessage());
@@ -74,11 +81,13 @@ public class Nl2SqlService {
     }
 
 
+    //处理sql变得符合数据库语法，不会因为关键字、大小写、重复包裹而出错。
     public String replaceFirstMatchedOrThrow(String input, List<String> codeList) {
         if (input == null || codeList == null || codeList.isEmpty()) {
             throw new IllegalArgumentException("模型编码列表为空，无法替换 nl2sql 结果中的模型占位符");
         }
 
+        //将编码列表转为正则模式：去重、忽略大小写、防重复包裹
         List<Pattern> patterns = codeList.stream()
                 .distinct()
                 .map(code -> Pattern.compile("(?i)(?<!`)\\b" + Pattern.quote(code) + "\\b(?!`)"))
@@ -104,7 +113,9 @@ public class Nl2SqlService {
         if (CollectionUtils.isEmpty(nl2SQLResult.getData())) {
             throw new RuntimeException("nl2sql返回为空");
         }
+        // 记录原始查询问题（用于后续追踪/展示）
         nl2SQLResult.setRootQuery(request.getQuery());
+        //遍历每条生成的SQL，替换模型代码（数据权限控制）
         for (NL2SQLResult.NL2SQLData nl2SQLData : nl2SQLResult.getData()) {
             String prettySql = replaceFirstMatchedOrThrow(nl2SQLData.getNl2sql(), request.getModelCodeList());
             nl2SQLData.setNl2sql(prettySql);
@@ -122,98 +133,161 @@ public class Nl2SqlService {
         }
     }
 
+    //把AI生成的SQL解析、修正、执行，最后返回数据
     public List<ChatQueryData> queryData(NL2SQLReq request, NL2SQLResult nl2SQLResult) throws Exception {
+        // 获取AI生成的多条SQL及其结果
         List<NL2SQLResult.NL2SQLData> data = nl2SQLResult.getData();
+        // 最终返回的数据列表
         List<ChatQueryData> dataList = new ArrayList<>();
+
+        // 获取表结构元数据，转成Map方便通过modelCode快速查找
         List<ChatModelInfoDto> schemaInfo = request.getSchemaInfo();
-        Map<String, ChatModelInfoDto> modelMap = schemaInfo.stream().collect(Collectors.toMap(ChatModelInfoDto::getModelCode, v -> v));
+        Map<String, ChatModelInfoDto> modelMap = schemaInfo.stream()
+            .collect(Collectors.toMap(ChatModelInfoDto::getModelCode, v -> v));
+
+        // 遍历每条SQL进行执行
         for (NL2SQLResult.NL2SQLData nl2SQLData : data) {
-            SqlModel sqlModel = SqlParserUtils.parseSelectSql(nl2SQLData.getNl2sql(), dataAgentConfig.getDbConfig().getType());
+            // 解析SQL，提取表名、字段、条件等
+            SqlModel sqlModel = SqlParserUtils.parseSelectSql(
+                nl2SQLData.getNl2sql(),
+                dataAgentConfig.getDbConfig().getType()
+            );
+
+            // 获取SQL中的主表名（逻辑名）
             String modelCode = sqlModel.getFromTable().getTableName();
+            // 查找对应的表结构信息
             ChatModelInfoDto modelInfo = modelMap.get(modelCode);
             if (modelInfo == null) {
                 throw new RuntimeException("modelCode:" + modelCode + "不存在");
             }
-            Map<String, ChatSchemaDto> columnMap = modelInfo.getSchemaList().stream().collect(Collectors.toMap(ChatSchemaDto::getColumnId, t -> t));
+
+            // 字段元数据转Map，方便通过columnId查找
+            Map<String, ChatSchemaDto> columnMap = modelInfo.getSchemaList().stream()
+                .collect(Collectors.toMap(ChatSchemaDto::getColumnId, t -> t));
+
+            // 解析SQL中的查询字段 -> 前端展示用
             List<ChatQueryColumn> chatQueryColumns = parseColumns(sqlModel, columnMap);
+            // 解析SQL中的过滤条件 -> 前端展示用
             List<ChatQueryFilter> chatQueryFilters = parseFilters(sqlModel, columnMap);
+
+            // 获取真实的数据库表名
             String tableName = getTableName(modelInfo);
+            // SQL替换：将逻辑modelCode替换为真实表名（支持 `key` 和 key 两种格式）
             String realSql = nl2SQLData.getNl2sql();
             for (String key : modelMap.keySet()) {
                 realSql = realSql.replaceAll(key + "|`" + key + "`", tableName);
             }
+
+            // 打印日志：traceId用于全链路追踪
             log.info("{},{} 执行sql:{}", request.getTraceId(), request.getRequestId(), realSql);
+
+            // 构建JDBC请求
             JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
             DbConfig dbConfig = dataAgentConfig.getDbConfig();
             jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
             jdbcQueryRequest.setSql(realSql);
+
+            // 执行SQL查询
             QueryResult queryResult = jdbcDataProvider.queryData(jdbcQueryRequest);
             log.info("{},{} 查询sql结果大小：{}", request.getTraceId(), request.getRequestId(), queryResult.getDataSize());
+
+            // 封装返回结果
             ChatQueryData queryData = new ChatQueryData();
-            queryData.setColumnList(chatQueryColumns);
-            queryData.setFilters(chatQueryFilters);
-            queryData.setQuestion(nl2SQLData.getQuery());
-            queryData.setNl2sqlResult(realSql);
-            queryData.setDataList(queryResult.getDataList());
+            queryData.setColumnList(chatQueryColumns);      // 列信息
+            queryData.setFilters(chatQueryFilters);          // 过滤条件
+            queryData.setQuestion(nl2SQLData.getQuery());    // 原始问题
+            queryData.setNl2sqlResult(realSql);              // 实际执行的SQL
+            queryData.setDataList(queryResult.getDataList()); // 查询数据
             dataList.add(queryData);
         }
+
+        // 智能推荐图表配置（根据数据特征判断用柱状图/折线图等）
         parseChartConfig(dataList);
+
         return dataList;
     }
 
     private List<ChatQueryColumn> parseColumns(SqlModel sqlModel, Map<String, ChatSchemaDto> columnMap) {
         List<ChatQueryColumn> colList = new ArrayList<>();
+
+        // 处理 SELECT * 场景：直接返回所有列
         if (sqlModel.getColumnList().size() == 1 && sqlModel.getColumnList().get(0).isStar()) {
             return parseStarColumn(columnMap);
         }
+
+        // 获取排序字段列表（防null）
         List<DataOrderBy> orderByList = sqlModel.getOrderByList();
         if (orderByList == null) {
             orderByList = new ArrayList<>();
         }
+
+        // 遍历每列，构建查询列对象
         for (ModelColumn column : sqlModel.getColumnList()) {
             ChatQueryColumn col = new ChatQueryColumn();
-            col.setCol(column.getColumnName());
+
+            // 基础信息
+            col.setCol(column.getColumnName());                          // 原始列名/表达式
             if (StringUtils.isBlank(column.getColumnAlias())) {
-                col.setGuid(StringUtils.lowerCase(column.getColumnName()));
+                col.setGuid(StringUtils.lowerCase(column.getColumnName()));  // 无别名：guid=列名小写
             } else {
-                col.setGuid(StringUtils.lowerCase(column.getColumnAlias()));
-                col.setName(column.getColumnAlias());
+                col.setGuid(StringUtils.lowerCase(column.getColumnAlias())); // 有别名：guid=别名小写
+                col.setName(column.getColumnAlias());                        // 显示名=别名
             }
-            col.setColType(column.getColumnKind());
+            col.setColType(column.getColumnKind());                      // 列类型（IDENTIFIER/函数等）
+
+            // 场景1：普通字段 - 从元数据取名称和类型
             if (SqlKind.IDENTIFIER.name().equalsIgnoreCase(column.getColumnKind())) {
                 ChatSchemaDto chatSchemaDto = columnMap.get(column.getColumnName());
                 if (chatSchemaDto != null) {
-                    col.setName(chatSchemaDto.getColumnName());
-                    col.setDataType(chatSchemaDto.getDataType());
+                    col.setName(chatSchemaDto.getColumnName());          // 真实字段名
+                    col.setDataType(chatSchemaDto.getDataType());        // 数据库类型
                 }
-            } else {
+            }
+            // 场景2：函数/表达式
+            else {
+                // 聚合函数：标记聚合类型，默认DECIMAL
                 if (column.isAggregator()) {
-                    col.setAgg(column.getFunctionName());
+                    col.setAgg(column.getFunctionName());                // SUM/COUNT/AVG等
                     col.setDataType(StandardColumnType.DECIMAL.name());
                 }
 
+                // 从函数参数关联原始字段信息
                 if (CollectionUtils.isNotEmpty(column.getFunctionArgList())) {
-                    String arg = column.getFunctionArgList().get(0);
-                    ChatSchemaDto chatSchemaDto = columnMap.getOrDefault(StringUtils.lowerCase(arg), columnMap.get(StringUtils.upperCase(arg)));
+                    String arg = column.getFunctionArgList().get(0);     // 取第一个参数
+                    // 兼容大小写匹配
+                    ChatSchemaDto chatSchemaDto = columnMap.getOrDefault(
+                        StringUtils.lowerCase(arg),
+                        columnMap.get(StringUtils.upperCase(arg))
+                    );
                     if (chatSchemaDto != null) {
-                        if(StringUtils.isBlank(col.getName())){
-                            col.setName(chatSchemaDto.getColumnName());
+                        if (StringUtils.isBlank(col.getName())) {
+                            col.setName(chatSchemaDto.getColumnName());  // 补充显示名
                         }
-                        col.setDataType(chatSchemaDto.getDataType());
+                        col.setDataType(chatSchemaDto.getDataType());    // 补充数据类型
                     }
                 }
             }
+
+            // 兜底：数值类型默认DECIMAL
             if (StringUtils.isBlank(col.getDataType()) && isNumberKind(column.getColumnKind())) {
                 col.setDataType(StandardColumnType.DECIMAL.name());
             }
+
+            // 兜底：无显示名则用guid
             if (StringUtils.isBlank(col.getName())) {
                 col.setName(col.getGuid());
             }
 
-            Optional<DataOrderBy> orderOption = orderByList.stream().filter(f -> StringUtils.equalsIgnoreCase(f.getColumnName(), col.getGuid()) || StringUtils.equalsIgnoreCase(f.getColumnName(), col.getName())).findAny();
-            orderOption.ifPresent(dataOrderBy -> col.setOrder(dataOrderBy.getOrderType().name()));
+            // 关联排序信息
+            Optional<DataOrderBy> orderOption = orderByList.stream()
+                .filter(f -> StringUtils.equalsIgnoreCase(f.getColumnName(), col.getGuid())
+                    || StringUtils.equalsIgnoreCase(f.getColumnName(), col.getName()))
+                .findAny();
+            orderOption.ifPresent(dataOrderBy -> col.setOrder(dataOrderBy.getOrderType().name())); // ASC/DESC
+
             colList.add(col);
         }
+
         return colList;
     }
 

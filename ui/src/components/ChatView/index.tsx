@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ActionViewItemEnum, getUniqId } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import {
-  buildReplayTaskData,
+  buildConversationTaskData,
   buildTaskFromEventData,
   handleTaskData,
   combineData,
@@ -326,7 +326,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       return;
     }
 
-    const latestReplayChat = [...conversation.chatList]
+    const latestChatSnapshot = [...conversation.chatList]
       .reverse()
       .find(
         (chat) =>
@@ -335,23 +335,23 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           !!chat.timeline?.length
       );
 
-    if (!latestReplayChat) {
+    if (!latestChatSnapshot) {
       return;
     }
 
-    const replayTaskData = buildReplayTaskData(
-      latestReplayChat,
+    const conversationTaskData = buildConversationTaskData(
+      latestChatSnapshot,
       conversation.deepThink
     );
-    const latestTask = getLatestRenderableTask(replayTaskData.currentChat);
+    const latestTask = getLatestRenderableTask(conversationTaskData.currentChat);
 
-    setTaskList(replayTaskData.taskList);
-    setPlan(replayTaskData.plan);
+    setTaskList(conversationTaskData.taskList);
+    setPlan(conversationTaskData.plan);
     setWorkspaceStreamTask(
       latestTask ? cloneWorkspaceTask(latestTask) : undefined
     );
     setShowAction(
-      replayTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
+      conversationTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
     );
   }, [conversation.chatList, conversation.deepThink, conversation.id, loading]);
 

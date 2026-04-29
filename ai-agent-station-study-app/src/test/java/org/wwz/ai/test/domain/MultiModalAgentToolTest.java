@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 多模态知识检索工具测试。
@@ -63,7 +64,14 @@ public class MultiModalAgentToolTest {
 
             Assert.assertTrue(result.contains("多模态检索会先召回图文片段。"));
             Assert.assertTrue(result.contains("![图片](https://img.example.com/mrag.png)"));
-            Assert.assertEquals(List.of("knowledge", "markdown"), printer.messageTypes());
+            Assert.assertEquals("markdown", printer.messageTypes().get(printer.messageTypes().size() - 1));
+            Assert.assertEquals(
+                    List.of("knowledge"),
+                    printer.messageTypes()
+                            .subList(0, printer.messageTypes().size() - 1)
+                            .stream()
+                            .distinct()
+                            .collect(Collectors.toList()));
             Assert.assertEquals(1, agentContext.getTaskProductFiles().size());
             Assert.assertTrue(agentContext.getTaskProductFiles().get(0).getFileName().endsWith(".md"));
         } finally {

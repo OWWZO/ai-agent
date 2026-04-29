@@ -63,7 +63,7 @@ describe("deepSearch utils", () => {
     expect(markdown).toContain("- 问题B");
   });
 
-  it("历史回放中的 extend 阶段仍保持正在搜索文案", () => {
+  it("快照态的 extend 阶段仍保持正在搜索文案", () => {
     expect(resolveDeepSearchActionText("extend", true)).toBe("正在搜索");
   });
 

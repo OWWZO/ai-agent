@@ -1,7 +1,7 @@
 import { iconType } from "@/utils/constants";
 import docxIcon from "@/assets/icon/docx.png";
 import { Tooltip } from "antd";
-import { isImageFileLike } from "@/utils/historyArtifacts";
+import { isImageFileLike } from "@/utils/taskArtifacts";
 
 type Props = {
   files?: CHAT.TFile[];
@@ -12,7 +12,7 @@ type Props = {
 
 const AttachmentList: ReactorType.FC<Props> = (props) => {
   const { files, preview, remove, review } = props;
-  // 历史消息里的附件字段可能缺失，这里统一兜底成空数组，避免界面直接崩溃。
+  // 附件字段可能缺失，这里统一兜底成空数组，避免界面直接崩溃。
   const attachmentList = Array.isArray(files) ? files : [];
 
   const formatSize = (size?: number) => {

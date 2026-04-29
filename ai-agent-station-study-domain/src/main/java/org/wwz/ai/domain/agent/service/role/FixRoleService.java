@@ -6,9 +6,7 @@ import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
-import org.wwz.ai.domain.agent.reactor.agent.enums.ConversationAgentType;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.entity.AgentConversation;
 import org.wwz.ai.domain.agent.service.IFixRoleService;
 
 import javax.annotation.Resource;
@@ -91,39 +89,6 @@ public class FixRoleService implements IFixRoleService {
         return toFixRoleVO(aiAgentVO, isDefaultRole, isDefaultRole ? 0 : null);
     }
 
-    @Override
-    public ConversationRoleVO buildConversationRole(AgentConversation conversation) {
-        if (conversation == null || conversation.getAgentType() == null
-                || ConversationAgentType.CHAT.getCode() != conversation.getAgentType()) {
-            return null;
-        }
-
-        if (conversation.getAiAgentId() == null || conversation.getAiAgentId().isBlank()) {
-            FixRoleVO defaultRole = queryDefaultRole();
-            if (defaultRole == null) {
-                return null;
-            }
-            return ConversationRoleVO.builder()
-                    .agentId(defaultRole.getAgentId())
-                    .agentName(defaultRole.getAgentName())
-                    .available(true)
-                    .defaultRole(true)
-                    .build();
-        }
-
-        FixRoleVO roleVO = queryRole(conversation.getAiAgentId());
-        String roleName = conversation.getAiAgentNameSnapshot();
-        if ((roleName == null || roleName.isBlank()) && roleVO != null) {
-            roleName = roleVO.getAgentName();
-        }
-
-        return ConversationRoleVO.builder()
-                .agentId(conversation.getAiAgentId())
-                .agentName(roleName)
-                .available(roleVO != null)
-                .defaultRole(roleVO != null && roleVO.isDefaultRole())
-                .build();
-    }
 
     private FixRoleVO toFixRoleVO(AiAgentVO aiAgentVO, boolean defaultRole, Integer sortIndex) {
         return FixRoleVO.builder()

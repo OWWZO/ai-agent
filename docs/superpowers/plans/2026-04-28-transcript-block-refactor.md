@@ -4,7 +4,7 @@
 
 **Goal:** 重构会话历史持久化，用 `ai_agent_turn` + `ai_agent_transcript_block` + `ai_agent_display_event` 替换旧表，去除所有兼容逻辑。
 
-**Architecture:** 扁平化 TranscriptBlock 设计，6 种标准 block_type 枚举，AgentResponse 直接映射为标准块，读取时直接查询拼接。前端展示通过异步投影到独立的 `ai_agent_display_event` 表，彻底分离 LLM 和前端两个领域。
+**Architecture:** 扁平化 TranscriptBlock 设计，6 种标准 block_type 枚举，AgentResponse 直接映射为标准块，读取时直接查询拼接。前端展示通过**同步双写**到独立的 `ai_agent_display_event` 表，同一事务内完成 TranscriptBlock + DisplayEvent 写入，彻底分离 LLM 和前端两个领域。
 
 **Tech Stack:** Spring Boot 3.4.3, Java 17, MyBatis-Plus, MySQL
 
@@ -122,6 +122,36 @@ CREATE TABLE IF NOT EXISTS ai_agent_transcript_block (
 ) ENGINE=InnoDB COMMENT='对话语义块';
 
 -- ========================================================
+-- 新表: ai_agent_display_event (前端展示事件，同步双写，完整保留对话细节)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS ai_agent_display_event (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT,
+    turn_id             BIGINT       NOT NULL COMMENT 'FK -> ai_agent_turn.id',
+    seq_no              INT          NOT NULL COMMENT '轮内展示顺序',
+    display_type        VARCHAR(32)  NOT NULL COMMENT 'user_message|thought|tool_call|tool_result|artifact|final_answer|plan|task_start|task_complete|error',
+    task_id             VARCHAR(64)  NULL     COMMENT '任务ID（AutoAgent多步骤时）',
+    task_name           VARCHAR(128) NULL     COMMENT '任务名称',
+    task_order          INT          NULL     COMMENT '任务序号',
+    title               VARCHAR(256) NULL     COMMENT '显示标题',
+    content_text        MEDIUMTEXT   NULL     COMMENT '展示文本（完整保留对话细节）',
+    content_json        JSON         NULL     COMMENT '结构化内容（图表、表格等）',
+    tool_use_id         VARCHAR(128) NULL,
+    tool_name           VARCHAR(128) NULL,
+    tool_arguments_json JSON         NULL,
+    artifact_refs_json  JSON         NULL,
+    result_payload_json JSON         NULL,
+    status              VARCHAR(16)  NOT NULL DEFAULT 'completed' COMMENT 'pending|running|completed|error',
+    display_area        VARCHAR(32)  NOT NULL DEFAULT 'timeline' COMMENT 'timeline|sidebar',
+    display_props_json  JSON         NULL     COMMENT '前端组件额外属性',
+    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted             TINYINT(1)   NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_turn_seq (turn_id, seq_no),
+    KEY idx_turn (turn_id, deleted, seq_no),
+    KEY idx_task (turn_id, task_id, deleted)
+) ENGINE=InnoDB COMMENT='前端展示事件表（同步双写）';
+
+-- ========================================================
 -- 简化表: ai_agent_session_memory (agent_type字段删除，artifact_refs_json改为artifact_refs)
 -- ========================================================
 -- 注: 如果旧表已有数据，需要 DROP 后重新创建。由于是"彻底打破"方案，直接替换。
@@ -131,7 +161,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_transcript_block (
 
 ```bash
 git add ai-agent-station-study-app/src/main/resources/db/schema.sql
-git commit -m "feat: 添加 ai_agent_turn 和 ai_agent_transcript_block 新表"
+git commit -m "feat: 添加 ai_agent_turn、ai_agent_transcript_block、ai_agent_display_event 新表"
 ```
 
 ---
@@ -1313,15 +1343,11 @@ mvn clean compile
 
 常见需要修复的地方：
 1. `AgentConversationServiceImpl` 中引用 `AgentMessage` 的地方 → 替换为 `Turn`
-2. `ConversationReplayAssembler` 中引用 `AgentMessageEvent` 的地方 → 注意：链路 2 不在本次范围内，但如果有编译错误需要临时处理（例如保留旧类直到链路 2 重构）
+2. 前端历史查询链路中引用 `ConversationReplayAssembler` / `AgentMessageEvent` 的地方 → 替换为 `DisplayHistoryQueryService` + `DisplayEvent`
 3. 任何引用 `IAgentMessageDao` 的类 → 替换为 `ITurnDao`
 4. 测试类中引用旧实体的地方 → 更新测试
 
-**注意**：如果链路 2 的代码（如 `ConversationReplayAssembler`）因删除旧实体而无法编译，有两种处理方式：
-- **方式 A（推荐）**：暂时保留旧实体但标记 `@Deprecated`，等链路 2 重构后再删除
-- **方式 B**：在本次重构中一并修改链路 2 的代码，用新实体替代
-
-由于用户明确说"只处理链路 1"，建议采用方式 A：保留旧实体和相关类直到链路 2 重构，但不再在链路 1 中使用。
+**注意**：本计划已经改为链路 1 + 链路 2 同步切换，不保留旧实体、旧回放类作为过渡兼容。
 
 - [ ] **Step 2: Commit**
 
@@ -1332,77 +1358,7 @@ git commit -m "refactor: 修复编译错误，清理旧代码引用"
 
 ---
 
-## Task 18: 运行测试验证
-
-**Files:** 测试相关
-
-- [ ] **Step 1: 运行编译**
-
-```bash
-cd ai-agent-station-study-app
-mvn clean compile
-```
-
-预期：编译成功，无错误。
-
-- [ ] **Step 2: 运行现有测试**
-
-```bash
-mvn test -pl ai-agent-station-study-app
-```
-
-预期：与链路 1 相关的测试通过。链路 2 的测试可能失败（如果保留了旧代码则不会）。
-
-- [ ] **Step 3: Commit**
-
-```bash
-git commit -m "test: 验证重构后编译和测试通过" --allow-empty
-```
-
----
-
-## 自我审查
-
-### Spec 覆盖检查
-
-| Spec 要求 | 对应 Task |
-|-----------|-----------|
-| 新表结构（ai_agent_turn + ai_agent_transcript_block） | Task 1 |
-| TranscriptBlockType 枚举（6 种） | Task 2 |
-| Turn / TranscriptBlock / SessionMemory 实体 | Task 3, 4, 5 |
-| DAO + Mapper XML | Task 6, 7, 8 |
-| TranscriptBlockMapper（归类映射） | Task 9 |
-| TurnWriter + TranscriptBlockWriter | Task 10 |
-| TranscriptPromptFormatter | Task 11 |
-| TranscriptContextBuilder（替代 SessionWorkingMemoryAssembler） | Task 12 |
-| 替换写入路径 | Task 13 |
-| 替换读取路径 | Task 14 |
-| 压缩服务调整 | Task 15 |
-| 删除旧兼容类 | Task 16, 17 |
-| 前端展示分离（设计提及，实施不处理） | 不在范围内 |
-
-### Placeholder 扫描
-
-- 无 TBD/TODO
-- 无 "add appropriate error handling" 等模糊描述
-- 所有代码块包含完整代码
-- 文件路径都是绝对路径
-
-### 类型一致性检查
-
-- `TranscriptBlockType` 枚举在 Task 2 定义，在 Task 4（实体）、Task 9（Mapper）、Task 11（Formatter）中使用，名称一致
-- `SessionMemory` 实体在 Task 5 定义，字段名在 Task 8（Mapper XML）和 Task 12（ContextBuilder）中一致
-- `artifactRefsJson` 字段名在所有实体和 Mapper 中一致
-
-### 风险提示
-
-1. **AgentResponse 字段名不确定**：Task 9 中 `TranscriptBlockMapper` 使用了假设的字段名（`getMessageType()`、`getContent()` 等），需要根据实际 `AgentResponse` 类调整
-2. **链路 2 编译问题**：已解决，链路 2 同步重构，不需要保留旧实体
-3. **JSON 工具选择**：Task 9 和 Task 11 使用了 `com.alibaba.fastjson`，如果项目使用 Jackson 需要替换
-
----
-
-## Task 19: DisplayEvent 实体
+## Task 18: DisplayEvent 实体
 
 **Files:**
 - Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DisplayEvent.java`
@@ -1424,14 +1380,36 @@ public class DisplayEvent {
     private Long id;
     private Long turnId;
     private Integer seqNo;
-    private String eventType;
-    private String uiType;
-    private String title;
-    private String displayArea;
+
+    // 展示类型（前端组件选择）
+    private String displayType;       // user_message|thought|tool_call|...
+
+    // 任务分组
     private String taskId;
+    private String taskName;
     private Integer taskOrder;
-    private String status;
-    private String contentJson;
+
+    // 内容（完整保留对话细节）
+    private String title;
+    private String contentText;       // 与 TranscriptBlock.text 对应
+    private String contentJson;       // 结构化额外数据
+
+    // 工具信息（完整保留）
+    private String toolUseId;
+    private String toolName;
+    private String toolArgumentsJson;
+
+    // 产物与结果（完整保留）
+    private String artifactRefsJson;
+    private String resultPayloadJson;
+
+    // 展示状态与区域
+    private String status;            // pending|running|completed|error
+    private String displayArea;       // timeline|sidebar
+
+    // 前端组件属性
+    private String displayPropsJson;
+
     private LocalDateTime createTime;
     private Integer deleted;
 }
@@ -1446,7 +1424,7 @@ git commit -m "feat: 添加 DisplayEvent 实体"
 
 ---
 
-## Task 20: DisplayEvent DAO + Mapper XML
+## Task 19: DisplayEvent DAO + Mapper XML
 
 **Files:**
 - Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDisplayEventDao.java`
@@ -1489,28 +1467,35 @@ public interface IDisplayEventDao {
         <id column="id" property="id"/>
         <result column="turn_id" property="turnId"/>
         <result column="seq_no" property="seqNo"/>
-        <result column="event_type" property="eventType"/>
-        <result column="ui_type" property="uiType"/>
-        <result column="title" property="title"/>
-        <result column="display_area" property="displayArea"/>
+        <result column="display_type" property="displayType"/>
         <result column="task_id" property="taskId"/>
+        <result column="task_name" property="taskName"/>
         <result column="task_order" property="taskOrder"/>
+        <result column="title" property="title"/>
+        <result column="content_text" property="contentText"/>
+        <result column="content_json" property="contentJson"/>
+        <result column="tool_use_id" property="toolUseId"/>
+        <result column="tool_name" property="toolName"/>
+        <result column="tool_arguments_json" property="toolArgumentsJson"/>
+        <result column="artifact_refs_json" property="artifactRefsJson"/>
+        <result column="result_payload_json" property="resultPayloadJson"/>
         <result column="status" property="status"/>
-        <result column="content" property="contentJson"/>
+        <result column="display_area" property="displayArea"/>
+        <result column="display_props_json" property="displayPropsJson"/>
         <result column="create_time" property="createTime"/>
         <result column="deleted" property="deleted"/>
     </resultMap>
 
     <insert id="insert" parameterType="org.wwz.ai.domain.agent.reactor.entity.DisplayEvent" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_agent_display_event (turn_id, seq_no, event_type, ui_type, title, display_area, task_id, task_order, status, content, create_time, deleted)
-        VALUES (#{turnId}, #{seqNo}, #{eventType}, #{uiType}, #{title}, #{displayArea}, #{taskId}, #{taskOrder}, #{status}, #{contentJson}, now(), 0)
+        INSERT INTO ai_agent_display_event (turn_id, seq_no, display_type, task_id, task_name, task_order, title, content_text, content_json, tool_use_id, tool_name, tool_arguments_json, artifact_refs_json, result_payload_json, status, display_area, display_props_json, create_time, deleted)
+        VALUES (#{turnId}, #{seqNo}, #{displayType}, #{taskId}, #{taskName}, #{taskOrder}, #{title}, #{contentText}, #{contentJson}, #{toolUseId}, #{toolName}, #{toolArgumentsJson}, #{artifactRefsJson}, #{resultPayloadJson}, #{status}, #{displayArea}, #{displayPropsJson}, now(), 0)
     </insert>
 
     <insert id="batchInsert">
-        INSERT INTO ai_agent_display_event (turn_id, seq_no, event_type, ui_type, title, display_area, task_id, task_order, status, content, create_time, deleted)
+        INSERT INTO ai_agent_display_event (turn_id, seq_no, display_type, task_id, task_name, task_order, title, content_text, content_json, tool_use_id, tool_name, tool_arguments_json, artifact_refs_json, result_payload_json, status, display_area, display_props_json, create_time, deleted)
         VALUES
         <foreach collection="events" item="event" separator=",">
-            (#{event.turnId}, #{event.seqNo}, #{event.eventType}, #{event.uiType}, #{event.title}, #{event.displayArea}, #{event.taskId}, #{event.taskOrder}, #{event.status}, #{event.contentJson}, now(), 0)
+            (#{event.turnId}, #{event.seqNo}, #{event.displayType}, #{event.taskId}, #{event.taskName}, #{event.taskOrder}, #{event.title}, #{event.contentText}, #{event.contentJson}, #{event.toolUseId}, #{event.toolName}, #{event.toolArgumentsJson}, #{event.artifactRefsJson}, #{event.resultPayloadJson}, #{event.status}, #{event.displayArea}, #{event.displayPropsJson}, now(), 0)
         </foreach>
     </insert>
 
@@ -1545,7 +1530,7 @@ git commit -m "feat: 添加 DisplayEvent DAO 和 Mapper XML"
 
 ---
 
-## Task 21: DisplayEventProjector
+## Task 20: DisplayEventProjector
 
 **Files:**
 - Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayEventProjector.java`
@@ -1555,7 +1540,6 @@ git commit -m "feat: 添加 DisplayEvent DAO 和 Mapper XML"
 ```java
 package org.wwz.ai.domain.agent.reactor.service.support;
 
-import com.alibaba.fastjson.JSON;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
@@ -1563,11 +1547,10 @@ import org.wwz.ai.domain.agent.reactor.entity.TranscriptBlock;
 import org.wwz.ai.domain.agent.reactor.model.enums.TranscriptBlockType;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * TranscriptBlock → DisplayEvent 投影器。
- * 集中处理所有展示逻辑，前端需求变更只改这里。
+ * 直接复制 TranscriptBlock 事实字段，并补齐前端展示元数据。
  */
 @Component
 @RequiredArgsConstructor
@@ -1592,12 +1575,12 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("user_input");
-        event.setUiType("text");
+        event.setDisplayType("user_message");
         event.setTitle("用户输入");
+        event.setContentText(block.getText());
+        event.setArtifactRefsJson(block.getArtifactRefsJson());
         event.setDisplayArea("timeline");
         event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()), "files", safeParseJson(block.getArtifactRefsJson()))));
         return event;
     }
 
@@ -1605,12 +1588,11 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("assistant_thought");
-        event.setUiType("text");
+        event.setDisplayType("thought");
         event.setTitle("思考过程");
+        event.setContentText(block.getText());
         event.setDisplayArea("timeline");
         event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()))));
         return event;
     }
 
@@ -1618,16 +1600,14 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("tool_use");
-        event.setUiType("tool_card");
+        event.setDisplayType("tool_call");
         event.setTitle("调用 " + nvl(block.getToolName(), "工具"));
+        event.setContentText(block.getText());
+        event.setToolUseId(block.getToolUseId());
+        event.setToolName(block.getToolName());
+        event.setToolArgumentsJson(block.getToolArgumentsJson());
         event.setDisplayArea("timeline");
         event.setStatus("running");
-        event.setContentJson(buildJson(Map.of(
-            "toolName", nvl(block.getToolName()),
-            "arguments", safeParseJson(block.getToolArgumentsJson()),
-            "description", nvl(block.getText())
-        )));
         return event;
     }
 
@@ -1635,15 +1615,12 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("tool_result");
-        event.setUiType("text");
+        event.setDisplayType("tool_result");
         event.setTitle("工具结果");
+        event.setContentText(block.getText());
+        event.setResultPayloadJson(block.getResultPayloadJson());
         event.setDisplayArea("timeline");
         event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of(
-            "text", nvl(block.getText()),
-            "payload", safeParseJson(block.getResultPayloadJson())
-        )));
         return event;
     }
 
@@ -1651,12 +1628,12 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("artifact");
-        event.setUiType("file_card");
+        event.setDisplayType("artifact");
         event.setTitle("生成文件");
+        event.setContentText(block.getText());
+        event.setArtifactRefsJson(block.getArtifactRefsJson());
         event.setDisplayArea("timeline");
         event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of("files", safeParseJson(block.getArtifactRefsJson()))));
         return event;
     }
 
@@ -1664,12 +1641,11 @@ public class DisplayEventProjector {
         DisplayEvent event = new DisplayEvent();
         event.setTurnId(block.getTurnId());
         event.setSeqNo(block.getSeqNo());
-        event.setEventType("assistant_answer");
-        event.setUiType("text");
+        event.setDisplayType("final_answer");
         event.setTitle("回答");
+        event.setContentText(block.getText());
         event.setDisplayArea("timeline");
         event.setStatus("completed");
-        event.setContentJson(buildJson(Map.of("text", nvl(block.getText()))));
         return event;
     }
 
@@ -1680,24 +1656,13 @@ public class DisplayEventProjector {
     private String nvl(String s, String defaultValue) {
         return s == null || s.isBlank() ? defaultValue : s;
     }
-
-    private Object safeParseJson(String json) {
-        try {
-            return JSON.parse(json);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String buildJson(Map<String, Object> map) {
-        try {
-            return JSON.toJSONString(map);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
 }
 ```
+
+**约束说明**：
+- `DisplayEventProjector` 直接复制 `contentText` / `toolName` / `toolArgumentsJson` / `artifactRefsJson` / `resultPayloadJson` 等字段
+- 不再把工具参数、产物列表、结果载荷重新包装进 `contentJson`
+- `contentJson` 仅用于 block 本身已有的结构化内容；若当前链路没有该类结构化内容，可保持 `null`
 
 - [ ] **Step 2: Commit**
 
@@ -1708,7 +1673,7 @@ git commit -m "feat: 添加 DisplayEventProjector"
 
 ---
 
-## Task 22: DisplayHistoryQueryService
+## Task 21: DisplayHistoryQueryService
 
 **Files:**
 - Create: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/DisplayHistoryQueryService.java`
@@ -1787,20 +1752,21 @@ git commit -m "feat: 添加 DisplayHistoryQueryService 替代 ConversationReplay
 
 ---
 
-## Task 23: 触发投影的写入逻辑
+## Task 22: 同步双写 — TranscriptBlockWriter
 
 **Files:**
 - Modify: `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptBlockWriter.java`
 
-- [ ] **Step 1: 在 TranscriptBlockWriter 中增加投影触发**
+- [ ] **Step 1: 在 TranscriptBlockWriter 中增加同步双写**
 
-修改 `TranscriptBlockWriter`，在保存 blocks 后触发投影：
+修改 `TranscriptBlockWriter`，在同一事务内保存 blocks 并投影为 display events：
 
 ```java
 package org.wwz.ai.domain.agent.reactor.service.support;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.wwz.ai.domain.agent.reactor.entity.DisplayEvent;
 import org.wwz.ai.domain.agent.reactor.entity.TranscriptBlock;
 import org.wwz.ai.domain.agent.reactor.mapper.IDisplayEventDao;
@@ -1816,13 +1782,14 @@ public class TranscriptBlockWriter {
     private final IDisplayEventDao displayEventDao;
     private final DisplayEventProjector displayEventProjector;
 
+    @Transactional
     public void saveBatch(List<TranscriptBlock> blocks) {
         if (blocks == null || blocks.isEmpty()) return;
 
-        // 1. 保存 transcript blocks
+        // 1. 保存 transcript blocks（LLM 链路源数据）
         transcriptBlockDao.batchInsert(blocks);
 
-        // 2. 同步投影为 display events（简单直接，不需要异步事件）
+        // 2. 同步投影为 display events（前端展示数据，同一事务）
         List<DisplayEvent> displayEvents = displayEventProjector.project(blocks);
         if (!displayEvents.isEmpty()) {
             displayEventDao.batchInsert(displayEvents);
@@ -1831,21 +1798,26 @@ public class TranscriptBlockWriter {
 }
 ```
 
-**注意**：这里选择**同步双写**而非异步事件，因为：
-- 投影逻辑很轻量（只是字段映射）
-- 同步更简单，不需要引入事件监听机制
+**同步双写理由**：
+- 投影逻辑轻量（字段映射 + 展示元数据），不会显著增加写入延迟
+- 同一事务保证 `ai_agent_transcript_block` 和 `ai_agent_display_event` 数据一致
+- 前端查询时直接读取 `ai_agent_display_event`，不需要实时计算
 - 如果未来投影变重，再改为异步也不迟
+
+**幂等边界**：
+- `saveBatch()` 仅用于同一 `turn` 的首次完整写入
+- 如果同一 `turn` 发生补写、重试或重放，调用方需要先清理该 `turn` 在两张表中的旧数据，再执行整轮重建
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/support/TranscriptBlockWriter.java
-git commit -m "feat: TranscriptBlockWriter 同步投影 DisplayEvent"
+git commit -m "feat: TranscriptBlockWriter 同步双写 DisplayEvent"
 ```
 
 ---
 
-## Task 24: 替换前端历史查询接口
+## Task 23: 替换前端历史查询接口
 
 **Files:**
 - Modify: 前端历史查询 Controller/Service（根据实际代码路径）
@@ -1859,7 +1831,7 @@ git commit -m "feat: TranscriptBlockWriter 同步投影 DisplayEvent"
 搜索方法：
 
 ```bash
-grep -r "ConversationReplayAssembler\|queryHistory\|historyDetail" ai-agent-station-study-trigger/
+rg "ConversationReplayAssembler|queryHistory|historyDetail" ai-agent-station-study-trigger/
 ```
 
 - [ ] **Step 2: 替换为 DisplayHistoryQueryService**
@@ -1889,7 +1861,7 @@ git commit -m "refactor: 前端历史查询接口使用 DisplayHistoryQueryServi
 
 ---
 
-## Task 25: 最终删除旧代码 + 编译验证
+## Task 24: 最终删除旧代码 + 编译验证
 
 **Files:** 多个
 
@@ -1923,7 +1895,7 @@ git commit -m "refactor: 删除所有旧兼容类，链路 1 + 链路 2 重构�
 
 ---
 
-## 自我审查（更新版）
+## 自我审查
 
 ### Spec 覆盖检查
 
@@ -1940,12 +1912,12 @@ git commit -m "refactor: 删除所有旧兼容类，链路 1 + 链路 2 重构�
 | 替换写入路径 | Task 13 |
 | 替换读取路径 | Task 14 |
 | 压缩服务调整 | Task 15 |
-| 删除旧兼容类 | Task 16, 17, 25 |
-| **DisplayEvent 实体 + DAO** | **Task 19, 20** |
-| **DisplayEventProjector** | **Task 21** |
-| **DisplayHistoryQueryService** | **Task 22** |
-| **同步投影触发** | **Task 23** |
-| **替换前端查询接口** | **Task 24** |
+| 删除旧兼容类 | Task 16, 17, 24 |
+| **DisplayEvent 实体 + DAO** | **Task 18, 19** |
+| **DisplayEventProjector** | **Task 20** |
+| **DisplayHistoryQueryService** | **Task 21** |
+| **同步双写** | **Task 22** |
+| **替换前端查询接口** | **Task 23** |
 
 ### Placeholder 扫描
 
@@ -1962,5 +1934,5 @@ git commit -m "refactor: 删除所有旧兼容类，链路 1 + 链路 2 重构�
 ### 风险提示
 
 1. **AgentResponse 字段名不确定**：Task 9 中 `TranscriptBlockMapper` 使用了假设的字段名，需要根据实际 `AgentResponse` 类调整
-2. **JSON 工具选择**：Task 9、11、21 使用了 `com.alibaba.fastjson`，如果项目使用 Jackson 需要替换
-3. **前端 VO 兼容性**：Task 24 中前端返回结构可能变化，需要确认前端是否能适配 `TurnHistory` 结构
+2. **JSON 工具选择**：Task 9、11 使用了 `com.alibaba.fastjson`，如果项目使用 Jackson 需要替换
+3. **前端 VO 兼容性**：Task 23 中前端返回结构可能变化，需要确认前端是否能适配 `TurnHistory` 结构

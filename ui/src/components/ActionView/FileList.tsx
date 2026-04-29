@@ -8,7 +8,7 @@ import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getTaskFiles, isImageFileLike } from "@/utils/historyArtifacts";
+import { getTaskFiles, isImageFileLike } from "@/utils/taskArtifacts";
 import {
   FileText,
   Download,

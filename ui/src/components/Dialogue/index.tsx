@@ -8,7 +8,7 @@ import {
   resolveDeepSearchStage,
   shouldRenderDeepSearchPreview,
 } from "@/utils/deepSearch";
-import { getTaskFiles } from "@/utils/historyArtifacts";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 import {
   Message,
   MessageContent,

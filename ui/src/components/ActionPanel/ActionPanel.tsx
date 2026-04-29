@@ -13,7 +13,7 @@ import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
-import { getPrimaryTaskFile } from "@/utils/historyArtifacts";
+import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;

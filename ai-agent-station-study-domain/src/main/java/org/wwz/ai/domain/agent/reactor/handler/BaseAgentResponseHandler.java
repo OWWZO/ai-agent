@@ -10,7 +10,6 @@ import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
-import org.wwz.ai.domain.agent.reactor.service.support.ConversationEventPayloadNormalizer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,7 +27,6 @@ import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
 public class BaseAgentResponseHandler {
     protected GptProcessResult buildCanonicalIncrResult(AgentRequest request, EventResult eventResult, AgentResponse agentResponse) {
         GptProcessResult streamResult = buildIncrResult(request, eventResult, agentResponse);
-        enrichHistoryPayload(streamResult);
         return streamResult;
     }
 
@@ -125,29 +123,5 @@ public class BaseAgentResponseHandler {
         resultMap.put("eventData", JSONObject.parseObject(JSON.toJSONString(message)));
         streamResult.setResultMap(resultMap);
         return streamResult;
-    }
-
-    /**
-     * 实时流仍然保留旧的 eventData 结构给前端增量渲染，
-     * 但在 handler 阶段提前补齐 artifactRefs，避免历史持久化完全依赖写入侧兜底。
-     */
-    @SuppressWarnings("unchecked")
-    private void enrichHistoryPayload(GptProcessResult streamResult) {
-        if (streamResult == null || streamResult.getResultMap() == null) {
-            return;
-        }
-
-        Object eventDataObj = streamResult.getResultMap().get("eventData");
-        if (!(eventDataObj instanceof Map)) {
-            return;
-        }
-
-        Map<String, Object> eventData = new LinkedHashMap<>((Map<String, Object>) eventDataObj);
-        JSONObject normalizedPayload = ConversationEventPayloadNormalizer.normalizePayload(eventData);
-        Object artifactRefs = normalizedPayload.get("artifactRefs");
-        if (artifactRefs instanceof List && !((List<?>) artifactRefs).isEmpty()) {
-            eventData.put("artifactRefs", artifactRefs);
-        }
-        streamResult.getResultMap().put("eventData", eventData);
     }
 }
