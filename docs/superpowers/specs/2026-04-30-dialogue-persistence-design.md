@@ -113,23 +113,25 @@ CREATE TABLE agent_tool_execution (
 
 ```sql
 CREATE TABLE agent_tool_file (
-    id          BIGINT          NOT NULL AUTO_INCREMENT,
-    turn_id     BIGINT          NULL COMMENT '冗余：方便查询某轮对话的所有文件',
-    request_id  VARCHAR(64)     NULL COMMENT '冗余：方便查询某次请求的所有文件',
-    ref_type    VARCHAR(32)     NOT NULL COMMENT 'execution | session | user_upload',
-    ref_id      VARCHAR(64)     NOT NULL COMMENT '对应表的主键ID或标识符',
-    file_name   VARCHAR(256)    NOT NULL,
-    file_path   VARCHAR(512)    NOT NULL COMMENT '存储路径或 URL',
-    file_size   BIGINT          NULL DEFAULT 0,
-    mime_type   VARCHAR(64)     NULL,
-    source      VARCHAR(32)     NOT NULL COMMENT 'code_interpreter | file_tool | user_upload | mcp',
-    metadata_json JSON          NULL COMMENT '额外元数据（如图片尺寸、代码语言等）',
-    create_time DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id            BIGINT          NOT NULL AUTO_INCREMENT,
+    turn_id       BIGINT          NULL COMMENT '冗余：方便查询某轮对话的所有文件',
+    request_id    VARCHAR(64)     NULL COMMENT '冗余：方便查询某次请求的所有文件',
+    tool_call_id  VARCHAR(64)     NULL COMMENT '关联 ToolArtifactSource.toolCallId',
+    ref_type      VARCHAR(32)     NOT NULL COMMENT 'execution | tool_call | session',
+    ref_id        VARCHAR(64)     NOT NULL COMMENT '对应表的主键ID或标识符',
+    file_name     VARCHAR(256)    NOT NULL,
+    file_path     VARCHAR(512)    NOT NULL COMMENT '存储路径或 URL',
+    file_size     BIGINT          NULL DEFAULT 0,
+    mime_type     VARCHAR(64)     NULL,
+    source        VARCHAR(32)     NOT NULL COMMENT '工具名称或 user_upload',
+    is_internal   TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '是否内部文件',
+    metadata_json JSON            NULL COMMENT '额外元数据（如图片尺寸、代码语言等）',
+    create_time   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_turn_id (turn_id),
     KEY idx_request_id (request_id),
-    KEY idx_ref (ref_type, ref_id),
-    KEY idx_source (source)
+    KEY idx_tool_call_id (tool_call_id),
+    KEY idx_ref (ref_type, ref_id)
 ) ENGINE=InnoDB COMMENT='工具及用户文件记录';
 ```
 
@@ -137,9 +139,9 @@ CREATE TABLE agent_tool_file (
 
 | ref_type | ref_id 指向 | 场景 |
 |----------|------------|------|
-| `execution` | `agent_tool_execution.id` | 代码解释器生成的图片/文件 |
-| `session` | `AgentContext.sessionId` | 会话级产物、用户上传的文件 |
-| `user_upload` | 用户ID或 `"0"` | 用户直接上传的附件 |
+| `execution` | `agent_tool_execution.id` | 直接关联到执行记录（预留） |
+| `tool_call` | `ToolArtifactSource.toolCallId` | 工具调用产生的文件（推荐） |
+| `session` | `AgentContext.sessionId` | 用户上传的文件、会话级产物 |
 
 ## 4. 数据流设计
 
@@ -183,7 +185,7 @@ CREATE TABLE agent_tool_file (
 | 1 | `LLM.ask()` 返回后 | `agent_llm_call` | 记录 LLM 调用元数据 |
 | 2 | `LLM.askTool()` 返回后 | `agent_llm_call` | 同上，`call_type = askTool` |
 | 3 | `BaseAgent.executeTool()` 执行后 | `agent_tool_execution` | 记录工具入参、出参、耗时 |
-| 4 | `BaseAgent.run()` 返回前 | `agent_tool_file` | 记录 `context.productFiles` 中的文件 |
+| 4 | `BaseAgent.run()` 返回前 | `agent_tool_file` | 从 `ToolArtifactRegistry` 统一记录所有文件产物 |
 
 ## 5. 代码设计
 
@@ -257,13 +259,15 @@ package org.wwz.ai.domain.agent.reactor.agent.recorder;
 public class ToolFileRecord {
     private Long turnId;
     private String requestId;
+    private String toolCallId;
     private String refType;
-    private Long refId;
+    private String refId;
     private String fileName;
     private String filePath;
     private Long fileSize;
     private String mimeType;
     private String source;
+    private Integer isInternal;
     private String metadataJson;
 }
 ```
@@ -359,64 +363,43 @@ public String executeTool(ToolCall command) {
         .errorMsg(errorMsg)
         .build();
     
-    Long executionId = recorder.recordToolExecution(execRecord);
+    recorder.recordToolExecution(execRecord);
     
-    // 提取并记录文件
-    extractAndRecordFiles(executionId, name, args, result);
-    
+    // 文件不在这里记录，统一在 Agent 执行结束后从 ToolArtifactRegistry 读取
     return formatResult(result);
-}
-
-private void extractAndRecordFiles(Long executionId, String toolName, 
-                                    Object input, Object result) {
-    List<ToolFileRecord> files = new ArrayList<>();
-    
-    // 从工具输出中提取文件引用
-    if (result instanceof Map) {
-        Object fileList = ((Map<?, ?>) result).get("files");
-        if (fileList instanceof List) {
-            for (Object f : (List<?>) fileList) {
-                files.add(ToolFileRecord.builder()
-                    .turnId(resolveTurnId(context))
-                    .requestId(context.getRequestId())
-                    .refType("execution")
-                    .refId(executionId)
-                    .source(toolName)
-                    .filePath(f.toString())
-                    .build());
-            }
-        }
-    }
-    
-    if (!files.isEmpty()) {
-        recorder.recordFiles(files);
-    }
 }
 ```
 
-### 5.5 产物文件记录
+### 5.5 产物文件记录（从 ToolArtifactRegistry 读取）
 
 ```java
-// BaseAgent.java 或 SummaryAgent 中
+// BaseAgent.run() 返回前或 SummaryAgent 中
 
 protected void recordProductFiles() {
-    if (CollectionUtils.isEmpty(context.getProductFiles())) {
+    ToolArtifactRegistry registry = context.getToolArtifactRegistry();
+    if (registry == null || registry.listBindings().isEmpty()) {
         return;
     }
-    
-    List<ToolFileRecord> files = context.getProductFiles().stream()
-        .map(file -> ToolFileRecord.builder()
-            .turnId(resolveTurnId(context))
-            .requestId(context.getRequestId())
-            .refType("session")
-            .refId(parseSessionId(context.getSessionId()))
-            .source("user_upload")
-            .fileName(file.getName())
-            .filePath(file.getPath())
-            .fileSize(file.length())
-            .build())
+
+    List<ToolFileRecord> files = registry.listBindings().stream()
+        .map(binding -> {
+            ToolArtifactSource source = binding.getSource();
+            File file = binding.getFile();
+
+            return ToolFileRecord.builder()
+                .turnId(resolveTurnId(context))
+                .requestId(source != null ? source.getRequestId() : context.getRequestId())
+                .toolCallId(source != null ? source.getToolCallId() : null)
+                .refType(source != null && source.getToolCallId() != null ? "tool_call" : "session")
+                .refId(source != null ? source.getToolCallId() : context.getSessionId())
+                .source(source != null ? source.getToolName() : "user_upload")
+                .fileName(file.getFileName())
+                .filePath(resolveFileUrl(file))
+                .isInternal(binding.isInternalFile() ? 1 : 0)
+                .build();
+        })
         .collect(Collectors.toList());
-    
+
     recorder.recordFiles(files);
 }
 ```
