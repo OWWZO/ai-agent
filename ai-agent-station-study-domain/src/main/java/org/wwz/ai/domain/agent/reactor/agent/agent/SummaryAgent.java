@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactFormatter;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
@@ -16,9 +18,12 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 @Data
 @Slf4j
@@ -27,7 +32,8 @@ public class SummaryAgent extends BaseAgent {
     private String requestId;
     private Integer messageSizeLimit;
     private Double summaryTemperature;
-    public static final String logFlag = "summaryTaskResult";
+    private static final String LOG_FLAG = "summaryTaskResult";
+    private static final Pattern ARTIFACT_SPLIT_PATTERN = Pattern.compile(ToolArtifactFormatter.ARTIFACT_KEY_SEPARATOR_REGEX);
 
     public SummaryAgent(AgentContext context) {
         ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
@@ -51,16 +57,13 @@ public class SummaryAgent extends BaseAgent {
 
     // 构造文件信息
     private String createFileInfo() {
-        List<File> files = context.getProductFiles();
-        if (CollectionUtils.isEmpty(files)) {
-            log.info("requestId: {} no files found in context", requestId);
+        List<ToolArtifactBinding> bindings = context.getVisibleArtifactBindings();
+        if (CollectionUtils.isEmpty(bindings)) {
+            log.info("requestId: {} no visible artifact bindings found in context", requestId);
             return "";
         }
-        log.info("requestId: {} {} product files:{}", requestId, logFlag, files);
-        String result = files.stream()
-                .filter(file -> !file.getIsInternalFile()) // 过滤内部文件
-                .map(file -> file.getFileName() + " : " + file.getDescription())
-                .collect(Collectors.joining("\n"));
+        log.info("requestId: {} {} artifact bindings:{}", requestId, LOG_FLAG, bindings);
+        String result = ToolArtifactFormatter.formatSummaryContext(bindings);
 
         log.info("requestId: {} generated file info: {}", requestId, result);
         return result;
@@ -70,7 +73,7 @@ public class SummaryAgent extends BaseAgent {
     private String formatSystemPrompt(String taskHistory, String query) {
         String systemPrompt = getSystemPrompt();
         if (systemPrompt == null) {
-            log.error("requestId: {} {} systemPrompt is null", requestId, logFlag);
+            log.error("requestId: {} {} systemPrompt is null", requestId, LOG_FLAG);
             throw new IllegalStateException("System prompt is not configured");
         }
 
@@ -78,7 +81,10 @@ public class SummaryAgent extends BaseAgent {
         return systemPrompt
                 .replace("{{taskHistory}}", taskHistory)
                 .replace("{{fileNameDesc}}", createFileInfo())
-                .replace("{{query}}", query);
+                .replace("{{query}}", query)
+                + "\n\n如果需要返回最终文件，请在 " + ToolArtifactFormatter.ARTIFACT_DELIMITER + " 后仅输出 artifactKey 列表。"
+                + "artifactKey 格式必须为 toolCallId" + ToolArtifactFormatter.ARTIFACT_KEY_SEPARATOR + "fileName，多个使用、分隔，禁止只输出 fileName。"
+                + "如果没有需要返回的文件，则不要输出 " + ToolArtifactFormatter.ARTIFACT_DELIMITER + " 段落。";
     }
 
     // 构建总结阶段的 system prompt。
@@ -114,45 +120,67 @@ public class SummaryAgent extends BaseAgent {
     private TaskSummaryResult parseLlmResponse(String llmResponse) {
         if (StringUtils.isEmpty(llmResponse)) {
             log.error("requestId: {} pattern matcher failed for response is null", requestId);
+            return TaskSummaryResult.builder().taskSummary("").build();
         }
-//
-         //用$$$分割响应：前半=摘要，后半=文件名
-        String[] parts1 = llmResponse.split("\\$\\$\\$");
+
+        String[] parts1 = llmResponse.split(Pattern.quote(ToolArtifactFormatter.ARTIFACT_DELIMITER), 2);
         if (parts1.length < 2) {
-            // 无$$$分隔符，整段作为摘要返回
             return TaskSummaryResult.builder().taskSummary(parts1[0].trim()).build();
         }
 
         String summary = parts1[0].trim();
-        String fileNames = parts1[1].trim();
+        String artifactKeys = parts1[1].trim();
 
-        List<File> files = context.getProductFiles();
-        if (!CollectionUtils.isEmpty(files)) {
-            Collections.reverse(files);// 反转列表，优先匹配最新文件
-        } else {
-            log.error("requestId: {} llmResponse:{} productFile list is empty", requestId, llmResponse);
-            // 无文件，仅返回摘要
+        List<ToolArtifactBinding> bindings = context.getVisibleArtifactBindings();
+        if (CollectionUtils.isEmpty(bindings)) {
+            log.warn("requestId: {} no visible bindings found when parsing summary response", requestId);
             return TaskSummaryResult.builder().taskSummary(summary).build();
         }
-        // 模糊匹配文件名
-        List<File> product = new ArrayList<>();
-        String[] items = fileNames.split("、");
-        for (String item : items) {
-            String trimmedItem = item.trim();
-            if (StringUtils.isBlank(trimmedItem)) {// 跳过空项
+
+        Map<String, ToolArtifactBinding> keyToBinding = buildArtifactKeyIndex(bindings);
+        Map<String, File> selectedFiles = new LinkedHashMap<>();
+        for (String item : splitArtifactItems(artifactKeys)) {
+            if (StringUtils.isBlank(item)) {
                 continue;
             }
-            // 遍历文件列表，查找包含匹配的文件
-            for (File file : files) {
-                if (item.contains(file.getFileName().trim())) {
-                    log.info("requestId: {} add file:{}", requestId, file);
-                    product.add(file);
+            for (Map.Entry<String, ToolArtifactBinding> entry : keyToBinding.entrySet()) {
+                if (item.contains(entry.getKey())) {
+                    log.info("requestId: {} add artifact by key:{} file:{}", requestId, entry.getKey(), entry.getValue().getFile());
+                    selectedFiles.putIfAbsent(entry.getKey(), entry.getValue().getFile());
                     break;
                 }
             }
         }
-        // 返回摘要+关联文件
-        return TaskSummaryResult.builder().taskSummary(summary).files(product).build();
+        return TaskSummaryResult.builder()
+                .taskSummary(summary)
+                .files(new ArrayList<>(selectedFiles.values()))
+                .build();
+    }
+
+    private Map<String, ToolArtifactBinding> buildArtifactKeyIndex(List<ToolArtifactBinding> bindings) {
+        Map<String, ToolArtifactBinding> index = new LinkedHashMap<>();
+        for (ToolArtifactBinding binding : bindings) {
+            String key = ToolArtifactFormatter.buildArtifactKey(binding);
+            if (StringUtils.isNotBlank(key)) {
+                index.put(key, binding);
+            }
+        }
+        return index;
+    }
+
+    private List<String> splitArtifactItems(String artifactKeys) {
+        if (StringUtils.isBlank(artifactKeys)) {
+            return List.of();
+        }
+        String[] parts = ARTIFACT_SPLIT_PATTERN.split(artifactKeys);
+        List<String> result = new ArrayList<>(parts.length);
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (StringUtils.isNotBlank(trimmed)) {
+                result.add(trimmed);
+            }
+        }
+        return result;
     }
 
 

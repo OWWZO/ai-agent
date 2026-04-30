@@ -18,7 +18,12 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import jakarta.annotation.Resource;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -130,10 +135,8 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         taskResult.put("taskSummary", result.getTaskSummary());
 
         if (CollectionUtils.isEmpty(result.getFiles())) {
-            if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
-                List<File> fileResponses = agentContext.getProductFiles();
-                fileResponses.removeIf(file -> Objects.nonNull(file) && file.getIsInternalFile());
-                Collections.reverse(fileResponses);
+            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+            if (!CollectionUtils.isEmpty(fileResponses)) {
                 taskResult.put("fileList", fileResponses);
             }
         } else {
@@ -149,10 +152,8 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         taskResult.put("taskSummary", result.getTaskSummary());
 
         if (CollectionUtils.isEmpty(result.getFiles())) {
-            if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
-                List<File> fileResponses = agentContext.getProductFiles();
-                fileResponses.removeIf(file -> Objects.nonNull(file) && file.getIsInternalFile());
-                Collections.reverse(fileResponses);
+            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+            if (!CollectionUtils.isEmpty(fileResponses)) {
                 taskResult.put("fileList", fileResponses);
             }
         } else {

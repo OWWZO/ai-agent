@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DataAnalysisRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DataAnalysisResponse;
@@ -85,9 +86,10 @@ public class DataAnalysisTool implements BaseTool {
                     .modelCodeList(Arrays.asList("modelCode"))
                     .businessKnowledge(businessKnowledge)
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future<String> future = callAutoAnalysisStream(request);
+            Future<String> future = callAutoAnalysisStream(request, artifactSource);
             Object object =  future.get();
             return object;
         } catch (Exception e) {
@@ -104,7 +106,8 @@ public class DataAnalysisTool implements BaseTool {
     /**
      * 调用自动分析API
      */
-    public CompletableFuture<String> callAutoAnalysisStream(DataAnalysisRequest analysisRequest) {
+    public CompletableFuture<String> callAutoAnalysisStream(DataAnalysisRequest analysisRequest,
+                                                            ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -179,8 +182,7 @@ public class DataAnalysisTool implements BaseTool {
                                                     .description(fileInfo.getFileName()) // fileName用作描述
                                                     .isInternalFile(false)
                                                     .build();
-                                            agentContext.getProductFiles().add(file);
-                                            agentContext.getTaskProductFiles().add(file);
+                                            agentContext.registerGeneratedArtifact(artifactSource, file);
                                         }
                                     }
 

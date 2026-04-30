@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
@@ -94,6 +95,14 @@ public class FileTool implements BaseTool {
 
     // 上传文件的 API 请求方法
     public String uploadFile(FileRequest fileRequest, Boolean isNoticeFe, Boolean isInternalFile) {
+        ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
+        return uploadFile(fileRequest, isNoticeFe, isInternalFile, artifactSource);
+    }
+
+    public String uploadFile(FileRequest fileRequest,
+                             Boolean isNoticeFe,
+                             Boolean isInternalFile,
+                             ToolArtifactSource artifactSource) {
         long startTime = System.currentTimeMillis();
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
@@ -190,14 +199,10 @@ public class FileTool implements BaseTool {
                     .description(fileRequest.getDescription())
                     .isInternalFile(isInternalFile)
                     .build();
-            agentContext.getProductFiles().add(file);
+            agentContext.registerGeneratedArtifact(artifactSource, file);
             if (isNoticeFe) {
                 // 内部文件不通知前端
                 agentContext.getPrinter().send("file", resultMap, digitalEmployee);
-            }
-            if (!isInternalFile) {
-                // 非内部文件，参与交付物
-                agentContext.getTaskProductFiles().add(file);
             }
             // 返回工具执行结果
             return fileRequest.getFileName() + " 写入到文件链接: " + fileResponse.getOssUrl();

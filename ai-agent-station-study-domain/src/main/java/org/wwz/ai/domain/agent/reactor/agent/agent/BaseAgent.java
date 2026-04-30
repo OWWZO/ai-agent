@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactFormatter;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Memory;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
@@ -248,6 +251,19 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 为单次工具结果追加当前 toolCall 生成的文件摘要，避免模型只能看到扁平文件池。
+     */
+    protected String attachToolArtifactSummary(String result, String toolCallId) {
+        if (context == null || StringUtils.isBlank(toolCallId)) {
+            return result;
+        }
+        return ToolArtifactFormatter.appendToolArtifactSummary(
+                result,
+                context.getArtifactBindingsByToolCallId(toolCallId)
+        );
+    }
+
+    /**
      * 执行单个工具调用命令
      * 处理工具名称校验、参数解析、工具执行、异常捕获，返回标准化结果
      * @param command 工具调用命令（包含工具名称、参数、工具ID等）
@@ -268,8 +284,22 @@ public abstract class BaseAgent {
             ObjectMapper mapper = new ObjectMapper();
             Object args = mapper.readValue(command.getFunction().getArguments(), Object.class);
 
+            ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                    .sessionId(context.getSessionId())
+                    .requestId(context.getRequestId())
+                    .toolCallId(command.getId())
+                    .toolName(name)
+                    .build();
+
             // 2. 执行工具：调用ToolCollection的execute方法，传入工具名称和参数
-            Object result = availableTools.execute(name, args);
+            Object result;
+            context.bindCurrentToolArtifactSource(artifactSource);
+            try {
+                result = availableTools.execute(name, args);
+            } finally {
+                context.clearCurrentToolArtifactSource();
+            }
+
             // 打印日志：记录请求ID、工具名称、参数、执行结果（便于调试）
             log.info("{} execute tool: {} {} result {}", context.getRequestId(), name, args, result);
 

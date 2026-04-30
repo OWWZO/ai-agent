@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -76,9 +77,10 @@ public class CodeInterpreterTool implements BaseTool {
                     .fileNames(fileNames)
                     .stream(true)
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future future = callCodeAgentStream(request);
+            Future future = callCodeAgentStream(request, artifactSource);
             Object object = future.get();
 
             return object;
@@ -91,7 +93,8 @@ public class CodeInterpreterTool implements BaseTool {
     /**
      * 调用 CodeAgent
      */
-    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest) {
+    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest,
+                                                         ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -159,8 +162,7 @@ public class CodeInterpreterTool implements BaseTool {
                                                 .description(fileInfo.getFileName()) // fileName用作描述
                                                 .isInternalFile(false)
                                                 .build();
-                                        agentContext.getProductFiles().add(file);
-                                        agentContext.getTaskProductFiles().add(file);
+                                        agentContext.registerGeneratedArtifact(artifactSource, file);
                                     }
                                 }
                                 String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());

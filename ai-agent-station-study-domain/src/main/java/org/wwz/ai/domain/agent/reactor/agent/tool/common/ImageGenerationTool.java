@@ -7,6 +7,7 @@ import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.ImageGenerationRequest;
@@ -105,8 +106,9 @@ public class ImageGenerationTool implements BaseTool {
                     .timeoutSeconds(300)
                     .stream(true)
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            Future<String> future = callImageGenerationStream(request);
+            Future<String> future = callImageGenerationStream(request, artifactSource);
             return future.get();
         } catch (Exception e) {
             log.error("{} image_generation_tool error, input={}", agentContext.getRequestId(), input, e);
@@ -117,7 +119,8 @@ public class ImageGenerationTool implements BaseTool {
     /**
      * 调用 reactor-tool 图片生成端点，并把最终产物同步回会话上下文。
      */
-    public CompletableFuture<String> callImageGenerationStream(ImageGenerationRequest requestPayload) {
+    public CompletableFuture<String> callImageGenerationStream(ImageGenerationRequest requestPayload,
+                                                               ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -180,7 +183,7 @@ public class ImageGenerationTool implements BaseTool {
                             finalResponse = chunkResponse;
 
                             if (Boolean.TRUE.equals(chunkResponse.getIsFinal())) {
-                                handleFinalFiles(chunkResponse, requestPayload, messageId, digitalEmployee);
+                                handleFinalFiles(chunkResponse, requestPayload, messageId, digitalEmployee, artifactSource);
                             }
                         }
                     } catch (Exception e) {
@@ -212,7 +215,8 @@ public class ImageGenerationTool implements BaseTool {
     private void handleFinalFiles(CodeInterpreterResponse response,
                                   ImageGenerationRequest requestPayload,
                                   String messageId,
-                                  String digitalEmployee) {
+                                  String digitalEmployee,
+                                  ToolArtifactSource artifactSource) {
         if (response.getFileInfo() == null || response.getFileInfo().isEmpty()) {
             return;
         }
@@ -230,8 +234,7 @@ public class ImageGenerationTool implements BaseTool {
                     .description(requestPayload.getFileDescription())
                     .isInternalFile(false)
                     .build();
-            agentContext.getProductFiles().add(file);
-            agentContext.getTaskProductFiles().add(file);
+            agentContext.registerGeneratedArtifact(artifactSource, file);
         }
 
         agentContext.getPrinter().send(messageId, "file", resultMap, digitalEmployee, true);

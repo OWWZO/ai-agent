@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
@@ -95,8 +96,9 @@ public class ReportTool implements BaseTool {
                     .fileType(fileType)
                     .templateType(agentContext.getTemplateType())
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             // 调用流式 API
-            Future future = callCodeAgentStream(request);
+            Future future = callCodeAgentStream(request, artifactSource);
             Object object = future.get();
 
             return object;
@@ -109,7 +111,8 @@ public class ReportTool implements BaseTool {
     /**
      * 调用 CodeAgent
      */
-    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest) {
+    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest,
+                                                         ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -190,8 +193,7 @@ public class ReportTool implements BaseTool {
                                                     .description(codeRequest.getFileDescription())
                                                     .isInternalFile(false)
                                                     .build();
-                                            agentContext.getProductFiles().add(file);
-                                            agentContext.getTaskProductFiles().add(file);
+                                            agentContext.registerGeneratedArtifact(artifactSource, file);
                                         }
                                     }
                                     agentContext.getPrinter().send(messageId, codeRequest.getFileType(), codeResponse, digitalEmployee, true);

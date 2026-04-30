@@ -20,7 +20,11 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.AgentHandlerService;
 import org.wwz.ai.domain.agent.reactor.service.SopRecallService;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -150,19 +154,12 @@ public class PlanSolveHandlerImpl implements AgentHandlerService {
                 // 添加任务总结文本
                 taskResult.put("taskSummary", result.getTaskSummary());
 
-                // 处理任务产物文件列表（优先使用总结Agent返回的文件，无则使用上下文文件）
                 if (CollectionUtils.isEmpty(result.getFiles())) {
-                    // 总结Agent无文件返回时，使用上下文的产物文件
-                    if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
-                        List<File> fileResponses = agentContext.getProductFiles();
-                        // 过滤掉内部中间搜索结果文件，只保留对外展示的产物文件
-                        fileResponses.removeIf(file -> Objects.nonNull(file) && file.getIsInternalFile());
-                        // 反转文件列表，让最新的文件排在前面
-                        Collections.reverse(fileResponses);
+                    List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+                    if (!CollectionUtils.isEmpty(fileResponses)) {
                         taskResult.put("fileList", fileResponses);
                     }
                 } else {
-                    // 总结Agent有返回文件时，直接使用该文件列表
                     taskResult.put("fileList", result.getFiles());
                 }
 

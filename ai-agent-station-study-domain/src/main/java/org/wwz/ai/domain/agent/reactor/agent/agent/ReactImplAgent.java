@@ -109,7 +109,6 @@ public class ReactImplAgent extends ReActAgent {
         setPrinter(context.printer); // 响应输出器（推送tool_thought/tool_result给客户端）
         setMaxSteps(reactorConfig.getReactMaxSteps()); // 最大执行步数（防止无限循环）
         setLlm(new LLM(reactorConfig.getReactModelName(), "")); // 初始化大模型实例（指定ReAct专用模型）
-        preloadMemory(context.getPreloadedMessages());
 
         // 步骤6：初始化可用工具集合（从上下文加载当前请求可调用的所有工具）
         availableTools = context.getToolCollection();
@@ -236,6 +235,7 @@ public class ReactImplAgent extends ReActAgent {
             if (maxObserve != null) {
                 result = result.substring(0, Math.min(result.length(), maxObserve)); // 仅保留前maxObserve个字符
             }
+            result = attachToolArtifactSummary(result, command.getId());
 
             // 步骤3.3：更新智能体记忆（兼容两种工具调用模式）
             if ("struct_parse".equals(llm.getFunctionCallType())) {

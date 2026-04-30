@@ -3,11 +3,15 @@ package org.wwz.ai.domain.agent.reactor.agent.agent;
 import com.alibaba.fastjson.annotation.JSONField;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactRegistry;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -155,14 +159,22 @@ public class AgentContext {
     Integer agentType;
 
     /**
-     * 请求开始前预装入的历史消息
+     * 当前请求运行期的工具产物登记簿。
+     * 这是工具文件来源的唯一事实来源。
      */
-    List<Message> preloadedMessages;
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    ToolArtifactRegistry toolArtifactRegistry = new ToolArtifactRegistry();
 
     /**
-     * 历史恢复出的稳定文件
+     * 当前线程绑定的工具来源快照。
+     * 同步工具直接读取；异步工具必须在 execute 阶段捕获后显式传递到回调线程。
      */
-    List<File> restoredFiles;
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    ThreadLocal<ToolArtifactSource> currentToolArtifactSourceHolder = new ThreadLocal<>();
 
     /**
      * 当前任务专属的产品文件列表（任务级）
@@ -181,6 +193,72 @@ public class AgentContext {
      * 枚举值示例："default"、"ecommerce"、"customer_service"、"market_analysis"
      */
     String templateType;
+
+    public void bindCurrentToolArtifactSource(ToolArtifactSource toolArtifactSource) {
+        currentToolArtifactSourceHolder.set(toolArtifactSource);
+    }
+
+    public void clearCurrentToolArtifactSource() {
+        currentToolArtifactSourceHolder.remove();
+    }
+
+    public ToolArtifactSource requireCurrentToolArtifactSource(String toolName) {
+        ToolArtifactSource source = currentToolArtifactSourceHolder.get();
+        if (source == null) {
+            throw new IllegalStateException("Missing current tool artifact source for tool: " + toolName);
+        }
+        return source;
+    }
+
+    public ToolArtifactBinding registerGeneratedArtifact(ToolArtifactSource source, File file) {
+        return toolArtifactRegistry.registerGeneratedFile(
+                source,
+                file,
+                ensureProductFiles(),
+                ensureTaskProductFiles()
+        );
+    }
+
+    public List<ToolArtifactBinding> getArtifactBindingsByToolCallId(String toolCallId) {
+        return toolArtifactRegistry.findBindingsByToolCallId(toolCallId);
+    }
+
+    public List<ToolArtifactBinding> getVisibleArtifactBindings() {
+        return toolArtifactRegistry.listVisibleBindings();
+    }
+
+    public List<File> getVisibleArtifactFiles() {
+        return getVisibleArtifactBindings().stream()
+                .map(ToolArtifactBinding::getFile)
+                .toList();
+    }
+
+    /**
+     * 获取可见产物文件列表（按时间倒序，最新的在前）。
+     * 避免外部调用时的双重拷贝和手动反转。
+     */
+    public List<File> getReversedVisibleArtifactFiles() {
+        List<ToolArtifactBinding> bindings = toolArtifactRegistry.listVisibleBindings();
+        List<File> result = new ArrayList<>(bindings.size());
+        for (int i = bindings.size() - 1; i >= 0; i--) {
+            result.add(bindings.get(i).getFile());
+        }
+        return result;
+    }
+
+    private synchronized List<File> ensureProductFiles() {
+        if (productFiles == null) {
+            productFiles = new ArrayList<>();
+        }
+        return productFiles;
+    }
+
+    private synchronized List<File> ensureTaskProductFiles() {
+        if (taskProductFiles == null) {
+            taskProductFiles = new ArrayList<>();
+        }
+        return taskProductFiles;
+    }
 
     @Override
     public String toString() {

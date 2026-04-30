@@ -14,6 +14,7 @@ import okhttp3.ResponseBody;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentResponse;
@@ -119,8 +120,9 @@ public class MultiModalAgent implements BaseTool {
                     .contentStream(Boolean.TRUE.equals(agentContext.getIsStream()))
                     .streamMode(streamMode)
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            CompletableFuture<String> future = callMultiModalAgentStream(request);
+            CompletableFuture<String> future = callMultiModalAgentStream(request, artifactSource);
             return future.get(MULTIMODAL_AGENT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
         } catch (TimeoutException e) {
             if (activeCall != null && !activeCall.isCanceled()) {
@@ -137,7 +139,8 @@ public class MultiModalAgent implements BaseTool {
         }
     }
 
-    public CompletableFuture<String> callMultiModalAgentStream(MultiModalAgentRequest multiModalAgentRequest) {
+    public CompletableFuture<String> callMultiModalAgentStream(MultiModalAgentRequest multiModalAgentRequest,
+                                                               ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -228,7 +231,8 @@ public class MultiModalAgent implements BaseTool {
                                     fullContent,
                                     firstInterval,
                                     sendInterval,
-                                    chunkIndex
+                                    chunkIndex,
+                                    artifactSource
                             );
                             if (finished) {
                                 finalSent = true;
@@ -237,7 +241,7 @@ public class MultiModalAgent implements BaseTool {
                         }
 
                         if (!finalSent && fullContent.length() > 0) {
-                            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString());
+                            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
                             finalSent = true;
                         }
 
@@ -269,7 +273,8 @@ public class MultiModalAgent implements BaseTool {
                                 StringBuilder fullContent,
                                 int firstInterval,
                                 int sendInterval,
-                                int chunkIndex) {
+                                int chunkIndex,
+                                ToolArtifactSource artifactSource) {
         if (streamResponse == null) {
             return false;
         }
@@ -283,7 +288,7 @@ public class MultiModalAgent implements BaseTool {
                 emitIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
             }
             if ("stop".equalsIgnoreCase(choice.getFinishReason())) {
-                emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString());
+                emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
                 return true;
             }
             return false;
@@ -291,7 +296,7 @@ public class MultiModalAgent implements BaseTool {
 
         appendContent(streamResponse.getData(), incrementalBuffer, fullContent);
         if (Boolean.TRUE.equals(streamResponse.getIsFinal())) {
-            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString());
+            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
             return true;
         }
         if (shouldEmitIncremental(chunkIndex, firstInterval, sendInterval)) {
@@ -329,7 +334,10 @@ public class MultiModalAgent implements BaseTool {
         incrementalBuffer.setLength(0);
     }
 
-    private void emitFinalMarkdown(String messageId, String digitalEmployee, String markdownContent) {
+    private void emitFinalMarkdown(String messageId,
+                                   String digitalEmployee,
+                                   String markdownContent,
+                                   ToolArtifactSource artifactSource) {
         if (!StringUtils.hasText(markdownContent)) {
             return;
         }
@@ -339,10 +347,10 @@ public class MultiModalAgent implements BaseTool {
                 .isFinal(true)
                 .build();
         agentContext.getPrinter().send(messageId, "markdown", response, digitalEmployee, true);
-        uploadMarkdownArtifact(markdownContent);
+        uploadMarkdownArtifact(markdownContent, artifactSource);
     }
 
-    private void uploadMarkdownArtifact(String markdownContent) {
+    private void uploadMarkdownArtifact(String markdownContent, ToolArtifactSource artifactSource) {
         FileTool fileTool = new FileTool();
         fileTool.setAgentContext(agentContext);
 
@@ -361,6 +369,6 @@ public class MultiModalAgent implements BaseTool {
                 .description(fileDesc)
                 .content(markdownContent)
                 .build();
-        fileTool.uploadFile(fileRequest, false, false);
+        fileTool.uploadFile(fileRequest, false, false, artifactSource);
     }
 }

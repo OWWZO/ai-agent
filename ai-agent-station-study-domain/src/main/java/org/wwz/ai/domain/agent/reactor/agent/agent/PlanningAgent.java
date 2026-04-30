@@ -121,7 +121,6 @@ public class PlanningAgent extends ReActAgent {
 
         // 6. 关联上下文&配置计划更新开关
         setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
-        preloadMemory(context.getPreloadedMessages());
 
         // 7. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
         availableTools.addTool(planningTool);
@@ -248,10 +247,10 @@ public class PlanningAgent extends ReActAgent {
             if ("struct_parse".equals(llm.getFunctionCallType())) {
                 // 结构化解析模式：追加结果到最后一条消息的内容中
                 String content = getMemory().getLastMessage().getContent();
-                getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + result);
+                getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + attachToolArtifactSummary(result, toolCall.getId()));
             } else { // 标准函数调用模式：创建独立的工具消息添加到记忆
                 Message toolMsg = Message.toolMessage(
-                        result,          // 工具执行结果
+                        attachToolArtifactSummary(result, toolCall.getId()), // 工具执行结果
                         toolCall.getId(),// 工具调用ID（关联请求/响应）
                         null             // 扩展参数（暂无）
                 );

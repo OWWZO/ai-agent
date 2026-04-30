@@ -11,11 +11,9 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * React 逻辑树 - 步骤3：生成任务总结并发送结果
@@ -45,16 +43,12 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         Map<String, Object> taskResult = new HashMap<>();
         taskResult.put("taskSummary", result.getTaskSummary());
 
-        //如果llm没有输出文件名 就用内存里记录的文件 去除掉中间文件然后翻转 发送给前端
         if (CollectionUtils.isEmpty(result.getFiles())) {
-            if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
-                List<File> fileResponses = agentContext.getProductFiles();
-                fileResponses.removeIf(file -> Objects.nonNull(file) && file.getIsInternalFile());
-                Collections.reverse(fileResponses);
+            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+            if (!CollectionUtils.isEmpty(fileResponses)) {
                 taskResult.put("fileList", fileResponses);
             }
         } else {
-            //llm输出了 就发它输出的
             taskResult.put("fileList", result.getFiles());
         }
 

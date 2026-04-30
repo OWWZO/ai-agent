@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.reactor.agent.tool.common.skill;
 
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.skill.ScriptRunnerToolRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.skill.ScriptRunnerToolResponse;
@@ -82,7 +83,8 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
                     .build();
 
             ScriptRunnerToolResponse response = skillScriptRunnerClient.run(request);
-            appendGeneratedFiles(response);
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
+            appendGeneratedFiles(response, artifactSource);
             return response.toDisplayText();
         } catch (SkillLoadException e) {
             log.warn("{} script_runner_tool failed, input={}", requestId(), input, e);
@@ -153,7 +155,7 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
         return agentContext.getRequestId();
     }
 
-    private void appendGeneratedFiles(ScriptRunnerToolResponse response) {
+    private void appendGeneratedFiles(ScriptRunnerToolResponse response, ToolArtifactSource artifactSource) {
         if (agentContext == null || response == null || response.getFileInfo() == null) {
             return;
         }
@@ -169,12 +171,7 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
                     .description(fileInfo.getFileName())
                     .isInternalFile(false)
                     .build();
-            if (agentContext.getProductFiles() != null) {
-                agentContext.getProductFiles().add(file);
-            }
-            if (agentContext.getTaskProductFiles() != null) {
-                agentContext.getTaskProductFiles().add(file);
-            }
+            agentContext.registerGeneratedArtifact(artifactSource, file);
         }
     }
 }

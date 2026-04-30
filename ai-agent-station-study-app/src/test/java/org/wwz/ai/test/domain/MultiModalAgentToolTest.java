@@ -10,6 +10,7 @@ import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
@@ -58,9 +59,22 @@ public class MultiModalAgentToolTest {
 
             MultiModalAgent multiModalAgent = new MultiModalAgent();
             multiModalAgent.setAgentContext(agentContext);
-            String result = String.valueOf(multiModalAgent.execute(JSONObject.parseObject("""
-                    {"question":"总结多模态检索核心能力"}
-                    """)));
+            ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                    .sessionId(agentContext.getSessionId())
+                    .requestId(agentContext.getRequestId())
+                    .toolCallId("call-mrag-001")
+                    .toolName("multimodalagent_tool")
+                    .build();
+
+            String result;
+            agentContext.bindCurrentToolArtifactSource(artifactSource);
+            try {
+                result = String.valueOf(multiModalAgent.execute(JSONObject.parseObject("""
+                        {"question":"总结多模态检索核心能力"}
+                        """)));
+            } finally {
+                agentContext.clearCurrentToolArtifactSource();
+            }
 
             Assert.assertTrue(result.contains("多模态检索会先召回图文片段。"));
             Assert.assertTrue(result.contains("![图片](https://img.example.com/mrag.png)"));

@@ -15,7 +15,9 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.AgentHandlerService;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 public class ReactHandlerImpl implements AgentHandlerService {
@@ -57,22 +59,12 @@ public class ReactHandlerImpl implements AgentHandlerService {
         // 将任务总结文本存入结果Map，key为"taskSummary"（约定好的字段名）
         taskResult.put("taskSummary", result.getTaskSummary());
 
-        // 5. 处理任务产物文件列表（优先级：总结Agent返回的文件 > 上下文存储的文件）
         if (CollectionUtils.isEmpty(result.getFiles())) {
-            // 分支1：总结Agent未返回文件时，使用上下文（agentContext）中的产物文件
-            if (!CollectionUtils.isEmpty(agentContext.getProductFiles())) {
-                // 获取上下文存储的所有产物文件
-                List<File> fileResponses = agentContext.getProductFiles();
-                // 过滤掉内部中间搜索结果文件（标记为isInternalFile=true的文件）
-                // 仅保留对外展示的最终产物文件，避免返回无关的中间文件
-                fileResponses.removeIf(file -> Objects.nonNull(file) && file.getIsInternalFile());
-                // 反转文件列表顺序，让最新生成的文件排在前面，符合用户查看习惯
-                Collections.reverse(fileResponses);
-                // 将处理后的文件列表存入结果Map
+            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+            if (!CollectionUtils.isEmpty(fileResponses)) {
                 taskResult.put("fileList", fileResponses);
             }
         } else {
-            // 分支2：总结Agent返回了文件列表，直接使用（总结Agent已完成文件的筛选/排序）
             taskResult.put("fileList", result.getFiles());
         }
 

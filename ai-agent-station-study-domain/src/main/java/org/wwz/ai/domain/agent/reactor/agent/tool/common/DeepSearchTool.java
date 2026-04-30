@@ -11,6 +11,7 @@ import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
@@ -109,9 +110,10 @@ public class DeepSearchTool implements BaseTool {
                     .stream(true)
                     .content_stream(agentContext.getIsStream())
                     .build();
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future<String> future = callDeepSearchStream(request);
+            Future<String> future = callDeepSearchStream(request, artifactSource);
             Object object = future.get(DEEP_SEARCH_TIMEOUT_MINUTES, TimeUnit.MINUTES);
 
             return object;
@@ -133,7 +135,8 @@ public class DeepSearchTool implements BaseTool {
     /**
      * 调用 DeepSearch
      */
-    public CompletableFuture<String> callDeepSearchStream(DeepSearchRequest searchRequest) {
+    public CompletableFuture<String> callDeepSearchStream(DeepSearchRequest searchRequest,
+                                                          ToolArtifactSource artifactSource) {
         CompletableFuture<String> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
@@ -210,7 +213,7 @@ public class DeepSearchTool implements BaseTool {
                                     .description(fileDesc)
                                     .content(searchResponse.getAnswer())
                                     .build();
-                            fileTool.uploadFile(fileRequest, false, false);
+                            fileTool.uploadFile(fileRequest, false, false, artifactSource);
                             resultRef.set(searchResponse.getAnswer()
                                     .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolMessageTruncateLen())));
 
@@ -241,7 +244,7 @@ public class DeepSearchTool implements BaseTool {
                                     .description(searchResponse.getQuery() + "...")
                                     .content(JSON.toJSONString(contentMap))
                                     .build();
-                            fileTool.uploadFile(fileRequest, false, true);
+                            fileTool.uploadFile(fileRequest, false, true, artifactSource);
                         } else if ("report".equals(searchResponse.getMessageType())) {
                             if (currentIndex == 1 && messageIdRef.get().isEmpty()) {
                                 messageIdRef.set(StringUtil.getUUID());

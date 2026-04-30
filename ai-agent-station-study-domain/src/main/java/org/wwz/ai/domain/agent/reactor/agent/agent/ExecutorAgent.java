@@ -77,7 +77,6 @@ public class ExecutorAgent extends ReActAgent {
 
         setContext(context);
         setMaxObserve(Integer.parseInt(reactorConfig.getMaxObserve()));
-        preloadMemory(context.getPreloadedMessages());
 
         // 初始化工具集合
         availableTools = context.getToolCollection();
@@ -178,6 +177,7 @@ public class ExecutorAgent extends ReActAgent {
             if (maxObserve != null) {
                 result = result.substring(0, Math.min(result.length(), maxObserve));
             }
+            result = attachToolArtifactSummary(result, command.getId());
 
             // 添加工具响应到记忆
             if ("struct_parse".equals(llm.getFunctionCallType())) {
