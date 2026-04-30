@@ -1,570 +1,559 @@
-# 对话数据持久化记录设计
+# 对话执行持久化设计
 
 ## 1. 背景与目标
 
 ### 1.1 背景
 
-项目后端 Agent 执行引擎（Reactor）通过 `LLM.ask()` 和 `LLM.askTool()` 与大模型交互，通过 `BaseTool.execute()` 执行各类工具（代码解释器、深度搜索、文件操作等）。当前缺乏系统化的持久化机制来记录：
+当前 Reactor 主链路已经具备比较清晰的运行时结构：
 
-- LLM 调用的技术指标（token 消耗、耗时、模型名称等）
-- 工具调用的入参、出参和执行结果
-- 工具执行过程中产生的文件
+- 一次前端请求对应一个 `requestId`，当前代码里它就是单次执行的 trace / request 唯一标识
+- 同一个请求内部会发生多次 `LLM.ask()` / `LLM.askTool()` 调用
+- 一次 `askTool()` 可能返回多个 `toolCallId`
+- 工具产物已经通过 `ToolArtifactRegistry + toolCallId` 形成稳定归属关系
+
+但是系统仍缺少一套独立、稳定、可查询的执行账本，来回答下面三类问题：
+
+- **运行链路查询**：一次请求里一共调了几次模型、几次工具、耗时如何、最终成功还是失败
+- **工具深度分析**：某个工具最近都接收了什么参数、返回了什么结果、是否容易失败
+- **文件产物管理**：某次执行或某个会话里产生了哪些文件，它们来自哪个工具调用
 
 ### 1.2 目标
 
-设计一套持久化方案，满足以下查询场景：
+设计一套以“单次执行（run）”为聚合根的持久化方案，满足：
 
-- **A 类查询（统一聚合）**：按会话/轮次查询所有 LLM 调用和工具执行记录
-- **B 类查询（深度分析）**：按工具类型深入查询（如"代码解释器历史执行"、"搜索工具结果质量"）
-- **C 类查询（文件管理）**：按轮次/会话查询产生的所有文件
+1. 能完整记录一次执行的生命周期
+2. 能准确表达 `run -> llm invocation -> tool invocation -> artifact` 的因果关系
+3. 能直接复用当前代码里已有的 `requestId`、`toolCallId`、`ToolArtifactRegistry`
+4. 保持同步实时写入，但不让持久化失败阻断主流程
 
 ### 1.3 非目标
 
-- 不记录对话语义内容的完整历史（如用户输入文本、助手回答文本），该职责由对话历史模块负责
-- 不做异步/消息队列解耦，采用同步实时写入
+- 不替代现有“对话历史正文”模块，不保存完整聊天 transcript
+- 不保存 provider 原始响应包，不做逐 chunk 流式落库
+- 不引入消息队列、异步批处理、独立审计服务
 
-## 2. 设计决策
+## 2. 核心设计结论
 
-| 决策项 | 选择 | 理由 |
-|--------|------|------|
-| 工具结果存储 | 统一 JSON 表 | 10+ 个工具，分散表维护成本高；JSON 解析即可满足 B 类查询 |
-| LLM 与工具关联 | 通过 `request_id` | `AgentContext` 中天然有 `request_id`，无需额外传递 `call_id` |
-| 文件关联 | 多态关联 + `turn_id` 冗余 | `ref_type` + `ref_id` 精确关联，`turn_id` 提供便捷的轮次聚合查询 |
-| 写入策略 | 同步实时写入 | 简单直接，异常不阻断主流程（try-catch + 日志） |
-| 写入封装 | 领域接口 + infrastructure 实现 | 不污染 domain 层业务代码，符合 DDD 分层 |
+### 2.1 聚合根选型
+
+本次不再以 `session_id` 或已废弃的 turn 概念作为执行账本聚合根。
+
+执行账本统一以 **run** 为根：
+
+- `request_id` 继续沿用当前主链路里的单次请求唯一标识
+- 数据库内部再引入自增主键 `run_id`
+- `session_id` 只作为跨 run 的归档和查询维度
+
+### 2.2 表职责边界
+
+- `ai_agent_dialogue_run`：记录一次执行的总览与最终状态
+- `ai_agent_llm_invocation`：记录每次模型调用的指标和完整文本响应
+- `ai_agent_tool_invocation`：记录每次工具调用的入参、出参、状态与耗时
+- `ai_agent_artifact`：记录输入文件与工具输出产物的稳定引用
+
+### 2.3 LLM 表只存“完整思考文本 + 指标”
+
+`ai_agent_llm_invocation` 不再存：
+
+- `response_excerpt`
+- `response_payload_ref`
+- provider 原始响应 JSON
+
+原因：
+
+- `ask()` 返回值本身就是完整文本
+- `askTool()` 返回值经过领域收敛后，本质上也是“思考文本 + toolCalls + 指标”
+- 工具入参与出参已经由 `ai_agent_tool_invocation` 独立存储，再在 LLM 表重复保存没有价值
+
+因此 `ai_agent_llm_invocation` 只保留：
+
+- 模型调用元数据
+- 完整的 `response_text`
+- `tool_call_count`
+- token / finishReason / duration 等指标
+
+### 2.4 文件表不做多态关联
+
+`ai_agent_artifact` 不再使用 `ref_type + ref_id` 多态关联。
+
+当前运行时已经天然存在稳定链路：
+
+- 输入文件挂到 `run`
+- 输出文件挂到 `tool_invocation`
+- 工具侧文件来源由 `toolCallId` 唯一标识
+
+因此文件表直接显式存：
+
+- `run_id`
+- `tool_invocation_id`
+- `tool_call_id`
+
+这样更清晰，也更方便查询和去重。
+
+### 2.5 写入策略
+
+写入策略采用 **同步实时写入 + 前插后更**：
+
+- 请求进入时先创建 run
+- LLM 调用前先插入 `RUNNING` 记录，调用结束后更新
+- Tool 执行前先插入 `RUNNING` 记录，执行结束后更新
+- Tool 结束后立刻补写该次工具产物
+- 整个 run 结束时回写最终状态和聚合指标
+
+不采用“全部执行结束后统一补写”的原因是：
+
+- 中途异常会丢失链路
+- 并发工具难以稳定归属
+- 文件产物可能已经生成，但还没等到全局收口
 
 ## 3. 表结构设计
 
-### 3.1 agent_llm_call（LLM 调用记录）
+### 3.1 ai_agent_dialogue_run
 
-记录每次 `LLM.ask()` 和 `LLM.askTool()` 的技术指标。
-
-```sql
-CREATE TABLE agent_llm_call (
-    id                  BIGINT          NOT NULL AUTO_INCREMENT,
-    request_id          VARCHAR(64)     NOT NULL COMMENT 'AgentContext.requestId',
-    turn_id             BIGINT          NULL COMMENT '对话轮次ID',
-    call_type           VARCHAR(16)     NOT NULL COMMENT 'ask | askTool',
-    model_name          VARCHAR(64)     NULL,
-    system_prompt_hash  VARCHAR(64)     NULL COMMENT '系统提示词哈希，用于审计对比',
-    prompt_tokens       INT             NULL DEFAULT 0,
-    completion_tokens   INT             NULL DEFAULT 0,
-    total_tokens        INT             NULL DEFAULT 0,
-    duration_ms         BIGINT          NULL COMMENT 'LLM 接口调用耗时',
-    finish_reason       VARCHAR(32)     NULL COMMENT 'stop | tool_calls | length | error',
-    status              VARCHAR(16)     NOT NULL DEFAULT 'success' COMMENT 'success | error | timeout',
-    error_msg           TEXT            NULL,
-    create_time         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_request_id_call (request_id, call_type),
-    KEY idx_turn_id (turn_id),
-    KEY idx_create_time (create_time)
-) ENGINE=InnoDB COMMENT='LLM 调用记录';
-```
-
-### 3.2 agent_tool_execution（工具执行记录）
-
-记录每次工具调用的入参、出参和执行结果，统一使用 JSON 存储工具专属数据。
+记录一次执行的聚合根。
 
 ```sql
-CREATE TABLE agent_tool_execution (
-    id              BIGINT          NOT NULL AUTO_INCREMENT,
-    request_id      VARCHAR(64)     NOT NULL COMMENT '关联 agent_llm_call.request_id',
-    tool_name       VARCHAR(64)     NOT NULL,
-    tool_input_json JSON            NOT NULL COMMENT '工具入参（原始 JSON 结构）',
-    tool_output_json JSON           NULL COMMENT '工具输出（原始 JSON 结构或文本）',
-    duration_ms     BIGINT          NULL COMMENT '工具执行耗时',
-    status          VARCHAR(16)     NOT NULL DEFAULT 'success' COMMENT 'success | error | timeout',
-    error_msg       TEXT            NULL,
-    create_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+CREATE TABLE ai_agent_dialogue_run (
+    id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    run_uid              VARCHAR(64)   NOT NULL COMMENT '运行唯一标识，首期可直接复用 request_id',
+    request_id           VARCHAR(64)   NOT NULL COMMENT '当前主链路 requestId / traceId',
+    session_id           VARCHAR(64)   NOT NULL COMMENT '会话维度ID',
+    entry_agent          VARCHAR(32)   NOT NULL COMMENT '入口执行类型：react | plan_solve | workflow',
+    status               TINYINT       NOT NULL DEFAULT 0 COMMENT '0=运行中 1=成功 2=失败 3=超时 4=停止',
+    query_text           MEDIUMTEXT    NULL COMMENT '用户本次请求原文',
+    final_summary_text   MEDIUMTEXT    NULL COMMENT '最终结果摘要或总结文本',
+    llm_call_count       INT           NOT NULL DEFAULT 0 COMMENT '模型调用次数',
+    tool_call_count      INT           NOT NULL DEFAULT 0 COMMENT '工具调用次数',
+    artifact_count       INT           NOT NULL DEFAULT 0 COMMENT '产物数量',
+    prompt_tokens_total  INT           NOT NULL DEFAULT 0 COMMENT '输入token总数',
+    completion_tokens_total INT        NOT NULL DEFAULT 0 COMMENT '输出token总数',
+    total_tokens_total   INT           NOT NULL DEFAULT 0 COMMENT '总token数',
+    error_code           VARCHAR(64)   NULL COMMENT '错误码',
+    error_msg            TEXT          NULL COMMENT '错误信息',
+    started_at           DATETIME(3)   NOT NULL COMMENT '开始时间',
+    finished_at          DATETIME(3)   NULL COMMENT '结束时间',
+    duration_ms          BIGINT        NULL COMMENT '总耗时(毫秒)',
+    create_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted              TINYINT(1)    NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    KEY idx_request_id (request_id),
-    KEY idx_tool_name (tool_name),
-    KEY idx_create_time (create_time)
-) ENGINE=InnoDB COMMENT='工具执行记录';
+    UNIQUE KEY uk_run_uid (run_uid),
+    UNIQUE KEY uk_request_id (request_id),
+    KEY idx_session_time (session_id, deleted, create_time DESC),
+    KEY idx_status_time (status, deleted, create_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='单次对话执行账本';
 ```
 
-**JSON 示例：**
+### 3.2 ai_agent_llm_invocation
 
-`deep_search` 的 `tool_output_json`：
-```json
-{
-  "query": "Spring Boot 启动原理",
-  "results": [
-    {"title": "...", "url": "...", "summary": "..."}
-  ],
-  "result_count": 5
+记录一次执行过程中的每次模型调用。
+
+```sql
+CREATE TABLE ai_agent_llm_invocation (
+    id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    run_id               BIGINT        NOT NULL COMMENT 'FK -> ai_agent_dialogue_run.id',
+    invocation_seq       INT           NOT NULL COMMENT 'run 内第几次模型调用，从1递增',
+    agent_name           VARCHAR(32)   NOT NULL COMMENT '当前调用所在 agent，如 executor/planning/summary',
+    step_no              INT           NULL COMMENT '当前 agent step 序号',
+    call_kind            VARCHAR(16)   NOT NULL COMMENT 'ask | askTool',
+    streaming            TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '是否流式',
+    model_name           VARCHAR(128)  NULL COMMENT '模型名',
+    response_text        MEDIUMTEXT    NULL COMMENT '完整文本响应；askTool 场景为思考文本',
+    tool_call_count      INT           NOT NULL DEFAULT 0 COMMENT 'askTool 下发的 tool call 数量',
+    prompt_tokens        INT           NOT NULL DEFAULT 0,
+    completion_tokens    INT           NOT NULL DEFAULT 0,
+    total_tokens         INT           NOT NULL DEFAULT 0,
+    finish_reason        VARCHAR(32)   NULL COMMENT 'stop | tool_calls | length | error',
+    status               TINYINT       NOT NULL DEFAULT 0 COMMENT '0=运行中 1=成功 2=失败 3=超时',
+    error_msg            TEXT          NULL COMMENT '错误信息',
+    started_at           DATETIME(3)   NOT NULL COMMENT '开始时间',
+    finished_at          DATETIME(3)   NULL COMMENT '结束时间',
+    duration_ms          BIGINT        NULL COMMENT '耗时(毫秒)',
+    create_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted              TINYINT(1)    NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_run_invocation_seq (run_id, invocation_seq),
+    KEY idx_run_time (run_id, deleted, create_time),
+    KEY idx_agent_time (agent_name, deleted, create_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型调用记录';
+```
+
+### 3.3 ai_agent_tool_invocation
+
+记录一次模型决策后真正执行的工具调用。
+
+```sql
+CREATE TABLE ai_agent_tool_invocation (
+    id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    run_id               BIGINT        NOT NULL COMMENT 'FK -> ai_agent_dialogue_run.id',
+    llm_invocation_id    BIGINT        NOT NULL COMMENT 'FK -> ai_agent_llm_invocation.id',
+    tool_call_id         VARCHAR(128)  NOT NULL COMMENT '模型返回的 toolCallId',
+    invocation_seq       INT           NOT NULL COMMENT 'run 内第几次工具执行，从1递增',
+    agent_name           VARCHAR(32)   NOT NULL COMMENT '当前执行工具的 agent',
+    step_no              INT           NULL COMMENT '当前 agent step 序号',
+    tool_name            VARCHAR(128)  NOT NULL COMMENT '工具名',
+    tool_provider        VARCHAR(64)   NULL COMMENT '工具提供方，如 local/mcp/python',
+    input_json           JSON          NOT NULL COMMENT '工具入参',
+    output_text          MEDIUMTEXT    NULL COMMENT '字符串型输出',
+    output_json          JSON          NULL COMMENT '结构化输出',
+    status               TINYINT       NOT NULL DEFAULT 0 COMMENT '0=运行中 1=成功 2=失败 3=超时',
+    error_msg            TEXT          NULL COMMENT '错误信息',
+    started_at           DATETIME(3)   NOT NULL COMMENT '开始时间',
+    finished_at          DATETIME(3)   NULL COMMENT '结束时间',
+    duration_ms          BIGINT        NULL COMMENT '耗时(毫秒)',
+    create_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted              TINYINT(1)    NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_run_tool_call_id (run_id, tool_call_id),
+    UNIQUE KEY uk_run_tool_invocation_seq (run_id, invocation_seq),
+    KEY idx_llm_invocation (llm_invocation_id, deleted),
+    KEY idx_tool_name_time (tool_name, deleted, create_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用记录';
+```
+
+### 3.4 ai_agent_artifact
+
+记录输入文件与工具产物文件。
+
+```sql
+CREATE TABLE ai_agent_artifact (
+    id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    run_id               BIGINT        NOT NULL COMMENT 'FK -> ai_agent_dialogue_run.id',
+    tool_invocation_id   BIGINT        NULL COMMENT 'FK -> ai_agent_tool_invocation.id；输入文件时为空',
+    tool_call_id         VARCHAR(128)  NULL COMMENT '来源工具调用ID；输入文件时为空',
+    artifact_role        VARCHAR(16)   NOT NULL COMMENT 'input | output',
+    visibility           VARCHAR(16)   NOT NULL DEFAULT 'visible' COMMENT 'visible | internal',
+    source_type          VARCHAR(32)   NOT NULL COMMENT 'user_upload | tool_output',
+    source_name          VARCHAR(128)  NULL COMMENT '来源名称：工具名或 user_upload',
+    file_name            VARCHAR(256)  NOT NULL COMMENT '文件名',
+    storage_key          VARCHAR(512)  NULL COMMENT '稳定资源key或对象存储key',
+    download_url         VARCHAR(1024) NULL COMMENT '下载地址',
+    preview_url          VARCHAR(1024) NULL COMMENT '预览地址',
+    mime_type            VARCHAR(128)  NULL COMMENT 'MIME类型',
+    file_size            BIGINT        NULL COMMENT '文件大小(字节)',
+    file_hash            VARCHAR(128)  NULL COMMENT '文件哈希，可选',
+    metadata_json        JSON          NULL COMMENT '扩展元数据',
+    create_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_time          DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted              TINYINT(1)    NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_run_tool_storage (run_id, tool_call_id, storage_key),
+    KEY idx_run_role_time (run_id, artifact_role, deleted, create_time),
+    KEY idx_tool_invocation (tool_invocation_id, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='执行输入与工具产物记录';
+```
+
+## 4. 写入时序设计
+
+### 4.1 总体原则
+
+- 只在生命周期关键节点写库
+- 不按流式 chunk 落库
+- 采用“前插后更”，保证异常中断时也有运行中记录可查
+- 工具产物在单次工具完成后立即落库，不延迟到全局收尾
+
+### 4.2 写入阶段
+
+#### 阶段 1：请求进入后创建 run
+
+**建议挂点：**
+
+- 请求入口统一装配层
+- `AgentContext` 构建完成之后，真正执行 agent 之前
+
+**写入表：**
+
+- `ai_agent_dialogue_run`
+- `ai_agent_artifact`（输入文件）
+
+**写入数据：**
+
+- run 基础信息：`run_uid/request_id/session_id/entry_agent/query_text/status=运行中/started_at`
+- 输入文件：`artifact_role=input`、`source_type=user_upload`、文件稳定引用信息
+
+#### 阶段 2：每次 `LLM.ask()` / `LLM.askTool()` 调用前插入 LLM 记录
+
+**建议挂点：**
+
+- `LLM.ask()`
+- `LLM.askTool()`
+
+**写入表：**
+
+- `ai_agent_llm_invocation`
+
+**写入数据：**
+
+- `run_id`
+- `invocation_seq`
+- `agent_name`
+- `step_no`
+- `call_kind`
+- `streaming`
+- `model_name`
+- `started_at`
+- `status=运行中`
+
+#### 阶段 3：LLM 调用完成后更新 LLM 记录
+
+**建议挂点：**
+
+- 非流式：future 成功返回后
+- 流式：`onComplete` / `onError`
+
+**写入表：**
+
+- 更新 `ai_agent_llm_invocation`
+
+**写入数据：**
+
+- `response_text`
+- `tool_call_count`
+- `prompt_tokens`
+- `completion_tokens`
+- `total_tokens`
+- `finish_reason`
+- `status`
+- `error_msg`
+- `finished_at`
+- `duration_ms`
+
+#### 阶段 4：每次工具执行前插入 Tool 记录
+
+**建议挂点：**
+
+- `BaseAgent.executeTool()`
+
+**写入表：**
+
+- `ai_agent_tool_invocation`
+
+**写入数据：**
+
+- `run_id`
+- `llm_invocation_id`
+- `tool_call_id`
+- `invocation_seq`
+- `agent_name`
+- `step_no`
+- `tool_name`
+- `tool_provider`
+- `input_json`
+- `started_at`
+- `status=运行中`
+
+#### 阶段 5：每次工具执行完成后更新 Tool 记录，并立即写产物
+
+**建议挂点：**
+
+- `BaseAgent.executeTool()` 返回后或异常捕获后
+
+**写入表：**
+
+- 更新 `ai_agent_tool_invocation`
+- 新增 `ai_agent_artifact`
+
+**写入数据：**
+
+- 工具记录：`output_text/output_json/status/error_msg/finished_at/duration_ms`
+- 文件记录：通过 `ToolArtifactRegistry` 按 `toolCallId` 收口后，写 `artifact_role=output`
+
+#### 阶段 6：整个 run 完成后回写总账
+
+**建议挂点：**
+
+- 顶层 handler 结束时
+- `REACT / PLAN_SOLVE / WORKFLOW` 三条链路都应有统一 finalize
+
+**写入表：**
+
+- 更新 `ai_agent_dialogue_run`
+
+**写入数据：**
+
+- `status`
+- `final_summary_text`
+- `llm_call_count`
+- `tool_call_count`
+- `artifact_count`
+- `prompt_tokens_total`
+- `completion_tokens_total`
+- `total_tokens_total`
+- `error_code/error_msg`
+- `finished_at`
+- `duration_ms`
+
+## 5. 代码落点设计
+
+### 5.1 建议新增运行态上下文
+
+建议在 `AgentContext` 中新增一个轻量运行态对象，用于贯穿持久化链路：
+
+```java
+@Data
+@Builder
+public class AgentRunState {
+    private Long runId;
+    private String runUid;
+    private String currentAgentName;
+    private Integer currentStepNo;
+    private Integer llmInvocationSeq;
+    private Integer toolInvocationSeq;
+    private Long currentLlmInvocationId;
 }
 ```
 
-`code_interpreter` 的 `tool_output_json`：
-```json
-{
-  "stdout": "Chart generated successfully",
-  "stderr": "",
-  "exit_code": 0,
-  "files": ["chart_001.png"]
-}
-```
+作用：
 
-### 3.3 agent_tool_file（文件关联表）
+- 让 `LLM` 层知道当前 `runId`
+- 让 `BaseAgent.executeTool()` 能准确拿到当前 `llmInvocationId`
+- 避免在方法签名里层层透传一堆持久化参数
 
-记录工具产生的文件和用户上传的文件。
-
-```sql
-CREATE TABLE agent_tool_file (
-    id            BIGINT          NOT NULL AUTO_INCREMENT,
-    turn_id       BIGINT          NULL COMMENT '冗余：方便查询某轮对话的所有文件',
-    request_id    VARCHAR(64)     NULL COMMENT '冗余：方便查询某次请求的所有文件',
-    tool_call_id  VARCHAR(64)     NULL COMMENT '关联 ToolArtifactSource.toolCallId',
-    ref_type      VARCHAR(32)     NOT NULL COMMENT 'execution | tool_call | session',
-    ref_id        VARCHAR(64)     NOT NULL COMMENT '对应表的主键ID或标识符',
-    file_name     VARCHAR(256)    NOT NULL,
-    file_path     VARCHAR(512)    NOT NULL COMMENT '存储路径或 URL',
-    file_size     BIGINT          NULL DEFAULT 0,
-    mime_type     VARCHAR(64)     NULL,
-    source        VARCHAR(32)     NOT NULL COMMENT '工具名称或 user_upload',
-    is_internal   TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '是否内部文件',
-    metadata_json JSON            NULL COMMENT '额外元数据（如图片尺寸、代码语言等）',
-    create_time   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_turn_id (turn_id),
-    KEY idx_request_id (request_id),
-    KEY idx_tool_call_id (tool_call_id),
-    KEY idx_ref (ref_type, ref_id)
-) ENGINE=InnoDB COMMENT='工具及用户文件记录';
-```
-
-**多态关联说明：**
-
-| ref_type | ref_id 指向 | 场景 |
-|----------|------------|------|
-| `execution` | `agent_tool_execution.id` | 直接关联到执行记录（预留） |
-| `tool_call` | `ToolArtifactSource.toolCallId` | 工具调用产生的文件（推荐） |
-| `session` | `AgentContext.sessionId` | 用户上传的文件、会话级产物 |
-
-## 4. 数据流设计
-
-### 4.1 整体数据流
-
-```
-用户提问
-   |
-   ▼
-+-----------+     +-----------------+
-| LLM.ask() |---->| agent_llm_call  |  (记录调用元数据)
-|askTool()  |     +-----------------+
-+-----------+              |
-        |                  ▼
-        |           +-----------------+
-        |           | 返回 ToolCalls  |
-        |           +-----------------+
-        |                  |
-        ▼                  ▼
-+-----------+     +---------------------+
-|executeTool|---->| agent_tool_execution|  (记录工具入参/出参 JSON)
-|           |     +---------------------+
-+-----------+              |
-        |                  ▼
-        |           +-----------------+
-        |           | 产生文件？       |
-        |           +-----------------+
-        |                  |
-        ▼            是 /      \ 否
-   +--------+      ▼            ▼
-   | 返回结果|  +-----------+  (结束)
-   |格式化进 |  |agent_tool_file| (记录文件)
-   | prompt |  +-----------+
-   +--------+
-```
-
-### 4.2 写入点
-
-| 写入点 | 位置 | 写入表 | 说明 |
-|--------|------|--------|------|
-| 1 | `LLM.ask()` 返回后 | `agent_llm_call` | 记录 LLM 调用元数据 |
-| 2 | `LLM.askTool()` 返回后 | `agent_llm_call` | 同上，`call_type = askTool` |
-| 3 | `BaseAgent.executeTool()` 执行后 | `agent_tool_execution` | 记录工具入参、出参、耗时 |
-| 4 | `BaseAgent.run()` 返回前 | `agent_tool_file` | 从 `ToolArtifactRegistry` 统一记录所有文件产物 |
-
-## 5. 代码设计
-
-### 5.1 领域层接口（domain 层）
+### 5.2 建议新增领域接口
 
 ```java
 package org.wwz.ai.domain.agent.reactor.agent.recorder;
 
 public interface AgentExecutionRecorder {
-    
-    /**
-     * 记录 LLM 调用
-     * @return 生成的 call_id，失败返回 null
-     */
-    Long recordLlmCall(LlmCallRecord record);
-    
-    /**
-     * 记录工具执行
-     * @return 生成的 execution_id，失败返回 null
-     */
-    Long recordToolExecution(ToolExecutionRecord record);
-    
-    /**
-     * 批量记录文件
-     */
-    void recordFiles(List<ToolFileRecord> files);
+
+    Long createRun(DialogueRunRecord record);
+
+    void finishRun(DialogueRunFinishRecord record);
+
+    Long createLlmInvocation(LlmInvocationStartRecord record);
+
+    void finishLlmInvocation(LlmInvocationFinishRecord record);
+
+    Long createToolInvocation(ToolInvocationStartRecord record);
+
+    void finishToolInvocation(ToolInvocationFinishRecord record);
+
+    void recordArtifacts(List<ArtifactRecord> records);
 }
 ```
 
-```java
-package org.wwz.ai.domain.agent.reactor.agent.recorder;
+接口设计原则：
 
-@Data
-@Builder
-public class LlmCallRecord {
-    private String requestId;
-    private Long turnId;
-    private String callType;
-    private String modelName;
-    private Integer promptTokens;
-    private Integer completionTokens;
-    private Integer totalTokens;
-    private Long durationMs;
-    private String finishReason;
-    private String status;
-    private String errorMsg;
-}
-```
+- “开始”和“结束”分开，天然适配前插后更
+- 领域层只传明确结构，不暴露 Mapper / PO / SQL 细节
 
-```java
-package org.wwz.ai.domain.agent.reactor.agent.recorder;
+### 5.3 具体挂点
 
-@Data
-@Builder
-public class ToolExecutionRecord {
-    private String requestId;
-    private String toolName;
-    private String toolInputJson;
-    private String toolOutputJson;
-    private Long durationMs;
-    private String status;
-    private String errorMsg;
-}
-```
-
-```java
-package org.wwz.ai.domain.agent.reactor.agent.recorder;
-
-@Data
-@Builder
-public class ToolFileRecord {
-    private Long turnId;
-    private String requestId;
-    private String toolCallId;
-    private String refType;
-    private String refId;
-    private String fileName;
-    private String filePath;
-    private Long fileSize;
-    private String mimeType;
-    private String source;
-    private Integer isInternal;
-    private String metadataJson;
-}
-```
-
-### 5.2 AgentContext 扩展
-
-本设计不需要修改 `AgentContext` 的字段。工具执行记录通过 `request_id`（`AgentContext` 中已有）与 LLM 调用关联，无需额外传递 `call_id`。
-
-> 注：如果未来需要精确关联"某次工具调用是由哪次 LLM 调用触发的"（如同一 `request_id` 下有多次 `askTool`），可在 `ToolExecutionRecord` 和 `agent_tool_execution` 表中增加 `call_id` 字段。
-
-### 5.3 LLM 层写入点
-
-```java
-// LLM.java
-
-public CompletableFuture<String> ask(AgentContext context, 
-                                      List<Message> messages,
-                                      List<Message> systemMsgs,
-                                      boolean stream,
-                                      Double temperature) {
-    long start = System.currentTimeMillis();
-    ChatRequest request = buildRequest(messages, systemMsgs, temperature);
-    
-    return asyncClient.chat(request).thenApply(resp -> {
-        long duration = System.currentTimeMillis() - start;
-        
-        // 写入点 1：记录 LLM 调用
-        LlmCallRecord record = LlmCallRecord.builder()
-            .requestId(context.getRequestId())
-            .turnId(resolveTurnId(context))
-            .callType("ask")
-            .modelName(modelConfig.getName())
-            .promptTokens(resp.getUsage().getPromptTokens())
-            .completionTokens(resp.getUsage().getCompletionTokens())
-            .totalTokens(resp.getUsage().getTotalTokens())
-            .durationMs(duration)
-            .finishReason(resp.getChoices().get(0).getFinishReason())
-            .status("success")
-            .build();
-        
-        recorder.recordLlmCall(record);
-        
-        return resp.getChoices().get(0).getMessage().getContent();
-        
-    }).exceptionally(ex -> {
-        // 错误也记录
-        recorder.recordLlmCall(LlmCallRecord.builder()
-            .requestId(context.getRequestId())
-            .turnId(resolveTurnId(context))
-            .callType("ask")
-            .status("error")
-            .errorMsg(ex.getMessage())
-            .build());
-        throw new RuntimeException(ex);
-    });
-}
-```
-
-`askTool()` 逻辑相同，`callType = "askTool"`。
-
-### 5.4 BaseAgent 层写入点
-
-```java
-// BaseAgent.java
-
-public String executeTool(ToolCall command) {
-    String name = command.getFunction().getName();
-    Object args = parseArgs(command.getFunction().getArguments());
-    
-    long start = System.currentTimeMillis();
-    Object result;
-    String status = "success";
-    String errorMsg = null;
-    
-    try {
-        result = availableTools.execute(name, args);
-    } catch (Exception e) {
-        result = formatError(e);
-        status = "error";
-        errorMsg = e.getMessage();
-    }
-    
-    long duration = System.currentTimeMillis() - start;
-    
-    // 写入点 3：记录工具执行
-    ToolExecutionRecord execRecord = ToolExecutionRecord.builder()
-        .requestId(context.getRequestId())
-        .toolName(name)
-        .toolInputJson(JSON.toJSONString(args))
-        .toolOutputJson(result instanceof String ? (String) result : JSON.toJSONString(result))
-        .durationMs(duration)
-        .status(status)
-        .errorMsg(errorMsg)
-        .build();
-    
-    recorder.recordToolExecution(execRecord);
-    
-    // 文件不在这里记录，统一在 Agent 执行结束后从 ToolArtifactRegistry 读取
-    return formatResult(result);
-}
-```
-
-### 5.5 产物文件记录（从 ToolArtifactRegistry 读取）
-
-```java
-// BaseAgent.run() 返回前或 SummaryAgent 中
-
-protected void recordProductFiles() {
-    ToolArtifactRegistry registry = context.getToolArtifactRegistry();
-    if (registry == null || registry.listBindings().isEmpty()) {
-        return;
-    }
-
-    List<ToolFileRecord> files = registry.listBindings().stream()
-        .map(binding -> {
-            ToolArtifactSource source = binding.getSource();
-            File file = binding.getFile();
-
-            return ToolFileRecord.builder()
-                .turnId(resolveTurnId(context))
-                .requestId(source != null ? source.getRequestId() : context.getRequestId())
-                .toolCallId(source != null ? source.getToolCallId() : null)
-                .refType(source != null && source.getToolCallId() != null ? "tool_call" : "session")
-                .refId(source != null ? source.getToolCallId() : context.getSessionId())
-                .source(source != null ? source.getToolName() : "user_upload")
-                .fileName(file.getFileName())
-                .filePath(resolveFileUrl(file))
-                .isInternal(binding.isInternalFile() ? 1 : 0)
-                .build();
-        })
-        .collect(Collectors.toList());
-
-    recorder.recordFiles(files);
-}
-```
-
-### 5.6 Infrastructure 实现
-
-```java
-package org.wwz.ai.infrastructure.agent.recorder;
-
-@Component
-@Slf4j
-public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
-    
-    @Autowired
-    private AgentLlmCallMapper llmCallMapper;
-    @Autowired
-    private AgentToolExecutionMapper toolExecutionMapper;
-    @Autowired
-    private AgentToolFileMapper toolFileMapper;
-    
-    @Override
-    public Long recordLlmCall(LlmCallRecord record) {
-        try {
-            AgentLlmCallPO po = convertToPO(record);
-            llmCallMapper.insert(po);
-            return po.getId();
-        } catch (Exception e) {
-            log.error("记录 LLM 调用失败, requestId={}", record.getRequestId(), e);
-            return null;
-        }
-    }
-    
-    @Override
-    public Long recordToolExecution(ToolExecutionRecord record) {
-        try {
-            AgentToolExecutionPO po = convertToPO(record);
-            toolExecutionMapper.insert(po);
-            return po.getId();
-        } catch (Exception e) {
-            log.error("记录工具执行失败, requestId={}", record.getRequestId(), e);
-            return null;
-        }
-    }
-    
-    @Override
-    public void recordFiles(List<ToolFileRecord> files) {
-        if (CollectionUtils.isEmpty(files)) {
-            return;
-        }
-        try {
-            List<AgentToolFilePO> pos = files.stream()
-                .map(this::convertToPO)
-                .collect(Collectors.toList());
-            toolFileMapper.insertBatch(pos);
-        } catch (Exception e) {
-            log.error("记录文件失败, count={}", files.size(), e);
-        }
-    }
-    
-    // ... convert 方法 ...
-}
-```
+| 挂点 | 责任 |
+|------|------|
+| 请求入口统一装配层 | 创建 run，登记输入文件 |
+| `LLM.ask()` / `LLM.askTool()` | 创建 / 更新 LLM 调用记录 |
+| `BaseAgent.executeTool()` | 创建 / 更新工具调用记录 |
+| `ToolArtifactRegistry` 查询收口 | 按 `toolCallId` 写产物 |
+| 顶层 handler | 回写 run 最终状态和聚合指标 |
 
 ## 6. 查询示例
 
-### 6.1 查某轮对话的所有文件
+### 6.1 查询某次执行的完整链路
 
 ```sql
-SELECT * FROM agent_tool_file WHERE turn_id = ? ORDER BY create_time;
+SELECT *
+FROM ai_agent_dialogue_run
+WHERE request_id = ? AND deleted = 0;
 ```
 
-### 6.2 查某次请求的所有工具调用
+```sql
+SELECT *
+FROM ai_agent_llm_invocation
+WHERE run_id = ? AND deleted = 0
+ORDER BY invocation_seq;
+```
 
 ```sql
-SELECT * FROM agent_tool_execution 
-WHERE request_id = ? 
+SELECT *
+FROM ai_agent_tool_invocation
+WHERE run_id = ? AND deleted = 0
+ORDER BY invocation_seq;
+```
+
+```sql
+SELECT *
+FROM ai_agent_artifact
+WHERE run_id = ? AND deleted = 0
 ORDER BY create_time;
 ```
 
-### 6.3 查某次 LLM 调用的元数据
+### 6.2 查询某个工具最近的调用情况
 
 ```sql
-SELECT * FROM agent_llm_call WHERE request_id = ? AND call_type = 'askTool';
-```
-
-### 6.4 查代码解释器的历史执行
-
-```sql
-SELECT * FROM agent_tool_execution 
-WHERE tool_name = 'code_interpreter' 
-ORDER BY create_time DESC 
+SELECT *
+FROM ai_agent_tool_invocation
+WHERE tool_name = 'code_interpreter'
+  AND deleted = 0
+ORDER BY create_time DESC
 LIMIT 100;
 ```
 
-### 6.5 从 JSON 中提取搜索结果的来源 URL（后端解析）
-
-```java
-// 查询获取 tool_output_json
-AgentToolExecutionPO record = toolExecutionMapper.selectById(executionId);
-Map<String, Object> output = JSON.parseObject(record.getToolOutputJson());
-
-// 提取搜索结果
-List<Map<String, Object>> results = (List<Map<String, Object>>) output.get("results");
-List<String> urls = results.stream()
-    .map(r -> (String) r.get("url"))
-    .filter(Objects::nonNull)
-    .collect(Collectors.toList());
-
-// 提取搜索关键词
-String query = (String) output.get("query");
-Integer resultCount = (Integer) output.get("result_count");
-```
-
-### 6.6 统计某模型的 token 消耗
+### 6.3 查询某个会话下最近的执行列表
 
 ```sql
-SELECT 
-    model_name,
-    COUNT(*) as call_count,
-    SUM(total_tokens) as total_tokens,
-    AVG(total_tokens) as avg_tokens,
-    AVG(duration_ms) as avg_duration_ms
-FROM agent_llm_call 
-WHERE create_time > DATE_SUB(NOW(), INTERVAL 7 DAY)
-GROUP BY model_name;
+SELECT *
+FROM ai_agent_dialogue_run
+WHERE session_id = ?
+  AND deleted = 0
+ORDER BY create_time DESC;
 ```
 
-## 7. 扩展指南
+## 7. 风险与取舍
 
-### 7.1 新增工具
+### 7.1 为什么不把所有内容都塞进一张表
 
-新增工具时，不需要修改表结构。只需确保工具的输出中包含需要持久化的数据，`agent_tool_execution` 会自动以 JSON 形式存储。
+因为当前真实链路天然是分层的：
 
-如果新工具有特殊文件产出，在 `extractAndRecordFiles` 方法中添加该工具的文件提取逻辑即可。
+- 一次 run 有多次 LLM 调用
+- 一次 LLM 调用可能有多个 tool call
+- 一次 tool call 可能产出多个文件
 
-### 7.2 从 JSON 升级到独立表
+把它们平铺到一张表，会让唯一键、排序、归属关系和扩展性都迅速恶化。
 
-如果某天某个工具的数据量增长到 JSON 查询成为瓶颈（如代码解释器每天百万次调用），可以：
+### 7.2 为什么不记录逐 chunk 流式内容
 
-1. 新建 `tool_exec_xxx_detail` 表
-2. 在 `extractAndRecordFiles` 中同时写入 JSON 和 detail 表
-3. 历史数据通过离线任务迁移
-4. 查询切换到 detail 表
+当前目标是执行账本，不是聊天 transcript 账本。
 
-### 7.3 增加缓存层
+逐 chunk 落库会带来：
 
-如果同步写入成为性能瓶颈，可以在 `AgentExecutionRecorderImpl` 中增加内存缓冲：
+- 写放大严重
+- 数据噪音高
+- 对排查价值有限
 
-```java
-// 批量缓冲写入
-private List<LlmCallRecord> llmCallBuffer = new ArrayList<>();
+保留最终 `response_text` 和完整工具结果即可满足当前目标。
 
-@Scheduled(fixedRate = 5000)
-public void flushBuffer() {
-    // 每 5 秒批量写入一次
-}
-```
+### 7.3 为什么不在 LLM 表重复保存 toolCalls 明细
 
-注意：缓冲写入在进程崩溃时会丢失数据，需权衡。
+因为 toolCalls 的真实执行明细已经在 `ai_agent_tool_invocation` 中有更强约束的事实源：
 
-## 8. 风险提示
+- 有 `tool_call_id`
+- 有实际入参
+- 有实际出参
+- 有执行状态和耗时
 
-| 风险 | 缓解措施 |
-|------|----------|
-| 同步写入影响 Agent 响应延迟 | Recorder 实现中异常捕获，确保写入失败不阻塞；后续可评估是否需要异步化 |
-| JSON 字段过大导致单表膨胀 | 监控单表大小，必要时按时间分表或归档 |
-| 工具输出结构变更导致 JSON 解析失败 | JSON 解析时做好 null 和类型安全检查 |
-| `turn_id` 解析逻辑不一致 | 统一在 `resolveTurnId()` 方法中处理，避免多处硬编码 |
+LLM 表只需记录这次决策“返回了几个工具调用”和“当时的思考文本”即可。
+
+## 8. 后续扩展
+
+以下能力不纳入本期主设计，但后续可按需增加：
+
+- `system_prompt_hash`：做 prompt 版本效果归因
+- `request_payload_ref`：需要保留完整 prompt 请求体时再引入
+- 独立投影表：如果后端或前端需要专门的运行时间线展示，可在源表稳定后追加读模型
+- 数据归档 / 分表：当 `ai_agent_tool_invocation` 数据量大幅增长时再做
+
+## 9. 最终结论
+
+本期推荐方案是：
+
+1. 以 `run` 为唯一执行聚合根
+2. 用 4 张表拆分运行总账、LLM 调用、Tool 调用、文件产物
+3. LLM 表只存完整文本响应和指标，不存 excerpt / raw payload
+4. Tool 表承担入参与出参真相源
+5. 文件表直接显式关联到 `run` 和 `tool_invocation`
+6. 采用“前插后更”的同步实时写入策略
+
+这套方案与当前代码实际结构一致，约束清晰，后续扩展成本也最低。
