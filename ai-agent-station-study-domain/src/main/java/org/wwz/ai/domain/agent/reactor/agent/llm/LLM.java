@@ -37,8 +37,12 @@ import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.agent.util.ToolSchemaNormalizer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -271,6 +275,11 @@ public class LLM {
             Double temperature
     ) {
         try {
+            LlmInvocationHandle invocationHandle = startLlmInvocation(
+                    context,
+                    ExecutionLedgerConstants.CALL_KIND_ASK,
+                    stream
+            );
             ensureSpringAiDependencies();
             Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
@@ -283,12 +292,71 @@ public class LLM {
 
             if (!stream) {
                 return CompletableFuture.supplyAsync(() -> {
-                    ChatResponse response = chatModel.call(prompt);
-                    return responseMapper.toText(response);
+                    try {
+                        ChatResponse response = chatModel.call(prompt);
+                        String content = responseMapper.toText(response);
+                        finishLlmInvocation(
+                                context,
+                                invocationHandle,
+                                ExecutionLedgerConstants.STATUS_SUCCESS,
+                                content,
+                                0,
+                                resolvePromptTokens(response.getMetadata()),
+                                resolveCompletionTokens(response.getMetadata()),
+                                resolveTotalTokens(response.getMetadata()),
+                                resolveFinishReason(response),
+                                null
+                        );
+                        return content;
+                    } catch (Exception e) {
+                        finishLlmInvocation(
+                                context,
+                                invocationHandle,
+                                ExecutionLedgerConstants.resolveFailureStatus(e),
+                                null,
+                                0,
+                                null,
+                                null,
+                                null,
+                                null,
+                                e.getMessage()
+                        );
+                        throw new CompletionException(e);
+                    }
                 });
             }
 
-            return streamResponseHandler.handleStringStream(context, chatModel.stream(prompt));
+            return streamResponseHandler.handleStringStream(context, chatModel.stream(prompt))
+                    .whenComplete((content, throwable) -> {
+                        if (throwable == null) {
+                            finishLlmInvocation(
+                                    context,
+                                    invocationHandle,
+                                    ExecutionLedgerConstants.STATUS_SUCCESS,
+                                    content,
+                                    0,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null
+                            );
+                            return;
+                        }
+                        Throwable cause = unwrapCompletionThrowable(throwable);
+                        finishLlmInvocation(
+                                context,
+                                invocationHandle,
+                                ExecutionLedgerConstants.resolveFailureStatus(cause),
+                                null,
+                                0,
+                                null,
+                                null,
+                                null,
+                                null,
+                                cause.getMessage()
+                        );
+                    });
         } catch (Exception e) {
             log.error("{} Unexpected error in ask: {}", context.getRequestId(), e.getMessage(), e);
             return failedFuture(e);
@@ -314,9 +382,15 @@ public class LLM {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
             }
 
+            LlmInvocationHandle invocationHandle = startLlmInvocation(
+                    context,
+                    ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
+                    stream
+            );
             long startTime = System.currentTimeMillis();
             if (isStructParseMode()) {
-                return askToolWithStructParse(context, messages, systemMsgs, tools, temperature, stream, timeout, startTime);
+                return askToolWithStructParse(
+                        context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
 
             ensureSpringAiDependencies();
@@ -331,8 +405,12 @@ public class LLM {
 
             if (!stream) {
                 CompletableFuture<ToolCallResponse> springFuture = CompletableFuture.supplyAsync(() -> {
-                    ChatResponse response = chatModel.call(prompt);
-                    return responseMapper.toToolCallResponse(response, startTime);
+                    try {
+                        ChatResponse response = chatModel.call(prompt);
+                        return responseMapper.toToolCallResponse(response, startTime);
+                    } catch (Exception e) {
+                        throw new CompletionException(e);
+                    }
                 }).orTimeout(timeout, TimeUnit.SECONDS);
 
                 return withFallback(
@@ -340,10 +418,23 @@ public class LLM {
                         () -> legacyAskToolFunctionCallNonStream(context, messages, systemMsgs, tools, toolChoice, temperature, timeout, startTime),
                         context.getRequestId(),
                         "askTool(function_call, stream=false)"
-                );
+                ).whenComplete((response, throwable) -> {
+                    if (throwable == null) {
+                        finishLlmInvocation(context, invocationHandle, response, null);
+                        return;
+                    }
+                    finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                });
             }
 
             return streamResponseHandler.handleToolCallStream(context, chatModel.stream(prompt), startTime)
+                    .whenComplete((response, throwable) -> {
+                        if (throwable == null) {
+                            finishLlmInvocation(context, invocationHandle, response, null);
+                            return;
+                        }
+                        finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                    })
                     .orTimeout(timeout, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.error("{} Unexpected error in askTool: {}", context.getRequestId(), e.getMessage(), e);
@@ -363,7 +454,8 @@ public class LLM {
             Double temperature,
             boolean stream,
             int timeout,
-            long startTime
+            long startTime,
+            LlmInvocationHandle invocationHandle
     ) {
         ensureSpringAiDependencies();
 
@@ -379,14 +471,23 @@ public class LLM {
 
         if (!stream) {
             return CompletableFuture.supplyAsync(() -> {
-                ChatResponse response = chatModel.call(prompt);
-                return buildStructParseToolCallResponse(
-                        context,
-                        responseMapper.toText(response),
-                        resolveFinishReason(response),
-                        resolveTotalTokens(response.getMetadata()),
-                        startTime
-                );
+                try {
+                    ChatResponse response = chatModel.call(prompt);
+                    ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
+                            context,
+                            responseMapper.toText(response),
+                            resolveFinishReason(response),
+                            resolveTotalTokens(response.getMetadata()),
+                            startTime
+                    );
+                    toolCallResponse.setPromptTokens(resolvePromptTokens(response.getMetadata()));
+                    toolCallResponse.setCompletionTokens(resolveCompletionTokens(response.getMetadata()));
+                    finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
+                    return toolCallResponse;
+                } catch (Exception e) {
+                    finishLlmInvocation(context, invocationHandle, null, e);
+                    throw new CompletionException(e);
+                }
             }).orTimeout(timeout, TimeUnit.SECONDS);
         }
 
@@ -397,6 +498,13 @@ public class LLM {
                         true
                 )
                 .thenApply(content -> buildStructParseToolCallResponse(context, content, null, null, startTime))
+                .whenComplete((response, throwable) -> {
+                    if (throwable == null) {
+                        finishLlmInvocation(context, invocationHandle, response, null);
+                        return;
+                    }
+                    finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
+                })
                 .orTimeout(timeout, TimeUnit.SECONDS);
     }
 
@@ -727,6 +835,104 @@ public class LLM {
         return usage != null ? usage.getTotalTokens() : null;
     }
 
+    private Integer resolvePromptTokens(ChatResponseMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Usage usage = metadata.getUsage();
+        return usage != null ? usage.getPromptTokens() : null;
+    }
+
+    private Integer resolveCompletionTokens(ChatResponseMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Usage usage = metadata.getUsage();
+        return usage != null ? usage.getCompletionTokens() : null;
+    }
+
+    private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {
+        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
+            return LlmInvocationHandle.disabled();
+        }
+        LocalDateTime startedAt = LocalDateTime.now();
+        int invocationSeq = context.getAgentRunState().nextInvocationSeq();
+        Long invocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
+                .runId(context.getAgentRunState().getRunId())
+                .requestId(context.getRequestId())
+                .invocationSeq(invocationSeq)
+                .agentName(context.getAgentRunState().getCurrentAgentName())
+                .stepNo(context.getAgentRunState().getCurrentStepNo())
+                .callKind(callKind)
+                .streaming(stream)
+                .modelName(model)
+                .startedAt(startedAt)
+                .build());
+        context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
+        return new LlmInvocationHandle(invocationId);
+    }
+
+    private void finishLlmInvocation(AgentContext context,
+                                     LlmInvocationHandle handle,
+                                     ToolCallResponse response,
+                                     Throwable throwable) {
+        if (throwable != null) {
+            finishLlmInvocation(
+                    context,
+                    handle,
+                    ExecutionLedgerConstants.resolveFailureStatus(throwable),
+                    null,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    throwable.getMessage()
+            );
+            return;
+        }
+        finishLlmInvocation(
+                context,
+                handle,
+                ExecutionLedgerConstants.STATUS_SUCCESS,
+                response == null ? null : response.getContent(),
+                response == null || response.getToolCalls() == null ? 0 : response.getToolCalls().size(),
+                response == null ? null : response.getPromptTokens(),
+                response == null ? null : response.getCompletionTokens(),
+                response == null ? null : response.getTotalTokens(),
+                response == null ? null : response.getFinishReason(),
+                null
+        );
+    }
+
+    private void finishLlmInvocation(AgentContext context,
+                                     LlmInvocationHandle handle,
+                                     Integer status,
+                                     String responseText,
+                                     Integer toolCallCount,
+                                     Integer promptTokens,
+                                     Integer completionTokens,
+                                     Integer totalTokens,
+                                     String finishReason,
+                                     String errorMsg) {
+        if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
+            return;
+        }
+        context.getExecutionRecorder().finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(handle.invocationId())
+                .requestId(context.getRequestId())
+                .status(status)
+                .responseText(responseText)
+                .toolCallCount(toolCallCount)
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .finishReason(finishReason)
+                .errorMsg(errorMsg)
+                .finishedAt(LocalDateTime.now())
+                .build());
+    }
+
     private <T> CompletableFuture<T> withFallback(CompletableFuture<T> primaryFuture,
                                                   Supplier<CompletableFuture<T>> fallbackSupplier,
                                                   String requestId,
@@ -989,7 +1195,19 @@ public class LLM {
         private String content;
         private List<ToolCall> toolCalls;
         private String finishReason;
+        private Integer promptTokens;
+        private Integer completionTokens;
         private Integer totalTokens;
         private long duration;
+    }
+
+    private record LlmInvocationHandle(Long invocationId) {
+        private static LlmInvocationHandle disabled() {
+            return new LlmInvocationHandle(null);
+        }
+
+        private boolean enabled() {
+            return invocationId != null;
+        }
     }
 }

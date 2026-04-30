@@ -1,0 +1,239 @@
+package org.wwz.ai.domain.agent.reactor.service.impl;
+
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
+import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
+import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
+import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationView;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * 执行账本内部查询服务。
+ */
+@Service
+@RequiredArgsConstructor
+public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryService {
+
+    private final IDialogueRunLedgerDao dialogueRunLedgerDao;
+    private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
+    private final IToolInvocationLedgerDao toolInvocationLedgerDao;
+    private final IArtifactLedgerDao artifactLedgerDao;
+
+    @Override
+    public ExecutionRunDetail queryRunDetail(String requestId) {
+        if (StringUtils.isBlank(requestId)) {
+            return null;
+        }
+        DialogueRun run = dialogueRunLedgerDao.queryByRequestId(requestId);
+        if (run == null) {
+            return null;
+        }
+        List<LlmInvocation> llmInvocations = llmInvocationLedgerDao.queryByRunId(run.getId());
+        List<ToolInvocation> toolInvocations = toolInvocationLedgerDao.queryByRunId(run.getId());
+        List<ArtifactRecord> artifacts = artifactLedgerDao.queryByRunId(run.getId());
+        return ExecutionRunDetail.builder()
+                .run(toRunView(run))
+                .llmInvocations(toLlmViews(llmInvocations))
+                .toolInvocations(toToolViews(toolInvocations, run.getRequestId(), run.getSessionId(), artifacts))
+                .artifacts(toArtifactViews(artifacts))
+                .build();
+    }
+
+    @Override
+    public List<ToolInvocationView> queryRecentToolInvocations(String toolName, int limit) {
+        if (StringUtils.isBlank(toolName)) {
+            return List.of();
+        }
+        return toolInvocationLedgerDao.queryRecentByToolName(toolName, normalizeLimit(limit));
+    }
+
+    @Override
+    public List<DialogueRunView> queryRecentSessionRuns(String sessionId, int limit) {
+        if (StringUtils.isBlank(sessionId)) {
+            return List.of();
+        }
+        List<DialogueRunView> runViews = dialogueRunLedgerDao.queryRecentBySessionId(sessionId, normalizeLimit(limit));
+        if (CollectionUtils.isEmpty(runViews)) {
+            return runViews;
+        }
+        List<Long> runIds = runViews.stream()
+                .map(DialogueRunView::getId)
+                .filter(id -> id != null)
+                .toList();
+        if (runIds.isEmpty()) {
+            return runViews;
+        }
+        Map<Long, List<ArtifactView>> artifactViewsByRunId = artifactLedgerDao.queryByRunIds(runIds).stream()
+                .collect(Collectors.groupingBy(
+                        ArtifactRecord::getRunId,
+                        LinkedHashMap::new,
+                        Collectors.mapping(this::toArtifactView, Collectors.toCollection(ArrayList::new))));
+        for (DialogueRunView runView : runViews) {
+            runView.setArtifactSummaries(artifactViewsByRunId.getOrDefault(runView.getId(), List.of()));
+        }
+        return runViews;
+    }
+
+    private int normalizeLimit(int limit) {
+        if (limit <= 0) {
+            return 20;
+        }
+        return Math.min(limit, 100);
+    }
+
+    private DialogueRunView toRunView(DialogueRun run) {
+        if (run == null) {
+            return null;
+        }
+        return DialogueRunView.builder()
+                .id(run.getId())
+                .runUid(run.getRunUid())
+                .requestId(run.getRequestId())
+                .sessionId(run.getSessionId())
+                .entryAgent(run.getEntryAgent())
+                .status(run.getStatus())
+                .queryText(run.getQueryText())
+                .finalSummaryText(run.getFinalSummaryText())
+                .llmCallCount(run.getLlmCallCount())
+                .toolCallCount(run.getToolCallCount())
+                .artifactCount(run.getArtifactCount())
+                .promptTokensTotal(run.getPromptTokensTotal())
+                .completionTokensTotal(run.getCompletionTokensTotal())
+                .totalTokensTotal(run.getTotalTokensTotal())
+                .errorCode(run.getErrorCode())
+                .errorMsg(run.getErrorMsg())
+                .startedAt(run.getStartedAt())
+                .finishedAt(run.getFinishedAt())
+                .durationMs(run.getDurationMs())
+                .createTime(run.getCreateTime())
+                .build();
+    }
+
+    private List<LlmInvocationView> toLlmViews(List<LlmInvocation> invocations) {
+        if (invocations == null) {
+            return List.of();
+        }
+        List<LlmInvocationView> views = new ArrayList<>(invocations.size());
+        for (LlmInvocation invocation : invocations) {
+            views.add(LlmInvocationView.builder()
+                    .id(invocation.getId())
+                    .runId(invocation.getRunId())
+                    .invocationSeq(invocation.getInvocationSeq())
+                    .agentName(invocation.getAgentName())
+                    .stepNo(invocation.getStepNo())
+                    .callKind(invocation.getCallKind())
+                    .streaming(invocation.getStreaming())
+                    .modelName(invocation.getModelName())
+                    .responseText(invocation.getResponseText())
+                    .toolCallCount(invocation.getToolCallCount())
+                    .promptTokens(invocation.getPromptTokens())
+                    .completionTokens(invocation.getCompletionTokens())
+                    .totalTokens(invocation.getTotalTokens())
+                    .finishReason(invocation.getFinishReason())
+                    .status(invocation.getStatus())
+                    .errorMsg(invocation.getErrorMsg())
+                    .startedAt(invocation.getStartedAt())
+                    .finishedAt(invocation.getFinishedAt())
+                    .durationMs(invocation.getDurationMs())
+                    .createTime(invocation.getCreateTime())
+                    .build());
+        }
+        return views;
+    }
+
+    private List<ToolInvocationView> toToolViews(List<ToolInvocation> invocations,
+                                                 String requestId,
+                                                 String sessionId,
+                                                 List<ArtifactRecord> artifacts) {
+        if (invocations == null) {
+            return List.of();
+        }
+        Map<Long, Integer> artifactCountByToolInvocationId = new LinkedHashMap<>();
+        if (artifacts != null) {
+            for (ArtifactRecord artifact : artifacts) {
+                if (artifact == null || artifact.getToolInvocationId() == null) {
+                    continue;
+                }
+                artifactCountByToolInvocationId.merge(artifact.getToolInvocationId(), 1, Integer::sum);
+            }
+        }
+        List<ToolInvocationView> views = new ArrayList<>(invocations.size());
+        for (ToolInvocation invocation : invocations) {
+            views.add(ToolInvocationView.builder()
+                    .id(invocation.getId())
+                    .runId(invocation.getRunId())
+                    .llmInvocationId(invocation.getLlmInvocationId())
+                    .requestId(requestId)
+                    .sessionId(sessionId)
+                    .toolCallId(invocation.getToolCallId())
+                    .dispatchIndex(invocation.getDispatchIndex())
+                    .agentName(invocation.getAgentName())
+                    .stepNo(invocation.getStepNo())
+                    .toolName(invocation.getToolName())
+                    .toolProvider(invocation.getToolProvider())
+                    .inputJson(invocation.getInputJson())
+                    .outputText(invocation.getOutputText())
+                    .outputJson(invocation.getOutputJson())
+                    .status(invocation.getStatus())
+                    .errorMsg(invocation.getErrorMsg())
+                    .durationMs(invocation.getDurationMs())
+                    .artifactCount(artifactCountByToolInvocationId.getOrDefault(invocation.getId(), 0))
+                    .startedAt(invocation.getStartedAt())
+                    .finishedAt(invocation.getFinishedAt())
+                    .createTime(invocation.getCreateTime())
+                    .build());
+        }
+        return views;
+    }
+
+    private List<ArtifactView> toArtifactViews(List<ArtifactRecord> artifacts) {
+        if (artifacts == null) {
+            return List.of();
+        }
+        List<ArtifactView> views = new ArrayList<>(artifacts.size());
+        for (ArtifactRecord artifact : artifacts) {
+            views.add(toArtifactView(artifact));
+        }
+        return views;
+    }
+
+    private ArtifactView toArtifactView(ArtifactRecord artifact) {
+        return ArtifactView.builder()
+                .id(artifact.getId())
+                .runId(artifact.getRunId())
+                .toolInvocationId(artifact.getToolInvocationId())
+                .toolCallId(artifact.getToolCallId())
+                .artifactRole(artifact.getArtifactRole())
+                .visibility(artifact.getVisibility())
+                .sourceType(artifact.getSourceType())
+                .sourceName(artifact.getSourceName())
+                .fileName(artifact.getFileName())
+                .storageKey(artifact.getStorageKey())
+                .downloadUrl(artifact.getDownloadUrl())
+                .previewUrl(artifact.getPreviewUrl())
+                .mimeType(artifact.getMimeType())
+                .fileSize(artifact.getFileSize())
+                .fileHash(artifact.getFileHash())
+                .metadataJson(artifact.getMetadataJson())
+                .createTime(artifact.getCreateTime())
+                .build();
+    }
+}

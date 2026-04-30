@@ -203,6 +203,8 @@ public class SummaryAgent extends BaseAgent {
         }
 
         try {
+            // 总结阶段不走 BaseAgent.run，需要手动标记当前位置，保证 LLM 账本可识别为 summary 调用。
+            context.markExecutionPosition(getClass().getSimpleName().replace("Agent", "").toLowerCase(), null);
             // 2. 格式化执行消息：将消息列表转为LLM可识别的结构化文本（role+content），并处理超长消息
             log.info("requestId: {} summaryTaskResult: messages:{}", requestId, messages.size());
             StringBuilder sb = new StringBuilder();

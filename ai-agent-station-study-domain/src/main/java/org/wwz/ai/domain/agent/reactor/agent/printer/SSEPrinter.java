@@ -60,6 +60,7 @@ public class SSEPrinter implements Printer {
 
             if (!StringUtils.isEmpty(digitalEmployee)) {
                 response.setDigitalEmployee(digitalEmployee);
+                resultMap.put("digitalEmployee", digitalEmployee);
             }
 
             // 根据消息类型，将 message 放入对应字段

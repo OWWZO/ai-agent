@@ -8,8 +8,10 @@ import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactRegistry;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
+import org.wwz.ai.domain.agent.reactor.model.ledger.AgentRunState;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -177,6 +179,23 @@ public class AgentContext {
     ThreadLocal<ToolArtifactSource> currentToolArtifactSourceHolder = new ThreadLocal<>();
 
     /**
+     * 当前请求的执行账本写入器。
+     * 根节点初始化后挂入，LLM / BaseAgent / Summary 等运行时统一复用。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    AgentExecutionRecorder executionRecorder;
+
+    /**
+     * 当前请求的 run 级运行态。
+     * 统一保存 runId、LLM 顺序号和 toolCallId 映射，并兼容并发 executor 的线程内视图。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    AgentRunState agentRunState = AgentRunState.builder().build();
+
+    /**
      * 当前任务专属的产品文件列表（任务级）
      * 用途：
      * 1. 粒度细化：仅关联当前task的产品文件，避免全局文件过多导致LLM上下文过载；
@@ -246,6 +265,31 @@ public class AgentContext {
         return result;
     }
 
+    /**
+     * 绑定本次请求的 run 主键与外部身份。
+     */
+    public void activateLedgerRun(Long runId, String runUid) {
+        ensureAgentRunState().setRunId(runId);
+        ensureAgentRunState().setRunUid(runUid);
+    }
+
+    /**
+     * 标记当前线程所在的 agent 与步号。
+     * 这样 LLM 和工具记录点无需知道具体是哪一种 Agent 实现。
+     */
+    public void markExecutionPosition(String agentName, Integer stepNo) {
+        ensureAgentRunState().markExecutionPosition(agentName, stepNo);
+    }
+
+    /**
+     * 当前上下文是否已具备可用的执行账本能力。
+     */
+    public boolean hasActiveLedgerRun() {
+        return executionRecorder != null
+                && agentRunState != null
+                && agentRunState.getRunId() != null;
+    }
+
     private synchronized List<File> ensureProductFiles() {
         if (productFiles == null) {
             productFiles = new ArrayList<>();
@@ -258,6 +302,13 @@ public class AgentContext {
             taskProductFiles = new ArrayList<>();
         }
         return taskProductFiles;
+    }
+
+    private synchronized AgentRunState ensureAgentRunState() {
+        if (agentRunState == null) {
+            agentRunState = AgentRunState.builder().build();
+        }
+        return agentRunState;
     }
 
     @Override

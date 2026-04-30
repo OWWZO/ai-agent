@@ -47,6 +47,8 @@ public class LlmChatResponseMapper {
                 .content(sanitizeContent(output.getText()))
                 .toolCalls(toolCalls)
                 .finishReason(generation.getMetadata() != null ? generation.getMetadata().getFinishReason() : null)
+                .promptTokens(resolvePromptTokens(response.getMetadata()))
+                .completionTokens(resolveCompletionTokens(response.getMetadata()))
                 .totalTokens(resolveTotalTokens(response.getMetadata()))
                 .duration(System.currentTimeMillis() - startTimeMs)
                 .build();
@@ -124,6 +126,22 @@ public class LlmChatResponseMapper {
         }
         Usage usage = metadata.getUsage();
         return usage != null ? usage.getTotalTokens() : null;
+    }
+
+    private Integer resolvePromptTokens(ChatResponseMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Usage usage = metadata.getUsage();
+        return usage != null ? usage.getPromptTokens() : null;
+    }
+
+    private Integer resolveCompletionTokens(ChatResponseMetadata metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        Usage usage = metadata.getUsage();
+        return usage != null ? usage.getCompletionTokens() : null;
     }
 
     private String sanitizeContent(String content) {

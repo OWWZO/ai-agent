@@ -1,0 +1,20 @@
+package org.wwz.ai.domain.agent.reactor.mapper;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
+
+import java.util.List;
+
+/**
+ * LLM 调用账本 DAO。
+ */
+@Mapper
+public interface ILlmInvocationLedgerDao {
+
+    int insertLlmInvocation(LlmInvocation invocation);
+
+    int updateLlmInvocationFinish(LlmInvocation invocation);
+
+    List<LlmInvocation> queryByRunId(@Param("runId") Long runId);
+}

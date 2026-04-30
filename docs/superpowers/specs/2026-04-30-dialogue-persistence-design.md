@@ -106,6 +106,23 @@
 - 并发工具难以稳定归属
 - 文件产物可能已经生成，但还没等到全局收口
 
+### 2.6 Tool 不维护 run 级全局顺序号
+
+`ai_agent_tool_invocation` 不再维护 `run` 级全局递增的 `invocation_seq`。
+
+改为只在同一次 `llm_invocation` 内记录 `dispatch_index`：
+
+- `dispatch_index` 表示当前 tool call 在本次 `askTool()` 返回列表中的原始顺序，从 1 递增
+- 同一批 tool calls 的记录由主线程按原始顺序先批量插入，再交给工作线程并发执行
+- 工具事实顺序看 `llm_invocation_id + dispatch_index`
+- 工具真实执行时间线看 `started_at + id`
+
+这样可以同时满足：
+
+- 保留模型决策时的原始顺序
+- 避免并发线程争抢全局序号
+- 避免把“展示顺序”和“唯一标识”混到一个字段里
+
 ## 3. 表结构设计
 
 ### 3.1 ai_agent_dialogue_run
@@ -189,7 +206,7 @@ CREATE TABLE ai_agent_tool_invocation (
     run_id               BIGINT        NOT NULL COMMENT 'FK -> ai_agent_dialogue_run.id',
     llm_invocation_id    BIGINT        NOT NULL COMMENT 'FK -> ai_agent_llm_invocation.id',
     tool_call_id         VARCHAR(128)  NOT NULL COMMENT '模型返回的 toolCallId',
-    invocation_seq       INT           NOT NULL COMMENT 'run 内第几次工具执行，从1递增',
+    dispatch_index       INT           NOT NULL COMMENT '同一次 llm_invocation 返回的第几个 tool call，从1递增',
     agent_name           VARCHAR(32)   NOT NULL COMMENT '当前执行工具的 agent',
     step_no              INT           NULL COMMENT '当前 agent step 序号',
     tool_name            VARCHAR(128)  NOT NULL COMMENT '工具名',
@@ -207,8 +224,9 @@ CREATE TABLE ai_agent_tool_invocation (
     deleted              TINYINT(1)    NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     UNIQUE KEY uk_run_tool_call_id (run_id, tool_call_id),
-    UNIQUE KEY uk_run_tool_invocation_seq (run_id, invocation_seq),
+    UNIQUE KEY uk_llm_dispatch_index (llm_invocation_id, dispatch_index),
     KEY idx_llm_invocation (llm_invocation_id, deleted),
+    KEY idx_run_started (run_id, deleted, started_at, id),
     KEY idx_tool_name_time (tool_name, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用记录';
 ```
@@ -320,11 +338,12 @@ CREATE TABLE ai_agent_artifact (
 - `finished_at`
 - `duration_ms`
 
-#### 阶段 4：每次工具执行前插入 Tool 记录
+#### 阶段 4：每次 askTool 返回后，主线程先批量插入 Tool 记录
 
 **建议挂点：**
 
-- `BaseAgent.executeTool()`
+- `LLM.askTool()` 返回后
+- `BaseAgent.executeTools()` 并发分发前
 
 **写入表：**
 
@@ -335,7 +354,7 @@ CREATE TABLE ai_agent_artifact (
 - `run_id`
 - `llm_invocation_id`
 - `tool_call_id`
-- `invocation_seq`
+- `dispatch_index`
 - `agent_name`
 - `step_no`
 - `tool_name`
@@ -344,11 +363,19 @@ CREATE TABLE ai_agent_artifact (
 - `started_at`
 - `status=运行中`
 
+**执行要求：**
+
+- 主线程按 `toolCalls` 原始列表顺序批量创建 `RUNNING` 记录
+- 本期 `started_at` 记为工具进入执行分发阶段的时间；如果后续需要区分线程排队时间，再单独引入 `queued_at/dispatched_at`
+- 创建完成后，把 `tool_call_id -> tool_invocation_id` 映射写入运行态上下文
+- 后续工作线程只负责执行工具和更新已有记录，不再在线程内分配序号或补插记录
+
 #### 阶段 5：每次工具执行完成后更新 Tool 记录，并立即写产物
 
 **建议挂点：**
 
 - `BaseAgent.executeTool()` 返回后或异常捕获后
+- 如果需要更强约束，可在 `executeTools()` 的工作线程包装层统一做 finally 更新
 
 **写入表：**
 
@@ -399,9 +426,9 @@ public class AgentRunState {
     private String runUid;
     private String currentAgentName;
     private Integer currentStepNo;
-    private Integer llmInvocationSeq;
-    private Integer toolInvocationSeq;
+    private Integer nextLlmInvocationSeq;
     private Long currentLlmInvocationId;
+    private ConcurrentMap<String, Long> toolInvocationIdByToolCallId;
 }
 ```
 
@@ -409,6 +436,7 @@ public class AgentRunState {
 
 - 让 `LLM` 层知道当前 `runId`
 - 让 `BaseAgent.executeTool()` 能准确拿到当前 `llmInvocationId`
+- 让并发工具线程按 `toolCallId` 找到已预创建的 `toolInvocationId`
 - 避免在方法签名里层层透传一堆持久化参数
 
 ### 5.2 建议新增领域接口
@@ -445,7 +473,8 @@ public interface AgentExecutionRecorder {
 |------|------|
 | 请求入口统一装配层 | 创建 run，登记输入文件 |
 | `LLM.ask()` / `LLM.askTool()` | 创建 / 更新 LLM 调用记录 |
-| `BaseAgent.executeTool()` | 创建 / 更新工具调用记录 |
+| `askTool()` 返回后、`executeTools()` 分发前 | 按 `toolCalls` 原始顺序批量创建工具调用记录 |
+| `BaseAgent.executeTool()` | 更新工具调用记录 |
 | `ToolArtifactRegistry` 查询收口 | 按 `toolCallId` 写产物 |
 | 顶层 handler | 回写 run 最终状态和聚合指标 |
 
@@ -470,7 +499,7 @@ ORDER BY invocation_seq;
 SELECT *
 FROM ai_agent_tool_invocation
 WHERE run_id = ? AND deleted = 0
-ORDER BY invocation_seq;
+ORDER BY llm_invocation_id, dispatch_index;
 ```
 
 ```sql
@@ -478,6 +507,15 @@ SELECT *
 FROM ai_agent_artifact
 WHERE run_id = ? AND deleted = 0
 ORDER BY create_time;
+```
+
+如果要看实际执行时间线，则按开始时间排序：
+
+```sql
+SELECT *
+FROM ai_agent_tool_invocation
+WHERE run_id = ? AND deleted = 0
+ORDER BY started_at, id;
 ```
 
 ### 6.2 查询某个工具最近的调用情况
@@ -536,6 +574,22 @@ ORDER BY create_time DESC;
 
 LLM 表只需记录这次决策“返回了几个工具调用”和“当时的思考文本”即可。
 
+### 7.4 为什么不坚持 Tool 侧 run 级 invocation_seq
+
+因为在当前实现里，同一次 `askTool()` 返回的多个工具会并发执行。
+
+如果仍然要求 `ai_agent_tool_invocation` 维护 `run` 级全局递增 `invocation_seq`，会出现三个问题：
+
+- 线程调度顺序不等于模型决策顺序
+- 在线程里抢号会引入竞争、空洞和补偿复杂度
+- 这个字段会同时承担“唯一标识”和“展示顺序”两种职责，语义不稳定
+
+因此本期改为：
+
+- `LLM` 侧保留 `run` 级 `invocation_seq`
+- `Tool` 侧改为 `llm_invocation_id + dispatch_index`
+- 真正的执行时间线通过 `started_at + id` 还原
+
 ## 8. 后续扩展
 
 以下能力不纳入本期主设计，但后续可按需增加：
@@ -553,7 +607,8 @@ LLM 表只需记录这次决策“返回了几个工具调用”和“当时的�
 2. 用 4 张表拆分运行总账、LLM 调用、Tool 调用、文件产物
 3. LLM 表只存完整文本响应和指标，不存 excerpt / raw payload
 4. Tool 表承担入参与出参真相源
-5. 文件表直接显式关联到 `run` 和 `tool_invocation`
-6. 采用“前插后更”的同步实时写入策略
+5. Tool 表不维护 run 级全局 seq，而是使用 `llm_invocation_id + dispatch_index`
+6. 文件表直接显式关联到 `run` 和 `tool_invocation`
+7. 采用“前插后更”的同步实时写入策略，工具记录由主线程预插入，工作线程只更新
 
 这套方案与当前代码实际结构一致，约束清晰，后续扩展成本也最低。

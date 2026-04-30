@@ -233,7 +233,7 @@ public class ReactImplAgent extends ReActAgent {
 
             // 步骤3.2：截断超长工具结果（防止Token超限或内容过长）
             if (maxObserve != null) {
-                result = result.substring(0, Math.min(result.length(), maxObserve)); // 仅保留前maxObserve个字符
+                result = result.substring(0, Math.min(result.length(), maxObserve));
             }
             result = attachToolArtifactSummary(result, command.getId());
 

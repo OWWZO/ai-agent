@@ -14,6 +14,8 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
 import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
@@ -115,16 +117,25 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
             }
 
             if (planning.getState() == AgentState.IDLE || executor.getState() == AgentState.IDLE) {
-                agentContext.getPrinter().send("result", "达到最大迭代次数，任务终止。");
+                String message = "达到最大迭代次数，任务终止。";
+                agentContext.getPrinter().send("result", message);
+                finishRun(agentContext, ExecutionLedgerConstants.STATUS_STOPPED, message, "PLAN_SOLVE_STOPPED");
                 break;
             }
 
             if (planning.getState() == AgentState.ERROR || executor.getState() == AgentState.ERROR) {
-                agentContext.getPrinter().send("result", "任务执行异常，请联系管理员，任务终止。");
+                String message = "任务执行异常，请联系管理员，任务终止。";
+                agentContext.getPrinter().send("result", message);
+                finishRun(agentContext, ExecutionLedgerConstants.STATUS_FAILED, message, "PLAN_SOLVE_ERROR");
                 break;
             }
 
             stepIdx++;
+        }
+        if (stepIdx > maxStepNum) {
+            String message = "达到最大迭代次数，任务终止。";
+            agentContext.getPrinter().send("result", message);
+            finishRun(agentContext, ExecutionLedgerConstants.STATUS_STOPPED, message, "PLAN_SOLVE_MAX_STEP");
         }
         return "";
     }
@@ -144,6 +155,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         }
 
         agentContext.getPrinter().send("result", taskResult);
+        finishRun(agentContext, ExecutionLedgerConstants.STATUS_SUCCESS, result.getTaskSummary(), null);
     }
 
     private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, ExecutorAgent executor, AgentRequest request) {
@@ -161,6 +173,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         }
 
         agentContext.getPrinter().send("result", taskResult);
+        finishRun(agentContext, ExecutionLedgerConstants.STATUS_SUCCESS, result.getTaskSummary(), null);
     }
 
     @Override
@@ -168,5 +181,19 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
             AgentRequest requestParameter,
             DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return null;
+    }
+
+    private void finishRun(AgentContext agentContext, int status, String finalSummaryText, String errorCode) {
+        if (agentContext == null || !agentContext.hasActiveLedgerRun() || agentContext.getAgentRunState() == null) {
+            return;
+        }
+        agentContext.getExecutionRecorder().finishRun(DialogueRunFinishRecord.builder()
+                .runId(agentContext.getAgentRunState().getRunId())
+                .requestId(agentContext.getRequestId())
+                .status(status)
+                .finalSummaryText(status == ExecutionLedgerConstants.STATUS_SUCCESS ? finalSummaryText : null)
+                .errorCode(errorCode)
+                .errorMsg(status == ExecutionLedgerConstants.STATUS_SUCCESS ? null : finalSummaryText)
+                .build());
     }
 }

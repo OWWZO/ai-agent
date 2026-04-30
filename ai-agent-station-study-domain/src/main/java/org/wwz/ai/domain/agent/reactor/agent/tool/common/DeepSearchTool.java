@@ -170,6 +170,7 @@ public class DeepSearchTool implements BaseTool {
             AtomicReference<String> messageIdRef = new AtomicReference<>("");
             StringBuilder stringBuilderIncr = new StringBuilder();
             StringBuilder stringBuilderAll = new StringBuilder();
+            DeepSearchStructuredResultBuilder resultBuilder = new DeepSearchStructuredResultBuilder(searchRequest.getQuery());
             String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
             EventSource.Factory factory = EventSources.createFactory(client);
             activeEventSource = factory.newEventSource(request, new EventSourceListener() {
@@ -204,6 +205,7 @@ public class DeepSearchTool implements BaseTool {
                                 resultRef.set("搜索结果为空");
                                 return;
                             }
+                            resultBuilder.recordFinalAnswer(searchResponse.getQuery(), searchResponse.getAnswer());
                             String fileName = StringUtil.removeSpecialChars(searchResponse.getQuery() + "的搜索结果.md");
                             String fileDesc = searchResponse.getAnswer()
                                     .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
@@ -220,6 +222,8 @@ public class DeepSearchTool implements BaseTool {
                             agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                             return;
                         }
+
+                        resultBuilder.recordEvent(searchResponse);
 
                         Map<String, Object> contentMap = new HashMap<>();
                         if (searchResponse.getSearchResult() != null
@@ -271,7 +275,7 @@ public class DeepSearchTool implements BaseTool {
                 public void onClosed(EventSource eventSource) {
                     activeEventSource = null;
                     if (!future.isDone()) {
-                        future.complete(resultRef.get());
+                        future.complete(resultBuilder.buildJson(resultRef.get()));
                     }
                 }
 
@@ -280,7 +284,7 @@ public class DeepSearchTool implements BaseTool {
                     activeEventSource = null;
                     if (t == null && response == null) {
                         if (!future.isDone()) {
-                            future.complete(resultRef.get());
+                            future.complete(resultBuilder.buildJson(resultRef.get()));
                         }
                         return;
                     }

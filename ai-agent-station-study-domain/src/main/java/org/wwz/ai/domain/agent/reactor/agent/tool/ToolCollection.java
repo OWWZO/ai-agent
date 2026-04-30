@@ -147,8 +147,8 @@ public class ToolCollection {
      * @param name 工具名称（唯一标识）
      * @param toolInput 工具输入参数（Object类型，适配不同工具的参数格式，如String/JSONObject）
      * @return String 工具执行结果：
-     *         - 基础工具：返回tool.execute()的执行结果；
-     *         - MCP工具：返回远程调用的响应结果；
+     *         - 基础工具：返回 tool.execute() 的字符串结果；
+     *         - MCP工具：返回远程调用的响应结果字符串；
      *         - 工具不存在：返回null。
      */
     public String execute(String name, Object toolInput) {

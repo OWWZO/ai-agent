@@ -36,6 +36,7 @@ import {
   FileTextIcon,
   Layers,
   SearchIcon,
+  UserIcon,
 } from "lucide-react";
 import {
   normalizeMarkdownForDisplay,
@@ -441,6 +442,15 @@ const DeepSearchPreviewItem: FC<{
 
 DeepSearchPreviewItem.displayName = "DeepSearchPreviewItem";
 
+const resolveDigitalEmployee = (task: CHAT.Task): string | undefined => {
+  return task.children?.find((child) => child.digitalEmployee)?.digitalEmployee;
+};
+
+const isTaskGroupCompleted = (task: CHAT.Task): boolean => {
+  if (!task.children || task.children.length === 0) return false;
+  return task.children.every((child) => child.finish || child.isFinal);
+};
+
 const TimeLineContent: FC<{
   tasks: CHAT.Task[];
   isReactType: boolean;
@@ -451,13 +461,29 @@ const TimeLineContent: FC<{
   return (
     <>
       {tasks.map((task, taskIndex) => {
+        const digitalEmployee = resolveDigitalEmployee(task);
+        const taskCompleted = isTaskGroupCompleted(task);
         return (
           <div
             key={task.id || task.messageId || task.taskId || taskIndex}
             className="overflow-hidden"
           >
             {!isReactType && task.task ? (
-              <div className="font-[500]">{task.task}</div>
+              <div className="mb-1">
+                <div className="font-[500]">{task.task}</div>
+                {digitalEmployee && (
+                  <div className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-[var(--chat-border)]/18 bg-[var(--chat-surface)]/80 px-3 py-1.5 text-[13px]">
+                    <UserIcon className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
+                    <span className="text-[var(--chat-text-soft)]">{digitalEmployee}</span>
+                    {taskCompleted && (
+                      <>
+                        <span className="text-[var(--chat-border)]">|</span>
+                        <CheckIcon className="h-3.5 w-3.5 text-green-500" />
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : null}
             {(task.children || []).map((tool, index) => {
               const stage =

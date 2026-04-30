@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao">
+
+    <resultMap id="ToolInvocationMap" type="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation">
+        <id column="id" property="id"/>
+        <result column="run_id" property="runId"/>
+        <result column="llm_invocation_id" property="llmInvocationId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="dispatch_index" property="dispatchIndex"/>
+        <result column="agent_name" property="agentName"/>
+        <result column="step_no" property="stepNo"/>
+        <result column="tool_name" property="toolName"/>
+        <result column="tool_provider" property="toolProvider"/>
+        <result column="input_json" property="inputJson"/>
+        <result column="output_text" property="outputText"/>
+        <result column="output_json" property="outputJson"/>
+        <result column="status" property="status"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="finished_at" property="finishedAt"/>
+        <result column="duration_ms" property="durationMs"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <resultMap id="ToolInvocationViewMap" type="org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView">
+        <id column="id" property="id"/>
+        <result column="run_id" property="runId"/>
+        <result column="llm_invocation_id" property="llmInvocationId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="dispatch_index" property="dispatchIndex"/>
+        <result column="agent_name" property="agentName"/>
+        <result column="step_no" property="stepNo"/>
+        <result column="tool_name" property="toolName"/>
+        <result column="tool_provider" property="toolProvider"/>
+        <result column="input_json" property="inputJson"/>
+        <result column="output_text" property="outputText"/>
+        <result column="output_json" property="outputJson"/>
+        <result column="status" property="status"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="duration_ms" property="durationMs"/>
+        <result column="artifact_count" property="artifactCount"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="finished_at" property="finishedAt"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insertToolInvocation" parameterType="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_tool_invocation (
+            run_id, llm_invocation_id, tool_call_id, dispatch_index, agent_name, step_no,
+            tool_name, tool_provider, input_json, output_text, output_json, status, error_msg,
+            started_at, finished_at, duration_ms, create_time, update_time, deleted
+        ) VALUES (
+            #{runId}, #{llmInvocationId}, #{toolCallId}, #{dispatchIndex}, #{agentName}, #{stepNo},
+            #{toolName}, #{toolProvider}, #{inputJson}, #{outputText}, #{outputJson}, #{status}, #{errorMsg},
+            #{startedAt}, #{finishedAt}, #{durationMs}, NOW(), NOW(), 0
+        )
+    </insert>
+
+    <update id="updateToolInvocationFinish" parameterType="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation">
+        UPDATE ai_agent_tool_invocation
+        SET status = #{status},
+            output_text = #{outputText},
+            output_json = #{outputJson},
+            error_msg = #{errorMsg},
+            finished_at = #{finishedAt},
+            duration_ms = CASE
+                WHEN started_at IS NULL OR #{finishedAt} IS NULL THEN duration_ms
+                ELSE TIMESTAMPDIFF(MICROSECOND, started_at, #{finishedAt}) / 1000
+            END,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <select id="queryByRunId" resultMap="ToolInvocationMap">
+        SELECT *
+        FROM ai_agent_tool_invocation
+        WHERE run_id = #{runId}
+          AND deleted = 0
+        ORDER BY llm_invocation_id ASC, dispatch_index ASC, id ASC
+    </select>
+
+    <select id="queryRecentByToolName" resultMap="ToolInvocationViewMap">
+        SELECT t.id,
+               t.run_id,
+               t.llm_invocation_id,
+               r.request_id,
+               r.session_id,
+               t.tool_call_id,
+               t.dispatch_index,
+               t.agent_name,
+               t.step_no,
+               t.tool_name,
+               t.tool_provider,
+               t.input_json,
+               t.output_text,
+               t.output_json,
+               t.status,
+               t.error_msg,
+               t.duration_ms,
+               COALESCE(a.artifact_count, 0) AS artifact_count,
+               t.started_at,
+               t.finished_at,
+               t.create_time
+        FROM ai_agent_tool_invocation t
+        INNER JOIN ai_agent_dialogue_run r ON r.id = t.run_id AND r.deleted = 0
+        LEFT JOIN (
+            SELECT tool_invocation_id, COUNT(*) AS artifact_count
+            FROM ai_agent_artifact
+            WHERE deleted = 0
+            GROUP BY tool_invocation_id
+        ) a ON a.tool_invocation_id = t.id
+        WHERE t.tool_name = #{toolName}
+          AND t.deleted = 0
+        ORDER BY t.create_time DESC, t.id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>
