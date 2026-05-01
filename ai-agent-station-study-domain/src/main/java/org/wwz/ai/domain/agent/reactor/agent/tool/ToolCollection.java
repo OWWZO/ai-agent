@@ -146,17 +146,16 @@ public class ToolCollection {
      * 3. 工具不存在时记录错误日志并返回null。
      * @param name 工具名称（唯一标识）
      * @param toolInput 工具输入参数（Object类型，适配不同工具的参数格式，如String/JSONObject）
-     * @return String 工具执行结果：
-     *         - 基础工具：返回 tool.execute() 的字符串结果；
+     * @return Object 工具执行结果：
+     *         - 基础工具：返回 tool.execute() 的原始结果对象；
      *         - MCP工具：返回远程调用的响应结果字符串；
      *         - 工具不存在：返回null。
      */
-    public String execute(String name, Object toolInput) {
+    public Object execute(String name, Object toolInput) {
         // 分支1：执行本地基础工具
         if (toolMap.containsKey(name)) {
             BaseTool tool = getTool(name);
-            Object result = tool.execute(toolInput);
-            return result == null ? null : String.valueOf(result);
+            return tool.execute(toolInput);
         }
         // 分支2：执行远程MCP工具
         else if (mcpToolMap.containsKey(name)) {

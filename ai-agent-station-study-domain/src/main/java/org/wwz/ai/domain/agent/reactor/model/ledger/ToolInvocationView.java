@@ -40,7 +40,7 @@ public class ToolInvocationView {
 
     private String inputJson;
 
-    private String outputText;
+    private String llmObservation;
 
     private String outputJson;
 

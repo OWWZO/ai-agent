@@ -161,36 +161,21 @@ public class ExecutorAgent extends ReActAgent {
             return getMemory().getLastMessage().getContent();
         }
 
-        Map<String, String> toolResults = executeTools(toolCalls);
+        Map<String, ToolExecutionOutcome> toolOutcomes = executeToolOutcomes(toolCalls);
 
         List<String> results = new ArrayList<>();
         for (ToolCall command : toolCalls) {
-            String result = toolResults.get(command.getId());
+            ToolExecutionOutcome outcome = toolOutcomes.get(command.getId());
+            String toolResult = outcome == null ? "" : outcome.getToolResult();
             if (!Arrays.asList("code_interpreter", "report_tool", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis").contains(command.getFunction().getName())) {
                 String toolName = command.getFunction().getName();
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                                 .toolName(toolName)
                                 .toolParam(parseToolParam(command))
-                                .toolResult(result)
+                                .toolResult(toolResult)
                                 .build(), null);
             }
-            if (maxObserve != null) {
-                result = result.substring(0, Math.min(result.length(), maxObserve));
-            }
-            result = attachToolArtifactSummary(result, command.getId());
-
-            // 添加工具响应到记忆
-            if ("struct_parse".equals(llm.getFunctionCallType())) {
-                String content = getMemory().getLastMessage().getContent();
-                getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + result);
-            } else { // function_call
-                Message toolMsg = Message.toolMessage(
-                        result,
-                        command.getId(),
-                        null
-                );
-                getMemory().addMessage(toolMsg);
-            }
+            String result = writeToolObservationToMemory(command, outcome);
             results.add(result);
         }
         return String.join("\n\n", results);
@@ -213,6 +198,11 @@ public class ExecutorAgent extends ReActAgent {
         request = reactorConfig.getTaskPrePrompt() + request;
         context.setTask(request);
         return super.run(request);
+    }
+
+    @Override
+    protected Integer resolveMaxObserveLength() {
+        return maxObserve;
     }
 
 }

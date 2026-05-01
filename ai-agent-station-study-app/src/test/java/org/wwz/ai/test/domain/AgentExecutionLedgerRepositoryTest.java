@@ -86,7 +86,7 @@ public class AgentExecutionLedgerRepositoryTest {
                 .requestId("req-ledger-001")
                 .toolCallId("tool-call-001")
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .outputText("生成 report.md")
+                .llmObservation("生成 report.md")
                 .outputJson("{\"file\":\"report.md\"}")
                 .finishedAt(now.plusSeconds(3))
                 .build());

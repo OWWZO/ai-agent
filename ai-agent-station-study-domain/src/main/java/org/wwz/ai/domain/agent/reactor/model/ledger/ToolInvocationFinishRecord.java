@@ -24,7 +24,7 @@ public class ToolInvocationFinishRecord {
 
     private Integer status;
 
-    private String outputText;
+    private String llmObservation;
 
     private String outputJson;
 

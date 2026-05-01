@@ -44,7 +44,8 @@ public class ReactExecutionLedgerIntegrationTest {
                 )
         ));
 
-        Assert.assertEquals("执行成功", result.get("react-tool-call-001"));
+        Assert.assertTrue(result.get("react-tool-call-001").startsWith("执行成功"));
+        Assert.assertTrue(result.get("react-tool-call-001").contains("artifactKey:react-tool-call-001::react-report.md"));
 
         ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
@@ -57,6 +58,7 @@ public class ReactExecutionLedgerIntegrationTest {
         Assert.assertNotNull(detail);
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_SUCCESS), detail.getToolInvocations().get(0).getStatus());
+        Assert.assertEquals(result.get("react-tool-call-001"), detail.getToolInvocations().get(0).getLlmObservation());
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("react-report.md", detail.getArtifacts().get(0).getFileName());
     }

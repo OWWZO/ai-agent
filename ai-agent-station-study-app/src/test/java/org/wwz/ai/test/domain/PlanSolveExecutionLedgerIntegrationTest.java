@@ -49,7 +49,8 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                 )
         ));
 
-        Assert.assertEquals("执行成功:plan-tool-call-001", result.get("plan-tool-call-001"));
+        Assert.assertTrue(result.get("plan-tool-call-001").startsWith("执行成功:plan-tool-call-001"));
+        Assert.assertTrue(result.get("plan-tool-call-001").contains("artifactKey:plan-tool-call-001::plan-a.md"));
         Assert.assertEquals("Tool parallel_artifact_tool Error.", result.get("plan-tool-call-002"));
 
         ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
@@ -63,9 +64,11 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         Assert.assertEquals(2, detail.getToolInvocations().size());
         Assert.assertEquals("plan-tool-call-001", detail.getToolInvocations().get(0).getToolCallId());
         Assert.assertEquals(Integer.valueOf(1), detail.getToolInvocations().get(0).getDispatchIndex());
+        Assert.assertEquals(result.get("plan-tool-call-001"), detail.getToolInvocations().get(0).getLlmObservation());
         Assert.assertEquals("plan-tool-call-002", detail.getToolInvocations().get(1).getToolCallId());
         Assert.assertEquals(Integer.valueOf(2), detail.getToolInvocations().get(1).getDispatchIndex());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), detail.getToolInvocations().get(1).getStatus());
+        Assert.assertEquals(result.get("plan-tool-call-002"), detail.getToolInvocations().get(1).getLlmObservation());
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("plan-a.md", detail.getArtifacts().get(0).getFileName());
     }

@@ -17,6 +17,7 @@ import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
@@ -225,10 +226,64 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 子类按需覆写 observation 最大长度。
+     * BaseAgent 本身不关心具体配置来源，只负责统一收口规则。
+     */
+    protected Integer resolveMaxObserveLength() {
+        return null;
+    }
+
+    /**
+     * 统一生成最终 observation。
+     * 先做长度裁剪，再追加当前 toolCall 关联的产物摘要，确保账本与主智能体看到的内容完全一致。
+     */
+    protected String buildFinalLlmObservation(String rawObservation, String toolCallId) {
+        String observation = StringUtils.defaultString(rawObservation);
+        Integer maxObserve = resolveMaxObserveLength();
+        if (maxObserve != null && maxObserve > 0 && observation.length() > maxObserve) {
+            observation = observation.substring(0, maxObserve);
+        }
+        return attachToolArtifactSummary(observation, toolCallId);
+    }
+
+    /**
+     * 把工具最终 observation 写回记忆。
+     * 无论单工具还是批量工具，都统一走这一条链路，避免不同 Agent 各自拼装结果。
+     */
+    protected String writeToolObservationToMemory(ToolCall command, ToolExecutionOutcome outcome) {
+        String observation = outcome == null ? "" : StringUtils.defaultString(outcome.getLlmObservation());
+        if (command == null) {
+            return observation;
+        }
+        if ("struct_parse".equals(llm.getFunctionCallType())) {
+            String content = getMemory().getLastMessage().getContent();
+            getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + observation);
+            return observation;
+        }
+        getMemory().addMessage(Message.toolMessage(observation, command.getId(), null));
+        return observation;
+    }
+
+    /**
      * 对外保留原有工具执行契约。
      */
     public String executeTool(ToolCall command) {
-        return executeToolInternal(command).getDisplayResult();
+        return executeToolOutcome(command).getLlmObservation();
+    }
+
+    /**
+     * 单工具路径的完整执行结果。
+     * 包含预登记、执行、observation 收口、账本落库与产物登记。
+     */
+    protected ToolExecutionOutcome executeToolOutcome(ToolCall command) {
+        Map<String, Long> toolInvocationIds = preRegisterToolInvocations(command == null ? List.of() : List.of(command));
+        if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
+            context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
+        }
+        ToolExecutionOutcome outcome = finalizeToolExecutionOutcome(command, executeToolInternal(command));
+        finishToolInvocation(command, outcome);
+        recordToolArtifacts(command);
+        return outcome;
     }
 
     /**
@@ -252,26 +307,27 @@ public abstract class BaseAgent {
                     .toolName(toolName)
                     .build();
 
-            String result;
+            Object resultObject;
             context.bindCurrentToolArtifactSource(artifactSource);
             try {
-                result = availableTools.execute(toolName, args);
+                resultObject = availableTools.execute(toolName, args);
             } finally {
                 context.clearCurrentToolArtifactSource();
             }
 
-            log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, result);
+            log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
 
-            if (result == null) {
+            if (resultObject == null) {
                 return ToolExecutionOutcome.failure("Tool " + toolName + " Error.", null, null, "Tool returned null");
             }
 
-            String outputJson = tryNormalizeJson(result, mapper);
-            String outputText = isStructuredToolOutput(toolName, outputJson) ? null : result;
-            return ToolExecutionOutcome.success(result, outputText, outputJson);
+            ToolResultPayload payload = normalizeToolResultPayload(resultObject, mapper);
+            String toolResult = StringUtils.defaultString(payload.getToolResult());
+            String llmObservation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
+            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getOutputJson());
         } catch (Exception e) {
             log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
-            return ToolExecutionOutcome.failure("Tool " + toolName + " Error.", null, null, e.getMessage());
+            return ToolExecutionOutcome.failure("Tool " + toolName + " Error.", "Tool " + toolName + " Error.", null, e.getMessage());
         }
     }
 
@@ -279,7 +335,20 @@ public abstract class BaseAgent {
      * 并发执行多个工具调用。
      */
     public Map<String, String> executeTools(List<ToolCall> commands) {
-        Map<String, String> result = new ConcurrentHashMap<>();
+        Map<String, ToolExecutionOutcome> outcomes = executeToolOutcomes(commands);
+        Map<String, String> result = new LinkedHashMap<>(outcomes.size());
+        for (Map.Entry<String, ToolExecutionOutcome> entry : outcomes.entrySet()) {
+            result.put(entry.getKey(), entry.getValue() == null ? "" : entry.getValue().getLlmObservation());
+        }
+        return result;
+    }
+
+    /**
+     * 并发执行多个工具调用，并返回完整 outcome。
+     * 子类可以基于同一份 outcome 同时处理前端展示、记忆写回和账本一致性。
+     */
+    protected Map<String, ToolExecutionOutcome> executeToolOutcomes(List<ToolCall> commands) {
+        Map<String, ToolExecutionOutcome> result = new ConcurrentHashMap<>();
         if (commands == null || commands.isEmpty()) {
             return result;
         }
@@ -293,8 +362,8 @@ public abstract class BaseAgent {
         for (ToolCall toolCall : commands) {
             ThreadUtil.execute(() -> {
                 try {
-                    ToolExecutionOutcome outcome = executeToolInternal(toolCall);
-                    result.put(toolCall.getId(), outcome.getDisplayResult());
+                    ToolExecutionOutcome outcome = finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall));
+                    result.put(toolCall.getId(), outcome);
                     finishToolInvocation(toolCall, outcome);
                     recordToolArtifacts(toolCall);
                 } finally {
@@ -304,7 +373,13 @@ public abstract class BaseAgent {
         }
 
         ThreadUtil.await(taskCount);
-        return result;
+        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
+        for (ToolCall command : commands) {
+            if (command != null && StringUtils.isNotBlank(command.getId())) {
+                ordered.put(command.getId(), result.get(command.getId()));
+            }
+        }
+        return ordered;
     }
 
     /**
@@ -364,7 +439,7 @@ public abstract class BaseAgent {
                 .status(outcome != null && outcome.isSuccess()
                         ? ExecutionLedgerConstants.STATUS_SUCCESS
                         : ExecutionLedgerConstants.STATUS_FAILED)
-                .outputText(outcome == null ? null : outcome.getOutputText())
+                .llmObservation(outcome == null ? null : outcome.getLlmObservation())
                 .outputJson(outcome == null ? null : outcome.getOutputJson())
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(LocalDateTime.now())
@@ -434,8 +509,38 @@ public abstract class BaseAgent {
         }
     }
 
-    private boolean isStructuredToolOutput(String toolName, String outputJson) {
-        return "deep_search".equals(toolName) && StringUtils.isNotBlank(outputJson);
+    private ToolResultPayload normalizeToolResultPayload(Object rawResult, ObjectMapper mapper) {
+        if (rawResult instanceof ToolResultPayload payload) {
+            String toolResult = StringUtils.defaultString(payload.getToolResult());
+            String outputJson = StringUtils.defaultIfBlank(payload.getOutputJson(), tryNormalizeJson(toolResult, mapper));
+            return ToolResultPayload.builder()
+                    .toolResult(toolResult)
+                    .llmObservation(StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult))
+                    .outputJson(outputJson)
+                    .build();
+        }
+        if (rawResult instanceof String textResult) {
+            return ToolResultPayload.builder()
+                    .toolResult(textResult)
+                    .llmObservation(textResult)
+                    .outputJson(tryNormalizeJson(textResult, mapper))
+                    .build();
+        }
+        try {
+            String serialized = mapper.writeValueAsString(rawResult);
+            return ToolResultPayload.builder()
+                    .toolResult(serialized)
+                    .llmObservation(serialized)
+                    .outputJson(tryNormalizeJson(serialized, mapper))
+                    .build();
+        } catch (Exception e) {
+            String fallback = String.valueOf(rawResult);
+            return ToolResultPayload.builder()
+                    .toolResult(fallback)
+                    .llmObservation(fallback)
+                    .outputJson(tryNormalizeJson(fallback, mapper))
+                    .build();
+        }
     }
 
     private String resolveToolProvider(String toolName) {
@@ -492,30 +597,42 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 在工具实际执行完成后统一收口最终 observation。
+     * 所有写库与写记忆都必须使用这一份 canonical 结果。
+     */
+    private ToolExecutionOutcome finalizeToolExecutionOutcome(ToolCall command, ToolExecutionOutcome outcome) {
+        if (outcome == null) {
+            return null;
+        }
+        String toolCallId = command == null ? null : command.getId();
+        return outcome.setLlmObservation(buildFinalLlmObservation(outcome.getLlmObservation(), toolCallId));
+    }
+
+    /**
      * 单次工具执行的内部结果。
      */
     @Data
     @Accessors(chain = true)
-    private static class ToolExecutionOutcome {
+    protected static class ToolExecutionOutcome {
         private boolean success;
-        private String displayResult;
-        private String outputText;
+        private String toolResult;
+        private String llmObservation;
         private String outputJson;
         private String errorMsg;
 
-        private static ToolExecutionOutcome success(String displayResult, String outputText, String outputJson) {
+        private static ToolExecutionOutcome success(String toolResult, String llmObservation, String outputJson) {
             return new ToolExecutionOutcome()
                     .setSuccess(true)
-                    .setDisplayResult(displayResult)
-                    .setOutputText(outputText)
+                    .setToolResult(toolResult)
+                    .setLlmObservation(llmObservation)
                     .setOutputJson(outputJson);
         }
 
-        private static ToolExecutionOutcome failure(String displayResult, String outputText, String outputJson, String errorMsg) {
+        private static ToolExecutionOutcome failure(String toolResult, String llmObservation, String outputJson, String errorMsg) {
             return new ToolExecutionOutcome()
                     .setSuccess(false)
-                    .setDisplayResult(displayResult)
-                    .setOutputText(outputText)
+                    .setToolResult(toolResult)
+                    .setLlmObservation(llmObservation)
                     .setOutputJson(outputJson)
                     .setErrorMsg(errorMsg);
         }

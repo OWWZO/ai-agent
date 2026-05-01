@@ -53,7 +53,8 @@ public class ToolArtifactBindingRuntimeTest {
                 "{\"fileName\":\"deliverable.md\",\"url\":\"https://file.example.com/sync/deliverable.md\"}"
         ));
 
-        Assert.assertEquals("同步工具执行完成", result);
+        Assert.assertTrue(result.startsWith("同步工具执行完成"));
+        Assert.assertTrue(result.contains("artifactKey:call-sync-001::deliverable.md"));
         List<ToolArtifactBinding> bindings = context.getArtifactBindingsByToolCallId("call-sync-001");
         Assert.assertEquals(1, bindings.size());
         ToolArtifactBinding binding = bindings.get(0);
@@ -89,8 +90,10 @@ public class ToolArtifactBindingRuntimeTest {
                 )
         ));
 
-        Assert.assertEquals("异步工具执行完成:call-async-001", results.get("call-async-001"));
-        Assert.assertEquals("异步工具执行完成:call-async-002", results.get("call-async-002"));
+        Assert.assertTrue(results.get("call-async-001").startsWith("异步工具执行完成:call-async-001"));
+        Assert.assertTrue(results.get("call-async-001").contains("artifactKey:call-async-001::summary.md"));
+        Assert.assertTrue(results.get("call-async-002").startsWith("异步工具执行完成:call-async-002"));
+        Assert.assertTrue(results.get("call-async-002").contains("artifactKey:call-async-002::summary.md"));
         Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-async-001").size());
         Assert.assertEquals(1, context.getArtifactBindingsByToolCallId("call-async-002").size());
         Assert.assertEquals("https://file.example.com/a/summary.md",

@@ -45,8 +45,8 @@ public class ToolInvocation {
     /** 入参 JSON */
     private String inputJson;
 
-    /** 文本输出 */
-    private String outputText;
+    /** 主智能体 observation */
+    private String llmObservation;
 
     /** 结构化输出 */
     private String outputJson;

@@ -236,26 +236,9 @@ public class PlanningAgent extends ReActAgent {
 
         // 3. 遍历大模型指定的工具调用列表，逐个执行
         for (ToolCall toolCall : toolCalls) {
-            String result = executeTool(toolCall); // 执行工具（父类ReActAgent的核心方法）
-            // 4. 截取结果长度（如果配置了maxObserve）：避免超长结果影响后续处理
-            if (maxObserve != null) {
-                result = result.substring(0, Math.min(result.length(), maxObserve));
-            }
+            ToolExecutionOutcome outcome = executeToolOutcome(toolCall);
+            String result = writeToolObservationToMemory(toolCall, outcome);
             results.add(result); // 收集工具执行结果
-
-            // 5. 将工具执行结果添加到智能体记忆（区分两种函数调用模式）
-            if ("struct_parse".equals(llm.getFunctionCallType())) {
-                // 结构化解析模式：追加结果到最后一条消息的内容中
-                String content = getMemory().getLastMessage().getContent();
-                getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + attachToolArtifactSummary(result, toolCall.getId()));
-            } else { // 标准函数调用模式：创建独立的工具消息添加到记忆
-                Message toolMsg = Message.toolMessage(
-                        attachToolArtifactSummary(result, toolCall.getId()), // 工具执行结果
-                        toolCall.getId(),// 工具调用ID（关联请求/响应）
-                        null             // 扩展参数（暂无）
-                );
-                getMemory().addMessage(toolMsg);
-            }
         }
 
         // 6. 计划已初始化的场景：处理计划下一步并返回任务
@@ -268,6 +251,11 @@ public class PlanningAgent extends ReActAgent {
 
         // 7. 无计划时，返回所有工具执行结果的拼接字符串
         return String.join("\n\n", results);
+    }
+
+    @Override
+    protected Integer resolveMaxObserveLength() {
+        return maxObserve;
     }
 
     /**

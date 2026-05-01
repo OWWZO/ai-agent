@@ -190,7 +190,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                     .toolName(invocation.getToolName())
                     .toolProvider(invocation.getToolProvider())
                     .inputJson(invocation.getInputJson())
-                    .outputText(invocation.getOutputText())
+                    .llmObservation(invocation.getLlmObservation())
                     .outputJson(invocation.getOutputJson())
                     .status(invocation.getStatus())
                     .errorMsg(invocation.getErrorMsg())

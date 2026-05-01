@@ -1,553 +1,617 @@
-# StreamingTool 统一流式执行层设计
+# 工具展示层收口与流式工具渐进重构设计
 
 ## 1. 背景与问题
 
-当前项目中有 4 个流式工具（DeepSearchTool、DataAnalysisTool、CodeInterpreterTool、ReportTool），它们各自在工具内部直接调用 `agentContext.getPrinter().send()` 向前端推送流式消息。这种设计导致以下问题：
+### 1.1 当前事实
 
-1. **代码重复**：每个流式工具都独立实现了同一套逻辑（OkHttp SSE 连接 → 解析 → 过滤 `[DONE]`/`heartbeat` → 调用 printer.send）
-2. **并行流冲突**：`BaseAgent.executeTools()` 通过线程池并行执行多个 toolCall。当 LLM 一次返回多个流式工具调用时，多个线程同时往同一个 `SseEmitter` 写消息，消息会交错混叠
-3. **前端无法区分并行流**：各工具自行生成 `messageId`，没有统一协调，前端无法将增量消息正确关联到对应工具的任务卡片
-4. **ExecutorAgent 黑名单**：`ExecutorAgent.act()` 中维护了一个硬编码黑名单 `Arrays.asList("code_interpreter", "report_tool", ...)` 来跳过已内部推送的工具，新增流式工具必须同步修改黑名单
-5. **缺乏统一收口**：取消信号、超时处理、错误处理、执行账本记录分散在各个工具内部，没有统一管理层
+当前 Reactor 主链路里，工具执行与前端展示是耦合在一起的：
 
-## 2. 目标
+1. `BaseAgent.executeTools()` 会并行执行多个 `toolCall`
+2. 多个特殊工具会在工具内部直接调用 `agentContext.getPrinter().send(...)`
+3. `ExecutorAgent`、`ReactImplAgent` 无法判断某个工具是否已经自行推送过展示消息，因此只能维护“不要再补发 `tool_result`”的硬编码黑名单
+4. 前端对工具卡片的归并并不只依赖“这是哪个工具”，而是依赖 `messageId`、`messageType` 以及少量特定阶段语义
 
-- 抽象 `StreamingTool` 接口，统一流式工具的契约
-- 标准化 `ToolEvent`，让执行层能理解工具产出的每一帧数据的语义
-- 引入 `ToolStreamExecutor` 统一执行层，负责并行流隔离、消息推送、生命周期管理
-- 移除 `ExecutorAgent` 的黑名单机制
-- 保证现有功能零回归
+这说明当前真正混乱的不是“工具是否流式”，而是“谁负责展示、如何生成展示身份、何时补发默认工具结果”。
 
-## 3. 方案设计
+### 1.2 当前问题
 
-### 3.1 核心架构
+1. **展示职责分散**
+   - 工具一边执行业务，一边直接面向前端发消息
+   - 外层 Agent 又要决定是否再补发一次通用 `tool_result`
+   - 同一类职责分散在工具内部和 Agent 外层，边界不清晰
 
+2. **黑名单不可维护**
+   - `ExecutorAgent` / `ReactImplAgent` 里维护了工具名黑名单
+   - 新增一个“自己负责展示”的工具时，除了写工具本身，还必须同步修改多个 Agent
+   - 这不是可扩展设计，而是补丁式维护
+
+3. **展示身份缺少统一规则**
+   - `deep_search` 的 `search` / `report` 需要拆成不同卡片
+   - `multimodalagent_tool` 会在同一次调用下发 `knowledge` 和 `markdown`
+   - `image_generation_tool` 需要保留 `file` 产物展示，同时外层还能补一条 `tool_result`
+   - 这类规则本质上是“展示编排”，不应该散落在各个工具里各自维护
+
+4. **重复的流式解析逻辑**
+   - 多个工具都在重复处理 `data:`
+   - 都在过滤 `[DONE]` / `heartbeat`
+   - 都在自己处理异常、超时、最终结果拼接
+   - 这些重复确实需要后续收敛，但它们属于“传输层辅助抽象”，不等于必须先上新的执行框架
+
+5. **现有运行时约束不能被绕开**
+   - `ToolArtifactSource` 已经保证了工具产物按 `toolCallId` 归属
+   - 执行账本已经围绕 `preRegisterToolInvocations()`、`finishToolInvocation()`、`recordToolArtifacts()` 稳定工作
+   - 本次重构应优先复用现有事实模型，而不是另起一套执行主干
+
+### 1.3 根因判断
+
+当前问题的根因是：
+
+- 缺少统一的**工具展示发射器**
+- 缺少声明式的**工具展示策略**
+- 缺少服务端统一维护的**展示身份分配规则**
+
+因此，本次重构应先统一“展示层”，而不是先统一“执行层”。
+
+## 2. 目标与非目标
+
+### 2.1 目标
+
+1. 统一工具向前端发送展示消息的入口
+2. 用声明式策略替代 Agent 中的黑名单
+3. 为每个 `toolCall` 下的不同展示槽位分配稳定 `messageId`
+4. 保持现有 `BaseAgent.executeTools()`、执行账本、工具产物登记模型不变
+5. 支持逐个工具低风险迁移，不要求一次性重写全部特殊工具
+6. 为后续抽取公共 SSE / 流式 HTTP 支持类打基础
+
+### 2.2 非目标
+
+1. 本期**不**引入 `Flux<ToolEvent>` 作为强制执行契约
+2. 本期**不**重写 `BaseAgent.executeTools()` 的主执行模型
+3. 本期**不**修改数据库表、执行账本契约、工具产物持久化模型
+4. 本期**不**要求前端大改渲染协议
+5. 本期**不**把所有工具都归类为“流式工具”
+
+## 3. 核心设计结论
+
+### 3.1 先统一展示层，再渐进统一传输层
+
+本次主方案不采用“先定义 `StreamingTool`、再引入 `ToolStreamExecutor` 统一接管所有流式工具”的路线。
+
+改为：
+
+1. 工具继续沿用当前 `BaseTool.execute(Object)` 执行契约
+2. 引入 `ToolDisplayEmitter` 统一负责向前端发送展示消息
+3. 引入 `ToolDisplayPolicy` 明确每个工具的展示责任
+4. 对现有特殊工具做渐进迁移
+5. 等展示职责收敛后，再考虑是否进一步抽象公共流式传输支持
+
+### 3.2 用策略替代黑名单
+
+“某个工具执行后，Agent 是否还要补发默认 `tool_result`”不应由黑名单决定，而应由工具自身声明。
+
+本次引入 `ToolDisplayPolicy`：
+
+- `STANDARD_ONLY`
+  - 工具自己不做前端展示
+  - Agent 执行完后补发一条标准 `tool_result`
+- `SELF_RENDERED`
+  - 工具自己通过 `ToolDisplayEmitter` 发展示消息
+  - Agent 不再补发默认 `tool_result`
+- `HYBRID`
+  - 工具自己发主要展示消息
+  - Agent 仍允许补发标准 `tool_result`
+
+### 3.3 展示身份以“toolCall + 槽位”建模
+
+仅靠“一个 `toolCall` 对应一个 `messageId`”是不够的。
+
+服务端需要显式区分同一次工具调用下的多个展示槽位：
+
+- `deep_search`
+  - `search`
+  - `report`
+- `multimodalagent_tool`
+  - `knowledge`
+  - `markdown`
+- `image_generation_tool`
+  - `artifact`
+
+因此稳定展示身份的生成规则应为：
+
+`toolCallId + slotKey + messageType -> stable messageId`
+
+其中：
+
+- `toolCallId`：同一次工具调用唯一标识
+- `slotKey`：同一次工具调用内部的展示槽位
+- `messageType`：前端已识别的消息类型，如 `deep_search`、`file`、`markdown`
+
+### 3.4 现有执行账本与产物绑定模型保持不变
+
+本方案不改动以下运行时主干：
+
+1. `BaseAgent.preRegisterToolInvocations()`
+2. `BaseAgent.finishToolInvocation()`
+3. `BaseAgent.recordToolArtifacts()`
+4. `ToolArtifactSource` 与 `toolCallId` 的绑定方式
+
+工具仍然需要显式捕获并透传 `ToolArtifactSource` 到异步回调线程。
+
+### 3.5 统一发射入口不等于强制引入新执行框架
+
+本方案承认当前多个工具确实存在重复的流式解析逻辑，但这些逻辑优先收敛为：
+
+- 公共流式 HTTP / SSE 解析支持类
+- 公共异常与最终结果拼接规则
+
+而不是先把所有工具抬升为新的 Reactor 流执行模型。
+
+## 4. 详细设计
+
+### 4.1 ToolDisplayPolicy
+
+```java
+package org.wwz.ai.domain.agent.reactor.agent.tool.display;
+
+/**
+ * 工具展示策略。
+ * 用于声明 Agent 在工具执行结束后是否需要补发默认 tool_result。
+ */
+public enum ToolDisplayPolicy {
+
+    /**
+     * 工具自身不做前端展示，Agent 统一补发标准 tool_result。
+     */
+    STANDARD_ONLY,
+
+    /**
+     * 工具自身负责展示，Agent 不再补发默认 tool_result。
+     */
+    SELF_RENDERED,
+
+    /**
+     * 工具自身负责主要展示，同时允许 Agent 补发标准 tool_result。
+     */
+    HYBRID
+}
 ```
+
+### 4.2 ToolDisplayAware
+
+为了保持 `BaseTool` 的执行契约简洁，本次不把展示策略直接塞进 `BaseTool`，而是新增一个可选接口：
+
+```java
+package org.wwz.ai.domain.agent.reactor.agent.tool.display;
+
+/**
+ * 工具展示感知接口。
+ * 只有需要声明特殊展示行为的工具才实现该接口。
+ */
+public interface ToolDisplayAware {
+
+    /**
+     * 返回当前工具的展示策略。
+     */
+    default ToolDisplayPolicy displayPolicy() {
+        return ToolDisplayPolicy.STANDARD_ONLY;
+    }
+}
+```
+
+默认情况下：
+
+- 不实现该接口的工具，视为 `STANDARD_ONLY`
+- 只有特殊展示工具才需要显式声明
+
+### 4.3 ToolDisplayEmitter
+
+`ToolDisplayEmitter` 是本次重构的核心。
+
+职责：
+
+1. 统一封装 `printer.send(...)`
+2. 统一分配稳定 `messageId`
+3. 为同一个 `toolCall` 的多个展示槽位维持独立展示身份
+4. 统一解析数字员工
+5. 为未来扩展“串行发送队列 / 节流 / 观测埋点”预留唯一入口
+
+建议接口：
+
+```java
+package org.wwz.ai.domain.agent.reactor.agent.tool.display;
+
+public interface ToolDisplayEmitter {
+
+    /**
+     * 发送结构化展示消息。
+     *
+     * @param slotKey     展示槽位，如 main/search/report/knowledge
+     * @param messageType 前端识别的消息类型，如 deep_search/file/markdown
+     * @param payload     原始展示载荷
+     * @param isFinal     当前槽位是否已完成
+     */
+    void emit(String slotKey, String messageType, Object payload, boolean isFinal);
+
+    /**
+     * 获取某个槽位+消息类型的稳定 messageId。
+     * 主要用于少量需要提前拿到 messageId 的兼容场景。
+     */
+    String resolveMessageId(String slotKey, String messageType);
+}
+```
+
+建议实现要点：
+
+1. 内部维护 `ConcurrentHashMap<String, String>`
+   - Key：`slotKey + "#" + messageType`
+   - Value：稳定 `messageId`
+2. `emit(...)` 内部统一调用现有 `Printer`
+3. `digitalEmployee` 由 `toolName -> ToolCollection.getDigitalEmployee(toolName)` 自动解析
+4. 本期仍直接复用现有 `SSEPrinter` 协议，不改消息结构
+
+### 4.4 ToolDisplayRegistry
+
+`ToolDisplayEmitter` 需要按 `toolCallId` 获取，因此应在 `AgentContext` 内维护一个请求级注册表。
+
+建议新增：
+
+```java
+package org.wwz.ai.domain.agent.reactor.agent.tool.display;
+
+public class ToolDisplayRegistry {
+
+    /**
+     * 获取或创建指定 toolCall 的展示发射器。
+     */
+    public ToolDisplayEmitter getOrCreate(String toolCallId, String toolName, AgentContext context) {
+        // ...
+    }
+}
+```
+
+`AgentContext` 中新增：
+
+1. `ToolDisplayRegistry toolDisplayRegistry`
+2. `ThreadLocal<ToolDisplayEmitter> currentToolDisplayEmitterHolder`
+3. `bindCurrentToolDisplayEmitter(...)`
+4. `clearCurrentToolDisplayEmitter()`
+5. `requireCurrentToolDisplayEmitter(String toolName)`
+
+这样同步工具可以直接从线程上下文拿 emitter，异步工具则在 `execute()` 里先取出 emitter 并显式透传到回调线程。
+
+### 4.5 BaseAgent.executeToolInternal() 改造
+
+`BaseAgent.executeToolInternal()` 仍然负责：
+
+1. 参数解析
+2. 构造 `ToolArtifactSource`
+3. 绑定当前线程的工具运行时上下文
+4. 调用 `availableTools.execute(...)`
+5. 收口执行结果
+
+新增动作：
+
+1. 为当前 `toolCallId` 预创建 `ToolDisplayEmitter`
+2. 在执行前将 emitter 绑定到 `AgentContext`
+3. 执行后清理 emitter 线程上下文
+
+伪代码：
+
+```java
+ToolArtifactSource artifactSource = buildArtifactSource(command, toolName);
+ToolDisplayEmitter displayEmitter =
+        context.getToolDisplayRegistry().getOrCreate(command.getId(), toolName, context);
+
+context.bindCurrentToolArtifactSource(artifactSource);
+context.bindCurrentToolDisplayEmitter(displayEmitter);
+try {
+    result = availableTools.execute(toolName, args);
+} finally {
+    context.clearCurrentToolDisplayEmitter();
+    context.clearCurrentToolArtifactSource();
+}
+```
+
+注意：
+
+- 本次不改 `executeTools()` 的并行模型
+- 不引入新的全局流执行器
+- 执行账本登记仍沿用现有主干
+
+### 4.6 Agent 外层默认结果发送逻辑改造
+
+`ExecutorAgent` 与 `ReactImplAgent` 的黑名单应删除，改为统一根据策略判断。
+
+建议新增辅助方法：
+
+```java
+private boolean shouldEmitDefaultToolResult(BaseTool tool) {
+    if (tool instanceof ToolDisplayAware aware) {
+        return aware.displayPolicy() != ToolDisplayPolicy.SELF_RENDERED;
+    }
+    return true;
+}
+```
+
+然后将当前逻辑改为：
+
+```java
+BaseTool tool = availableTools.getTool(command.getFunction().getName());
+if (shouldEmitDefaultToolResult(tool)) {
+    printer.send("tool_result", AgentResponse.ToolResult.builder()
+            .toolName(toolName)
+            .toolParam(parseToolParam(command))
+            .toolResult(result)
+            .build(), null);
+}
+```
+
+语义解释：
+
+- `STANDARD_ONLY`：发送默认 `tool_result`
+- `SELF_RENDERED`：不发送默认 `tool_result`
+- `HYBRID`：发送默认 `tool_result`
+
+### 4.7 特殊工具的迁移规则
+
+| 工具 | 展示策略 | 槽位设计 | 说明 |
+|------|---------|---------|------|
+| `deep_search` | `SELF_RENDERED` | `search` / `report` | 保留两张卡片语义 |
+| `data_analysis` | `SELF_RENDERED` | `main` | 工具自己发增量与最终内容 |
+| `code_interpreter` | `SELF_RENDERED` | `main` | 工具自己发 `code` |
+| `report_tool` | `SELF_RENDERED` | `main` | 工具自己发 `html/markdown/ppt/file` 等最终产物 |
+| `file_tool` | `SELF_RENDERED` | `main` | 工具自己发 `file` |
+| `multimodalagent_tool` | `SELF_RENDERED` | `knowledge` / `markdown` | 同一次调用拆分两类展示 |
+| `image_generation_tool` | `HYBRID` | `artifact` | 保留 `file` 卡片，同时允许补 `tool_result` |
+| 其他普通工具 | `STANDARD_ONLY` | `main` | 维持现状 |
+
+### 4.8 DeepSearchTool 改造示例
+
 改造前：
-┌─────────────┐  printer.send()  ┌─────────┐
-│ DeepSearch  │ ───────────────► │ 前端    │
-│ DataAnalysis│ ───────────────► │ (混乱)  │
-│ CodeInterp  │ ───────────────► │        │
-│ Report      │ ───────────────► │        │
-└─────────────┘                  └─────────┘
+
+- 工具内部自己维护 `messageIdRef`
+- 工具内部自己决定何时向 `printer` 发 `deep_search`
 
 改造后：
-┌─────────────┐  ToolEvent 流    ┌─────────────────┐  统一推送   ┌─────────┐
-│ DeepSearch  │ ───────────────► │                 │ ────────► │ 前端    │
-│ DataAnalysis│ ───────────────► │ ToolStreamExecutor│          │ (有序)  │
-│ CodeInterp  │ ───────────────► │                 │          │        │
-│ Report      │ ───────────────► │ - 分配 messageId │          │        │
-└─────────────┘                  │ - 合并多个 Flux   │          │        │
-                                 │ - 控制推送节奏    │          │        │
-                                 │ - 统一收口      │          │        │
-                                 └─────────────────┘          └─────────┘
-```
-
-### 3.2 关键原则
-
-- **工具只产不管**：工具只负责产出 `ToolEvent` 流，不直接调用 printer
-- **执行层统管统推**：`ToolStreamExecutor` 负责所有与前端交互的推送逻辑
-- **并行隔离**：每个 toolCall 分配独立的 `messageId`，前端按 `messageId` 分组渲染
-- **向后兼容**：非流式工具（`BaseTool`）保持原有执行路径不变
-
-## 4. 组件详细设计
-
-### 4.1 StreamingTool 接口
 
 ```java
-package org.wwz.ai.domain.agent.reactor.agent.tool;
-
-import reactor.core.publisher.Flux;
-
-/**
- * 流式工具接口。实现类只负责产出事件流，不直接操作 Printer。
- */
-public interface StreamingTool extends BaseTool {
-
-    /**
-     * 执行流式工具，返回事件流。
-     *
-     * @param input      工具参数（由 execute(Object input) 的参数序列化而来）
-     * @param toolCallId 本次调用的唯一标识（执行层分配，用于并行隔离）
-     * @return 工具事件流
-     */
-    Flux<ToolEvent> executeStreaming(Object input, String toolCallId);
-}
-```
-
-**设计决策：**
-- 继承 `BaseTool`，保证非流式调用方仍可使用 `execute(Object)` 方法（可提供一个默认适配实现）
-- `executeStreaming` 返回 `Flux<ToolEvent>`，利用 Project Reactor 的流式抽象
-- `toolCallId` 由执行层传入，确保并行时各流可区分
-
-### 4.2 ToolEvent 标准化事件
-
-```java
-package org.wwz.ai.domain.agent.reactor.agent.tool;
-
-import lombok.Builder;
-import lombok.Data;
-
-import java.time.LocalDateTime;
-
-/**
- * 流式工具产出的标准化事件。
- * 所有 StreamingTool 的实现都必须将内部数据转换为 ToolEvent。
- */
-@Data
-@Builder
-public class ToolEvent {
-
-    /** 本次 toolCall 的唯一标识（用于并行隔离） */
-    private String toolCallId;
-
-    /** 事件阶段 */
-    private Stage stage;
-
-    /** 展示给用户的文本描述 */
-    private String message;
-
-    /** 工具特有的结构化数据（如 DeepSearchResponse 等） */
-    private Object payload;
-
-    /** 是否是该工具的最后一条事件 */
-    private boolean isFinal;
-
-    /** 事件时间戳 */
-    @Builder.Default
-    private LocalDateTime timestamp = LocalDateTime.now();
-
-    public enum Stage {
-        /** 工具开始执行 */
-        STARTED,
-        /** 中间进度 */
-        PROGRESS,
-        /** 产出了文件/产物 */
-        ARTIFACT,
-        /** 执行成功完成 */
-        COMPLETED,
-        /** 执行出错 */
-        ERROR
-    }
-}
-```
-
-**为什么必须标准化：**
-- `ToolStreamExecutor` 需要理解事件的语义（是否是最终结果、是否出错），才能统一决策（记账本、推前端、触发取消）
-- `payload` 字段保留工具的原始数据结构，前端仍可按原有逻辑解析
-- `Stage.ERROR` 让执行层能统一捕获异常并推送给前端，工具内部不再需要 try-catch 后调用 printer
-
-### 4.3 ToolStreamExecutor 统一执行层
-
-```java
-package org.wwz.ai.domain.agent.reactor.agent.tool;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
-import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-/**
- * 流式工具统一执行器。
- * 负责管理多个 StreamingTool 的并行执行、事件合并、统一推送和生命周期收口。
- */
-@Slf4j
-@Component
-public class ToolStreamExecutor {
-
-    /**
-     * 执行一组流式工具调用。
-     *
-     * @param commands       toolCall 列表
-     * @param availableTools 可用工具集合
-     * @param context        Agent 上下文（包含 printer、requestId 等）
-     * @return 各 toolCallId → ToolExecutionOutcome 的映射
-     */
-    public Map<String, BaseAgent.ToolExecutionOutcome> executeStreamingTools(
-            List<ToolCall> commands,
-            ToolCollection availableTools,
-            AgentContext context) {
-
-        Map<String, BaseAgent.ToolExecutionOutcome> results = new ConcurrentHashMap<>();
-        Map<String, String> messageIdMap = new HashMap<>();
-        Map<String, List<ToolEvent>> eventBuffers = new ConcurrentHashMap<>();
-        Map<String, AtomicReference<String>> finalResultMap = new ConcurrentHashMap<>();
-
-        // 1. 为每个 toolCall 预分配 messageId
-        for (ToolCall cmd : commands) {
-            messageIdMap.put(cmd.getId(), UUID.randomUUID().toString());
-            eventBuffers.put(cmd.getId(), Collections.synchronizedList(new ArrayList<>()));
-            finalResultMap.put(cmd.getId(), new AtomicReference<>(""));
-        }
-
-        // 2. 为每个 toolCall 建立 toolCallId → toolName 映射（供 handleEvent 使用）
-        Map<String, String> toolCallIdToNameMap = new HashMap<>();
-        for (ToolCall cmd : commands) {
-            toolCallIdToNameMap.put(cmd.getId(), cmd.getFunction().getName());
-        }
-
-        // 3. 为每个 StreamingTool 单独启动 Flux，独立追踪终止状态
-        CountDownLatch latch = new CountDownLatch(commands.size());
-        List<Disposable> disposables = new ArrayList<>();
-
-        for (ToolCall cmd : commands) {
-            BaseTool tool = availableTools.getTool(cmd.getFunction().getName());
-            if (!(tool instanceof StreamingTool streamingTool)) {
-                latch.countDown();
-                continue;
-            }
-
-            Object input = parseToolInput(cmd);
-            String toolCallId = cmd.getId();
-            String toolName = cmd.getFunction().getName();
-
-            Flux<ToolEvent> flux = streamingTool.executeStreaming(input, toolCallId)
-                    .doOnTerminate(() -> {
-                        log.info("{} StreamingTool {} 流终止", context.getRequestId(), toolName);
-                        latch.countDown();
-                    });
-
-            Disposable disposable = flux.subscribe(
-                    event -> handleEvent(event, messageIdMap, eventBuffers, finalResultMap,
-                            toolCallIdToNameMap, context),
-                    error -> log.error("{} StreamingTool {} 流报错", context.getRequestId(), toolName, error)
-            );
-            disposables.add(disposable);
-        }
-
-        // 4. 等待所有流结束（保留超时机制）
-        try {
-            boolean allDone = latch.await(20, TimeUnit.MINUTES);
-            if (!allDone) {
-                log.warn("{} StreamingTool 执行超时，强制取消", context.getRequestId());
-                disposables.forEach(Disposable::dispose);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            disposables.forEach(Disposable::dispose);
-            log.warn("{} StreamingTool 执行被中断", context.getRequestId());
-        }
-
-        // 5. 组装最终结果
-        for (ToolCall cmd : commands) {
-            String finalResult = finalResultMap.get(cmd.getId()).get();
-            results.put(cmd.getId(), BaseAgent.ToolExecutionOutcome.success(finalResult, finalResult, null));
-        }
-
-        return results;
-    }
-
-    private void handleEvent(ToolEvent event,
-                             Map<String, String> messageIdMap,
-                             Map<String, List<ToolEvent>> eventBuffers,
-                             Map<String, AtomicReference<String>> finalResultMap,
-                             Map<String, String> toolCallIdToNameMap,
-                             AgentContext context) {
-        String toolCallId = event.getToolCallId();
-        String messageId = messageIdMap.get(toolCallId);
-
-        // 缓冲事件（用于最终组装结果）
-        eventBuffers.get(toolCallId).add(event);
-
-        // 记录最终文本（用于返回给 LLM）
-        if (event.getMessage() != null) {
-            finalResultMap.get(toolCallId).updateAndGet(old -> old + event.getMessage());
-        }
-
-        // 根据 stage 决定推送给前端的消息类型
-        String toolName = toolCallIdToNameMap.get(toolCallId);
-        String digitalEmployee = context.getToolCollection().getDigitalEmployee(toolName);
-
-        switch (event.getStage()) {
-            case PROGRESS, STARTED ->
-                    context.getPrinter().send(messageId, toolName, event.getPayload(), digitalEmployee, false);
-            case ARTIFACT -> {
-                // 产物事件可推送，也可仅记录
-                context.getPrinter().send(messageId, toolName, event.getPayload(), digitalEmployee, false);
-            }
-            case COMPLETED -> {
-                context.getPrinter().send(messageId, toolName, event.getPayload(), digitalEmployee, true);
-                // 标记该 toolCall 已完成
-            }
-            case ERROR -> {
-                context.getPrinter().send(messageId, "tool_result",
-                        AgentResponse.ToolResult.builder()
-                                .toolName(toolName)
-                                .toolResult(event.getMessage())
-                                .build(),
-                        digitalEmployee, true);
-            }
-        }
-    }
-
-    /**
-     * 将 ToolCall 的参数 JSON 字符串解析为 Object。
-     * 复用现有 ObjectMapper 逻辑。
-     */
-    private Object parseToolInput(ToolCall cmd) {
-        String arguments = cmd.getFunction().getArguments();
-        if (StringUtils.isBlank(arguments)) {
-            return new HashMap<>();
-        }
-        try {
-            return new ObjectMapper().readValue(arguments, Object.class);
-        } catch (Exception e) {
-            log.warn("解析 tool arguments 失败: {}", arguments);
-            return new HashMap<>();
-        }
-    }
-}
-```
-
-**关键设计点：**
-
-| 能力 | 实现方式 |
-|------|---------|
-| 并行隔离 | 每个 toolCall 预分配独立 `messageId`，前端按 `messageId` 分组渲染 |
-| 流合并 | 每个流单独订阅，通过 `doOnTerminate()` 独立追踪终止状态，避免一个流报错影响其他流 |
-| 线程安全 | 只有一个订阅者线程调用 `printer.send()`，避免并发写 `SseEmitter` |
-| 取消收口 | 持有 `Disposable` 引用，Agent 中断时调用 `dispose()` 取消所有流 |
-| 超时控制 | `CountDownLatch.await(20, MINUTES)`，超时后强制 dispose |
-| 结果收集 | `finalResultMap` 收集所有事件 message，组装后返回给 LLM |
-
-### 4.4 BaseAgent.executeTools() 改造
-
-```java
-public Map<String, ToolExecutionOutcome> executeTools(List<ToolCall> commands) {
-    Map<String, ToolExecutionOutcome> result = new ConcurrentHashMap<>();
-    if (commands == null || commands.isEmpty()) {
-        return result;
-    }
-
-    // 判断是否有流式工具
-    boolean hasStreaming = commands.stream()
-            .anyMatch(cmd -> availableTools.getTool(cmd.getFunction().getName())
-                    instanceof StreamingTool);
-
-    if (hasStreaming) {
-        // 统一走 ToolStreamExecutor
-        return toolStreamExecutor.executeStreamingTools(commands, availableTools, context);
-    }
-
-    // 非流式工具，保持原有并行逻辑不变
-    Map<String, Long> toolInvocationIds = preRegisterToolInvocations(commands);
-    // ... 原有代码不变
-}
-```
-
-### 4.5 ExecutorAgent.act() 改造
-
-移除黑名单：
-
-```java
-@Override
-public String act() {
-    if (toolCalls.isEmpty()) {
-        // ... 原有逻辑
-    }
-
-    Map<String, String> toolResults = executeTools(toolCalls);
-
-    List<String> results = new ArrayList<>();
-    for (ToolCall command : toolCalls) {
-        String result = toolResults.get(command.getId());
-
-        // 删除以下黑名单逻辑：
-        // if (!Arrays.asList("code_interpreter", "report_tool", "file_tool",
-        //         "deep_search", "multimodalagent_tool", "data_analysis")
-        //         .contains(command.getFunction().getName())) {
-        //     printer.send("tool_result", ...);
-        // }
-
-        // StreamingTool 的推送已由 ToolStreamExecutor 统一处理
-        // ExecutorAgent 只负责收集结果塞给 LLM
-
-        if (maxObserve != null) {
-            result = result.substring(0, Math.min(result.length(), maxObserve));
-        }
-        result = attachToolArtifactSummary(result, command.getId());
-
-        Message toolMsg = Message.toolMessage(result, command.getId(), null);
-        getMemory().addMessage(toolMsg);
-        results.add(result);
-    }
-    return String.join("\n\n", results);
-}
-```
-
-### 4.6 DeepSearchTool 改造示例
-
-```java
-public class DeepSearchTool implements StreamingTool {
+public class DeepSearchTool implements BaseTool, ToolDisplayAware {
 
     @Override
-    public Flux<ToolEvent> executeStreaming(Object input, String toolCallId) {
-        return Flux.create(sink -> {
-            // 解析参数，构建请求
-            Map<String, Object> params = (Map<String, Object>) input;
-            String query = (String) params.get("query");
-            DeepSearchRequest request = buildRequest(query);
-
-            // OkHttp EventSource 监听 SSE 流
-            EventSourceListener listener = new EventSourceListener() {
-                @Override
-                public void onEvent(EventSource source, String id, String type, String data) {
-                    if ("[DONE]".equals(data) || data.startsWith("heartbeat")) {
-                        return;
-                    }
-                    DeepSearchrResponse resp = JSONObject.parseObject(data, DeepSearchrResponse.class);
-
-                    // 将内部响应转换为 ToolEvent
-                    ToolEvent.Stage stage = mapMessageTypeToStage(resp.getMessageType());
-                    sink.next(ToolEvent.builder()
-                            .toolCallId(toolCallId)
-                            .stage(stage)
-                            .message(resp.getAnswer())
-                            .payload(resp)
-                            .isFinal(resp.getIsFinal())
-                            .build());
-                }
-
-                @Override
-                public void onClosed(EventSource source) {
-                    sink.complete();
-                }
-
-                @Override
-                public void onFailure(EventSource source, Throwable t, Response response) {
-                    sink.error(t);
-                }
-            };
-
-            // 启动连接
-            EventSource.Factory factory = EventSources.createFactory(client);
-            factory.newEventSource(buildHttpRequest(request), listener);
-        });
+    public ToolDisplayPolicy displayPolicy() {
+        return ToolDisplayPolicy.SELF_RENDERED;
     }
 
-    private ToolEvent.Stage mapMessageTypeToStage(String messageType) {
-        return switch (messageType) {
-            case "extend" -> ToolEvent.Stage.STARTED;
-            case "search" -> ToolEvent.Stage.PROGRESS;
-            case "report" -> ToolEvent.Stage.PROGRESS;
-            default -> ToolEvent.Stage.PROGRESS;
-        };
+    private void emitSearchFrame(DeepSearchrResponse response, boolean isFinal) {
+        ToolDisplayEmitter emitter = agentContext.requireCurrentToolDisplayEmitter(getName());
+        emitter.emit("search", "deep_search", response, isFinal);
     }
 
-    // ... 原有辅助方法（buildRequest、超时配置等）保留
+    private void emitReportFrame(DeepSearchrResponse response, boolean isFinal) {
+        ToolDisplayEmitter emitter = agentContext.requireCurrentToolDisplayEmitter(getName());
+        emitter.emit("report", "deep_search", response, isFinal);
+    }
 }
 ```
 
-**改造要点：**
-- 删除所有 `agentContext.getPrinter().send()` 调用
-- 删除 `CompletableFuture` 管理逻辑（由 ToolStreamExecutor 管理）
-- 删除 `messageIdRef` 管理（由 ToolStreamExecutor 分配）
-- 内部响应通过 `mapMessageTypeToStage` 映射为标准化 `ToolEvent.Stage`
+收益：
 
-## 5. 改造范围
+1. 工具不再自己生成 `messageId`
+2. `search` / `report` 卡片拆分规则从“隐式状态”变成“显式槽位”
+3. Agent 外层不再关心它是不是黑名单
 
-### 5.1 新增文件
+### 4.9 公共流式支持类放到第二阶段
+
+当展示职责收敛后，再引入公共支持类，例如：
+
+`StreamingHttpToolSupport`
+
+可收敛的能力包括：
+
+1. 统一过滤 `[DONE]`
+2. 统一过滤 `heartbeat`
+3. 统一 `BufferedReader` 逐行消费
+4. 统一异常包装
+5. 统一最终结果拼接
+6. 统一取消句柄封装
+
+注意：
+
+- 这是**传输层辅助抽象**
+- 不是本次方案的主轴
+- 本期不强制升级到 Reactor `Flux`
+
+## 5. 数据流
+
+### 5.1 STANDARD_ONLY 工具
+
+```text
+LLM 返回 toolCall
+    ↓
+BaseAgent.executeToolInternal()
+    ↓
+普通工具 execute()
+    ↓
+返回字符串结果
+    ↓
+ExecutorAgent / ReactImplAgent 根据策略补发 tool_result
+    ↓
+结果写入记忆与执行账本
+```
+
+### 5.2 SELF_RENDERED 工具
+
+```text
+LLM 返回 toolCall
+    ↓
+BaseAgent.executeToolInternal()
+    ↓
+绑定 ToolArtifactSource + ToolDisplayEmitter
+    ↓
+特殊工具 execute()
+    ↓
+异步回调中调用 emitter.emit(...)
+    ↓
+工具返回最终文本结果给 Agent
+    ↓
+Agent 不再补发默认 tool_result
+    ↓
+结果写入记忆与执行账本
+```
+
+### 5.3 HYBRID 工具
+
+```text
+LLM 返回 toolCall
+    ↓
+BaseAgent.executeToolInternal()
+    ↓
+工具通过 emitter.emit(...) 发送主要展示（如 file）
+    ↓
+工具返回最终文本结果
+    ↓
+Agent 继续补发默认 tool_result
+    ↓
+前端沿用现有折叠逻辑进行整合
+```
+
+## 6. 为什么本期不采用 StreamingTool + ToolStreamExecutor
+
+### 6.1 抽象层级偏高
+
+当前特殊工具的差异主要在“展示语义”，不是在“是否都能抽象成同一种流执行接口”。
+
+如果现在强行统一为：
+
+- `StreamingTool`
+- `ToolEvent.Stage`
+- `ToolStreamExecutor`
+
+会把本来是展示层的问题，过早上提为执行框架问题。
+
+### 6.2 `toolCall -> 单个 messageId` 的假设不成立
+
+现有前端已经证明：
+
+1. `deep_search` 同一调用下需要区分 `search` / `report`
+2. `multimodalagent_tool` 同一调用下需要区分 `knowledge` / `markdown`
+3. `image_generation_tool` 存在 `file + tool_result` 组合展示
+
+因此“一个 `toolCall` 预分配一个 `messageId`”无法表达真实展示语义。
+
+### 6.3 不应为了统一而引入新的主执行框架
+
+当前：
+
+- 执行账本已经围绕 `BaseAgent.executeTools()` 稳定工作
+- 工具产物已围绕 `ToolArtifactSource` 稳定绑定
+
+如果本期直接引入新的统一流执行器，会同步触碰：
+
+1. 工具执行结果收口
+2. 工具终态判断
+3. 账本回写时机
+4. 产物归属时机
+
+改动面过大，不符合本期“先解决真实痛点、再收敛传输层”的原则。
+
+## 7. 改造范围
+
+### 7.1 新增文件
 
 | 文件 | 说明 |
 |------|------|
-| `agent/tool/StreamingTool.java` | 流式工具接口 |
-| `agent/tool/ToolEvent.java` | 标准化事件 |
-| `agent/tool/ToolStreamExecutor.java` | 统一执行层 |
+| `agent/tool/display/ToolDisplayPolicy.java` | 工具展示策略枚举 |
+| `agent/tool/display/ToolDisplayAware.java` | 可选展示策略声明接口 |
+| `agent/tool/display/ToolDisplayEmitter.java` | 统一展示发射器接口 |
+| `agent/tool/display/DefaultToolDisplayEmitter.java` | 默认展示发射器实现 |
+| `agent/tool/display/ToolDisplayRegistry.java` | 请求级 emitter 注册表 |
+| `agent/tool/support/StreamingHttpToolSupport.java` | 第二阶段可选的公共流式支持类 |
 
-### 5.2 修改文件
+### 7.2 修改文件
 
 | 文件 | 改动内容 |
 |------|---------|
-| `agent/agent/BaseAgent.java` | `executeTools()` 识别 StreamingTool 并分流 |
-| `agent/agent/ExecutorAgent.java` | 删除黑名单逻辑 |
-| `agent/tool/common/DeepSearchTool.java` | 实现 `StreamingTool` |
-| `agent/tool/common/DataAnalysisTool.java` | 实现 `StreamingTool` |
-| `agent/tool/common/CodeInterpreterTool.java` | 实现 `StreamingTool` |
-| `agent/tool/common/ReportTool.java` | 实现 `StreamingTool` |
-| `agent/tool/ToolCollection.java` | 可能需增加 `getTool(String name)` 方法 |
+| `agent/agent/AgentContext.java` | 新增 `ToolDisplayRegistry` 与 emitter 线程上下文支持 |
+| `agent/agent/BaseAgent.java` | 在工具执行期绑定 / 清理当前 emitter |
+| `agent/agent/ExecutorAgent.java` | 用策略替代黑名单 |
+| `agent/agent/ReactImplAgent.java` | 用策略替代黑名单 |
+| `agent/tool/common/DeepSearchTool.java` | 改为通过 emitter 发送 `deep_search` |
+| `agent/tool/common/DataAnalysisTool.java` | 改为通过 emitter 发送 `data_analysis` |
+| `agent/tool/common/CodeInterpreterTool.java` | 改为通过 emitter 发送 `code` |
+| `agent/tool/common/ReportTool.java` | 改为通过 emitter 发送产物展示 |
+| `agent/tool/common/FileTool.java` | 改为通过 emitter 发送 `file` |
+| `agent/tool/common/MultiModalAgent.java` | 改为通过 emitter 发送 `knowledge` / `markdown` |
+| `agent/tool/common/ImageGenerationTool.java` | 改为通过 emitter 发送 `file`，保留混合策略 |
 
-### 5.3 前端改动
+### 7.3 前端改动
 
-前端现有逻辑已按 `messageId` 分组渲染消息，改造后只需确认：
-- 同 `messageId` 的消息增量更新同一卡片
-- 不同 `messageId` 的消息创建独立卡片
+本期目标是：
 
-预计前端无需改动，或仅需微调。
+- 尽量不改前端协议
+- 继续沿用现有 `messageType` 语义
+- 继续沿用现有 `messageId` 驱动的渲染逻辑
 
-## 6. 数据流
+前端只需验证：
 
-```
-用户提问
-    ↓
-ExecutorAgent.think() → LLM 返回 2 个 toolCalls
-    ↓
-BaseAgent.executeTools([call_1, call_2])
-    ↓
-识别到 StreamingTool → 调用 ToolStreamExecutor.executeStreamingTools()
-    ↓
-┌──────────────────────────────────────────────────────────────┐
-│  ToolStreamExecutor                                          │
-│  1. 分配 messageId_A → call_1, messageId_B → call_2         │
-│  2. 启动 DeepSearchTool.executeStreaming(call_1)            │
-│     启动 DataAnalysisTool.executeStreaming(call_2)          │
-│  3. Flux.merge(流A, 流B).subscribe(...)                     │
-│  4. 收到 ToolEvent(toolCallId=call_1) →                     │
-│        printer.send(messageId_A, "deep_search", payload, ...)│
-│     收到 ToolEvent(toolCallId=call_2) →                     │
-│        printer.send(messageId_B, "data_analysis", payload, ...)│
-│  5. 所有流 complete → 组装结果返回                           │
-└──────────────────────────────────────────────────────────────┘
-    ↓
-ExecutorAgent.act() → 结果塞入 LLM 记忆
-    ↓
-下一轮对话
-```
+1. `deep_search` 的 `search` / `report` 卡片行为不变
+2. `multimodalagent_tool` 的 `knowledge` / `markdown` 行为不变
+3. `image_generation_tool` 的 `file + tool_result` 折叠行为不变
 
-## 7. 错误处理
+## 8. 测试与验收标准
 
-| 场景 | 处理策略 |
-|------|---------|
-| 单个工具流报错 | `sink.error(t)` → `ToolStreamExecutor` subscribe 的 error 回调记录日志，该流标记为失败，不影响其他并行流 |
-| 超时 | `CountDownLatch.await(20, MINUTES)` 超时后 `disposable.dispose()`，取消所有活跃流 |
-| Agent 被中断 | `BaseAgent` 在 catch 块中通知 `ToolStreamExecutor` 取消所有流 |
-| SSE 连接断开 | 工具内部 `onFailure` 中调用 `sink.error(t)`，由执行层统一处理 |
-| 前端断开连接 | `SseEmitter` 异常由 `SSEPrinter` 现有逻辑捕获，不影响后端执行 |
+### 8.1 核心测试点
 
-## 8. 兼容性
+1. **展示身份测试**
+   - 同一个 `toolCallId + slotKey + messageType` 多次发送时复用同一个 `messageId`
+   - 不同 `slotKey` 能得到不同 `messageId`
 
-- **`ToolExecutionOutcome` 访问权限**：当前为 `BaseAgent` 的 `private static class`，需提升为 `public static class`，供 `ToolStreamExecutor` 引用
-- **非流式工具**：不受影响，继续走原有 `executeTools()` 并行逻辑
-- **Spring AI ToolCallback 适配**：`BaseToolCallbackAdapter` 无需改动，它适配的是 `BaseTool.execute()` 方法
-- **执行账本**：`preRegisterToolInvocations()` 和 `finishToolInvocation()` 在流式路径中仍被调用（在 `ToolStreamExecutor` 中维护调用点）
-- **产物注册**：工具内部仍可调用 `agentContext.registerGeneratedArtifact()`（产物注册与推送是独立操作）
+2. **策略测试**
+   - `STANDARD_ONLY` 工具执行后会补发默认 `tool_result`
+   - `SELF_RENDERED` 工具执行后不会补发默认 `tool_result`
+   - `HYBRID` 工具执行后仍会补发默认 `tool_result`
 
-## 9. 验收标准
+3. **运行时兼容测试**
+   - `ToolArtifactSource` 在线程内仍能正确绑定
+   - 异步工具回调里仍能正确登记产物
+   - 执行账本的开始、结束、产物登记时机不变
 
-1. **功能验收**
-   - [ ] DeepSearchTool、DataAnalysisTool、CodeInterpreterTool、ReportTool 均实现 `StreamingTool` 接口
-   - [ ] 各工具内部不再出现 `agentContext.getPrinter().send()` 调用
-   - [ ] `ExecutorAgent` 黑名单已删除
-   - [ ] LLM 返回单个流式工具调用时，前端正常显示流式进度
+4. **前端回归测试**
+   - `deep_search` 两阶段卡片不串位
+   - `multimodalagent_tool` 的 `knowledge` / `markdown` 不串位
+   - `image_generation_tool` 仍能正确折叠
 
-2. **并行隔离验收**
-   - [ ] 构造测试场景：LLM 同时返回 deep_search + data_analysis 两个 toolCall
-   - [ ] 前端两个任务卡片独立渲染，消息不混叠
-   - [ ] 两个工具的结果分别正确返回给 LLM
+### 8.2 功能验收
 
-3. **回归验收**
-   - [ ] 非流式工具（如 FileTool）执行不受影响
-   - [ ] 原有单步执行场景（只有一个 toolCall）行为不变
-   - [ ] SSE 连接异常时，工具能正确报错，不会阻塞 Agent
+1. `ExecutorAgent`、`ReactImplAgent` 中已无特殊工具黑名单
+2. 已迁移的特殊工具内部不再直接调用 `agentContext.getPrinter().send(...)`
+3. 已迁移工具全部通过 `ToolDisplayEmitter` 发前端展示消息
+4. 非特殊工具行为保持不变
+5. 执行账本与工具产物持久化无回归
 
-4. **代码验收**
-   - [ ] 新增代码单元测试覆盖率 ≥ 60%
-   - [ ] 无 `TODO` 遗留（本设计中的 TODO 需在实现阶段完成）
+### 8.3 范围控制验收
+
+1. 本期未引入 `Flux<ToolEvent>` 强制契约
+2. 本期未重写 `BaseAgent.executeTools()` 主执行模型
+3. 本期未引入新的数据库表或消息持久化模型
+4. 本期完成后，若仍需进一步减少流式工具重复代码，再单独推进公共传输支持层重构
+
+## 9. 结论
+
+本次重构的正确切入点不是“先统一流式执行层”，而是“先统一工具展示层”。
+
+只有先把下面三件事收口：
+
+1. 谁负责向前端发消息
+2. 一个工具调用下有哪些展示槽位
+3. Agent 是否需要补发默认 `tool_result`
+
+后续的流式解析、HTTP/SSE 支持类抽象、甚至更进一步的 `StreamingTool` 契约，才会有稳定边界。
+
+因此，本方案采用：
+
+- **展示层优先收口**
+- **执行层保持稳定**
+- **传输层渐进抽象**
+
+这比一次性引入新的统一流执行框架更符合当前代码库的真实问题、现有约束与演进节奏。

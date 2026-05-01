@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     tool_name         VARCHAR(128)   NOT NULL COMMENT '工具名称',
     tool_provider     VARCHAR(64)    NULL COMMENT '工具提供方 local / mcp',
     input_json        JSON           NOT NULL COMMENT '工具入参 JSON',
-    output_text       MEDIUMTEXT     NULL COMMENT '工具文本输出',
+    llm_oberserve     MEDIUMTEXT     NULL COMMENT '回传给主智能体的最终 observation',
     output_json       JSON           NULL COMMENT '工具结构化输出',
     status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT',
     error_msg         TEXT           NULL COMMENT '错误信息',

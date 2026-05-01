@@ -215,7 +215,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             toolInvocationLedgerDao.updateToolInvocationFinish(ToolInvocation.builder()
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
-                    .outputText(record.getOutputText())
+                    .llmObservation(record.getLlmObservation())
                     .outputJson(record.getOutputJson())
                     .errorMsg(trimText(record.getErrorMsg(), 2000))
                     .finishedAt(defaultNow(record.getFinishedAt()))

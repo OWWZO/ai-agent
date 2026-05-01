@@ -12,7 +12,7 @@ import java.util.List;
 
 @Component
 @Slf4j
-public class ReactAgentResponseHandler  extends BaseAgentResponseHandler implements AgentResponseHandler {
+public class ReactAgentResponseHandler extends BaseAgentResponseHandler implements AgentResponseHandler {
 
     @Override
     public GptProcessResult handle(AgentRequest request, AgentResponse response, List<AgentResponse> agentRespList, EventResult eventResult) {

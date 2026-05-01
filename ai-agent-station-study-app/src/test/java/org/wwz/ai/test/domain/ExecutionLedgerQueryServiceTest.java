@@ -82,7 +82,7 @@ public class ExecutionLedgerQueryServiceTest {
                 .requestId(requestId)
                 .toolCallId("tool-call-" + dispatchIndex)
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .outputText("done")
+                .llmObservation("done")
                 .finishedAt(now.plusSeconds(2))
                 .build());
         ctx.recorder.recordArtifacts(List.of(ArtifactRecordCommand.builder()

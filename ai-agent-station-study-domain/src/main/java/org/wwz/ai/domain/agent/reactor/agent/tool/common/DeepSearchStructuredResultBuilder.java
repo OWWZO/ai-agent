@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,6 +23,21 @@ import java.util.Set;
  * 负责把流式三阶段事件归并成完整 JSON 字符串。
  */
 public class DeepSearchStructuredResultBuilder {
+
+    /**
+     * 每个子查询最多保留多少条命中文档到主智能体 observation。
+     */
+    private static final int OBSERVATION_DOC_LIMIT_PER_QUERY = 3;
+
+    /**
+     * 每条文档摘要最大长度，避免再次膨胀成大 JSON。
+     */
+    private static final int OBSERVATION_DOC_SUMMARY_MAX_LEN = 180;
+
+    /**
+     * 最终回答摘要最大长度。
+     */
+    private static final int OBSERVATION_ANSWER_MAX_LEN = 240;
 
     private final LinkedHashSet<String> decomposedQueries = new LinkedHashSet<>();
     private final LinkedHashMap<String, List<DeepSearchrResponse.SearchDoc>> searchResults = new LinkedHashMap<>();
@@ -76,6 +92,36 @@ public class DeepSearchStructuredResultBuilder {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
         DeepSearchStructuredOutput output = buildOutput(normalizedAnswer);
         return JSON.toJSONString(output);
+    }
+
+    /**
+     * 同时产出结构化 output_json 与主智能体消费的紧凑 observation。
+     */
+    public ToolResultPayload buildPayload(String fallbackAnswer) {
+        String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
+        DeepSearchStructuredOutput output = buildOutput(normalizedAnswer);
+        String outputJson = JSON.toJSONString(output);
+        return ToolResultPayload.builder()
+                .toolResult(outputJson)
+                .llmObservation(buildLlmObservation(normalizedAnswer))
+                .outputJson(outputJson)
+                .build();
+    }
+
+    /**
+     * 生成给主智能体使用的紧凑 observation。
+     * 只保留查询拆解、来源标题/链接和内容摘要，不再透传完整 stages payload。
+     */
+    public String buildLlmObservation(String fallbackAnswer) {
+        String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
+        DeepSearchObservationOutput observation = DeepSearchObservationOutput.builder()
+                .tool("deep_search")
+                .query(query)
+                .subQueries(new ArrayList<>(decomposedQueries))
+                .results(buildObservationResults())
+                .answerSummary(truncate(normalizedAnswer, OBSERVATION_ANSWER_MAX_LEN))
+                .build();
+        return JSON.toJSONString(observation);
     }
 
     private void recordExtend(DeepSearchrResponse.SearchResult searchResult) {
@@ -181,6 +227,41 @@ public class DeepSearchStructuredResultBuilder {
                 .build();
     }
 
+    private List<DeepSearchObservationQueryResult> buildObservationResults() {
+        List<DeepSearchObservationQueryResult> results = new ArrayList<>();
+        for (Map.Entry<String, List<DeepSearchrResponse.SearchDoc>> entry : searchResults.entrySet()) {
+            List<DeepSearchObservationDoc> docs = new ArrayList<>();
+            List<DeepSearchrResponse.SearchDoc> rawDocs = entry.getValue();
+            if (rawDocs != null) {
+                int docLimit = Math.min(rawDocs.size(), OBSERVATION_DOC_LIMIT_PER_QUERY);
+                for (int idx = 0; idx < docLimit; idx++) {
+                    DeepSearchrResponse.SearchDoc rawDoc = rawDocs.get(idx);
+                    if (rawDoc == null) {
+                        continue;
+                    }
+                    docs.add(DeepSearchObservationDoc.builder()
+                            .title(StringUtils.defaultString(rawDoc.getTitle()))
+                            .link(StringUtils.defaultString(rawDoc.getLink()))
+                            .summary(truncate(StringUtils.defaultString(rawDoc.getContent()), OBSERVATION_DOC_SUMMARY_MAX_LEN))
+                            .build());
+                }
+            }
+            results.add(DeepSearchObservationQueryResult.builder()
+                    .query(entry.getKey())
+                    .docs(docs)
+                    .build());
+        }
+        return results;
+    }
+
+    private String truncate(String text, int maxLen) {
+        String normalized = StringUtils.trimToEmpty(text);
+        if (normalized.length() <= maxLen) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLen) + "...";
+    }
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -209,5 +290,36 @@ public class DeepSearchStructuredResultBuilder {
     public static class DeepSearchQueryResult {
         private String query;
         private List<DeepSearchrResponse.SearchDoc> docs;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeepSearchObservationOutput {
+        private String tool;
+        private String query;
+        private List<String> subQueries;
+        private List<DeepSearchObservationQueryResult> results;
+        private String answerSummary;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeepSearchObservationQueryResult {
+        private String query;
+        private List<DeepSearchObservationDoc> docs;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeepSearchObservationDoc {
+        private String title;
+        private String link;
+        private String summary;
     }
 }

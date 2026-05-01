@@ -214,12 +214,13 @@ public class ReactImplAgent extends ReActAgent {
         }
 
         // 步骤2：执行工具调用（核心：调用executeTools方法执行所有工具，返回工具ID→结果的映射）
-        Map<String, String> toolResults = executeTools(toolCalls);
+        Map<String, ToolExecutionOutcome> toolOutcomes = executeToolOutcomes(toolCalls);
         List<String> results = new ArrayList<>(); // 存储所有工具执行结果
 
         // 步骤3：遍历工具调用指令，处理每个工具的执行结果
         for (ToolCall command : toolCalls) {
-            String result = toolResults.get(command.getId()); // 根据工具调用ID获取执行结果
+            ToolExecutionOutcome outcome = toolOutcomes.get(command.getId());
+            String toolResult = outcome == null ? "" : outcome.getToolResult();
 
             // 步骤3.1：特殊工具结果不推送（如代码解释器、报表工具等，避免前端展示冗余信息）
             if (!Arrays.asList("code_interpreter", "report_tool", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis").contains(command.getFunction().getName())) {
@@ -227,30 +228,12 @@ public class ReactImplAgent extends ReActAgent {
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                         .toolName(command.getFunction().getName())
                         .toolParam(parseToolParam(command))
-                        .toolResult(result)
+                        .toolResult(toolResult)
                         .build(), null);
             }
 
-            // 步骤3.2：截断超长工具结果（防止Token超限或内容过长）
-            if (maxObserve != null) {
-                result = result.substring(0, Math.min(result.length(), maxObserve));
-            }
-            result = attachToolArtifactSummary(result, command.getId());
-
-            // 步骤3.3：更新智能体记忆（兼容两种工具调用模式）
-            if ("struct_parse".equals(llm.getFunctionCallType())) {
-                // 模式1：结构化解析 → 更新最后一条助手消息，追加工具执行结果
-                String content = getMemory().getLastMessage().getContent();
-                getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + result);
-            } else {
-                // 模式2：原生函数调用 → 新增工具消息（role=tool），关联工具调用ID
-                Message toolMsg = Message.toolMessage(
-                        result,          // 工具执行结果
-                        command.getId(), // 工具调用ID（关联工具调用指令）
-                        null             // 无图片
-                );
-                getMemory().addMessage(toolMsg); // 添加到记忆，供下一轮思考参考
-            }
+            // 步骤3.2：统一把最终 observation 写入主智能体记忆
+            String result = writeToolObservationToMemory(command, outcome);
 
             // 步骤3.4：收集工具结果，用于最终聚合返回
             results.add(result);
@@ -268,6 +251,11 @@ public class ReactImplAgent extends ReActAgent {
                     context.getRequestId(), command.getFunction().getName(), command.getFunction().getArguments());
             return Map.of();
         }
+    }
+
+    @Override
+    protected Integer resolveMaxObserveLength() {
+        return maxObserve;
     }
 
     /**

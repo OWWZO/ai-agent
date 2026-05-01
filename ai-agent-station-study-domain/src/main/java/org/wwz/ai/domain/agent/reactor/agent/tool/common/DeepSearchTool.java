@@ -10,12 +10,14 @@ import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
 import org.springframework.context.ApplicationContext;
+import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -113,7 +115,7 @@ public class DeepSearchTool implements BaseTool {
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future<String> future = callDeepSearchStream(request, artifactSource);
+            Future<ToolResultPayload> future = callDeepSearchStream(request, artifactSource);
             Object object = future.get(DEEP_SEARCH_TIMEOUT_MINUTES, TimeUnit.MINUTES);
 
             return object;
@@ -122,22 +124,22 @@ public class DeepSearchTool implements BaseTool {
                 activeEventSource.cancel();
             }
             log.error("{} deep_search timeout after {} minutes", agentContext.getRequestId(), DEEP_SEARCH_TIMEOUT_MINUTES, e);
-            return "deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。";
+            return buildFailurePayload("deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。");
         } catch (Exception e) {
 
             log.error("{} deep_search agent error", agentContext.getRequestId(), e);
+            return buildFailurePayload("deep_search执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), "未知异常"));
         } finally {
             activeEventSource = null;
         }
-        return null;
     }
 
     /**
      * 调用 DeepSearch
      */
-    public CompletableFuture<String> callDeepSearchStream(DeepSearchRequest searchRequest,
-                                                          ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callDeepSearchStream(DeepSearchRequest searchRequest,
+                                                                     ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(DEEP_SEARCH_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -275,7 +277,7 @@ public class DeepSearchTool implements BaseTool {
                 public void onClosed(EventSource eventSource) {
                     activeEventSource = null;
                     if (!future.isDone()) {
-                        future.complete(resultBuilder.buildJson(resultRef.get()));
+                        future.complete(resultBuilder.buildPayload(resultRef.get()));
                     }
                 }
 
@@ -284,7 +286,7 @@ public class DeepSearchTool implements BaseTool {
                     activeEventSource = null;
                     if (t == null && response == null) {
                         if (!future.isDone()) {
-                            future.complete(resultBuilder.buildJson(resultRef.get()));
+                            future.complete(resultBuilder.buildPayload(resultRef.get()));
                         }
                         return;
                     }
@@ -300,5 +302,15 @@ public class DeepSearchTool implements BaseTool {
         }
 
         return future;
+    }
+
+    /**
+     * deep_search 失败时仍返回可解释 observation，避免主智能体拿到空结果。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.builder()
+                .toolResult(message)
+                .llmObservation(message)
+                .build();
     }
 }
