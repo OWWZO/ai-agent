@@ -34,6 +34,16 @@ import java.util.regex.Pattern;
 public abstract class ReActAgent extends BaseAgent {
 
     /**
+     * 数字员工命名只需要识别工具用途，不需要携带整段实现细节。
+     */
+    private static final int DIGITAL_EMPLOYEE_TOOL_DESC_MAX_LEN = 50;
+
+    /**
+     * 控制工具描述总长度，避免兼容网关在超长 prompt 下返回截断响应。
+     */
+    private static final int DIGITAL_EMPLOYEE_TOOL_PROMPT_MAX_LEN = 1200;
+
+    /**
      * ReAct范式的「思考」阶段抽象方法（子类必须实现）
      * 核心契约：
      * - 子类需实现具体的思考逻辑（如分析上下文、决策工具调用、生成规划步骤）
@@ -101,7 +111,7 @@ public abstract class ReActAgent extends BaseAgent {
                     context,
                     Collections.singletonList(userMessage), // 仅传入当前用户消息
                     Collections.emptyList(),                // 无额外系统消息
-                    false,                                   // 非流式调用
+                    true,                                   // 非流式调用
                     0.1);                                   // 温度系数：越低结果越确定
 
             // 5. 同步获取异步结果（阻塞等待LLM响应，可根据业务调整为非阻塞）
@@ -191,17 +201,59 @@ public abstract class ReActAgent extends BaseAgent {
             throw new IllegalStateException("System prompt is not configured");
         }
 
-        // 3. 拼接可用工具的名称+描述（用于LLM感知当前可调用的工具）
-        StringBuilder toolPrompt = new StringBuilder();
-        for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
-            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
-        }
+        // 3. 拼接简化后的工具摘要，避免把整段长描述直接注入数字员工 prompt
+        String toolPrompt = buildDigitalEmployeeToolPrompt();
 
         // 4. 替换模板中的占位符，生成最终提示词
         return digitalEmployeePrompt
                 .replace("{{task}}", task)          // 替换目标任务占位符
-                .replace("{{ToolsDesc}}", toolPrompt.toString()) // 替换工具描述占位符
+                .replace("{{ToolsDesc}}", toolPrompt) // 替换工具描述占位符
                 .replace("{{query}}", context.getQuery()); // 替换用户原始查询占位符
+    }
+
+    /**
+     * 数字员工命名提示词只保留每个工具的简短用途，避免把 skill 列表和实现细节整体带入模型。
+     */
+    private String buildDigitalEmployeeToolPrompt() {
+        if (context == null || context.getToolCollection() == null || context.getToolCollection().getToolMap() == null) {
+            return "";
+        }
+
+        StringBuilder toolPrompt = new StringBuilder();
+        for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
+            if (tool == null) {
+                continue;
+            }
+            String summarizedDescription = summarizeToolDescription(tool.getDescription());
+            String toolLine = String.format("工具名：%s 工具描述：%s%n", tool.getName(), summarizedDescription);
+            if (toolPrompt.length() + toolLine.length() > DIGITAL_EMPLOYEE_TOOL_PROMPT_MAX_LEN) {
+                toolPrompt.append("[工具描述已截断，保留核心工具摘要]");
+                break;
+            }
+            toolPrompt.append(toolLine);
+        }
+        return toolPrompt.toString();
+    }
+
+    /**
+     * 仅保留首行摘要，并裁剪过长文本，避免把实现细节和可用 skills 列表带入 prompt。
+     */
+    private String summarizeToolDescription(String description) {
+        if (StringUtils.isBlank(description)) {
+            return "";
+        }
+
+        String firstLine = description;
+        int newlineIndex = description.indexOf('\n');
+        if (newlineIndex >= 0) {
+            firstLine = description.substring(0, newlineIndex);
+        }
+
+        String normalized = firstLine.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= DIGITAL_EMPLOYEE_TOOL_DESC_MAX_LEN) {
+            return normalized;
+        }
+        return normalized.substring(0, DIGITAL_EMPLOYEE_TOOL_DESC_MAX_LEN) + "...";
     }
 
 }

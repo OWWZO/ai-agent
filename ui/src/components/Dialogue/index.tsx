@@ -42,6 +42,10 @@ import {
   normalizeMarkdownForDisplay,
   type MarkdownNormalizationScope,
 } from "@/utils/markdown";
+import {
+  isPlanSolveConversation,
+  isStructuredConversation,
+} from "@/utils/agentMode";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -582,9 +586,11 @@ function resolveConclusionMarkdownScope(
   chat: CHAT.ChatItem,
   deepThink: boolean
 ): MarkdownNormalizationScope {
-  const isStructuredConversation =
-    chat.agentType === 1 || chat.agentType === 2 || deepThink;
-  return chat.conclusion && isStructuredConversation
+  const structuredConversation = isStructuredConversation(
+    chat.agentType,
+    deepThink
+  );
+  return chat.conclusion && structuredConversation
     ? "structured_summary"
     : "default";
 }
@@ -634,7 +640,7 @@ const ThinkingMessage: FC = () => (
 
 const DialogueComponent: FC<Props> = (props) => {
   const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
-  const isPlanSolveMessage = chat.agentType === 1 || deepThink;
+  const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
   const thoughtText = streamingThought ?? chat.thought ?? "";
   const conclusionMarkdownScope = resolveConclusionMarkdownScope(chat, deepThink);

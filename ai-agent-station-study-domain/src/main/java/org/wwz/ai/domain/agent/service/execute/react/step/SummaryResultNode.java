@@ -8,9 +8,9 @@ import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.HashMap;
@@ -55,7 +55,13 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         }
 
         agentContext.getPrinter().send("result", taskResult);
-        finishRun(agentContext, result.getTaskSummary());
+        ExecutionLedgerRunSupport.finishRun(
+                agentContext,
+                ExecutionLedgerConstants.STATUS_SUCCESS,
+                result.getTaskSummary(),
+                null,
+                null
+        );
         dynamicContext.setStep(3);
 
         return "success";
@@ -66,17 +72,5 @@ public class SummaryResultNode extends AbstractExecuteSupport {
             AgentRequest requestParameter,
             DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return null;
-    }
-
-    private void finishRun(AgentContext agentContext, String finalSummaryText) {
-        if (agentContext == null || !agentContext.hasActiveLedgerRun() || agentContext.getAgentRunState() == null) {
-            return;
-        }
-        agentContext.getExecutionRecorder().finishRun(DialogueRunFinishRecord.builder()
-                .runId(agentContext.getAgentRunState().getRunId())
-                .requestId(agentContext.getRequestId())
-                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .finalSummaryText(finalSummaryText)
-                .build());
     }
 }

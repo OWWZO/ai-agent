@@ -211,7 +211,6 @@ public class ExecutorAgent extends ReActAgent {
         generateDigitalEmployee(request);
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
         request = reactorConfig.getTaskPrePrompt() + request;
-        // 更新当前task
         context.setTask(request);
         return super.run(request);
     }

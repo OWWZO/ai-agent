@@ -6,11 +6,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
@@ -56,7 +55,13 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             String result = executeHandler.apply(request, dynamicContext);
             log.info("ReactAgent execute result: {}", result);
         } catch (Exception e) {
-            finishRunOnFailure(dynamicContext.getAgentContext(), "REACT_EXECUTE_ERROR", e);
+            ExecutionLedgerRunSupport.finishRun(
+                    dynamicContext.getAgentContext(),
+                    ExecutionLedgerConstants.STATUS_FAILED,
+                    null,
+                    "REACT_EXECUTE_ERROR",
+                    e == null ? null : e.getMessage()
+            );
             throw e;
         }
     }
@@ -72,19 +77,5 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             request.setQuery(request.getQuery() + append);
         }
     }
-
-    private void finishRunOnFailure(AgentContext agentContext, String errorCode, Exception e) {
-        if (agentContext == null || !agentContext.hasActiveLedgerRun() || agentContext.getAgentRunState() == null) {
-            return;
-        }
-        agentContext.getExecutionRecorder().finishRun(DialogueRunFinishRecord.builder()
-                .runId(agentContext.getAgentRunState().getRunId())
-                .requestId(agentContext.getRequestId())
-                .status(ExecutionLedgerConstants.STATUS_FAILED)
-                .errorCode(errorCode)
-                .errorMsg(e == null ? null : e.getMessage())
-                .build());
-    }
-
 
 }

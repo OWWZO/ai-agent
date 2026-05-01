@@ -17,15 +17,12 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
 
-import com.alibaba.fastjson.JSON;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -74,7 +71,12 @@ public class RootNode extends AbstractExecuteSupport {
                 .executionRecorder(agentExecutionRecorder)
                 .build();
 
-        initializeLedgerRun(request, agentContext);
+        ExecutionLedgerRunSupport.initializeRun(
+                agentExecutionRecorder,
+                agentContext,
+                request,
+                ExecutionLedgerConstants.ENTRY_AGENT_REACT
+        );
         agentContext.setToolCollection(buildToolCollection(agentContext, request));
         dynamicContext.setAgentContext(agentContext);
         dynamicContext.setStep(1);
@@ -105,94 +107,6 @@ public class RootNode extends AbstractExecuteSupport {
                     .build());
         }
         return files;
-    }
-
-    /**
-     * 创建 run 并登记输入文件。
-     */
-    private void initializeLedgerRun(AgentRequest request, AgentContext agentContext) {
-        if (agentExecutionRecorder == null || agentContext == null || request == null) {
-            return;
-        }
-        Long runId = agentExecutionRecorder.createRun(DialogueRunStartRecord.builder()
-                .runUid(request.getRequestId())
-                .requestId(request.getRequestId())
-                .sessionId(request.getSessionId())
-                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
-                .queryText(request.getQuery())
-                .build());
-        agentContext.activateLedgerRun(runId, request.getRequestId());
-        List<ArtifactRecordCommand> inputArtifacts = buildInputArtifacts(request.getSessionFiles(), runId, request.getRequestId());
-        if (!inputArtifacts.isEmpty()) {
-            agentExecutionRecorder.recordArtifacts(inputArtifacts);
-        }
-    }
-
-    private List<ArtifactRecordCommand> buildInputArtifacts(List<FileInformation> sessionFiles, Long runId, String requestId) {
-        if (runId == null || sessionFiles == null || sessionFiles.isEmpty()) {
-            return List.of();
-        }
-        List<ArtifactRecordCommand> records = new ArrayList<>(sessionFiles.size());
-        for (FileInformation sessionFile : sessionFiles) {
-            if (sessionFile == null || sessionFile.getFileName() == null || sessionFile.getFileName().isBlank()) {
-                continue;
-            }
-            records.add(ArtifactRecordCommand.builder()
-                    .runId(runId)
-                    .requestId(requestId)
-                    .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT)
-                    .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
-                    .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_USER_UPLOAD)
-                    .sourceName(ExecutionLedgerConstants.SOURCE_TYPE_USER_UPLOAD)
-                    .fileName(sessionFile.getFileName())
-                    .storageKey(resolveStorageKey(sessionFile))
-                    .downloadUrl(sessionFile.getOssUrl())
-                    .previewUrl(sessionFile.getDomainUrl())
-                    .mimeType(sessionFile.getMimeType())
-                    .fileSize(sessionFile.getFileSize() == null ? null : sessionFile.getFileSize().longValue())
-                    .metadataJson(buildInputMetadata(sessionFile))
-                    .build());
-        }
-        return records;
-    }
-
-    private String resolveStorageKey(FileInformation sessionFile) {
-        if (sessionFile.getResourceKey() != null && !sessionFile.getResourceKey().isBlank()) {
-            return sessionFile.getResourceKey();
-        }
-        if (sessionFile.getOriginOssUrl() != null && !sessionFile.getOriginOssUrl().isBlank()) {
-            return sessionFile.getOriginOssUrl();
-        }
-        if (sessionFile.getOssUrl() != null && !sessionFile.getOssUrl().isBlank()) {
-            return sessionFile.getOssUrl();
-        }
-        if (sessionFile.getOriginDomainUrl() != null && !sessionFile.getOriginDomainUrl().isBlank()) {
-            return sessionFile.getOriginDomainUrl();
-        }
-        if (sessionFile.getDomainUrl() != null && !sessionFile.getDomainUrl().isBlank()) {
-            return sessionFile.getDomainUrl();
-        }
-        return sessionFile.getFileName();
-    }
-
-    private String buildInputMetadata(FileInformation sessionFile) {
-        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
-        if (sessionFile.getFileDesc() != null && !sessionFile.getFileDesc().isBlank()) {
-            metadata.put("fileDesc", sessionFile.getFileDesc());
-        }
-        if (sessionFile.getFileType() != null && !sessionFile.getFileType().isBlank()) {
-            metadata.put("fileType", sessionFile.getFileType());
-        }
-        if (sessionFile.getOriginFileName() != null && !sessionFile.getOriginFileName().isBlank()) {
-            metadata.put("originFileName", sessionFile.getOriginFileName());
-        }
-        if (sessionFile.getOriginFileUrl() != null && !sessionFile.getOriginFileUrl().isBlank()) {
-            metadata.put("originFileUrl", sessionFile.getOriginFileUrl());
-        }
-        if (metadata.isEmpty()) {
-            return null;
-        }
-        return JSON.toJSONString(metadata);
     }
 
     private List<Message> convertMessages(List<AgentRequest.Message> messages) {
