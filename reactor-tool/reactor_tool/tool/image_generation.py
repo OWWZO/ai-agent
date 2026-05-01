@@ -114,14 +114,14 @@ async def generate_images(request: ImageGenerationRequest) -> dict[str, Any]:
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
     if not base_url:
-        raise ValueError("未配置图片生成 base url")
+        raise ValueError("未配置图片生成 base url，请设置 IMAGE_GENERATION_BASE_URL")
     if not api_key:
-        raise ValueError("未配置图片生成 api key")
+        raise ValueError("未配置图片生成 api key，请设置 IMAGE_GENERATION_API_KEY")
 
     normalized_base_url = _normalize_openai_compat_api_base(base_url)
     model_name = _resolve_model_name()
     if not model_name:
-        raise ValueError("未配置图片生成 model")
+        raise ValueError("未配置图片生成 model，请设置 IMAGE_GENERATION_MODEL")
     timeout = httpx.Timeout(timeout=float(request.timeout_seconds))
 
     async with httpx.AsyncClient(timeout=timeout) as client:

@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputCodeInterpreterDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputDataAnalysisDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputDeepSearchDao;
@@ -49,6 +51,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     private final IToolOutputMultimodalAgentDao multimodalAgentDao;
     private final IToolOutputImageGenerationDao imageGenerationDao;
     private final IToolOutputScriptRunnerDao scriptRunnerDao;
+    private final IArtifactLedgerDao artifactLedgerDao;
 
     @Override
     public Optional<ToolStructuredOutput> readByInvocationId(String toolName, Long toolInvocationId) {
@@ -127,7 +130,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .command(stringValue(row, "command"))
                 .primaryFileName(stringValue(row, "primary_file_name", "primaryFileName"))
                 .contentStorageMode(stringValue(row, "content_storage_mode", "contentStorageMode"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -140,7 +143,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .content(stringValue(row, "content"))
                 .code(stringValue(row, "code"))
                 .explain(stringValue(row, "explain"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -152,7 +155,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .fileType(stringValue(row, "file_type", "fileType"))
                 .summary(stringValue(row, "summary"))
                 .content(stringValue(row, "content"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -164,7 +167,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .task(stringValue(row, "task"))
                 .summary(stringValue(row, "summary"))
                 .content(stringValue(row, "content"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -175,7 +178,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         return MultimodalAgentToolOutput.builder()
                 .summary(stringValue(row, "summary"))
                 .markdownContent(stringValue(row, "markdown_content", "markdownContent"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -187,7 +190,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .prompt(stringValue(row, "prompt"))
                 .mode(stringValue(row, "mode"))
                 .summary(stringValue(row, "summary"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -204,7 +207,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .stdout(stringValue(row, "stdout"))
                 .stderr(stringValue(row, "stderr"))
                 .summary(stringValue(row, "summary"))
-                .fileRefs(readFileRefs(stringValue(row, "file_refs_json", "fileRefsJson")))
+                .fileRefs(resolveFileRefs(row))
                 .build();
     }
 
@@ -230,11 +233,40 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         return JSON.parseArray(json, DeepSearchStage.class);
     }
 
-    private List<ToolFileRef> readFileRefs(String json) {
-        if (StringUtils.isBlank(json)) {
-            return new ArrayList<>();
+    private List<ToolFileRef> resolveFileRefs(Map<String, Object> row) {
+        if (row == null || artifactLedgerDao == null) {
+            return List.of();
         }
-        return JSON.parseArray(json, ToolFileRef.class);
+        Long toolInvocationId = longValue(row, "tool_invocation_id", "toolInvocationId");
+        List<ArtifactRecord> artifacts;
+        if (toolInvocationId != null) {
+            artifacts = artifactLedgerDao.queryOutputArtifactsByToolInvocationId(toolInvocationId);
+        } else {
+            Long runId = longValue(row, "run_id", "runId");
+            String toolCallId = stringValue(row, "tool_call_id", "toolCallId");
+            if (runId == null || StringUtils.isBlank(toolCallId)) {
+                return List.of();
+            }
+            artifacts = artifactLedgerDao.queryOutputArtifactsByRunIdAndToolCallId(runId, toolCallId);
+        }
+        if (artifacts == null || artifacts.isEmpty()) {
+            return List.of();
+        }
+        List<ToolFileRef> fileRefs = new ArrayList<>(artifacts.size());
+        for (ArtifactRecord artifact : artifacts) {
+            if (artifact == null) {
+                continue;
+            }
+            fileRefs.add(ToolFileRef.builder()
+                    .fileName(artifact.getFileName())
+                    .downloadUrl(artifact.getDownloadUrl())
+                    .previewUrl(artifact.getPreviewUrl())
+                    .ossUrl(artifact.getDownloadUrl())
+                    .domainUrl(artifact.getPreviewUrl())
+                    .fileSize(artifact.getFileSize())
+                    .build());
+        }
+        return fileRefs;
     }
 
     private String stringValue(Map<String, Object> row, String... keys) {
@@ -257,6 +289,24 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             }
             try {
                 return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Long longValue(Map<String, Object> row, String... keys) {
+        for (String key : keys) {
+            Object value = row.get(key);
+            if (value == null) {
+                continue;
+            }
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+            try {
+                return Long.parseLong(String.valueOf(value));
             } catch (NumberFormatException ignored) {
                 return null;
             }

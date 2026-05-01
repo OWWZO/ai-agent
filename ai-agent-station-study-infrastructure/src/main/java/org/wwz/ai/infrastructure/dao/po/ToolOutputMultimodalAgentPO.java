@@ -13,6 +13,4 @@ public class ToolOutputMultimodalAgentPO extends AbstractToolOutputPO {
     private String summary;
 
     private String markdownContent;
-
-    private String fileRefsJson;
 }

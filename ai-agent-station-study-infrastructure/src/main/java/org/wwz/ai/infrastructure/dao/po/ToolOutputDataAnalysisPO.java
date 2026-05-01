@@ -15,6 +15,4 @@ public class ToolOutputDataAnalysisPO extends AbstractToolOutputPO {
     private String summary;
 
     private String content;
-
-    private String fileRefsJson;
 }

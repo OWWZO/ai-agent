@@ -15,6 +15,4 @@ public class ToolOutputFileToolPO extends AbstractToolOutputPO {
     private String primaryFileName;
 
     private String contentStorageMode;
-
-    private String fileRefsJson;
 }

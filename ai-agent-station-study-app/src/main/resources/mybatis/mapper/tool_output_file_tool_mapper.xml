@@ -14,7 +14,6 @@
         <result column="command" property="command"/>
         <result column="primary_file_name" property="primaryFileName"/>
         <result column="content_storage_mode" property="contentStorageMode"/>
-        <result column="file_refs_json" property="fileRefsJson"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
@@ -22,11 +21,11 @@
     <insert id="insert" parameterType="map">
         INSERT INTO ai_agent_tool_output_file_tool (
             tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-            command, primary_file_name, content_storage_mode, file_refs_json, created_at, updated_at
+            command, primary_file_name, content_storage_mode, created_at, updated_at
         )
         SELECT
             #{row.toolInvocationId}, #{row.runId}, #{row.requestId}, #{row.sessionId}, #{row.toolCallId}, #{row.status}, #{row.errorMsg},
-            #{row.command}, #{row.primaryFileName}, #{row.contentStorageMode}, #{row.fileRefsJson}, NOW(), NOW()
+            #{row.command}, #{row.primaryFileName}, #{row.contentStorageMode}, NOW(), NOW()
         FROM DUAL
         WHERE NOT EXISTS (
             SELECT 1
@@ -38,7 +37,7 @@
 
     <select id="queryByToolInvocationId" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               command, primary_file_name, content_storage_mode, file_refs_json, created_at, updated_at
+               command, primary_file_name, content_storage_mode, created_at, updated_at
         FROM ai_agent_tool_output_file_tool
         WHERE tool_invocation_id = #{toolInvocationId}
         LIMIT 1
@@ -46,7 +45,7 @@
 
     <select id="queryByRequestToolCall" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               command, primary_file_name, content_storage_mode, file_refs_json, created_at, updated_at
+               command, primary_file_name, content_storage_mode, created_at, updated_at
         FROM ai_agent_tool_output_file_tool
         WHERE request_id = #{requestId}
           AND tool_call_id = #{toolCallId}

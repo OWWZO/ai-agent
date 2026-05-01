@@ -15,6 +15,4 @@ public class ToolOutputReportToolPO extends AbstractToolOutputPO {
     private String summary;
 
     private String content;
-
-    private String fileRefsJson;
 }

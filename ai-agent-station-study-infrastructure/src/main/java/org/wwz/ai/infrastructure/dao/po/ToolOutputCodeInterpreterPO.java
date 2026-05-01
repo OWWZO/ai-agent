@@ -17,6 +17,4 @@ public class ToolOutputCodeInterpreterPO extends AbstractToolOutputPO {
     private String code;
 
     private String explain;
-
-    private String fileRefsJson;
 }

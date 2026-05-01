@@ -531,6 +531,33 @@ public final class ExecutionLedgerFixtureFactory {
                     .map(ExecutionLedgerFixtureFactory::cloneArtifact)
                     .toList();
         }
+
+        @Override
+        public List<ArtifactRecord> queryOutputArtifactsByToolInvocationId(Long toolInvocationId) {
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && toolInvocationId != null
+                            && toolInvocationId.equals(item.getToolInvocationId())
+                            && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(item.getArtifactRole())
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getCreateTime).thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
+
+        @Override
+        public List<ArtifactRecord> queryOutputArtifactsByRunIdAndToolCallId(Long runId, String toolCallId) {
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && runId != null
+                            && runId.equals(item.getRunId())
+                            && equalsNullable(toolCallId, item.getToolCallId())
+                            && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(item.getArtifactRole())
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getCreateTime).thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
     }
 
     private static boolean equalsNullable(Object left, Object right) {

@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import patch
 
@@ -6,6 +7,7 @@ from reactor_tool.tool.image_generation import (
     _resolve_base_url,
     _resolve_model_name,
     extract_generated_images,
+    generate_images,
     resolve_generation_mode,
 )
 from reactor_tool.model.protocal import ImageGenerationRequest
@@ -91,6 +93,21 @@ class ImageGenerationToolTest(unittest.TestCase):
             self.assertEqual("", _resolve_base_url())
             self.assertEqual("", _resolve_api_key())
             self.assertEqual("", _resolve_model_name())
+
+    def test_should_raise_actionable_error_when_image_generation_env_missing(self):
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-002",
+                "prompt": "生成一张橘猫照片",
+            }
+        )
+
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(
+                ValueError,
+                "IMAGE_GENERATION_BASE_URL",
+            ):
+                asyncio.run(generate_images(request))
 
 
 if __name__ == "__main__":

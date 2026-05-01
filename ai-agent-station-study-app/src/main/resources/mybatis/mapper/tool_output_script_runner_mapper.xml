@@ -19,7 +19,6 @@
         <result column="stdout" property="stdout"/>
         <result column="stderr" property="stderr"/>
         <result column="summary" property="summary"/>
-        <result column="file_refs_json" property="fileRefsJson"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
@@ -27,11 +26,11 @@
     <insert id="insert" parameterType="map">
         INSERT INTO ai_agent_tool_output_script_runner (
             tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-            skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, file_refs_json, created_at, updated_at
+            skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, created_at, updated_at
         )
         SELECT
             #{row.toolInvocationId}, #{row.runId}, #{row.requestId}, #{row.sessionId}, #{row.toolCallId}, #{row.status}, #{row.errorMsg},
-            #{row.skillName}, #{row.scriptName}, #{row.runtime}, #{row.success}, #{row.exitCode}, #{row.stdout}, #{row.stderr}, #{row.summary}, #{row.fileRefsJson}, NOW(), NOW()
+            #{row.skillName}, #{row.scriptName}, #{row.runtime}, #{row.success}, #{row.exitCode}, #{row.stdout}, #{row.stderr}, #{row.summary}, NOW(), NOW()
         FROM DUAL
         WHERE NOT EXISTS (
             SELECT 1
@@ -43,7 +42,7 @@
 
     <select id="queryByToolInvocationId" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, file_refs_json, created_at, updated_at
+               skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, created_at, updated_at
         FROM ai_agent_tool_output_script_runner
         WHERE tool_invocation_id = #{toolInvocationId}
         LIMIT 1
@@ -51,7 +50,7 @@
 
     <select id="queryByRequestToolCall" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, file_refs_json, created_at, updated_at
+               skill_name, script_name, runtime, success, exit_code, stdout, stderr, summary, created_at, updated_at
         FROM ai_agent_tool_output_script_runner
         WHERE request_id = #{requestId}
           AND tool_call_id = #{toolCallId}

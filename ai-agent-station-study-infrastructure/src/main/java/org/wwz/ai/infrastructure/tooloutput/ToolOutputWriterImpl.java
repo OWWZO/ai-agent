@@ -3,7 +3,6 @@ package org.wwz.ai.infrastructure.tooloutput;
 import com.alibaba.fastjson.JSON;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -23,7 +22,6 @@ import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutpu
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ScriptRunnerToolOutput;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
@@ -95,7 +93,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("command", output.getCommand());
         row.put("primaryFileName", output.getPrimaryFileName());
         row.put("contentStorageMode", output.getContentStorageMode());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -105,7 +102,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("content", output.getContent());
         row.put("code", output.getCode());
         row.put("explain", output.getExplain());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -114,7 +110,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("fileType", output.getFileType());
         row.put("summary", output.getSummary());
         row.put("content", output.getContent());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -123,7 +118,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("task", output.getTask());
         row.put("summary", output.getSummary());
         row.put("content", output.getContent());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -131,7 +125,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         Map<String, Object> row = baseRow(command);
         row.put("summary", output.getSummary());
         row.put("markdownContent", output.getMarkdownContent());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -140,7 +133,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("prompt", output.getPrompt());
         row.put("mode", output.getMode());
         row.put("summary", output.getSummary());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -154,7 +146,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("stdout", output.getStdout());
         row.put("stderr", output.getStderr());
         row.put("summary", output.getSummary());
-        row.put("fileRefsJson", toFileRefsJson(output.getFileRefs()));
         return row;
     }
 
@@ -184,13 +175,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         }
         log.warn("tool output first-write-wins ignored duplicate, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
                 resolveToolName(command), command.getRequestId(), command.getToolCallId(), command.getToolInvocationId());
-    }
-
-    private String toFileRefsJson(List<ToolFileRef> fileRefs) {
-        if (CollectionUtils.isEmpty(fileRefs)) {
-            return "[]";
-        }
-        return toJson(fileRefs);
     }
 
     private String toJson(Object value) {

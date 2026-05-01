@@ -14,7 +14,6 @@
         <result column="task" property="task"/>
         <result column="summary" property="summary"/>
         <result column="content" property="content"/>
-        <result column="file_refs_json" property="fileRefsJson"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
@@ -22,11 +21,11 @@
     <insert id="insert" parameterType="map">
         INSERT INTO ai_agent_tool_output_data_analysis (
             tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-            task, summary, content, file_refs_json, created_at, updated_at
+            task, summary, content, created_at, updated_at
         )
         SELECT
             #{row.toolInvocationId}, #{row.runId}, #{row.requestId}, #{row.sessionId}, #{row.toolCallId}, #{row.status}, #{row.errorMsg},
-            #{row.task}, #{row.summary}, #{row.content}, #{row.fileRefsJson}, NOW(), NOW()
+            #{row.task}, #{row.summary}, #{row.content}, NOW(), NOW()
         FROM DUAL
         WHERE NOT EXISTS (
             SELECT 1
@@ -38,7 +37,7 @@
 
     <select id="queryByToolInvocationId" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               task, summary, content, file_refs_json, created_at, updated_at
+               task, summary, content, created_at, updated_at
         FROM ai_agent_tool_output_data_analysis
         WHERE tool_invocation_id = #{toolInvocationId}
         LIMIT 1
@@ -46,7 +45,7 @@
 
     <select id="queryByRequestToolCall" resultType="map">
         SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
-               task, summary, content, file_refs_json, created_at, updated_at
+               task, summary, content, created_at, updated_at
         FROM ai_agent_tool_output_data_analysis
         WHERE request_id = #{requestId}
           AND tool_call_id = #{toolCallId}

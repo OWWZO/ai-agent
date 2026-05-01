@@ -15,6 +15,4 @@ public class ToolOutputImageGenerationPO extends AbstractToolOutputPO {
     private String mode;
 
     private String summary;
-
-    private String fileRefsJson;
 }

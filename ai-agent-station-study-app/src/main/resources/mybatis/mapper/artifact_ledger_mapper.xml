@@ -59,4 +59,25 @@
         ORDER BY run_id DESC, create_time ASC, id ASC
     </select>
 
+    <select id="queryOutputArtifactsByToolInvocationId" resultMap="ArtifactRecordMap">
+        SELECT *
+        FROM ai_agent_artifact
+        WHERE deleted = 0
+          AND artifact_role = 'output'
+          AND visibility = 'visible'
+          AND tool_invocation_id = #{toolInvocationId}
+        ORDER BY create_time ASC, id ASC
+    </select>
+
+    <select id="queryOutputArtifactsByRunIdAndToolCallId" resultMap="ArtifactRecordMap">
+        SELECT *
+        FROM ai_agent_artifact
+        WHERE deleted = 0
+          AND artifact_role = 'output'
+          AND visibility = 'visible'
+          AND run_id = #{runId}
+          AND tool_call_id = #{toolCallId}
+        ORDER BY create_time ASC, id ASC
+    </select>
+
 </mapper>

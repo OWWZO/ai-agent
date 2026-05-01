@@ -25,6 +25,4 @@ public class ToolOutputScriptRunnerPO extends AbstractToolOutputPO {
     private String stderr;
 
     private String summary;
-
-    private String fileRefsJson;
 }
