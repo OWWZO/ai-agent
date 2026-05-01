@@ -111,7 +111,7 @@ describe("WorkspaceMRagView", () => {
 
     expect(html).toContain("MRAG 文件工作台");
     expect(html).toContain("产品资料库");
-    expect(html).toContain("选择文件并入库");
+    expect(html).toContain("上传文件");
     expect(html).toContain("预览");
     expect(html).toContain("下载");
     expect(html).toContain("打开原链接");
