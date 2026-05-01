@@ -14,20 +14,27 @@ import okhttp3.ResponseBody;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
+import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentResponse;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -100,12 +107,12 @@ public class MultiModalAgent implements BaseTool {
             Map<String, Object> params = (Map<String, Object>) input;
             String question = params.get("question") == null ? "" : String.valueOf(params.get("question")).trim();
             if (!StringUtils.hasText(question)) {
-                return "multimodalagent_tool 执行失败：question 不能为空。";
+                return buildFailurePayload("multimodalagent_tool 执行失败：question 不能为空。");
             }
 
             ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
             if (!StringUtils.hasText(reactorConfig.getMultiModalAgentUrl())) {
-                return "multimodalagent_tool 执行失败：未配置 multimodalagent_url。";
+                return buildFailurePayload("multimodalagent_tool 执行失败：未配置 multimodalagent_url。");
             }
 
             Map<String, Object> streamMode = new HashMap<>();
@@ -122,7 +129,7 @@ public class MultiModalAgent implements BaseTool {
                     .build();
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            CompletableFuture<String> future = callMultiModalAgentStream(request, artifactSource);
+            CompletableFuture<ToolResultPayload> future = callMultiModalAgentStream(request, artifactSource);
             return future.get(MULTIMODAL_AGENT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
         } catch (TimeoutException e) {
             if (activeCall != null && !activeCall.isCanceled()) {
@@ -130,18 +137,18 @@ public class MultiModalAgent implements BaseTool {
             }
             log.error("{} multimodalagent_tool timeout after {} minutes",
                     agentContext.getRequestId(), MULTIMODAL_AGENT_TIMEOUT_MINUTES, e);
-            return "multimodalagent_tool 执行失败：多模态检索超时，请稍后重试。";
+            return buildFailurePayload("multimodalagent_tool 执行失败：多模态检索超时，请稍后重试。");
         } catch (Exception e) {
             log.error("{} multimodalagent_tool error", agentContext.getRequestId(), e);
-            return "multimodalagent_tool 执行失败：" + e.getMessage();
+            return buildFailurePayload("multimodalagent_tool 执行失败：" + e.getMessage());
         } finally {
             activeCall = null;
         }
     }
 
-    public CompletableFuture<String> callMultiModalAgentStream(MultiModalAgentRequest multiModalAgentRequest,
-                                                               ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callMultiModalAgentStream(MultiModalAgentRequest multiModalAgentRequest,
+                                                                          ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(MULTIMODAL_AGENT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -177,7 +184,7 @@ public class MultiModalAgent implements BaseTool {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} multimodalagent_tool on failure", agentContext.getRequestId(), e);
-                    future.complete("multimodalagent_tool 执行失败：无法连接多模态检索服务。");
+                    future.complete(buildFailurePayload("multimodalagent_tool 执行失败：无法连接多模态检索服务。"));
                 }
 
                 @Override
@@ -186,7 +193,7 @@ public class MultiModalAgent implements BaseTool {
                         if (!response.isSuccessful() || responseBody == null) {
                             log.error("{} multimodalagent_tool request error, code={}",
                                     agentContext.getRequestId(), response.code());
-                            future.complete("multimodalagent_tool 执行失败：上游服务返回异常状态 " + response.code() + "。");
+                            future.complete(buildFailurePayload("multimodalagent_tool 执行失败：上游服务返回异常状态 " + response.code() + "。"));
                             return;
                         }
 
@@ -246,14 +253,14 @@ public class MultiModalAgent implements BaseTool {
                         }
 
                         if (fullContent.length() == 0) {
-                            future.complete("multimodalagent_tool 执行失败：上游未返回有效内容。");
+                            future.complete(buildFailurePayload("multimodalagent_tool 执行失败：上游未返回有效内容。"));
                             return;
                         }
 
-                        future.complete(fullContent.toString());
+                        future.complete(buildSuccessPayload(fullContent.toString(), artifactSource));
                     } catch (Exception e) {
                         log.error("{} multimodalagent_tool request error", agentContext.getRequestId(), e);
-                        future.complete("multimodalagent_tool 执行失败：" + e.getMessage());
+                        future.complete(buildFailurePayload("multimodalagent_tool 执行失败：" + e.getMessage()));
                     } finally {
                         activeCall = null;
                     }
@@ -261,7 +268,7 @@ public class MultiModalAgent implements BaseTool {
             });
         } catch (Exception e) {
             log.error("{} multimodalagent_tool request error", agentContext.getRequestId(), e);
-            future.complete("multimodalagent_tool 执行失败：" + e.getMessage());
+            future.complete(buildFailurePayload("multimodalagent_tool 执行失败：" + e.getMessage()));
         }
         return future;
     }
@@ -370,5 +377,74 @@ public class MultiModalAgent implements BaseTool {
                 .content(markdownContent)
                 .build();
         fileTool.uploadFile(fileRequest, false, false, artifactSource);
+    }
+
+    /**
+     * 多模态检索成功后，同时保留 Markdown 正文和稳定文件引用，便于后续 replay 重建。
+     */
+    private ToolResultPayload buildSuccessPayload(String markdownContent, ToolArtifactSource artifactSource) {
+        Map<String, Object> outputData = new LinkedHashMap<>();
+        outputData.put("tool", getName());
+        outputData.put("summary", buildSummary(markdownContent));
+        outputData.put("markdown", markdownContent);
+        outputData.put("fileInfo", buildFileInfo(artifactSource));
+        return ToolResultPayload.structured(
+                markdownContent,
+                markdownContent,
+                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+        );
+    }
+
+    /**
+     * 失败路径也返回显式 output_json，避免账本再次出现空结构。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.structured(
+                message,
+                message,
+                ToolOutputJsonBuilder.buildErrorResult(message, message)
+        );
+    }
+
+    /**
+     * 生成面向账本的轻量摘要，避免 projector 必须重新解析完整 Markdown。
+     */
+    private String buildSummary(String markdownContent) {
+        String normalized = markdownContent == null ? "" : markdownContent
+                .replaceAll("!\\[[^\\]]*\\]\\([^\\)]*\\)", " ")
+                .replaceAll("[#>*`]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (normalized.length() <= 120) {
+            return normalized;
+        }
+        return normalized.substring(0, 120) + "...";
+    }
+
+    /**
+     * 优先复用 artifact 账本中已经登记的稳定文件信息，不重复造一套文件来源。
+     */
+    private List<Map<String, Object>> buildFileInfo(ToolArtifactSource artifactSource) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (artifactSource == null || !StringUtils.hasText(artifactSource.getToolCallId())) {
+            return result;
+        }
+        List<ToolArtifactBinding> bindings = agentContext.getArtifactBindingsByToolCallId(artifactSource.getToolCallId());
+        if (bindings == null) {
+            return result;
+        }
+        for (ToolArtifactBinding binding : bindings) {
+            if (binding == null || binding.getFile() == null) {
+                continue;
+            }
+            File file = binding.getFile();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("fileName", file.getFileName());
+            item.put("ossUrl", file.getOssUrl());
+            item.put("domainUrl", file.getDomainUrl());
+            item.put("fileSize", file.getFileSize());
+            result.add(item);
+        }
+        return result;
     }
 }

@@ -23,6 +23,7 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -318,7 +319,12 @@ public abstract class BaseAgent {
             log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
 
             if (resultObject == null) {
-                return ToolExecutionOutcome.failure("Tool " + toolName + " Error.", null, null, "Tool returned null");
+                return ToolExecutionOutcome.failure(
+                        "Tool " + toolName + " Error.",
+                        null,
+                        ToolOutputJsonBuilder.buildErrorResult("Tool " + toolName + " Error.", "Tool returned null"),
+                        "Tool returned null"
+                );
             }
 
             ToolResultPayload payload = normalizeToolResultPayload(resultObject, mapper);
@@ -327,7 +333,12 @@ public abstract class BaseAgent {
             return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getOutputJson());
         } catch (Exception e) {
             log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
-            return ToolExecutionOutcome.failure("Tool " + toolName + " Error.", "Tool " + toolName + " Error.", null, e.getMessage());
+            return ToolExecutionOutcome.failure(
+                    "Tool " + toolName + " Error.",
+                    "Tool " + toolName + " Error.",
+                    ToolOutputJsonBuilder.buildErrorResult("Tool " + toolName + " Error.", e.getMessage()),
+                    e.getMessage()
+            );
         }
     }
 
@@ -498,32 +509,20 @@ public abstract class BaseAgent {
         }
     }
 
-    private String tryNormalizeJson(String payload, ObjectMapper mapper) {
-        if (StringUtils.isBlank(payload)) {
-            return null;
-        }
-        try {
-            return mapper.readTree(payload).toString();
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
     private ToolResultPayload normalizeToolResultPayload(Object rawResult, ObjectMapper mapper) {
         if (rawResult instanceof ToolResultPayload payload) {
             String toolResult = StringUtils.defaultString(payload.getToolResult());
-            String outputJson = StringUtils.defaultIfBlank(payload.getOutputJson(), tryNormalizeJson(toolResult, mapper));
             return ToolResultPayload.builder()
                     .toolResult(toolResult)
                     .llmObservation(StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult))
-                    .outputJson(outputJson)
+                    .outputJson(StringUtils.defaultIfBlank(payload.getOutputJson(), ToolOutputJsonBuilder.buildPlainTextResult(toolResult)))
                     .build();
         }
         if (rawResult instanceof String textResult) {
             return ToolResultPayload.builder()
                     .toolResult(textResult)
                     .llmObservation(textResult)
-                    .outputJson(tryNormalizeJson(textResult, mapper))
+                    .outputJson(ToolOutputJsonBuilder.buildPlainTextResult(textResult))
                     .build();
         }
         try {
@@ -531,14 +530,14 @@ public abstract class BaseAgent {
             return ToolResultPayload.builder()
                     .toolResult(serialized)
                     .llmObservation(serialized)
-                    .outputJson(tryNormalizeJson(serialized, mapper))
+                    .outputJson(ToolOutputJsonBuilder.buildToolNativeResult(rawResult))
                     .build();
         } catch (Exception e) {
             String fallback = String.valueOf(rawResult);
             return ToolResultPayload.builder()
                     .toolResult(fallback)
                     .llmObservation(fallback)
-                    .outputJson(tryNormalizeJson(fallback, mapper))
+                    .outputJson(ToolOutputJsonBuilder.buildPlainTextResult(fallback))
                     .build();
         }
     }

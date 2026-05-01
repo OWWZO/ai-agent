@@ -31,6 +31,7 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("req-query-001", detail.getRun().getRequestId());
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(1, detail.getArtifacts().size());
+        Assert.assertTrue(detail.getToolInvocations().get(0).getOutputJson().contains("\"schemaVersion\":1"));
         Assert.assertEquals("report-1.md", detail.getArtifacts().get(0).getFileName());
 
         List<ToolInvocationView> recentTools = ctx.queryService.queryRecentToolInvocations("file_tool", 100);
@@ -83,6 +84,7 @@ public class ExecutionLedgerQueryServiceTest {
                 .toolCallId("tool-call-" + dispatchIndex)
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
                 .llmObservation("done")
+                .outputJson("{\"schemaVersion\":1,\"resultType\":\"plain_text\",\"data\":{\"text\":\"done\"}}")
                 .finishedAt(now.plusSeconds(2))
                 .build());
         ctx.recorder.recordArtifacts(List.of(ArtifactRecordCommand.builder()

@@ -12,9 +12,11 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.ImageGenerationRequest;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -82,7 +84,7 @@ public class ImageGenerationTool implements BaseTool {
             Map<String, Object> params = (Map<String, Object>) input;
             String prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
             if (StringUtils.isBlank(prompt)) {
-                return "image_generation_tool 执行失败：prompt 不能为空。";
+                return buildFailurePayload("image_generation_tool 执行失败：prompt 不能为空。");
             }
 
             String mode = StringUtils.trimToEmpty(valueAsString(params.get("mode")));
@@ -108,20 +110,20 @@ public class ImageGenerationTool implements BaseTool {
                     .build();
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            Future<String> future = callImageGenerationStream(request, artifactSource);
+            Future<ToolResultPayload> future = callImageGenerationStream(request, artifactSource);
             return future.get();
         } catch (Exception e) {
             log.error("{} image_generation_tool error, input={}", agentContext.getRequestId(), input, e);
-            return "image_generation_tool 执行失败：" + e.getMessage();
+            return buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage());
         }
     }
 
     /**
      * 调用 reactor-tool 图片生成端点，并把最终产物同步回会话上下文。
      */
-    public CompletableFuture<String> callImageGenerationStream(ImageGenerationRequest requestPayload,
-                                                               ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callImageGenerationStream(ImageGenerationRequest requestPayload,
+                                                                          ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(5, TimeUnit.MINUTES)
@@ -148,7 +150,7 @@ public class ImageGenerationTool implements BaseTool {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} image_generation_tool on failure", agentContext.getRequestId(), e);
-                    future.completeExceptionally(e);
+                    future.complete(buildFailurePayload("image_generation_tool 执行失败：无法连接图片生成服务。"));
                 }
 
                 @Override
@@ -158,7 +160,7 @@ public class ImageGenerationTool implements BaseTool {
                             .build();
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful() || responseBody == null) {
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            future.complete(buildFailurePayload("image_generation_tool 执行失败：上游服务返回异常状态 " + response.code() + "。"));
                             return;
                         }
 
@@ -188,26 +190,16 @@ public class ImageGenerationTool implements BaseTool {
                         }
                     } catch (Exception e) {
                         log.error("{} image_generation_tool request error", agentContext.getRequestId(), e);
-                        future.completeExceptionally(e);
+                        future.complete(buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage()));
                         return;
                     }
 
-                    String summary = StringUtils.trimToNull(finalResponse.getData());
-                    if (finalResponse.getFileInfo() != null && !finalResponse.getFileInfo().isEmpty()) {
-                        String fileNames = finalResponse.getFileInfo().stream()
-                                .map(CodeInterpreterResponse.FileInfo::getFileName)
-                                .filter(StringUtils::isNotBlank)
-                                .collect(Collectors.joining("、"));
-                        if (StringUtils.isBlank(summary)) {
-                            summary = "已生成图片文件：" + fileNames;
-                        }
-                    }
-                    future.complete(StringUtils.defaultIfBlank(summary, "image_generation_tool 执行完成"));
+                    future.complete(buildSuccessPayload(finalResponse, requestPayload));
                 }
             });
         } catch (Exception e) {
             log.error("{} image_generation_tool request error", agentContext.getRequestId(), e);
-            future.completeExceptionally(e);
+            future.complete(buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage()));
         }
         return future;
     }
@@ -312,6 +304,69 @@ public class ImageGenerationTool implements BaseTool {
 
     private String valueAsString(Object rawValue) {
         return rawValue == null ? null : String.valueOf(rawValue);
+    }
+
+    /**
+     * 生图结果需要同时保留 prompt、摘要和图片文件引用，便于后续 replay 还原。
+     */
+    private ToolResultPayload buildSuccessPayload(CodeInterpreterResponse response,
+                                                  ImageGenerationRequest requestPayload) {
+        String summary = normalizeSummary(response);
+        Map<String, Object> outputData = new LinkedHashMap<>();
+        outputData.put("tool", getName());
+        outputData.put("prompt", requestPayload.getPrompt());
+        outputData.put("mode", requestPayload.getMode());
+        outputData.put("summary", summary);
+        outputData.put("fileInfo", toNativeFileInfo(response == null ? null : response.getFileInfo()));
+        return ToolResultPayload.structured(
+                summary,
+                summary,
+                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+        );
+    }
+
+    /**
+     * 图片生成失败时返回显式 error JSON，避免 rich tool 退化成纯字符串。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.structured(
+                message,
+                message,
+                ToolOutputJsonBuilder.buildErrorResult(message, message)
+        );
+    }
+
+    private String normalizeSummary(CodeInterpreterResponse response) {
+        String summary = response == null ? null : StringUtils.trimToNull(response.getData());
+        if (response != null && response.getFileInfo() != null && !response.getFileInfo().isEmpty()) {
+            String fileNames = response.getFileInfo().stream()
+                    .map(CodeInterpreterResponse.FileInfo::getFileName)
+                    .filter(StringUtils::isNotBlank)
+                    .collect(Collectors.joining("、"));
+            if (StringUtils.isBlank(summary)) {
+                summary = "已生成图片文件：" + fileNames;
+            }
+        }
+        return StringUtils.defaultIfBlank(summary, "image_generation_tool 执行完成");
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
     }
 
     private Map<String, Object> buildStringParam(String description) {

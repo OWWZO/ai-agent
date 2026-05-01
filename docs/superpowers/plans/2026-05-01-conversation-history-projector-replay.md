@@ -4,7 +4,7 @@
 
 **Goal:** 在不新增独立展示事件表的前提下，补强现有执行事实账本，使同一套 `ReplayProjector` 同时支撑实时对话投影和 MySQL 历史恢复，并恢复前端退出后可重进查看完整会话细节的能力。
 
-**Architecture:** `ai_agent_dialogue_run / ai_agent_llm_invocation / ai_agent_tool_invocation / ai_agent_artifact` 继续作为唯一事实源，所有“能稳定重算”的展示顺序和分组字段都不落库。后端只补齐不能稳定推断的最小语义，例如 run 的会话归属元信息、LLM 的 `semantic_kind`、工具最终结构化 `output_json`，然后由共享 `ReplayProjector` 统一生成前端现有消费的 `eventData` 结构；实时路径挂载到当前 `/AutoAgent` 主 SSE 响应链，如果 `BaseAgentResponseHandler + EventResult` 仍承担外层聚合，就改为委托 `ReplayProjector`，不要以旧 `ReactorController / ReactHandlerImpl / PlanSolveHandlerImpl` 作为主实现挂点；历史路径新增 `HistoryReplayPrinter` 和会话查询接口复用同一投影结果。
+**Architecture:** `ai_agent_dialogue_run / ai_agent_llm_invocation / ai_agent_tool_invocation / ai_agent_artifact` 继续作为唯一事实源，所有“能稳定重算”的展示顺序和分组字段都不落库。后端只补齐不能稳定推断的最小语义，例如 run 的会话归属元信息、LLM 的 `semantic_kind`、工具最终结构化 `output_json`，并明确 `llmObservation` 只服务主智能体推理、`output_json` 只服务工具事实持久化。历史恢复阶段统一由 `ReplayProjector + ToolInvocationProjectorRegistry` 按 `tool_name + input_json + output_json + artifact` 生成前端现有消费的 `eventData` 结构；实时路径继续挂到当前 `/AutoAgent` 主 SSE 响应链，不再把前端事件字段直接写回 `output_json`；历史路径新增 `HistoryReplayPrinter` 和会话查询接口复用同一投影结果。
 
 **Tech Stack:** Java 17, Spring Boot 3.4.3, MyBatis / Mapper XML, MySQL 8, React 19, TypeScript 5, Vitest
 
@@ -38,10 +38,12 @@
 | 文件路径 | 职责 |
 | --- | --- |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/LlmSemanticKind.java` | 明确区分 `TOOL_THOUGHT / PLAN_THOUGHT / FINAL_ANSWER / OTHER` |
-| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ToolReplayPayloadBuilder.java` | 把工具最终态统一收口成可回放的 `output_json` |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ToolOutputJsonBuilder.java` | 把工具最终态统一收口成 tool-native `output_json` |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ReplayFactBundle.java` | 运行事实聚合对象 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ProjectedReplayEvent.java` | Projector 输出模型，直接贴合前端 `eventData` |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java` | 共享投影器 |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/ToolInvocationProjector.java` | 单工具 projector 契约 |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/ToolInvocationProjectorRegistry.java` | 按 `tool_name` 分发工具解析器 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/HistoryReplayPrinter.java` | 历史回放输出器，输出和实时一致的 payload |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java` | 从 MySQL 事实重建单轮 / 单会话回放 |
 | `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java` | 会话列表和历史详情接口 |
@@ -65,7 +67,7 @@
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/LlmInvocationView.java` | 暴露 `semanticKind` |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerRunSupport.java` | run 创建时写入 owner / outputStyle / role 信息 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/llm/LLM.java` | 在创建 LLM invocation 时显式写入 `semanticKind` |
-| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/BaseAgent.java` | 工具完成时统一构建回放 payload |
+| `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/BaseAgent.java` | 工具完成时统一构建 `llmObservation + output_json`，禁止把前端事件字段落库 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/tool/common/FileTool.java` | `get/upload` 都补齐结构化 output |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/tool/common/CodeInterpreterTool.java` | 落可回放代码输出与产物引用 |
 | `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/agent/tool/common/ReportTool.java` | 落 HTML / Markdown / 文件结构化结果 |

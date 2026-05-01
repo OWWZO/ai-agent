@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
@@ -12,9 +13,11 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -73,10 +76,10 @@ public class ReportTool implements BaseTool {
             String fileName = (String) params.get("fileName");
             String fileType = (String) params.get("fileType");
 
-            if (fileName.isEmpty()) {
+            if (StringUtils.isBlank(fileName)) {
                 String errMessage = "文件名参数为空，无法生成报告。";
                 log.error("{} {}", agentContext.getRequestId(), errMessage);
-                return null;
+                return buildFailurePayload(errMessage);
             }
 
             List<String> fileNames = agentContext.getProductFiles().stream().map(File::getFileName).collect(Collectors.toList());
@@ -98,22 +101,20 @@ public class ReportTool implements BaseTool {
                     .build();
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             // 调用流式 API
-            Future future = callCodeAgentStream(request, artifactSource);
-            Object object = future.get();
-
-            return object;
+            Future<ToolResultPayload> future = callCodeAgentStream(request, artifactSource);
+            return future.get();
         } catch (Exception e) {
             log.error("{} report_tool error", agentContext.getRequestId(), e);
+            return buildFailurePayload("report_tool 执行失败：" + e.getMessage());
         }
-        return null;
     }
 
     /**
      * 调用 CodeAgent
      */
-    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest,
-                                                         ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callCodeAgentStream(CodeInterpreterRequest codeRequest,
+                                                                    ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 1 分钟
@@ -143,7 +144,7 @@ public class ReportTool implements BaseTool {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} report_tool on failure", agentContext.getRequestId(), e);
-                    future.completeExceptionally(e);
+                    future.complete(buildFailurePayload("report_tool 执行失败：无法连接报告生成服务。"));
                 }
 
                 @Override
@@ -157,7 +158,7 @@ public class ReportTool implements BaseTool {
                         ResponseBody responseBody = response.body();
                         if (!response.isSuccessful() || responseBody == null) {
                             log.error("{} report_tool request error.", agentContext.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            future.complete(buildFailurePayload("report_tool 执行失败：上游服务返回异常状态 " + response.code() + "。"));
                             return;
                         }
 
@@ -210,19 +211,76 @@ public class ReportTool implements BaseTool {
                         }
                     } catch (Exception e) {
                         log.error("{} report_tool request error", agentContext.getRequestId(), e);
-                        future.completeExceptionally(e);
+                        future.complete(buildFailurePayload("report_tool 执行失败：" + e.getMessage()));
                         return;
                     }
                     // 统一使用data字段，兼容历史codeOutput逻辑
-                    String result = Objects.nonNull(codeResponse.getData()) && !codeResponse.getData().isEmpty() ? codeResponse.getData() : codeResponse.getCodeOutput();
-                    future.complete(result);
+                    String result = StringUtils.isNotBlank(codeResponse.getData()) ? codeResponse.getData() : codeResponse.getCodeOutput();
+                    future.complete(buildSuccessPayload(codeRequest, codeResponse, result));
                 }
             });
         } catch (Exception e) {
             log.error("{} report_tool request error", agentContext.getRequestId(), e);
-            future.completeExceptionally(e);
+            future.complete(buildFailurePayload("report_tool 执行失败：" + e.getMessage()));
         }
 
         return future;
+    }
+
+    /**
+     * 报告工具需要保留文件类型、正文内容和文件引用，便于历史回放还原 Markdown/HTML/PPT 展示。
+     */
+    private ToolResultPayload buildSuccessPayload(CodeInterpreterRequest codeRequest,
+                                                  CodeInterpreterResponse codeResponse,
+                                                  String result) {
+        String normalizedResult = StringUtils.defaultString(result);
+        Map<String, Object> outputData = new LinkedHashMap<>();
+        outputData.put("tool", getName());
+        outputData.put("fileType", codeRequest.getFileType());
+        outputData.put("summary", abbreviate(normalizedResult, 160));
+        outputData.put("data", normalizedResult);
+        outputData.put("fileInfo", toNativeFileInfo(codeResponse == null ? null : codeResponse.getFileInfo()));
+        return ToolResultPayload.structured(
+                normalizedResult,
+                normalizedResult,
+                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+        );
+    }
+
+    /**
+     * 失败路径统一写入显式 error JSON，避免 rich tool 落回空 output_json。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.structured(
+                message,
+                message,
+                ToolOutputJsonBuilder.buildErrorResult(message, message)
+        );
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
+    }
+
+    private String abbreviate(String text, int maxLen) {
+        if (text == null || text.length() <= maxLen) {
+            return StringUtils.defaultString(text);
+        }
+        return text.substring(0, maxLen) + "...";
     }
 }

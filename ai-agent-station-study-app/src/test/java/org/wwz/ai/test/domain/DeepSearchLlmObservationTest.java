@@ -49,6 +49,7 @@ public class DeepSearchLlmObservationTest {
         JSONObject outputJson = JSON.parseObject(payload.getOutputJson());
         JSONObject llmObservation = JSON.parseObject(payload.getLlmObservation());
 
+        Assert.assertEquals(1, outputJson.getIntValue("schemaVersion"));
         Assert.assertTrue(outputJson.containsKey("stages"));
         Assert.assertFalse(llmObservation.containsKey("stages"));
         Assert.assertEquals("deep_search", llmObservation.getString("tool"));
@@ -121,7 +122,9 @@ public class DeepSearchLlmObservationTest {
         ToolInvocationView invocation = detail.getToolInvocations().get(0);
         Assert.assertEquals("deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。", observation);
         Assert.assertEquals(observation, readObservation(invocation));
-        Assert.assertNull(invocation.getOutputJson());
+        Assert.assertNotNull(invocation.getOutputJson());
+        Assert.assertTrue(invocation.getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertTrue(invocation.getOutputJson().contains("\"resultType\":\"plain_text\""));
     }
 
     private String readObservation(ToolInvocationView view) {

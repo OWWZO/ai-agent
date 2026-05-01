@@ -12,9 +12,11 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileResponse;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.io.IOException;
 import java.util.*;
@@ -81,11 +83,12 @@ public class FileTool implements BaseTool {
             Map<String, Object> params = (Map<String, Object>) input;
             String command = (String) params.getOrDefault("command", "");
             FileRequest fileRequest = JSON.parseObject(JSON.toJSONString(input), FileRequest.class);
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             fileRequest.setRequestId(agentContext.getRequestId());
             if ("upload".equals(command)) {
-                return uploadFile(fileRequest, true, false);
+                return uploadFilePayload(fileRequest, true, false, artifactSource);
             } else if ("get".equals(command)) {
-                return getFile(fileRequest, true);
+                return getFilePayload(fileRequest, true);
             }
         } catch (Exception e) {
             log.error("{} file tool error, input:{}", agentContext.getRequestId(), JSON.toJSONString(input), e);
@@ -96,13 +99,22 @@ public class FileTool implements BaseTool {
     // 上传文件的 API 请求方法
     public String uploadFile(FileRequest fileRequest, Boolean isNoticeFe, Boolean isInternalFile) {
         ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
-        return uploadFile(fileRequest, isNoticeFe, isInternalFile, artifactSource);
+        ToolResultPayload payload = uploadFilePayload(fileRequest, isNoticeFe, isInternalFile, artifactSource);
+        return payload == null ? null : payload.getToolResult();
     }
 
     public String uploadFile(FileRequest fileRequest,
                              Boolean isNoticeFe,
                              Boolean isInternalFile,
                              ToolArtifactSource artifactSource) {
+        ToolResultPayload payload = uploadFilePayload(fileRequest, isNoticeFe, isInternalFile, artifactSource);
+        return payload == null ? null : payload.getToolResult();
+    }
+
+    private ToolResultPayload uploadFilePayload(FileRequest fileRequest,
+                                                Boolean isNoticeFe,
+                                                Boolean isInternalFile,
+                                                ToolArtifactSource artifactSource) {
         long startTime = System.currentTimeMillis();
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
@@ -145,7 +157,7 @@ public class FileTool implements BaseTool {
             String errorMessage = "上传文件失败 文件名为空";
 
             log.error("{} {}", agentContext.getRequestId(), errorMessage);
-            return null;
+            return ToolResultPayload.text(errorMessage);
         }
 
         // 如果文件名没有任何后缀，但已经非空，则自动补一个 .md 后缀，满足下游服务的约束
@@ -166,12 +178,12 @@ public class FileTool implements BaseTool {
             if (!response.isSuccessful()) {
                 log.error("{} upload file failed, code:{}, request:{}, response:{}",
                         agentContext.getRequestId(), response.code(), requestJson, result);
-                return null;
+                return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
             }
             if (result == null) {
                 log.error("{} upload file failed, empty response body, request:{}",
                         agentContext.getRequestId(), requestJson);
-                return null;
+                return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
             }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool upload response {}", agentContext.getRequestId(), result);
@@ -205,16 +217,29 @@ public class FileTool implements BaseTool {
                 agentContext.getPrinter().send("file", resultMap, digitalEmployee);
             }
             // 返回工具执行结果
-            return fileRequest.getFileName() + " 写入到文件链接: " + fileResponse.getOssUrl();
+            String toolResult = fileRequest.getFileName() + " 写入到文件链接: " + fileResponse.getOssUrl();
+            Map<String, Object> outputData = new LinkedHashMap<>();
+            outputData.put("command", "upload");
+            outputData.put("fileInfo", toNativeFileInfo(fileInfo));
+            return ToolResultPayload.structured(
+                    toolResult,
+                    toolResult,
+                    ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+            );
 
         } catch (Exception e) {
             log.error("{} upload file error", agentContext.getRequestId(), e);
         }
-        return null;
+        return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
     }
 
     // 获取文件的 API 请求方法
     public String getFile(FileRequest fileRequest, Boolean noticeFe) {
+        ToolResultPayload payload = getFilePayload(fileRequest, noticeFe);
+        return payload == null ? null : payload.getToolResult();
+    }
+
+    private ToolResultPayload getFilePayload(FileRequest fileRequest, Boolean noticeFe) {
         long startTime = System.currentTimeMillis();
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
@@ -249,13 +274,13 @@ public class FileTool implements BaseTool {
                 log.error("{} get file failed, code:{}, request:{}, response:{}",
                         agentContext.getRequestId(), response.code(), requestJson, result);
                 String errMessage = "获取文件失败 " + fileRequest.getFileName();
-                return errMessage;
+                return ToolResultPayload.text(errMessage);
             }
             if (result == null) {
                 log.error("{} get file failed, empty response body, request:{}",
                         agentContext.getRequestId(), requestJson);
                 String errMessage = "获取文件失败 " + fileRequest.getFileName();
-                return errMessage;
+                return ToolResultPayload.text(errMessage);
             }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool get response {}", agentContext.getRequestId(), result);
@@ -284,14 +309,41 @@ public class FileTool implements BaseTool {
                 if (fileContent.length() > reactorConfig.getFileToolContentTruncateLen()) {
                     fileContent = fileContent.substring(0, reactorConfig.getFileToolContentTruncateLen());
                 }
-
-                return "文件内容 " + fileContent;
+                String toolResult = "文件内容 " + fileContent;
+                Map<String, Object> outputData = new LinkedHashMap<>();
+                outputData.put("command", "get");
+                outputData.put("contentStorageMode", "artifact_only");
+                outputData.put("fileInfo", toNativeFileInfo(fileInfo));
+                return ToolResultPayload.structured(
+                        toolResult,
+                        toolResult,
+                        ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                );
             }
         } catch (Exception e) {
 
             log.error("{} get file error", agentContext.getRequestId(), e);
         }
-        return null;
+        return ToolResultPayload.text("获取文件失败 " + fileRequest.getFileName());
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
     }
 
     private String getUrlContent(String url) {

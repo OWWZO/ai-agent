@@ -12,6 +12,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
@@ -66,18 +67,23 @@ public class MultiModalAgentToolTest {
                     .toolName("multimodalagent_tool")
                     .build();
 
-            String result;
+            ToolResultPayload payload;
             agentContext.bindCurrentToolArtifactSource(artifactSource);
             try {
-                result = String.valueOf(multiModalAgent.execute(JSONObject.parseObject("""
+                payload = (ToolResultPayload) multiModalAgent.execute(JSONObject.parseObject("""
                         {"question":"总结多模态检索核心能力"}
-                        """)));
+                        """));
             } finally {
                 agentContext.clearCurrentToolArtifactSource();
             }
 
+            String result = payload.getToolResult();
             Assert.assertTrue(result.contains("多模态检索会先召回图文片段。"));
             Assert.assertTrue(result.contains("![图片](https://img.example.com/mrag.png)"));
+            Assert.assertNotNull(payload.getOutputJson());
+            Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
+            Assert.assertTrue(payload.getOutputJson().contains("\"markdown\""));
+            Assert.assertTrue(payload.getOutputJson().contains("\"summary\""));
             Assert.assertEquals("markdown", printer.messageTypes().get(printer.messageTypes().size() - 1));
             Assert.assertEquals(
                     List.of("knowledge"),
@@ -111,11 +117,12 @@ public class MultiModalAgentToolTest {
                     .taskProductFiles(new ArrayList<>())
                     .build());
 
-            String result = String.valueOf(multiModalAgent.execute(JSONObject.parseObject("""
+            ToolResultPayload payload = (ToolResultPayload) multiModalAgent.execute(JSONObject.parseObject("""
                     {"question":"   "}
-                    """)));
+                    """));
 
-            Assert.assertEquals("multimodalagent_tool 执行失败：question 不能为空。", result);
+            Assert.assertEquals("multimodalagent_tool 执行失败：question 不能为空。", payload.getToolResult());
+            Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
         } finally {
             ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }

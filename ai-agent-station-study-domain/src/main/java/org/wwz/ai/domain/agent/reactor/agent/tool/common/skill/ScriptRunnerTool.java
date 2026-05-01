@@ -1,15 +1,18 @@
 package org.wwz.ai.domain.agent.reactor.agent.tool.common.skill;
 
+import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.skill.ScriptRunnerToolRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.skill.ScriptRunnerToolResponse;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillDefinition;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillLoadException;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptDefinition;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptRunnerClient;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -85,13 +88,13 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
             ScriptRunnerToolResponse response = skillScriptRunnerClient.run(request);
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             appendGeneratedFiles(response, artifactSource);
-            return response.toDisplayText();
+            return buildSuccessPayload(response);
         } catch (SkillLoadException e) {
             log.warn("{} script_runner_tool failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return buildFailurePayload(e.getMessage());
         } catch (Exception e) {
             log.error("{} script_runner_tool execute error, input={}", requestId(), input, e);
-            return "script_runner_tool execute failed";
+            return buildFailurePayload("script_runner_tool execute failed");
         }
     }
 
@@ -173,5 +176,59 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
                     .build();
             agentContext.registerGeneratedArtifact(artifactSource, file);
         }
+    }
+
+    /**
+     * 脚本执行结果需要保留运行态与文件引用，便于后续审计与 replay。
+     */
+    private ToolResultPayload buildSuccessPayload(ScriptRunnerToolResponse response) {
+        String displayText = response == null ? "" : response.toDisplayText();
+        Map<String, Object> outputData = new LinkedHashMap<>();
+        outputData.put("tool", getName());
+        outputData.put("skillName", response == null ? null : response.getSkillName());
+        outputData.put("scriptName", response == null ? null : response.getScriptName());
+        outputData.put("runtime", response == null ? null : response.getRuntime());
+        outputData.put("success", response != null && Boolean.TRUE.equals(response.getSuccess()));
+        outputData.put("exitCode", response == null ? null : response.getExitCode());
+        outputData.put("stdout", response == null ? "" : StringUtils.defaultString(response.getStdout()));
+        outputData.put("stderr", response == null ? "" : StringUtils.defaultString(response.getStderr()));
+        outputData.put("summary", response == null ? "" : StringUtils.defaultString(response.getSummary()));
+        outputData.put("fileInfo", toNativeFileInfo(response == null ? null : response.getFileInfo()));
+        return ToolResultPayload.structured(
+                displayText,
+                displayText,
+                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+        );
+    }
+
+    /**
+     * 参数校验或执行失败时，同样返回显式 error JSON。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.structured(
+                message,
+                message,
+                ToolOutputJsonBuilder.buildErrorResult(message, message)
+        );
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<ScriptRunnerToolResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (ScriptRunnerToolResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("downloadUrl", item.getDownloadUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
     }
 }

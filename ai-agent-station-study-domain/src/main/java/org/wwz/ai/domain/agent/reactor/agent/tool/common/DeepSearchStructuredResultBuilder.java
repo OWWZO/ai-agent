@@ -204,6 +204,7 @@ public class DeepSearchStructuredResultBuilder {
                     .build());
         }
         return DeepSearchStructuredOutput.builder()
+                .schemaVersion(1)
                 .tool("deep_search")
                 .query(query)
                 .stages(stages)
@@ -267,6 +268,7 @@ public class DeepSearchStructuredResultBuilder {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class DeepSearchStructuredOutput {
+        private Integer schemaVersion;
         private String tool;
         private String query;
         private List<DeepSearchStageOutput> stages;

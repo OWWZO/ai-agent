@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 /**
  * 工具执行结果载体。
@@ -38,6 +39,18 @@ public class ToolResultPayload {
         return ToolResultPayload.builder()
                 .toolResult(resultText)
                 .llmObservation(resultText)
+                .outputJson(ToolOutputJsonBuilder.buildPlainTextResult(resultText))
+                .build();
+    }
+
+    /**
+     * 带结构化 output_json 的快捷工厂。
+     */
+    public static ToolResultPayload structured(String toolResult, String llmObservation, String outputJson) {
+        return ToolResultPayload.builder()
+                .toolResult(toolResult)
+                .llmObservation(llmObservation)
+                .outputJson(outputJson)
                 .build();
     }
 }

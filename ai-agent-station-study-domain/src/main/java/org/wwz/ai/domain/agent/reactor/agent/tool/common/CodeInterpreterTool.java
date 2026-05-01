@@ -7,8 +7,10 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
@@ -80,10 +82,8 @@ public class CodeInterpreterTool implements BaseTool {
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future future = callCodeAgentStream(request, artifactSource);
-            Object object = future.get();
-
-            return object;
+            Future<ToolResultPayload> future = callCodeAgentStream(request, artifactSource);
+            return future.get();
         } catch (Exception e) {
             log.error("{} code agent error", agentContext.getRequestId(), e);
         }
@@ -93,9 +93,9 @@ public class CodeInterpreterTool implements BaseTool {
     /**
      * 调用 CodeAgent
      */
-    public CompletableFuture<String> callCodeAgentStream(CodeInterpreterRequest codeRequest,
-                                                         ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callCodeAgentStream(CodeInterpreterRequest codeRequest,
+                                                                    ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(6000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
@@ -191,7 +191,17 @@ public class CodeInterpreterTool implements BaseTool {
                             output.append(fileInfo.getFileName()).append("\n");
                         }
                     }
-                    future.complete(output.toString());
+                    Map<String, Object> outputData = new LinkedHashMap<>();
+                    outputData.put("codeOutput", codeResponse.getCodeOutput());
+                    outputData.put("content", codeResponse.getContent());
+                    outputData.put("code", codeResponse.getCode());
+                    outputData.put("explain", codeResponse.getExplain());
+                    outputData.put("fileInfo", toNativeFileInfo(codeResponse.getFileInfo()));
+                    future.complete(ToolResultPayload.structured(
+                            output.toString(),
+                            output.toString(),
+                            ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                    ));
                 }
             });
         } catch (Exception e) {
@@ -200,5 +210,24 @@ public class CodeInterpreterTool implements BaseTool {
         }
 
         return future;
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
     }
 }

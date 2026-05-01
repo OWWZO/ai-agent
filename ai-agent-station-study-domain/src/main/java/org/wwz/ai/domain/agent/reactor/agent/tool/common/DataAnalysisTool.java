@@ -1,12 +1,11 @@
 package org.wwz.ai.domain.agent.reactor.agent.tool.common;
 
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
@@ -15,10 +14,12 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.DataAnalysisRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DataAnalysisResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 @Data
 public class DataAnalysisTool implements BaseTool {
     private AgentContext agentContext;
+
     @Override
     public String getName() {
         return "data_analysis";
@@ -73,7 +75,6 @@ public class DataAnalysisTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
-        long startTime = System.currentTimeMillis();
         try {
             Map<String, Object> params = (Map<String, Object>) input;
             String task = (String) params.getOrDefault("task", "");
@@ -89,39 +90,38 @@ public class DataAnalysisTool implements BaseTool {
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
             // 调用流式 API
-            Future<String> future = callAutoAnalysisStream(request, artifactSource);
-            Object object =  future.get();
-            return object;
+            Future<ToolResultPayload> future = callAutoAnalysisStream(request, artifactSource);
+            return future.get();
         } catch (Exception e) {
             log.error("{} auto_analysis agent error", agentContext.getRequestId(), e);
+            String message = "data_analysis 执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), "未知异常");
+            agentContext.getPrinter().send("tool_result", AgentResponse.ToolResult.builder()
+                    .toolName("数据分析智能体")
+                    .toolParam(new HashMap<>())
+                    .toolResult("执行失败")
+                    .build());
+            return buildFailurePayload(message);
         }
-        agentContext.getPrinter().send("tool_result", AgentResponse.ToolResult.builder()
-                .toolName("数据分析智能体")
-                .toolParam(new HashMap<>())
-                .toolResult("执行失败")
-                .build());
-        return null;
     }
-    
+
     /**
-     * 调用自动分析API
+     * 调用自动分析 API。
      */
-    public CompletableFuture<String> callAutoAnalysisStream(DataAnalysisRequest analysisRequest,
-                                                            ToolArtifactSource artifactSource) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+    public CompletableFuture<ToolResultPayload> callAutoAnalysisStream(DataAnalysisRequest analysisRequest,
+                                                                       ToolArtifactSource artifactSource) {
+        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(60000, TimeUnit.SECONDS) // 设置连接超时时间为 60 秒
-                    .readTimeout(30000, TimeUnit.SECONDS)    // 设置读取超时时间为 300 秒
-                    .writeTimeout(30000, TimeUnit.SECONDS)   // 设置写入超时时间为 300 秒
-                    .callTimeout(30000, TimeUnit.SECONDS)    // 设置调用超时时间为 300 秒
+                    .connectTimeout(60000, TimeUnit.SECONDS)
+                    .readTimeout(30000, TimeUnit.SECONDS)
+                    .writeTimeout(30000, TimeUnit.SECONDS)
+                    .callTimeout(30000, TimeUnit.SECONDS)
                     .build();
 
             ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
             ReactorConfig duccConfig = applicationContext.getBean(ReactorConfig.class);
-            // 使用默认的自动分析API URL
             String url = duccConfig.getDataAnalysisUrl() + "/v1/tool/auto_analysis";
-            
+
             RequestBody body = RequestBody.create(
                     JSONObject.toJSONString(analysisRequest),
                     MediaType.parse("application/json")
@@ -136,7 +136,7 @@ public class DataAnalysisTool implements BaseTool {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} auto_analysis on failure", agentContext.getRequestId(), e);
-                    future.completeExceptionally(e);
+                    future.complete(buildFailurePayload("data_analysis 执行失败：无法连接数据分析服务。"));
                 }
 
                 @Override
@@ -145,77 +145,137 @@ public class DataAnalysisTool implements BaseTool {
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful() || responseBody == null) {
                             log.error("{} auto_analysis request error", agentContext.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            future.complete(buildFailurePayload("data_analysis 执行失败：上游服务返回异常状态 " + response.code() + "。"));
                             return;
                         }
 
                         String line;
                         BufferedReader reader = new BufferedReader(new InputStreamReader(responseBody.byteStream()));
                         String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
-                        String result = "分析结果为空"; // 默认输出
                         String messageId = StringUtil.getUUID();
                         StringBuilder fullContentBuilder = new StringBuilder();
+                        List<CodeInterpreterResponse.FileInfo> finalFileInfo = new ArrayList<>();
                         while ((line = reader.readLine()) != null) {
-                            // 处理SSE格式的数据
-                            if (line.startsWith("data: ")) {
-                                String data = line.substring(6);
-                                if (data.equals("[DONE]")) {
-                                    break;
-                                }
-                                if (data.equals("heartbeat")) {
-                                    // 心跳消息，跳过处理
+                            if (!line.startsWith("data: ")) {
+                                continue;
+                            }
+                            String data = line.substring(6);
+                            if ("[DONE]".equals(data)) {
+                                break;
+                            }
+                            if ("heartbeat".equals(data)) {
+                                continue;
+                            }
+                            log.info("{} auto_analysis recv data: {}", agentContext.getRequestId(), data);
+                            try {
+                                DataAnalysisResponse analysisResponse = JSONObject.parseObject(data, DataAnalysisResponse.class);
+                                if (analysisResponse == null) {
                                     continue;
                                 }
-                                log.info("{} auto_analysis recv data: {}", agentContext.getRequestId(), data);
-                                try {
-                                    // 累积全量内容
-                                    DataAnalysisResponse analysisResponse = JSONObject.parseObject(data, DataAnalysisResponse.class);
-                                    fullContentBuilder.append(analysisResponse.getData()).append("\n");
-                                    // 接收文件
-                                    if (Objects.nonNull(analysisResponse.getFileInfo()) && !analysisResponse.getFileInfo().isEmpty()) {
-                                        for (CodeInterpreterResponse.FileInfo fileInfo: analysisResponse.getFileInfo()) {
-                                            File file = File.builder()
-                                                    .fileName(fileInfo.getFileName())
-                                                    .ossUrl(fileInfo.getOssUrl())
-                                                    .domainUrl(fileInfo.getDomainUrl())
-                                                    .fileSize(fileInfo.getFileSize())
-                                                    .description(fileInfo.getFileName()) // fileName用作描述
-                                                    .isInternalFile(false)
-                                                    .build();
-                                            agentContext.registerGeneratedArtifact(artifactSource, file);
-                                        }
-                                    }
-
-                                    // 当收到最终结果时，输出全量内容
-                                    if (Boolean.TRUE.equals(analysisResponse.getIsFinal())) {
-                                        analysisResponse.setTask(analysisRequest.getTask());
-                                        analysisResponse.setData(fullContentBuilder.toString());
-                                        agentContext.getPrinter().send(messageId, "data_analysis",
-                                                analysisResponse, digitalEmployee, true);
-                                        result = fullContentBuilder.toString();
-                                    } else {
-                                        analysisResponse.setTask(analysisRequest.getTask());
-                                        agentContext.getPrinter().send(messageId, "data_analysis",
-                                                analysisResponse, digitalEmployee, false);
-                                        result = JSON.toJSONString(analysisResponse.getData());
-                                    }
-                                } catch (Exception parseException) {
-                                    log.warn("{} auto_analysis parse response error: {}", agentContext.getRequestId(), parseException.getMessage());
+                                String chunkText = analysisResponse.getData() == null
+                                        ? ""
+                                        : String.valueOf(analysisResponse.getData());
+                                if (StringUtils.isNotBlank(chunkText)) {
+                                    fullContentBuilder.append(chunkText).append("\n");
                                 }
+                                if (Objects.nonNull(analysisResponse.getFileInfo()) && !analysisResponse.getFileInfo().isEmpty()) {
+                                    finalFileInfo.clear();
+                                    finalFileInfo.addAll(analysisResponse.getFileInfo());
+                                    for (CodeInterpreterResponse.FileInfo fileInfo : analysisResponse.getFileInfo()) {
+                                        File file = File.builder()
+                                                .fileName(fileInfo.getFileName())
+                                                .ossUrl(fileInfo.getOssUrl())
+                                                .domainUrl(fileInfo.getDomainUrl())
+                                                .fileSize(fileInfo.getFileSize())
+                                                .description(fileInfo.getFileName())
+                                                .isInternalFile(false)
+                                                .build();
+                                        agentContext.registerGeneratedArtifact(artifactSource, file);
+                                    }
+                                }
+
+                                analysisResponse.setTask(analysisRequest.getTask());
+                                if (Boolean.TRUE.equals(analysisResponse.getIsFinal())) {
+                                    analysisResponse.setData(fullContentBuilder.toString());
+                                    agentContext.getPrinter().send(messageId, "data_analysis",
+                                            analysisResponse, digitalEmployee, true);
+                                } else {
+                                    agentContext.getPrinter().send(messageId, "data_analysis",
+                                            analysisResponse, digitalEmployee, false);
+                                }
+                            } catch (Exception parseException) {
+                                log.warn("{} auto_analysis parse response error: {}", agentContext.getRequestId(), parseException.getMessage());
                             }
                         }
-                        future.complete(result);
+                        future.complete(buildSuccessPayload(analysisRequest, fullContentBuilder.toString(), finalFileInfo));
                     } catch (Exception e) {
                         log.error("{} auto_analysis request error", agentContext.getRequestId(), e);
-                        future.completeExceptionally(e);
+                        future.complete(buildFailurePayload("data_analysis 执行失败：" + e.getMessage()));
                     }
                 }
             });
         } catch (Exception e) {
             log.error("{} auto_analysis request error", agentContext.getRequestId(), e);
-            future.completeExceptionally(e);
+            future.complete(buildFailurePayload("data_analysis 执行失败：" + e.getMessage()));
         }
 
         return future;
+    }
+
+    /**
+     * 数据分析结果需要保留任务文本、结果摘要和文件引用，便于 replay 还原分析卡片。
+     */
+    private ToolResultPayload buildSuccessPayload(DataAnalysisRequest request,
+                                                  String data,
+                                                  List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        String normalizedData = StringUtils.defaultIfBlank(data, "分析结果为空").trim();
+        Map<String, Object> outputData = new LinkedHashMap<>();
+        outputData.put("tool", getName());
+        outputData.put("task", request.getTask());
+        outputData.put("summary", abbreviate(normalizedData, 160));
+        outputData.put("data", normalizedData);
+        outputData.put("fileInfo", toNativeFileInfo(fileInfo));
+        return ToolResultPayload.structured(
+                normalizedData,
+                normalizedData,
+                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+        );
+    }
+
+    /**
+     * 失败结果统一显式编码为 error JSON，避免只剩日志没有账本事实。
+     */
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.structured(
+                message,
+                message,
+                ToolOutputJsonBuilder.buildErrorResult(message, message)
+        );
+    }
+
+    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (fileInfo == null) {
+            return result;
+        }
+        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("fileName", item.getFileName());
+            info.put("ossUrl", item.getOssUrl());
+            info.put("domainUrl", item.getDomainUrl());
+            info.put("fileSize", item.getFileSize());
+            result.add(info);
+        }
+        return result;
+    }
+
+    private String abbreviate(String text, int maxLen) {
+        if (text.length() <= maxLen) {
+            return text;
+        }
+        return text.substring(0, maxLen) + "...";
     }
 }

@@ -59,6 +59,9 @@ public class ReactExecutionLedgerIntegrationTest {
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_SUCCESS), detail.getToolInvocations().get(0).getStatus());
         Assert.assertEquals(result.get("react-tool-call-001"), detail.getToolInvocations().get(0).getLlmObservation());
+        Assert.assertNotNull(detail.getToolInvocations().get(0).getOutputJson());
+        Assert.assertTrue(detail.getToolInvocations().get(0).getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertFalse(detail.getToolInvocations().get(0).getOutputJson().contains("\"taskId\""));
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("react-report.md", detail.getArtifacts().get(0).getFileName());
     }
