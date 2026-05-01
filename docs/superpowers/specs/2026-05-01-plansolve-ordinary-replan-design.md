@@ -49,14 +49,25 @@
 
 ## 4. 当前问题拆解
 
-### 4.1 Schema 与 Prompt 错位
+### 4.1 运行时 Schema 与 Prompt 错位
 
-当前配置中 `plan_tool.params` 只允许 `command=create`，但 Planner 的后续轮 prompt 要求模型调用：
+`PlanningTool` 的代码内置回退 schema 已支持：
 
+- `create`
+- `update`
 - `mark_step`
 - `finish`
 
-这会导致 `close_update=0` 下，Planner 在第二轮开始就没有合法动作可走。
+但运行时并不会直接使用这份回退 schema。`PlanningTool.toParams()` 会优先读取配置中的 `autobots.autoagent.tool.plan_tool.params`；当前 `application-dev.yml` 中该配置只暴露 `command=create`，因此模型在真实运行时看到的仍然是受限 schema。
+
+与此同时，Planner 的后续轮 prompt 也没有清晰说明：
+
+- 何时使用 `mark_step`
+- 何时使用 `update`
+- 何时使用 `finish`
+- 系统会自动推进下一步，而不是要求模型自己维护所有状态
+
+因此真实问题不是“代码回退 schema 缺命令”，而是“运行时配置 schema 受限 + prompt 语义不完整”的双重错位。这会导致 `close_update=0` 下，Planner 在第二轮开始缺少稳定可走的动作路径。
 
 ### 4.2 首步未激活
 
@@ -97,7 +108,33 @@
 4. 修复“计划未完成但没有当前步骤”的异常状态
 5. 判断计划是否已完成
 
-### 5.3 现有组件职责调整
+### 5.3 协作边界
+
+为避免职责继续扩散，本方案明确按以下边界切分：
+
+- `PlanLifecycleService`
+  - 只负责计划数据本身的状态转换
+  - 不负责 LLM 调用
+  - 不负责 SSE 事件推送
+  - 不直接感知前端协议
+
+- `PlanningTool`
+  - 作为 `PlanningAgent` 与 `PlanLifecycleService` 之间的衔接层
+  - 负责命令解析与参数校验
+  - 将 `create / update / mark_step / finish` 委派给 `PlanLifecycleService`
+
+- `PlanningAgent`
+  - 负责调用 LLM、消费 planner tool call、读取当前任务
+  - 负责向前端发送 `plan` / `task` / `plan_thought`
+  - 不负责维护计划数据状态机
+
+- `Plan`
+  - 保留轻量数据对象职责
+  - 保留基础读写能力
+  - `stepPlan()` 仅作为 `close_update=1` 兼容路径的历史辅助方法保留
+  - `close_update=0` 的普通 replan 路径不再依赖 `stepPlan()`
+
+### 5.4 现有组件职责调整
 
 - `Plan`
   - 保留数据结构和基础读写能力
@@ -152,15 +189,18 @@ Planner 在需要重排剩余计划时调用 `update`。
 后端执行规则：
 
 1. 已完成步骤冻结，不允许被改写或删除
-2. 未完成步骤允许被替换、增删、重排
-3. 对新步骤统一初始化为 `not_started`
-4. 若更新后不存在 `in_progress`，则自动激活第一条未完成步骤
-5. 若更新后全部步骤都已完成，则允许进入“待 finish”状态
+2. `update.steps` 只表达“剩余未完成步骤”的目标列表，不要求模型重新传回已完成步骤
+3. 后端使用“已完成步骤前缀 + 新的未完成步骤列表”重建完整计划，避免依赖索引位置识别“同一个步骤”
+4. 当前正在执行但尚未完成的步骤视为未完成集合的一部分，允许在 replan 时被替换或细化
+5. 对新增的剩余步骤统一初始化为 `not_started`
+6. 若更新后不存在 `in_progress`，则自动激活第一条未完成步骤
+7. 若更新后全部步骤都已完成，则允许进入“待 finish”状态
 
 效果：
 
 - 支持真正意义上的 replan
 - 已完成事实不会被新计划覆盖
+- 避免因步骤 reorder 导致状态按索引错位重置
 
 ### 6.4 `finish`
 
@@ -188,11 +228,24 @@ Planner 在整体任务可进入总结阶段时调用 `finish`。
 
 - 避免 `PlanningAgent.getNextTask()` 返回空串后外层循环静默空转到 `max_steps`
 
+### 6.6 非恢复异常的抛出位置
+
+本方案不把“计划生命周期异常”挂在 `PlanningAgent.think()` 的 catch 语义上，因为该方法当前对异常是“记录日志后继续返回 true”，不适合作为计划状态一致性的 fail-fast 出口。
+
+因此本期约束为：
+
+1. `PlanLifecycleService` 先执行自动修复
+2. 修复失败后，由 `PlanningAgent.getNextTask()` 或其上层调用路径抛出受控异常
+3. `PlanningAgent` 不允许再用“返回空字符串”表达非恢复性计划错误
+4. 该异常需沿 `act() -> BaseAgent.run() -> Step2PlanExecuteNode` 向外传播，由外层统一结束 run
+
+这样可以避免错误被 `think()` 的日志吞掉后继续空转。
+
 ## 7. Prompt 与 Schema 调整
 
 ### 7.1 Tool Schema 调整
 
-保留工具名 `planning`，恢复完整命令集：
+保留工具名 `planning`，恢复运行时配置中的完整命令集：
 
 - `create`
 - `update`
@@ -247,6 +300,19 @@ Planner 在整体任务可进入总结阶段时调用 `finish`。
 
 - `Step2PlanExecuteNode` 主循环结构不变
 - 前端可继续使用现有展示链
+
+### 8.1 PlanningAgent 生命周期说明
+
+`close_update=0` 下，`PlanningAgent` 不是一个持续运行的长生命周期计划状态机，而是被 `Step2PlanExecuteNode` 外层循环按轮次重复驱动的。
+
+具体表现为：
+
+1. 每次 `planning.run(...)` 都是一次独立的 Planner 轮次
+2. 当 `getNextTask()` 成功返回当前任务时，`PlanningAgent` 会将自身状态置为 `FINISHED`
+3. 该 `FINISHED` 仅表示“本轮 planner 决策已完成”，不表示整个用户任务结束
+4. 真正的多轮协作由 `Step2PlanExecuteNode` 负责：`planner -> executor -> planner -> summary`
+
+因此本方案不会把 `PlanningAgent` 直接改造成持续自驱的完整状态机，而是在保留现有外层 orchestration 的前提下，修复每轮 planner 的计划状态一致性。
 
 ## 9. 代码改造范围
 
@@ -309,6 +375,7 @@ Planner 在整体任务可进入总结阶段时调用 `finish`。
 补充 `PlanningTool` 测试，覆盖：
 
 - `create / update / mark_step / finish` 的入参校验
+- 运行时配置 schema 与回退 schema 的装配优先级
 - 非法索引、非法状态、空步骤列表等异常路径
 
 ### 11.3 集成测试
@@ -331,6 +398,7 @@ Planner 在整体任务可进入总结阶段时调用 `finish`。
 5. 不会因空当前步骤导致外层循环 silent loop
 6. 最终仍能正常进入总结阶段并返回结果
 7. 前端展示协议不变
+8. `close_update=1` 的既有顺推用例回归通过
 
 ## 13. 风险与后续演进
 
