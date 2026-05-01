@@ -4,6 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
+
+import java.util.List;
 
 @Data
 @Builder
@@ -21,4 +24,8 @@ public class GptQueryReq {
     private String traceId;
     private String user;
     private String aiAgentId;
+    /**
+     * 当前轮上传附件元数据，供 ReAct / PlanSolve 链路桥接到会话上下文。
+     */
+    private List<FileInformation> sessionFiles;
 }

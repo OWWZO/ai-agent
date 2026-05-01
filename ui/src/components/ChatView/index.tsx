@@ -9,6 +9,7 @@ import {
   combineData,
   getStableTaskIdentity,
 } from "@/utils/chat";
+import { buildAgentStreamRequest } from "@/utils/agentRequest";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -467,17 +468,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       pendingConversation = runningConversation;
     };
 
-    const params = {
+    const params = buildAgentStreamRequest({
       sessionId: baseConversation.sessionId,
       requestId,
-      query: message,
-      deepThink: normalizedDeepThink ? 1 : 0,
+      message,
+      deepThink: normalizedDeepThink,
       outputStyle: currentOutputStyle,
-      filesJson: inputInfo.files?.length ? JSON.stringify(inputInfo.files) : undefined,
-      aiAgentId: currentOutputStyle === "chat"
-        ? inputInfo.aiAgentId || baseConversation.role?.agentId
-        : undefined,
-    };
+      files: inputInfo.files,
+      aiAgentId: inputInfo.aiAgentId,
+      fallbackRoleAgentId: baseConversation.role?.agentId,
+    });
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;
     let taskDataDirty = false;

@@ -230,6 +230,8 @@ public class MultiAgentServiceImpl implements IMultiAgentService {
         request.setSessionId(req.getSessionId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
+        // 当前轮上传附件直接沿用既有 sessionFiles -> productFiles 链路，不重新做文件解析。
+        request.setSessionFiles(req.getSessionFiles());
 
         // 根据前端选择的产品形态 + 深度研究，统一用 AgentType 枚举标识
         // 聊天模式：COMPREHENSIVE -> FixedAgentExecuteStrategy

@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
 @Data
 public class ImageGenerationTool implements BaseTool {
 
+    private static final String MODE_IMAGES = "images";
+    private static final String MODE_EDITS = "edits";
+
     private AgentContext agentContext;
 
     @Override
@@ -45,7 +48,7 @@ public class ImageGenerationTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        String defaultDesc = "这是一个图片生成工具，支持文生图和基于已有图片的图生图，生成后的图片会作为会话产物保存。";
+        String defaultDesc = "这是一个图片生成工具，支持文生图和图生图。用户要求基于当前轮上传图片修改、换风格、扩图时应优先调用它；未显式传 fileNames 时可自动复用当前轮图片。";
         ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
         return StringUtils.isNotBlank(reactorConfig.getImageGenerationToolDesc())
                 ? reactorConfig.getImageGenerationToolDesc()
@@ -64,8 +67,8 @@ public class ImageGenerationTool implements BaseTool {
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("prompt", buildStringParam("图片生成或图片编辑指令，需要写清楚画面主体、风格、构图、质感以及修改要求。"));
-        properties.put("mode", buildEnumParam("生成模式，images 表示文生图，edits 表示图生图。", Arrays.asList("images", "edits")));
-        properties.put("fileNames", buildStringArrayParam("图生图时要使用的参考图片文件名列表，文件必须来自当前会话可用图片。"));
+        properties.put("mode", buildEnumParam("生成模式，images 表示文生图，edits 表示图生图。用户明确要求忽略上传图片时传 images。", Arrays.asList(MODE_IMAGES, MODE_EDITS)));
+        properties.put("fileNames", buildStringArrayParam("图生图时要使用的参考图片文件名列表，文件必须来自当前会话可用图片；未显式传入时可自动复用当前轮上传图片。"));
         properties.put("maskFileNames", buildStringArrayParam("可选遮罩图文件名列表，与 fileNames 按顺序对应，建议使用已标红或涂抹编辑区域的图片。"));
         properties.put("fileName", buildStringParam("输出图片文件名称，可不带后缀；未传时默认使用“图片生成结果”。"));
         properties.put("fileDescription", buildStringParam("输出图片文件描述，用一句中文概括图片内容或用途。"));
@@ -90,7 +93,8 @@ public class ImageGenerationTool implements BaseTool {
 
             String mode = StringUtils.trimToEmpty(valueAsString(params.get("mode")));
             List<String> fileNames = toStringList(params.get("fileNames"));
-            if ("edits".equals(mode) && fileNames.isEmpty()) {
+            // 仅在未显式要求文生图时，才兜底复用当前轮图片，避免误伤明确的 images 模式。
+            if (fileNames.isEmpty() && shouldReuseContextImages(mode)) {
                 fileNames = collectContextImageFileNames();
             }
             List<String> maskFileNames = toStringList(params.get("maskFileNames"));
@@ -241,6 +245,10 @@ public class ImageGenerationTool implements BaseTool {
                 .map(File::getFileName)
                 .filter(this::isImageFileName)
                 .collect(Collectors.toList());
+    }
+
+    private boolean shouldReuseContextImages(String mode) {
+        return StringUtils.isBlank(mode) || MODE_EDITS.equals(mode);
     }
 
     private boolean isImageFileName(String fileName) {
