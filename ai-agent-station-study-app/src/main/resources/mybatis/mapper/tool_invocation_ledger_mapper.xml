@@ -14,7 +14,6 @@
         <result column="tool_provider" property="toolProvider"/>
         <result column="input_json" property="inputJson"/>
         <result column="llm_oberserve" property="llmObservation"/>
-        <result column="output_json" property="outputJson"/>
         <result column="status" property="status"/>
         <result column="error_msg" property="errorMsg"/>
         <result column="started_at" property="startedAt"/>
@@ -39,7 +38,6 @@
         <result column="tool_provider" property="toolProvider"/>
         <result column="input_json" property="inputJson"/>
         <result column="llm_oberserve" property="llmObservation"/>
-        <result column="output_json" property="outputJson"/>
         <result column="status" property="status"/>
         <result column="error_msg" property="errorMsg"/>
         <result column="duration_ms" property="durationMs"/>
@@ -52,11 +50,11 @@
     <insert id="insertToolInvocation" parameterType="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_tool_invocation (
             run_id, llm_invocation_id, tool_call_id, dispatch_index, agent_name, step_no,
-            tool_name, tool_provider, input_json, llm_oberserve, output_json, status, error_msg,
+            tool_name, tool_provider, input_json, llm_oberserve, status, error_msg,
             started_at, finished_at, duration_ms, create_time, update_time, deleted
         ) VALUES (
             #{runId}, #{llmInvocationId}, #{toolCallId}, #{dispatchIndex}, #{agentName}, #{stepNo},
-            #{toolName}, #{toolProvider}, #{inputJson}, #{llmObservation}, #{outputJson}, #{status}, #{errorMsg},
+            #{toolName}, #{toolProvider}, #{inputJson}, #{llmObservation}, #{status}, #{errorMsg},
             #{startedAt}, #{finishedAt}, #{durationMs}, NOW(), NOW(), 0
         )
     </insert>
@@ -65,7 +63,6 @@
         UPDATE ai_agent_tool_invocation
         SET status = #{status},
             llm_oberserve = #{llmObservation},
-            output_json = #{outputJson},
             error_msg = #{errorMsg},
             finished_at = #{finishedAt},
             duration_ms = CASE
@@ -99,7 +96,6 @@
                t.tool_provider,
                t.input_json,
                t.llm_oberserve,
-               t.output_json,
                t.status,
                t.error_msg,
                t.duration_ms,

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
 
 import java.time.LocalDateTime;
 
@@ -18,15 +19,21 @@ public class ToolInvocationFinishRecord {
 
     private Long toolInvocationId;
 
+    private Long runId;
+
     private String requestId;
 
+    private String sessionId;
+
     private String toolCallId;
+
+    private String toolName;
 
     private Integer status;
 
     private String llmObservation;
 
-    private String outputJson;
+    private ToolStructuredOutput structuredOutput;
 
     private String errorMsg;
 

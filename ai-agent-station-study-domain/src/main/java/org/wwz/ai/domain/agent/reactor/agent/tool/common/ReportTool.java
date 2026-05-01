@@ -17,7 +17,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -234,47 +235,31 @@ public class ReportTool implements BaseTool {
                                                   CodeInterpreterResponse codeResponse,
                                                   String result) {
         String normalizedResult = StringUtils.defaultString(result);
-        Map<String, Object> outputData = new LinkedHashMap<>();
-        outputData.put("tool", getName());
-        outputData.put("fileType", codeRequest.getFileType());
-        outputData.put("summary", abbreviate(normalizedResult, 160));
-        outputData.put("data", normalizedResult);
-        outputData.put("fileInfo", toNativeFileInfo(codeResponse == null ? null : codeResponse.getFileInfo()));
         return ToolResultPayload.structured(
                 normalizedResult,
                 normalizedResult,
-                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                ReportToolOutput.builder()
+                        .fileType(codeRequest.getFileType())
+                        .summary(abbreviate(normalizedResult, 160))
+                        .content(normalizedResult)
+                        .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(codeResponse == null ? null : codeResponse.getFileInfo()))
+                        .build()
         );
     }
 
     /**
-     * 失败路径统一写入显式 error JSON，避免 rich tool 落回空 output_json。
+     * 失败路径统一返回最小 typed output，避免 rich tool 落回空结构。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.structured(
+        return ToolResultPayload.failure(
                 message,
                 message,
-                ToolOutputJsonBuilder.buildErrorResult(message, message)
+                ReportToolOutput.builder()
+                        .summary(message)
+                        .content("")
+                        .build(),
+                message
         );
-    }
-
-    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (fileInfo == null) {
-            return result;
-        }
-        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            Map<String, Object> info = new LinkedHashMap<>();
-            info.put("fileName", item.getFileName());
-            info.put("ossUrl", item.getOssUrl());
-            info.put("domainUrl", item.getDomainUrl());
-            info.put("fileSize", item.getFileSize());
-            result.add(info);
-        }
-        return result;
     }
 
     private String abbreviate(String text, int maxLen) {

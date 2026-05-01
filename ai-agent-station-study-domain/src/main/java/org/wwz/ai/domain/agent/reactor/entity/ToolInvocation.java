@@ -48,9 +48,6 @@ public class ToolInvocation {
     /** 主智能体 observation */
     private String llmObservation;
 
-    /** 结构化输出 */
-    private String outputJson;
-
     /** 状态 */
     private Integer status;
 

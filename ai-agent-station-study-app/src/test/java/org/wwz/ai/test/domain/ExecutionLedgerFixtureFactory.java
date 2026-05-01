@@ -16,10 +16,15 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentExecutionRecorderImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.ExecutionLedgerQueryServiceImpl;
+import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
+import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputWriter;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -44,9 +49,11 @@ public final class ExecutionLedgerFixtureFactory {
         InMemoryLlmInvocationLedgerDao llmDao = new InMemoryLlmInvocationLedgerDao(store);
         InMemoryToolInvocationLedgerDao toolDao = new InMemoryToolInvocationLedgerDao(store);
         InMemoryArtifactLedgerDao artifactDao = new InMemoryArtifactLedgerDao(store);
-        AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(runDao, llmDao, toolDao, artifactDao);
-        ExecutionLedgerQueryService queryService = new ExecutionLedgerQueryServiceImpl(runDao, llmDao, toolDao, artifactDao);
-        return new LedgerTestContext(store, recorder, queryService, runDao, llmDao, toolDao, artifactDao);
+        InMemoryToolOutputWriter toolOutputWriter = new InMemoryToolOutputWriter(store);
+        InMemoryToolOutputReader toolOutputReader = new InMemoryToolOutputReader(store);
+        AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(runDao, llmDao, toolDao, artifactDao, toolOutputWriter);
+        ExecutionLedgerQueryService queryService = new ExecutionLedgerQueryServiceImpl(runDao, llmDao, toolDao, artifactDao, toolOutputReader);
+        return new LedgerTestContext(store, recorder, queryService, runDao, llmDao, toolDao, artifactDao, toolOutputWriter, toolOutputReader);
     }
 
     static AgentContext newAgentContext(String requestId, String sessionId, AgentExecutionRecorder recorder) {
@@ -126,6 +133,8 @@ public final class ExecutionLedgerFixtureFactory {
         final ILlmInvocationLedgerDao llmDao;
         final IToolInvocationLedgerDao toolDao;
         final IArtifactLedgerDao artifactDao;
+        final ToolOutputWriter toolOutputWriter;
+        final ToolOutputReader toolOutputReader;
 
         private LedgerTestContext(InMemoryLedgerStore store,
                                   AgentExecutionRecorder recorder,
@@ -133,7 +142,9 @@ public final class ExecutionLedgerFixtureFactory {
                                   IDialogueRunLedgerDao runDao,
                                   ILlmInvocationLedgerDao llmDao,
                                   IToolInvocationLedgerDao toolDao,
-                                  IArtifactLedgerDao artifactDao) {
+                                  IArtifactLedgerDao artifactDao,
+                                  ToolOutputWriter toolOutputWriter,
+                                  ToolOutputReader toolOutputReader) {
             this.store = store;
             this.recorder = recorder;
             this.queryService = queryService;
@@ -141,6 +152,8 @@ public final class ExecutionLedgerFixtureFactory {
             this.llmDao = llmDao;
             this.toolDao = toolDao;
             this.artifactDao = artifactDao;
+            this.toolOutputWriter = toolOutputWriter;
+            this.toolOutputReader = toolOutputReader;
         }
     }
 
@@ -156,6 +169,103 @@ public final class ExecutionLedgerFixtureFactory {
         Map<Long, LlmInvocation> llmInvocations = new LinkedHashMap<>();
         Map<Long, ToolInvocation> toolInvocations = new LinkedHashMap<>();
         Map<Long, ArtifactRecord> artifacts = new LinkedHashMap<>();
+        Map<String, Map<Long, ToolOutputView>> toolOutputsByToolAndInvocationId = new LinkedHashMap<>();
+        Map<String, Map<String, ToolOutputView>> toolOutputsByToolAndDirectKey = new LinkedHashMap<>();
+    }
+
+    static final class InMemoryToolOutputWriter implements ToolOutputWriter {
+        private final InMemoryLedgerStore store;
+
+        private InMemoryToolOutputWriter(InMemoryLedgerStore store) {
+            this.store = store;
+        }
+
+        @Override
+        public void write(ToolOutputPersistCommand command) {
+            if (command == null || command.getStructuredOutput() == null) {
+                return;
+            }
+            String toolName = resolveToolName(command);
+            if (isBlank(toolName) || isBlank(command.getRequestId()) || isBlank(command.getToolCallId())) {
+                return;
+            }
+            String directKey = buildDirectKey(command.getRequestId(), command.getToolCallId());
+            Map<String, ToolOutputView> directOutputs = store.toolOutputsByToolAndDirectKey
+                    .computeIfAbsent(toolName, key -> new LinkedHashMap<>());
+            if (command.getToolInvocationId() != null) {
+                Map<Long, ToolOutputView> invocationOutputs = store.toolOutputsByToolAndInvocationId
+                        .computeIfAbsent(toolName, key -> new LinkedHashMap<>());
+                if (invocationOutputs.containsKey(command.getToolInvocationId())) {
+                    return;
+                }
+            }
+            if (directOutputs.containsKey(directKey)) {
+                return;
+            }
+            ToolOutputView view = ToolOutputView.builder()
+                    .toolName(toolName)
+                    .requestId(command.getRequestId())
+                    .sessionId(command.getSessionId())
+                    .toolCallId(command.getToolCallId())
+                    .status(command.getStatus())
+                    .errorMsg(command.getErrorMsg())
+                    .structuredOutput(command.getStructuredOutput())
+                    .build();
+            if (command.getToolInvocationId() != null) {
+                store.toolOutputsByToolAndInvocationId
+                        .computeIfAbsent(toolName, key -> new LinkedHashMap<>())
+                        .put(command.getToolInvocationId(), cloneOutputView(view));
+            }
+            directOutputs.put(directKey, cloneOutputView(view));
+        }
+
+        private String resolveToolName(ToolOutputPersistCommand command) {
+            if (command.getToolName() != null && !command.getToolName().isBlank()) {
+                return command.getToolName();
+            }
+            return command.getStructuredOutput() == null ? null : command.getStructuredOutput().getToolName();
+        }
+    }
+
+    static final class InMemoryToolOutputReader implements ToolOutputReader {
+        private final InMemoryLedgerStore store;
+
+        private InMemoryToolOutputReader(InMemoryLedgerStore store) {
+            this.store = store;
+        }
+
+        @Override
+        public java.util.Optional<ToolStructuredOutput> readByInvocationId(String toolName, Long toolInvocationId) {
+            if (isBlank(toolName) || toolInvocationId == null) {
+                return java.util.Optional.empty();
+            }
+            Map<Long, ToolOutputView> outputs = store.toolOutputsByToolAndInvocationId.get(toolName);
+            ToolOutputView view = outputs == null ? null : outputs.get(toolInvocationId);
+            return java.util.Optional.ofNullable(view == null ? null : view.getStructuredOutput());
+        }
+
+        @Override
+        public java.util.Optional<ToolOutputView> readDirect(String requestId, String toolCallId) {
+            if (isBlank(requestId) || isBlank(toolCallId)) {
+                return java.util.Optional.empty();
+            }
+            String directKey = buildDirectKey(requestId, toolCallId);
+            List<ToolOutputView> matches = new ArrayList<>();
+            for (Map<String, ToolOutputView> outputs : store.toolOutputsByToolAndDirectKey.values()) {
+                if (outputs == null) {
+                    continue;
+                }
+                ToolOutputView view = outputs.get(directKey);
+                if (view != null) {
+                    matches.add(cloneOutputView(view));
+                }
+            }
+            // direct lookup 命中多张输出表时视为冲突，不返回歧义结果。
+            if (matches.size() != 1) {
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.of(matches.get(0));
+        }
     }
 
     static final class InMemoryDialogueRunLedgerDao implements IDialogueRunLedgerDao {
@@ -316,7 +426,6 @@ public final class ExecutionLedgerFixtureFactory {
             }
             existing.setStatus(invocation.getStatus());
             existing.setLlmObservation(invocation.getLlmObservation());
-            existing.setOutputJson(invocation.getOutputJson());
             existing.setErrorMsg(invocation.getErrorMsg());
             existing.setFinishedAt(invocation.getFinishedAt());
             existing.setDurationMs(duration(existing.getStartedAt(), invocation.getFinishedAt()));
@@ -361,7 +470,6 @@ public final class ExecutionLedgerFixtureFactory {
                                 .toolProvider(item.getToolProvider())
                                 .inputJson(item.getInputJson())
                                 .llmObservation(item.getLlmObservation())
-                                .outputJson(item.getOutputJson())
                                 .status(item.getStatus())
                                 .errorMsg(item.getErrorMsg())
                                 .durationMs(item.getDurationMs())
@@ -506,7 +614,6 @@ public final class ExecutionLedgerFixtureFactory {
                 .toolProvider(invocation.getToolProvider())
                 .inputJson(invocation.getInputJson())
                 .llmObservation(invocation.getLlmObservation())
-                .outputJson(invocation.getOutputJson())
                 .status(invocation.getStatus())
                 .errorMsg(invocation.getErrorMsg())
                 .startedAt(invocation.getStartedAt())
@@ -540,6 +647,29 @@ public final class ExecutionLedgerFixtureFactory {
                 .updateTime(artifact.getUpdateTime())
                 .deleted(artifact.getDeleted())
                 .build();
+    }
+
+    private static ToolOutputView cloneOutputView(ToolOutputView view) {
+        if (view == null) {
+            return null;
+        }
+        return ToolOutputView.builder()
+                .toolName(view.getToolName())
+                .requestId(view.getRequestId())
+                .sessionId(view.getSessionId())
+                .toolCallId(view.getToolCallId())
+                .status(view.getStatus())
+                .errorMsg(view.getErrorMsg())
+                .structuredOutput(view.getStructuredOutput())
+                .build();
+    }
+
+    private static String buildDirectKey(String requestId, String toolCallId) {
+        return String.valueOf(requestId) + "||" + String.valueOf(toolCallId);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static DialogueRunView toRunView(DialogueRun run) {

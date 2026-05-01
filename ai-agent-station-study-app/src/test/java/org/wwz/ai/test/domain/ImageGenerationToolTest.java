@@ -17,6 +17,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -26,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * image_generation_tool 原生 output_json 回归。
+ * image_generation_tool typed output 回归。
  */
 public class ImageGenerationToolTest {
 
@@ -73,11 +74,12 @@ public class ImageGenerationToolTest {
                 context.clearCurrentToolArtifactSource();
             }
 
+            ImageGenerationToolOutput structuredOutput = (ImageGenerationToolOutput) payload.getStructuredOutput();
             Assert.assertTrue(payload.getToolResult().contains("poster.png"));
-            Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
-            Assert.assertTrue(payload.getOutputJson().contains("\"prompt\":\"生成活动海报\""));
-            Assert.assertTrue(payload.getOutputJson().contains("\"summary\""));
-            Assert.assertTrue(payload.getOutputJson().contains("\"fileInfo\""));
+            Assert.assertNotNull(structuredOutput);
+            Assert.assertFalse(payload.getFailed());
+            Assert.assertEquals("生成活动海报", structuredOutput.getPrompt());
+            Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
             Assert.assertEquals(List.of("file"), printer.messageTypes());
             Assert.assertEquals(1, context.getTaskProductFiles().size());
             Assert.assertEquals("poster.png", context.getTaskProductFiles().get(0).getFileName());

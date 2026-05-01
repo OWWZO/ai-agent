@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
 
 import java.time.LocalDateTime;
 
@@ -42,7 +43,10 @@ public class ToolInvocationView {
 
     private String llmObservation;
 
-    private String outputJson;
+    /**
+     * rich tool 强类型输出。
+     */
+    private ToolStructuredOutput structuredOutput;
 
     private Integer status;
 

@@ -50,8 +50,7 @@ public class ToolLlmObservationRuntimeTest {
         Assert.assertNotNull(detail);
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(llmObservation, readObservation(detail.getToolInvocations().get(0)));
-        Assert.assertNotNull(detail.getToolInvocations().get(0).getOutputJson());
-        Assert.assertTrue(detail.getToolInvocations().get(0).getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertNull(detail.getToolInvocations().get(0).getStructuredOutput());
     }
 
     @Test
@@ -84,8 +83,7 @@ public class ToolLlmObservationRuntimeTest {
         Assert.assertNotNull(detail);
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(results.get("tool-call-batch-001"), readObservation(detail.getToolInvocations().get(0)));
-        Assert.assertNotNull(detail.getToolInvocations().get(0).getOutputJson());
-        Assert.assertTrue(detail.getToolInvocations().get(0).getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertNull(detail.getToolInvocations().get(0).getStructuredOutput());
     }
 
     private String readObservation(ToolInvocationView view) {

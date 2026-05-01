@@ -16,7 +16,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -312,27 +313,26 @@ public class ImageGenerationTool implements BaseTool {
     private ToolResultPayload buildSuccessPayload(CodeInterpreterResponse response,
                                                   ImageGenerationRequest requestPayload) {
         String summary = normalizeSummary(response);
-        Map<String, Object> outputData = new LinkedHashMap<>();
-        outputData.put("tool", getName());
-        outputData.put("prompt", requestPayload.getPrompt());
-        outputData.put("mode", requestPayload.getMode());
-        outputData.put("summary", summary);
-        outputData.put("fileInfo", toNativeFileInfo(response == null ? null : response.getFileInfo()));
-        return ToolResultPayload.structured(
-                summary,
-                summary,
-                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
-        );
+        ImageGenerationToolOutput structuredOutput = ImageGenerationToolOutput.builder()
+                .prompt(requestPayload.getPrompt())
+                .mode(requestPayload.getMode())
+                .summary(summary)
+                .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(response == null ? null : response.getFileInfo()))
+                .build();
+        return ToolResultPayload.structured(summary, summary, structuredOutput);
     }
 
     /**
-     * 图片生成失败时返回显式 error JSON，避免 rich tool 退化成纯字符串。
+     * 图片生成失败时返回最小 typed output，避免 rich tool 退化成纯字符串。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.structured(
+        return ToolResultPayload.failure(
                 message,
                 message,
-                ToolOutputJsonBuilder.buildErrorResult(message, message)
+                ImageGenerationToolOutput.builder()
+                        .summary(message)
+                        .build(),
+                message
         );
     }
 
@@ -348,25 +348,6 @@ public class ImageGenerationTool implements BaseTool {
             }
         }
         return StringUtils.defaultIfBlank(summary, "image_generation_tool 执行完成");
-    }
-
-    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (fileInfo == null) {
-            return result;
-        }
-        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            Map<String, Object> info = new LinkedHashMap<>();
-            info.put("fileName", item.getFileName());
-            info.put("ossUrl", item.getOssUrl());
-            info.put("domainUrl", item.getDomainUrl());
-            info.put("fileSize", item.getFileSize());
-            result.add(info);
-        }
-        return result;
     }
 
     private Map<String, Object> buildStringParam(String description) {

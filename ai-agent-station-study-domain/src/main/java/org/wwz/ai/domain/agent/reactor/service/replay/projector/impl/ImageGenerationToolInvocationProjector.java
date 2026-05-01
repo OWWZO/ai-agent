@@ -1,11 +1,11 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,9 +26,11 @@ public class ImageGenerationToolInvocationProjector extends AbstractToolInvocati
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
+        ImageGenerationToolOutput output = invocation != null && invocation.getStructuredOutput() instanceof ImageGenerationToolOutput structuredOutput
+                ? structuredOutput
+                : null;
         List<ProjectedReplayEvent> events = new ArrayList<>();
-        List<Map<String, Object>> mergedFileInfo = mergeFileInfo(root.path("fileInfo"), artifacts);
+        List<Map<String, Object>> mergedFileInfo = mergeFileRefs(output == null ? null : output.getFileRefs(), artifacts);
 
         if (!mergedFileInfo.isEmpty()) {
             Map<String, Object> fileResult = new LinkedHashMap<>();
@@ -43,7 +45,7 @@ public class ImageGenerationToolInvocationProjector extends AbstractToolInvocati
             ));
         }
 
-        String summary = root.path("summary").asText("");
+        String summary = output == null ? "" : StringUtils.defaultString(output.getSummary());
         if (StringUtils.isBlank(summary) && invocation != null) {
             summary = StringUtils.defaultString(invocation.getLlmObservation());
         }

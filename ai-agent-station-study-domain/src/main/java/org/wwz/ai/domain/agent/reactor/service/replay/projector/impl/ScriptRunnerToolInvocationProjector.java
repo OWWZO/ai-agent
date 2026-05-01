@@ -1,11 +1,11 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ScriptRunnerToolOutput;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,11 +25,13 @@ public class ScriptRunnerToolInvocationProjector extends AbstractToolInvocationP
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
+        ScriptRunnerToolOutput output = invocation != null && invocation.getStructuredOutput() instanceof ScriptRunnerToolOutput structuredOutput
+                ? structuredOutput
+                : null;
         Map<String, Object> toolResult = new LinkedHashMap<>();
         toolResult.put("toolName", invocation == null ? null : invocation.getToolName());
         toolResult.put("toolParam", invocation == null ? Map.of() : readMap(invocation.getInputJson()));
-        toolResult.put("toolResult", buildDisplayText(root, artifacts));
+        toolResult.put("toolResult", buildDisplayText(output, artifacts));
 
         return List.of(buildTaskEvent(
                 state,
@@ -40,19 +42,19 @@ public class ScriptRunnerToolInvocationProjector extends AbstractToolInvocationP
         ));
     }
 
-    private String buildDisplayText(JsonNode root, List<ArtifactView> artifacts) {
+    private String buildDisplayText(ScriptRunnerToolOutput output, List<ArtifactView> artifacts) {
         StringBuilder result = new StringBuilder();
-        result.append("技能：").append(root.path("skillName").asText("")).append("\n");
-        result.append("脚本：").append(root.path("scriptName").asText("")).append("\n");
-        result.append("运行时：").append(root.path("runtime").asText("")).append("\n");
-        result.append("是否成功：").append(root.path("success").asBoolean(false)).append("\n");
-        result.append("退出码：").append(root.path("exitCode").asInt(-1)).append("\n");
-        result.append("摘要：").append(root.path("summary").asText("")).append("\n");
-        result.append("stdout:\n").append(root.path("stdout").asText("")).append("\n");
-        result.append("stderr:\n").append(root.path("stderr").asText("")).append("\n");
+        result.append("技能：").append(output == null ? "" : StringUtils.defaultString(output.getSkillName())).append("\n");
+        result.append("脚本：").append(output == null ? "" : StringUtils.defaultString(output.getScriptName())).append("\n");
+        result.append("运行时：").append(output == null ? "" : StringUtils.defaultString(output.getRuntime())).append("\n");
+        result.append("是否成功：").append(output != null && Boolean.TRUE.equals(output.getSuccess())).append("\n");
+        result.append("退出码：").append(output == null || output.getExitCode() == null ? -1 : output.getExitCode()).append("\n");
+        result.append("摘要：").append(output == null ? "" : StringUtils.defaultString(output.getSummary())).append("\n");
+        result.append("stdout:\n").append(output == null ? "" : StringUtils.defaultString(output.getStdout())).append("\n");
+        result.append("stderr:\n").append(output == null ? "" : StringUtils.defaultString(output.getStderr())).append("\n");
         result.append("产出文件：\n");
 
-        List<Map<String, Object>> fileInfo = mergeFileInfo(root.path("fileInfo"), artifacts);
+        List<Map<String, Object>> fileInfo = mergeFileRefs(output == null ? null : output.getFileRefs(), artifacts);
         if (fileInfo.isEmpty()) {
             result.append("- （无）\n");
         } else {

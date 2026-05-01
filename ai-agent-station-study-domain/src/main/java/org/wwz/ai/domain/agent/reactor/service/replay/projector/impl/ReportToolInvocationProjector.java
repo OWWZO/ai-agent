@@ -1,11 +1,11 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,9 +25,11 @@ public class ReportToolInvocationProjector extends AbstractToolInvocationProject
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
-        String logicalType = normalizeFileType(root.path("fileType").asText());
-        String data = root.path("data").asText("");
+        ReportToolOutput output = invocation != null && invocation.getStructuredOutput() instanceof ReportToolOutput structuredOutput
+                ? structuredOutput
+                : null;
+        String logicalType = normalizeFileType(output == null ? null : output.getFileType());
+        String data = output == null ? "" : StringUtils.defaultString(output.getContent());
         if (StringUtils.isBlank(data) && invocation != null) {
             data = StringUtils.defaultString(invocation.getLlmObservation());
         }
@@ -36,7 +38,7 @@ public class ReportToolInvocationProjector extends AbstractToolInvocationProject
         resultMap.put("isFinal", true);
         resultMap.put("data", data);
         resultMap.put("codeOutput", data);
-        resultMap.put("fileInfo", mergeFileInfo(root.path("fileInfo"), artifacts));
+        resultMap.put("fileInfo", mergeFileRefs(output == null ? null : output.getFileRefs(), artifacts));
 
         return List.of(buildTaskEvent(
                 state,

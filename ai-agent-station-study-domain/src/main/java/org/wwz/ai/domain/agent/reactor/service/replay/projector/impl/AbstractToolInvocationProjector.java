@@ -1,7 +1,5 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -9,6 +7,7 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjector;
 
 import java.time.ZoneId;
@@ -24,24 +23,15 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    protected JsonNode readJson(String text) {
-        if (StringUtils.isBlank(text)) {
-            return MAPPER.createObjectNode();
-        }
-        try {
-            return MAPPER.readTree(text);
-        } catch (Exception e) {
-            return MAPPER.createObjectNode();
-        }
-    }
-
     protected Map<String, Object> readMap(String text) {
         if (StringUtils.isBlank(text)) {
             return new LinkedHashMap<>();
         }
         try {
-            return MAPPER.readValue(text, new TypeReference<LinkedHashMap<String, Object>>() {
-            });
+            return MAPPER.readValue(
+                    text,
+                    MAPPER.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class)
+            );
         } catch (Exception e) {
             return new LinkedHashMap<>();
         }
@@ -70,30 +60,16 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
     }
 
     /**
-     * 将 output_json 里的逻辑 fileInfo 与 artifact 账本中的稳定链接进行合并。
+     * 将 typed output 里的逻辑 fileRefs 与 artifact 账本中的稳定链接进行合并。
      */
-    protected List<Map<String, Object>> mergeFileInfo(JsonNode fileInfoNode, List<ArtifactView> artifacts) {
+    protected List<Map<String, Object>> mergeFileRefs(List<ToolFileRef> fileRefs, List<ArtifactView> artifacts) {
         List<Map<String, Object>> merged = new ArrayList<>();
-        if (fileInfoNode != null && fileInfoNode.isArray()) {
-            for (JsonNode item : fileInfoNode) {
-                Map<String, Object> info = new LinkedHashMap<>();
-                info.put("fileName", item.path("fileName").asText(""));
-                if (StringUtils.isNotBlank(item.path("ossUrl").asText())) {
-                    info.put("ossUrl", item.path("ossUrl").asText());
+        if (CollectionUtils.isNotEmpty(fileRefs)) {
+            for (ToolFileRef fileRef : fileRefs) {
+                if (fileRef == null) {
+                    continue;
                 }
-                if (StringUtils.isNotBlank(item.path("domainUrl").asText())) {
-                    info.put("domainUrl", item.path("domainUrl").asText());
-                }
-                if (StringUtils.isNotBlank(item.path("downloadUrl").asText())) {
-                    info.put("downloadUrl", item.path("downloadUrl").asText());
-                }
-                if (StringUtils.isNotBlank(item.path("previewUrl").asText())) {
-                    info.put("previewUrl", item.path("previewUrl").asText());
-                }
-                if (!item.path("fileSize").isMissingNode() && !item.path("fileSize").isNull()) {
-                    info.put("fileSize", item.path("fileSize").asLong());
-                }
-                merged.add(info);
+                merged.add(toToolFileInfo(fileRef));
             }
         }
 
@@ -207,6 +183,27 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         info.put("domainUrl", artifact.getPreviewUrl());
         if (artifact.getFileSize() != null) {
             info.put("fileSize", artifact.getFileSize());
+        }
+        return info;
+    }
+
+    private Map<String, Object> toToolFileInfo(ToolFileRef fileRef) {
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("fileName", StringUtils.defaultString(fileRef.getFileName()));
+        if (StringUtils.isNotBlank(fileRef.getDownloadUrl())) {
+            info.put("downloadUrl", fileRef.getDownloadUrl());
+        }
+        if (StringUtils.isNotBlank(fileRef.getPreviewUrl())) {
+            info.put("previewUrl", fileRef.getPreviewUrl());
+        }
+        if (StringUtils.isNotBlank(fileRef.getOssUrl())) {
+            info.put("ossUrl", fileRef.getOssUrl());
+        }
+        if (StringUtils.isNotBlank(fileRef.getDomainUrl())) {
+            info.put("domainUrl", fileRef.getDomainUrl());
+        }
+        if (fileRef.getFileSize() != null) {
+            info.put("fileSize", fileRef.getFileSize());
         }
         return info;
     }

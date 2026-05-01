@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
@@ -25,15 +24,7 @@ public class DefaultToolInvocationProjector extends AbstractToolInvocationProjec
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
-        String resultType = root.path("resultType").asText();
-        String text = root.path("data").path("text").asText("");
-        if ("error".equals(resultType)) {
-            text = root.path("data").path("message").asText(text);
-        }
-        if (StringUtils.isBlank(text) && invocation != null) {
-            text = StringUtils.defaultIfBlank(invocation.getLlmObservation(), invocation.getErrorMsg());
-        }
+        String text = invocation == null ? "" : StringUtils.defaultIfBlank(invocation.getLlmObservation(), invocation.getErrorMsg());
 
         Map<String, Object> toolResult = new LinkedHashMap<>();
         toolResult.put("toolName", invocation == null ? null : invocation.getToolName());

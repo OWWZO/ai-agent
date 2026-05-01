@@ -9,6 +9,10 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchDoc;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchQueryResult;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchStage;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,7 +24,7 @@ import java.util.Set;
 
 /**
  * deep_search 结构化结果构建器。
- * 负责把流式三阶段事件归并成完整 JSON 字符串。
+ * 负责把流式三阶段事件归并成 typed output，并生成主智能体需要的紧凑 observation。
  */
 public class DeepSearchStructuredResultBuilder {
 
@@ -90,21 +94,21 @@ public class DeepSearchStructuredResultBuilder {
      */
     public String buildJson(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
-        DeepSearchStructuredOutput output = buildOutput(normalizedAnswer);
+        DeepSearchToolOutput output = buildOutput(normalizedAnswer);
         return JSON.toJSONString(output);
     }
 
     /**
-     * 同时产出结构化 output_json 与主智能体消费的紧凑 observation。
+     * 同时产出强类型输出与主智能体消费的紧凑 observation。
      */
     public ToolResultPayload buildPayload(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
-        DeepSearchStructuredOutput output = buildOutput(normalizedAnswer);
-        String outputJson = JSON.toJSONString(output);
+        DeepSearchToolOutput output = buildOutput(normalizedAnswer);
         return ToolResultPayload.builder()
-                .toolResult(outputJson)
+                .toolResult(normalizedAnswer)
                 .llmObservation(buildLlmObservation(normalizedAnswer))
-                .outputJson(outputJson)
+                .structuredOutput(output)
+                .failed(Boolean.FALSE)
                 .build();
     }
 
@@ -176,10 +180,10 @@ public class DeepSearchStructuredResultBuilder {
         finalAnswer = finalAnswer + answerChunk;
     }
 
-    private DeepSearchStructuredOutput buildOutput(String normalizedAnswer) {
-        List<DeepSearchStageOutput> stages = new ArrayList<>();
+    private DeepSearchToolOutput buildOutput(String normalizedAnswer) {
+        List<DeepSearchStage> stages = new ArrayList<>();
         if (!decomposedQueries.isEmpty()) {
-            stages.add(DeepSearchStageOutput.builder()
+            stages.add(DeepSearchStage.builder()
                     .stage("extend")
                     .queries(new ArrayList<>(decomposedQueries))
                     .build());
@@ -189,24 +193,23 @@ public class DeepSearchStructuredResultBuilder {
             for (Map.Entry<String, List<DeepSearchrResponse.SearchDoc>> entry : searchResults.entrySet()) {
                 results.add(DeepSearchQueryResult.builder()
                         .query(entry.getKey())
-                        .docs(new ArrayList<>(entry.getValue()))
+                        .docs(toDocs(entry.getValue()))
                         .build());
             }
-            stages.add(DeepSearchStageOutput.builder()
+            stages.add(DeepSearchStage.builder()
                     .stage("search")
                     .results(results)
                     .build());
         }
         if (StringUtils.isNotBlank(normalizedAnswer)) {
-            stages.add(DeepSearchStageOutput.builder()
+            stages.add(DeepSearchStage.builder()
                     .stage("report")
                     .answer(normalizedAnswer)
                     .build());
         }
-        return DeepSearchStructuredOutput.builder()
-                .schemaVersion(1)
-                .tool("deep_search")
+        return DeepSearchToolOutput.builder()
                 .query(query)
+                .answerSummary(normalizedAnswer)
                 .stages(stages)
                 .build();
     }
@@ -226,6 +229,24 @@ public class DeepSearchStructuredResultBuilder {
                 .title(doc.getTitle())
                 .link(doc.getLink())
                 .build();
+    }
+
+    private List<DeepSearchDoc> toDocs(List<DeepSearchrResponse.SearchDoc> rawDocs) {
+        List<DeepSearchDoc> docs = new ArrayList<>();
+        if (rawDocs == null) {
+            return docs;
+        }
+        for (DeepSearchrResponse.SearchDoc rawDoc : rawDocs) {
+            if (rawDoc == null) {
+                continue;
+            }
+            docs.add(DeepSearchDoc.builder()
+                    .title(StringUtils.defaultString(rawDoc.getTitle()))
+                    .link(StringUtils.defaultString(rawDoc.getLink()))
+                    .summary(StringUtils.defaultString(rawDoc.getContent()))
+                    .build());
+        }
+        return docs;
     }
 
     private List<DeepSearchObservationQueryResult> buildObservationResults() {
@@ -261,37 +282,6 @@ public class DeepSearchStructuredResultBuilder {
             return normalized;
         }
         return normalized.substring(0, maxLen) + "...";
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DeepSearchStructuredOutput {
-        private Integer schemaVersion;
-        private String tool;
-        private String query;
-        private List<DeepSearchStageOutput> stages;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DeepSearchStageOutput {
-        private String stage;
-        private List<String> queries;
-        private List<DeepSearchQueryResult> results;
-        private String answer;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DeepSearchQueryResult {
-        private String query;
-        private List<DeepSearchrResponse.SearchDoc> docs;
     }
 
     @Data

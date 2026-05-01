@@ -17,6 +17,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -78,12 +79,13 @@ public class MultiModalAgentToolTest {
             }
 
             String result = payload.getToolResult();
+            MultimodalAgentToolOutput structuredOutput = (MultimodalAgentToolOutput) payload.getStructuredOutput();
             Assert.assertTrue(result.contains("多模态检索会先召回图文片段。"));
             Assert.assertTrue(result.contains("![图片](https://img.example.com/mrag.png)"));
-            Assert.assertNotNull(payload.getOutputJson());
-            Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
-            Assert.assertTrue(payload.getOutputJson().contains("\"markdown\""));
-            Assert.assertTrue(payload.getOutputJson().contains("\"summary\""));
+            Assert.assertNotNull(structuredOutput);
+            Assert.assertFalse(payload.getFailed());
+            Assert.assertTrue(structuredOutput.getMarkdownContent().contains("![图片]"));
+            Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
             Assert.assertEquals("markdown", printer.messageTypes().get(printer.messageTypes().size() - 1));
             Assert.assertEquals(
                     List.of("knowledge"),
@@ -122,7 +124,7 @@ public class MultiModalAgentToolTest {
                     """));
 
             Assert.assertEquals("multimodalagent_tool 执行失败：question 不能为空。", payload.getToolResult());
-            Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
+            Assert.assertTrue(payload.getFailed());
         } finally {
             ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }

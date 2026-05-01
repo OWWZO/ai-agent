@@ -12,6 +12,11 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -83,11 +88,23 @@ public class AgentExecutionLedgerRepositoryTest {
         Long toolInvocationId = toolInvocationIds.get("tool-call-001");
         ctx.recorder.finishToolInvocation(ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolInvocationId)
+                .runId(runId)
                 .requestId("req-ledger-001")
+                .sessionId("session-ledger-001")
                 .toolCallId("tool-call-001")
+                .toolName("file_tool")
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
                 .llmObservation("生成 report.md")
-                .outputJson("{\"file\":\"report.md\"}")
+                .structuredOutput(FileToolOutput.builder()
+                        .command("upload")
+                        .primaryFileName("report.md")
+                        .fileRefs(List.of(ToolFileRef.builder()
+                                .fileName("report.md")
+                                .ossUrl("oss://report.md")
+                                .downloadUrl("oss://report.md")
+                                .previewUrl("oss://report.md")
+                                .build()))
+                        .build())
                 .finishedAt(now.plusSeconds(3))
                 .build());
 
@@ -143,6 +160,7 @@ public class AgentExecutionLedgerRepositoryTest {
         List<ArtifactRecord> artifacts = ctx.artifactDao.queryByRunId(runId);
         Assert.assertEquals(1, artifacts.size());
         Assert.assertEquals(Long.valueOf(toolInvocationId), artifacts.get(0).getToolInvocationId());
+        Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", toolInvocationId).isPresent());
     }
 
     @Test
@@ -188,5 +206,28 @@ public class AgentExecutionLedgerRepositoryTest {
         Assert.assertEquals(1, artifacts.size());
         Assert.assertNull(artifacts.get(0).getToolInvocationId());
         Assert.assertEquals(ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT, artifacts.get(0).getArtifactRole());
+    }
+
+    @Test
+    public void shouldPersistDirectToolOutputWithoutLedgerRun() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
+                .requestId("req-direct-ledger-001")
+                .toolCallId("tool-call-direct-ledger-001")
+                .toolName("report_tool")
+                .status(ExecutionLedgerConstants.STATUS_FAILED)
+                .errorMsg("direct timeout")
+                .structuredOutput(ReportToolOutput.builder()
+                        .summary("direct timeout")
+                        .content("")
+                        .build())
+                .build());
+
+        Assert.assertNull(ctx.runDao.queryByRequestId("req-direct-ledger-001"));
+        ToolOutputView direct = ctx.toolOutputReader.readDirect("req-direct-ledger-001", "tool-call-direct-ledger-001")
+                .orElseThrow();
+        Assert.assertEquals("report_tool", direct.getToolName());
+        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), direct.getStatus());
+        Assert.assertEquals("direct timeout", direct.getErrorMsg());
     }
 }

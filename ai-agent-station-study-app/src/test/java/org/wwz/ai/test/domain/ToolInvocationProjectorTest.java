@@ -6,6 +6,14 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchDoc;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchQueryResult;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchStage;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.CodeInterpreterToolInvocationProjector;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DataAnalysisToolInvocationProjector;
@@ -22,7 +30,7 @@ import java.util.Map;
 
 /**
  * Tool invocation projector 契约测试。
- * 验证历史 replay 会按 tool_name + output_json 分发，而不是直接复用前端 payload。
+ * 验证历史 replay 会按 tool_name + structuredOutput 分发，而不是直接复用前端 payload。
  */
 public class ToolInvocationProjectorTest {
 
@@ -46,9 +54,7 @@ public class ToolInvocationProjectorTest {
         ToolInvocationView invocation = ToolInvocationView.builder()
                 .toolCallId("tool-call-read-001")
                 .toolName("read_tool")
-                .outputJson("""
-                        {"schemaVersion":1,"resultType":"plain_text","data":{"text":"hello"}}
-                        """)
+                .llmObservation("hello")
                 .build();
 
         List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());
@@ -65,9 +71,12 @@ public class ToolInvocationProjectorTest {
                 .toolCallId("tool-call-file-001")
                 .toolName("file_tool")
                 .inputJson("{\"command\":\"get\",\"fileName\":\"风险日报.md\"}")
-                .outputJson("""
-                        {"schemaVersion":1,"command":"get","contentStorageMode":"artifact_only","fileInfo":[{"fileName":"风险日报.md"}]}
-                        """)
+                .structuredOutput(FileToolOutput.builder()
+                        .command("get")
+                        .primaryFileName("风险日报.md")
+                        .contentStorageMode("artifact_only")
+                        .fileRefs(List.of(ToolFileRef.builder().fileName("风险日报.md").build()))
+                        .build())
                 .build();
         ArtifactView artifact = ArtifactView.builder()
                 .toolInvocationId(11L)
@@ -93,17 +102,29 @@ public class ToolInvocationProjectorTest {
                 .toolCallId("tool-call-search-001")
                 .toolName("deep_search")
                 .inputJson("{\"query\":\"本周项目风险\"}")
-                .outputJson("""
-                        {
-                          "schemaVersion": 1,
-                          "query": "本周项目风险",
-                          "stages": [
-                            {"stage":"extend","queries":["项目排期风险"]},
-                            {"stage":"search","results":[{"query":"项目排期风险","docs":[{"title":"风险日报","link":"https://example.com/risk"}]}]},
-                            {"stage":"report","answer":"本周主要风险有..."}
-                          ]
-                        }
-                        """)
+                .structuredOutput(DeepSearchToolOutput.builder()
+                        .query("本周项目风险")
+                        .stages(List.of(
+                                DeepSearchStage.builder()
+                                        .stage("extend")
+                                        .queries(List.of("项目排期风险"))
+                                        .build(),
+                                DeepSearchStage.builder()
+                                        .stage("search")
+                                        .results(List.of(DeepSearchQueryResult.builder()
+                                                .query("项目排期风险")
+                                                .docs(List.of(DeepSearchDoc.builder()
+                                                        .title("风险日报")
+                                                        .link("https://example.com/risk")
+                                                        .build()))
+                                                .build()))
+                                        .build(),
+                                DeepSearchStage.builder()
+                                        .stage("report")
+                                        .answer("本周主要风险有...")
+                                        .build()
+                        ))
+                        .build())
                 .build();
 
         List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());
@@ -122,14 +143,11 @@ public class ToolInvocationProjectorTest {
                 .toolCallId("tool-call-image-001")
                 .toolName("image_generation_tool")
                 .inputJson("{\"prompt\":\"生成一张海报\"}")
-                .outputJson("""
-                        {
-                          "schemaVersion": 1,
-                          "prompt": "生成一张海报",
-                          "summary": "已生成图片文件：poster.png",
-                          "fileInfo": [{"fileName":"poster.png"}]
-                        }
-                        """)
+                .structuredOutput(ImageGenerationToolOutput.builder()
+                        .prompt("生成一张海报")
+                        .summary("已生成图片文件：poster.png")
+                        .fileRefs(List.of(ToolFileRef.builder().fileName("poster.png").build()))
+                        .build())
                 .build();
         ArtifactView artifact = ArtifactView.builder()
                 .toolInvocationId(22L)
@@ -154,13 +172,10 @@ public class ToolInvocationProjectorTest {
         ToolInvocationView invocation = ToolInvocationView.builder()
                 .toolCallId("tool-call-multi-001")
                 .toolName("multimodalagent_tool")
-                .outputJson("""
-                        {
-                          "schemaVersion": 1,
-                          "summary": "多模态检索摘要",
-                          "markdown": "# 结论\\n多模态检索结果"
-                        }
-                        """)
+                .structuredOutput(MultimodalAgentToolOutput.builder()
+                        .summary("多模态检索摘要")
+                        .markdownContent("# 结论\n多模态检索结果")
+                        .build())
                 .build();
 
         List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());

@@ -16,7 +16,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.io.IOException;
 import java.util.*;
@@ -79,9 +80,10 @@ public class FileTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
+        String command = "";
         try {
             Map<String, Object> params = (Map<String, Object>) input;
-            String command = (String) params.getOrDefault("command", "");
+            command = (String) params.getOrDefault("command", "");
             FileRequest fileRequest = JSON.parseObject(JSON.toJSONString(input), FileRequest.class);
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             fileRequest.setRequestId(agentContext.getRequestId());
@@ -92,8 +94,9 @@ public class FileTool implements BaseTool {
             }
         } catch (Exception e) {
             log.error("{} file tool error, input:{}", agentContext.getRequestId(), JSON.toJSONString(input), e);
+            return buildFailurePayload(command, null, "file_tool 执行失败：" + e.getMessage());
         }
-        return null;
+        return buildFailurePayload(command, null, "file_tool 执行失败：不支持的 command。");
     }
 
     // 上传文件的 API 请求方法
@@ -157,7 +160,7 @@ public class FileTool implements BaseTool {
             String errorMessage = "上传文件失败 文件名为空";
 
             log.error("{} {}", agentContext.getRequestId(), errorMessage);
-            return ToolResultPayload.text(errorMessage);
+            return buildFailurePayload("upload", fileRequest.getFileName(), errorMessage);
         }
 
         // 如果文件名没有任何后缀，但已经非空，则自动补一个 .md 后缀，满足下游服务的约束
@@ -178,12 +181,12 @@ public class FileTool implements BaseTool {
             if (!response.isSuccessful()) {
                 log.error("{} upload file failed, code:{}, request:{}, response:{}",
                         agentContext.getRequestId(), response.code(), requestJson, result);
-                return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
+                return buildFailurePayload("upload", fileRequest.getFileName(), "上传文件失败 " + fileRequest.getFileName());
             }
             if (result == null) {
                 log.error("{} upload file failed, empty response body, request:{}",
                         agentContext.getRequestId(), requestJson);
-                return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
+                return buildFailurePayload("upload", fileRequest.getFileName(), "上传文件失败 " + fileRequest.getFileName());
             }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool upload response {}", agentContext.getRequestId(), result);
@@ -218,19 +221,21 @@ public class FileTool implements BaseTool {
             }
             // 返回工具执行结果
             String toolResult = fileRequest.getFileName() + " 写入到文件链接: " + fileResponse.getOssUrl();
-            Map<String, Object> outputData = new LinkedHashMap<>();
-            outputData.put("command", "upload");
-            outputData.put("fileInfo", toNativeFileInfo(fileInfo));
             return ToolResultPayload.structured(
                     toolResult,
                     toolResult,
-                    ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                    FileToolOutput.builder()
+                            .command("upload")
+                            .primaryFileName(fileRequest.getFileName())
+                            .contentStorageMode("artifact_only")
+                            .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
+                            .build()
             );
 
         } catch (Exception e) {
             log.error("{} upload file error", agentContext.getRequestId(), e);
+            return buildFailurePayload("upload", fileRequest.getFileName(), "上传文件失败 " + fileRequest.getFileName());
         }
-        return ToolResultPayload.text("上传文件失败 " + fileRequest.getFileName());
     }
 
     // 获取文件的 API 请求方法
@@ -274,13 +279,13 @@ public class FileTool implements BaseTool {
                 log.error("{} get file failed, code:{}, request:{}, response:{}",
                         agentContext.getRequestId(), response.code(), requestJson, result);
                 String errMessage = "获取文件失败 " + fileRequest.getFileName();
-                return ToolResultPayload.text(errMessage);
+                return buildFailurePayload("get", fileRequest.getFileName(), errMessage);
             }
             if (result == null) {
                 log.error("{} get file failed, empty response body, request:{}",
                         agentContext.getRequestId(), requestJson);
                 String errMessage = "获取文件失败 " + fileRequest.getFileName();
-                return ToolResultPayload.text(errMessage);
+                return buildFailurePayload("get", fileRequest.getFileName(), errMessage);
             }
             FileResponse fileResponse = JSON.parseObject(result, FileResponse.class);
             log.info("{} file tool get response {}", agentContext.getRequestId(), result);
@@ -310,40 +315,23 @@ public class FileTool implements BaseTool {
                     fileContent = fileContent.substring(0, reactorConfig.getFileToolContentTruncateLen());
                 }
                 String toolResult = "文件内容 " + fileContent;
-                Map<String, Object> outputData = new LinkedHashMap<>();
-                outputData.put("command", "get");
-                outputData.put("contentStorageMode", "artifact_only");
-                outputData.put("fileInfo", toNativeFileInfo(fileInfo));
                 return ToolResultPayload.structured(
                         toolResult,
                         toolResult,
-                        ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                        FileToolOutput.builder()
+                                .command("get")
+                                .primaryFileName(fileRequest.getFileName())
+                                .contentStorageMode("artifact_only")
+                                .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
+                                .build()
                 );
             }
         } catch (Exception e) {
 
             log.error("{} get file error", agentContext.getRequestId(), e);
+            return buildFailurePayload("get", fileRequest.getFileName(), "获取文件失败 " + fileRequest.getFileName());
         }
-        return ToolResultPayload.text("获取文件失败 " + fileRequest.getFileName());
-    }
-
-    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (fileInfo == null) {
-            return result;
-        }
-        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            Map<String, Object> info = new LinkedHashMap<>();
-            info.put("fileName", item.getFileName());
-            info.put("ossUrl", item.getOssUrl());
-            info.put("domainUrl", item.getDomainUrl());
-            info.put("fileSize", item.getFileSize());
-            result.add(info);
-        }
-        return result;
+        return buildFailurePayload("get", fileRequest.getFileName(), "获取文件失败 " + fileRequest.getFileName());
     }
 
     private String getUrlContent(String url) {
@@ -368,5 +356,21 @@ public class FileTool implements BaseTool {
             log.error("{} 获取文件异常", agentContext.getRequestId(), e);
             return null;
         }
+    }
+
+    /**
+     * file_tool 失败时也返回最小 typed output，保证独立输出表能落到可解释终态。
+     */
+    private ToolResultPayload buildFailurePayload(String command, String fileName, String message) {
+        return ToolResultPayload.failure(
+                message,
+                message,
+                FileToolOutput.builder()
+                        .command(command)
+                        .primaryFileName(fileName)
+                        .contentStorageMode("artifact_only")
+                        .build(),
+                message
+        );
     }
 }

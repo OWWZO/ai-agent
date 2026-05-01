@@ -6,6 +6,8 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.reactor.model.replay.ReplayFactBundle;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DefaultToolInvocationProjector;
@@ -38,17 +40,17 @@ public class ReplayProjectorTest {
                 .id(1L)
                 .toolCallId("tool-call-file-001")
                 .toolName("file_tool")
-                .outputJson("""
-                        {"schemaVersion":1,"command":"get","fileInfo":[{"fileName":"report.md"}]}
-                        """)
+                .structuredOutput(FileToolOutput.builder()
+                        .command("get")
+                        .primaryFileName("report.md")
+                        .fileRefs(List.of(ToolFileRef.builder().fileName("report.md").build()))
+                        .build())
                 .build();
         ToolInvocationView plainInvocation = ToolInvocationView.builder()
                 .id(2L)
                 .toolCallId("tool-call-plain-001")
                 .toolName("read_tool")
-                .outputJson("""
-                        {"schemaVersion":1,"resultType":"plain_text","data":{"text":"hello"}}
-                        """)
+                .llmObservation("hello")
                 .build();
         ArtifactView artifact = ArtifactView.builder()
                 .toolInvocationId(1L)

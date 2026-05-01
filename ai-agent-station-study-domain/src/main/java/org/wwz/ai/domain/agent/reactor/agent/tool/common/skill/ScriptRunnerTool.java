@@ -12,7 +12,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptDefinition;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptRunnerClient;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ScriptRunnerToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -183,52 +184,32 @@ public class ScriptRunnerTool extends AbstractSkillPathTool {
      */
     private ToolResultPayload buildSuccessPayload(ScriptRunnerToolResponse response) {
         String displayText = response == null ? "" : response.toDisplayText();
-        Map<String, Object> outputData = new LinkedHashMap<>();
-        outputData.put("tool", getName());
-        outputData.put("skillName", response == null ? null : response.getSkillName());
-        outputData.put("scriptName", response == null ? null : response.getScriptName());
-        outputData.put("runtime", response == null ? null : response.getRuntime());
-        outputData.put("success", response != null && Boolean.TRUE.equals(response.getSuccess()));
-        outputData.put("exitCode", response == null ? null : response.getExitCode());
-        outputData.put("stdout", response == null ? "" : StringUtils.defaultString(response.getStdout()));
-        outputData.put("stderr", response == null ? "" : StringUtils.defaultString(response.getStderr()));
-        outputData.put("summary", response == null ? "" : StringUtils.defaultString(response.getSummary()));
-        outputData.put("fileInfo", toNativeFileInfo(response == null ? null : response.getFileInfo()));
-        return ToolResultPayload.structured(
-                displayText,
-                displayText,
-                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
-        );
+        ScriptRunnerToolOutput structuredOutput = ScriptRunnerToolOutput.builder()
+                .skillName(response == null ? null : response.getSkillName())
+                .scriptName(response == null ? null : response.getScriptName())
+                .runtime(response == null ? null : response.getRuntime())
+                .success(response != null && Boolean.TRUE.equals(response.getSuccess()))
+                .exitCode(response == null ? null : response.getExitCode())
+                .stdout(response == null ? "" : StringUtils.defaultString(response.getStdout()))
+                .stderr(response == null ? "" : StringUtils.defaultString(response.getStderr()))
+                .summary(response == null ? "" : StringUtils.defaultString(response.getSummary()))
+                .fileRefs(ToolFileRefMapper.fromScriptRunnerFileInfo(response == null ? null : response.getFileInfo()))
+                .build();
+        return ToolResultPayload.structured(displayText, displayText, structuredOutput);
     }
 
     /**
-     * 参数校验或执行失败时，同样返回显式 error JSON。
+     * 参数校验或执行失败时，同样返回最小 typed output。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.structured(
+        return ToolResultPayload.failure(
                 message,
                 message,
-                ToolOutputJsonBuilder.buildErrorResult(message, message)
+                ScriptRunnerToolOutput.builder()
+                        .summary(message)
+                        .success(Boolean.FALSE)
+                        .build(),
+                message
         );
-    }
-
-    private List<Map<String, Object>> toNativeFileInfo(List<ScriptRunnerToolResponse.FileInfo> fileInfo) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (fileInfo == null) {
-            return result;
-        }
-        for (ScriptRunnerToolResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            Map<String, Object> info = new LinkedHashMap<>();
-            info.put("fileName", item.getFileName());
-            info.put("ossUrl", item.getOssUrl());
-            info.put("domainUrl", item.getDomainUrl());
-            info.put("downloadUrl", item.getDownloadUrl());
-            info.put("fileSize", item.getFileSize());
-            result.add(info);
-        }
-        return result;
     }
 }

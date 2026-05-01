@@ -14,13 +14,14 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptDefinition;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptRunnerClient;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ScriptRunnerToolOutput;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Map;
 
 /**
- * script_runner_tool 原生 output_json 回归。
+ * script_runner_tool typed output 回归。
  */
 public class ScriptRunnerToolTest {
 
@@ -93,10 +94,12 @@ public class ScriptRunnerToolTest {
             context.clearCurrentToolArtifactSource();
         }
 
+        ScriptRunnerToolOutput structuredOutput = (ScriptRunnerToolOutput) payload.getStructuredOutput();
         Assert.assertTrue(payload.getToolResult().contains("技能：sales"));
-        Assert.assertTrue(payload.getOutputJson().contains("\"schemaVersion\":1"));
-        Assert.assertTrue(payload.getOutputJson().contains("\"scriptName\":\"export_report\""));
-        Assert.assertTrue(payload.getOutputJson().contains("\"stdout\":\"ok\""));
+        Assert.assertNotNull(structuredOutput);
+        Assert.assertFalse(payload.getFailed());
+        Assert.assertEquals("export_report", structuredOutput.getScriptName());
+        Assert.assertEquals("ok", structuredOutput.getStdout());
         Assert.assertEquals(1, context.getTaskProductFiles().size());
         Assert.assertEquals("sales-report.md", context.getTaskProductFiles().get(0).getFileName());
     }

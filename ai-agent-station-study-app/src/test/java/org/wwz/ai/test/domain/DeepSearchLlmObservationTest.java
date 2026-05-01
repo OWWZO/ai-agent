@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchStructuredRes
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -46,17 +47,20 @@ public class DeepSearchLlmObservationTest {
         builder.recordFinalAnswer("新能源车出口趋势", "综合多个来源，新能源车出口继续增长，欧洲需求回暖。");
 
         ToolResultPayload payload = builder.buildPayload("fallback");
-        JSONObject outputJson = JSON.parseObject(payload.getOutputJson());
+        DeepSearchToolOutput structuredOutput = (DeepSearchToolOutput) payload.getStructuredOutput();
         JSONObject llmObservation = JSON.parseObject(payload.getLlmObservation());
 
-        Assert.assertEquals(1, outputJson.getIntValue("schemaVersion"));
-        Assert.assertTrue(outputJson.containsKey("stages"));
+        Assert.assertNotNull(structuredOutput);
+        Assert.assertEquals("deep_search", structuredOutput.getToolName());
+        Assert.assertEquals("新能源车出口趋势", structuredOutput.getQuery());
+        Assert.assertEquals(3, structuredOutput.getStages().size());
+        Assert.assertTrue(structuredOutput.getStages().stream().anyMatch(stage -> "search".equals(stage.getStage())));
         Assert.assertFalse(llmObservation.containsKey("stages"));
         Assert.assertEquals("deep_search", llmObservation.getString("tool"));
         Assert.assertEquals("新能源车出口趋势", llmObservation.getString("query"));
         Assert.assertEquals(2, llmObservation.getJSONArray("subQueries").size());
         Assert.assertEquals(2, llmObservation.getJSONArray("results").size());
-        Assert.assertTrue(payload.getOutputJson().contains(repeat("出口量持续增长，", 5)));
+        Assert.assertFalse(payload.getFailed());
         Assert.assertTrue(payload.getLlmObservation().contains("海关总署：出口量创新高"));
         Assert.assertTrue(payload.getLlmObservation().contains("https://example.com/customs"));
     }
@@ -122,9 +126,7 @@ public class DeepSearchLlmObservationTest {
         ToolInvocationView invocation = detail.getToolInvocations().get(0);
         Assert.assertEquals("deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。", observation);
         Assert.assertEquals(observation, readObservation(invocation));
-        Assert.assertNotNull(invocation.getOutputJson());
-        Assert.assertTrue(invocation.getOutputJson().contains("\"schemaVersion\":1"));
-        Assert.assertTrue(invocation.getOutputJson().contains("\"resultType\":\"plain_text\""));
+        Assert.assertNull(invocation.getStructuredOutput());
     }
 
     private String readObservation(ToolInvocationView view) {

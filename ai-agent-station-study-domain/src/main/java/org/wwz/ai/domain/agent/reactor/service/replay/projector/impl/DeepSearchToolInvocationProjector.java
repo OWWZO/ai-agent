@@ -1,11 +1,14 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchDoc;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchQueryResult;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchStage;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,17 +29,23 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
+        DeepSearchToolOutput output = invocation != null && invocation.getStructuredOutput() instanceof DeepSearchToolOutput structuredOutput
+                ? structuredOutput
+                : null;
+        if (output == null || output.getStages() == null || output.getStages().isEmpty()) {
+            return List.of();
+        }
+
         List<ProjectedReplayEvent> events = new ArrayList<>();
-        for (JsonNode stage : root.path("stages")) {
-            String stageType = stage.path("stage").asText();
+        for (DeepSearchStage stage : output.getStages()) {
+            String stageType = stage == null ? null : stage.getStage();
             if (StringUtils.isBlank(stageType)) {
                 continue;
             }
             Map<String, Object> resultMap = switch (stageType) {
-                case "extend" -> buildExtendResult(root, stage);
-                case "search" -> buildSearchResult(root, stage);
-                case "report" -> buildReportResult(root, stage);
+                case "extend" -> buildExtendResult(output, stage);
+                case "search" -> buildSearchResult(output, stage);
+                case "report" -> buildReportResult(output, stage);
                 default -> Map.of();
             };
             if (resultMap.isEmpty()) {
@@ -53,37 +62,43 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
         return events;
     }
 
-    private Map<String, Object> buildExtendResult(JsonNode root, JsonNode stage) {
+    private Map<String, Object> buildExtendResult(DeepSearchToolOutput output, DeepSearchStage stage) {
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("messageType", "extend");
         resultMap.put("isFinal", true);
         resultMap.put("searchFinish", false);
-        resultMap.put("query", root.path("query").asText(""));
+        resultMap.put("query", output.getQuery());
         Map<String, Object> searchResult = new LinkedHashMap<>();
-        searchResult.put("query", readStringList(stage.path("queries")));
+        searchResult.put("query", stage.getQueries() == null ? List.of() : stage.getQueries());
         searchResult.put("docs", List.of());
         resultMap.put("searchResult", searchResult);
         return resultMap;
     }
 
-    private Map<String, Object> buildSearchResult(JsonNode root, JsonNode stage) {
+    private Map<String, Object> buildSearchResult(DeepSearchToolOutput output, DeepSearchStage stage) {
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("messageType", "search");
         resultMap.put("isFinal", true);
         resultMap.put("searchFinish", true);
-        resultMap.put("query", root.path("query").asText(""));
+        resultMap.put("query", output.getQuery());
 
         List<String> queries = new ArrayList<>();
         List<List<Map<String, Object>>> docs = new ArrayList<>();
-        for (JsonNode result : stage.path("results")) {
-            queries.add(result.path("query").asText(""));
+        for (DeepSearchQueryResult item : stage.getResults()) {
+            if (item == null) {
+                continue;
+            }
+            queries.add(StringUtils.defaultString(item.getQuery()));
             List<Map<String, Object>> docList = new ArrayList<>();
-            for (JsonNode doc : result.path("docs")) {
+            for (DeepSearchDoc doc : item.getDocs()) {
+                if (doc == null) {
+                    continue;
+                }
                 Map<String, Object> docMap = new LinkedHashMap<>();
-                docMap.put("title", doc.path("title").asText(""));
-                docMap.put("link", doc.path("link").asText(""));
-                if (StringUtils.isNotBlank(doc.path("content").asText())) {
-                    docMap.put("content", doc.path("content").asText());
+                docMap.put("title", StringUtils.defaultString(doc.getTitle()));
+                docMap.put("link", StringUtils.defaultString(doc.getLink()));
+                if (StringUtils.isNotBlank(doc.getSummary())) {
+                    docMap.put("content", doc.getSummary());
                 }
                 docList.add(docMap);
             }
@@ -96,23 +111,12 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
         return resultMap;
     }
 
-    private Map<String, Object> buildReportResult(JsonNode root, JsonNode stage) {
+    private Map<String, Object> buildReportResult(DeepSearchToolOutput output, DeepSearchStage stage) {
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("messageType", "report");
         resultMap.put("isFinal", true);
-        resultMap.put("query", root.path("query").asText(""));
-        resultMap.put("answer", stage.path("answer").asText(""));
+        resultMap.put("query", output.getQuery());
+        resultMap.put("answer", StringUtils.defaultString(stage.getAnswer()));
         return resultMap;
-    }
-
-    private List<String> readStringList(JsonNode arrayNode) {
-        List<String> result = new ArrayList<>();
-        if (arrayNode == null || !arrayNode.isArray()) {
-            return result;
-        }
-        for (JsonNode item : arrayNode) {
-            result.add(item.asText(""));
-        }
-        return result;
     }
 }

@@ -25,7 +25,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -383,26 +384,31 @@ public class MultiModalAgent implements BaseTool {
      * 多模态检索成功后，同时保留 Markdown 正文和稳定文件引用，便于后续 replay 重建。
      */
     private ToolResultPayload buildSuccessPayload(String markdownContent, ToolArtifactSource artifactSource) {
-        Map<String, Object> outputData = new LinkedHashMap<>();
-        outputData.put("tool", getName());
-        outputData.put("summary", buildSummary(markdownContent));
-        outputData.put("markdown", markdownContent);
-        outputData.put("fileInfo", buildFileInfo(artifactSource));
+        List<Map<String, Object>> fileInfo = buildFileInfo(artifactSource);
+        MultimodalAgentToolOutput structuredOutput = MultimodalAgentToolOutput.builder()
+                .summary(buildSummary(markdownContent))
+                .markdownContent(markdownContent)
+                .fileRefs(ToolFileRefMapper.fromGenericFileInfo(fileInfo))
+                .build();
         return ToolResultPayload.structured(
                 markdownContent,
                 markdownContent,
-                ToolOutputJsonBuilder.buildToolNativeResult(outputData)
+                structuredOutput
         );
     }
 
     /**
-     * 失败路径也返回显式 output_json，避免账本再次出现空结构。
+     * 失败路径也返回最小 typed output，避免账本再次出现空结构。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.structured(
+        return ToolResultPayload.failure(
                 message,
                 message,
-                ToolOutputJsonBuilder.buildErrorResult(message, message)
+                MultimodalAgentToolOutput.builder()
+                        .summary(message)
+                        .markdownContent("")
+                        .build(),
+                message
         );
     }
 

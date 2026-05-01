@@ -17,7 +17,9 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
+import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,6 +38,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
     private final IToolInvocationLedgerDao toolInvocationLedgerDao;
     private final IArtifactLedgerDao artifactLedgerDao;
+    private final ToolOutputReader toolOutputReader;
 
     @Override
     public ExecutionRunDetail queryRunDetail(String requestId) {
@@ -62,7 +65,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isBlank(toolName)) {
             return List.of();
         }
-        return toolInvocationLedgerDao.queryRecentByToolName(toolName, normalizeLimit(limit));
+        return enrichStructuredOutputs(toolInvocationLedgerDao.queryRecentByToolName(toolName, normalizeLimit(limit)));
     }
 
     @Override
@@ -191,7 +194,6 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                     .toolProvider(invocation.getToolProvider())
                     .inputJson(invocation.getInputJson())
                     .llmObservation(invocation.getLlmObservation())
-                    .outputJson(invocation.getOutputJson())
                     .status(invocation.getStatus())
                     .errorMsg(invocation.getErrorMsg())
                     .durationMs(invocation.getDurationMs())
@@ -200,6 +202,22 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                     .finishedAt(invocation.getFinishedAt())
                     .createTime(invocation.getCreateTime())
                     .build());
+        }
+        return enrichStructuredOutputs(views);
+    }
+
+    private List<ToolInvocationView> enrichStructuredOutputs(List<ToolInvocationView> views) {
+        if (views == null || toolOutputReader == null) {
+            return views == null ? List.of() : views;
+        }
+        for (ToolInvocationView view : views) {
+            if (view == null
+                    || view.getId() == null
+                    || !ToolOutputNames.isRichTool(view.getToolName())) {
+                continue;
+            }
+            toolOutputReader.readByInvocationId(view.getToolName(), view.getId())
+                    .ifPresent(view::setStructuredOutput);
         }
         return views;
     }

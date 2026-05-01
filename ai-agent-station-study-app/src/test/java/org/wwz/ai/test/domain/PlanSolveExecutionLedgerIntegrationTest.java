@@ -65,14 +65,12 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         Assert.assertEquals("plan-tool-call-001", detail.getToolInvocations().get(0).getToolCallId());
         Assert.assertEquals(Integer.valueOf(1), detail.getToolInvocations().get(0).getDispatchIndex());
         Assert.assertEquals(result.get("plan-tool-call-001"), detail.getToolInvocations().get(0).getLlmObservation());
-        Assert.assertNotNull(detail.getToolInvocations().get(0).getOutputJson());
-        Assert.assertTrue(detail.getToolInvocations().get(0).getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertNull(detail.getToolInvocations().get(0).getStructuredOutput());
         Assert.assertEquals("plan-tool-call-002", detail.getToolInvocations().get(1).getToolCallId());
         Assert.assertEquals(Integer.valueOf(2), detail.getToolInvocations().get(1).getDispatchIndex());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), detail.getToolInvocations().get(1).getStatus());
         Assert.assertEquals(result.get("plan-tool-call-002"), detail.getToolInvocations().get(1).getLlmObservation());
-        Assert.assertNotNull(detail.getToolInvocations().get(1).getOutputJson());
-        Assert.assertTrue(detail.getToolInvocations().get(1).getOutputJson().contains("\"schemaVersion\":1"));
+        Assert.assertNull(detail.getToolInvocations().get(1).getStructuredOutput());
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("plan-a.md", detail.getArtifacts().get(0).getFileName());
     }

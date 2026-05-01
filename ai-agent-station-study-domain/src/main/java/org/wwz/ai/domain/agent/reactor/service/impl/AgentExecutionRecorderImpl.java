@@ -21,7 +21,10 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputWriter;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -45,6 +48,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
     private final IToolInvocationLedgerDao toolInvocationLedgerDao;
     private final IArtifactLedgerDao artifactLedgerDao;
+    private final ToolOutputWriter toolOutputWriter;
 
     private final Map<String, LongAdder> successCounters = new ConcurrentHashMap<>();
     private final Map<String, LongAdder> failureCounters = new ConcurrentHashMap<>();
@@ -216,14 +220,37 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
                     .llmObservation(record.getLlmObservation())
-                    .outputJson(record.getOutputJson())
                     .errorMsg(trimText(record.getErrorMsg(), 2000))
                     .finishedAt(defaultNow(record.getFinishedAt()))
                     .build());
+            persistStructuredOutput(record);
             markSuccess("finishToolInvocation", null);
         } catch (Exception e) {
             markFailure("finishToolInvocation", record.getRequestId(), null, record.getToolCallId(), e);
         }
+    }
+
+    /**
+     * rich tool 输出和主账本分离，避免结构化结果继续堆在主表。
+     */
+    private void persistStructuredOutput(ToolInvocationFinishRecord record) {
+        if (toolOutputWriter == null
+                || record == null
+                || !ToolOutputNames.isRichTool(record.getToolName())
+                || record.getStructuredOutput() == null) {
+            return;
+        }
+        toolOutputWriter.write(ToolOutputPersistCommand.builder()
+                .toolInvocationId(record.getToolInvocationId())
+                .runId(record.getRunId())
+                .requestId(record.getRequestId())
+                .sessionId(record.getSessionId())
+                .toolCallId(record.getToolCallId())
+                .toolName(record.getToolName())
+                .status(record.getStatus())
+                .errorMsg(record.getErrorMsg())
+                .structuredOutput(record.getStructuredOutput())
+                .build());
     }
 
     @Override

@@ -1,11 +1,11 @@
 package org.wwz.ai.domain.agent.reactor.service.replay.projector.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DataAnalysisToolOutput;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,17 +25,19 @@ public class DataAnalysisToolInvocationProjector extends AbstractToolInvocationP
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
                                               EventResult state) {
-        JsonNode root = readJson(invocation == null ? null : invocation.getOutputJson());
-        String data = root.path("data").asText("");
+        DataAnalysisToolOutput output = invocation != null && invocation.getStructuredOutput() instanceof DataAnalysisToolOutput structuredOutput
+                ? structuredOutput
+                : null;
+        String data = output == null ? "" : StringUtils.defaultString(output.getContent());
         if (StringUtils.isBlank(data) && invocation != null) {
             data = StringUtils.defaultString(invocation.getLlmObservation());
         }
 
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("isFinal", true);
-        resultMap.put("task", root.path("task").asText(""));
+        resultMap.put("task", output == null ? "" : StringUtils.defaultString(output.getTask()));
         resultMap.put("data", data);
-        resultMap.put("fileInfo", mergeFileInfo(root.path("fileInfo"), artifacts));
+        resultMap.put("fileInfo", mergeFileRefs(output == null ? null : output.getFileRefs(), artifacts));
 
         return List.of(buildTaskEvent(
                 state,

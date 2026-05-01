@@ -10,13 +10,14 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.CodeInterpreterToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -86,8 +87,8 @@ public class CodeInterpreterTool implements BaseTool {
             return future.get();
         } catch (Exception e) {
             log.error("{} code agent error", agentContext.getRequestId(), e);
+            return buildFailurePayload("code_interpreter 执行失败：" + e.getMessage());
         }
-        return null;
     }
 
     /**
@@ -122,7 +123,7 @@ public class CodeInterpreterTool implements BaseTool {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     log.error("{} code_interpreter on failure", agentContext.getRequestId(), e);
-                    future.completeExceptionally(e);
+                    future.complete(buildFailurePayload("code_interpreter 执行失败：无法连接代码执行服务。"));
                 }
 
                 @Override
@@ -135,7 +136,7 @@ public class CodeInterpreterTool implements BaseTool {
                     try (ResponseBody responseBody = response.body()) {
                         if (!response.isSuccessful() || responseBody == null) {
                             log.error("{} code_interpreter request error", agentContext.getRequestId());
-                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                            future.complete(buildFailurePayload("code_interpreter 执行失败：上游服务返回异常状态 " + response.code() + "。"));
                             return;
                         }
 
@@ -174,7 +175,7 @@ public class CodeInterpreterTool implements BaseTool {
 
                     } catch (Exception e) {
                         log.error("{} code_interpreter request error", agentContext.getRequestId(), e);
-                        future.completeExceptionally(e);
+                        future.complete(buildFailurePayload("code_interpreter 执行失败：" + e.getMessage()));
                         return;
                     }
                     /**
@@ -191,43 +192,39 @@ public class CodeInterpreterTool implements BaseTool {
                             output.append(fileInfo.getFileName()).append("\n");
                         }
                     }
-                    Map<String, Object> outputData = new LinkedHashMap<>();
-                    outputData.put("codeOutput", codeResponse.getCodeOutput());
-                    outputData.put("content", codeResponse.getContent());
-                    outputData.put("code", codeResponse.getCode());
-                    outputData.put("explain", codeResponse.getExplain());
-                    outputData.put("fileInfo", toNativeFileInfo(codeResponse.getFileInfo()));
-                    future.complete(ToolResultPayload.structured(
-                            output.toString(),
-                            output.toString(),
-                            ToolOutputJsonBuilder.buildToolNativeResult(outputData)
-                    ));
+                    future.complete(buildSuccessPayload(codeResponse, output.toString()));
                 }
             });
         } catch (Exception e) {
             log.error("{} code_interpreter request error", agentContext.getRequestId(), e);
-            future.completeExceptionally(e);
+            future.complete(buildFailurePayload("code_interpreter 执行失败：" + e.getMessage()));
         }
 
         return future;
     }
 
-    private List<Map<String, Object>> toNativeFileInfo(List<CodeInterpreterResponse.FileInfo> fileInfo) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (fileInfo == null) {
-            return result;
-        }
-        for (CodeInterpreterResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            Map<String, Object> info = new LinkedHashMap<>();
-            info.put("fileName", item.getFileName());
-            info.put("ossUrl", item.getOssUrl());
-            info.put("domainUrl", item.getDomainUrl());
-            info.put("fileSize", item.getFileSize());
-            result.add(info);
-        }
-        return result;
+    private ToolResultPayload buildSuccessPayload(CodeInterpreterResponse codeResponse, String displayText) {
+        return ToolResultPayload.structured(
+                displayText,
+                displayText,
+                CodeInterpreterToolOutput.builder()
+                        .codeOutput(codeResponse == null ? null : codeResponse.getCodeOutput())
+                        .content(codeResponse == null ? null : codeResponse.getContent())
+                        .code(codeResponse == null ? null : codeResponse.getCode())
+                        .explain(codeResponse == null ? null : codeResponse.getExplain())
+                        .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(codeResponse == null ? null : codeResponse.getFileInfo()))
+                        .build()
+        );
+    }
+
+    private ToolResultPayload buildFailurePayload(String message) {
+        return ToolResultPayload.failure(
+                message,
+                message,
+                CodeInterpreterToolOutput.builder()
+                        .codeOutput(message)
+                        .build(),
+                message
+        );
     }
 }

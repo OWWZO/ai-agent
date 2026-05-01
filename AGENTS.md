@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-04-30
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-05-01
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -31,6 +31,8 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - MySQL（新增 `ai_agent_turn`、`ai_agent_transcript_block`、`ai_agent_display_event`，重写 `ai_agent_session_memory`），外加现有稳定文件/产物引用能力 (012-transcript-block-refactor)
 - Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、OkHttp SSE、现有 Reactor `AgentContext / BaseAgent / LLM / SSEPrinter / ToolArtifactRegistry` 运行时抽象 (013-dialogue-persistence)
 - MySQL（新增 `ai_agent_dialogue_run`、`ai_agent_llm_invocation`、`ai_agent_tool_invocation`、`ai_agent_artifact` 四张表） (013-dialogue-persistence)
+- Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、FastJSON 1.2.83、现有 Reactor `AgentContext / BaseAgent / AgentExecutionRecorderImpl / ToolArtifactRegistry / ToolInvocationProjectorRegistry` 抽象 (014-tool-output-refactor)
+- MySQL（删除 `ai_agent_tool_invocation.output_json`，新增 8 张 `ai_agent_tool_output_*` 工具输出表；继续复用 `ai_agent_artifact`） (014-tool-output-refactor)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -78,9 +80,8 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 014-tool-output-refactor: Added Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、FastJSON 1.2.83、现有 Reactor `AgentContext / BaseAgent / AgentExecutionRecorderImpl / ToolArtifactRegistry / ToolInvocationProjectorRegistry` 抽象
 - 013-dialogue-persistence: Added Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、OkHttp SSE、现有 Reactor `AgentContext / BaseAgent / LLM / SSEPrinter / ToolArtifactRegistry` 运行时抽象
-- 012-transcript-block-refactor: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 历史消费链最小但明确的适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MyBatis-Plus 3.5.14、MySQL 8、OkHttp SSE、React 19、Vite 6、Ant Design 5、现有 `ActionView / FilePreview / Dialogue` 组件链
-- 011-transcript-fact-persistence: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/` 仅做最小适配） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MySQL 8、React 19、Vite 6、Ant Design 5、现有 `combineData / handleTaskData / FilePreview` 渲染链
 
 
 <!-- MANUAL ADDITIONS START -->

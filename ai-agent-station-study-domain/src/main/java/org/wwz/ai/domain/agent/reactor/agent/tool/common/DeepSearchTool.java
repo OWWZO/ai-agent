@@ -21,7 +21,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -309,10 +309,14 @@ public class DeepSearchTool implements BaseTool {
      * deep_search 失败时仍返回可解释 observation，避免主智能体拿到空结果。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.structured(
+        return ToolResultPayload.failure(
                 message,
                 message,
-                ToolOutputJsonBuilder.buildErrorResult(message, message)
+                DeepSearchToolOutput.builder()
+                        .query("")
+                        .answerSummary(message)
+                        .build(),
+                message
         );
     }
 }

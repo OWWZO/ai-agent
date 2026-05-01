@@ -23,7 +23,7 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.reactor.service.replay.ToolOutputJsonBuilder;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -293,7 +293,12 @@ public abstract class BaseAgent {
     private ToolExecutionOutcome executeToolInternal(ToolCall command) {
         if (command == null || command.getFunction() == null
                 || StringUtils.isBlank(command.getFunction().getName())) {
-            return ToolExecutionOutcome.failure("Error: Invalid function call format", null, null, "Invalid function call format");
+            return ToolExecutionOutcome.failure(
+                    "Error: Invalid function call format",
+                    "Error: Invalid function call format",
+                    null,
+                    "Invalid function call format"
+            );
         }
 
         String toolName = command.getFunction().getName();
@@ -321,8 +326,8 @@ public abstract class BaseAgent {
             if (resultObject == null) {
                 return ToolExecutionOutcome.failure(
                         "Tool " + toolName + " Error.",
+                        "Tool " + toolName + " Error.",
                         null,
-                        ToolOutputJsonBuilder.buildErrorResult("Tool " + toolName + " Error.", "Tool returned null"),
                         "Tool returned null"
                 );
             }
@@ -330,13 +335,21 @@ public abstract class BaseAgent {
             ToolResultPayload payload = normalizeToolResultPayload(resultObject, mapper);
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             String llmObservation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
-            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getOutputJson());
+            if (Boolean.TRUE.equals(payload.getFailed())) {
+                return ToolExecutionOutcome.failure(
+                        toolResult,
+                        llmObservation,
+                        payload.getStructuredOutput(),
+                        StringUtils.defaultIfBlank(payload.getErrorMsg(), toolResult)
+                );
+            }
+            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput());
         } catch (Exception e) {
             log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
             return ToolExecutionOutcome.failure(
                     "Tool " + toolName + " Error.",
                     "Tool " + toolName + " Error.",
-                    ToolOutputJsonBuilder.buildErrorResult("Tool " + toolName + " Error.", e.getMessage()),
+                    null,
                     e.getMessage()
             );
         }
@@ -445,13 +458,16 @@ public abstract class BaseAgent {
         }
         context.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolInvocationId)
+                .runId(context.getAgentRunState().getRunId())
                 .requestId(context.getRequestId())
+                .sessionId(context.getSessionId())
                 .toolCallId(command.getId())
+                .toolName(command.getFunction().getName())
                 .status(outcome != null && outcome.isSuccess()
                         ? ExecutionLedgerConstants.STATUS_SUCCESS
                         : ExecutionLedgerConstants.STATUS_FAILED)
                 .llmObservation(outcome == null ? null : outcome.getLlmObservation())
-                .outputJson(outcome == null ? null : outcome.getOutputJson())
+                .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(LocalDateTime.now())
                 .build());
@@ -511,18 +527,21 @@ public abstract class BaseAgent {
 
     private ToolResultPayload normalizeToolResultPayload(Object rawResult, ObjectMapper mapper) {
         if (rawResult instanceof ToolResultPayload payload) {
+            // rich tool 已经给出 typed output 时，只做 observation/failure 语义兜底，不再回退组装结构化 JSON。
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             return ToolResultPayload.builder()
                     .toolResult(toolResult)
                     .llmObservation(StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult))
-                    .outputJson(StringUtils.defaultIfBlank(payload.getOutputJson(), ToolOutputJsonBuilder.buildPlainTextResult(toolResult)))
+                    .structuredOutput(payload.getStructuredOutput())
+                    .failed(Boolean.TRUE.equals(payload.getFailed()))
+                    .errorMsg(payload.getErrorMsg())
                     .build();
         }
         if (rawResult instanceof String textResult) {
             return ToolResultPayload.builder()
                     .toolResult(textResult)
                     .llmObservation(textResult)
-                    .outputJson(ToolOutputJsonBuilder.buildPlainTextResult(textResult))
+                    .failed(Boolean.FALSE)
                     .build();
         }
         try {
@@ -530,14 +549,14 @@ public abstract class BaseAgent {
             return ToolResultPayload.builder()
                     .toolResult(serialized)
                     .llmObservation(serialized)
-                    .outputJson(ToolOutputJsonBuilder.buildToolNativeResult(rawResult))
+                    .failed(Boolean.FALSE)
                     .build();
         } catch (Exception e) {
             String fallback = String.valueOf(rawResult);
             return ToolResultPayload.builder()
                     .toolResult(fallback)
                     .llmObservation(fallback)
-                    .outputJson(ToolOutputJsonBuilder.buildPlainTextResult(fallback))
+                    .failed(Boolean.FALSE)
                     .build();
         }
     }
@@ -616,23 +635,28 @@ public abstract class BaseAgent {
         private boolean success;
         private String toolResult;
         private String llmObservation;
-        private String outputJson;
+        private ToolStructuredOutput structuredOutput;
         private String errorMsg;
 
-        private static ToolExecutionOutcome success(String toolResult, String llmObservation, String outputJson) {
+        private static ToolExecutionOutcome success(String toolResult,
+                                                    String llmObservation,
+                                                    ToolStructuredOutput structuredOutput) {
             return new ToolExecutionOutcome()
                     .setSuccess(true)
                     .setToolResult(toolResult)
                     .setLlmObservation(llmObservation)
-                    .setOutputJson(outputJson);
+                    .setStructuredOutput(structuredOutput);
         }
 
-        private static ToolExecutionOutcome failure(String toolResult, String llmObservation, String outputJson, String errorMsg) {
+        private static ToolExecutionOutcome failure(String toolResult,
+                                                    String llmObservation,
+                                                    ToolStructuredOutput structuredOutput,
+                                                    String errorMsg) {
             return new ToolExecutionOutcome()
                     .setSuccess(false)
                     .setToolResult(toolResult)
                     .setLlmObservation(llmObservation)
-                    .setOutputJson(outputJson)
+                    .setStructuredOutput(structuredOutput)
                     .setErrorMsg(errorMsg);
         }
     }
