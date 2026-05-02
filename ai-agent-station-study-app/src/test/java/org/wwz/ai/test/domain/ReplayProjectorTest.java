@@ -221,6 +221,98 @@ public class ReplayProjectorTest {
         Assert.assertEquals(eventTaskId(frames.get(1)), eventTaskId(frames.get(2)));
     }
 
+    @Test
+    public void shouldParseSummaryLlmResponseAndAttachArtifacts() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 18, 0, 0);
+        DialogueRunView run = DialogueRunView.builder()
+                .requestId("req-summary-001")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .build();
+        LlmInvocationView summaryInvocation = LlmInvocationView.builder()
+                .id(301L)
+                .invocationSeq(3)
+                .agentName("summary")
+                .responseText("""
+                        最终结论已整理完成
+                        $$$
+                        call-report-001::report.html、call-check-001::checklist.md
+                        """)
+                .finishedAt(now)
+                .build();
+        ArtifactView reportArtifact = ArtifactView.builder()
+                .toolInvocationId(401L)
+                .toolCallId("call-report-001")
+                .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                .fileName("report.html")
+                .storageKey("artifact-report-html")
+                .downloadUrl("https://file.example.com/report.html")
+                .previewUrl("https://file.example.com/preview/report.html")
+                .build();
+        ArtifactView checklistArtifact = ArtifactView.builder()
+                .toolInvocationId(402L)
+                .toolCallId("call-check-001")
+                .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                .fileName("checklist.md")
+                .storageKey("artifact-checklist-md")
+                .downloadUrl("https://file.example.com/checklist.md")
+                .previewUrl("https://file.example.com/preview/checklist.md")
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .run(run)
+                .llmInvocations(List.of(summaryInvocation))
+                .artifacts(List.of(reportArtifact, checklistArtifact))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        Assert.assertEquals("result", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("最终结论已整理完成", frameResultMap(frames.get(0)).get("result"));
+        Assert.assertEquals(2, frameFileList(frames.get(0)).size());
+        Assert.assertEquals(2, frameArtifactRefs(frames.get(0)).size());
+        Assert.assertEquals("report.html", frameFileList(frames.get(0)).get(0).get("fileName"));
+        Assert.assertEquals("artifact-checklist-md", frameArtifactRefs(frames.get(0)).get(1).get("resourceKey"));
+    }
+
+    @Test
+    public void shouldParseRunSummaryFallbackAndAttachArtifacts() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 19, 0, 0);
+        DialogueRunView run = DialogueRunView.builder()
+                .requestId("req-summary-fallback-001")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("""
+                        请优先查看生成结果
+                        $$$
+                        call-report-002::result.md
+                        """)
+                .startedAt(now.minusMinutes(2))
+                .finishedAt(now)
+                .build();
+        ArtifactView resultArtifact = ArtifactView.builder()
+                .toolInvocationId(501L)
+                .toolCallId("call-report-002")
+                .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
+                .visibility(ExecutionLedgerConstants.VISIBILITY_VISIBLE)
+                .fileName("result.md")
+                .storageKey("artifact-result-md")
+                .downloadUrl("https://file.example.com/result.md")
+                .previewUrl("https://file.example.com/preview/result.md")
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .run(run)
+                .artifacts(List.of(resultArtifact))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        Assert.assertEquals("result", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("请优先查看生成结果", frameResultMap(frames.get(0)).get("result"));
+        Assert.assertEquals(1, frameFileList(frames.get(0)).size());
+        Assert.assertEquals(1, frameArtifactRefs(frames.get(0)).size());
+        Assert.assertEquals("artifact-result-md", frameArtifactRefs(frames.get(0)).get(0).get("resourceKey"));
+    }
+
     @SuppressWarnings("unchecked")
     private String outerMessageType(ProjectedReplayEvent event) {
         return String.valueOf(((Map<String, Object>) event.getResultMap()).get("messageType"));
@@ -249,6 +341,18 @@ public class ReplayProjectorTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> frameResultMap(GptProcessResult frame) {
         return (Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> frameFileList(GptProcessResult frame) {
+        Object fileList = frameResultMap(frame).get("fileList");
+        return fileList instanceof List<?> ? (List<Map<String, Object>>) fileList : List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> frameArtifactRefs(GptProcessResult frame) {
+        Object artifactRefs = ((Map<String, Object>) frame.getResultMap().get("eventData")).get("artifactRefs");
+        return artifactRefs instanceof List<?> ? (List<Map<String, Object>>) artifactRefs : List.of();
     }
 
     @SuppressWarnings("unchecked")

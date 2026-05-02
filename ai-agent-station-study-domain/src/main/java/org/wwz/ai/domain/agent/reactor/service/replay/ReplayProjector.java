@@ -95,14 +95,7 @@ public class ReplayProjector {
                 continue;
             }
             String messageType = resolveLlmMessageType(invocation);
-            events.add(ProjectedReplayEvent.builder()
-                    .taskId(state.getTaskId())
-                    .taskOrder(state.getTaskOrder().getAndIncrement())
-                    .messageId(resolveLlmMessageId(invocation))
-                    .messageType(resolveOuterMessageType(messageType))
-                    .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
-                    .resultMap(buildLlmResponse(bundle, invocation, messageType))
-                    .build());
+            events.add(buildLlmReplayEvent(bundle, state, invocation, messageType));
         }
         return events;
     }
@@ -133,14 +126,7 @@ public class ReplayProjector {
             String messageType = null;
             if (StringUtils.isNotBlank(llmInvocation.getResponseText())) {
                 messageType = resolveLlmMessageType(llmInvocation);
-                events.add(ProjectedReplayEvent.builder()
-                        .taskId(state.getTaskId())
-                        .taskOrder(state.getTaskOrder().getAndIncrement())
-                        .messageId(resolveLlmMessageId(llmInvocation))
-                        .messageType(resolveOuterMessageType(messageType))
-                        .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
-                        .resultMap(buildLlmResponse(bundle, llmInvocation, messageType))
-                        .build());
+                events.add(buildLlmReplayEvent(bundle, state, llmInvocation, messageType));
             }
 
             List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
@@ -165,6 +151,27 @@ public class ReplayProjector {
             events.addAll(toolInvocationProjectorRegistry.project(orphanTool, artifacts, state));
         }
         return events;
+    }
+
+    private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
+                                                     EventResult state,
+                                                     LlmInvocationView invocation,
+                                                     String messageType) {
+        List<Map<String, Object>> artifactRefs = null;
+        if ("result".equals(messageType)) {
+            SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
+                    SummaryReplayResultResolver.resolve(invocation.getResponseText(), bundle == null ? null : bundle.getArtifacts());
+            artifactRefs = resolvedSummary.getArtifactRefs().isEmpty() ? null : resolvedSummary.getArtifactRefs();
+        }
+        return ProjectedReplayEvent.builder()
+                .taskId(state.getTaskId())
+                .taskOrder(state.getTaskOrder().getAndIncrement())
+                .messageId(resolveLlmMessageId(invocation))
+                .messageType(resolveOuterMessageType(messageType))
+                .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
+                .resultMap(buildLlmResponse(bundle, invocation, messageType))
+                .artifactRefs(artifactRefs)
+                .build();
     }
 
     private List<ProjectedReplayEvent> projectToolHistory(ReplayFactBundle bundle, EventResult state) {
@@ -214,14 +221,19 @@ public class ReplayProjector {
         }
 
         Map<String, Object> resultMap = new LinkedHashMap<>();
+        SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
+                SummaryReplayResultResolver.resolve(run.getFinalSummaryText(), bundle.getArtifacts());
         resultMap.put("requestId", run.getRequestId());
         resultMap.put("messageId", run.getRequestId() + ":summary");
         resultMap.put("messageTime", resolveRunMessageTime(run));
         resultMap.put("messageType", "result");
         resultMap.put("isFinal", true);
         resultMap.put("finish", run.getStatus() != null && run.getStatus() != ExecutionLedgerConstants.STATUS_RUNNING);
-        resultMap.put("result", run.getFinalSummaryText());
-        resultMap.put("taskSummary", run.getFinalSummaryText());
+        resultMap.put("result", resolvedSummary.getSummaryText());
+        resultMap.put("taskSummary", resolvedSummary.getSummaryText());
+        if (!resolvedSummary.getFileList().isEmpty()) {
+            resultMap.put("fileList", resolvedSummary.getFileList());
+        }
 
         String taskId = state.getTaskId();
         events.add(ProjectedReplayEvent.builder()
@@ -231,6 +243,7 @@ public class ReplayProjector {
                 .messageType("task")
                 .messageOrder(state.getAndIncrOrder(taskId + ":result"))
                 .resultMap(resultMap)
+                .artifactRefs(resolvedSummary.getArtifactRefs().isEmpty() ? null : resolvedSummary.getArtifactRefs())
                 .build());
     }
 
@@ -288,6 +301,14 @@ public class ReplayProjector {
         } else if ("task_summary".equals(messageType)) {
             response.put("taskSummary", invocation.getResponseText());
             response.put("resultMap", new LinkedHashMap<>());
+        } else if ("result".equals(messageType)) {
+            SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
+                    SummaryReplayResultResolver.resolve(invocation.getResponseText(), bundle == null ? null : bundle.getArtifacts());
+            response.put("result", resolvedSummary.getSummaryText());
+            response.put("taskSummary", resolvedSummary.getSummaryText());
+            if (!resolvedSummary.getFileList().isEmpty()) {
+                response.put("fileList", resolvedSummary.getFileList());
+            }
         } else {
             response.put("result", invocation.getResponseText());
             response.put("taskSummary", invocation.getResponseText());

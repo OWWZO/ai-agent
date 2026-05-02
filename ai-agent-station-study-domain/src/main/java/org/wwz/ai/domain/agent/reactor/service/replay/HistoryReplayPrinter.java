@@ -50,11 +50,16 @@ public class HistoryReplayPrinter {
     }
 
     private GptProcessResult buildFallbackConclusion(DialogueRunView run) {
+        SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
+                SummaryReplayResultResolver.resolve(run.getFinalSummaryText(), run.getArtifactSummaries());
         Map<String, Object> nestedResultMap = new LinkedHashMap<>();
         nestedResultMap.put("messageType", "result");
         nestedResultMap.put("isFinal", true);
-        nestedResultMap.put("taskSummary", run.getFinalSummaryText());
-        nestedResultMap.put("result", run.getFinalSummaryText());
+        nestedResultMap.put("taskSummary", resolvedSummary.getSummaryText());
+        nestedResultMap.put("result", resolvedSummary.getSummaryText());
+        if (!resolvedSummary.getFileList().isEmpty()) {
+            nestedResultMap.put("fileList", resolvedSummary.getFileList());
+        }
 
         Map<String, Object> eventData = new LinkedHashMap<>();
         eventData.put("taskId", run.getRequestId() + "-summary");
@@ -62,6 +67,9 @@ public class HistoryReplayPrinter {
         eventData.put("messageType", "task");
         eventData.put("messageOrder", 1);
         eventData.put("messageId", run.getRequestId() + "-summary");
+        if (!resolvedSummary.getArtifactRefs().isEmpty()) {
+            eventData.put("artifactRefs", resolvedSummary.getArtifactRefs());
+        }
         eventData.put("resultMap", nestedResultMap);
 
         Map<String, Object> resultMap = new LinkedHashMap<>();
@@ -74,8 +82,8 @@ public class HistoryReplayPrinter {
                 .finished(true)
                 .reqId(run.getRequestId())
                 .resultMap(resultMap)
-                .response(run.getFinalSummaryText())
-                .responseAll(run.getFinalSummaryText())
+                .response(resolvedSummary.getSummaryText())
+                .responseAll(resolvedSummary.getSummaryText())
                 .build();
     }
 }

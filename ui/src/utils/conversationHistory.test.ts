@@ -10,6 +10,7 @@ import {
   toConversationHistoryTitle,
 } from "./conversationHistory";
 import { buildConversationTaskData } from "./chat";
+import { getTaskFiles } from "./taskArtifacts";
 
 function createReplayFrame(eventData: MESSAGE.EventData): ConversationReplayFrame {
   return {
@@ -316,10 +317,60 @@ describe("conversationHistory hydrate", () => {
     expect(history.chatList[0].forceStop).toBe(true);
 
     const taskData = buildConversationTaskData(history.chatList[0], history.deepThink);
-    expect(taskData.taskList).toHaveLength(1);
+    expect(taskData.taskList).toHaveLength(2);
     expect(taskData.taskList[0].artifactRefs?.[0]?.missing).toBe(true);
     expect(taskData.taskList[0].artifactRefs?.[0]?.missingReason).toBe(
       "artifact_not_found"
     );
+    expect(taskData.taskList[1].messageType).toBe("result");
+  });
+
+  it("parses $$$ summary fallback into summary text and attachments", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-summary-fallback-001",
+      title: "总结兜底会话",
+      status: "SUCCESS",
+      outputStyle: "docs",
+      deepThink: true,
+      role: {
+        agentId: "role-default",
+        agentName: "默认助手",
+        available: true,
+        defaultRole: true,
+      },
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      startedAt: "2026-05-02T13:00:00",
+      lastActiveAt: "2026-05-02T13:05:00",
+      runs: [
+        {
+          requestId: "req-summary-fallback-001",
+          status: "SUCCESS",
+          queryText: "请整理总结",
+          finalSummaryText:
+            "请查看最终报告。$$$ call_report_001::final-report.html、call_report_002::checklist.md",
+          startedAt: "2026-05-02T13:00:00",
+          finishedAt: "2026-05-02T13:05:00",
+          replayFrames: [],
+        },
+      ],
+    });
+
+    expect(history.chatList).toHaveLength(1);
+    expect(history.chatList[0].conclusion?.result).toBe("请查看最终报告。");
+    expect((history.chatList[0].conclusion as any)?.taskSummary).toBe("请查看最终报告。");
+    expect(getTaskFiles(history.chatList[0].conclusion)).toEqual([
+      expect.objectContaining({
+        name: "final-report.html",
+        resourceKey: "call_report_001::final-report.html",
+        missing: true,
+      }),
+      expect.objectContaining({
+        name: "checklist.md",
+        resourceKey: "call_report_002::checklist.md",
+        missing: true,
+      }),
+    ]);
   });
 });

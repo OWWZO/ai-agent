@@ -5,6 +5,7 @@ import type {
 } from "@/services/agentConversation";
 
 import { buildConversationTaskData, buildTaskFromEventData, combineData } from "./chat";
+import { artifactRefsToFileInfo } from "./taskArtifacts";
 
 /**
  * 会话详情为空时，首页应保持当前空白/初始态，不自动切到其他会话。
@@ -89,22 +90,9 @@ function hydrateRun(
   }
 
   if (!currentChat.conclusion && run.finalSummaryText) {
-    currentChat.conclusion = {
-      id: `${run.requestId}-summary`,
-      taskId: `${run.requestId}-summary`,
-      messageId: `${run.requestId}-summary`,
-      requestId: run.requestId,
-      messageTime: String(toTimestamp(run.finishedAt, toTimestamp(run.startedAt))),
-      messageType: "task_summary",
-      finish: true,
-      isFinal: true,
-      result: run.finalSummaryText,
-      resultMap: {
-        taskSummary: run.finalSummaryText,
-        isFinal: true,
-        fileList: [],
-      },
-    } as unknown as CHAT.Task;
+    const fallbackEventData = buildFallbackConclusionEventData(run);
+    combineData(fallbackEventData, currentChat);
+    syncConclusionFromEventData(currentChat, fallbackEventData);
   }
 
   return buildConversationTaskData(currentChat, detail.deepThink).currentChat;
@@ -146,4 +134,72 @@ function resolveConversationAgentType(outputStyle?: string, deepThink?: boolean)
 function normalizeRunStatus(status?: string | null) {
   const normalized = String(status || "").trim().toUpperCase();
   return normalized || "RUNNING";
+}
+
+function buildFallbackConclusionEventData(
+  run: ConversationHistoryRunDetail
+): MESSAGE.EventData {
+  const resolvedSummary = resolveFallbackSummary(run.finalSummaryText);
+  const taskId = run.requestId || `${Date.now()}`;
+  return {
+    taskId,
+    taskOrder: 1,
+    messageType: "task",
+    messageOrder: 1,
+    messageId: `${run.requestId}-summary`,
+    ...(resolvedSummary.artifactRefs.length
+      ? { artifactRefs: resolvedSummary.artifactRefs as any }
+      : {}),
+    resultMap: {
+      requestId: run.requestId,
+      messageId: `${run.requestId}-summary`,
+      messageType: "result",
+      messageTime: String(toTimestamp(run.finishedAt, toTimestamp(run.startedAt))),
+      finish: true,
+      isFinal: true,
+      result: resolvedSummary.summaryText,
+      taskSummary: resolvedSummary.summaryText,
+      fileList: resolvedSummary.fileList,
+    } as unknown as MESSAGE.Task,
+  };
+}
+
+function resolveFallbackSummary(rawSummaryText?: string | null) {
+  const normalized = String(rawSummaryText || "");
+  const delimiter = "$$$";
+  const delimiterIndex = normalized.indexOf(delimiter);
+  if (delimiterIndex === -1) {
+    return {
+      summaryText: normalized,
+      fileList: [] as MESSAGE.FileInfo[],
+      artifactRefs: [] as MESSAGE.ArtifactReference[],
+    };
+  }
+
+  const summaryText = normalized.slice(0, delimiterIndex).trim();
+  const artifactSection = normalized.slice(delimiterIndex + delimiter.length).trim();
+  const artifactKeys = artifactSection
+    .split(/[、,\r\n，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const artifactRefs = artifactKeys.map((artifactKey) => {
+    const [toolCallId, ...fileNameParts] = artifactKey.split("::");
+    const fileName = fileNameParts.join("::").trim();
+    return {
+      resourceKey: artifactKey,
+      displayName: fileName || artifactKey,
+      downloadUrl: null,
+      previewUrl: null,
+      missing: true,
+      missingReason: "history_summary_artifact_key_only",
+      toolCallId: toolCallId || undefined,
+    } as unknown as MESSAGE.ArtifactReference;
+  });
+
+  return {
+    summaryText,
+    fileList: artifactRefsToFileInfo(artifactRefs),
+    artifactRefs,
+  };
 }
