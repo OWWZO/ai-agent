@@ -152,5 +152,10 @@ declare global {
       description?: string;
       defaultRole: boolean;
     };
+
+    export type ConversationSessionItem = import("@/services/agentConversation").ConversationSessionItem;
+    export type ConversationHistoryDetail = import("@/services/agentConversation").ConversationHistoryDetail;
+    export type ConversationHistoryRunDetail = import("@/services/agentConversation").ConversationHistoryRunDetail;
+    export type ConversationReplayFrame = import("@/services/agentConversation").ConversationReplayFrame;
   }
 }

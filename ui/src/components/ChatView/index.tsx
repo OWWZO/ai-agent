@@ -39,6 +39,12 @@ type Props = {
   onInputConsumed?: () => void;
 };
 
+type ActiveRunState = {
+  status?: string;
+  errorMsg?: string;
+  finishedAt?: string;
+};
+
 const getProductByType = (type?: string) => {
   return productList.find((item) => item.type === type) ?? defaultProduct;
 };
@@ -135,6 +141,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [taskList, setTaskList] = useState<CHAT.Task[]>([]);
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
   const [workspaceStreamTask, setWorkspaceStreamTask] = useState<CHAT.Task>();
+  const [activeRunState, setActiveRunState] = useState<ActiveRunState>();
   const [plan, setPlan] = useState<CHAT.Plan>();
   const [showAction, setShowAction] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -316,6 +323,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setTaskList([]);
     setActiveTask(undefined);
     setWorkspaceStreamTask(undefined);
+    setActiveRunState(undefined);
     setPlan(undefined);
     setShowAction(false);
     setLoading(false);
@@ -344,16 +352,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       latestChatSnapshot,
       conversation.deepThink
     );
-    const latestTask = getLatestRenderableTask(conversationTaskData.currentChat);
+      const latestTask = getLatestRenderableTask(conversationTaskData.currentChat);
 
-    setTaskList(conversationTaskData.taskList);
-    setPlan(conversationTaskData.plan);
-    setWorkspaceStreamTask(
-      latestTask ? cloneWorkspaceTask(latestTask) : undefined
-    );
-    setShowAction(
-      conversationTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
-    );
+      setTaskList(conversationTaskData.taskList);
+      setPlan(conversationTaskData.plan);
+      setWorkspaceStreamTask(
+        latestTask ? cloneWorkspaceTask(latestTask) : undefined
+      );
+      setActiveRunState({
+        status: latestChatSnapshot.metrics?.status,
+        finishedAt: latestChatSnapshot.finishedAt,
+      });
+      setShowAction(
+        conversationTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
+      );
   }, [conversation.chatList, conversation.deepThink, conversation.id, loading]);
 
   useEffect(() => {
@@ -401,6 +413,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       taskStatus: 0,
       tip: "",
       multiAgent: { tasks: [] },
+      metrics: {
+        status: "RUNNING",
+      },
     };
   };
 
@@ -556,11 +571,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         if (isChatMode) {
           currentChat.response = errorText;
+          currentChat.metrics = {
+            ...(currentChat.metrics || {}),
+            status: "FAILED",
+          };
           syncRunningConversation();
           return;
         }
 
         currentChat.tip = errorText;
+        currentChat.metrics = {
+          ...(currentChat.metrics || {}),
+          status: "FAILED",
+        };
         currentChat.conclusion = {
           id: `${currentChat.requestId}-guard-error`,
           messageId: `${currentChat.requestId}-guard-error`,
@@ -596,6 +619,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       if (["roleUnavailable", "roleSwitchRejected", "noAvailableChatRole"].includes(status)) {
         currentChat.response = data.errorMsg || "当前角色暂不可用";
         currentChat.loading = false;
+        currentChat.metrics = {
+          ...(currentChat.metrics || {}),
+          status: "FAILED",
+        };
         setLoading(false);
         syncRunningConversation();
         return;
@@ -612,6 +639,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           currentChat.multiAgent
         );
         currentChat.loading = false;
+        currentChat.metrics = {
+          ...(currentChat.metrics || {}),
+          status: "FAILED",
+        };
         setLoading(false);
         setTaskList(taskData.taskList);
         runningConversation = {
@@ -648,6 +679,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
             if (innerType && (inner?.finish || finished)) {
               currentChat.loading = false;
+              currentChat.metrics = {
+                ...(currentChat.metrics || {}),
+                status: "SUCCESS",
+              };
               setLoading(false);
               syncRunningConversation();
             }
@@ -677,6 +712,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           }
           if (finished) {
             currentChat.loading = false;
+            currentChat.metrics = {
+              ...(currentChat.metrics || {}),
+              status: "SUCCESS",
+            };
             setLoading(false);
             if (normalizedDeepThink) {
               const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
@@ -725,20 +764,28 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return tasks;
   };
 
-  const changeTask = (task: CHAT.Task) => {
+  const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
     setIsRightCollapsed(false);
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     changeActionStatus(true);
     setActiveTask(task);
+    setActiveRunState({
+      status: chat?.metrics?.status,
+      finishedAt: chat?.finishedAt,
+    });
   };
 
   const updatePlan = (currentPlan: CHAT.Plan) => {
     setPlan(currentPlan);
   };
 
-  const changeFile = (file: CHAT.TFile) => {
+  const changeFile = (file: CHAT.TFile, chat?: CHAT.ChatItem) => {
     setIsRightCollapsed(false);
     changeActionStatus(true);
+    setActiveRunState({
+      status: chat?.metrics?.status,
+      finishedAt: chat?.finishedAt,
+    });
     actionViewRef.current?.setFilePreview(file);
   };
 
@@ -751,6 +798,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const changeActionStatus = (status: boolean) => {
     setShowAction(status);
   };
+
+  useEffect(() => {
+    const referenceChat =
+      conversation.chatList[conversation.chatList.length - 1];
+    if (!referenceChat) {
+      setActiveRunState(undefined);
+      return;
+    }
+    setActiveRunState({
+      status: referenceChat.metrics?.status,
+      finishedAt: referenceChat.finishedAt,
+    });
+  }, [conversation.chatList]);
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     const baseConversation = conversationRef.current;
@@ -1251,6 +1311,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               streamTask={workspaceStreamTask}
               taskList={taskList}
               plan={plan}
+              runState={activeRunState}
               ref={actionViewRef}
               onClose={() => {
                 changeActionStatus(false);

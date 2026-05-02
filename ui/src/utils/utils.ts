@@ -154,6 +154,23 @@ export const getSessionId = () => {
 };
 
 /**
+ * 当前会话切换后同步写回 sessionStorage，保证刷新后继续恢复最新会话。
+ */
+export const setSessionId = (sessionId: string) => {
+  if (!sessionId) {
+    return sessionId;
+  }
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.setItem("reactor.sessionId", sessionId);
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  return sessionId;
+};
+
+/**
  * 设置全局消息实例，以便在应用中统一管理消息提示
  */
 let message: MessageInstance | null = null;

@@ -10,6 +10,8 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,132 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         Assert.assertNull(detail.getToolInvocations().get(1).getStructuredOutput());
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("plan-a.md", detail.getArtifacts().get(0).getFileName());
+    }
+
+    @Test
+    public void shouldExposeStoppedRunHistoryWithReadableTerminalState() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        AgentContext context = ExecutionLedgerFixtureFactory.newAgentContext("req-plan-stop-001", "session-plan-stop-001", ledger.recorder);
+        Long runId = ExecutionLedgerFixtureFactory.activateRun(context, ledger.recorder, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+        Long llmInvocationId = ExecutionLedgerFixtureFactory.createLlmInvocation(
+                context,
+                ledger.recorder,
+                "planning",
+                1,
+                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
+        );
+        ledger.recorder.finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(llmInvocationId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .responseText("先规划执行步骤")
+                .toolCallCount(0)
+                .promptTokens(6)
+                .completionTokens(10)
+                .totalTokens(16)
+                .finishReason("stop")
+                .finishedAt(java.time.LocalDateTime.now())
+                .build());
+        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_STOPPED)
+                .finalSummaryText("已停止，但保留当前结果")
+                .errorCode("PLAN_SOLVE_STOPPED")
+                .errorMsg("达到最大迭代次数，任务终止。")
+                .build());
+
+        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+                .getRuns()
+                .get(0)
+                .getReplayFrames();
+
+        Assert.assertEquals(2, historyFrames.size());
+        Assert.assertEquals("plan_thought", eventMessageType(historyFrames.get(0)));
+        Assert.assertEquals("task", eventMessageType(historyFrames.get(1)));
+        Assert.assertEquals("result", nestedMessageType(historyFrames.get(1)));
+        Assert.assertEquals("已停止，但保留当前结果", nestedResult(historyFrames.get(1)));
+        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_STOPPED),
+                ledger.queryService.queryRunDetail(context.getRequestId()).getRun().getStatus());
+    }
+
+    @Test
+    public void shouldReplayPlanningToolAsPlanAndTaskFrames() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        AgentContext context = ExecutionLedgerFixtureFactory.newAgentContext("req-plan-history-001", "session-plan-history-001", ledger.recorder);
+        Long runId = ExecutionLedgerFixtureFactory.activateRun(context, ledger.recorder, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+        Long llmInvocationId = ExecutionLedgerFixtureFactory.createLlmInvocation(
+                context,
+                ledger.recorder,
+                "planning",
+                1,
+                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
+        );
+        Map<String, Long> toolIds = ledger.recorder.createToolInvocations(
+                org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.builder()
+                        .runId(runId)
+                        .requestId(context.getRequestId())
+                        .llmInvocationId(llmInvocationId)
+                        .agentName("planning")
+                        .stepNo(1)
+                        .items(List.of(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.Item.builder()
+                                .toolCallId("plan-history-tool-001")
+                                .dispatchIndex(1)
+                                .toolName("planning")
+                                .toolProvider(ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL)
+                                .inputJson("{\"command\":\"create\",\"title\":\"调研计划\",\"steps\":[\"执行顺序1. 信息收集：搜集资料\",\"执行顺序2. 输出总结：整理结论\"]}")
+                                .startedAt(java.time.LocalDateTime.now())
+                                .build()))
+                        .build()
+        );
+        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord.builder()
+                .toolInvocationId(toolIds.get("plan-history-tool-001"))
+                .runId(runId)
+                .requestId(context.getRequestId())
+                .sessionId(context.getSessionId())
+                .toolCallId("plan-history-tool-001")
+                .toolName("planning")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .llmObservation("我已创建plan")
+                .finishedAt(java.time.LocalDateTime.now())
+                .build());
+        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("计划已生成")
+                .build());
+
+        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+                .getRuns()
+                .get(0)
+                .getReplayFrames();
+
+        Assert.assertTrue(historyFrames.size() >= 3);
+        Assert.assertEquals("plan", eventMessageType(historyFrames.get(0)));
+        Assert.assertEquals("task", eventMessageType(historyFrames.get(1)));
+        Assert.assertEquals("task", nestedMessageType(historyFrames.get(1)));
+        Assert.assertEquals("信息收集：搜集资料", nestedTask(historyFrames.get(1)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String eventMessageType(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String nestedMessageType(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("messageType"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String nestedResult(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("result"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String nestedTask(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("task"));
     }
 
     private static final class TestAgent extends BaseAgent {

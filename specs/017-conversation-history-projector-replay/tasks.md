@@ -16,10 +16,10 @@
 
 **Purpose**: 为会话主表、历史查询接口和前端 hydrate 建立文件骨架
 
-- [ ] T001 在 `ai-agent-station-study-app/src/main/resources/db/schema.sql` 与 `ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 建立 `ai_agent_dialogue_session` DDL 与 Mapper XML 骨架
-- [ ] T002 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DialogueSession.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/DialogueSessionUpsertRecord.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/DialogueSessionView.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java` 建立会话主表领域模型与 DAO 骨架
-- [ ] T003 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/HistoryReplayPrinter.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationHistoryDetailRespVO.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationSessionRespVO.java` 建立历史查询服务与接口骨架
-- [ ] T004 [P] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/utils/conversationHistory.ts`、`ui/src/utils/conversationHistory.test.ts`、`ui/src/pages/Home/RecentSessionList.tsx` 建立前端历史接口、hydrate helper 和轻量近期会话组件骨架
+- [X] T001 在 `ai-agent-station-study-app/src/main/resources/db/schema.sql` 与 `ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 建立 `ai_agent_dialogue_session` DDL 与 Mapper XML 骨架
+- [X] T002 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DialogueSession.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/DialogueSessionUpsertRecord.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/ledger/DialogueSessionView.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java` 建立会话主表领域模型与 DAO 骨架
+- [X] T003 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/HistoryReplayPrinter.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationHistoryDetailRespVO.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationSessionRespVO.java` 建立历史查询服务与接口骨架
+- [X] T004 [P] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/utils/conversationHistory.ts`、`ui/src/utils/conversationHistory.test.ts`、`ui/src/pages/Home/RecentSessionList.tsx` 建立前端历史接口、hydrate helper 和轻量近期会话组件骨架
 
 ---
 
@@ -29,11 +29,11 @@
 
 **⚠️ CRITICAL**: 本阶段完成前，不开始任何用户故事实现
 
-- [ ] T005 在 `ai-agent-station-study-app/src/main/resources/db/schema.sql`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DialogueSession.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 完成 `ai_agent_dialogue_session` 字段、索引、查询与 upsert 映射
-- [ ] T006 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerRunSupport.java` 与 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/AgentExecutionRecorderImpl.java` 接入会话主表写侧维护，统一更新 `latest_request_id / latest_query_text / latest_summary_text / run_count / finished_run_count / failed_run_count / last_active_at`
-- [ ] T007 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerQueryService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueRunLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_run_ledger_mapper.xml` 补齐 `querySession`、`queryRecentSessions`、`querySessionRuns` 与会话内顺序查询能力
-- [ ] T008 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ReplayFactBundle.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/ToolInvocationProjectorRegistry.java` 建立 run + llm + tool + artifact 的统一历史回放输入与共享投影入口
-- [ ] T009 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerFixtureFactory.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java` 建立会话主表、ordered runs、历史回放的共享测试夹具和基础回归
+- [X] T005 在 `ai-agent-station-study-app/src/main/resources/db/schema.sql`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/entity/DialogueSession.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 完成 `ai_agent_dialogue_session` 字段、索引、查询与 upsert 映射
+- [X] T006 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerRunSupport.java` 与 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/AgentExecutionRecorderImpl.java` 接入会话主表写侧维护，统一更新 `latest_request_id / latest_query_text / latest_summary_text / run_count / finished_run_count / failed_run_count / last_active_at`
+- [X] T007 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerQueryService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueRunLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_run_ledger_mapper.xml` 补齐 `querySession`、`queryRecentSessions`、`querySessionRuns` 与会话内顺序查询能力
+- [X] T008 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ReplayFactBundle.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/ToolInvocationProjectorRegistry.java` 建立 run + llm + tool + artifact 的统一历史回放输入与共享投影入口
+- [X] T009 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerFixtureFactory.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java` 建立会话主表、ordered runs、历史回放的共享测试夹具和基础回归
 
 **Checkpoint**: 会话主表、共享查询契约和基础回放入口都已就绪，用户故事可以继续推进
 
@@ -46,16 +46,16 @@
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T010 [P] [US1] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java` 与 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java` 先补写会话详情按时间顺序恢复、`finalSummaryText` 兜底最终结论、无历史返回空结果的失败用例
-- [ ] T011 [P] [US1] 在 `ui/src/utils/conversationHistory.test.ts`、`ui/src/utils/chat.test.ts` 与 `ui/src/pages/Home/RecentSessionList.test.tsx` 先补写 `replayFrames -> ConversationHistory`、无历史保持空白、手动选择近期会话入口可见的失败用例
+- [X] T010 [P] [US1] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java` 与 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java` 先补写会话详情按时间顺序恢复、`finalSummaryText` 兜底最终结论、无历史返回空结果的失败用例
+- [X] T011 [P] [US1] 在 `ui/src/utils/conversationHistory.test.ts`、`ui/src/utils/chat.test.ts` 与 `ui/src/pages/Home/RecentSessionList.test.tsx` 先补写 `replayFrames -> ConversationHistory`、无历史保持空白、手动选择近期会话入口可见的失败用例
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/HistoryReplayPrinter.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java` 实现按 `sessionId` 聚合 runs 并输出详情 replay frames 的读服务
-- [ ] T013 [US1] 在 `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java` 与 `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationHistoryDetailRespVO.java` 实现 `GET /api/agent/conversation/sessions/{sessionId}` 详情接口与 VO 映射
-- [ ] T014 [P] [US1] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/utils/conversationHistory.ts` 实现历史详情 API、详情类型定义和 `hydrateConversationFromReplayFrames(detail)` 恢复逻辑
-- [ ] T015 [US1] 在 `ui/src/pages/Home/index.tsx` 与 `ui/src/pages/Home/RecentSessionList.tsx` 接入当前 `sessionId` 自动恢复逻辑，在恢复失败时保持空白/初始态并展示可点击的近期会话选择入口
-- [ ] T016 [US1] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 A、B、E 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ui/src/utils/conversationHistory.test.ts`、`ui/src/pages/Home/RecentSessionList.test.tsx` 的独立回归并记录结果
+- [X] T012 [P] [US1] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/HistoryReplayPrinter.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java` 实现按 `sessionId` 聚合 runs 并输出详情 replay frames 的读服务
+- [X] T013 [US1] 在 `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java` 与 `ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationHistoryDetailRespVO.java` 实现 `GET /api/agent/conversation/sessions/{sessionId}` 详情接口与 VO 映射
+- [X] T014 [P] [US1] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/utils/conversationHistory.ts` 实现历史详情 API、详情类型定义和 `hydrateConversationFromReplayFrames(detail)` 恢复逻辑
+- [X] T015 [US1] 在 `ui/src/pages/Home/index.tsx` 与 `ui/src/pages/Home/RecentSessionList.tsx` 接入当前 `sessionId` 自动恢复逻辑，在恢复失败时保持空白/初始态并展示可点击的近期会话选择入口
+- [X] T016 [US1] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 A、B、E 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ui/src/utils/conversationHistory.test.ts`、`ui/src/pages/Home/RecentSessionList.test.tsx` 的独立回归并记录结果
 
 **Checkpoint**: User Story 1 完成后，当前 `sessionId` 的历史恢复已可独立演示，是本特性的 MVP
 
@@ -68,16 +68,16 @@
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T017 [P] [US2] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReactExecutionLedgerIntegrationTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/PlanSolveExecutionLedgerIntegrationTest.java` 先补写 realtime/history `eventData` 同构、`agent_name` 语义映射和强制停止终态展示的失败用例
-- [ ] T018 [P] [US2] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ui/src/utils/chat.test.ts`、`ui/src/utils/conversationHistory.test.ts` 先补写缺失 artifact 明确提示、失败 run 保留最后可见细节的失败用例
+- [X] T017 [P] [US2] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReactExecutionLedgerIntegrationTest.java`、`ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/PlanSolveExecutionLedgerIntegrationTest.java` 先补写 realtime/history `eventData` 同构、`agent_name` 语义映射和强制停止终态展示的失败用例
+- [X] T018 [P] [US2] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ui/src/utils/chat.test.ts`、`ui/src/utils/conversationHistory.test.ts` 先补写缺失 artifact 明确提示、失败 run 保留最后可见细节的失败用例
 
 ### Implementation for User Story 2
 
-- [ ] T019 [P] [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java` 与 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ReplayFactBundle.java` 实现 `agent_name -> plan_thought / tool_thought / result` 映射和 `run.finalSummaryText` 最终答案 fallback
-- [ ] T020 [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/BaseAgentResponseHandler.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/ReactAgentResponseHandler.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/PlanSolveAgentResponseHandler.java` 收敛实时 `eventData` 组装逻辑，改为复用共享 projector
-- [ ] T021 [P] [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/impl/AbstractToolInvocationProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/impl/DefaultToolInvocationProjector.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ArtifactReferenceRespVO.java` 对齐工具结果、文件引用缺失态和失败/停止 run 的回放字段
-- [ ] T022 [US2] 在 `ui/src/components/Dialogue/index.tsx`、`ui/src/components/ActionView/FilePreview.tsx`、`ui/src/components/ActionView/RunStatus.tsx`、`ui/src/utils/conversationHistory.ts` 接入共享历史 payload 的失败/停止态和缺失产物展示
-- [ ] T023 [US2] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 C 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java`、`ReactExecutionLedgerIntegrationTest.java`、`PlanSolveExecutionLedgerIntegrationTest.java`、`ui/src/utils/chat.test.ts` 的独立回归并记录结果
+- [X] T019 [P] [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java` 与 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/model/replay/ReplayFactBundle.java` 实现 `agent_name -> plan_thought / tool_thought / result` 映射和 `run.finalSummaryText` 最终答案 fallback
+- [X] T020 [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/BaseAgentResponseHandler.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/ReactAgentResponseHandler.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/handler/PlanSolveAgentResponseHandler.java` 收敛实时 `eventData` 组装逻辑，改为复用共享 projector
+- [X] T021 [P] [US2] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/impl/AbstractToolInvocationProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/projector/impl/DefaultToolInvocationProjector.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ArtifactReferenceRespVO.java` 对齐工具结果、文件引用缺失态和失败/停止 run 的回放字段
+- [X] T022 [US2] 在 `ui/src/components/Dialogue/index.tsx`、`ui/src/components/ActionView/FilePreview.tsx`、`ui/src/components/ActionView/RunStatus.tsx`、`ui/src/utils/conversationHistory.ts` 接入共享历史 payload 的失败/停止态和缺失产物展示
+- [X] T023 [US2] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 C 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ReplayProjectorTest.java`、`ReactExecutionLedgerIntegrationTest.java`、`PlanSolveExecutionLedgerIntegrationTest.java`、`ui/src/utils/chat.test.ts` 的独立回归并记录结果
 
 **Checkpoint**: User Story 2 完成后，历史详情与实时对话已经收敛到同一套细节语义
 
@@ -90,16 +90,16 @@
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T024 [P] [US3] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java` 与 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java` 先补写近期会话默认 20 条、`last_active_at` 倒序、摘要与详情统计一致的失败用例
-- [ ] T025 [P] [US3] 在 `ui/src/pages/Home/RecentSessionList.test.tsx` 与 `ui/src/utils/conversationHistory.test.ts` 先补写近期会话列表展示标题/最近查询预览、点击后切换详情且不暴露总结正文的失败用例
+- [X] T024 [P] [US3] 在 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ExecutionLedgerQueryServiceTest.java` 与 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java` 先补写近期会话默认 20 条、`last_active_at` 倒序、摘要与详情统计一致的失败用例
+- [X] T025 [P] [US3] 在 `ui/src/pages/Home/RecentSessionList.test.tsx` 与 `ui/src/utils/conversationHistory.test.ts` 先补写近期会话列表展示标题/最近查询预览、点击后切换详情且不暴露总结正文的失败用例
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerQueryService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 实现近期会话摘要查询、默认 limit 归一和排序规则
-- [ ] T027 [P] [US3] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationSessionRespVO.java` 实现 `GET /api/agent/conversation/sessions?limit=20` 列表接口，并保证摘要字段与详情共用同一会话头统计
-- [ ] T028 [P] [US3] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/pages/Home/RecentSessionList.tsx` 接入近期会话摘要类型和列表渲染，展示标题、最近查询预览、状态和最近活动信息
-- [ ] T029 [US3] 在 `ui/src/pages/Home/index.tsx` 与 `ui/src/utils/conversationHistory.ts` 实现手动选择近期会话后加载对应详情，并保证列表摘要与详情状态/轮次数展示保持一致
-- [ ] T030 [US3] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 D、E 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ExecutionLedgerQueryServiceTest.java`、`ui/src/pages/Home/RecentSessionList.test.tsx` 的独立回归并记录结果
+- [X] T026 [P] [US3] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/ExecutionLedgerQueryService.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/mapper/IDialogueSessionLedgerDao.java`、`ai-agent-station-study-app/src/main/resources/mybatis/mapper/dialogue_session_ledger_mapper.xml` 实现近期会话摘要查询、默认 limit 归一和排序规则
+- [X] T027 [P] [US3] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationHistoryController.java`、`ai-agent-station-study-trigger/src/main/java/org/wwz/ai/trigger/http/agent/vo/ConversationSessionRespVO.java` 实现 `GET /api/agent/conversation/sessions?limit=20` 列表接口，并保证摘要字段与详情共用同一会话头统计
+- [X] T028 [P] [US3] 在 `ui/src/services/agentConversation.ts`、`ui/src/types/chat.ts`、`ui/src/pages/Home/RecentSessionList.tsx` 接入近期会话摘要类型和列表渲染，展示标题、最近查询预览、状态和最近活动信息
+- [X] T029 [US3] 在 `ui/src/pages/Home/index.tsx` 与 `ui/src/utils/conversationHistory.ts` 实现手动选择近期会话后加载对应详情，并保证列表摘要与详情状态/轮次数展示保持一致
+- [X] T030 [US3] 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的场景 D、E 下执行 `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/domain/ConversationHistoryControllerTest.java`、`ExecutionLedgerQueryServiceTest.java`、`ui/src/pages/Home/RecentSessionList.test.tsx` 的独立回归并记录结果
 
 **Checkpoint**: User Story 3 完成后，近期会话摘要列表和详情已经形成一致、可手动选择的历史入口
 
@@ -109,9 +109,9 @@
 
 **Purpose**: 完成文档、注释、安全假设和最终全量回归收口
 
-- [ ] T031 [P] 在 `specs/017-conversation-history-projector-replay/quickstart.md`、`specs/017-conversation-history-projector-replay/contracts/conversation-history-api.md`、`specs/017-conversation-history-projector-replay/contracts/replay-hydration-contract.md` 回填最终实现约束、错误语义和手工验收说明
-- [ ] T032 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ui/src/utils/conversationHistory.ts` 清理重复历史映射逻辑并补齐关键中文注释
-- [ ] T033 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的命令下执行 `mvn test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ExecutionLedgerQueryServiceTest,ReplayProjectorTest,ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false`、`cd ui && npm run test -- conversationHistory.test.ts chat.test.ts`、`cd ui && npm run build` 并修复最后回归问题
+- [X] T031 [P] 在 `specs/017-conversation-history-projector-replay/quickstart.md`、`specs/017-conversation-history-projector-replay/contracts/conversation-history-api.md`、`specs/017-conversation-history-projector-replay/contracts/replay-hydration-contract.md` 回填最终实现约束、错误语义和手工验收说明
+- [X] T032 [P] 在 `ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/impl/ExecutionLedgerQueryServiceImpl.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ReplayProjector.java`、`ai-agent-station-study-domain/src/main/java/org/wwz/ai/domain/agent/reactor/service/replay/ConversationHistoryReplayService.java`、`ui/src/utils/conversationHistory.ts` 清理重复历史映射逻辑并补齐关键中文注释
+- [X] T033 在 `specs/017-conversation-history-projector-replay/quickstart.md` 指定的命令下执行 `mvn test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ExecutionLedgerQueryServiceTest,ReplayProjectorTest,ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false`、`cd ui && npm run test -- conversationHistory.test.ts chat.test.ts`、`cd ui && npm run build` 并修复最后回归问题
 
 ---
 

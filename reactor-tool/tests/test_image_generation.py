@@ -2,7 +2,11 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
+import httpx
+
 from reactor_tool.tool.image_generation import (
+    _build_generation_requests,
+    _execute_generation_request,
     _resolve_api_key,
     _resolve_base_url,
     _resolve_model_name,
@@ -108,6 +112,106 @@ class ImageGenerationToolTest(unittest.TestCase):
                 "IMAGE_GENERATION_BASE_URL",
             ):
                 asyncio.run(generate_images(request))
+
+    def test_should_build_native_edits_request_for_single_edit_without_mask(self):
+        data_url = f"data:image/png;base64,{TINY_PNG_BASE64}"
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-edits-001",
+                "prompt": "把图片改成黄昏氛围",
+                "mode": "edits",
+                "fileNames": [data_url],
+                "size": "1024x1024",
+            }
+        )
+
+        async def _run():
+            async with httpx.AsyncClient() as client:
+                primary, fallback = await _build_generation_requests(
+                    request=request,
+                    mode="edits",
+                    base_url="https://example.com/v1",
+                    model_name="gpt-image-2",
+                    client=client,
+                )
+                self.assertEqual("https://example.com/v1/images/edits", primary["url"])
+                self.assertTrue(primary.get("multipart"))
+                self.assertEqual("https://example.com/v1/chat/completions", fallback["url"])
+
+        asyncio.run(_run())
+
+    def test_should_attach_alpha_mask_when_single_edit_contains_mask(self):
+        data_url = f"data:image/png;base64,{TINY_PNG_BASE64}"
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-edits-002",
+                "prompt": "只修改红色标记区域",
+                "mode": "edits",
+                "fileNames": [data_url],
+                "maskFileNames": [data_url],
+            }
+        )
+
+        async def _run():
+            async with httpx.AsyncClient() as client:
+                primary, fallback = await _build_generation_requests(
+                    request=request,
+                    mode="edits",
+                    base_url="https://example.com/v1",
+                    model_name="gpt-image-2",
+                    client=client,
+                )
+                self.assertEqual("https://example.com/v1/images/edits", primary["url"])
+                self.assertTrue(primary.get("multipart"))
+                self.assertEqual("https://example.com/v1/chat/completions", fallback["url"])
+
+        asyncio.run(_run())
+
+    def test_should_post_multipart_request_when_primary_request_requires_native_edits(self):
+        class FakeResponse:
+            def __init__(self):
+                self.is_success = True
+                self.status_code = 200
+                self.text = '{"data":[{"b64_json":"' + TINY_PNG_BASE64 + '"}]}'
+
+            def json(self):
+                return {"data": [{"b64_json": TINY_PNG_BASE64}]}
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            async def post(self, url, headers=None, json=None, files=None):
+                self.calls.append(
+                    {
+                        "url": url,
+                        "headers": headers or {},
+                        "json": json,
+                        "files": files,
+                    }
+                )
+                return FakeResponse()
+
+        async def _run():
+            client = FakeClient()
+            payload, used_fallback = await _execute_generation_request(
+                client=client,
+                api_key="test-key",
+                primary_request={
+                    "url": "https://example.com/v1/images/edits",
+                    "body": [("model", "gpt-image-2"), ("prompt", "edit")],
+                    "multipart": True,
+                },
+                fallback_request=None,
+            )
+            self.assertFalse(used_fallback)
+            self.assertEqual(TINY_PNG_BASE64, payload["data"][0]["b64_json"])
+            self.assertEqual("https://example.com/v1/images/edits", client.calls[0]["url"])
+            self.assertIsNone(client.calls[0]["json"])
+            self.assertIsNotNone(client.calls[0]["files"])
+            self.assertNotIn("Content-Type", client.calls[0]["headers"])
+
+        asyncio.run(_run())
 
 
 if __name__ == "__main__":

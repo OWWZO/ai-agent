@@ -30,11 +30,16 @@ type ActionViewProps = {
   activeTask?: CHAT.Task;
   streamTask?: CHAT.Task;
   plan?: CHAT.Plan;
+  runState?: {
+    status?: string;
+    errorMsg?: string;
+    finishedAt?: string;
+  };
   ref?: React.Ref<ActionViewRef>;
 } & GetProps<typeof Title>;
 
 const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
-  const { className, onClose, title, activeTask, streamTask, taskList, plan } = props;
+  const { className, onClose, title, activeTask, streamTask, taskList, plan, runState } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();
   const planRef = useRef<PlanViewAction>(null);
@@ -96,6 +101,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                 <FilePreview
                   taskItem={activeTask || streamTask}
                   taskList={taskList}
+                  runState={runState}
                   className="h-full"
                 />
               </motion.div>

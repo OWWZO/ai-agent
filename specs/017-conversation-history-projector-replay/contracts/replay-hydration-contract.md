@@ -37,6 +37,7 @@
 2. `resultMap.eventData.resultMap.messageType` 的语义必须与实时 SSE 一致。
 3. `artifactRefs` 放在 `eventData` 顶层时，前端会通过 `buildTaskFromEventData` 统一折叠进任务对象。
 4. `result` / `task_summary` 相关 frame 必须足以恢复 `currentChat.conclusion`。
+5. 历史 `plan_thought` 是唯一直接使用顶层 `eventData.messageType = "plan_thought"` 的 LLM 事件；其余 LLM 事件继续走顶层 `task`。
 
 ## 2. Frontend Hydration Algorithm
 
@@ -48,6 +49,7 @@
    - 读取 `frame.resultMap.eventData`
    - 调用 `combineData(eventData, currentChat)`
    - 若该事件是最终结果事件，则同步更新 `currentChat.conclusion`
+   - 将 run 级 `status` 写入 `currentChat.metrics.status`，供终态提示条复用
 4. run 结束后，将该 `currentChat` 推入 `conversation.chatList`
 5. 最终调用 `handleTaskData` 或现有渲染链完成派生展示
 
@@ -71,6 +73,7 @@
 - 若 artifact 已不可用
 - frame 中对应引用仍要保留
 - 但需带上 `missing` / `missingReason`
+- 正常可用的 artifact 也应显式返回 `missing: false`
 
 ### Empty Session
 

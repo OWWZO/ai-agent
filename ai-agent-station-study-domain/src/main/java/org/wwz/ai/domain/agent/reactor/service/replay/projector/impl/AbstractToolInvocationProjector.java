@@ -54,6 +54,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             ref.put("fileName", artifact.getFileName());
             ref.put("mimeType", artifact.getMimeType());
             ref.put("size", artifact.getFileSize());
+            ref.put("missing", Boolean.FALSE);
             refs.add(ref);
         }
         return refs;
@@ -98,8 +99,19 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             info.putIfAbsent("previewUrl", matched.getPreviewUrl());
             info.putIfAbsent("ossUrl", matched.getDownloadUrl());
             info.putIfAbsent("domainUrl", matched.getPreviewUrl());
+            info.putIfAbsent("missing", Boolean.FALSE);
             if (matched.getFileSize() != null) {
                 info.putIfAbsent("fileSize", matched.getFileSize());
+            }
+        }
+        for (Map<String, Object> info : merged) {
+            boolean hasPreview = StringUtils.isNotBlank(String.valueOf(info.getOrDefault("previewUrl", "")));
+            boolean hasDownload = StringUtils.isNotBlank(String.valueOf(info.getOrDefault("downloadUrl", "")));
+            if (!hasPreview && !hasDownload) {
+                info.put("missing", Boolean.TRUE);
+                info.putIfAbsent("missingReason", "artifact_not_found");
+            } else {
+                info.putIfAbsent("missing", Boolean.FALSE);
             }
         }
         return merged;
@@ -181,6 +193,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         info.put("previewUrl", artifact.getPreviewUrl());
         info.put("ossUrl", artifact.getDownloadUrl());
         info.put("domainUrl", artifact.getPreviewUrl());
+        info.put("missing", Boolean.FALSE);
         if (artifact.getFileSize() != null) {
             info.put("fileSize", artifact.getFileSize());
         }
@@ -201,6 +214,9 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         }
         if (StringUtils.isNotBlank(fileRef.getDomainUrl())) {
             info.put("domainUrl", fileRef.getDomainUrl());
+        }
+        if (!info.containsKey("missing")) {
+            info.put("missing", Boolean.FALSE);
         }
         if (fileRef.getFileSize() != null) {
             info.put("fileSize", fileRef.getFileSize());

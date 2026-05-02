@@ -7,12 +7,17 @@ import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
 
 import java.util.List;
 
 @Component
 @Slf4j
 public class ReactAgentResponseHandler extends BaseAgentResponseHandler implements AgentResponseHandler {
+
+    public ReactAgentResponseHandler(ReplayProjector replayProjector) {
+        super(replayProjector);
+    }
 
     @Override
     public GptProcessResult handle(AgentRequest request, AgentResponse response, List<AgentResponse> agentRespList, EventResult eventResult) {

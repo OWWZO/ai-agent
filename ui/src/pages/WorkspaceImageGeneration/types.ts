@@ -28,6 +28,7 @@ export type GenerationConfig = {
   mode: RequestMode;
   size: string;
   n: number;
+  batchMode: boolean;
 };
 
 export type EditorImageItem = {

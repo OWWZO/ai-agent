@@ -200,6 +200,23 @@ async def _build_generation_requests(
         }
         return primary_request, fallback_request
 
+    if len(request.file_names) == 1:
+        primary_request = await _build_native_edit_request(
+            request=request,
+            base_url=base_url,
+            model_name=model_name,
+            client=client,
+        )
+        _, chat_content = await _build_edit_contents(request, client)
+        fallback_request = {
+            "url": f"{base_url}/chat/completions",
+            "body": {
+                "model": model_name,
+                "messages": [{"role": "user", "content": chat_content}],
+            },
+        }
+        return primary_request, fallback_request
+
     responses_content, chat_content = await _build_edit_contents(request, client)
     tool = {"type": "image_generation"}
     if request.size:
@@ -223,6 +240,36 @@ async def _build_generation_requests(
         },
     }
     return primary_request, fallback_request
+
+
+async def _build_native_edit_request(
+    request: ImageGenerationRequest,
+    base_url: str,
+    model_name: str,
+    client: httpx.AsyncClient,
+) -> dict[str, Any]:
+    """单图图生图优先走原生 /images/edits，局部编辑质量更稳定。"""
+    image_reference = request.file_names[0]
+    image_bytes, _ = await _reference_to_image_bytes(client, image_reference)
+    files: list[tuple[str, tuple[str, bytes, str] | str]] = [
+        ("model", model_name),
+        ("prompt", request.prompt),
+        ("response_format", "b64_json"),
+        ("image", ("image.png", image_bytes, "image/png")),
+    ]
+    if request.size:
+        files.append(("size", request.size))
+
+    mask_reference = request.mask_file_names[0] if request.mask_file_names else ""
+    if mask_reference:
+        mask_bytes, _ = await _reference_to_image_bytes(client, mask_reference)
+        files.append(("mask", ("mask.png", mask_bytes, "image/png")))
+
+    return {
+        "url": f"{base_url}/images/edits",
+        "body": files,
+        "multipart": True,
+    }
 
 
 async def _build_edit_contents(
@@ -279,22 +326,28 @@ async def _execute_generation_request(
     fallback_request: dict[str, Any] | None,
 ) -> tuple[Any, bool]:
     """优先走 Responses API，未实现时自动切换 legacy 接口。"""
-    headers = _build_openai_compat_headers(
+    json_headers = _build_openai_compat_headers(
         {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
     )
+    multipart_headers = _build_openai_compat_headers(
+        {
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        }
+    )
 
     used_fallback = False
     try:
-        response = await client.post(primary_request["url"], headers=headers, json=primary_request["body"])
+        response = await _post_generation_request(client, primary_request, json_headers, multipart_headers)
     except Exception:
         if not fallback_request:
             raise
         used_fallback = True
-        response = await client.post(fallback_request["url"], headers=headers, json=fallback_request["body"])
+        response = await _post_generation_request(client, fallback_request, json_headers, multipart_headers)
 
     if (
         not response.is_success
@@ -303,7 +356,7 @@ async def _execute_generation_request(
         and response.status_code in RESPONSES_FALLBACK_STATUS
     ):
         used_fallback = True
-        response = await client.post(fallback_request["url"], headers=headers, json=fallback_request["body"])
+        response = await _post_generation_request(client, fallback_request, json_headers, multipart_headers)
 
     raw_text = response.text
     try:
@@ -315,6 +368,18 @@ async def _execute_generation_request(
         raise RuntimeError(f"图片生成请求失败，status={response.status_code}，body={str(raw_text)[:500]}")
 
     return payload, used_fallback
+
+
+async def _post_generation_request(
+    client: httpx.AsyncClient,
+    request: dict[str, Any],
+    json_headers: dict[str, str],
+    multipart_headers: dict[str, str],
+) -> httpx.Response:
+    """统一执行 JSON / multipart 两类上游请求。"""
+    if request.get("multipart"):
+        return await client.post(request["url"], headers=multipart_headers, files=request["body"])
+    return await client.post(request["url"], headers=json_headers, json=request["body"])
 
 
 async def _upload_generated_images(
@@ -479,14 +544,20 @@ def _extract_text_output(payload: Any) -> str:
 
 async def _reference_to_data_url(client: httpx.AsyncClient, reference: str) -> str:
     """把本地文件或 URL 统一转成 data url，便于兼容 OpenAI 风格多模态输入。"""
+    file_bytes, mime_type = await _reference_to_image_bytes(client, reference)
+    return _bytes_to_data_url(file_bytes, mime_type)
+
+
+async def _reference_to_image_bytes(client: httpx.AsyncClient, reference: str) -> tuple[bytes, str]:
+    """把本地文件或 URL 统一转成二进制图片内容，供 multipart 与 data url 两种路径复用。"""
     if reference.startswith("data:"):
-        return _normalize_data_url(reference)
+        return _decode_image_data(_normalize_data_url(reference))
 
     if _is_local_file_reference(reference):
         file_path = _normalize_local_path(reference)
         file_bytes = file_path.read_bytes()
         mime_type = _guess_mime_from_name(file_path.name) or _guess_mime_from_bytes(file_bytes) or "image/png"
-        return _bytes_to_data_url(file_bytes, mime_type)
+        return file_bytes, mime_type
 
     response = await client.get(reference)
     response.raise_for_status()
@@ -497,7 +568,7 @@ async def _reference_to_data_url(client: httpx.AsyncClient, reference: str) -> s
         or _guess_mime_from_bytes(file_bytes)
         or "image/png"
     )
-    return _bytes_to_data_url(file_bytes, mime_type)
+    return file_bytes, mime_type
 
 
 def _resolve_base_url() -> str:

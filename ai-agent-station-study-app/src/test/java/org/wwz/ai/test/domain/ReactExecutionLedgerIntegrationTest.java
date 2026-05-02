@@ -7,9 +7,15 @@ import org.wwz.ai.domain.agent.reactor.agent.agent.BaseAgent;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.handler.ReactAgentResponseHandler;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 
 import java.util.List;
 import java.util.Map;
@@ -62,6 +68,87 @@ public class ReactExecutionLedgerIntegrationTest {
         Assert.assertNull(detail.getToolInvocations().get(0).getStructuredOutput());
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertEquals("react-report.md", detail.getArtifacts().get(0).getFileName());
+    }
+
+    @Test
+    public void shouldKeepRealtimeAndHistoryPlanThoughtContractAligned() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        AgentContext context = ExecutionLedgerFixtureFactory.newAgentContext("req-react-plan-001", "session-react-plan-001", ledger.recorder);
+        Long runId = ExecutionLedgerFixtureFactory.activateRun(context, ledger.recorder, ExecutionLedgerConstants.ENTRY_AGENT_REACT);
+        Long llmInvocationId = ExecutionLedgerFixtureFactory.createLlmInvocation(
+                context,
+                ledger.recorder,
+                "planning",
+                1,
+                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
+        );
+        ledger.recorder.finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(llmInvocationId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .responseText("先拆分执行计划")
+                .toolCallCount(0)
+                .promptTokens(8)
+                .completionTokens(12)
+                .totalTokens(20)
+                .finishReason("stop")
+                .finishedAt(java.time.LocalDateTime.now())
+                .build());
+        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("react plan summary")
+                .build());
+
+        ReactAgentResponseHandler handler = new ReactAgentResponseHandler(
+                new org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector(
+                        new org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry(
+                                List.of(),
+                                new org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DefaultToolInvocationProjector()
+                        )
+                )
+        );
+
+        GptProcessResult realtime = handler.handle(
+                AgentRequest.builder().requestId(context.getRequestId()).build(),
+                AgentResponse.builder()
+                        .requestId(context.getRequestId())
+                        .messageId("msg-react-plan-1")
+                        .messageType("plan_thought")
+                        .messageTime("1714631000000")
+                        .planThought("先拆分执行计划")
+                        .isFinal(true)
+                        .finish(false)
+                        .resultMap(Map.of("agentType", 5))
+                        .build(),
+                List.of(),
+                new EventResult()
+        );
+
+        ExecutionRunDetail detail = ledger.queryService.queryRunDetail(context.getRequestId());
+        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+                .getRuns()
+                .get(0)
+                .getReplayFrames();
+
+        Assert.assertNotNull(detail);
+        Assert.assertEquals("5", String.valueOf(realtime.getResultMap().get("agentType")));
+        Assert.assertEquals("plan_thought", eventMessageType(realtime));
+        Assert.assertEquals("plan_thought", nestedMessageType(realtime));
+        Assert.assertFalse(historyFrames.isEmpty());
+        Assert.assertEquals("plan_thought", eventMessageType(historyFrames.get(0)));
+        Assert.assertEquals("plan_thought", nestedMessageType(historyFrames.get(0)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String eventMessageType(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String nestedMessageType(GptProcessResult frame) {
+        return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("messageType"));
     }
 
     private static final class TestAgent extends BaseAgent {

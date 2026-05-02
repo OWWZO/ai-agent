@@ -21,4 +21,6 @@ public interface IDialogueRunLedgerDao {
 
     List<DialogueRunView> queryRecentBySessionId(@Param("sessionId") String sessionId,
                                                  @Param("limit") int limit);
+
+    List<DialogueRunView> queryBySessionId(@Param("sessionId") String sessionId);
 }

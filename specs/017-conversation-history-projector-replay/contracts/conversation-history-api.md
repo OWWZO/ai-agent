@@ -7,8 +7,8 @@
 ### Query Rules
 
 - `limit` 可选，默认 `20`
-- 最大值建议限制为 `100`
-- 默认按 `lastActiveAt DESC` 返回
+- 最大值限制为 `100`
+- 默认按 `lastActiveAt DESC, id DESC` 返回
 
 ### Response Shape
 
@@ -80,7 +80,7 @@
             "status": "success",
             "finished": true,
             "resultMap": {
-              "agentType": "react",
+              "agentType": "history",
               "multiAgent": {},
               "eventData": {
                 "taskId": "task-1",
@@ -109,6 +109,8 @@
 3. 如果某个 run 没有显式最终回答事件，但存在 `finalSummaryText`，服务端必须补一个可读的最终结果 frame。
 4. 失败、超时、停止的 run 也必须返回最后可见细节和明确终态。
 5. 文件、报告或其他产物引用必须继续使用稳定引用；若已失效，应通过字段显式表达不可用状态。
+6. 历史 `plan_thought` 必须直接投影为顶层 `eventData.messageType = "plan_thought"`；其余 thought/result 保持顶层 `task` 包装。
+7. artifact 正常场景也要显式返回 `missing: false`，避免前端自行推断。
 
 ## 3. Error Semantics
 
@@ -120,7 +122,7 @@
 ### Artifact Missing
 
 - 缺失产物时不得静默吞掉
-- 建议在对应 artifact/ref 上返回：
+- 当前实现会在对应 artifact/ref 上返回：
   - `missing: true`
   - `missingReason: "artifact_not_found"` 或等价可读原因
 

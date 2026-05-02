@@ -362,4 +362,113 @@ describe("chat deep_search progress", () => {
     expect(primaryFile?.url).toBe("https://example.com/preview.html");
     expect(primaryFile?.downloadUrl).toBe("https://example.com/download/preview.html");
   });
+
+  it("缺失 artifact 会继续保留在任务结果里，供历史工作区展示失效态", () => {
+    const currentChat = {
+      sessionId: "session-missing-1",
+      requestId: "req-missing-1",
+      query: "查看失效文件",
+      files: [],
+      forceStop: true,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData({
+      messageType: "task",
+      messageId: "missing-msg-1",
+      taskId: "task-missing-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      artifactRefs: [
+        {
+          displayName: "missing-report.md",
+          resourceKey: "missing-report",
+          missing: true,
+          missingReason: "artifact_not_found",
+        },
+      ],
+      resultMap: {
+        requestId: "req-missing-1",
+        messageId: "missing-msg-1",
+        messageType: "markdown",
+        messageTime: "1714041600999",
+        finish: true,
+        isFinal: true,
+        resultMap: {
+          isFinal: true,
+          data: "# 历史报告",
+          codeOutput: "# 历史报告",
+          fileInfo: [],
+        },
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const { taskList } = handleTaskData(currentChat, true, currentChat.multiAgent);
+    const primaryFile = getPrimaryTaskFile(taskList[0]);
+
+    expect(taskList).toHaveLength(1);
+    expect(primaryFile?.missing).toBe(true);
+    expect(primaryFile?.missingReason).toBe("artifact_not_found");
+  });
+
+  it("普通历史会话在存在多个任务组时也能重建时间线", () => {
+    const snapshotChat = {
+      sessionId: "session-history-2",
+      requestId: "req-history-2",
+      query: "回放普通会话",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: {
+        tasks: [
+          [
+            {
+              taskId: "task-group-1",
+              messageId: "msg-group-1",
+              messageTime: "1714041602001",
+              messageType: "markdown",
+              requestId: "req-history-2",
+              finish: true,
+              isFinal: true,
+              resultMap: {
+                isFinal: true,
+                data: "# 第一组",
+                codeOutput: "# 第一组",
+                fileInfo: [],
+              },
+            } as MESSAGE.Task,
+          ],
+          [
+            {
+              taskId: "task-group-2",
+              messageId: "msg-group-2",
+              messageTime: "1714041602002",
+              messageType: "markdown",
+              requestId: "req-history-2",
+              finish: true,
+              isFinal: true,
+              resultMap: {
+                isFinal: true,
+                data: "# 第二组",
+                codeOutput: "# 第二组",
+                fileInfo: [],
+              },
+            } as MESSAGE.Task,
+          ],
+        ],
+      },
+    } as CHAT.ChatItem;
+
+    const result = buildConversationTaskData(snapshotChat, false);
+
+    expect(result.taskList).toHaveLength(2);
+    expect(result.currentChat.tasks).toHaveLength(2);
+    expect(result.currentChat.tasks[0]?.[0]?.children).toHaveLength(1);
+    expect(result.currentChat.tasks[1]?.[0]?.children).toHaveLength(1);
+  });
 });

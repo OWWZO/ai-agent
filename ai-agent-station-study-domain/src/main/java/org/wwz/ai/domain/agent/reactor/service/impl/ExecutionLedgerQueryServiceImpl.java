@@ -10,10 +10,12 @@ import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
@@ -35,6 +37,7 @@ import java.util.stream.Collectors;
 public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryService {
 
     private final IDialogueRunLedgerDao dialogueRunLedgerDao;
+    private final IDialogueSessionLedgerDao dialogueSessionLedgerDao;
     private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
     private final IToolInvocationLedgerDao toolInvocationLedgerDao;
     private final IArtifactLedgerDao artifactLedgerDao;
@@ -74,6 +77,31 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
             return List.of();
         }
         List<DialogueRunView> runViews = dialogueRunLedgerDao.queryRecentBySessionId(sessionId, normalizeLimit(limit));
+        return attachArtifactSummaries(runViews);
+    }
+
+    @Override
+    public List<DialogueRunView> querySessionRuns(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return List.of();
+        }
+        return attachArtifactSummaries(dialogueRunLedgerDao.queryBySessionId(sessionId));
+    }
+
+    @Override
+    public DialogueSessionView querySession(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return null;
+        }
+        return dialogueSessionLedgerDao.querySessionView(sessionId);
+    }
+
+    @Override
+    public List<DialogueSessionView> queryRecentSessions(int limit) {
+        return dialogueSessionLedgerDao.queryRecentSessions(normalizeLimit(limit));
+    }
+
+    private List<DialogueRunView> attachArtifactSummaries(List<DialogueRunView> runViews) {
         if (CollectionUtils.isEmpty(runViews)) {
             return runViews;
         }
@@ -84,6 +112,8 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (runIds.isEmpty()) {
             return runViews;
         }
+        // 会话摘要列表只需要轻量文件概览，这里统一补到 run 视图上，
+        // 避免 controller / UI 再额外扫 artifact 表做第二次拼装。
         Map<Long, List<ArtifactView>> artifactViewsByRunId = artifactLedgerDao.queryByRunIds(runIds).stream()
                 .collect(Collectors.groupingBy(
                         ArtifactRecord::getRunId,
@@ -96,6 +126,8 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
     }
 
     private int normalizeLimit(int limit) {
+        // 最近会话列表和最近 run 摘要统一走同一套 limit 归一规则，
+        // 默认 20、上限 100，避免不同入口出现分页语义分叉。
         if (limit <= 0) {
             return 20;
         }

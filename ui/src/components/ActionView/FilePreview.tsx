@@ -16,6 +16,7 @@ import {
   Maximize2,
   Search,
 } from "lucide-react";
+import RunStatus from "./RunStatus";
 import {
   resolveDeepSearchStage,
   resolveDeepSearchTitle,
@@ -141,7 +142,12 @@ const FilePreview: React.FC<{
   taskItem?: CHAT.Task;
   taskList?: PanelItemType[];
   className?: string;
-}> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp }) => {
+  runState?: {
+    status?: string;
+    errorMsg?: string;
+    finishedAt?: string;
+  };
+}> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp, runState }) => {
   const taskList = useMemo(() => {
     return taskListProp?.filter(
       (item) =>
@@ -245,35 +251,45 @@ const FilePreview: React.FC<{
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {artifactMissing ? (
-          <MissingArtifactState reason={primaryFile?.missingReason} />
-        ) : (
-          <AnimatePresence mode="sync" initial={false}>
-            <motion.div
-              key={taskRenderKey}
-              initial={{
-                opacity: 0,
-                y: 8
-              }}
-              animate={{
-                opacity: 1,
-                y: 0
-              }}
-              exit={{
-                opacity: 0,
-                y: -6
-              }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              <ActionPanel
-                className="h-full"
-                taskItem={taskItem}
-                allowShowToolBar
-              />
-            </motion.div>
-          </AnimatePresence>
-        )}
+        <div className="flex h-full flex-col">
+          <RunStatus
+            status={runState?.status}
+            errorMsg={runState?.errorMsg}
+            finishedAt={runState?.finishedAt}
+            className="mx-4 mt-4 mb-2"
+          />
+          <div className="min-h-0 flex-1">
+            {artifactMissing ? (
+              <MissingArtifactState reason={primaryFile?.missingReason} />
+            ) : (
+              <AnimatePresence mode="sync" initial={false}>
+                <motion.div
+                  key={taskRenderKey}
+                  initial={{
+                    opacity: 0,
+                    y: 8
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0
+                  }}
+                  exit={{
+                    opacity: 0,
+                    y: -6
+                  }}
+                  transition={{ duration: 0.2 }}
+                  className="h-full"
+                >
+                  <ActionPanel
+                    className="h-full"
+                    taskItem={taskItem}
+                    allowShowToolBar
+                  />
+                </motion.div>
+              </AnimatePresence>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Footer Navigation */}

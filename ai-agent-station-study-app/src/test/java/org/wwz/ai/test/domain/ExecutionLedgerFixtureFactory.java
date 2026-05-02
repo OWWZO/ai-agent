@@ -5,14 +5,18 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.reactor.entity.DialogueSession;
 import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
 import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
@@ -23,6 +27,20 @@ import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentExecutionRecorderImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.ExecutionLedgerQueryServiceImpl;
+import org.wwz.ai.domain.agent.reactor.service.replay.ConversationHistoryReplayService;
+import org.wwz.ai.domain.agent.reactor.service.replay.HistoryReplayPrinter;
+import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.CodeInterpreterToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DataAnalysisToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DefaultToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DeepSearchToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.FileToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ImageGenerationToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.MultiModalToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.PlanningToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ReportToolInvocationProjector;
+import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ScriptRunnerToolInvocationProjector;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputWriter;
 
@@ -46,14 +64,43 @@ public final class ExecutionLedgerFixtureFactory {
     static LedgerTestContext newLedgerTestContext() {
         InMemoryLedgerStore store = new InMemoryLedgerStore();
         InMemoryDialogueRunLedgerDao runDao = new InMemoryDialogueRunLedgerDao(store);
+        InMemoryDialogueSessionLedgerDao sessionDao = new InMemoryDialogueSessionLedgerDao(store);
         InMemoryLlmInvocationLedgerDao llmDao = new InMemoryLlmInvocationLedgerDao(store);
         InMemoryToolInvocationLedgerDao toolDao = new InMemoryToolInvocationLedgerDao(store);
         InMemoryArtifactLedgerDao artifactDao = new InMemoryArtifactLedgerDao(store);
         InMemoryToolOutputWriter toolOutputWriter = new InMemoryToolOutputWriter(store);
         InMemoryToolOutputReader toolOutputReader = new InMemoryToolOutputReader(store);
-        AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(runDao, llmDao, toolDao, artifactDao, toolOutputWriter);
-        ExecutionLedgerQueryService queryService = new ExecutionLedgerQueryServiceImpl(runDao, llmDao, toolDao, artifactDao, toolOutputReader);
-        return new LedgerTestContext(store, recorder, queryService, runDao, llmDao, toolDao, artifactDao, toolOutputWriter, toolOutputReader);
+        ExecutionLedgerQueryServiceImpl queryService = new ExecutionLedgerQueryServiceImpl(
+                runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputReader
+        );
+        ConversationHistoryReplayService replayService = new ConversationHistoryReplayService(
+                queryService,
+                new ReplayProjector(
+                        new ToolInvocationProjectorRegistry(
+                                List.of(
+                                        new CodeInterpreterToolInvocationProjector(),
+                                        new ReportToolInvocationProjector(),
+                                        new DataAnalysisToolInvocationProjector(),
+                                        new FileToolInvocationProjector(),
+                                        new PlanningToolInvocationProjector(),
+                                        new DeepSearchToolInvocationProjector(),
+                                        new MultiModalToolInvocationProjector(),
+                                        new ImageGenerationToolInvocationProjector(),
+                                        new ScriptRunnerToolInvocationProjector(),
+                                        new DefaultToolInvocationProjector()
+                                ),
+                                new DefaultToolInvocationProjector()
+                        )
+                ),
+                new HistoryReplayPrinter()
+        );
+        AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(
+                runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputWriter
+        );
+        return new LedgerTestContext(
+                store, recorder, queryService, replayService,
+                runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputWriter, toolOutputReader
+        );
     }
 
     static AgentContext newAgentContext(String requestId, String sessionId, AgentExecutionRecorder recorder) {
@@ -129,7 +176,9 @@ public final class ExecutionLedgerFixtureFactory {
         final InMemoryLedgerStore store;
         final AgentExecutionRecorder recorder;
         final ExecutionLedgerQueryService queryService;
+        final ConversationHistoryReplayService replayService;
         final IDialogueRunLedgerDao runDao;
+        final IDialogueSessionLedgerDao sessionDao;
         final ILlmInvocationLedgerDao llmDao;
         final IToolInvocationLedgerDao toolDao;
         final IArtifactLedgerDao artifactDao;
@@ -139,7 +188,9 @@ public final class ExecutionLedgerFixtureFactory {
         private LedgerTestContext(InMemoryLedgerStore store,
                                   AgentExecutionRecorder recorder,
                                   ExecutionLedgerQueryService queryService,
+                                  ConversationHistoryReplayService replayService,
                                   IDialogueRunLedgerDao runDao,
+                                  IDialogueSessionLedgerDao sessionDao,
                                   ILlmInvocationLedgerDao llmDao,
                                   IToolInvocationLedgerDao toolDao,
                                   IArtifactLedgerDao artifactDao,
@@ -148,7 +199,9 @@ public final class ExecutionLedgerFixtureFactory {
             this.store = store;
             this.recorder = recorder;
             this.queryService = queryService;
+            this.replayService = replayService;
             this.runDao = runDao;
+            this.sessionDao = sessionDao;
             this.llmDao = llmDao;
             this.toolDao = toolDao;
             this.artifactDao = artifactDao;
@@ -162,9 +215,11 @@ public final class ExecutionLedgerFixtureFactory {
      */
     static final class InMemoryLedgerStore {
         long nextRunId = 1L;
+        long nextSessionId = 1L;
         long nextLlmId = 1L;
         long nextToolId = 1L;
         long nextArtifactId = 1L;
+        Map<Long, DialogueSession> sessions = new LinkedHashMap<>();
         Map<Long, DialogueRun> runs = new LinkedHashMap<>();
         Map<Long, LlmInvocation> llmInvocations = new LinkedHashMap<>();
         Map<Long, ToolInvocation> toolInvocations = new LinkedHashMap<>();
@@ -347,6 +402,82 @@ public final class ExecutionLedgerFixtureFactory {
                             .thenComparing(DialogueRun::getId, Comparator.reverseOrder()))
                     .limit(limit)
                     .map(ExecutionLedgerFixtureFactory::toRunView)
+                    .toList();
+        }
+
+        @Override
+        public List<DialogueRunView> queryBySessionId(String sessionId) {
+            return store.runs.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
+                    .sorted(Comparator.comparing(DialogueRun::getCreateTime)
+                            .thenComparing(DialogueRun::getId))
+                    .map(ExecutionLedgerFixtureFactory::toRunView)
+                    .toList();
+        }
+    }
+
+    static final class InMemoryDialogueSessionLedgerDao implements IDialogueSessionLedgerDao {
+        private final InMemoryLedgerStore store;
+
+        private InMemoryDialogueSessionLedgerDao(InMemoryLedgerStore store) {
+            this.store = store;
+        }
+
+        @Override
+        public int upsertSession(DialogueSessionUpsertRecord record) {
+            if (record == null || isBlank(record.getSessionId())) {
+                return 0;
+            }
+            DialogueSession session = store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && record.getSessionId().equals(item.getSessionId()))
+                    .findFirst()
+                    .orElse(null);
+            if (session == null) {
+                session = DialogueSession.builder()
+                        .id(store.nextSessionId++)
+                        .sessionId(record.getSessionId())
+                        .createTime(LocalDateTime.now())
+                        .deleted(0)
+                        .build();
+                store.sessions.put(session.getId(), session);
+            }
+            session.setTitle(record.getTitle());
+            session.setStatus(record.getStatus());
+            session.setLatestRequestId(record.getLatestRequestId());
+            session.setLatestQueryText(record.getLatestQueryText());
+            session.setLatestSummaryText(record.getLatestSummaryText());
+            session.setRunCount(record.getRunCount());
+            session.setFinishedRunCount(record.getFinishedRunCount());
+            session.setFailedRunCount(record.getFailedRunCount());
+            session.setStartedAt(record.getStartedAt());
+            session.setLastActiveAt(record.getLastActiveAt());
+            session.setUpdateTime(LocalDateTime.now());
+            return 1;
+        }
+
+        @Override
+        public DialogueSession queryBySessionId(String sessionId) {
+            return store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && item.getSessionId().equals(sessionId))
+                    .findFirst()
+                    .map(ExecutionLedgerFixtureFactory::cloneSession)
+                    .orElse(null);
+        }
+
+        @Override
+        public DialogueSessionView querySessionView(String sessionId) {
+            DialogueSession session = queryBySessionId(sessionId);
+            return session == null ? null : toSessionView(session);
+        }
+
+        @Override
+        public List<DialogueSessionView> queryRecentSessions(int limit) {
+            return store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0)
+                    .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
+                    .limit(limit)
+                    .map(ExecutionLedgerFixtureFactory::toSessionView)
                     .toList();
         }
     }
@@ -631,6 +762,26 @@ public final class ExecutionLedgerFixtureFactory {
                 .build();
     }
 
+    private static DialogueSession cloneSession(DialogueSession session) {
+        return DialogueSession.builder()
+                .id(session.getId())
+                .sessionId(session.getSessionId())
+                .title(session.getTitle())
+                .status(session.getStatus())
+                .latestRequestId(session.getLatestRequestId())
+                .latestQueryText(session.getLatestQueryText())
+                .latestSummaryText(session.getLatestSummaryText())
+                .runCount(session.getRunCount())
+                .finishedRunCount(session.getFinishedRunCount())
+                .failedRunCount(session.getFailedRunCount())
+                .startedAt(session.getStartedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .createTime(session.getCreateTime())
+                .updateTime(session.getUpdateTime())
+                .deleted(session.getDeleted())
+                .build();
+    }
+
     private static LlmInvocation cloneLlm(LlmInvocation invocation) {
         return LlmInvocation.builder()
                 .id(invocation.getId())
@@ -754,6 +905,24 @@ public final class ExecutionLedgerFixtureFactory {
                 .finishedAt(run.getFinishedAt())
                 .durationMs(run.getDurationMs())
                 .createTime(run.getCreateTime())
+                .build();
+    }
+
+    private static DialogueSessionView toSessionView(DialogueSession session) {
+        return DialogueSessionView.builder()
+                .id(session.getId())
+                .sessionId(session.getSessionId())
+                .title(session.getTitle())
+                .status(session.getStatus())
+                .latestRequestId(session.getLatestRequestId())
+                .latestQueryText(session.getLatestQueryText())
+                .latestSummaryText(session.getLatestSummaryText())
+                .runCount(session.getRunCount())
+                .finishedRunCount(session.getFinishedRunCount())
+                .failedRunCount(session.getFailedRunCount())
+                .startedAt(session.getStartedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .createTime(session.getCreateTime())
                 .build();
     }
 }

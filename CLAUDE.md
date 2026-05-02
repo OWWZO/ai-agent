@@ -28,6 +28,9 @@ mvn -pl ai-agent-station-study-app spring-boot:run
 # Run all tests (note: skipTests=true by default in root pom)
 mvn test -pl ai-agent-station-study-app -DskipTests=false
 
+# Run domain-layer regression tests only
+mvn test -pl ai-agent-station-study-domain -am -DskipTests=false
+
 # Run a single test class
 mvn test -pl ai-agent-station-study-app -Dtest=ClassName -DskipTests=false
 
@@ -128,14 +131,24 @@ Strategy selection is handled by factory classes:
 
 ### Persistence Architecture
 
-**Current migration (012-transcript-block-refactor):** The project is transitioning from the old message/event tables to a new flat transcript block model. Running code paths must use the new tables:
+The project maintains **two coexisting persistence systems**:
 
-- `ai_agent_turn` - conversation turns
-- `ai_agent_transcript_block` - flat message blocks
-- `ai_agent_display_event` - display events
-- `ai_agent_session_memory` - session memory snapshots (multi-version)
+**System 1 — Transcript Block Model (012-transcript-block-refactor):**
+Used for streaming message persistence and conversation history recovery.
+- `ai_agent_turn` — conversation turns
+- `ai_agent_transcript_block` — flat message blocks
+- `ai_agent_display_event` — display events
+- `ai_agent_session_memory` — session memory snapshots (multi-version)
+- Old tables (`ai_agent_message`, `ai_agent_message_event`) are deprecated and must not be reconnected to main paths.
 
-Old tables (`ai_agent_message`, `ai_agent_message_event`) are being deprecated and must not be reconnected to main paths.
+**System 2 — Execution Ledger (013/014/017):**
+Used for execution tracking, tool call auditing, and history replay projection.
+- `ai_agent_dialogue_run` — execution run records
+- `ai_agent_dialogue_session` — session head table (summaries, counts, latest activity)
+- `ai_agent_llm_invocation` — LLM call records
+- `ai_agent_tool_invocation` — tool call records
+- `ai_agent_artifact` — file artifacts (input/output)
+- `ai_agent_tool_output_*` — 8 per-tool structured output tables (deep_search, file_tool, code_interpreter, report_tool, data_analysis, multimodal_agent, image_generation, script_runner)
 
 ### Frontend Architecture
 
@@ -169,6 +182,7 @@ The React frontend (`ui/`) communicates with the backend via SSE (Server-Sent Ev
 - For new interfaces, Agent types, MCP tools, or RAG capabilities: add specs and acceptance criteria before implementation.
 - **Database changes require synchronized updates to:** PO classes, DAO interfaces, Mapper XML, `schema.sql`, test data, and related admin interfaces.
 - **Streaming, message events, and task orchestration** must include persistence, event logging, error handling, and observability — no "main path only" half-implementations.
+- `012-transcript-block-refactor` enforces a hard cutover: running code paths must only use `ai_agent_turn / ai_agent_transcript_block / ai_agent_display_event / ai_agent_session_memory`; old `ai_agent_message*` tables must not be reconnected to main paths.
 - Do not modify executable files, cookie files, or runtime artifacts in `reactor-tool/` without explicit need.
 - The repo may have uncommitted changes; verify file state before modifying to avoid overwriting.
 
@@ -181,7 +195,7 @@ Tests are in `ai-agent-station-study-app/src/test/java/org/wwz/ai/test/`.
 The `maven-surefire-plugin` in `ai-agent-station-study-app/pom.xml` excludes tests that depend on external models, MCP, or standalone services. These are skipped by default:
 - `*Test.java` in `spring/ai/` (external AI model tests)
 - `AgentTest.java`, `AutoAgentTest.java`, `FlowAgentExecuteTest.java` (domain integration tests)
-- `ElkBlacklistDataTest.java`, `DynamicAutoAgentTest.java`, etc.
+- `ElkBlacklistDataTest.java`, `DynamicAutoAgentTest.java`, `TraePromptTest.java`, etc.
 
 To run excluded tests individually, use `-Dtest=ClassName` with `-DskipTests=false`.
 
@@ -199,8 +213,15 @@ To run excluded tests individually, use `-Dtest=ClassName` with `-DskipTests=fal
 
 ---
 
+## Specs and Plans
+
+- Feature specifications and design documents live in `specs/{change-id}/` (e.g., `specs/017-conversation-history-projector-replay/`)
+- Development plans and research notes live in `docs/superpowers/plans/` and `docs/superpowers/specs/`
+
+---
+
 ## Current Active Work
 
-- **Branch:** `012-transcript-block-refactor`
-- **Focus:** TranscriptBlock flat persistence refactoring — migrating from nested message/event tables to flat block-based storage with turn/block/display_event/session_memory tables.
-- **Specs:** Located in `specs/012-transcript-block-refactor/`
+- **Branch:** `017-conversation-history-projector-replay`
+- **Focus:** Conversation history replay with projector-based event reconstruction — combining the execution ledger (dialogue_run / llm_invocation / tool_invocation / artifact / tool_output_*) with ToolInvocationProjectorRegistry to replay historical tool executions as structured events consumable by the frontend.
+- **Specs:** Located in `specs/017-conversation-history-projector-replay/`

@@ -128,7 +128,7 @@ function handlePlanMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
-  if (!eventData.taskId) {
+  if (eventData.taskId) {
     currentChat.multiAgent.plan = {
       taskId: eventData.taskId,
       ...eventData?.resultMap,
@@ -674,6 +674,21 @@ type TimelineTaskContainer = {
 } & Partial<MESSAGE.Task>;
 
 /**
+ * 历史回放里即便不是 deepThink，也可能存在多个任务组。
+ * 这里按索引兜底创建时间线分组，避免后续容器逻辑读到 undefined。
+ */
+function ensureTimelineTaskGroup(
+  chatList: TimelineTaskContainer[][],
+  groupIndex: number
+) {
+  if (!Array.isArray(chatList[groupIndex])) {
+    chatList[groupIndex] = [];
+  }
+
+  return chatList[groupIndex];
+}
+
+/**
  * 某些任务组里工具事件会早于 task 父节点到达，
  * 这里先创建一个临时容器承接左侧时间线子项，避免查询分解等阶段被直接丢弃。
  */
@@ -827,7 +842,7 @@ export const handleTaskData = (
     : Array.from({ length: validTasks?.length || 0 }, () => []);
 
   validTasks?.forEach((taskGroup, groupIndex) => {
-    const timelineTaskGroup = chatList[groupIndex];
+    const timelineTaskGroup = ensureTimelineTaskGroup(chatList, groupIndex);
 
     taskGroup?.forEach((task, taskIndex) => {
       const time = task.messageTime;

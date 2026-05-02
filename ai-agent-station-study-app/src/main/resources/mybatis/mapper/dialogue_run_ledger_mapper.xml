@@ -102,4 +102,12 @@
         LIMIT #{limit}
     </select>
 
+    <select id="queryBySessionId" resultMap="DialogueRunViewMap">
+        SELECT *
+        FROM ai_agent_dialogue_run
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+        ORDER BY create_time ASC, id ASC
+    </select>
+
 </mapper>

@@ -1,15 +1,14 @@
 package org.wwz.ai.domain.agent.reactor.handler;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.enums.ResponseTypeEnum;
-import org.wwz.ai.domain.agent.reactor.model.multi.EventMessage;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,8 +22,13 @@ import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
 
 
 @Slf4j
-@Component
 public class BaseAgentResponseHandler {
+    private final ReplayProjector replayProjector;
+
+    protected BaseAgentResponseHandler(ReplayProjector replayProjector) {
+        this.replayProjector = replayProjector;
+    }
+
     protected GptProcessResult buildCanonicalIncrResult(AgentRequest request, EventResult eventResult, AgentResponse agentResponse) {
         GptProcessResult streamResult = buildIncrResult(request, eventResult, agentResponse);
         return streamResult;
@@ -48,80 +52,193 @@ public class BaseAgentResponseHandler {
         Map<String, Object> resultMap = new HashMap<>();
         resultMap.put("agentType", agentType);
         resultMap.put("multiAgent", new HashMap<>());
-        resultMap.put("eventData", new HashMap<>());
+        ProjectedReplayEvent projectedEvent = buildProjectedEvent(eventResult, agentResponse);
+        if (projectedEvent == null) {
+            resultMap.put("eventData", new HashMap<>());
+            streamResult.setResultMap(resultMap);
+            return streamResult;
+        }
 
-        // 增量数据
-        EventMessage message = EventMessage.builder()
-                .messageId(agentResponse.getMessageId())
-                .build();
+        GptProcessResult projectedFrame = replayProjector.projectFrame(
+                request.getRequestId(),
+                projectedEvent,
+                agentResponse.getFinish() != null ? agentResponse.getFinish() : streamResult.isFinished(),
+                streamResult.getStatus()
+        );
+        if (projectedFrame.getResultMap() != null
+                && projectedFrame.getResultMap().containsKey("eventData")) {
+            // 实时链路只复用 projector 收口后的 eventData，不能把 history 的顶层 agentType 覆盖回实时结果。
+            resultMap.put("eventData", projectedFrame.getResultMap().get("eventData"));
+        }
+        streamResult.setResultMap(resultMap);
+        return streamResult;
+    }
+
+    private ProjectedReplayEvent buildProjectedEvent(EventResult eventResult, AgentResponse agentResponse) {
         boolean isFinal = Boolean.TRUE.equals(agentResponse.getIsFinal());
         boolean isFilterFinal = (Objects.nonNull(agentResponse.getResultMap())
-                && agentResponse.getMessageType().equals("deep_search")
+                && "deep_search".equals(agentResponse.getMessageType())
                 && agentResponse.getResultMap().containsKey("messageType")
-                && agentResponse.getResultMap().get("messageType").equals("extend"));
+                && Objects.equals(agentResponse.getResultMap().get("messageType"), "extend"));
+        Map<String, Object> payload = buildAgentResponsePayload(agentResponse);
+        if (payload == null) {
+            return null;
+        }
 
         switch (agentResponse.getMessageType()) {
             case "plan_thought":
-                message.setMessageType(agentResponse.getMessageType());
-                message.setMessageOrder(eventResult.getAndIncrOrder(agentResponse.getMessageType()));
-                message.setResultMap(JSON.parseObject(JSONObject.toJSONString(agentResponse)));
                 if (isFinal && !eventResult.getResultMap().containsKey("plan_thought")) {
                     eventResult.getResultMap().put("plan_thought", agentResponse.getPlanThought());
                 }
-                break;
+                return ProjectedReplayEvent.builder()
+                        .taskId(eventResult.getTaskId())
+                        .taskOrder(eventResult.getTaskOrder().getAndIncrement())
+                        .messageId(agentResponse.getMessageId())
+                        .messageType("plan_thought")
+                        .messageOrder(eventResult.getAndIncrOrder("plan_thought"))
+                        .resultMap(payload)
+                        .build();
             case "plan":
                 if (eventResult.isInitPlan()) {
-                    // plan 生成
-                    message.setMessageType(agentResponse.getMessageType());
-                    message.setMessageOrder(1);
-                    message.setResultMap(agentResponse.getPlan());
                     if (isFinal) {
                         eventResult.getResultMap().put("plan", agentResponse.getPlan());
                     }
-                } else {
-                    // plan 更新，需要关联 task
-                    message.setTaskId(eventResult.getTaskId());
-                    message.setTaskOrder(eventResult.getTaskOrder().getAndIncrement());
-                    message.setMessageType("task");
-                    message.setMessageOrder(1);
-                    message.setResultMap(JSON.parseObject(JSONObject.toJSONString(agentResponse)));
-                    if (isFinal) {
-                        eventResult.setResultMapSubTask(message.getResultMap());
-                    }
+                    return ProjectedReplayEvent.builder()
+                            .taskId(eventResult.getTaskId())
+                            .taskOrder(eventResult.getTaskOrder().getAndIncrement())
+                            .messageId(agentResponse.getMessageId())
+                            .messageType("plan")
+                            .messageOrder(1)
+                            .resultMap(buildPlanPayload(agentResponse))
+                            .build();
                 }
-                break;
+                return buildTaskEvent(eventResult, agentResponse, payload, isFinal);
             case "task":
-                message.setTaskId(eventResult.renewTaskId());
-                message.setTaskOrder(eventResult.getTaskOrder().getAndIncrement());
-                message.setMessageType(agentResponse.getMessageType());
-                message.setMessageOrder(1);
-                message.setResultMap(JSON.parseObject(JSONObject.toJSONString(agentResponse)));
+                eventResult.renewTaskId();
                 if (isFinal) {
                     List<Object> task = new ArrayList<>();
-                    task.add(message.getResultMap());
+                    task.add(payload);
                     eventResult.setResultMapTask(task);
+                }
+                return ProjectedReplayEvent.builder()
+                        .taskId(eventResult.getTaskId())
+                        .taskOrder(eventResult.getTaskOrder().getAndIncrement())
+                        .messageId(agentResponse.getMessageId())
+                        .messageType("task")
+                        .messageOrder(1)
+                        .resultMap(payload)
+                        .build();
+            default:
+                return buildTaskEvent(eventResult, agentResponse, payload, isFinal && !isFilterFinal);
+        }
+    }
+
+    private ProjectedReplayEvent buildTaskEvent(EventResult eventResult,
+                                                AgentResponse agentResponse,
+                                                Map<String, Object> payload,
+                                                boolean appendToState) {
+        String taskId = eventResult.getTaskId();
+        int messageOrder = 1;
+        if (eventResult.getStreamTaskMessageType().contains(agentResponse.getMessageType())) {
+            messageOrder = eventResult.getAndIncrOrder(taskId + ":" + agentResponse.getMessageType());
+        }
+        if (appendToState) {
+            eventResult.setResultMapSubTask(payload);
+        }
+        return ProjectedReplayEvent.builder()
+                .taskId(taskId)
+                .taskOrder(eventResult.getTaskOrder().getAndIncrement())
+                .messageId(agentResponse.getMessageId())
+                .messageType("task")
+                .messageOrder(messageOrder)
+                .resultMap(payload)
+                .build();
+    }
+
+    private Map<String, Object> buildPlanPayload(AgentResponse agentResponse) {
+        if (agentResponse == null || agentResponse.getPlan() == null) {
+            return Map.of();
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("title", agentResponse.getPlan().getTitle());
+        payload.put("stages", agentResponse.getPlan().getStages());
+        payload.put("steps", agentResponse.getPlan().getSteps());
+        payload.put("stepStatus", agentResponse.getPlan().getStepStatus());
+        payload.put("notes", agentResponse.getPlan().getNotes());
+        return payload;
+    }
+
+    private Map<String, Object> buildAgentResponsePayload(AgentResponse agentResponse) {
+        if (agentResponse == null) {
+            return null;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("requestId", agentResponse.getRequestId());
+        payload.put("messageId", agentResponse.getMessageId());
+        payload.put("messageType", agentResponse.getMessageType());
+        payload.put("messageTime", agentResponse.getMessageTime());
+        payload.put("isFinal", Boolean.TRUE.equals(agentResponse.getIsFinal()));
+        payload.put("finish", Boolean.TRUE.equals(agentResponse.getFinish()));
+        if (StringUtils.isNotBlank(agentResponse.getDigitalEmployee())) {
+            payload.put("digitalEmployee", agentResponse.getDigitalEmployee());
+        }
+
+        switch (agentResponse.getMessageType()) {
+            case "tool_thought":
+                payload.put("toolThought", agentResponse.getToolThought());
+                break;
+            case "task":
+                payload.put("task", agentResponse.getTask());
+                break;
+            case "task_summary":
+                payload.put("taskSummary", agentResponse.getTaskSummary());
+                if (agentResponse.getResultMap() != null) {
+                    payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
+                }
+                break;
+            case "plan_thought":
+                payload.put("planThought", agentResponse.getPlanThought());
+                break;
+            case "plan":
+                if (agentResponse.getPlan() != null) {
+                    payload.put("title", agentResponse.getPlan().getTitle());
+                    payload.put("stages", agentResponse.getPlan().getStages());
+                    payload.put("steps", agentResponse.getPlan().getSteps());
+                    payload.put("stepStatus", agentResponse.getPlan().getStepStatus());
+                    payload.put("notes", agentResponse.getPlan().getNotes());
+                }
+                break;
+            case "tool_result":
+                payload.put("toolResult", agentResponse.getToolResult());
+                break;
+            case "browser":
+            case "code":
+            case "html":
+            case "markdown":
+            case "ppt":
+            case "file":
+            case "knowledge":
+            case "deep_search":
+            case "data_analysis":
+                if (agentResponse.getResultMap() != null) {
+                    payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
+                }
+                break;
+            case "agent_stream":
+                payload.put("result", agentResponse.getResult());
+                break;
+            case "result":
+                payload.put("result", agentResponse.getResult());
+                if (agentResponse.getResultMap() != null && agentResponse.getResultMap().containsKey("taskSummary")) {
+                    payload.put("taskSummary", agentResponse.getResultMap().get("taskSummary"));
                 }
                 break;
             default:
-                message.setTaskId(eventResult.getTaskId());
-                message.setTaskOrder(eventResult.getTaskOrder().getAndIncrement());
-                message.setMessageType("task");
-                message.setMessageOrder(1);
-                // knowledge / markdown / deep_search 等结构化流式结果需要在同一 task 内保持独立递增顺序。
-                if (eventResult.getStreamTaskMessageType().contains(agentResponse.getMessageType())) {
-                    String orderKey = message.getTaskId() + ":" + agentResponse.getMessageType();
-                    message.setMessageOrder(eventResult.getAndIncrOrder(orderKey));
-                }
-                message.setResultMap(JSON.parseObject(JSONObject.toJSONString(agentResponse)));
-                if (isFinal && !isFilterFinal) {
-                    eventResult.setResultMapSubTask(message.getResultMap());
+                if (agentResponse.getResultMap() != null) {
+                    payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
                 }
                 break;
         }
-
-        // 增量缓存
-        resultMap.put("eventData", JSONObject.parseObject(JSON.toJSONString(message)));
-        streamResult.setResultMap(resultMap);
-        return streamResult;
+        return payload;
     }
 }

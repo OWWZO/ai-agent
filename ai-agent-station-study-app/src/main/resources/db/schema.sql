@@ -79,6 +79,27 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行总账表';
 
+CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
+    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id         VARCHAR(64)    NOT NULL COMMENT '会话ID',
+    title              VARCHAR(256)   NOT NULL COMMENT '会话标题',
+    status             TINYINT        NOT NULL DEFAULT 0 COMMENT '会话终态，复用 run 状态枚举',
+    latest_request_id  VARCHAR(64)    NULL COMMENT '最近一次请求ID',
+    latest_query_text  MEDIUMTEXT     NULL COMMENT '最近一次问题预览',
+    latest_summary_text MEDIUMTEXT    NULL COMMENT '最近一次总结文本',
+    run_count          INT            NOT NULL DEFAULT 0 COMMENT '会话总轮次',
+    finished_run_count INT            NOT NULL DEFAULT 0 COMMENT '成功轮次',
+    failed_run_count   INT            NOT NULL DEFAULT 0 COMMENT '失败/停止/超时轮次',
+    started_at         DATETIME(3)    NULL COMMENT '首轮开始时间',
+    last_active_at     DATETIME(3)    NULL COMMENT '最近活跃时间',
+    create_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_dialogue_session_id (session_id, deleted),
+    KEY idx_dialogue_session_active (deleted, last_active_at DESC, id DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话会话主表';
+
 CREATE TABLE IF NOT EXISTS ai_agent_llm_invocation (
     id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     run_id            BIGINT         NOT NULL COMMENT '所属 run ID',

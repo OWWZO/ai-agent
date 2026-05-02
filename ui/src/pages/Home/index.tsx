@@ -23,11 +23,18 @@ import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import { chatQustions, defaultProduct, demoList, productList } from "@/utils/constants";
-import { getUniqId } from "@/utils";
+import { getSessionId, getUniqId, setSessionId } from "@/utils";
 import {
+  conversationHistoryApi,
   roleLibraryApi,
+  type ConversationSessionItem,
   type FixRoleItem,
 } from "@/services/agentConversation";
+import {
+  hydrateConversationFromReplayFrames,
+  isHistoryDetailEmpty,
+} from "@/utils/conversationHistory";
+import RecentSessionList from "./RecentSessionList";
 
 type HomeProps = Record<string, never>;
 
@@ -118,7 +125,7 @@ const createConversation = (
   const now = Date.now();
   return {
     id: partial.id || `conversation-${getUniqId()}`,
-    sessionId: partial.sessionId || `session-${getUniqId()}`,
+    sessionId: partial.sessionId || getSessionId(),
     title: partial.title || "新对话",
     productType: partial.productType || "chat",
     deepThink: Boolean(partial.deepThink),
@@ -229,7 +236,10 @@ const CaseCard = memo((props: CaseCardProps) => {
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
+  const hydratedSessionIdsRef = useRef<Set<string>>(new Set());
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
+  const [recentSessions, setRecentSessions] = useState<ConversationSessionItem[]>([]);
+  const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
   const [activeView, setActiveView] = useState<SidebarView>("chat");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(
@@ -271,6 +281,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     activeView === "chat" &&
     (hasConversationContent(currentConversation) || inputInfo.message.length > 0);
 
+  const refreshRecentSessions = useCallback(() => {
+    setRecentSessionsLoading(true);
+    conversationHistoryApi
+      .listSessions(20)
+      .then((sessions) => {
+        setRecentSessions(sessions || []);
+      })
+      .catch((error) => {
+        console.error("加载近期会话失败", error);
+      })
+      .finally(() => {
+        setRecentSessionsLoading(false);
+      });
+  }, []);
+
   useEffect(() => {
     roleLibraryApi
       .list()
@@ -281,6 +306,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         console.error("加载角色库失败", error);
       });
   }, []);
+
+  useEffect(() => {
+    refreshRecentSessions();
+  }, [refreshRecentSessions]);
 
   useEffect(() => {
     if (
@@ -334,9 +363,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
+      const nextSessionId = override?.sessionId || `session-${getUniqId()}`;
+      hydratedSessionIdsRef.current.add(nextSessionId);
       setActiveView("chat");
       setCurrentConversation(
         createConversation({
+          sessionId: nextSessionId,
           productType: override?.productType || product.type,
           deepThink: override?.deepThink ?? false,
           role:
@@ -366,6 +398,59 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const onInputConsumed = useCallback(() => {
     resetInput();
   }, [resetInput]);
+
+  const handleSelectRecentSession = useCallback(
+    (session: ConversationSessionItem) => {
+      conversationHistoryApi
+        .getSessionDetail(session.sessionId)
+        .then((detail) => {
+          if (!detail || isHistoryDetailEmpty(detail)) {
+            return;
+          }
+          hydratedSessionIdsRef.current.add(session.sessionId);
+          setCurrentConversation(hydrateConversationFromReplayFrames(detail));
+          setActiveView("chat");
+          resetInput();
+        })
+        .catch((error) => {
+          console.error("加载历史会话详情失败", error);
+        });
+    },
+    [resetInput]
+  );
+
+  useEffect(() => {
+    setSessionId(currentConversation.sessionId);
+  }, [currentConversation.sessionId]);
+
+  useEffect(() => {
+    let disposed = false;
+    const sessionId = currentConversation.sessionId;
+
+    if (!sessionId || hasConversationContent(currentConversation)) {
+      return;
+    }
+    if (hydratedSessionIdsRef.current.has(sessionId)) {
+      return;
+    }
+    hydratedSessionIdsRef.current.add(sessionId);
+
+    conversationHistoryApi
+      .getSessionDetail(sessionId)
+      .then((detail) => {
+        if (disposed || !detail || isHistoryDetailEmpty(detail)) {
+          return;
+        }
+        setCurrentConversation(hydrateConversationFromReplayFrames(detail));
+      })
+      .catch(() => {
+        // 当前 session 没有历史时保持空白/初始态，不自动切换到其他会话。
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [currentConversation]);
 
   const changeInputInfo = useCallback(
     (info: CHAT.TInputInfo) => {
@@ -547,6 +632,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               ))}
             </div>
           </motion.div>
+
+          <RecentSessionList
+            sessions={recentSessions}
+            loading={recentSessionsLoading}
+            selectedSessionId={currentConversation.sessionId}
+            onSelect={handleSelectRecentSession}
+          />
 
           {SHOW_FEATURED_CASES && (
             <div className="mx-auto mt-8 w-full max-w-[1000px] pb-24">

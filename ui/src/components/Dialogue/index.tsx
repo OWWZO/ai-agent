@@ -42,6 +42,7 @@ import {
   normalizeMarkdownForDisplay,
   type MarkdownNormalizationScope,
 } from "@/utils/markdown";
+import RunStatus from "@/components/ActionView/RunStatus";
 import {
   isPlanSolveConversation,
   isStructuredConversation,
@@ -51,8 +52,8 @@ type Props = {
   chat: CHAT.ChatItem;
   streamingThought?: string;
   deepThink: boolean;
-  changeTask?: (task: CHAT.Task) => void;
-  changeFile?: (file: CHAT.TFile) => void;
+  changeTask?: (task: CHAT.Task, chat?: CHAT.ChatItem) => void;
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   changePlan?: () => void;
   onRegenerate?: () => void;
 };
@@ -224,10 +225,11 @@ PlanSection.displayName = "PlanSection";
 
 const ToolItem: FC<{
   tool: CHAT.Task;
+  chat: CHAT.ChatItem;
   changePlan?: () => void;
-  changeActiveChat: (task: CHAT.Task) => void;
-  changeFile?: (file: CHAT.TFile) => void;
-}> = memo(({ tool, changePlan, changeActiveChat, changeFile }) => {
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+}> = memo(({ tool, chat, changePlan, changeActiveChat, changeFile }) => {
   const actionInfo = useMemo(() => buildAction(tool), [tool]);
   switch (tool.messageType) {
     case "plan": {
@@ -285,7 +287,7 @@ const ToolItem: FC<{
           <AttachmentList
             files={attachmentFiles}
             preview={true}
-            review={changeFile}
+            review={(file) => changeFile?.(file, chat)}
           />
         </div>
       );
@@ -313,7 +315,7 @@ const ToolItem: FC<{
           className={
             "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
           }
-          onClick={() => changeActiveChat(tool)}
+          onClick={() => changeActiveChat(tool, chat)}
         >
           {isDeepSearchInline ? (
             <div className="flex size-7 shrink-0 items-center justify-center text-primary [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
@@ -358,6 +360,7 @@ const ToolItem: FC<{
   }
 }, (prevProps, nextProps) =>
   prevProps.tool === nextProps.tool &&
+  prevProps.chat === nextProps.chat &&
   prevProps.changePlan === nextProps.changePlan &&
   prevProps.changeActiveChat === nextProps.changeActiveChat &&
   prevProps.changeFile === nextProps.changeFile
@@ -367,8 +370,9 @@ ToolItem.displayName = "ToolItem";
 
 const DeepSearchPreviewItem: FC<{
   tool: CHAT.Task;
-  changeActiveChat: (task: CHAT.Task) => void;
-}> = memo(({ tool, changeActiveChat }) => {
+  chat: CHAT.ChatItem;
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+}> = memo(({ tool, chat, changeActiveChat }) => {
   const model = useMemo(() => buildDeepSearchPreviewModel(tool), [tool]);
 
   if (!model) {
@@ -378,7 +382,7 @@ const DeepSearchPreviewItem: FC<{
   const clickable = model.interactive;
   const handleClick = () => {
     if (clickable) {
-      changeActiveChat(tool);
+      changeActiveChat(tool, chat);
     }
   };
 
@@ -456,12 +460,13 @@ const isTaskGroupCompleted = (task: CHAT.Task): boolean => {
 };
 
 const TimeLineContent: FC<{
+  chat: CHAT.ChatItem;
   tasks: CHAT.Task[];
   isReactType: boolean;
-  changeActiveChat: (task: CHAT.Task) => void;
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile) => void;
-}> = ({ tasks, isReactType, changeActiveChat, changePlan, changeFile }) => {
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+}> = ({ chat, tasks, isReactType, changeActiveChat, changePlan, changeFile }) => {
   return (
     <>
       {tasks.map((task, taskIndex) => {
@@ -506,11 +511,13 @@ const TimeLineContent: FC<{
                   {shouldRenderPreview ? (
                     <DeepSearchPreviewItem
                       tool={tool}
+                      chat={chat}
                       changeActiveChat={changeActiveChat}
                     />
                   ) : (
                     <ToolItem
                       tool={tool}
+                      chat={chat}
                       changePlan={changePlan}
                       changeActiveChat={changeActiveChat}
                       changeFile={changeFile}
@@ -529,9 +536,9 @@ const TimeLineContent: FC<{
 const TimeLine: FC<{
   chat: CHAT.ChatItem;
   isReactType: boolean;
-  changeActiveChat: (task: CHAT.Task) => void;
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile) => void;
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
 }> = ({ chat, isReactType, changeActiveChat, changePlan, changeFile }) => (
   <>
     {chat.tasks.map((t, i) => {
@@ -550,6 +557,7 @@ const TimeLine: FC<{
           ) : null}
           <div className="mb-2 flex-1 overflow-hidden">
             <TimeLineContent
+              chat={chat}
               tasks={t}
               isReactType={isReactType}
               changeActiveChat={changeActiveChat}
@@ -597,7 +605,7 @@ function resolveConclusionMarkdownScope(
 
 const ConclusionSection: FC<{
   chat: CHAT.ChatItem;
-  changeFile?: (file: CHAT.TFile) => void;
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   normalizationScope: MarkdownNormalizationScope;
 }> = ({ chat, changeFile, normalizationScope }) => {
   const summary = resolveTaskSummaryText(chat.conclusion) || "任务已完成";
@@ -620,7 +628,7 @@ const ConclusionSection: FC<{
       <AttachmentList
         files={attachmentFiles}
         preview={true}
-        review={changeFile}
+        review={(file) => changeFile?.(file, chat)}
       />
     </div>
   );
@@ -655,8 +663,8 @@ const DialogueComponent: FC<Props> = (props) => {
     chat.agentType === 0 && !!chat.response && !chat.conclusion;
   const [copied, setCopied] = useState(false);
 
-  const changeActiveChat = useCallback((task: CHAT.Task) => {
-    changeTask?.(task);
+  const changeActiveChat = useCallback((task: CHAT.Task, targetChat: CHAT.ChatItem) => {
+    changeTask?.(task, targetChat);
   }, [changeTask]);
 
   const handleCopy = useCallback(() => {
@@ -695,6 +703,13 @@ const DialogueComponent: FC<Props> = (props) => {
           {chat.tip}
         </div>
       ) : null}
+
+      <div className="mt-5 w-full">
+        <RunStatus
+          status={chat.metrics?.status}
+          finishedAt={chat.finishedAt}
+        />
+      </div>
 
       {/* AI 回复（Markdown） */}
       {showStandaloneResponse ? (

@@ -3,6 +3,7 @@ package org.wwz.ai.test.domain;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunStartRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
@@ -48,6 +49,20 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("req-query-002", recentRuns.get(0).getRequestId());
         Assert.assertEquals(1, recentRuns.get(0).getArtifactSummaries().size());
         Assert.assertEquals("report-2.md", recentRuns.get(0).getArtifactSummaries().get(0).getFileName());
+
+        var orderedRuns = ctx.queryService.querySessionRuns("session-query-001");
+        Assert.assertEquals(2, orderedRuns.size());
+        Assert.assertEquals("req-query-001", orderedRuns.get(0).getRequestId());
+        Assert.assertEquals("req-query-002", orderedRuns.get(1).getRequestId());
+
+        var sessionView = ctx.queryService.querySession("session-query-001");
+        Assert.assertNotNull(sessionView);
+        Assert.assertEquals("seed:req-query-002", sessionView.getLatestQueryText());
+        Assert.assertEquals(Integer.valueOf(2), sessionView.getRunCount());
+
+        var recentSessions = ctx.queryService.queryRecentSessions(20);
+        Assert.assertEquals(1, recentSessions.size());
+        Assert.assertEquals("session-query-001", recentSessions.get(0).getSessionId());
     }
 
     @Test
@@ -105,6 +120,46 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("上游报告文件生成超时", toolInvocation.getLlmObservation());
         Assert.assertNotNull(structuredOutput);
         Assert.assertTrue(structuredOutput.getFileRefs().isEmpty());
+    }
+
+    @Test
+    public void shouldBuildConversationHistoryWithSummaryFallback() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-history-001", "session-history-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-history-002", "session-history-001", "read_tool", 2, "report-2.md");
+
+        ConversationHistoryDetail detail = ctx.replayService.queryConversationHistory("session-history-001");
+
+        Assert.assertNotNull(detail);
+        Assert.assertEquals("session-history-001", detail.getSessionId());
+        Assert.assertEquals(2, detail.getRuns().size());
+        Assert.assertEquals("req-history-001", detail.getRuns().get(0).getRequestId());
+        Assert.assertEquals("req-history-002", detail.getRuns().get(1).getRequestId());
+        Assert.assertFalse(detail.getRuns().get(0).getReplayFrames().isEmpty());
+        Assert.assertFalse(detail.getRuns().get(1).getReplayFrames().isEmpty());
+    }
+
+    @Test
+    public void shouldNormalizeRecentSessionLimitToTwentyAndKeepLatestOrder() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        for (int index = 1; index <= 25; index += 1) {
+            seedRun(
+                    ctx,
+                    String.format("req-session-limit-%03d", index),
+                    String.format("session-limit-%03d", index),
+                    "file_tool",
+                    index,
+                    "report-limit-" + index + ".md"
+            );
+        }
+
+        var recentSessions = ctx.queryService.queryRecentSessions(0);
+
+        Assert.assertEquals(20, recentSessions.size());
+        Assert.assertEquals("session-limit-025", recentSessions.get(0).getSessionId());
+        Assert.assertEquals("session-limit-006", recentSessions.get(19).getSessionId());
+        Assert.assertEquals("seed:req-session-limit-025", recentSessions.get(0).getLatestQueryText());
+        Assert.assertEquals(Integer.valueOf(1), recentSessions.get(0).getRunCount());
     }
 
     private void seedRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,

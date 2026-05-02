@@ -21,14 +21,14 @@
 
 ```powershell
 chcp 65001
-mvn test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ExecutionLedgerQueryServiceTest,ReplayProjectorTest,ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn --% test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ExecutionLedgerQueryServiceTest,ReplayProjectorTest,ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 如需进一步验证真实执行链：
 
 ```powershell
 chcp 65001
-mvn test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ReactExecutionLedgerIntegrationTest,PlanSolveExecutionLedgerIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn --% test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ReactExecutionLedgerIntegrationTest,PlanSolveExecutionLedgerIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 ## 4. 前端验证命令
@@ -36,7 +36,7 @@ mvn test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ReactExecut
 ```powershell
 chcp 65001
 cd ui
-npm run test -- conversationHistory.test.ts chat.test.ts
+npm run test -- conversationHistory.test.ts chat.test.ts RecentSessionList.test.tsx RunStatus.test.tsx
 npm run build
 ```
 
@@ -67,8 +67,9 @@ mvn -pl ai-agent-station-study-app spring-boot:run
 
 1. 构造一条失败或强制停止的会话
 2. 打开历史详情
-3. 确认页面仍显示结束前最后可见细节
-4. 确认详情与摘要中能看到明确终态
+3. 确认左侧对话区会显示明确的终态条（如“已停止”或“执行失败”）
+4. 确认右侧工作区在切到对应任务时仍显示相同终态
+5. 确认页面仍显示结束前最后可见细节
 
 ### 场景 D: 近期会话列表与详情一致
 
@@ -128,5 +129,35 @@ rg "queryRecentSessionRuns|projectHistory|buildIncrResult|combineData|hydrateCon
 
 - `ExecutionLedgerQueryService` 已补会话级查询能力
 - `ReplayProjector` 已承接 `agent_name` 语义映射与最终答案 fallback
-- `BaseAgentResponseHandler` 不再独自维护完整历史/实时分叉语义
+- `BaseAgentResponseHandler` 只复用共享 projector 的 `eventData`，不会把 realtime 顶层 `agentType` 覆盖成 `history`
 - 前端存在独立的历史 hydrate helper，并复用现有 `combineData`
+
+## 9. 最终实现备注
+
+- 历史 LLM 的 `plan_thought` 会直接投影为顶层 `eventData.messageType = "plan_thought"`。
+- 其他 LLM thought / result 仍以顶层 `task` 包装，真实逻辑类型放在 `eventData.resultMap.messageType`。
+- 最近会话列表默认 `20` 条，最大 `100` 条，并按 `lastActiveAt DESC, id DESC` 排序。
+- artifact 正常场景显式返回 `missing: false`；若只有文件名但没有可用稳定链接，则返回 `missing: true` 和 `missingReason`。
+
+## 10. 独立回归记录（2026-05-02）
+
+### T016 / 场景 A、B、E
+
+- 后端命令：`mvn --% test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+- 后端结果：`ConversationHistoryControllerTest` 共 `5` 个用例全部通过，覆盖会话详情按时间顺序恢复、`finalSummaryText` 兜底以及无历史返回空结果。
+- 前端命令：`cd ui && npm run test -- conversationHistory.test.ts RecentSessionList.test.tsx`
+- 前端结果：`2` 个测试文件、`4` 个用例全部通过，覆盖 `replayFrames -> ConversationHistory` 恢复、无历史保持空白以及手动选择近期会话入口。
+
+### T023 / 场景 C
+
+- 后端命令：`mvn --% test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ReplayProjectorTest,ReactExecutionLedgerIntegrationTest,PlanSolveExecutionLedgerIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false`
+- 后端结果：`ReplayProjectorTest`、`ReactExecutionLedgerIntegrationTest`、`PlanSolveExecutionLedgerIntegrationTest` 共 `6` 个用例全部通过，覆盖 realtime/history `eventData` 同构、`plan_thought` 语义一致、失败/停止 run 终态回放与产物细节保留。
+- 前端命令：`cd ui && npm run test -- chat.test.ts RunStatus.test.tsx`
+- 前端结果：`2` 个测试文件、`11` 个用例全部通过，覆盖历史 hydrate 后的失败/停止态展示以及左右区域共享终态提示条。
+
+### T030 / 场景 D、E
+
+- 后端命令：`mvn --% test -pl ai-agent-station-study-app -am -DskipTests=false -Dtest=ExecutionLedgerQueryServiceTest,ConversationHistoryControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+- 后端结果：`ExecutionLedgerQueryServiceTest` 与 `ConversationHistoryControllerTest` 共 `9` 个用例全部通过，覆盖近期会话默认 `20` 条、`last_active_at` 倒序、摘要与详情统计一致，以及无历史时不自动切换其他会话。
+- 前端命令：`cd ui && npm run test -- RecentSessionList.test.tsx conversationHistory.test.ts`
+- 前端结果：`2` 个测试文件、`4` 个用例全部通过，覆盖近期会话列表摘要展示、点击切换详情和空历史场景下仅提供手动选择入口。

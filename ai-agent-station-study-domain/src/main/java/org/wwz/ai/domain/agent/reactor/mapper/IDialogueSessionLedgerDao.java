@@ -1,0 +1,24 @@
+package org.wwz.ai.domain.agent.reactor.mapper;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.wwz.ai.domain.agent.reactor.entity.DialogueSession;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
+
+import java.util.List;
+
+/**
+ * 会话主表 DAO。
+ */
+@Mapper
+public interface IDialogueSessionLedgerDao {
+
+    int upsertSession(DialogueSessionUpsertRecord record);
+
+    DialogueSession queryBySessionId(@Param("sessionId") String sessionId);
+
+    DialogueSessionView querySessionView(@Param("sessionId") String sessionId);
+
+    List<DialogueSessionView> queryRecentSessions(@Param("limit") int limit);
+}

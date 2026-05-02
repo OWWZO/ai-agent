@@ -26,6 +26,73 @@ export interface FixRoleItem {
   defaultRole: boolean;
 }
 
+export interface ConversationSessionItem {
+  sessionId: string;
+  title: string;
+  status: string;
+  latestQueryText: string;
+  runCount: number;
+  finishedRunCount: number;
+  failedRunCount: number;
+  startedAt: string;
+  lastActiveAt: string;
+}
+
+export interface ConversationRole {
+  agentId: string;
+  agentName: string;
+  available: boolean;
+  defaultRole: boolean;
+}
+
+export interface ConversationReplayFrame {
+  reqId: string;
+  status: string;
+  finished: boolean;
+  resultMap: {
+    agentType?: string;
+    multiAgent?: Record<string, unknown>;
+    eventData?: MESSAGE.EventData;
+  };
+}
+
+export interface ConversationHistoryRunDetail {
+  requestId: string;
+  status: string;
+  queryText: string;
+  finalSummaryText?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  replayFrames: ConversationReplayFrame[];
+}
+
+export interface ConversationHistoryDetail {
+  sessionId: string;
+  title: string;
+  status: string;
+  outputStyle: string;
+  deepThink: boolean;
+  role: ConversationRole | null;
+  runCount: number;
+  finishedRunCount: number;
+  failedRunCount: number;
+  startedAt?: string;
+  lastActiveAt?: string;
+  runs: ConversationHistoryRunDetail[];
+}
+
 export const roleLibraryApi = {
-  list: () => api.get<FixRoleItem[]>(`/api/agent/role-library/list`),
+  list: () =>
+    api.get<FixRoleItem[]>(`/api/agent/role-library/list`) as unknown as Promise<FixRoleItem[]>,
+};
+
+export const conversationHistoryApi = {
+  listSessions: (limit = 20) =>
+    api.get<ConversationSessionItem[]>(
+      `/api/agent/conversation/sessions?limit=${limit}`
+    ) as unknown as Promise<ConversationSessionItem[]>,
+  getSessionDetail: (sessionId: string) =>
+    api.get<ConversationHistoryDetail>(
+      `/api/agent/conversation/sessions/${sessionId}`
+    ) as unknown as Promise<ConversationHistoryDetail>,
 };

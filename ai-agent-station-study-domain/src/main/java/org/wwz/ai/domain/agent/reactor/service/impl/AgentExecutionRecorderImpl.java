@@ -11,11 +11,14 @@ import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunStartRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
@@ -45,6 +48,7 @@ import java.util.concurrent.atomic.LongAdder;
 public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
 
     private final IDialogueRunLedgerDao dialogueRunLedgerDao;
+    private final IDialogueSessionLedgerDao dialogueSessionLedgerDao;
     private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
     private final IToolInvocationLedgerDao toolInvocationLedgerDao;
     private final IArtifactLedgerDao artifactLedgerDao;
@@ -77,6 +81,19 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .build();
         try {
             dialogueRunLedgerDao.insertRun(entity);
+            upsertSessionHead(DialogueSessionUpsertRecord.builder()
+                    .sessionId(record.getSessionId())
+                    .title(resolveSessionTitle(record.getQueryText()))
+                    .status(ExecutionLedgerConstants.STATUS_RUNNING)
+                    .latestRequestId(record.getRequestId())
+                    .latestQueryText(record.getQueryText())
+                    .latestSummaryText(null)
+                    .runCount(increaseSessionRunCount(record.getSessionId()))
+                    .finishedRunCount(queryFinishedRunCount(record.getSessionId()))
+                    .failedRunCount(queryFailedRunCount(record.getSessionId()))
+                    .startedAt(resolveSessionStartedAt(record.getSessionId(), startedAt))
+                    .lastActiveAt(startedAt)
+                    .build());
             markSuccess("createRun", null);
             return entity.getId();
         } catch (Exception e) {
@@ -115,6 +132,19 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .durationMs(calculateDuration(existing.getStartedAt(), finishedAt))
                     .build();
             dialogueRunLedgerDao.updateRunFinish(updateEntity);
+            upsertSessionHead(DialogueSessionUpsertRecord.builder()
+                    .sessionId(existing.getSessionId())
+                    .title(resolveSessionTitle(existing.getQueryText()))
+                    .status(record.getStatus())
+                    .latestRequestId(existing.getRequestId())
+                    .latestQueryText(existing.getQueryText())
+                    .latestSummaryText(record.getFinalSummaryText())
+                    .runCount(queryRunCount(existing.getSessionId()))
+                    .finishedRunCount(queryFinishedRunCount(existing.getSessionId()))
+                    .failedRunCount(queryFailedRunCount(existing.getSessionId()))
+                    .startedAt(resolveSessionStartedAt(existing.getSessionId(), existing.getStartedAt()))
+                    .lastActiveAt(finishedAt)
+                    .build());
             markSuccess("finishRun", updateEntity.getDurationMs());
         } catch (Exception e) {
             markFailure("finishRun", record.getRequestId(), record.getRunId(), null, e);
@@ -391,5 +421,58 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         double successRate = (success + failure) == 0 ? 1D : (double) success / (success + failure);
         log.error("Execution ledger {} failed, requestId={}, runId={}, toolCallId={}, successRate={}",
                 scene, requestId, runId, toolCallId, String.format("%.4f", successRate), e);
+    }
+
+    /**
+     * 会话主表只承接摘要和排序字段，避免再扫一遍 tool/artifact 明细。
+     */
+    private void upsertSessionHead(DialogueSessionUpsertRecord record) {
+        if (dialogueSessionLedgerDao == null || record == null || StringUtils.isBlank(record.getSessionId())) {
+            return;
+        }
+        dialogueSessionLedgerDao.upsertSession(record);
+    }
+
+    private String resolveSessionTitle(String queryText) {
+        String normalized = StringUtils.trimToEmpty(queryText);
+        if (normalized.isEmpty()) {
+            return "新对话";
+        }
+        return normalized.length() <= 30 ? normalized : normalized.substring(0, 30);
+    }
+
+    private int increaseSessionRunCount(String sessionId) {
+        return queryRunCount(sessionId) + 1;
+    }
+
+    private int queryRunCount(String sessionId) {
+        return dialogueRunLedgerDao.queryBySessionId(sessionId).size();
+    }
+
+    private int queryFinishedRunCount(String sessionId) {
+        return (int) dialogueRunLedgerDao.queryBySessionId(sessionId).stream()
+                .filter(item -> item != null && ExecutionLedgerConstants.STATUS_SUCCESS == defaultZero(item.getStatus()))
+                .count();
+    }
+
+    private int queryFailedRunCount(String sessionId) {
+        return (int) dialogueRunLedgerDao.queryBySessionId(sessionId).stream()
+                .filter(item -> item != null && isFailedStatus(item.getStatus()))
+                .count();
+    }
+
+    private boolean isFailedStatus(Integer status) {
+        int normalizedStatus = defaultZero(status);
+        return normalizedStatus == ExecutionLedgerConstants.STATUS_FAILED
+                || normalizedStatus == ExecutionLedgerConstants.STATUS_TIMEOUT
+                || normalizedStatus == ExecutionLedgerConstants.STATUS_STOPPED;
+    }
+
+    private LocalDateTime resolveSessionStartedAt(String sessionId, LocalDateTime fallback) {
+        List<DialogueRunView> runs = dialogueRunLedgerDao.queryBySessionId(sessionId);
+        if (CollectionUtils.isEmpty(runs) || runs.get(0) == null || runs.get(0).getStartedAt() == null) {
+            return fallback;
+        }
+        return runs.get(0).getStartedAt();
     }
 }
