@@ -5,6 +5,7 @@
     <resultMap id="ArtifactRecordMap" type="org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord">
         <id column="id" property="id"/>
         <result column="run_id" property="runId"/>
+        <result column="request_id" property="requestId"/>
         <result column="tool_invocation_id" property="toolInvocationId"/>
         <result column="tool_call_id" property="toolCallId"/>
         <result column="artifact_role" property="artifactRole"/>
@@ -26,13 +27,13 @@
 
     <insert id="batchInsertArtifacts">
         INSERT IGNORE INTO ai_agent_artifact (
-            run_id, tool_invocation_id, tool_call_id, artifact_role, visibility, source_type, source_name,
+            run_id, request_id, tool_invocation_id, tool_call_id, artifact_role, visibility, source_type, source_name,
             file_name, storage_key, download_url, preview_url, mime_type, file_size, file_hash, metadata_json,
             create_time, update_time, deleted
         ) VALUES
         <foreach collection="records" item="record" separator=",">
             (
-                #{record.runId}, #{record.toolInvocationId}, #{record.toolCallId}, #{record.artifactRole}, #{record.visibility},
+                #{record.runId}, #{record.requestId}, #{record.toolInvocationId}, #{record.toolCallId}, #{record.artifactRole}, #{record.visibility},
                 #{record.sourceType}, #{record.sourceName}, #{record.fileName}, #{record.storageKey}, #{record.downloadUrl},
                 #{record.previewUrl}, #{record.mimeType}, #{record.fileSize}, #{record.fileHash}, #{record.metadataJson},
                 NOW(), NOW(), 0
@@ -76,6 +77,17 @@
           AND artifact_role = 'output'
           AND visibility = 'visible'
           AND run_id = #{runId}
+          AND tool_call_id = #{toolCallId}
+        ORDER BY create_time ASC, id ASC
+    </select>
+
+    <select id="queryOutputArtifactsByRequestIdAndToolCallId" resultMap="ArtifactRecordMap">
+        SELECT *
+        FROM ai_agent_artifact
+        WHERE deleted = 0
+          AND artifact_role = 'output'
+          AND visibility = 'visible'
+          AND request_id = #{requestId}
           AND tool_call_id = #{toolCallId}
         ORDER BY create_time ASC, id ASC
     </select>

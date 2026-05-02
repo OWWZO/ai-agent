@@ -244,6 +244,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .toolInvocationId(record.getToolInvocationId())
                 .runId(record.getRunId())
                 .requestId(record.getRequestId())
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId(record.getSessionId())
                 .toolCallId(record.getToolCallId())
                 .toolName(record.getToolName())
@@ -255,20 +256,37 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
 
     @Override
     public void recordArtifacts(List<ArtifactRecordCommand> records) {
+        try {
+            recordArtifactsOrThrow(records);
+        } catch (Exception e) {
+            String requestId = null;
+            Long runId = null;
+            if (CollectionUtils.isNotEmpty(records)) {
+                for (ArtifactRecordCommand record : records) {
+                    if (record == null) {
+                        continue;
+                    }
+                    requestId = requestId == null ? record.getRequestId() : requestId;
+                    runId = runId == null ? record.getRunId() : runId;
+                }
+            }
+            markFailure("recordArtifacts", requestId, runId, null, e);
+        }
+    }
+
+    @Override
+    public void recordArtifactsOrThrow(List<ArtifactRecordCommand> records) {
         if (CollectionUtils.isEmpty(records)) {
             return;
         }
         List<ArtifactRecord> entities = new ArrayList<>(records.size());
-        String requestId = null;
-        Long runId = null;
         for (ArtifactRecordCommand record : records) {
-            if (record == null || record.getRunId() == null || StringUtils.isBlank(record.getFileName())) {
+            if (record == null || StringUtils.isBlank(record.getFileName())) {
                 continue;
             }
-            requestId = requestId == null ? record.getRequestId() : requestId;
-            runId = runId == null ? record.getRunId() : runId;
             entities.add(ArtifactRecord.builder()
                     .runId(record.getRunId())
+                    .requestId(record.getRequestId())
                     .toolInvocationId(record.getToolInvocationId())
                     .toolCallId(record.getToolCallId())
                     .artifactRole(record.getArtifactRole())
@@ -288,12 +306,12 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         if (entities.isEmpty()) {
             return;
         }
-        try {
-            artifactLedgerDao.batchInsertArtifacts(entities);
-            markSuccess("recordArtifacts", null);
-        } catch (Exception e) {
-            markFailure("recordArtifacts", requestId, runId, null, e);
+        int inserted = artifactLedgerDao.batchInsertArtifacts(entities);
+        if (inserted < entities.size()) {
+            throw new IllegalStateException(String.format(
+                    "artifact duplicate or ignored, expected=%d, inserted=%d", entities.size(), inserted));
         }
+        markSuccess("recordArtifacts", null);
     }
 
     private int sumPromptTokens(List<LlmInvocation> invocations) {

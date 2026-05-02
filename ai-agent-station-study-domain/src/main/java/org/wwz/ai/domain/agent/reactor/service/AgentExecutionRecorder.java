@@ -29,4 +29,6 @@ public interface AgentExecutionRecorder {
     void finishToolInvocation(ToolInvocationFinishRecord record);
 
     void recordArtifacts(List<ArtifactRecordCommand> records);
+
+    void recordArtifactsOrThrow(List<ArtifactRecordCommand> records);
 }

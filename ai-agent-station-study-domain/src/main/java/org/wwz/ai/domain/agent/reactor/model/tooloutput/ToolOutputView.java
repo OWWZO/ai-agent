@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * direct tool call 或 reader 查询后的统一输出视图。
  */
@@ -18,6 +20,8 @@ public class ToolOutputView {
 
     private String requestId;
 
+    private String requestSource;
+
     private String sessionId;
 
     private String toolCallId;
@@ -25,6 +29,8 @@ public class ToolOutputView {
     private Integer status;
 
     private String errorMsg;
+
+    private LocalDateTime createdAt;
 
     private ToolStructuredOutput structuredOutput;
 }

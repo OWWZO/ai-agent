@@ -31,6 +31,9 @@ public final class ExecutionLedgerConstants {
     public static final String SOURCE_TYPE_USER_UPLOAD = "user_upload";
     public static final String SOURCE_TYPE_TOOL_OUTPUT = "tool_output";
 
+    public static final String REQUEST_SOURCE_AGENT = "agent";
+    public static final String REQUEST_SOURCE_WORKSPACE = "workspace";
+
     public static final String TOOL_PROVIDER_LOCAL = "local";
     public static final String TOOL_PROVIDER_MCP = "mcp";
 

@@ -48,6 +48,7 @@ public class ToolOutputArtifactBackfillTest {
         row.put("tool_invocation_id", 501L);
         row.put("run_id", 601L);
         row.put("request_id", "req-artifact-reader-001");
+        row.put("request_source", ExecutionLedgerConstants.REQUEST_SOURCE_AGENT);
         row.put("session_id", "session-artifact-reader-001");
         row.put("tool_call_id", "tool-call-artifact-reader-001");
         row.put("status", ExecutionLedgerConstants.STATUS_SUCCESS);
@@ -99,8 +100,8 @@ public class ToolOutputArtifactBackfillTest {
         Mockito.when(scriptRunnerDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
 
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("run_id", 602L);
         row.put("request_id", "req-artifact-reader-002");
+        row.put("request_source", ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE);
         row.put("session_id", "session-artifact-reader-002");
         row.put("tool_call_id", "tool-call-artifact-reader-002");
         row.put("status", ExecutionLedgerConstants.STATUS_SUCCESS);
@@ -108,7 +109,7 @@ public class ToolOutputArtifactBackfillTest {
         row.put("primary_file_name", "analysis.xlsx");
         Mockito.when(fileToolDao.queryByRequestToolCall("req-artifact-reader-002", "tool-call-artifact-reader-002"))
                 .thenReturn(row);
-        Mockito.when(artifactLedgerDao.queryOutputArtifactsByRunIdAndToolCallId(602L, "tool-call-artifact-reader-002"))
+        Mockito.when(artifactLedgerDao.queryOutputArtifactsByRequestIdAndToolCallId("req-artifact-reader-002", "tool-call-artifact-reader-002"))
                 .thenReturn(List.of(
                         artifact("tool-call-artifact-reader-002", "analysis.xlsx", "https://download/analysis.xlsx", "https://preview/analysis.xlsx")
                 ));
@@ -130,6 +131,7 @@ public class ToolOutputArtifactBackfillTest {
 
         Assert.assertEquals(1, output.getFileRefs().size());
         Assert.assertEquals("analysis.xlsx", output.getFileRefs().get(0).getFileName());
+        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE, outputView.getRequestSource());
     }
 
     @Test
@@ -160,6 +162,7 @@ public class ToolOutputArtifactBackfillTest {
                 .toolInvocationId(701L)
                 .runId(801L)
                 .requestId("req-artifact-writer-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId("session-artifact-writer-001")
                 .toolCallId("tool-call-artifact-writer-001")
                 .toolName("file_tool")
@@ -174,6 +177,7 @@ public class ToolOutputArtifactBackfillTest {
                 .toolInvocationId(702L)
                 .runId(802L)
                 .requestId("req-artifact-writer-002")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId("session-artifact-writer-002")
                 .toolCallId("tool-call-artifact-writer-002")
                 .toolName("report_tool")
@@ -201,6 +205,7 @@ public class ToolOutputArtifactBackfillTest {
                                     String previewUrl) {
         return ArtifactRecord.builder()
                 .runId(1L)
+                .requestId("workspace-req-" + toolCallId)
                 .toolInvocationId(1L)
                 .toolCallId(toolCallId)
                 .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
@@ -211,6 +216,7 @@ public class ToolOutputArtifactBackfillTest {
                 .storageKey(downloadUrl)
                 .downloadUrl(downloadUrl)
                 .previewUrl(previewUrl)
+                .mimeType("application/octet-stream")
                 .build();
     }
 }

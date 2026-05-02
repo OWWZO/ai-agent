@@ -15,4 +15,14 @@ public class ToolOutputImageGenerationPO extends AbstractToolOutputPO {
     private String mode;
 
     private String summary;
+
+    private String size;
+
+    private Integer batchCount;
+
+    private Integer sourceImageCount;
+
+    private Integer maskImageCount;
+
+    private Boolean usedFallback;
 }

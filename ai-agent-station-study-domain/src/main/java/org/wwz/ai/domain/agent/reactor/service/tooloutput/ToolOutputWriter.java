@@ -8,4 +8,6 @@ import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand
 public interface ToolOutputWriter {
 
     void write(ToolOutputPersistCommand command);
+
+    void writeOrThrow(ToolOutputPersistCommand command);
 }

@@ -23,6 +23,16 @@ public class ImageGenerationToolOutput implements ToolStructuredOutput {
 
     private String summary;
 
+    private String size;
+
+    private Integer batchCount;
+
+    private Integer sourceImageCount;
+
+    private Integer maskImageCount;
+
+    private Boolean usedFallback;
+
     @Builder.Default
     private List<ToolFileRef> fileRefs = new ArrayList<>();
 

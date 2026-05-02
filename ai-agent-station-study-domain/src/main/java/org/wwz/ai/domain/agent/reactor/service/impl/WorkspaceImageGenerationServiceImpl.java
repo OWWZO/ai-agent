@@ -3,29 +3,31 @@ package org.wwz.ai.domain.agent.reactor.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
-import org.wwz.ai.domain.agent.reactor.entity.AgentImageGenerationRecord;
-import org.wwz.ai.domain.agent.reactor.gateway.IReactorImageGenerationGateway;
-import org.wwz.ai.domain.agent.reactor.mapper.IAgentImageGenerationRecordDao;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayFile;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayRequest;
-import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayResponse;
+import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputImageGenerationDao;
+import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
+import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationCommand;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryBatch;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryPage;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationResult;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.reactor.service.IWorkspaceImageGenerationService;
+import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationBatchPersistenceService;
+import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
 
 import javax.annotation.Resource;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 生图工作台服务实现。
@@ -42,14 +44,17 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
     private static final int MAX_BATCH_SIZE = 50;
 
     @Resource
-    private IReactorImageGenerationGateway imageGenerationGateway;
+    private IImageGenerationExecutionKernel imageGenerationExecutionKernel;
     @Resource
-    private IAgentImageGenerationRecordDao imageGenerationRecordDao;
+    private IImageGenerationBatchPersistenceService imageGenerationBatchPersistenceService;
+    @Resource
+    private IToolOutputImageGenerationDao toolOutputImageGenerationDao;
+    @Resource
+    private ToolOutputReader toolOutputReader;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public WorkspaceImageGenerationResult generate(String deviceId, WorkspaceImageGenerationCommand command) {
-        validateGenerateRequest(deviceId, command);
+    public WorkspaceImageGenerationResult generate(WorkspaceImageGenerationCommand command) {
+        validateGenerateRequest(command);
 
         List<String> sourceImages = normalizeSourceImages(command.getFileNames());
         List<String> maskImages = normalizeMaskImages(command.getMaskFileNames());
@@ -62,8 +67,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
         }
 
         String requestId = StringUtil.firstNonBlank(command.getRequestId(), StringUtil.getUUID());
-        int batchSize = normalizeBatchSize(command.getN());
-        ImageGenerationGatewayRequest gatewayRequest = ImageGenerationGatewayRequest.builder()
+        ImageGenerationExecutionResult result = imageGenerationExecutionKernel.execute(ImageGenerationExecuteCommand.builder()
                 .requestId(requestId)
                 .prompt(command.getPrompt().trim())
                 .mode(mode)
@@ -71,94 +75,61 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
                 .maskFileNames(maskImages)
                 .fileName(resolveOutputFileName(command.getFileName()))
                 .fileDescription(resolveFileDescription(command.getFileDescription(), command.getPrompt()))
+                .model(StringUtils.trimToNull(command.getModel()))
                 .size(resolveSize(command.getSize()))
-                .n(batchSize)
+                .n(normalizeBatchSize(command.getN()))
                 .timeoutSeconds(300)
-                .stream(Boolean.FALSE)
-                .build();
-
-        ImageGenerationGatewayResponse gatewayResponse = imageGenerationGateway.generate(gatewayRequest);
-        List<WorkspaceImageFile> files = normalizeWorkspaceFiles(gatewayResponse.getFileInfo());
-        if (files.isEmpty()) {
+                .build());
+        if (CollectionUtils.isEmpty(result.getFiles())) {
             throw new IllegalStateException("上游未返回可识别的图片结果");
         }
 
-        persistRecords(deviceId, gatewayRequest, gatewayResponse, files);
-        log.info("生图工作台生成成功 requestId={}, deviceId={}, fileCount={}",
-                requestId, deviceId, files.size());
+        imageGenerationBatchPersistenceService.persistWorkspaceBatch(requestId, result);
+        log.info("生图工作台生成成功 requestId={}, fileCount={}", requestId, result.getFiles().size());
 
         return WorkspaceImageGenerationResult.builder()
-                .data(StringUtil.firstNonBlank(gatewayResponse.getData(), "生成完成"))
-                .fileInfo(files)
+                .data(StringUtils.defaultIfBlank(result.getSummary(), "生成完成"))
+                .fileInfo(result.getFiles())
                 .requestId(requestId)
-                .mode(mode)
-                .usedFallback(Boolean.TRUE.equals(gatewayResponse.getUsedFallback()))
-                .rawResponse(gatewayResponse.getRawResponse())
+                .mode(result.getMode())
+                .usedFallback(result.getUsedFallback())
+                .rawResponse(result.getRawResponse())
                 .build();
     }
 
     @Override
-    public WorkspaceImageGenerationHistoryPage queryHistory(String deviceId, int pageNo, int pageSize) {
-        if (!org.springframework.util.StringUtils.hasText(deviceId)) {
-            throw new IllegalArgumentException("X-Device-Id header is required");
-        }
-
+    public WorkspaceImageGenerationHistoryPage queryHistory(int pageNo, int pageSize) {
         int safePageNo = Math.max(pageNo, 1);
         int safePageSize = Math.min(pageSize > 0 ? pageSize : DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE);
-        int total = imageGenerationRecordDao.countDistinctRequestIdByDeviceId(deviceId);
+        int total = toolOutputImageGenerationDao.countByRequestSource(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE);
         if (total <= 0) {
             return WorkspaceImageGenerationHistoryPage.builder()
                     .total(0)
                     .list(Collections.emptyList())
                     .build();
         }
-
         int offset = (safePageNo - 1) * safePageSize;
-        List<String> requestIds = imageGenerationRecordDao.queryRequestIdsByDeviceId(deviceId, offset, safePageSize);
-        if (CollectionUtils.isEmpty(requestIds)) {
+        List<Map<String, Object>> rows = toolOutputImageGenerationDao.queryPageByRequestSource(
+                ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE, offset, safePageSize);
+        if (CollectionUtils.isEmpty(rows)) {
             return WorkspaceImageGenerationHistoryPage.builder()
                     .total(total)
                     .list(Collections.emptyList())
                     .build();
         }
-
-        List<AgentImageGenerationRecord> records = imageGenerationRecordDao.queryByRequestIds(deviceId, requestIds);
-        Map<String, WorkspaceImageGenerationHistoryBatch> batchMap = new LinkedHashMap<>();
-        for (String requestId : requestIds) {
-            batchMap.put(requestId, WorkspaceImageGenerationHistoryBatch.builder()
-                    .requestId(requestId)
-                    .images(new ArrayList<>())
-                    .build());
+        List<WorkspaceImageGenerationHistoryBatch> list = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            ToolOutputView outputView = toolOutputReader.readDirect(stringValue(row, "request_id"), stringValue(row, "tool_call_id"))
+                    .orElse(buildFallbackView(row));
+            list.add(toHistoryBatch(outputView));
         }
-
-        for (AgentImageGenerationRecord record : records) {
-            WorkspaceImageGenerationHistoryBatch batch = batchMap.get(record.getRequestId());
-            if (batch == null) {
-                continue;
-            }
-            if (!org.springframework.util.StringUtils.hasText(batch.getPrompt())) {
-                batch.setPrompt(record.getPrompt());
-                batch.setMode(record.getMode());
-                batch.setSize(record.getSize());
-                batch.setBatchCount(record.getBatchCount());
-                batch.setSourceImageCount(record.getSourceImageCount());
-                batch.setMaskImageCount(record.getMaskImageCount());
-                batch.setUsedFallback(record.getUsedFallback() != null && record.getUsedFallback() == 1);
-                batch.setCreatedAt(record.getCreateTime());
-            }
-            batch.getImages().add(toWorkspaceFile(record));
-        }
-
         return WorkspaceImageGenerationHistoryPage.builder()
                 .total(total)
-                .list(new ArrayList<>(batchMap.values()))
+                .list(list)
                 .build();
     }
 
-    private void validateGenerateRequest(String deviceId, WorkspaceImageGenerationCommand command) {
-        if (!org.springframework.util.StringUtils.hasText(deviceId)) {
-            throw new IllegalArgumentException("X-Device-Id header is required");
-        }
+    private void validateGenerateRequest(WorkspaceImageGenerationCommand command) {
         if (command == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
@@ -171,10 +142,13 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
         if (CollectionUtils.isEmpty(fileNames)) {
             return Collections.emptyList();
         }
-        return fileNames.stream()
-                .filter(org.springframework.util.StringUtils::hasText)
-                .map(String::trim)
-                .collect(Collectors.toCollection(ArrayList::new));
+        List<String> normalized = new ArrayList<>(fileNames.size());
+        for (String fileName : fileNames) {
+            if (org.springframework.util.StringUtils.hasText(fileName)) {
+                normalized.add(fileName.trim());
+            }
+        }
+        return normalized;
     }
 
     /**
@@ -224,72 +198,115 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
         return org.springframework.util.StringUtils.hasText(size) ? size : DEFAULT_IMAGE_SIZE;
     }
 
-    private List<WorkspaceImageFile> normalizeWorkspaceFiles(List<ImageGenerationGatewayFile> fileInfoList) {
-        if (CollectionUtils.isEmpty(fileInfoList)) {
-            return Collections.emptyList();
-        }
+    private ToolOutputView buildFallbackView(Map<String, Object> row) {
+        ImageGenerationToolOutput output = ImageGenerationToolOutput.builder()
+                .prompt(stringValue(row, "prompt"))
+                .mode(stringValue(row, "mode"))
+                .summary(stringValue(row, "summary"))
+                .size(stringValue(row, "size"))
+                .batchCount(integerValue(row, "batch_count"))
+                .sourceImageCount(integerValue(row, "source_image_count"))
+                .maskImageCount(integerValue(row, "mask_image_count"))
+                .usedFallback(booleanValue(row, "used_fallback"))
+                .fileRefs(List.of())
+                .build();
+        return ToolOutputView.builder()
+                .toolName(ToolOutputNames.IMAGE_GENERATION)
+                .requestId(stringValue(row, "request_id"))
+                .requestSource(stringValue(row, "request_source"))
+                .toolCallId(stringValue(row, "tool_call_id"))
+                .status(integerValue(row, "status"))
+                .errorMsg(stringValue(row, "error_msg"))
+                .createdAt(localDateTimeValue(row, "created_at"))
+                .structuredOutput(output)
+                .build();
+    }
 
-        List<WorkspaceImageFile> files = new ArrayList<>();
-        for (ImageGenerationGatewayFile fileInfo : fileInfoList) {
-            if (fileInfo == null) {
+    private WorkspaceImageGenerationHistoryBatch toHistoryBatch(ToolOutputView outputView) {
+        ImageGenerationToolOutput output = outputView.getStructuredOutput() instanceof ImageGenerationToolOutput imageOutput
+                ? imageOutput
+                : ImageGenerationToolOutput.builder().build();
+        return WorkspaceImageGenerationHistoryBatch.builder()
+                .requestId(outputView.getRequestId())
+                .prompt(output.getPrompt())
+                .mode(output.getMode())
+                .size(output.getSize())
+                .batchCount(output.getBatchCount())
+                .sourceImageCount(output.getSourceImageCount())
+                .maskImageCount(output.getMaskImageCount())
+                .usedFallback(output.getUsedFallback())
+                .createdAt(outputView.getCreatedAt())
+                .images(toWorkspaceFiles(output))
+                .build();
+    }
+
+    private List<WorkspaceImageFile> toWorkspaceFiles(ImageGenerationToolOutput output) {
+        if (output == null || CollectionUtils.isEmpty(output.getFileRefs())) {
+            return List.of();
+        }
+        List<WorkspaceImageFile> files = new ArrayList<>(output.getFileRefs().size());
+        for (var fileRef : output.getFileRefs()) {
+            if (fileRef == null) {
                 continue;
             }
             files.add(WorkspaceImageFile.builder()
-                    .fileName(fileInfo.getFileName())
-                    .ossUrl(fileInfo.getOssUrl())
-                    .domainUrl(fileInfo.getDomainUrl())
-                    .downloadUrl(StringUtil.firstNonBlank(fileInfo.getDownloadUrl(), fileInfo.getOssUrl(), fileInfo.getDomainUrl()))
-                    .previewUrl(StringUtil.firstNonBlank(fileInfo.getPreviewUrl(), fileInfo.getDomainUrl(), fileInfo.getDownloadUrl(), fileInfo.getOssUrl()))
-                    .fileSize(fileInfo.getFileSize())
-                    .mimeType(fileInfo.getMimeType())
+                    .fileName(fileRef.getFileName())
+                    .ossUrl(fileRef.getOssUrl())
+                    .domainUrl(fileRef.getDomainUrl())
+                    .downloadUrl(StringUtils.firstNonBlank(fileRef.getDownloadUrl(), fileRef.getOssUrl(), fileRef.getDomainUrl()))
+                    .previewUrl(StringUtils.firstNonBlank(fileRef.getPreviewUrl(), fileRef.getDomainUrl(), fileRef.getDownloadUrl(), fileRef.getOssUrl()))
+                    .fileSize(fileRef.getFileSize())
+                    .mimeType(fileRef.getMimeType())
                     .build());
         }
         return files;
     }
 
-    private void persistRecords(String deviceId,
-                                ImageGenerationGatewayRequest gatewayRequest,
-                                ImageGenerationGatewayResponse gatewayResponse,
-                                List<WorkspaceImageFile> files) {
-        int maskImageCount = (int) gatewayRequest.getMaskFileNames().stream()
-                .filter(org.springframework.util.StringUtils::hasText)
-                .count();
+    private String stringValue(Map<String, Object> row, String key) {
+        Object value = row == null ? null : row.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
 
-        for (int index = 0; index < files.size(); index++) {
-            WorkspaceImageFile file = files.get(index);
-            AgentImageGenerationRecord record = AgentImageGenerationRecord.builder()
-                    .requestId(gatewayRequest.getRequestId())
-                    .resultIndex(index)
-                    .deviceId(deviceId)
-                    .userId(null)
-                    .prompt(gatewayRequest.getPrompt())
-                    .mode(gatewayRequest.getMode())
-                    .size(gatewayRequest.getSize())
-                    .batchCount(files.size())
-                    .sourceImageCount(gatewayRequest.getFileNames().size())
-                    .maskImageCount(maskImageCount)
-                    .usedFallback(Boolean.TRUE.equals(gatewayResponse.getUsedFallback()) ? 1 : 0)
-                    .fileName(file.getFileName())
-                    .ossUrl(file.getOssUrl())
-                    .domainUrl(file.getDomainUrl())
-                    .downloadUrl(file.getDownloadUrl())
-                    .fileSize(file.getFileSize())
-                    .mimeType(file.getMimeType())
-                    .deleted(0)
-                    .build();
-            imageGenerationRecordDao.insert(record);
+    private Integer integerValue(Map<String, Object> row, String key) {
+        Object value = row == null ? null : row.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 
-    private WorkspaceImageFile toWorkspaceFile(AgentImageGenerationRecord record) {
-        return WorkspaceImageFile.builder()
-                .fileName(record.getFileName())
-                .ossUrl(record.getOssUrl())
-                .domainUrl(record.getDomainUrl())
-                .downloadUrl(StringUtil.firstNonBlank(record.getDownloadUrl(), record.getOssUrl(), record.getDomainUrl()))
-                .previewUrl(StringUtil.firstNonBlank(record.getDomainUrl(), record.getDownloadUrl(), record.getOssUrl()))
-                .fileSize(record.getFileSize())
-                .mimeType(record.getMimeType())
-                .build();
+    private Boolean booleanValue(Map<String, Object> row, String key) {
+        Object value = row == null ? null : row.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() == 1;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private java.time.LocalDateTime localDateTimeValue(Map<String, Object> row, String key) {
+        Object value = row == null ? null : row.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.time.LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        return null;
     }
 }

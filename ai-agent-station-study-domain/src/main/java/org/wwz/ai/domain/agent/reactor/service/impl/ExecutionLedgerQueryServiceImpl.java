@@ -237,6 +237,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         return ArtifactView.builder()
                 .id(artifact.getId())
                 .runId(artifact.getRunId())
+                .requestId(artifact.getRequestId())
                 .toolInvocationId(artifact.getToolInvocationId())
                 .toolCallId(artifact.getToolCallId())
                 .artifactRole(artifact.getArtifactRole())

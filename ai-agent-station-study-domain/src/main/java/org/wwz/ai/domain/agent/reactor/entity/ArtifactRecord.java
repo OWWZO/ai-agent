@@ -21,6 +21,9 @@ public class ArtifactRecord {
     /** 所属 run */
     private Long runId;
 
+    /** 非 run 场景下用于直连请求 */
+    private String requestId;
+
     /** 输出文件对应的 tool invocation，输入文件为空 */
     private Long toolInvocationId;
 

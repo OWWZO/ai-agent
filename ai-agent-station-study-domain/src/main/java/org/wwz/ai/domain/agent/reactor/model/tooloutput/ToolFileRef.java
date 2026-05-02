@@ -25,4 +25,6 @@ public class ToolFileRef {
     private String domainUrl;
 
     private Long fileSize;
+
+    private String mimeType;
 }

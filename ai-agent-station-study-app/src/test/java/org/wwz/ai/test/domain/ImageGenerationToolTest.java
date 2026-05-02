@@ -20,6 +20,9 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.reactor.service.imagegeneration.impl.ImageGenerationExecutionKernelImpl;
+import org.wwz.ai.infrastructure.gateway.ReactorImageGenerationGateway;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -35,7 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ImageGenerationToolTest {
 
     @Test
-    public void shouldPersistNativeOutputJsonAndArtifactsForImageGeneration() throws Exception {
+    public void shouldUseSharedKernelAndReturnRichStructuredOutput() throws Exception {
         RecordingImageGenerationHandler handler = new RecordingImageGenerationHandler();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/v1/tool/image_generation", handler);
@@ -72,7 +75,7 @@ public class ImageGenerationToolTest {
             context.bindCurrentToolArtifactSource(artifactSource);
             try {
                 payload = (ToolResultPayload) tool.execute(JSONObject.parseObject("""
-                        {"prompt":"生成活动海报"}
+                        {"prompt":"生成活动海报","n":2,"size":"1536x1024","model":"gpt-image-1"}
                         """));
             } finally {
                 context.clearCurrentToolArtifactSource();
@@ -83,11 +86,15 @@ public class ImageGenerationToolTest {
             Assert.assertNotNull(structuredOutput);
             Assert.assertFalse(payload.getFailed());
             Assert.assertEquals("生成活动海报", structuredOutput.getPrompt());
+            Assert.assertEquals("1536x1024", structuredOutput.getSize());
+            Assert.assertEquals(Integer.valueOf(2), structuredOutput.getBatchCount());
+            Assert.assertTrue(structuredOutput.getUsedFallback());
             Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
             Assert.assertEquals(List.of("file"), printer.messageTypes());
             Assert.assertEquals(1, context.getTaskProductFiles().size());
             Assert.assertEquals("poster.png", context.getTaskProductFiles().get(0).getFileName());
-            Assert.assertEquals("images", handler.getLastRequest().getMode());
+            Assert.assertEquals(Boolean.FALSE, handler.getLastRequest().getStream());
+            Assert.assertEquals("gpt-image-1", handler.getLastRequest().getModel());
         } finally {
             server.stop(0);
             ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
@@ -150,7 +157,7 @@ public class ImageGenerationToolTest {
             }
 
             Assert.assertNotNull(handler.getLastRequest());
-            Assert.assertNull(handler.getLastRequest().getMode());
+            Assert.assertEquals(Boolean.FALSE, handler.getLastRequest().getStream());
             Assert.assertEquals(List.of("source-image.png"), handler.getLastRequest().getFileNames());
         } finally {
             server.stop(0);
@@ -166,8 +173,12 @@ public class ImageGenerationToolTest {
     }
 
     private void bindSpringContext(ReactorConfig reactorConfig) {
+        ReactorImageGenerationGateway gateway = new ReactorImageGenerationGateway();
+        ReflectionTestUtils.setField(gateway, "reactorConfig", reactorConfig);
+        IImageGenerationExecutionKernel kernel = new ImageGenerationExecutionKernelImpl(gateway);
         ApplicationContext applicationContext = Mockito.mock(ApplicationContext.class);
         Mockito.when(applicationContext.getBean(ReactorConfig.class)).thenReturn(reactorConfig);
+        Mockito.when(applicationContext.getBean(IImageGenerationExecutionKernel.class)).thenReturn(kernel);
         ReflectionTestUtils.setField(SpringContextHolder.class, "context", applicationContext);
     }
 
@@ -182,11 +193,10 @@ public class ImageGenerationToolTest {
         public void handle(HttpExchange exchange) throws IOException {
             byte[] requestBody = exchange.getRequestBody().readAllBytes();
             lastRequest.set(JSONObject.parseObject(new String(requestBody, StandardCharsets.UTF_8), ImageGenerationRequest.class));
-            byte[] body = (
-                    "data: {\"data\":\"已生成图片文件：poster.png\",\"fileInfo\":[{\"fileName\":\"poster.png\",\"ossUrl\":\"https://file.example.com/poster.png\",\"domainUrl\":\"https://file.example.com/preview/poster.png\",\"fileSize\":256}],\"isFinal\":true}\n\n"
-                            + "data: [DONE]\n\n"
-            ).getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+            byte[] body = """
+                    {"data":"已生成图片文件：poster.png","requestId":"req-image-response","mode":"images","usedFallback":true,"fileInfo":[{"fileName":"poster.png","ossUrl":"https://file.example.com/poster.png","domainUrl":"https://file.example.com/preview/poster.png","fileSize":256,"mimeType":"image/png"}]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream outputStream = exchange.getResponseBody()) {
                 outputStream.write(body);

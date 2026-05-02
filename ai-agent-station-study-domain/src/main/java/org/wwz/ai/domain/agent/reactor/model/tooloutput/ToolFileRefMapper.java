@@ -76,6 +76,7 @@ public final class ToolFileRefMapper {
                     .downloadUrl(valueAsString(item.get("downloadUrl")))
                     .previewUrl(valueAsString(item.get("previewUrl")))
                     .fileSize(valueAsLong(item.get("fileSize")))
+                    .mimeType(valueAsString(item.get("mimeType")))
                     .build());
         }
         return result;

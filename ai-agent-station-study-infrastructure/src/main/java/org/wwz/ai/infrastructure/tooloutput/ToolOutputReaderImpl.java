@@ -30,6 +30,8 @@ import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -190,6 +192,11 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .prompt(stringValue(row, "prompt"))
                 .mode(stringValue(row, "mode"))
                 .summary(stringValue(row, "summary"))
+                .size(stringValue(row, "size"))
+                .batchCount(integerValue(row, "batch_count", "batchCount"))
+                .sourceImageCount(integerValue(row, "source_image_count", "sourceImageCount"))
+                .maskImageCount(integerValue(row, "mask_image_count", "maskImageCount"))
+                .usedFallback(booleanValue(row, "used_fallback", "usedFallback"))
                 .fileRefs(resolveFileRefs(row))
                 .build();
     }
@@ -218,10 +225,12 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         return ToolOutputView.builder()
                 .toolName(toolName)
                 .requestId(stringValue(row, "request_id", "requestId"))
+                .requestSource(stringValue(row, "request_source", "requestSource"))
                 .sessionId(stringValue(row, "session_id", "sessionId"))
                 .toolCallId(stringValue(row, "tool_call_id", "toolCallId"))
                 .status(integerValue(row, "status"))
                 .errorMsg(stringValue(row, "error_msg", "errorMsg"))
+                .createdAt(localDateTimeValue(row, "created_at", "createdAt"))
                 .structuredOutput(output)
                 .build();
     }
@@ -243,11 +252,18 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             artifacts = artifactLedgerDao.queryOutputArtifactsByToolInvocationId(toolInvocationId);
         } else {
             Long runId = longValue(row, "run_id", "runId");
+            String requestId = stringValue(row, "request_id", "requestId");
             String toolCallId = stringValue(row, "tool_call_id", "toolCallId");
-            if (runId == null || StringUtils.isBlank(toolCallId)) {
+            if (StringUtils.isBlank(toolCallId)) {
                 return List.of();
             }
-            artifacts = artifactLedgerDao.queryOutputArtifactsByRunIdAndToolCallId(runId, toolCallId);
+            if (runId != null) {
+                artifacts = artifactLedgerDao.queryOutputArtifactsByRunIdAndToolCallId(runId, toolCallId);
+            } else if (StringUtils.isNotBlank(requestId)) {
+                artifacts = artifactLedgerDao.queryOutputArtifactsByRequestIdAndToolCallId(requestId, toolCallId);
+            } else {
+                return List.of();
+            }
         }
         if (artifacts == null || artifacts.isEmpty()) {
             return List.of();
@@ -264,6 +280,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                     .ossUrl(artifact.getDownloadUrl())
                     .domainUrl(artifact.getPreviewUrl())
                     .fileSize(artifact.getFileSize())
+                    .mimeType(artifact.getMimeType())
                     .build());
         }
         return fileRefs;
@@ -323,7 +340,26 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             if (value instanceof Boolean booleanValue) {
                 return booleanValue;
             }
+            if (value instanceof Number number) {
+                return number.intValue() == 1;
+            }
             return Boolean.parseBoolean(String.valueOf(value));
+        }
+        return null;
+    }
+
+    private LocalDateTime localDateTimeValue(Map<String, Object> row, String... keys) {
+        for (String key : keys) {
+            Object value = row.get(key);
+            if (value == null) {
+                continue;
+            }
+            if (value instanceof LocalDateTime localDateTime) {
+                return localDateTime;
+            }
+            if (value instanceof Timestamp timestamp) {
+                return timestamp.toLocalDateTime();
+            }
         }
         return null;
     }

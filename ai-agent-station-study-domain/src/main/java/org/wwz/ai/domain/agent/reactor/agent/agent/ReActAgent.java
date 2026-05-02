@@ -106,12 +106,13 @@ public abstract class ReActAgent extends BaseAgent {
             Message userMessage = Message.userMessage(formattedPrompt, null);
 
             // 4. 异步调用LLM生成数字员工配置：
-            // - 参数说明：上下文、用户消息列表、系统消息列表、是否流式、温度系数（0.01=低随机性，结果更稳定）
+            // - 模型侧仍走流式，兼容仅支持 stream 的网关；同时显式关闭前端透传，避免 JSON 混入思考区。
             CompletableFuture<String> summaryFuture = getLlm().ask(
                     context,
                     Collections.singletonList(userMessage), // 仅传入当前用户消息
                     Collections.emptyList(),                // 无额外系统消息
-                    true,                                   // 非流式调用
+                    true,                                   // 模型侧走流式
+                    false,                                  // 禁止向前端透传内部生成内容
                     0.1);                                   // 温度系数：越低结果越确定
 
             // 5. 同步获取异步结果（阻塞等待LLM响应，可根据业务调整为非阻塞）

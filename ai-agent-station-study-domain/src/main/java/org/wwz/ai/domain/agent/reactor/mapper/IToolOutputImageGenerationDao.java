@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.reactor.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,4 +18,10 @@ public interface IToolOutputImageGenerationDao {
 
     Map<String, Object> queryByRequestToolCall(@Param("requestId") String requestId,
                                                @Param("toolCallId") String toolCallId);
+
+    int countByRequestSource(@Param("requestSource") String requestSource);
+
+    List<Map<String, Object>> queryPageByRequestSource(@Param("requestSource") String requestSource,
+                                                       @Param("offset") int offset,
+                                                       @Param("limit") int limit);
 }

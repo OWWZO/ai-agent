@@ -37,7 +37,7 @@ public class StreamResponseHandler {
      * 处理纯文本流式响应。
      */
     public CompletableFuture<String> handleStringStream(AgentContext context, Flux<ChatResponse> flux) {
-        return handleStringStream(context, flux, null, false);
+        return handleStringStream(context, flux, null, false, true);
     }
 
     /**
@@ -47,10 +47,21 @@ public class StreamResponseHandler {
                                                         Flux<ChatResponse> flux,
                                                         String hiddenStartMarker,
                                                         boolean emitFinalSnapshot) {
+        return handleStringStream(context, flux, hiddenStartMarker, emitFinalSnapshot, true);
+    }
+
+    /**
+     * 处理纯文本流式响应，并显式控制是否向前端分发增量内容。
+     */
+    public CompletableFuture<String> handleStringStream(AgentContext context,
+                                                        Flux<ChatResponse> flux,
+                                                        String hiddenStartMarker,
+                                                        boolean emitFinalSnapshot,
+                                                        boolean pushToClient) {
         CompletableFuture<String> future = new CompletableFuture<>();
         StringBuilder allContent = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
-        String messageId = shouldPushStream(context) ? StringUtil.getUUID() : null;
+        String messageId = shouldPushStream(context, pushToClient) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();
         int[] tokenIndex = new int[]{1};
         int[] emittedLength = new int[]{0};
@@ -116,7 +127,7 @@ public class StreamResponseHandler {
         StringBuilder streamBuffer = new StringBuilder();    // 推送缓冲区
 
         // 流式推送配置
-        String messageId = shouldPushStream(context) ? StringUtil.getUUID() : null;
+        String messageId = shouldPushStream(context, true) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();   // 推送间隔配置
         int[] tokenIndex = new int[]{1};        // token计数器
 
@@ -223,7 +234,10 @@ public class StreamResponseHandler {
         return future;
     }
 
-    private boolean shouldPushStream(AgentContext context) {
+    private boolean shouldPushStream(AgentContext context, boolean pushToClient) {
+        if (!pushToClient) {
+            return false;
+        }
         return context != null
                 && Boolean.TRUE.equals(context.getIsStream())
                 && context.getPrinter() != null

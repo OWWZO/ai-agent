@@ -35,6 +35,7 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals(1, detail.getArtifacts().size());
         Assert.assertTrue(detail.getToolInvocations().get(0).getStructuredOutput() instanceof FileToolOutput);
         Assert.assertEquals("report-1.md", detail.getArtifacts().get(0).getFileName());
+        Assert.assertEquals("req-query-001", detail.getArtifacts().get(0).getRequestId());
 
         List<ToolInvocationView> recentTools = ctx.queryService.queryRecentToolInvocations("file_tool", 100);
         Assert.assertEquals(2, recentTools.size());

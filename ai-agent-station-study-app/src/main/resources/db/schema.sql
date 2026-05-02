@@ -49,34 +49,6 @@ CREATE TABLE IF NOT EXISTS sales_data (
     profit DECIMAL(10, 4) DEFAULT NULL COMMENT '利润'
 );
 
-CREATE TABLE IF NOT EXISTS ai_agent_image_generation_record (
-    id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    request_id         VARCHAR(64)  NOT NULL COMMENT '单次生成请求ID',
-    result_index       INT          NOT NULL DEFAULT 0 COMMENT '同批次结果图序号(0-based)',
-    device_id          VARCHAR(128) NOT NULL COMMENT '匿名设备标识',
-    user_id            BIGINT       NULL     COMMENT '认证用户ID(预留)',
-    prompt             TEXT         NOT NULL COMMENT '生成提示词',
-    mode               VARCHAR(16)  NOT NULL COMMENT '生成模式 images/edits',
-    size               VARCHAR(32)  NULL     COMMENT '输出尺寸',
-    batch_count        INT          NOT NULL DEFAULT 1 COMMENT '本批次生成图片总数',
-    source_image_count INT          NOT NULL DEFAULT 0 COMMENT '参考图数量',
-    mask_image_count   INT          NOT NULL DEFAULT 0 COMMENT '蒙版图数量',
-    used_fallback      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否走兼容降级接口',
-    file_name          VARCHAR(255) NULL     COMMENT '结果图片文件名',
-    oss_url            VARCHAR(1024) NULL    COMMENT '文件下载地址或对象存储地址',
-    domain_url         VARCHAR(1024) NULL    COMMENT '文件预览地址',
-    download_url       VARCHAR(1024) NULL    COMMENT '稳定下载地址',
-    file_size          BIGINT       NULL     COMMENT '文件大小(字节)',
-    mime_type          VARCHAR(128) NULL     COMMENT '结果图片MIME类型',
-    create_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted            TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_request_result (request_id, result_index),
-    KEY idx_device_create (device_id, deleted, create_time DESC),
-    KEY idx_user_create (user_id, deleted, create_time DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='生图工作台结果明细表';
-
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     run_uid                 VARCHAR(64)    NOT NULL COMMENT '对外稳定运行ID，首期复用 requestId',
@@ -217,7 +189,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_code_interpreter (
     code_output        MEDIUMTEXT     NULL COMMENT '代码执行输出',
     content            MEDIUMTEXT     NULL COMMENT '正文内容',
     code               MEDIUMTEXT     NULL COMMENT '执行代码',
-    explain            MEDIUMTEXT     NULL COMMENT '补充解释',
+    `explain`          MEDIUMTEXT     NULL COMMENT '补充解释',
     created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -294,6 +266,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_image_generation (
     tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
     run_id             BIGINT         NULL COMMENT '所属 run ID',
     request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
+    request_source     VARCHAR(32)    NOT NULL COMMENT '请求来源 agent/workspace',
     session_id         VARCHAR(64)    NULL COMMENT '会话ID',
     tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
     status             TINYINT        NOT NULL COMMENT '终态状态',
@@ -301,11 +274,17 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_image_generation (
     prompt             TEXT           NULL COMMENT '提示词',
     mode               VARCHAR(32)    NULL COMMENT '模式',
     summary            TEXT           NULL COMMENT '摘要',
+    size               VARCHAR(32)    NULL COMMENT '输出尺寸',
+    batch_count        INT            NULL COMMENT '批次数量',
+    source_image_count INT            NULL COMMENT '参考图数量',
+    mask_image_count   INT            NULL COMMENT '蒙版图数量',
+    used_fallback      TINYINT(1)     NULL COMMENT '是否走降级路径',
     created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_tool_invocation (tool_invocation_id),
     UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
+    KEY idx_request_source_created (request_source, created_at DESC),
     KEY idx_run_created (run_id, created_at DESC),
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='image_generation_tool 输出表';
@@ -338,7 +317,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_script_runner (
 
 CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    run_id             BIGINT         NOT NULL COMMENT '所属 run ID',
+    run_id             BIGINT         NULL COMMENT '所属 run ID',
+    request_id         VARCHAR(64)    NULL COMMENT '所属请求ID，兼容非 run 场景',
     tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation，输入文件为空',
     tool_call_id       VARCHAR(128)   NULL COMMENT '所属 toolCallId，输入文件为空',
     artifact_role      VARCHAR(16)    NOT NULL COMMENT 'input / output',
@@ -357,8 +337,9 @@ CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     update_time        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted            TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_run_tool_storage (run_id, tool_call_id, storage_key),
+    UNIQUE KEY uk_request_tool_storage (request_id, tool_call_id, storage_key),
     KEY idx_artifact_run_create (run_id, deleted, create_time DESC),
+    KEY idx_artifact_request_tool (request_id, tool_call_id, deleted, create_time DESC),
     KEY idx_artifact_tool (tool_invocation_id, deleted, create_time DESC),
     KEY idx_artifact_role (artifact_role, visibility, deleted, create_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='执行输入输出产物账本表';

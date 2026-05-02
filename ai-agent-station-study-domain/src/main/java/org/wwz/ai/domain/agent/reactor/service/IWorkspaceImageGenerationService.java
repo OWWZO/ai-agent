@@ -12,10 +12,10 @@ public interface IWorkspaceImageGenerationService {
     /**
      * 发起一次生图工作台请求。
      */
-    WorkspaceImageGenerationResult generate(String deviceId, WorkspaceImageGenerationCommand command);
+    WorkspaceImageGenerationResult generate(WorkspaceImageGenerationCommand command);
 
     /**
-     * 分页查询当前设备的生图历史。
+     * 分页查询工作台生图历史。
      */
-    WorkspaceImageGenerationHistoryPage queryHistory(String deviceId, int pageNo, int pageSize);
+    WorkspaceImageGenerationHistoryPage queryHistory(int pageNo, int pageSize);
 }

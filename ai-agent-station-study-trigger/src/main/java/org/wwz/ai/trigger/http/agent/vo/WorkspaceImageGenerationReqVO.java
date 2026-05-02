@@ -16,6 +16,7 @@ public class WorkspaceImageGenerationReqVO {
     private List<String> maskFileNames;
     private String fileName;
     private String fileDescription;
+    private String model;
     private String size;
     private Integer n;
 }

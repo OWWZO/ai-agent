@@ -20,6 +20,8 @@ public class ToolOutputPersistCommand {
 
     private String requestId;
 
+    private String requestSource;
+
     private String sessionId;
 
     private String toolCallId;

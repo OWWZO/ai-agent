@@ -6,27 +6,23 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
+import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.dto.ImageGenerationRequest;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
+import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
+import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRefMapper;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
+import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -98,8 +94,8 @@ public class ImageGenerationTool implements BaseTool {
                 fileNames = collectContextImageFileNames();
             }
             List<String> maskFileNames = toStringList(params.get("maskFileNames"));
-
-            ImageGenerationRequest request = ImageGenerationRequest.builder()
+            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
+            ImageGenerationExecutionResult result = requireKernel().execute(ImageGenerationExecuteCommand.builder()
                     .requestId(agentContext.getSessionId())
                     .prompt(prompt)
                     .mode(StringUtils.isBlank(mode) ? null : mode)
@@ -111,129 +107,47 @@ public class ImageGenerationTool implements BaseTool {
                     .size(StringUtils.trimToNull(valueAsString(params.get("size"))))
                     .n(resolveInteger(params.get("n"), 1))
                     .timeoutSeconds(300)
-                    .stream(true)
-                    .build();
-            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
-
-            Future<ToolResultPayload> future = callImageGenerationStream(request, artifactSource);
-            return future.get();
+                    .build());
+            appendGeneratedArtifacts(result, artifactSource);
+            emitFileMessage(result);
+            return buildSuccessPayload(result);
         } catch (Exception e) {
             log.error("{} image_generation_tool error, input={}", agentContext.getRequestId(), input, e);
             return buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage());
         }
     }
 
-    /**
-     * 调用 reactor-tool 图片生成端点，并把最终产物同步回会话上下文。
-     */
-    public CompletableFuture<ToolResultPayload> callImageGenerationStream(ImageGenerationRequest requestPayload,
-                                                                          ToolArtifactSource artifactSource) {
-        CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
-        try {
-            OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(5, TimeUnit.MINUTES)
-                    .readTimeout(10, TimeUnit.MINUTES)
-                    .writeTimeout(5, TimeUnit.MINUTES)
-                    .callTimeout(10, TimeUnit.MINUTES)
-                    .build();
-
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
-            String url = reactorConfig.getImageGenerationUrl() + "/v1/tool/image_generation";
-            RequestBody requestBody = RequestBody.create(
-                    MediaType.parse("application/json"),
-                    JSONObject.toJSONString(requestPayload)
-            );
-
-            log.info("{} image_generation_tool request {}", agentContext.getRequestId(), JSONObject.toJSONString(requestPayload));
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(requestBody)
-                    .build();
-
-            client.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    log.error("{} image_generation_tool on failure", agentContext.getRequestId(), e);
-                    future.complete(buildFailurePayload("image_generation_tool 执行失败：无法连接图片生成服务。"));
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    CodeInterpreterResponse finalResponse = CodeInterpreterResponse.builder()
-                            .data("image_generation_tool 执行失败")
-                            .build();
-                    try (ResponseBody responseBody = response.body()) {
-                        if (!response.isSuccessful() || responseBody == null) {
-                            future.complete(buildFailurePayload("image_generation_tool 执行失败：上游服务返回异常状态 " + response.code() + "。"));
-                            return;
-                        }
-
-                        String line;
-                        String messageId = StringUtil.getUUID();
-                        String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(responseBody.byteStream(), StandardCharsets.UTF_8));
-                        while ((line = reader.readLine()) != null) {
-                            if (!line.startsWith("data: ")) {
-                                continue;
-                            }
-
-                            String data = line.substring(6);
-                            if ("[DONE]".equals(data) || data.startsWith("heartbeat")) {
-                                continue;
-                            }
-
-                            CodeInterpreterResponse chunkResponse = JSONObject.parseObject(data, CodeInterpreterResponse.class);
-                            if (chunkResponse == null) {
-                                continue;
-                            }
-                            finalResponse = chunkResponse;
-
-                            if (Boolean.TRUE.equals(chunkResponse.getIsFinal())) {
-                                handleFinalFiles(chunkResponse, requestPayload, messageId, digitalEmployee, artifactSource);
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.error("{} image_generation_tool request error", agentContext.getRequestId(), e);
-                        future.complete(buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage()));
-                        return;
-                    }
-
-                    future.complete(buildSuccessPayload(finalResponse, requestPayload));
-                }
-            });
-        } catch (Exception e) {
-            log.error("{} image_generation_tool request error", agentContext.getRequestId(), e);
-            future.complete(buildFailurePayload("image_generation_tool 执行失败：" + e.getMessage()));
-        }
-        return future;
+    private IImageGenerationExecutionKernel requireKernel() {
+        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
+        return applicationContext.getBean(IImageGenerationExecutionKernel.class);
     }
 
-    private void handleFinalFiles(CodeInterpreterResponse response,
-                                  ImageGenerationRequest requestPayload,
-                                  String messageId,
-                                  String digitalEmployee,
-                                  ToolArtifactSource artifactSource) {
-        if (response.getFileInfo() == null || response.getFileInfo().isEmpty()) {
+    private void appendGeneratedArtifacts(ImageGenerationExecutionResult result, ToolArtifactSource artifactSource) {
+        if (result == null || CollectionUtils.isEmpty(result.getFiles())) {
             return;
         }
-
-        Map<String, Object> resultMap = new HashMap<>();
-        resultMap.put("command", "生成图片");
-        resultMap.put("fileInfo", response.getFileInfo());
-
-        for (CodeInterpreterResponse.FileInfo fileInfo : response.getFileInfo()) {
+        for (WorkspaceImageFile fileInfo : result.getFiles()) {
             File file = File.builder()
                     .fileName(fileInfo.getFileName())
-                    .fileSize(fileInfo.getFileSize())
+                    .fileSize(fileInfo.getFileSize() == null ? null : Math.toIntExact(fileInfo.getFileSize()))
                     .ossUrl(fileInfo.getOssUrl())
                     .domainUrl(fileInfo.getDomainUrl())
-                    .description(requestPayload.getFileDescription())
+                    .description(result.getSummary())
                     .isInternalFile(false)
                     .build();
             agentContext.registerGeneratedArtifact(artifactSource, file);
         }
+    }
 
+    private void emitFileMessage(ImageGenerationExecutionResult result) {
+        if (result == null || CollectionUtils.isEmpty(result.getFiles())) {
+            return;
+        }
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("command", "生成图片");
+        resultMap.put("fileInfo", result.getFiles());
+        String messageId = StringUtil.getUUID();
+        String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
         agentContext.getPrinter().send(messageId, "file", resultMap, digitalEmployee, true);
     }
 
@@ -318,14 +232,18 @@ public class ImageGenerationTool implements BaseTool {
     /**
      * 生图结果需要同时保留 prompt、摘要和图片文件引用，便于后续 replay 还原。
      */
-    private ToolResultPayload buildSuccessPayload(CodeInterpreterResponse response,
-                                                  ImageGenerationRequest requestPayload) {
-        String summary = normalizeSummary(response);
+    private ToolResultPayload buildSuccessPayload(ImageGenerationExecutionResult result) {
+        String summary = normalizeSummary(result);
         ImageGenerationToolOutput structuredOutput = ImageGenerationToolOutput.builder()
-                .prompt(requestPayload.getPrompt())
-                .mode(requestPayload.getMode())
+                .prompt(result.getPrompt())
+                .mode(result.getMode())
                 .summary(summary)
-                .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(response == null ? null : response.getFileInfo()))
+                .size(result.getSize())
+                .batchCount(result.getBatchCount())
+                .sourceImageCount(result.getSourceImageCount())
+                .maskImageCount(result.getMaskImageCount())
+                .usedFallback(result.getUsedFallback())
+                .fileRefs(toToolFileRefs(result.getFiles()))
                 .build();
         return ToolResultPayload.structured(summary, summary, structuredOutput);
     }
@@ -344,11 +262,11 @@ public class ImageGenerationTool implements BaseTool {
         );
     }
 
-    private String normalizeSummary(CodeInterpreterResponse response) {
-        String summary = response == null ? null : StringUtils.trimToNull(response.getData());
-        if (response != null && response.getFileInfo() != null && !response.getFileInfo().isEmpty()) {
-            String fileNames = response.getFileInfo().stream()
-                    .map(CodeInterpreterResponse.FileInfo::getFileName)
+    private String normalizeSummary(ImageGenerationExecutionResult result) {
+        String summary = result == null ? null : StringUtils.trimToNull(result.getSummary());
+        if (result != null && !CollectionUtils.isEmpty(result.getFiles())) {
+            String fileNames = result.getFiles().stream()
+                    .map(WorkspaceImageFile::getFileName)
                     .filter(StringUtils::isNotBlank)
                     .collect(Collectors.joining("、"));
             if (StringUtils.isBlank(summary)) {
@@ -356,6 +274,24 @@ public class ImageGenerationTool implements BaseTool {
             }
         }
         return StringUtils.defaultIfBlank(summary, "image_generation_tool 执行完成");
+    }
+
+    private List<ToolFileRef> toToolFileRefs(List<WorkspaceImageFile> files) {
+        if (CollectionUtils.isEmpty(files)) {
+            return List.of();
+        }
+        return files.stream()
+                .filter(Objects::nonNull)
+                .map(file -> ToolFileRef.builder()
+                        .fileName(file.getFileName())
+                        .ossUrl(file.getOssUrl())
+                        .domainUrl(file.getDomainUrl())
+                        .downloadUrl(file.getDownloadUrl())
+                        .previewUrl(file.getPreviewUrl())
+                        .fileSize(file.getFileSize())
+                        .mimeType(file.getMimeType())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     private Map<String, Object> buildStringParam(String description) {

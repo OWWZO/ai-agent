@@ -23,6 +23,7 @@ public class ToolStructuredOutputWriterTest {
                 .toolInvocationId(101L)
                 .runId(201L)
                 .requestId("req-writer-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId("session-writer-001")
                 .toolCallId("tool-call-writer-001")
                 .toolName("file_tool")
@@ -37,6 +38,7 @@ public class ToolStructuredOutputWriterTest {
                 .toolInvocationId(101L)
                 .runId(201L)
                 .requestId("req-writer-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId("session-writer-001")
                 .toolCallId("tool-call-writer-001")
                 .toolName("file_tool")
@@ -57,6 +59,7 @@ public class ToolStructuredOutputWriterTest {
 
         Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", 101L).isPresent());
         Assert.assertEquals("file_tool", outputView.getToolName());
+        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT, outputView.getRequestSource());
         Assert.assertEquals("session-writer-001", outputView.getSessionId());
         Assert.assertEquals("report-a.md", structuredOutput.getPrimaryFileName());
         Assert.assertEquals(1, structuredOutput.getFileRefs().size());
@@ -68,6 +71,7 @@ public class ToolStructuredOutputWriterTest {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-writer-direct-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE)
                 .toolCallId("tool-call-direct-001")
                 .toolName("image_generation_tool")
                 .status(ExecutionLedgerConstants.STATUS_FAILED)
@@ -80,6 +84,7 @@ public class ToolStructuredOutputWriterTest {
                 .build());
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-writer-direct-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE)
                 .toolCallId("tool-call-direct-001")
                 .toolName("image_generation_tool")
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
@@ -95,6 +100,7 @@ public class ToolStructuredOutputWriterTest {
         ImageGenerationToolOutput structuredOutput = (ImageGenerationToolOutput) outputView.getStructuredOutput();
 
         Assert.assertNull(outputView.getSessionId());
+        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE, outputView.getRequestSource());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), outputView.getStatus());
         Assert.assertEquals("upstream timeout", outputView.getErrorMsg());
         Assert.assertEquals("sunrise over lake", structuredOutput.getPrompt());

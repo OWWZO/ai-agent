@@ -2,7 +2,6 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
@@ -20,55 +19,53 @@ import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class AgentImageGenerationControllerTest {
 
     @Test
-    public void test_generateRejectsMissingDeviceId() {
+    public void test_generateRejectsMissingPrompt() {
         AgentImageGenerationController controller = new AgentImageGenerationController();
         ReflectionTestUtils.setField(controller, "workspaceImageGenerationService", new StubWorkspaceImageGenerationService());
 
         WorkspaceImageGenerationReqVO reqVO = new WorkspaceImageGenerationReqVO();
-        reqVO.setPrompt("生成一张风景图");
 
-        Response<WorkspaceImageGenerationRespVO> response = controller.generate(new MockHttpServletRequest(), reqVO);
+        Response<WorkspaceImageGenerationRespVO> response = controller.generate(reqVO);
 
         Assert.assertEquals(ResponseCode.ILLEGAL_PARAMETER.getCode(), response.getCode());
-        Assert.assertEquals("X-Device-Id header is required", response.getInfo());
+        Assert.assertEquals("prompt不能为空", response.getInfo());
     }
 
     @Test
     public void test_generateWrapsServiceResponse() {
         AgentImageGenerationController controller = new AgentImageGenerationController();
-        ReflectionTestUtils.setField(controller, "workspaceImageGenerationService", new StubWorkspaceImageGenerationService());
-
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("X-Device-Id", "device-001");
+        AtomicReference<WorkspaceImageGenerationCommand> capturedCommand = new AtomicReference<>();
+        ReflectionTestUtils.setField(controller, "workspaceImageGenerationService", new StubWorkspaceImageGenerationService(capturedCommand));
 
         WorkspaceImageGenerationReqVO reqVO = new WorkspaceImageGenerationReqVO();
         reqVO.setRequestId("req-001");
         reqVO.setPrompt("生成一张风景图");
         reqVO.setMode("images");
+        reqVO.setModel("gpt-image-2");
         reqVO.setN(1);
 
-        Response<WorkspaceImageGenerationRespVO> response = controller.generate(request, reqVO);
+        Response<WorkspaceImageGenerationRespVO> response = controller.generate(reqVO);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
         Assert.assertEquals("req-001", response.getData().getRequestId());
         Assert.assertEquals(1, response.getData().getFileInfo().size());
         Assert.assertEquals("https://file.example.com/result.png", response.getData().getFileInfo().get(0).getPreviewUrl());
+        Assert.assertNotNull(capturedCommand.get());
+        Assert.assertEquals("gpt-image-2", capturedCommand.get().getModel());
     }
 
     @Test
-    public void test_historyWrapsBatchPage() {
+    public void test_historyWrapsBatchPageWithoutDeviceHeader() {
         AgentImageGenerationController controller = new AgentImageGenerationController();
         ReflectionTestUtils.setField(controller, "workspaceImageGenerationService", new StubWorkspaceImageGenerationService());
 
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("X-Device-Id", "device-001");
-
-        Response<PageRespVO<WorkspaceImageHistoryBatchRespVO>> response = controller.history(request, 1, 10);
+        Response<PageRespVO<WorkspaceImageHistoryBatchRespVO>> response = controller.history(1, 10);
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
@@ -80,8 +77,24 @@ public class AgentImageGenerationControllerTest {
 
     private static class StubWorkspaceImageGenerationService implements IWorkspaceImageGenerationService {
 
+        private final AtomicReference<WorkspaceImageGenerationCommand> capturedCommand;
+
+        private StubWorkspaceImageGenerationService() {
+            this(null);
+        }
+
+        private StubWorkspaceImageGenerationService(AtomicReference<WorkspaceImageGenerationCommand> capturedCommand) {
+            this.capturedCommand = capturedCommand;
+        }
+
         @Override
-        public WorkspaceImageGenerationResult generate(String deviceId, WorkspaceImageGenerationCommand command) {
+        public WorkspaceImageGenerationResult generate(WorkspaceImageGenerationCommand command) {
+            if (command == null || command.getPrompt() == null || command.getPrompt().isBlank()) {
+                throw new IllegalArgumentException("prompt不能为空");
+            }
+            if (capturedCommand != null) {
+                capturedCommand.set(command);
+            }
             return WorkspaceImageGenerationResult.builder()
                     .data("生成完成")
                     .requestId(command.getRequestId())
@@ -99,7 +112,7 @@ public class AgentImageGenerationControllerTest {
         }
 
         @Override
-        public WorkspaceImageGenerationHistoryPage queryHistory(String deviceId, int pageNo, int pageSize) {
+        public WorkspaceImageGenerationHistoryPage queryHistory(int pageNo, int pageSize) {
             return WorkspaceImageGenerationHistoryPage.builder()
                     .total(1)
                     .list(List.of(

@@ -182,6 +182,15 @@ public final class ExecutionLedgerFixtureFactory {
 
         @Override
         public void write(ToolOutputPersistCommand command) {
+            writeInternal(command, false);
+        }
+
+        @Override
+        public void writeOrThrow(ToolOutputPersistCommand command) {
+            writeInternal(command, true);
+        }
+
+        private void writeInternal(ToolOutputPersistCommand command, boolean strict) {
             if (command == null || command.getStructuredOutput() == null) {
                 return;
             }
@@ -196,19 +205,27 @@ public final class ExecutionLedgerFixtureFactory {
                 Map<Long, ToolOutputView> invocationOutputs = store.toolOutputsByToolAndInvocationId
                         .computeIfAbsent(toolName, key -> new LinkedHashMap<>());
                 if (invocationOutputs.containsKey(command.getToolInvocationId())) {
+                    if (strict) {
+                        throw new IllegalStateException("duplicate tool invocation id");
+                    }
                     return;
                 }
             }
             if (directOutputs.containsKey(directKey)) {
+                if (strict) {
+                    throw new IllegalStateException("duplicate request/toolCallId");
+                }
                 return;
             }
             ToolOutputView view = ToolOutputView.builder()
                     .toolName(toolName)
                     .requestId(command.getRequestId())
+                    .requestSource(command.getRequestSource() == null ? ExecutionLedgerConstants.REQUEST_SOURCE_AGENT : command.getRequestSource())
                     .sessionId(command.getSessionId())
                     .toolCallId(command.getToolCallId())
                     .status(command.getStatus())
                     .errorMsg(command.getErrorMsg())
+                    .createdAt(LocalDateTime.now())
                     .structuredOutput(command.getStructuredOutput())
                     .build();
             if (command.getToolInvocationId() != null) {
@@ -496,7 +513,7 @@ public final class ExecutionLedgerFixtureFactory {
             for (ArtifactRecord record : records) {
                 boolean exists = store.artifacts.values().stream()
                         .anyMatch(existing -> existing.getDeleted() == 0
-                                && existing.getRunId().equals(record.getRunId())
+                                && equalsNullable(existing.getRequestId(), record.getRequestId())
                                 && equalsNullable(existing.getToolCallId(), record.getToolCallId())
                                 && equalsNullable(existing.getStorageKey(), record.getStorageKey()));
                 if (exists) {
@@ -551,6 +568,19 @@ public final class ExecutionLedgerFixtureFactory {
                     .filter(item -> item.getDeleted() == 0
                             && runId != null
                             && runId.equals(item.getRunId())
+                            && equalsNullable(toolCallId, item.getToolCallId())
+                            && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(item.getArtifactRole())
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getCreateTime).thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
+
+        @Override
+        public List<ArtifactRecord> queryOutputArtifactsByRequestIdAndToolCallId(String requestId, String toolCallId) {
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && equalsNullable(requestId, item.getRequestId())
                             && equalsNullable(toolCallId, item.getToolCallId())
                             && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(item.getArtifactRole())
                             && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
@@ -656,6 +686,7 @@ public final class ExecutionLedgerFixtureFactory {
         return ArtifactRecord.builder()
                 .id(artifact.getId())
                 .runId(artifact.getRunId())
+                .requestId(artifact.getRequestId())
                 .toolInvocationId(artifact.getToolInvocationId())
                 .toolCallId(artifact.getToolCallId())
                 .artifactRole(artifact.getArtifactRole())
@@ -683,10 +714,12 @@ public final class ExecutionLedgerFixtureFactory {
         return ToolOutputView.builder()
                 .toolName(view.getToolName())
                 .requestId(view.getRequestId())
+                .requestSource(view.getRequestSource())
                 .sessionId(view.getSessionId())
                 .toolCallId(view.getToolCallId())
                 .status(view.getStatus())
                 .errorMsg(view.getErrorMsg())
+                .createdAt(view.getCreatedAt())
                 .structuredOutput(view.getStructuredOutput())
                 .build();
     }

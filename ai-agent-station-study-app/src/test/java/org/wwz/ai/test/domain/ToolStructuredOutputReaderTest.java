@@ -24,6 +24,7 @@ public class ToolStructuredOutputReaderTest {
                 .toolInvocationId(301L)
                 .runId(401L)
                 .requestId("req-reader-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .sessionId("session-reader-001")
                 .toolCallId("tool-call-reader-001")
                 .toolName("deep_search")
@@ -46,6 +47,7 @@ public class ToolStructuredOutputReaderTest {
         Assert.assertEquals(1, byInvocation.getStages().size());
         Assert.assertEquals("extend", byInvocation.getStages().get(0).getStage());
         Assert.assertEquals("deep_search", direct.getToolName());
+        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT, direct.getRequestSource());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), direct.getStatus());
     }
 
@@ -54,6 +56,7 @@ public class ToolStructuredOutputReaderTest {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-reader-conflict-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .toolCallId("tool-call-conflict-001")
                 .toolName("file_tool")
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)
@@ -64,6 +67,7 @@ public class ToolStructuredOutputReaderTest {
                 .build());
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-reader-conflict-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .toolCallId("tool-call-conflict-001")
                 .toolName("report_tool")
                 .status(ExecutionLedgerConstants.STATUS_SUCCESS)

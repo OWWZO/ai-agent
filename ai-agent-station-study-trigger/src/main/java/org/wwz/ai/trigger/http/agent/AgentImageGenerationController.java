@@ -22,7 +22,6 @@ import org.wwz.ai.trigger.http.agent.vo.WorkspaceImageHistoryBatchRespVO;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,15 +37,12 @@ public class AgentImageGenerationController {
     private IWorkspaceImageGenerationService workspaceImageGenerationService;
 
     @PostMapping("/generate")
-    public Response<WorkspaceImageGenerationRespVO> generate(HttpServletRequest request,
-                                                             @RequestBody WorkspaceImageGenerationReqVO reqVO) {
+    public Response<WorkspaceImageGenerationRespVO> generate(@RequestBody WorkspaceImageGenerationReqVO reqVO) {
         try {
             if (reqVO == null) {
                 throw new IllegalArgumentException("请求体不能为空");
             }
-            String deviceId = resolveDeviceId(request);
             WorkspaceImageGenerationResult result = workspaceImageGenerationService.generate(
-                    deviceId,
                     WorkspaceImageGenerationCommand.builder()
                             .requestId(reqVO.getRequestId())
                             .prompt(reqVO.getPrompt())
@@ -55,6 +51,7 @@ public class AgentImageGenerationController {
                             .maskFileNames(reqVO.getMaskFileNames())
                             .fileName(reqVO.getFileName())
                             .fileDescription(reqVO.getFileDescription())
+                            .model(reqVO.getModel())
                             .size(reqVO.getSize())
                             .n(reqVO.getN())
                             .build()
@@ -88,13 +85,11 @@ public class AgentImageGenerationController {
     }
 
     @GetMapping("/history")
-    public Response<PageRespVO<WorkspaceImageHistoryBatchRespVO>> history(HttpServletRequest request,
-                                                                          @RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
+    public Response<PageRespVO<WorkspaceImageHistoryBatchRespVO>> history(@RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                                           @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
         try {
-            String deviceId = resolveDeviceId(request);
             WorkspaceImageGenerationHistoryPage historyPage =
-                    workspaceImageGenerationService.queryHistory(deviceId, pageNo, pageSize);
+                    workspaceImageGenerationService.queryHistory(pageNo, pageSize);
 
             List<WorkspaceImageHistoryBatchRespVO> list = historyPage.getList().stream()
                     .map(this::toHistoryRespVO)
@@ -119,17 +114,6 @@ public class AgentImageGenerationController {
                     .info(e.getMessage())
                     .build();
         }
-    }
-
-    private String resolveDeviceId(HttpServletRequest request) {
-        String deviceId = request.getHeader("X-Device-Id");
-        if (deviceId == null || deviceId.isBlank()) {
-            deviceId = request.getParameter("deviceId");
-        }
-        if (deviceId == null || deviceId.isBlank()) {
-            throw new IllegalArgumentException("X-Device-Id header is required");
-        }
-        return deviceId;
     }
 
     private WorkspaceImageHistoryBatchRespVO toHistoryRespVO(WorkspaceImageGenerationHistoryBatch batch) {

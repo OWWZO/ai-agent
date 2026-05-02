@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputImageGenerationDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputMultimodalAgentDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputReportToolDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputScriptRunnerDao;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.DataAnalysisToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
@@ -50,6 +51,21 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
 
     @Override
     public void write(ToolOutputPersistCommand command) {
+        try {
+            writeInternal(command, false);
+        } catch (Exception e) {
+            log.error("tool output persist failed, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
+                    resolveToolName(command), command == null ? null : command.getRequestId(),
+                    command == null ? null : command.getToolCallId(), command == null ? null : command.getToolInvocationId(), e);
+        }
+    }
+
+    @Override
+    public void writeOrThrow(ToolOutputPersistCommand command) {
+        writeInternal(command, true);
+    }
+
+    private void writeInternal(ToolOutputPersistCommand command, boolean strict) {
         if (command == null || command.getStructuredOutput() == null) {
             return;
         }
@@ -61,22 +77,22 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         }
         try {
             switch (toolName) {
-                case ToolOutputNames.DEEP_SEARCH -> logFirstWriteWins(command, deepSearchDao.insert(buildDeepSearchRow(command, cast(command, DeepSearchToolOutput.class))));
-                case ToolOutputNames.FILE_TOOL -> logFirstWriteWins(command, fileToolDao.insert(buildFileToolRow(command, cast(command, FileToolOutput.class))));
-                case ToolOutputNames.CODE_INTERPRETER -> logFirstWriteWins(command, codeInterpreterDao.insert(buildCodeInterpreterRow(command, cast(command, CodeInterpreterToolOutput.class))));
-                case ToolOutputNames.REPORT_TOOL -> logFirstWriteWins(command, reportToolDao.insert(buildReportToolRow(command, cast(command, ReportToolOutput.class))));
-                case ToolOutputNames.DATA_ANALYSIS -> logFirstWriteWins(command, dataAnalysisDao.insert(buildDataAnalysisRow(command, cast(command, DataAnalysisToolOutput.class))));
-                case ToolOutputNames.MULTIMODAL_AGENT -> logFirstWriteWins(command, multimodalAgentDao.insert(buildMultimodalRow(command, cast(command, MultimodalAgentToolOutput.class))));
-                case ToolOutputNames.IMAGE_GENERATION -> logFirstWriteWins(command, imageGenerationDao.insert(buildImageGenerationRow(command, cast(command, ImageGenerationToolOutput.class))));
-                case ToolOutputNames.SCRIPT_RUNNER -> logFirstWriteWins(command, scriptRunnerDao.insert(buildScriptRunnerRow(command, cast(command, ScriptRunnerToolOutput.class))));
+                case ToolOutputNames.DEEP_SEARCH -> handleInsertResult(command, deepSearchDao.insert(buildDeepSearchRow(command, cast(command, DeepSearchToolOutput.class))), strict);
+                case ToolOutputNames.FILE_TOOL -> handleInsertResult(command, fileToolDao.insert(buildFileToolRow(command, cast(command, FileToolOutput.class))), strict);
+                case ToolOutputNames.CODE_INTERPRETER -> handleInsertResult(command, codeInterpreterDao.insert(buildCodeInterpreterRow(command, cast(command, CodeInterpreterToolOutput.class))), strict);
+                case ToolOutputNames.REPORT_TOOL -> handleInsertResult(command, reportToolDao.insert(buildReportToolRow(command, cast(command, ReportToolOutput.class))), strict);
+                case ToolOutputNames.DATA_ANALYSIS -> handleInsertResult(command, dataAnalysisDao.insert(buildDataAnalysisRow(command, cast(command, DataAnalysisToolOutput.class))), strict);
+                case ToolOutputNames.MULTIMODAL_AGENT -> handleInsertResult(command, multimodalAgentDao.insert(buildMultimodalRow(command, cast(command, MultimodalAgentToolOutput.class))), strict);
+                case ToolOutputNames.IMAGE_GENERATION -> handleInsertResult(command, imageGenerationDao.insert(buildImageGenerationRow(command, cast(command, ImageGenerationToolOutput.class))), strict);
+                case ToolOutputNames.SCRIPT_RUNNER -> handleInsertResult(command, scriptRunnerDao.insert(buildScriptRunnerRow(command, cast(command, ScriptRunnerToolOutput.class))), strict);
                 default -> log.debug("skip unsupported tool output persist, toolName={}", toolName);
             }
         } catch (DuplicateKeyException e) {
+            if (strict) {
+                throw e;
+            }
             log.warn("tool output duplicate write ignored, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
                     toolName, command.getRequestId(), command.getToolCallId(), command.getToolInvocationId());
-        } catch (Exception e) {
-            log.error("tool output persist failed, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
-                    toolName, command.getRequestId(), command.getToolCallId(), command.getToolInvocationId(), e);
         }
     }
 
@@ -133,6 +149,11 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("prompt", output.getPrompt());
         row.put("mode", output.getMode());
         row.put("summary", output.getSummary());
+        row.put("size", output.getSize());
+        row.put("batchCount", output.getBatchCount());
+        row.put("sourceImageCount", output.getSourceImageCount());
+        row.put("maskImageCount", output.getMaskImageCount());
+        row.put("usedFallback", output.getUsedFallback());
         return row;
     }
 
@@ -154,6 +175,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("toolInvocationId", command.getToolInvocationId());
         row.put("runId", command.getRunId());
         row.put("requestId", command.getRequestId());
+        row.put("requestSource", StringUtils.defaultIfBlank(command.getRequestSource(), ExecutionLedgerConstants.REQUEST_SOURCE_AGENT));
         row.put("sessionId", command.getSessionId());
         row.put("toolCallId", command.getToolCallId());
         row.put("status", command.getStatus());
@@ -169,9 +191,14 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         return structuredOutput == null ? "" : structuredOutput.getToolName();
     }
 
-    private void logFirstWriteWins(ToolOutputPersistCommand command, int inserted) {
+    private void handleInsertResult(ToolOutputPersistCommand command, int inserted, boolean strict) {
         if (inserted > 0) {
             return;
+        }
+        if (strict) {
+            throw new IllegalStateException(String.format(
+                    "tool output duplicate or ignored, toolName=%s, requestId=%s, toolCallId=%s, toolInvocationId=%s",
+                    resolveToolName(command), command.getRequestId(), command.getToolCallId(), command.getToolInvocationId()));
         }
         log.warn("tool output first-write-wins ignored duplicate, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
                 resolveToolName(command), command.getRequestId(), command.getToolCallId(), command.getToolInvocationId());

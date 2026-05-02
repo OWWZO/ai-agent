@@ -159,6 +159,7 @@ public class AgentExecutionLedgerRepositoryTest {
 
         List<ArtifactRecord> artifacts = ctx.artifactDao.queryByRunId(runId);
         Assert.assertEquals(1, artifacts.size());
+        Assert.assertEquals("req-ledger-001", artifacts.get(0).getRequestId());
         Assert.assertEquals(Long.valueOf(toolInvocationId), artifacts.get(0).getToolInvocationId());
         Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", toolInvocationId).isPresent());
     }
@@ -204,6 +205,7 @@ public class AgentExecutionLedgerRepositoryTest {
 
         List<ArtifactRecord> artifacts = ctx.artifactDao.queryByRunId(runId);
         Assert.assertEquals(1, artifacts.size());
+        Assert.assertEquals("req-ledger-002", artifacts.get(0).getRequestId());
         Assert.assertNull(artifacts.get(0).getToolInvocationId());
         Assert.assertEquals(ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT, artifacts.get(0).getArtifactRole());
     }
@@ -213,6 +215,7 @@ public class AgentExecutionLedgerRepositoryTest {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-direct-ledger-001")
+                .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT)
                 .toolCallId("tool-call-direct-ledger-001")
                 .toolName("report_tool")
                 .status(ExecutionLedgerConstants.STATUS_FAILED)
@@ -227,6 +230,7 @@ public class AgentExecutionLedgerRepositoryTest {
         ToolOutputView direct = ctx.toolOutputReader.readDirect("req-direct-ledger-001", "tool-call-direct-ledger-001")
                 .orElseThrow();
         Assert.assertEquals("report_tool", direct.getToolName());
+        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT, direct.getRequestSource());
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), direct.getStatus());
         Assert.assertEquals("direct timeout", direct.getErrorMsg());
     }

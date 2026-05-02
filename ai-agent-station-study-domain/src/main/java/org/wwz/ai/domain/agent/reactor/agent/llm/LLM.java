@@ -274,6 +274,20 @@ public class LLM {
             boolean stream,
             Double temperature
     ) {
+        return ask(context, messages, systemMsgs, stream, true, temperature);
+    }
+
+    /**
+     * 纯文本问答统一走 Spring AI，并允许显式控制是否向前端分发流式增量。
+     */
+    public CompletableFuture<String> ask(
+            AgentContext context,
+            List<Message> messages,
+            List<Message> systemMsgs,
+            boolean stream,
+            boolean pushToClient,
+            Double temperature
+    ) {
         try {
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
@@ -326,7 +340,7 @@ public class LLM {
                 });
             }
 
-            return streamResponseHandler.handleStringStream(context, chatModel.stream(prompt))
+            return streamResponseHandler.handleStringStream(context, chatModel.stream(prompt), null, false, pushToClient)
                     .whenComplete((content, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(

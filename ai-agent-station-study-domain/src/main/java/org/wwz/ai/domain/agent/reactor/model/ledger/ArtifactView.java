@@ -20,6 +20,8 @@ public class ArtifactView {
 
     private Long runId;
 
+    private String requestId;
+
     private Long toolInvocationId;
 
     private String toolCallId;

@@ -22,4 +22,7 @@ public interface IArtifactLedgerDao {
 
     List<ArtifactRecord> queryOutputArtifactsByRunIdAndToolCallId(@Param("runId") Long runId,
                                                                   @Param("toolCallId") String toolCallId);
+
+    List<ArtifactRecord> queryOutputArtifactsByRequestIdAndToolCallId(@Param("requestId") String requestId,
+                                                                      @Param("toolCallId") String toolCallId);
 }
