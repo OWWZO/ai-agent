@@ -1,6 +1,27 @@
 import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
 import { PanelItemType } from "./type";
 
+function buildToolCallMarkdown(resultMap?: MESSAGE.ResultMap) {
+  if (!resultMap) {
+    return "";
+  }
+
+  const contentBlocks: string[] = [];
+  const summary = typeof resultMap.summary === "string" ? resultMap.summary.trim() : "";
+  if (summary) {
+    contentBlocks.push(summary);
+  } else if (resultMap.toolName) {
+    contentBlocks.push(`正在调用 \`${resultMap.toolName}\``);
+  }
+
+  const input = resultMap.input || resultMap.toolParam;
+  if (input && typeof input === "object") {
+    contentBlocks.push(`\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\``);
+  }
+
+  return contentBlocks.join("\n\n");
+}
+
 export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
   let markDownContent = "";
 
@@ -17,6 +38,9 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
     case "tool_thought":
       // 兜底支持思考内容，避免异常状态下工作区出现“有标题但无内容”的空白面板。
       markDownContent = taskItem.toolThought || "";
+      break;
+    case "tool_call":
+      markDownContent = buildToolCallMarkdown(resultMap);
       break;
     case "code":
       if (resultMap?.code || (resultMap?.codeOutput && resultMap?.isFinal)) {

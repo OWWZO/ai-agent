@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao">
 
     <resultMap id="DialogueSessionMap" type="org.wwz.ai.domain.agent.reactor.entity.DialogueSession">
         <id column="id" property="id"/>

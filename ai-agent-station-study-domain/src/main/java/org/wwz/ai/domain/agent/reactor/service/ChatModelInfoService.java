@@ -3,16 +3,15 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.qdrant.client.grpc.Points;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.wwz.ai.domain.agent.reactor.adapter.repository.IChatModelMetadataRepository;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
@@ -30,7 +29,6 @@ import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcDataProvider;
 import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcQueryRequest;
 import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
 import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
-import org.wwz.ai.domain.agent.reactor.mapper.ChatModelInfoMapper;
 import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
 
 import java.sql.SQLException;
@@ -43,24 +41,17 @@ import static io.qdrant.client.ConditionFactory.matchKeywords;
 
 @Slf4j
 @Service
-public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatModelInfo> {
+@RequiredArgsConstructor
+public class ChatModelInfoService {
 
-
-    @Autowired
-    DataAgentConfig dataAgentConfig;
-    @Autowired
-    JdbcDataMetaProvider jdbcDataMetaProvider;
-    @Autowired
-    JdbcDataProvider jdbcDataProvider;
-    @Autowired
-    ChatModelSchemaService chatModelSchemaService;
-    @Autowired
-    VectorService vectorService;
-    @Autowired
-    ColumnValueSyncService columnValueSyncService;
-    @Autowired
-    QdrantService qdrantService;
-
+    private final IChatModelMetadataRepository chatModelMetadataRepository;
+    private final DataAgentConfig dataAgentConfig;
+    private final JdbcDataMetaProvider jdbcDataMetaProvider;
+    private final JdbcDataProvider jdbcDataProvider;
+    private final ChatModelSchemaService chatModelSchemaService;
+    private final VectorService vectorService;
+    private final ColumnValueSyncService columnValueSyncService;
+    private final QdrantService qdrantService;
 
     public void initModelInfo(DataAgentConfig dataAgentConfig) throws Exception {
         initModelInfo(dataAgentConfig, false);
@@ -118,21 +109,14 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
      * 按模型编码去重，只保留最新一条有效模型定义。
      */
     public List<ChatModelInfo> listDistinctModels() {
-        List<ChatModelInfo> modelList = lambdaQuery()
-                .orderByDesc(ChatModelInfo::getId)
-                .list();
-        Map<String, ChatModelInfo> modelMap = new LinkedHashMap<>();
-        for (ChatModelInfo modelInfo : modelList) {
-            modelMap.putIfAbsent(modelInfo.getCode(), modelInfo);
-        }
-        return new ArrayList<>(modelMap.values());
+        return chatModelMetadataRepository.listDistinctModels();
     }
 
     /**
      * 清理同一模型编码下的历史元数据，避免重复初始化。
      */
     public void cleanModelMetadata(String modelCode) {
-        baseMapper.deletePhysicalByCode(modelCode);
+        chatModelMetadataRepository.deleteModelInfoByCode(modelCode);
         chatModelSchemaService.cleanModelSchema(modelCode);
     }
 
@@ -200,7 +184,7 @@ public class ChatModelInfoService extends ServiceImpl<ChatModelInfoMapper, ChatM
         modelInfo.setType(modelConfig.getType());
         modelInfo.setUsePrompt(modelConfig.getRemark());
         modelInfo.setBusinessPrompt(modelConfig.getBusinessPrompt());
-        save(modelInfo);
+        chatModelMetadataRepository.saveModelInfo(modelInfo);
         log.info("model info save success:{}", modelCode);
         List<ChatModelSchema> chatModelSchemas = chatModelSchemaService.saveModelSchema(modelCode, modelConfig, tableSchema, fewShotMap);
         log.info("model schema save success {},size:{}", modelCode, chatModelSchemas.size());

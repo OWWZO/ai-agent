@@ -140,6 +140,44 @@ function createHtmlEvent(options?: {
   } as unknown as MESSAGE.EventData;
 }
 
+function createToolCallEvent(options?: {
+  messageId?: string;
+  taskId?: string;
+  status?: string;
+  toolName?: string;
+  toolCallId?: string;
+  toolInvocationId?: string;
+  summary?: string;
+  input?: Record<string, unknown>;
+  isFinal?: boolean;
+}): MESSAGE.EventData {
+  return {
+    messageType: "task",
+    messageId: options?.messageId || "tool-call-msg-1",
+    taskId: options?.taskId || "task-tool-call-1",
+    taskOrder: 1,
+    messageOrder: 1,
+    resultMap: {
+      requestId: "req-tool-call-1",
+      messageId: options?.messageId || "tool-call-msg-1",
+      messageType: "tool_call",
+      messageTime: "1714041600555",
+      finish: Boolean(options?.isFinal),
+      isFinal: Boolean(options?.isFinal),
+      resultMap: {
+        messageType: "tool_call",
+        isFinal: Boolean(options?.isFinal),
+        status: options?.status || "running",
+        toolName: options?.toolName || "file_tool",
+        toolCallId: options?.toolCallId || "tool-call-file-001",
+        toolInvocationId: options?.toolInvocationId || "1001",
+        summary: options?.summary || "正在调用 file_tool",
+        input: options?.input || { command: "get", fileName: "风险日报.md" },
+      },
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
 function createPlannerThoughtEvent(options: {
   plannerRoundId: string;
   planThought: string;
@@ -717,5 +755,72 @@ describe("chat file task title", () => {
       action: "读取文件",
       name: "风险日报.md",
     });
+  });
+
+  it("tool_call 阶段会立即生成可见的工具调用占位卡片", () => {
+    const currentChat = {
+      sessionId: "session-tool-call-1",
+      requestId: "req-tool-call-1",
+      query: "读取风险日报",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent(), currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].messageType).toBe("tool_call");
+    expect(buildAction(taskList[0])).toMatchObject({
+      action: "正在调用工具",
+      tool: "file_tool",
+      name: "风险日报.md",
+    });
+    expect(renderedChat.tasks[0]?.[0]?.children?.[0]?.messageType).toBe("tool_call");
+  });
+
+  it("相同 tool_call messageId 的终态更新应覆盖状态而不是追加新卡片", () => {
+    const currentChat = {
+      sessionId: "session-tool-call-2",
+      requestId: "req-tool-call-2",
+      query: "读取风险日报",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "tool-call-msg-2",
+      taskId: "task-tool-call-2",
+      toolCallId: "tool-call-file-002",
+      status: "running",
+    }), currentChat);
+    combineData(createToolCallEvent({
+      messageId: "tool-call-msg-2",
+      taskId: "task-tool-call-2",
+      toolCallId: "tool-call-file-002",
+      status: "success",
+      isFinal: true,
+      summary: "file_tool 调用完成",
+    }), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].resultMap.status).toBe("success");
+    expect(taskList[0].resultMap.isFinal).toBe(true);
+    expect(taskList[0].resultMap.summary).toBe("file_tool 调用完成");
   });
 });

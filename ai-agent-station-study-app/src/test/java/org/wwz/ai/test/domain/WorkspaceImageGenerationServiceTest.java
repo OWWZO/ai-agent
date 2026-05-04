@@ -4,7 +4,6 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputImageGenerationDao;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationCommand;
@@ -17,8 +16,9 @@ import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationBatchPersistenceService;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.impl.ImageGenerationBatchPersistenceServiceImpl;
-import org.wwz.ai.domain.agent.reactor.service.impl.WorkspaceImageGenerationServiceImpl;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
+import org.wwz.ai.infrastructure.reactor.service.impl.WorkspaceImageGenerationServiceImpl;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;

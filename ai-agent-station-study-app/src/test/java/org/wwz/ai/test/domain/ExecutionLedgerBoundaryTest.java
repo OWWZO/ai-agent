@@ -4,12 +4,14 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentExecutionRecorderImpl;
 import org.wwz.ai.domain.agent.reactor.service.impl.ExecutionLedgerQueryServiceImpl;
+import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
+import org.wwz.ai.domain.agent.reactor.service.ChatModelSchemaService;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
 
 /**
- * 锁定 Phase 1 之后的执行账本领域服务边界。
+ * 锁定 Phase 2A 之后的 Reactor 持久化边界。
  */
 public class ExecutionLedgerBoundaryTest {
 
@@ -21,12 +23,21 @@ public class ExecutionLedgerBoundaryTest {
         assertHasField(ExecutionLedgerQueryServiceImpl.class, "IExecutionLedgerReadRepository");
     }
 
+    @Test
+    public void shouldKeepChatModelServicesRepositoryDriven() {
+        assertNoLedgerDaoFields(ChatModelInfoService.class);
+        assertNoLedgerDaoFields(ChatModelSchemaService.class);
+        assertHasField(ChatModelInfoService.class, "IChatModelMetadataRepository");
+        assertHasField(ChatModelSchemaService.class, "IChatModelMetadataRepository");
+    }
+
     private void assertNoLedgerDaoFields(Class<?> type) {
         for (Field field : type.getDeclaredFields()) {
             String packageName = field.getType().getPackageName();
             Assert.assertFalse(
                     type.getSimpleName() + " 不应继续直接持有 DAO 字段: " + field.getName(),
                     packageName.contains(".domain.agent.reactor.mapper")
+                            || packageName.contains(".infrastructure.dao.reactor")
                             || field.getType().getSimpleName().endsWith("Dao")
             );
         }

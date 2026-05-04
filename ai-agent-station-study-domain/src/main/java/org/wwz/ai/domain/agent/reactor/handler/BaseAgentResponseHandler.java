@@ -215,6 +215,7 @@ public class BaseAgentResponseHandler {
             case "tool_result":
                 payload.put("toolResult", agentResponse.getToolResult());
                 break;
+            case "tool_call":
             case "browser":
             case "code":
             case "html":

@@ -187,6 +187,16 @@ declare global {
       code?: string;
       tip?: string;
       task?: string;
+      status?: string
+      toolName?: string
+      toolCallId?: string
+      toolInvocationId?: string | number
+      toolProvider?: string
+      dispatchIndex?: number
+      summary?: string
+      errorMsg?: string
+      input?: Record<string, unknown>
+      toolParam?: Record<string, unknown>
       artifactRefs?: ArtifactReference[]
       plannerRoundId?: string
       refList?: {

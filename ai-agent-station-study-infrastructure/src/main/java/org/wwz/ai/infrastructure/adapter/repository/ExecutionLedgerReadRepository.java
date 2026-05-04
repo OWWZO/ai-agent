@@ -7,14 +7,14 @@ import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
 import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
 import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
-import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.IDialogueRunLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao;
 
 import java.util.List;
 

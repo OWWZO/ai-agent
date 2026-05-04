@@ -108,6 +108,7 @@ public class SSEPrinter implements Printer {
                 case "tool_result":
                     response.setToolResult((AgentResponse.ToolResult) message);
                     break;
+                case "tool_call":
                 case "browser":
                 case "code":
                 case "html":

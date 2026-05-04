@@ -37,6 +37,9 @@
 | 类 | 职责 |
 |---|------|
 | `AgentRepository` | Agent 仓储实现 |
+| `ExecutionLedgerReadRepository` | Reactor 执行账本读仓储实现 |
+| `ExecutionLedgerWriteRepository` | Reactor 执行账本写仓储实现 |
+| `ChatModelMetadataRepository` | 问数模型元数据仓储实现 |
 
 ### 外部网关
 | 接口 | 职责 |
@@ -85,6 +88,12 @@
 | 类 | 说明 |
 |---|------|
 | `AdminUser` | 管理员用户 |
+
+### Reactor Phase 2A 持久化边界
+- Reactor ledger、tool-output、chat-model DAO / Mapper 统一位于 `src/main/java/org/wwz/ai/infrastructure/dao/reactor/`
+- `ExecutionLedgerReadRepository`、`ExecutionLedgerWriteRepository`、`ChatModelMetadataRepository` 负责把领域仓储端口映射到这些 DAO
+- `ToolOutputReaderImpl`、`ToolOutputWriterImpl`、`SessionContextMemoryServiceImpl`、`WorkspaceImageGenerationServiceImpl` 当前属于允许直接协作 DAO 的过渡态技术实现
+- 后续阶段若继续收敛，会优先新增 repository seam，而不是把 DAO 或 MyBatis-Plus 细节重新带回 `domain`
 
 ---
 

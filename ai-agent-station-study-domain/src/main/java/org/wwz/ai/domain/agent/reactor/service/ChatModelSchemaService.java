@@ -3,23 +3,26 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import lombok.RequiredArgsConstructor;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
 import org.wwz.ai.domain.agent.reactor.data.TableColumn;
 import org.wwz.ai.domain.agent.reactor.data.dto.ChatSchemaDto;
+import org.wwz.ai.domain.agent.reactor.adapter.repository.IChatModelMetadataRepository;
 import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
-import org.wwz.ai.domain.agent.reactor.mapper.ChatModelSchemaMapper;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, ChatModelSchema> {
+@RequiredArgsConstructor
+public class ChatModelSchemaService {
+
+    private final IChatModelMetadataRepository chatModelMetadataRepository;
+
     public static String getColumnUuids() {
         List<String> list = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
@@ -83,7 +86,7 @@ public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, C
             saveList.add(schema);
         }
         modelConfig.setSyncValueFields(String.join(",", syncValueFields));
-        saveBatch(saveList);
+        chatModelMetadataRepository.saveModelSchemas(saveList);
         return saveList;
     }
 
@@ -108,22 +111,14 @@ public class ChatModelSchemaService extends ServiceImpl<ChatModelSchemaMapper, C
      * 按模型编码清理历史 schema，避免应用每次启动重复初始化后越积越多。
      */
     public void cleanModelSchema(String modelCode) {
-        baseMapper.deletePhysicalByModelCode(modelCode);
+        chatModelMetadataRepository.deleteModelSchemasByCode(modelCode);
     }
 
     /**
      * 按 modelCode + columnId 去重，只保留最新一条有效 schema。
      */
     public List<ChatModelSchema> listDistinctSchemas() {
-        List<ChatModelSchema> schemaList = lambdaQuery()
-                .orderByDesc(ChatModelSchema::getId)
-                .list();
-        Map<String, ChatModelSchema> schemaMap = new LinkedHashMap<>();
-        for (ChatModelSchema schema : schemaList) {
-            String key = schema.getModelCode() + "::" + schema.getColumnId();
-            schemaMap.putIfAbsent(key, schema);
-        }
-        return new ArrayList<>(schemaMap.values());
+        return chatModelMetadataRepository.listDistinctSchemas();
     }
 
     public Set<String> getIgnoreFields(String ignoreFields) {

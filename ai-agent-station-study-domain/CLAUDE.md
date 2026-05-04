@@ -92,7 +92,12 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 已迁到 `ai-agent-station-study-app`
 - execution ledger 只在本模块定义 `IExecutionLedgerReadRepository`、`IExecutionLedgerWriteRepository` 端口，由 `infrastructure` 提供生产实现
 - `ReactorConfig` 仍是过渡态共享配置契约，本期仅允许通过测试和文档锁边界，不做物理迁移
-- `SessionContextMemoryServiceImpl`、tool-output 读写、workspace-image 与 ledger 持久化类型物理迁移仍属于后续阶段
+
+### Reactor Phase 2A 边界
+- `domain` 不再承载 Reactor `@Mapper`、`BaseMapper` 或 `org.wwz.ai.domain.agent.reactor.mapper.*`
+- chat-model 元数据通过 `IChatModelMetadataRepository` 端口访问持久化，`ChatModelInfoService`、`ChatModelSchemaService` 不再继承 `ServiceImpl`
+- `SessionContextMemoryService`、`IWorkspaceImageGenerationService` 仍在 `domain` 定义接口，但其基于 DAO 的技术实现已下沉到 `infrastructure`
+- tool-output 读写与 execution ledger 持久化协作统一依赖 `infrastructure.dao.reactor.*`
 
 ---
 

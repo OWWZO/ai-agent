@@ -98,6 +98,62 @@ type TaskRenderCacheEntry = {
 
 const taskRenderCache = new WeakMap<object, TaskRenderCacheEntry>();
 
+function pickFirstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return "";
+}
+
+function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
+  const input = resultMap?.input;
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+
+  const toolParam = resultMap?.toolParam;
+  if (toolParam && typeof toolParam === "object" && !Array.isArray(toolParam)) {
+    return toolParam as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function resolveToolCallTargetName(resultMap?: MESSAGE.ResultMap) {
+  const input = resolveToolCallInput(resultMap);
+  return pickFirstText(
+    resultMap?.primaryFileName,
+    input.fileName,
+    input.file_name,
+    input.filename,
+    input.outputFileName,
+    input.displayName,
+    input.name,
+    input.path,
+    input.targetPath,
+  );
+}
+
+function resolveToolCallActionText(task: CHAT.Task) {
+  const status = task.resultMap?.status;
+  if (status === "success") {
+    return "工具调用完成";
+  }
+  if (status === "failed") {
+    return "工具调用失败";
+  }
+  if (task.resultMap?.isFinal) {
+    return "工具调用完成";
+  }
+  return "正在调用工具";
+}
+
 /**
  * 实时 SSE 的文件类事件会把 artifactRefs 放在 eventData 顶层，
  * 这里统一折叠进任务对象，保证工作区始终走同一套取文件逻辑。
@@ -320,6 +376,9 @@ function handleTaskMessageByType(
       break;
     case "deep_search":
       handleDeepSearchMessage(eventData, currentChat, taskIndex);
+      break;
+    case "tool_call":
+      handleToolCallMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     default:
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
@@ -638,6 +697,31 @@ function handleDeepSearchMessage(
 }
 
 /**
+ * tool_call 需要立即在左侧时间线和右侧工作区可见，
+ * 同一 messageId 的后续终态包则应原位覆盖，避免重复插入占位卡片。
+ */
+function handleToolCallMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem,
+  taskIndex: number,
+  toolIndex: number
+) {
+  const nextTask = buildTaskFromEventData(eventData);
+
+  if (taskIndex === -1) {
+    currentChat.multiAgent.tasks.push([nextTask]);
+    return;
+  }
+
+  if (toolIndex !== -1) {
+    currentChat.multiAgent.tasks[taskIndex][toolIndex] = nextTask;
+    return;
+  }
+
+  currentChat.multiAgent.tasks[taskIndex].push(nextTask);
+}
+
+/**
  * deep_search 的查询分解/搜索完成会复用同一条工具记录，
  * 但总结阶段必须单独占一条记录，否则会把左侧“搜索完成”卡片直接覆盖成“正在总结”。
  */
@@ -891,6 +975,7 @@ export const handleTaskData = (
   } = multiAgent ?? {};
 
   const TOOL_TYPES = [
+    "tool_call",
     "tool_result",
     "browser",
     "code",
@@ -1006,6 +1091,7 @@ function getTaskRenderSignature(task: any, baseId: string): string {
   const searchResult = resultMap.searchResult;
   const plan = task.plan;
   const artifactRefs = Array.isArray(task.artifactRefs) ? task.artifactRefs : [];
+  const toolCallTargetName = resolveToolCallTargetName(resultMap);
   const querySignature = Array.isArray(searchResult?.query)
     ? searchResult.query.join("||")
     : "";
@@ -1023,6 +1109,11 @@ function getTaskRenderSignature(task: any, baseId: string): string {
     resultMap.messageType || "",
     resultMap.isFinal ? "1" : "0",
     resultMap.searchFinish ? "1" : "0",
+    resultMap.status || "",
+    resultMap.summary || "",
+    resultMap.toolName || "",
+    resultMap.toolCallId || "",
+    toolCallTargetName,
     task.toolThought?.length || 0,
     resultMap.answer?.length || 0,
     resultMap.codeOutput?.length || 0,
@@ -1212,6 +1303,7 @@ function processDeepSearchTask(task: any, baseId: string): CHAT.Task[] {
 export const buildAction = (task: CHAT.Task) => {
   // 定义消息类型常量
   const MESSAGE_TYPES = {
+    TOOL_CALL: "tool_call",
     TOOL_RESULT: "tool_result",
     CODE: "code",
     HTML: "html",
@@ -1231,6 +1323,9 @@ export const buildAction = (task: CHAT.Task) => {
   };
 
   switch (task.messageType) {
+    case MESSAGE_TYPES.TOOL_CALL:
+      return handleToolCallTask(task);
+
     case MESSAGE_TYPES.TOOL_RESULT:
       return handleToolResult(task);
 
@@ -1339,6 +1434,17 @@ export const buildAction = (task: CHAT.Task) => {
   }
 
   /**
+   * 工具下发阶段优先展示目标文件/路径，让用户立刻知道当前卡在“调用哪个工具做什么”。
+   */
+  function handleToolCallTask(task: CHAT.Task) {
+    return {
+      action: resolveToolCallActionText(task),
+      tool: task?.resultMap?.toolName || "",
+      name: resolveToolCallTargetName(task?.resultMap)
+    };
+  }
+
+  /**
    * 处理文件类型的任务
    * @param task 任务对象
    * @returns 动作信息对象
@@ -1375,6 +1481,7 @@ export const buildAction = (task: CHAT.Task) => {
 export enum IconType {
   PLAN = 'plan',
   PLAN_THOUGHT = 'plan_thought',
+  TOOL_CALL = 'tool_call',
   TOOL_RESULT = 'tool_result',
   BROWSER = 'browser',
   FILE = 'file',
@@ -1389,6 +1496,7 @@ export enum IconType {
 const ICON_MAP: Record<IconType, string> = {
   [IconType.PLAN]: 'icon-renwu',
   [IconType.PLAN_THOUGHT]: 'icon-juli',
+  [IconType.TOOL_CALL]: 'icon-tiaoshi',
   [IconType.TOOL_RESULT]: 'icon-tiaoshi',
   [IconType.BROWSER]: 'icon-sousuo',
   [IconType.FILE]: 'icon-bianji',

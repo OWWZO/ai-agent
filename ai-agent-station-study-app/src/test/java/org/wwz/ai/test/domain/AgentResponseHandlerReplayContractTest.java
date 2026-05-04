@@ -136,6 +136,34 @@ public class AgentResponseHandlerReplayContractTest {
         Assert.assertEquals("planner-round-002", frameResultMap(planFrame).get("plannerRoundId"));
     }
 
+    @Test
+    public void shouldEmitToolCallProgressAsTaskEvent() {
+        GptProcessResult result = handler.build(
+                AgentRequest.builder().requestId("req-handler-005").build(),
+                new EventResult(),
+                AgentResponse.builder()
+                        .requestId("req-handler-005")
+                        .messageId("tool-call-file-001")
+                        .messageType("tool_call")
+                        .messageTime("1714630004000")
+                        .isFinal(false)
+                        .finish(false)
+                        .resultMap(Map.of(
+                                "agentType", 5,
+                                "toolCallId", "tool-call-file-001",
+                                "toolName", "file_tool",
+                                "status", "running",
+                                "summary", "正在调用 file_tool"
+                        ))
+                        .build()
+        );
+
+        Assert.assertEquals("task", eventData(result).get("messageType"));
+        Assert.assertEquals("tool_call", frameResultMap(result).get("messageType"));
+        Assert.assertEquals("running", nestedResultMap(result).get("status"));
+        Assert.assertEquals("file_tool", nestedResultMap(result).get("toolName"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> eventData(GptProcessResult frame) {
         return (Map<String, Object>) frame.getResultMap().get("eventData");
@@ -144,6 +172,11 @@ public class AgentResponseHandlerReplayContractTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> frameResultMap(GptProcessResult frame) {
         return (Map<String, Object>) eventData(frame).get("resultMap");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> nestedResultMap(GptProcessResult frame) {
+        return (Map<String, Object>) frameResultMap(frame).get("resultMap");
     }
 
     private static final class TestableBaseAgentResponseHandler extends BaseAgentResponseHandler {

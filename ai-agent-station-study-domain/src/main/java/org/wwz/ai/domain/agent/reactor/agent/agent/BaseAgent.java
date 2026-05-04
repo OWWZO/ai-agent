@@ -277,13 +277,17 @@ public abstract class BaseAgent {
      * 包含预登记、执行、observation 收口、账本落库与产物登记。
      */
     protected ToolExecutionOutcome executeToolOutcome(ToolCall command) {
-        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(command == null ? List.of() : List.of(command));
+        List<ToolCall> commands = command == null ? List.of() : List.of(command);
+        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
         if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
+        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
+        emitToolCallRunningEvents(commands, dispatchIndexMapping);
         ToolExecutionOutcome outcome = finalizeToolExecutionOutcome(command, executeToolInternal(command));
         finishToolInvocation(command, outcome);
         recordToolArtifacts(command);
+        emitToolCallFinishedEvent(command, dispatchIndexMapping.get(command == null ? null : command.getId()), outcome);
         return outcome;
     }
 
@@ -377,10 +381,12 @@ public abstract class BaseAgent {
             return result;
         }
 
+        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
         if (context != null && context.getAgentRunState() != null) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
+        emitToolCallRunningEvents(commands, dispatchIndexMapping);
 
         CountDownLatch taskCount = ThreadUtil.getCountDownLatch(commands.size());
         for (ToolCall toolCall : commands) {
@@ -390,6 +396,7 @@ public abstract class BaseAgent {
                     result.put(toolCall.getId(), outcome);
                     finishToolInvocation(toolCall, outcome);
                     recordToolArtifacts(toolCall);
+                    emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
                 } finally {
                     taskCount.countDown();
                 }
@@ -404,6 +411,112 @@ public abstract class BaseAgent {
             }
         }
         return ordered;
+    }
+
+    /**
+     * 为同一批 tool call 固定 dispatchIndex，保证实时占位、终态更新与账本顺序一致。
+     */
+    private Map<String, Integer> buildDispatchIndexMapping(List<ToolCall> commands) {
+        Map<String, Integer> dispatchIndexMapping = new LinkedHashMap<>();
+        if (commands == null || commands.isEmpty()) {
+            return dispatchIndexMapping;
+        }
+        int dispatchIndex = 1;
+        for (ToolCall command : commands) {
+            if (command == null || StringUtils.isBlank(command.getId())) {
+                continue;
+            }
+            dispatchIndexMapping.put(command.getId(), dispatchIndex++);
+        }
+        return dispatchIndexMapping;
+    }
+
+    /**
+     * 工具真正开始执行前先推送一条 tool_call 占位事件，
+     * 让前端能够立刻展示“正在调用哪个工具”，避免长耗时工具阶段看起来像卡住。
+     */
+    private void emitToolCallRunningEvents(List<ToolCall> commands, Map<String, Integer> dispatchIndexMapping) {
+        if (commands == null || commands.isEmpty()) {
+            return;
+        }
+        for (ToolCall command : commands) {
+            emitToolCallEvent(command, dispatchIndexMapping.get(command == null ? null : command.getId()), "running", false, null);
+        }
+    }
+
+    /**
+     * 工具完成后回写同一 messageId 的终态，前端可直接原位覆盖 running 卡片。
+     */
+    private void emitToolCallFinishedEvent(ToolCall command,
+                                           Integer dispatchIndex,
+                                           ToolExecutionOutcome outcome) {
+        String status = outcome != null && outcome.isSuccess() ? "success" : "failed";
+        emitToolCallEvent(command, dispatchIndex, status, true, outcome);
+    }
+
+    private void emitToolCallEvent(ToolCall command,
+                                   Integer dispatchIndex,
+                                   String status,
+                                   boolean isFinal,
+                                   ToolExecutionOutcome outcome) {
+        if (printer == null || command == null || command.getFunction() == null) {
+            return;
+        }
+        String toolCallId = command.getId();
+        String toolName = command.getFunction().getName();
+        if (StringUtils.isBlank(toolCallId) || StringUtils.isBlank(toolName)) {
+            return;
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageType", "tool_call");
+        payload.put("status", status);
+        payload.put("toolName", toolName);
+        payload.put("toolCallId", toolCallId);
+        payload.put("toolProvider", resolveToolProvider(toolName));
+        if (dispatchIndex != null) {
+            payload.put("dispatchIndex", dispatchIndex);
+        }
+
+        Long toolInvocationId = context == null || context.getAgentRunState() == null
+                ? null
+                : context.getAgentRunState().resolveToolInvocationId(toolCallId);
+        if (toolInvocationId != null) {
+            payload.put("toolInvocationId", String.valueOf(toolInvocationId));
+        }
+
+        Object input = parseToolCallInput(command.getFunction().getArguments());
+        if (input != null) {
+            payload.put("input", input);
+        }
+
+        payload.put("summary", buildToolCallSummary(toolName, status));
+        payload.put("isFinal", isFinal);
+
+        if (outcome != null && StringUtils.isNotBlank(outcome.getErrorMsg())) {
+            payload.put("errorMsg", outcome.getErrorMsg());
+        }
+
+        printer.send(toolCallId, "tool_call", payload, isFinal);
+    }
+
+    private Object parseToolCallInput(String arguments) {
+        String normalizedPayload = normalizeToolPayload(arguments);
+        try {
+            return new ObjectMapper().readValue(normalizedPayload, Object.class);
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    private String buildToolCallSummary(String toolName, String status) {
+        if ("success".equals(status)) {
+            return toolName + " 调用完成";
+        }
+        if ("failed".equals(status)) {
+            return toolName + " 调用失败";
+        }
+        return "正在调用 " + toolName;
     }
 
     /**

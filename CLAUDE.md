@@ -173,6 +173,11 @@ The React frontend (`ui/`) communicates with the backend via SSE (Server-Sent Ev
   - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 这类低风险装配归属 `app`
   - execution ledger 领域服务必须通过 `IExecutionLedgerReadRepository` / `IExecutionLedgerWriteRepository` 访问持久化能力，不能重新注入 ledger `*Dao`
   - `ReactorConfig` 仍是 Phase 1 明确延后的过渡态共享配置，除非后续 change 明确授权，否则不要物理迁移或改写装配语义
+- **Reactor Phase 2A boundaries:**
+  - Reactor ledger、tool-output、chat-model DAO / Mapper 统一归属 `ai-agent-station-study-infrastructure/src/main/java/org/wwz/ai/infrastructure/dao/reactor`
+  - `ai-agent-station-study-app/src/main/resources/mybatis/mapper/` 中的 Reactor XML namespace 必须绑定到 `org.wwz.ai.infrastructure.dao.reactor.*`
+  - `ChatModelInfoService`、`ChatModelSchemaService` 只能通过 `IChatModelMetadataRepository` 访问持久化
+  - `SessionContextMemoryServiceImpl`、`WorkspaceImageGenerationServiceImpl` 已下沉到 `infrastructure`，当前仍是允许直接协作 DAO 的过渡态技术执行器
 - **Database:** MyBatis-Plus with Mapper XML in `resources/mybatis/mapper/`
 - **Configuration:** Environment-specific configs in `application-{profile}.yml`
 - **Naming:** English semantics; complex logic and boundary conditions use Chinese comments
