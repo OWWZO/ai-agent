@@ -123,6 +123,34 @@ public class ReplayProjectorTest {
     }
 
     @Test
+    public void shouldIgnoreInternalDigitalEmployeeAskDuringReplayProjection() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 12, 10, 0);
+        LlmInvocationView internalDigitalEmployeeInvocation = LlmInvocationView.builder()
+                .invocationSeq(1)
+                .agentName("executor")
+                .callKind(ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE)
+                .responseText("{\"file_tool\":\"市场洞察专员\"}")
+                .finishedAt(now.minusSeconds(5))
+                .build();
+        LlmInvocationView executorInvocation = LlmInvocationView.builder()
+                .invocationSeq(2)
+                .agentName("executor")
+                .callKind(ExecutionLedgerConstants.CALL_KIND_ASK)
+                .responseText("准备执行搜索工具")
+                .finishedAt(now)
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(internalDigitalEmployeeInvocation, executorInvocation))
+                .build());
+
+        Assert.assertEquals(1, frames.size());
+        Assert.assertEquals("task", eventMessageType(frames.get(0)));
+        Assert.assertEquals("tool_thought", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("准备执行搜索工具", frameResultMap(frames.get(0)).get("toolThought"));
+    }
+
+    @Test
     public void shouldProjectPlanningToolInvocationAsPlanAndTask() {
         ToolInvocationView planningInvocation = ToolInvocationView.builder()
                 .id(10L)

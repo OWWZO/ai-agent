@@ -934,10 +934,6 @@ export const handleTaskData = (
       const time = task.messageTime;
       const id = time?.concat(String(taskIndex));
 
-      const isCodeOutputOnly =
-        task?.messageType === "code" &&
-        (task.resultMap?.codeOutput || !task.resultMap?.code);
-
       const processedInfo = processTaskForRender(task, id);
 
       if (task.messageType === "task") {
@@ -945,15 +941,13 @@ export const handleTaskData = (
       // 深度研究里的 task_summary 属于任务级总结，必须保留在时间线中；
       // 只有请求级 result 才应该落在底部最终结论区。
       } else if (
-        task?.messageType !== "result" &&
-        !isCodeOutputOnly
+        task?.messageType !== "result"
       ) {
         ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
       }
 
       if (
-        TOOL_TYPES.includes(task?.messageType) &&
-        !isCodeOutputOnly
+        TOOL_TYPES.includes(task?.messageType)
       ) {
         taskList.push(...processedInfo);
       }

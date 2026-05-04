@@ -274,7 +274,15 @@ public class LLM {
             boolean stream,
             Double temperature
     ) {
-        return ask(context, messages, systemMsgs, stream, true, temperature);
+        return ask(
+                context,
+                messages,
+                systemMsgs,
+                stream,
+                true,
+                temperature,
+                ExecutionLedgerConstants.CALL_KIND_ASK
+        );
     }
 
     /**
@@ -288,10 +296,34 @@ public class LLM {
             boolean pushToClient,
             Double temperature
     ) {
+        return ask(
+                context,
+                messages,
+                systemMsgs,
+                stream,
+                pushToClient,
+                temperature,
+                ExecutionLedgerConstants.CALL_KIND_ASK
+        );
+    }
+
+    /**
+     * 纯文本问答统一走 Spring AI，并允许调用方覆盖账本语义。
+     * 用于内部 ask 与面向用户的 ask 共享执行链，但在回放时做语义隔离。
+     */
+    public CompletableFuture<String> ask(
+            AgentContext context,
+            List<Message> messages,
+            List<Message> systemMsgs,
+            boolean stream,
+            boolean pushToClient,
+            Double temperature,
+            String callKind
+    ) {
         try {
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
-                    ExecutionLedgerConstants.CALL_KIND_ASK,
+                    callKind,
                     stream
             );
             ensureSpringAiDependencies();

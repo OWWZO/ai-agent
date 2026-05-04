@@ -91,7 +91,7 @@ public class ReplayProjector {
         }
         List<ProjectedReplayEvent> events = new ArrayList<>();
         for (LlmInvocationView invocation : bundle.getLlmInvocations()) {
-            if (invocation == null || StringUtils.isBlank(invocation.getResponseText())) {
+            if (shouldSkipLlmReplay(invocation) || StringUtils.isBlank(invocation.getResponseText())) {
                 continue;
             }
             String messageType = resolveLlmMessageType(invocation);
@@ -119,7 +119,7 @@ public class ReplayProjector {
 
         List<LlmInvocationView> llmInvocations = sortLlmInvocations(bundle.getLlmInvocations());
         for (LlmInvocationView llmInvocation : llmInvocations) {
-            if (llmInvocation == null) {
+            if (shouldSkipLlmReplay(llmInvocation)) {
                 continue;
             }
 
@@ -157,6 +157,15 @@ public class ReplayProjector {
             events.addAll(toolInvocationProjectorRegistry.project(orphanTool, artifacts, state));
         }
         return events;
+    }
+
+    /**
+     * digital employee 生成属于内部配置 ask，不应投影成前端可见 thought。
+     * 否则会污染历史重放，并导致 PlanSolve plannerRounds 平白增加一版。
+     */
+    private boolean shouldSkipLlmReplay(LlmInvocationView invocation) {
+        return invocation == null
+                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind());
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,

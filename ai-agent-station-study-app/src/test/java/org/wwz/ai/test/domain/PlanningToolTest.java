@@ -124,6 +124,39 @@ public class PlanningToolTest {
     }
 
     @Test
+    public void shouldAcceptDisplayedOneBasedCurrentStepIndexEvenWhenValueIsStillWithinArrayRange() {
+        PlanningTool tool = new PlanningTool();
+        tool.setCloseUpdateMode(false);
+        tool.execute(command(
+                "command", "create",
+                "title", "普通 replan",
+                "steps", List.of("步骤一", "步骤二", "步骤三")
+        ));
+
+        tool.execute(command(
+                "command", "mark_step",
+                "step_index", 0,
+                "step_status", "completed",
+                "step_notes", "首步完成"
+        ));
+
+        ToolResultPayload secondMarked = (ToolResultPayload) tool.execute(command(
+                "command", "mark_step",
+                "step_index", 2,
+                "step_status", "completed",
+                "step_notes", "兼容展示序号"
+        ));
+        PlanningToolOutput secondOutput = (PlanningToolOutput) secondMarked.getStructuredOutput();
+
+        Assert.assertEquals(List.of("completed", "completed", "in_progress"), tool.getPlan().getStepStatus());
+        Assert.assertEquals(List.of("首步完成", "兼容展示序号", ""), tool.getPlan().getNotes());
+        Assert.assertFalse(secondOutput.getAutoFinished());
+        Assert.assertTrue(secondOutput.getAutoAdvanced());
+        Assert.assertEquals(Integer.valueOf(2), secondOutput.getCurrentStepIndex());
+        Assert.assertEquals("步骤三", secondOutput.getCurrentStep());
+    }
+
+    @Test
     public void shouldFailFastWhenTryingToMutateCompletedStepInOrdinaryMode() {
         PlanningTool tool = new PlanningTool();
         tool.setCloseUpdateMode(false);

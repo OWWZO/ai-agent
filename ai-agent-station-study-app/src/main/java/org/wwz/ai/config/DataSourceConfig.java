@@ -16,6 +16,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotatedTypeMetadata;
+import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
 import java.util.Objects;
@@ -126,7 +127,8 @@ public class DataSourceConfig {
     }
 
     /**
-     * test profile 明确禁用数据库链路，避免在纯单元回归或无库环境中解析缺失占位符。
+     * 仅在显式配置 mysql 数据源时启用数据库装配。
+     * 这样 test profile 与无库探针场景都不会因为缺失占位符而提前失败。
      */
     static class DatabaseProfileCondition implements org.springframework.context.annotation.Condition {
 
@@ -138,7 +140,17 @@ public class DataSourceConfig {
                     return false;
                 }
             }
-            return true;
+            return hasRequiredMysqlProperties(environment);
+        }
+
+        private boolean hasRequiredMysqlProperties(Environment environment) {
+            return hasText(environment.getProperty("spring.datasource.mysql.driver-class-name"))
+                    && hasText(environment.getProperty("spring.datasource.mysql.url"))
+                    && hasText(environment.getProperty("spring.datasource.mysql.username"));
+        }
+
+        private boolean hasText(String value) {
+            return StringUtils.hasText(value);
         }
     }
 

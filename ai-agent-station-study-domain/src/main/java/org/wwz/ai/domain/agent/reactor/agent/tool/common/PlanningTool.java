@@ -281,10 +281,6 @@ public class PlanningTool implements BaseTool {
         if (stepIndex == null || plan == null || plan.getSteps() == null || plan.getSteps().isEmpty()) {
             return stepIndex;
         }
-        if (stepIndex >= 0 && stepIndex < plan.getSteps().size()) {
-            return stepIndex;
-        }
-
         Integer currentStepIndex = plan.getCurrentStepIndex();
         if (currentStepIndex == null) {
             return stepIndex;
@@ -293,6 +289,9 @@ public class PlanningTool implements BaseTool {
         int displayedCurrentIndex = currentStepIndex + 1;
         if (stepIndex.equals(displayedCurrentIndex)) {
             return currentStepIndex;
+        }
+        if (stepIndex >= 0 && stepIndex < plan.getSteps().size()) {
+            return stepIndex;
         }
         return stepIndex;
     }

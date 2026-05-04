@@ -18,6 +18,7 @@ public final class ExecutionLedgerConstants {
 
     public static final String CALL_KIND_ASK = "ask";
     public static final String CALL_KIND_ASK_TOOL = "askTool";
+    public static final String CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE = "internalDigitalEmployee";
 
     public static final String ENTRY_AGENT_REACT = "react";
     public static final String ENTRY_AGENT_PLAN_SOLVE = "plan_solve";

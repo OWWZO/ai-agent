@@ -409,6 +409,68 @@ describe("conversationHistory hydrate", () => {
     expect(taskData.taskList[1].messageType).toBe("result");
   });
 
+  it("keeps code interpreter history task when replay frame only contains codeOutput", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-code-history-001",
+      title: "代码解释器历史",
+      status: "SUCCESS",
+      outputStyle: "docs",
+      deepThink: true,
+      role: {
+        agentId: "role-default",
+        agentName: "默认助手",
+        available: true,
+        defaultRole: true,
+      },
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      startedAt: "2026-05-02T15:00:00",
+      lastActiveAt: "2026-05-02T15:02:00",
+      runs: [
+        {
+          requestId: "req-code-history-001",
+          status: "SUCCESS",
+          queryText: "执行一段 Python 代码",
+          finalSummaryText: "代码已执行完成",
+          startedAt: "2026-05-02T15:00:00",
+          finishedAt: "2026-05-02T15:02:00",
+          replayFrames: [
+            createReplayFrame({
+              taskId: "task-code-1",
+              taskOrder: 1,
+              messageType: "task",
+              messageOrder: 1,
+              messageId: "msg-code-1",
+              resultMap: {
+                requestId: "req-code-history-001",
+                messageId: "msg-code-1",
+                messageType: "code",
+                messageTime: "1714620400000",
+                isFinal: true,
+                finish: false,
+                resultMap: {
+                  isFinal: true,
+                  data: "执行结果：42",
+                  codeOutput: "执行结果：42",
+                  fileInfo: [],
+                },
+              } as unknown as MESSAGE.Task,
+            }),
+            createReplayFrame(createResultEvent("代码已执行完成")),
+          ],
+        },
+      ],
+    });
+
+    const taskData = buildConversationTaskData(history.chatList[0], history.deepThink);
+
+    expect(taskData.taskList).toHaveLength(2);
+    expect(taskData.taskList[0].messageType).toBe("code");
+    expect(taskData.taskList[0].resultMap.codeOutput).toBe("执行结果：42");
+    expect(taskData.currentChat.tasks[0]?.[0]?.children?.[0]?.messageType).toBe("code");
+  });
+
   it("parses $$$ summary fallback into summary text and attachments", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-summary-fallback-001",

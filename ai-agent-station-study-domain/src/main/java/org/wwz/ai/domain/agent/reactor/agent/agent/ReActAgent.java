@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
@@ -113,7 +114,8 @@ public abstract class ReActAgent extends BaseAgent {
                     Collections.emptyList(),                // 无额外系统消息
                     true,                                   // 模型侧走流式
                     false,                                  // 禁止向前端透传内部生成内容
-                    0.1);                                   // 温度系数：越低结果越确定
+                    0.1,                                    // 温度系数：越低结果越确定
+                    ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE); // 标记为内部 ask，避免污染前端回放
 
             // 5. 同步获取异步结果（阻塞等待LLM响应，可根据业务调整为非阻塞）
             String llmResponse = summaryFuture.get();
