@@ -73,7 +73,7 @@ public class StreamResponseHandler {
                     return;
                 }
                 allContent.append(chunkContent);
-                if (messageId != null) {
+                if (pushToClient && messageId != null) {
                     String visibleContent = extractVisibleContent(allContent.toString(), hiddenStartMarker);
                     if (visibleContent.length() > emittedLength[0]) {
                         streamBuffer.append(visibleContent, emittedLength[0], visibleContent.length());
@@ -90,10 +90,10 @@ public class StreamResponseHandler {
             }
         }, future::completeExceptionally, () -> {
             try {
-                if (messageId != null && streamBuffer.length() > 0) {
+                if (pushToClient && messageId != null && streamBuffer.length() > 0) {
                     context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
                 }
-                if (messageId != null && emitFinalSnapshot) {
+                if (pushToClient && messageId != null && emitFinalSnapshot) {
                     String visibleFinalContent = extractVisibleContent(allContent.toString(), hiddenStartMarker).trim();
                     if (StringUtils.isNotBlank(visibleFinalContent)) {
                         context.getPrinter().send(messageId, context.getStreamMessageType(), visibleFinalContent, true);

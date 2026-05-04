@@ -1,10 +1,8 @@
 package org.wwz.ai.test.domain;
 
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
@@ -14,8 +12,8 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,16 +25,9 @@ import java.util.concurrent.CompletableFuture;
  */
 public class SummaryAgentArtifactSelectionTest {
 
-    @After
-    public void tearDown() {
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
-    }
-
     @Test
     public void shouldSelectExactArtifactKeyAndExcludeInternalArtifactsFromPrompt() {
-        bindSpringContext();
-
-        AgentContext context = newAgentContext();
+        AgentContext context = newAgentContext(buildReactorConfig());
         context.registerGeneratedArtifact(newSource("call-deep-001", "deep_search"),
                 createFile("summary.md", "https://file.example.com/deep/summary.md", "搜索摘要", false));
         context.registerGeneratedArtifact(newSource("call-report-001", "report_tool"),
@@ -74,9 +65,7 @@ public class SummaryAgentArtifactSelectionTest {
 
     @Test
     public void shouldNotFallbackToFilenameOnlyMatching() {
-        bindSpringContext();
-
-        AgentContext context = newAgentContext();
+        AgentContext context = newAgentContext(buildReactorConfig());
         context.registerGeneratedArtifact(newSource("call-deep-001", "deep_search"),
                 createFile("summary.md", "https://file.example.com/deep/summary.md", "搜索摘要", false));
         context.registerGeneratedArtifact(newSource("call-report-001", "report_tool"),
@@ -102,7 +91,7 @@ public class SummaryAgentArtifactSelectionTest {
         Assert.assertTrue(result.getFiles() == null || result.getFiles().isEmpty());
     }
 
-    private void bindSpringContext() {
+    private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
         ReflectionTestUtils.setField(reactorConfig, "summarySystemPrompt",
                 "任务历史:\n{{taskHistory}}\n文件上下文:\n{{fileNameDesc}}\n用户问题:{{query}}");
@@ -122,19 +111,17 @@ public class SummaryAgentArtifactSelectionTest {
                         .temperature(0.0)
                         .build()
         ));
-
-        ApplicationContext applicationContext = Mockito.mock(ApplicationContext.class);
-        Mockito.when(applicationContext.getBean(ReactorConfig.class)).thenReturn(reactorConfig);
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", applicationContext);
+        return reactorConfig;
     }
 
-    private AgentContext newAgentContext() {
+    private AgentContext newAgentContext(ReactorConfig reactorConfig) {
         return AgentContext.builder()
                 .requestId("req-summary-001")
                 .sessionId("session-summary-001")
                 .query("总结报告")
                 .productFiles(new ArrayList<>())
                 .taskProductFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
                 .build();
     }
 

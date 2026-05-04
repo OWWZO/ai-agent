@@ -1,7 +1,7 @@
 package org.wwz.ai.config;
 
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
-import org.wwz.ai.domain.agent.service.IArmoryService;
+import org.wwz.ai.application.agent.armory.IArmoryService;
 import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;

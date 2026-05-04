@@ -11,6 +11,7 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.model.ledger.AgentRunState;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 
 import java.util.ArrayList;
@@ -91,6 +92,14 @@ public class AgentContext {
     @ToString.Exclude
     @JSONField(serialize = false)
     ToolCollection toolCollection;
+
+    /**
+     * Reactor 运行时依赖包。
+     * 所有 Agent / Tool / LLM 必须通过这里读取运行时协作者，禁止自行回 Spring 容器查找。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    ReactorRuntimeDependencies runtimeDependencies;
 
     /**
      * 日期时间信息（格式化字符串）
@@ -227,6 +236,14 @@ public class AgentContext {
             throw new IllegalStateException("Missing current tool artifact source for tool: " + toolName);
         }
         return source;
+    }
+
+    /**
+     * 读取当前线程绑定的工具来源快照。
+     * 主要用于前端实时事件补齐 toolCallId / toolName 等关联信息。
+     */
+    public ToolArtifactSource getCurrentToolArtifactSource() {
+        return currentToolArtifactSourceHolder.get();
     }
 
     public ToolArtifactBinding registerGeneratedArtifact(ToolArtifactSource source, File file) {

@@ -8,9 +8,9 @@ import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.ReActAgent;
+import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.service.execute.react.step.RootNode;
 
 /**
@@ -38,7 +38,7 @@ public class DefaultReactAgentExecuteStrategyFactory {
     @NoArgsConstructor
     public static class DynamicContext {
 
-        private SseEmitter emitter;
+        private Printer printer;
         /** 由 Step1 构建并放入，Step2 使用；AgentRequest 由 requestParameter 贯穿传递 */
         private AgentContext agentContext;
         /** 由 Step2 放入，Step3 用于生成总结 */

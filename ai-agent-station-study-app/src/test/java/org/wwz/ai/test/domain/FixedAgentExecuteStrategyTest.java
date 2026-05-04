@@ -5,7 +5,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
-import org.wwz.ai.domain.agent.service.execute.workflow.FlowAgentExecuteStrategy;
+import org.wwz.ai.Application;
+import org.wwz.ai.application.agent.execute.IExecuteStrategy;
+import org.wwz.ai.application.agent.execute.workflow.FlowAgentExecuteStrategy;
 
 import javax.annotation.Resource;
 import java.lang.reflect.Field;
@@ -18,11 +20,11 @@ import java.util.stream.Collectors;
  * 同时校验 Bean 装配仍然可用，且不会误依赖 skill 装配组件。
  */
 @RunWith(SpringRunner.class)
-@SpringBootTest
+@SpringBootTest(classes = Application.class)
 public class FixedAgentExecuteStrategyTest {
 
-    @Resource
-    private FlowAgentExecuteStrategy fixedAgentExecuteStrategy;
+    @Resource(name = "flowAgentExecuteStrategy")
+    private IExecuteStrategy fixedAgentExecuteStrategy;
 
     @Test
     public void shouldLoadFixedAgentExecuteStrategy() {

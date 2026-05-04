@@ -6,6 +6,8 @@
 
 基础设施层，负责数据持久化、外部服务调用、仓储实现。包含 MyBatis-Plus DAO、PO 实体、外部网关接口等。
 
+当前收敛边界下，`case` 负责应用编排，`domain` 负责领域规则，`infrastructure` 继续承接 DAO、HTTP/MCP 网关、技术执行器与仓储适配实现。
+
 ---
 
 ## 入口与启动

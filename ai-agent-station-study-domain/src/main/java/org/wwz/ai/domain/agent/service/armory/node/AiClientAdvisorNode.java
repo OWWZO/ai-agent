@@ -42,8 +42,8 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
         for (AiClientAdvisorVO aiClientAdvisorVO : aiClientAdvisorList) {
             // 构建顾问访问对象
             Advisor advisor = createAdvisor(aiClientAdvisorVO);
-            // 注册Bean对象
-            registerBean(beanName(aiClientAdvisorVO.getAdvisorId()), Advisor.class, advisor);
+            // 使用业务 ID 注册顾问运行时对象。
+            aiClientRuntimeRegistry.registerAdvisor(aiClientAdvisorVO.getAdvisorId(), advisor);
         }
 
         return router(requestParameter, dynamicContext);

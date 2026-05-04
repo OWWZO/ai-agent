@@ -43,8 +43,8 @@ public class AiClientApiNode extends AbstractArmorySupport {
                     .embeddingsPath(aiClientApiVO.getEmbeddingsPath())
                     .build();
 
-            // 注册 OpenAiApi Bean 对象
-            registerBean(beanName(aiClientApiVO.getApiId()), OpenAiApi.class, openAiApi);
+            // 按业务 ID 写入运行时注册表，替代 Spring Bean 动态注册。
+            aiClientRuntimeRegistry.registerApi(aiClientApiVO.getApiId(), openAiApi);
         }
 
         return router(requestParameter, dynamicContext);

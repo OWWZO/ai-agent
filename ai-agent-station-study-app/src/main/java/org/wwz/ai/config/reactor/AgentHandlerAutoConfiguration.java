@@ -1,34 +1,33 @@
-package org.wwz.ai.domain.agent.reactor.handler;
+package org.wwz.ai.config.reactor;
 
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.reactor.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.reactor.handler.PlanSolveAgentResponseHandler;
+import org.wwz.ai.domain.agent.reactor.handler.ReactAgentResponseHandler;
 
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Reactor handler 装配归 app 模块所有。
+ */
 @Configuration
-public class AgentHandlerConfig {
-
-    @Autowired
-    private List<AgentResponseHandler> handlerList;
+public class AgentHandlerAutoConfiguration {
 
     @Bean
-    public Map<AgentType, AgentResponseHandler> handlerMap() {
+    public Map<AgentType, AgentResponseHandler> handlerMap(List<AgentResponseHandler> handlerList) {
         Map<AgentType, AgentResponseHandler> map = new EnumMap<>(AgentType.class);
         for (AgentResponseHandler handler : handlerList) {
             if (handler instanceof PlanSolveAgentResponseHandler) {
                 map.put(AgentType.PLAN_SOLVE, handler);
             } else if (handler instanceof ReactAgentResponseHandler) {
                 map.put(AgentType.REACT, handler);
-                // 默认使用 React 处理器处理 WORKFLOW / COMPREHENSIVE 模式的流式输出
                 map.put(AgentType.WORKFLOW, handler);
                 map.put(AgentType.COMPREHENSIVE, handler);
             }
-            // 可扩展更多 handler
         }
         return map;
     }

@@ -1,27 +1,38 @@
 package org.wwz.ai.test.domain;
 
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.PlanningAgent;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentState;
 import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.PlanningTool;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.ledger.AgentRunState;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunStartRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord;
+import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -29,11 +40,6 @@ import java.util.stream.Collectors;
  * 聚焦 PlanSolve 规划侧在普通 replan 与兼容模式下的主链路语义。
  */
 public class PlanningAgentTest {
-
-    @After
-    public void tearDown() {
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
-    }
 
     @Test
     public void shouldDriveOrdinaryReplanFromCreateToFinish() {
@@ -148,17 +154,16 @@ public class PlanningAgentTest {
         )));
 
         agent.think();
-        agent.getPlanningTool().execute(command(
-                "command", "create",
-                "title", "普通 replan",
-                "steps", List.of("步骤一", "步骤二")
-        ));
         agent.act();
 
-        Assert.assertEquals("plan_thought", printer.events.get(0).messageType);
-        Assert.assertEquals("1", printer.events.get(0).plannerRoundId);
-        Assert.assertEquals("plan", printer.events.get(1).messageType);
-        Assert.assertEquals("1", printer.events.get(1).plannerRoundId);
+        List<Event> plannerEvents = printer.events.stream()
+                .filter(event -> "plan_thought".equals(event.messageType) || "plan".equals(event.messageType))
+                .toList();
+
+        Assert.assertEquals("plan_thought", plannerEvents.get(0).messageType);
+        Assert.assertEquals("1", plannerEvents.get(0).plannerRoundId);
+        Assert.assertEquals("plan", plannerEvents.get(1).messageType);
+        Assert.assertEquals("1", plannerEvents.get(1).plannerRoundId);
     }
 
     @Test
@@ -224,9 +229,13 @@ public class PlanningAgentTest {
     }
 
     private PlanningAgent newPlanningAgent(String closeUpdate, RecordingPrinter printer) {
-        bindSpringContext(closeUpdate);
+        ReactorConfig reactorConfig = buildReactorConfig(closeUpdate);
+        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
 
         ToolCollection toolCollection = new ToolCollection();
+        AgentExecutionRecorder executionRecorder = new InMemoryAgentExecutionRecorder();
+        AgentRunState agentRunState = AgentRunState.builder().runId(100L).build();
+        agentRunState.bindCurrentLlmInvocationId(10L);
         AgentContext context = AgentContext.builder()
                 .requestId("req-planning-agent-" + closeUpdate)
                 .sessionId("session-planning-agent-" + closeUpdate)
@@ -239,14 +248,18 @@ public class PlanningAgentTest {
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
                 .taskProductFiles(new ArrayList<>())
-                .agentRunState(AgentRunState.builder().runId(100L).build())
+                .executionRecorder(executionRecorder)
+                .agentRunState(agentRunState)
                 .isStream(false)
+                .runtimeDependencies(runtimeDependencies)
                 .build();
         toolCollection.setAgentContext(context);
-        return new PlanningAgent(context);
+        PlanningAgent agent = new PlanningAgent(context);
+        mockPlannerLlm(agent);
+        return agent;
     }
 
-    private void bindSpringContext(String closeUpdate) {
+    private ReactorConfig buildReactorConfig(String closeUpdate) {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setPlannerSystemPromptMap("{}");
         reactorConfig.setPlannerNextStepPromptMap("{}");
@@ -266,10 +279,21 @@ public class PlanningAgentTest {
                         .maxInputTokens(4096)
                         .build()
         ));
+        return reactorConfig;
+    }
 
-        ApplicationContext applicationContext = Mockito.mock(ApplicationContext.class);
-        Mockito.when(applicationContext.getBean(ReactorConfig.class)).thenReturn(reactorConfig);
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", applicationContext);
+    private void mockPlannerLlm(PlanningAgent agent) {
+        LLM llm = Mockito.mock(LLM.class);
+        Mockito.when(llm.askTool(Mockito.any(), Mockito.anyList(), Mockito.any(), Mockito.any(),
+                        Mockito.any(), Mockito.any(), Mockito.anyBoolean(), Mockito.anyBoolean(), Mockito.anyInt()))
+                .thenAnswer(invocation -> {
+                    List<ToolCall> toolCalls = agent.getToolCalls();
+                    return CompletableFuture.completedFuture(LLM.ToolCallResponse.builder()
+                            .content("mock planning thought")
+                            .toolCalls(toolCalls == null ? List.of() : toolCalls)
+                            .build());
+                });
+        agent.setLlm(llm);
     }
 
     private Map<String, Object> command(Object... kvPairs) {
@@ -347,5 +371,58 @@ public class PlanningAgentTest {
     }
 
     private record Event(String messageType, Object message, String plannerRoundId) {
+    }
+
+    /**
+     * 最小账本桩。
+     * 仅为规划测试补齐 toolInvocationId 映射，避免 plannerRoundId 在无持久化环境下丢失。
+     */
+    private static class InMemoryAgentExecutionRecorder implements AgentExecutionRecorder {
+        private final AtomicLong nextToolInvocationId = new AtomicLong(1);
+
+        @Override
+        public Long createRun(DialogueRunStartRecord record) {
+            return 1L;
+        }
+
+        @Override
+        public void finishRun(DialogueRunFinishRecord record) {
+        }
+
+        @Override
+        public Long createLlmInvocation(LlmInvocationStartRecord record) {
+            return 1L;
+        }
+
+        @Override
+        public void finishLlmInvocation(LlmInvocationFinishRecord record) {
+        }
+
+        @Override
+        public Map<String, Long> createToolInvocations(ToolInvocationBatchStartRecord record) {
+            Map<String, Long> mapping = new LinkedHashMap<>();
+            if (record == null || record.getItems() == null) {
+                return mapping;
+            }
+            for (ToolInvocationBatchStartRecord.Item item : record.getItems()) {
+                if (item == null || item.getToolCallId() == null) {
+                    continue;
+                }
+                mapping.put(item.getToolCallId(), nextToolInvocationId.getAndIncrement());
+            }
+            return mapping;
+        }
+
+        @Override
+        public void finishToolInvocation(ToolInvocationFinishRecord record) {
+        }
+
+        @Override
+        public void recordArtifacts(List<ArtifactRecordCommand> records) {
+        }
+
+        @Override
+        public void recordArtifactsOrThrow(List<ArtifactRecordCommand> records) {
+        }
     }
 }

@@ -9,7 +9,6 @@ import okhttp3.*;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
-import org.springframework.context.ApplicationContext;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
@@ -18,7 +17,6 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
@@ -66,14 +64,14 @@ public class DeepSearchTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个搜索工具，可以通过搜索内外网知识";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return reactorConfig.getDeepSearchToolDesc().isEmpty() ? desc : reactorConfig.getDeepSearchToolDesc();
     }
 
     @Override
     public Map<String, Object> toParams() {
 
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getDeepSearchToolParams().isEmpty()) {
             return reactorConfig.getDeepSearchToolParams();
         }
@@ -96,7 +94,7 @@ public class DeepSearchTool implements BaseTool {
         long startTime = System.currentTimeMillis();
 
         try {
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             Map<String, Object> params = (Map<String, Object>) input;
             String query = (String) params.get("query");
             Map<String, Object> srcConfig = new HashMap<>();
@@ -149,8 +147,7 @@ public class DeepSearchTool implements BaseTool {
                     .callTimeout(DEEP_SEARCH_IO_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                     .build();
 
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             String url = reactorConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
@@ -171,6 +168,7 @@ public class DeepSearchTool implements BaseTool {
             AtomicInteger index = new AtomicInteger(1);
             AtomicReference<String> resultRef = new AtomicReference<>("搜索结果为空");
             AtomicReference<String> messageIdRef = new AtomicReference<>("");
+            String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
             StringBuilder stringBuilderIncr = new StringBuilder();
             StringBuilder stringBuilderAll = new StringBuilder();
             DeepSearchStructuredResultBuilder resultBuilder = new DeepSearchStructuredResultBuilder(searchRequest.getQuery());
@@ -196,6 +194,7 @@ public class DeepSearchTool implements BaseTool {
                             log.info("{} deep_search recv data: {}", agentContext.getRequestId(), data);
                         }
                         DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
+                        searchResponse.setToolCallId(toolCallId);
                         FileTool fileTool = new FileTool();
                         fileTool.setAgentContext(agentContext);
                         // 使用标准 SSE 客户端逐条消费事件，避免 extend 被上游缓冲后延迟透传。
@@ -315,5 +314,12 @@ public class DeepSearchTool implements BaseTool {
                 DeepSearchToolOutput.of("", message, null),
                 message
         );
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

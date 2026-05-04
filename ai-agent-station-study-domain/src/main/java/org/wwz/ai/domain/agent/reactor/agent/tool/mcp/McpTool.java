@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.OkHttpUtil;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.Map;
@@ -64,7 +63,7 @@ public class McpTool implements BaseTool {
         try {
 
             //获取reactor配置
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
 
             //构建通用mcp客户端请求路径
             String mcpClientUrl = reactorConfig.getMcpClientUrl() + "/v1/tool/list";
@@ -88,7 +87,7 @@ public class McpTool implements BaseTool {
 
     public String callTool(String mcpServerUrl, String toolName, Object input) {
         try {
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             String mcpClientUrl = reactorConfig.getMcpClientUrl() + "/v1/tool/call";
             Map<String, Object> params = (Map<String, Object>) input;
             McpToolRequest mcpToolRequest = McpToolRequest.builder()
@@ -103,5 +102,12 @@ public class McpTool implements BaseTool {
             log.error("{} call tool error ", agentContext.getRequestId(), e);
         }
         return "";
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("McpTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

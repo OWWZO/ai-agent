@@ -5,14 +5,12 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.ApplicationContext;
 import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
@@ -45,7 +43,7 @@ public class ImageGenerationTool implements BaseTool {
     @Override
     public String getDescription() {
         String defaultDesc = "这是一个图片生成工具，支持文生图和图生图。用户要求基于当前轮上传图片修改、换风格、扩图时应优先调用它；未显式传 fileNames 时可自动复用当前轮图片。";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return StringUtils.isNotBlank(reactorConfig.getImageGenerationToolDesc())
                 ? reactorConfig.getImageGenerationToolDesc()
                 : defaultDesc;
@@ -53,7 +51,7 @@ public class ImageGenerationTool implements BaseTool {
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getImageGenerationToolParams().isEmpty()) {
             return reactorConfig.getImageGenerationToolParams();
         }
@@ -118,8 +116,10 @@ public class ImageGenerationTool implements BaseTool {
     }
 
     private IImageGenerationExecutionKernel requireKernel() {
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        return applicationContext.getBean(IImageGenerationExecutionKernel.class);
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("ImageGenerationTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireImageGenerationExecutionKernel();
     }
 
     private void appendGeneratedArtifacts(ImageGenerationExecutionResult result, ToolArtifactSource artifactSource) {
@@ -323,5 +323,12 @@ public class ImageGenerationTool implements BaseTool {
         items.put("type", "string");
         param.put("items", items);
         return param;
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("ImageGenerationTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

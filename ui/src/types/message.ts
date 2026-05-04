@@ -6,6 +6,7 @@ declare global {
     type ToolResult = {
       toolName: string
       toolResult: string
+      toolCallId?: string
       toolParam?: {
         query: string
       }

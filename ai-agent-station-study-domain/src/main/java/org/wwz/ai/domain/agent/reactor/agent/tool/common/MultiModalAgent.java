@@ -11,7 +11,6 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-import org.springframework.context.ApplicationContext;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
@@ -22,7 +21,6 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.MultiModalAgentResponse;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
@@ -75,7 +73,7 @@ public class MultiModalAgent implements BaseTool {
     @Override
     public String getDescription() {
         String defaultDesc = "本工具用于查询与用户相关的知识，作为在线知识的补充。支持文本和图像等多模态数据检索，能够高效访问和获取用户专属的知识信息。";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return StringUtils.hasText(reactorConfig.getMultiModalAgentDesc())
                 ? reactorConfig.getMultiModalAgentDesc()
                 : defaultDesc;
@@ -83,7 +81,7 @@ public class MultiModalAgent implements BaseTool {
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getMultiModalAgentParams().isEmpty()) {
             return reactorConfig.getMultiModalAgentParams();
         }
@@ -111,7 +109,7 @@ public class MultiModalAgent implements BaseTool {
                 return buildFailurePayload("multimodalagent_tool 执行失败：question 不能为空。");
             }
 
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             if (!StringUtils.hasText(reactorConfig.getMultiModalAgentUrl())) {
                 return buildFailurePayload("multimodalagent_tool 执行失败：未配置 multimodalagent_url。");
             }
@@ -158,8 +156,7 @@ public class MultiModalAgent implements BaseTool {
                     .callTimeout(MULTIMODAL_AGENT_IO_TIMEOUT_MINUTES, TimeUnit.MINUTES)
                     .build();
 
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             String url = reactorConfig.getMultiModalAgentUrl() + "/v1/tool/mragQuery";
             RequestBody body = RequestBody.create(
                     JSONObject.toJSONString(multiModalAgentRequest),
@@ -338,6 +335,7 @@ public class MultiModalAgent implements BaseTool {
                 .data(incrementalBuffer.toString())
                 .isFinal(false)
                 .build();
+        attachToolCallId(response);
         agentContext.getPrinter().send(messageId, "knowledge", response, digitalEmployee, false);
         incrementalBuffer.setLength(0);
     }
@@ -354,8 +352,21 @@ public class MultiModalAgent implements BaseTool {
                 .data(markdownContent)
                 .isFinal(true)
                 .build();
+        attachToolCallId(response);
         agentContext.getPrinter().send(messageId, "markdown", response, digitalEmployee, true);
         uploadMarkdownArtifact(markdownContent, artifactSource);
+    }
+
+    /**
+     * 让知识检索阶段和最终 Markdown 结果都带上 toolCallId，
+     * 前端才能把实时占位和真正结果准确折叠为同一张卡片。
+     */
+    private void attachToolCallId(MultiModalAgentResponse response) {
+        ToolArtifactSource currentSource = agentContext.getCurrentToolArtifactSource();
+        if (response == null || currentSource == null) {
+            return;
+        }
+        response.setToolCallId(currentSource.getToolCallId());
     }
 
     private void uploadMarkdownArtifact(String markdownContent, ToolArtifactSource artifactSource) {
@@ -452,5 +463,12 @@ public class MultiModalAgent implements BaseTool {
             result.add(item);
         }
         return result;
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("MultiModalAgent 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

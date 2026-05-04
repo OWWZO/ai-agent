@@ -19,6 +19,7 @@ public class DeepSearchrResponse {
     private Boolean isFinal;
     private Boolean searchFinish; // 搜索结果是否结束
     private String messageType; // extend、search、report
+    private String toolCallId;
 
     @Data
     @Builder

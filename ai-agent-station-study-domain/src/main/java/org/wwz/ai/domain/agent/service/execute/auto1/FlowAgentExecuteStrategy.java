@@ -7,13 +7,11 @@ import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 /**
  * 流程执行策略
  */
 @Slf4j
-@Service("autoFlowAgentExecuteStrategy")
 public class FlowAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource

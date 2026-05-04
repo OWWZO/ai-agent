@@ -5,7 +5,6 @@ import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolChoice;
@@ -15,9 +14,9 @@ import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -40,8 +39,8 @@ public class ExecutorAgent extends ReActAgent {
     public ExecutorAgent(AgentContext context) {
         setName("executor");
         setDescription("an agent that can execute tool calls.");
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
+        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
 
         StringBuilder toolPrompt = new StringBuilder();
         for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
@@ -73,7 +72,7 @@ public class ExecutorAgent extends ReActAgent {
 
         setPrinter(context.printer);
         setMaxSteps(reactorConfig.getPlannerMaxSteps());
-        setLlm(new LLM(reactorConfig.getExecutorModelName(), ""));
+        setLlm(new LLM(reactorConfig.getExecutorModelName(), "", runtimeDependencies));
 
         setContext(context);
         setMaxObserve(Integer.parseInt(reactorConfig.getMaxObserve()));
@@ -148,7 +147,7 @@ public class ExecutorAgent extends ReActAgent {
     @Override
     public String act() {
         if (toolCalls.isEmpty()) {
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireRuntimeDependencies(context).requireReactorConfig();
             setState(AgentState.FINISHED);
             // 删除工具结果
             if ("1".equals(reactorConfig.getClearToolMessage())) {
@@ -173,6 +172,7 @@ public class ExecutorAgent extends ReActAgent {
                                 .toolName(toolName)
                                 .toolParam(parseToolParam(command))
                                 .toolResult(toolResult)
+                                .toolCallId(command.getId())
                                 .build(), null);
             }
             String result = writeToolObservationToMemory(command, outcome);
@@ -194,7 +194,7 @@ public class ExecutorAgent extends ReActAgent {
     @Override
     public String run(String request) {
         generateDigitalEmployee(request);
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireRuntimeDependencies(context).requireReactorConfig();
         request = reactorConfig.getTaskPrePrompt() + request;
         context.setTask(request);
         return super.run(request);
@@ -203,6 +203,13 @@ public class ExecutorAgent extends ReActAgent {
     @Override
     protected Integer resolveMaxObserveLength() {
         return maxObserve;
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext context) {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("ExecutorAgent 缺少 ReactorRuntimeDependencies");
+        }
+        return context.getRuntimeDependencies();
     }
 
 }

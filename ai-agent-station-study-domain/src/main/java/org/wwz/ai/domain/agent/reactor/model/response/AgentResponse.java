@@ -56,6 +56,7 @@ public class AgentResponse {
         private String toolName;
         private Map<String, Object> toolParam;
         private String toolResult;
+        private String toolCallId;
     }
 
     public static Plan formatSteps(Plan plan) {

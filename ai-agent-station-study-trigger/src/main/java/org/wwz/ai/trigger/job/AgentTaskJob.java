@@ -2,8 +2,8 @@ package org.wwz.ai.trigger.job;
 
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentTaskScheduleVO;
-import org.wwz.ai.domain.agent.service.IAgentDispatchService;
-import org.wwz.ai.domain.agent.service.ITaskService;
+import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.task.ITaskService;
 import org.wwz.ai.types.job.model.TaskScheduleVO;
 import org.wwz.ai.types.job.provider.ITaskDataProvider;
 import lombok.extern.slf4j.Slf4j;

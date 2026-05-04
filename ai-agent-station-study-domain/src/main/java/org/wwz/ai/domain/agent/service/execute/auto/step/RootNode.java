@@ -22,6 +22,9 @@ public class RootNode extends AbstractExecuteSupport {
     @Resource
     private Step1AnalyzerNode step1AnalyzerNode;
 
+    @Resource
+    private Step2PrecisionExecutorNode step2PrecisionExecutorNode;
+
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("=== 动态多轮执行测试开始 ====");
@@ -48,7 +51,7 @@ public class RootNode extends AbstractExecuteSupport {
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         if (dynamicContext.getMaxStep() <= 1) {
             // 单步模式下直接进入执行节点，避免路由到已下线的旧 ReAct 单节点实现。
-            return getBean("step2PrecisionExecutorNode");
+            return step2PrecisionExecutorNode;
         }
         return step1AnalyzerNode;
     }

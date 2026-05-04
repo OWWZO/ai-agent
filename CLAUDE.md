@@ -93,6 +93,11 @@ The project follows DDD layered architecture (inspired by 小傅哥扳手工程 
                      └────────┬────────┘
                               │ depends on
                      ┌────────▼────────┐
+                     │  case           │  Application orchestration,
+                     │  (应用编排层)    │  dispatch/execute/armory/task
+                     └────────┬────────┘
+                              │ depends on
+                     ┌────────▼────────┐
                      │  domain         │  Core business logic, entities,
                      │  (领域层)        │  value objects, domain services,
                      │                 │  reactor (Agent execution engine)
@@ -111,7 +116,7 @@ The project follows DDD layered architecture (inspired by 小傅哥扳手工程 
                               │ (all modules depend on types)
 ```
 
-**Dependency direction:** `app` -> `trigger` -> `domain` -> `infrastructure`; `api` and `types` are shared across layers. `app` is the assembly module that pulls everything together and contains the Spring Boot main class.
+**Dependency direction:** `app` -> `trigger` -> `case` -> `domain` -> `infrastructure`; `api` and `types` are shared across layers. `app` is the assembly module that pulls everything together and contains the Spring Boot main class.
 
 ### Module Startup Class
 
@@ -166,8 +171,9 @@ The React frontend (`ui/`) communicates with the backend via SSE (Server-Sent Ev
 - **Package naming:** `org.wwz.ai.{module}.{feature}`
 - **DDD boundaries:**
   - `domain` does NOT directly depend on Controllers, Mapper XML, or HTTP details
+  - `case` owns dispatch / execute / armory / task orchestration and stream protocol adaptation
   - `infrastructure` handles DAO, gateways, and MCP external integrations
-  - `trigger` should not accumulate business logic; delegate to `domain`
+  - `trigger` should not accumulate business logic; delegate to `case`
 - **Reactor Phase 1 boundaries:**
   - legacy `/1/**` 与 `/data/**` HTTP 入口现在归属 `trigger`，后续不要再把 controller 放回 `domain`
   - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 这类低风险装配归属 `app`

@@ -25,6 +25,7 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptRunnerClient;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.util.Arrays;
 import java.util.List;
@@ -52,9 +53,10 @@ public class AgentToolCollectionFactory {
     }
 
     private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
+        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(agentContext);
         ToolCollection toolCollection = new ToolCollection();
         toolCollection.setAgentContext(agentContext);
-        toolCollection.setMcpToolExecutor(mcpToolExecutor);
+        toolCollection.setMcpToolExecutor(runtimeDependencies.getOptionalMcpToolExecutor());
 
         if ("dataAgent".equals(request.getOutputStyle())) {
             ReportTool reportTool = new ReportTool();
@@ -119,6 +121,13 @@ public class AgentToolCollectionFactory {
             log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
         }
         return toolCollection;
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("AgentToolCollectionFactory 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies();
     }
 
     private boolean shouldAttachSkillTools(SkillAttachScope attachScope) {

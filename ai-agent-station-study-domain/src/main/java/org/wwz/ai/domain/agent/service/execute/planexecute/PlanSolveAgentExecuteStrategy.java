@@ -3,8 +3,8 @@ package org.wwz.ai.domain.agent.service.execute.planexecute;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
@@ -17,7 +17,6 @@ import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultP
  * 树形结构：RootNode → Step1SopRecallAndPrepare → Step2PlanExecute
  */
 @Slf4j
-@Service("planSolveAgentExecuteStrategy")
 public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
@@ -35,7 +34,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
         StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultPlanSolveAgentExecuteStrategyFactory.armoryStrategyHandler();
         DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext = DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext.builder()
-                .emitter(emitter)
+                .printer(new SSEPrinter(emitter, request, request.getAgentType()))
                 .build();
         try {
             String result = executeHandler.apply(request, dynamicContext);

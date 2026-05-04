@@ -15,8 +15,7 @@ import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
@@ -42,16 +41,15 @@ public class RootNode extends AbstractExecuteSupport {
     @Resource
     private AgentExecutionRecorder agentExecutionRecorder;
 
+    @Resource
+    private ReactorRuntimeDependencies reactorRuntimeDependencies;
+
     @Override
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step1: Prepare context and tools for requestId: {}", request.getRequestId());
 
         dynamicContext.setStep(0);
-        Printer printer = new SSEPrinter(
-            dynamicContext.getEmitter(),
-                request,
-                request.getAgentType()
-        );
+        Printer printer = dynamicContext.getPrinter();
 
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
@@ -69,6 +67,7 @@ public class RootNode extends AbstractExecuteSupport {
                 .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
                 .templateType("dataAgent".equals(request.getOutputStyle()) ? "fix" : "empty")
                 .executionRecorder(agentExecutionRecorder)
+                .runtimeDependencies(reactorRuntimeDependencies)
                 .build();
 
         ExecutionLedgerRunSupport.initializeRun(

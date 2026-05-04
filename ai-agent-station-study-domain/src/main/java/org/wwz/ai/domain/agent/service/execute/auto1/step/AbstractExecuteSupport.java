@@ -3,8 +3,7 @@ package org.wwz.ai.domain.agent.service.execute.auto1.step;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
-import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
-
+import org.wwz.ai.domain.agent.service.runtime.AiClientRuntimeRegistry;
 import org.wwz.ai.domain.agent.service.execute.auto1.step.factory.DefaultFlowAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import com.alibaba.fastjson.JSON;
@@ -13,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
@@ -30,7 +28,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     private final Logger log = LoggerFactory.getLogger(AbstractExecuteSupport.class);
 
     @Resource
-    protected ApplicationContext applicationContext;
+    protected AiClientRuntimeRegistry aiClientRuntimeRegistry;
 
     @Resource
     protected IAgentRepository repository;
@@ -44,11 +42,7 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     }
 
     protected ChatClient getChatClientByClientId(String clientId) {
-        return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId));
-    }
-
-    protected <T> T getBean(String beanName) {
-        return (T) applicationContext.getBean(beanName);
+        return aiClientRuntimeRegistry.getRequiredChatClient(clientId);
     }
 
     /**

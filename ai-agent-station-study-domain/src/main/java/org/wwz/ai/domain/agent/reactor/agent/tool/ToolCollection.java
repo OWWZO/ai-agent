@@ -15,7 +15,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -66,7 +65,7 @@ public class ToolCollection {
 
     /**
      * MCP 工具统一执行器。
-     * ToolCollection 不是 Spring Bean，因此通过外部注入或懒加载方式获取。
+     * ToolCollection 不是 Spring Bean，因此必须由外部显式注入。
      */
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
@@ -160,7 +159,7 @@ public class ToolCollection {
         // 分支2：执行远程MCP工具
         else if (mcpToolMap.containsKey(name)) {
             McpToolInfo toolInfo = mcpToolMap.get(name);
-            McpToolExecutor executor = getOrInitMcpToolExecutor();
+            McpToolExecutor executor = mcpToolExecutor;
             if (executor == null) {
                 log.error("requestId:{} execute mcp tool {} failed, McpToolExecutor not found",
                         agentContext != null ? agentContext.getRequestId() : "unknown", name);
@@ -206,20 +205,6 @@ public class ToolCollection {
         }
         // 从JSON对象中获取工具对应的数字员工名称
         return (String) digitalEmployees.get(toolName);
-    }
-
-    /**
-     * 懒加载 MCP 执行器，兼容旧代码直接 new ToolCollection 的场景。
-     */
-    private McpToolExecutor getOrInitMcpToolExecutor() {
-        if (mcpToolExecutor != null) {
-            return mcpToolExecutor;
-        }
-        if (SpringContextHolder.getApplicationContext() == null) {
-            return null;
-        }
-        this.mcpToolExecutor = SpringContextHolder.getApplicationContext().getBean(McpToolExecutor.class);
-        return this.mcpToolExecutor;
     }
 
     @Override

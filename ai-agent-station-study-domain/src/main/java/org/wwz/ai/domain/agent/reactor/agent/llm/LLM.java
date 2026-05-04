@@ -25,7 +25,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.context.ApplicationContext;
+import org.springframework.util.CollectionUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
@@ -33,13 +33,14 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.agent.util.ToolSchemaNormalizer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorLlmDependencies;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -103,17 +104,25 @@ public class LLM {
     /** 最大输入 token。 */
     private Integer maxInputTokens;
 
-    /** 延迟获取 Spring 组件，避免构造阶段强耦合 Bean 生命周期。 */
-    private transient volatile LlmChatModelResolver chatModelResolver;
-    private transient volatile OpenAiChatOptionsFactory chatOptionsFactory;
-    private transient volatile DomainMessageConverter messageConverter;
-    private transient volatile LlmChatResponseMapper responseMapper;
-    private transient volatile StreamResponseHandler streamResponseHandler;
+    /** 显式注入的运行时依赖。 */
+    private final transient ReactorRuntimeDependencies runtimeDependencies;
+    private final transient LlmChatModelResolver chatModelResolver;
+    private final transient OpenAiChatOptionsFactory chatOptionsFactory;
+    private final transient DomainMessageConverter messageConverter;
+    private final transient LlmChatResponseMapper responseMapper;
+    private final transient StreamResponseHandler streamResponseHandler;
 
-    public LLM(String modelName, String llmErp) {
+    public LLM(String modelName, String llmErp, ReactorRuntimeDependencies runtimeDependencies) {
         this.llmErp = llmErp;
+        this.runtimeDependencies = requireRuntimeDependencies(runtimeDependencies);
+        ReactorLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
+        this.chatModelResolver = llmDependencies.getChatModelResolver();
+        this.chatOptionsFactory = llmDependencies.getChatOptionsFactory();
+        this.messageConverter = llmDependencies.getMessageConverter();
+        this.responseMapper = llmDependencies.getResponseMapper();
+        this.streamResponseHandler = llmDependencies.getStreamResponseHandler();
 
-        LLMSettings config = Config.getLLMConfig(modelName);
+        LLMSettings config = this.runtimeDependencies.resolveLlmSettings(modelName);
         this.llmSettings = config;
         this.model = config.getModel();
         this.maxTokens = config.getMaxTokens();
@@ -141,7 +150,7 @@ public class LLM {
     /**
      * 兼容旧逻辑的消息格式转换，仅保留给 HTTP 回退链路与 token 截断使用。
      */
-    public static List<Map<String, Object>> formatMessages(List<Message> messages, boolean isClaude) {
+    public List<Map<String, Object>> formatMessages(List<Message> messages, boolean isClaude) {
         List<Map<String, Object>> formattedMessages = new ArrayList<>();
         if (messages == null || messages.isEmpty()) {
             return formattedMessages;
@@ -193,7 +202,7 @@ public class LLM {
                     messageMap.put("tool_calls", toolCallsMap);
                 }
             } else if (StringUtils.isNotBlank(message.getToolCallId())) {
-                ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+                ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
                 String content = StringUtil.textDesensitization(message.getContent(), reactorConfig.getSensitivePatterns());
                 if (isClaude) {
                     messageMap.put("role", "user");
@@ -326,7 +335,6 @@ public class LLM {
                     callKind,
                     stream
             );
-            ensureSpringAiDependencies();
             Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildTextOptions(llmSettings, temperature)
@@ -456,7 +464,6 @@ public class LLM {
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
 
-            ensureSpringAiDependencies();
             Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)
@@ -520,8 +527,6 @@ public class LLM {
             long startTime,
             LlmInvocationHandle invocationHandle
     ) {
-        ensureSpringAiDependencies();
-
         Message mergedSystemMessage = buildStructParseSystemMessage(systemMsg, tools);
         Prompt prompt = buildPrompt(
                 mergeMessages(mergedSystemMessage, messages),
@@ -773,7 +778,7 @@ public class LLM {
      * struct_parse 模式仍复用原来的工具描述文本，但不再关心 GPT/Claude 的手工分支。
      */
     private String buildStructParseToolPrompt(ToolCollection tools) {
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
         StringBuilder prompt = new StringBuilder(StringUtils.defaultString(reactorConfig.getStructParseToolSystemPrompt()));
         if (prompt.length() > 0) {
             prompt.append('\n');
@@ -842,30 +847,7 @@ public class LLM {
     }
 
     private OpenAiChatModel resolveChatModel() {
-        ensureSpringAiDependencies();
         return chatModelResolver.resolve(llmSettings);
-    }
-
-    private void ensureSpringAiDependencies() {
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        if (applicationContext == null) {
-            throw new IllegalStateException("Spring ApplicationContext is not ready");
-        }
-        if (chatModelResolver == null) {
-            chatModelResolver = applicationContext.getBean(LlmChatModelResolver.class);
-        }
-        if (chatOptionsFactory == null) {
-            chatOptionsFactory = applicationContext.getBean(OpenAiChatOptionsFactory.class);
-        }
-        if (messageConverter == null) {
-            messageConverter = applicationContext.getBean(DomainMessageConverter.class);
-        }
-        if (responseMapper == null) {
-            responseMapper = applicationContext.getBean(LlmChatResponseMapper.class);
-        }
-        if (streamResponseHandler == null) {
-            streamResponseHandler = applicationContext.getBean(StreamResponseHandler.class);
-        }
     }
 
     private boolean isStructParseMode() {
@@ -1273,5 +1255,12 @@ public class LLM {
         private boolean enabled() {
             return invocationId != null;
         }
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(ReactorRuntimeDependencies dependencies) {
+        if (dependencies == null) {
+            throw new IllegalArgumentException("ReactorRuntimeDependencies must not be null");
+        }
+        return dependencies;
     }
 }

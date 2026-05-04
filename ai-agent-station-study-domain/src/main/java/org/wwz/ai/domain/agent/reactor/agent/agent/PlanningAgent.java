@@ -9,7 +9,6 @@ package org.wwz.ai.domain.agent.reactor.agent.agent;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolChoice;
@@ -19,9 +18,9 @@ import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.prompt.PlanningPrompt;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.PlanningTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -110,9 +109,9 @@ public class PlanningAgent extends ReActAgent {
         setName("planning"); // 智能体名称：用于日志/标识
         setDescription("An agent that creates and manages plans to solve tasks"); // 智能体描述
 
-        // 2. 获取Spring上下文及配置（ReactorConfig是业务自定义的配置类，包含大模型、提示词等配置）
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+        // 2. 获取显式注入的运行时配置（ReactorConfig是业务自定义的配置类，包含大模型、提示词等配置）
+        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
+        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
         setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
 
         // 3. 构建工具提示词：拼接所有可用工具的名称+描述，用于填充提示词模板
@@ -133,7 +132,7 @@ public class PlanningAgent extends ReActAgent {
         // 5. 设置智能体运行依赖
         setPrinter(context.printer); // 设置输出器：用于向用户/前端推送执行过程（如plan、task、plan_thought）
         setMaxSteps(reactorConfig.getPlannerMaxSteps()); // 设置最大执行步骤：防止无限循环
-        setLlm(new LLM(reactorConfig.getPlannerModelName(), "")); // 初始化大模型实例（指定模型名称）
+        setLlm(new LLM(reactorConfig.getPlannerModelName(), "", runtimeDependencies)); // 初始化大模型实例（指定模型名称）
 
         // 6. 关联上下文&配置计划更新开关
         setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
@@ -175,7 +174,9 @@ public class PlanningAgent extends ReActAgent {
 
         try {
             // 3. 构造大模型请求的用户消息：确保最后一条消息是用户角色（大模型交互规范）
-            if (!getMemory().getLastMessage().getRole().equals(RoleType.USER)) {
+            Message lastMessage = getMemory().getLastMessage();
+            // 兼容测试夹具或冷启动场景下记忆尚未预热的情况，避免首次 think 直接空指针。
+            if (lastMessage == null || !RoleType.USER.equals(lastMessage.getRole())) {
                 Message userMsg = Message.userMessage(getNextStepPrompt(), null); // 构建用户消息（内容为下一步提示词）
                 getMemory().addMessage(userMsg); // 添加到智能体记忆（记忆用于多轮对话上下文）
             }
@@ -344,7 +345,7 @@ public class PlanningAgent extends ReActAgent {
     public String run(String request) {
         // 计划未初始化时，拼接计划前置提示词（引导大模型生成合理计划）
         if (Objects.isNull(planningTool.getPlan())) {
-            ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireRuntimeDependencies(context).requireReactorConfig();
             request = reactorConfig.getPlanPrePrompt() + request;
         }
         // 调用父类ReActAgent的run方法：触发think()→act()的循环执行
@@ -398,5 +399,12 @@ public class PlanningAgent extends ReActAgent {
             return response.getStreamMessageId();
         }
         return StringUtil.getUUID();
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext context) {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("PlanningAgent 缺少 ReactorRuntimeDependencies");
+        }
+        return context.getRuntimeDependencies();
     }
 }

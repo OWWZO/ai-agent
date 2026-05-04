@@ -24,6 +24,7 @@ public class MultiModalAgentResponse {
      */
     private String data;
     private Boolean isFinal;
+    private String toolCallId;
 
     @Data
     @Builder

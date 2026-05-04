@@ -4,14 +4,12 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.SopRecallResponse;
 import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
@@ -21,6 +19,7 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.reactor.service.SopRecallService;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import java.util.ArrayList;
@@ -46,15 +45,14 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
     @Resource
     private AgentExecutionRecorder agentExecutionRecorder;
 
+    @Resource
+    private ReactorRuntimeDependencies reactorRuntimeDependencies;
+
     @Override
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Step1: SOP recall and prepare for requestId: {}", request.getRequestId());
 
-        Printer printer = new SSEPrinter(
-                dynamicContext.getEmitter(),
-                request,
-                request.getAgentType()
-        );
+        Printer printer = dynamicContext.getPrinter();
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
                 .sessionId(request.getSessionId())
@@ -71,6 +69,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 .isStream(Objects.nonNull(request.getIsStream()) ? request.getIsStream() : false)
                 .templateType("dataAgent".equals(request.getOutputStyle()) ? "fix" : "empty")
                 .executionRecorder(agentExecutionRecorder)
+                .runtimeDependencies(reactorRuntimeDependencies)
                 .build();
 
         ExecutionLedgerRunSupport.initializeRun(

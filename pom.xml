@@ -10,6 +10,7 @@
     <modules>
         <module>ai-agent-station-study-api</module>
         <module>ai-agent-station-study-app</module>
+        <module>ai-agent-station-study-case</module>
         <module>ai-agent-station-study-domain</module>
         <module>ai-agent-station-study-trigger</module>
         <module>ai-agent-station-study-infrastructure</module>
@@ -154,6 +155,11 @@
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
                 <artifactId>ai-agent-station-study-domain</artifactId>
+                <version>1.0-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>cn.bugstack.ai</groupId>
+                <artifactId>ai-agent-station-study-case</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>

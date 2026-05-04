@@ -5,7 +5,6 @@ import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolChoice;
@@ -14,9 +13,9 @@ import org.wwz.ai.domain.agent.reactor.agent.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.agent.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -85,9 +84,9 @@ public class ReactImplAgent extends ReActAgent {
         setName("react"); // 智能体名称，用于标识不同类型的智能体
         setDescription("an agent that can execute tool calls."); // 智能体能力描述
 
-        // 步骤2：加载Spring上下文和核心配置
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class); // 全局配置Bean（包含ReAct相关配置）
+        // 步骤2：加载显式注入的运行时配置
+        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
+        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig(); // 全局配置Bean（包含ReAct相关配置）
         setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
 
         // 步骤3：构建工具描述提示词（整合所有可用工具的名称+描述，供大模型决策参考）
@@ -108,7 +107,7 @@ public class ReactImplAgent extends ReActAgent {
         // 步骤5：初始化输出器和核心配置
         setPrinter(context.printer); // 响应输出器（推送tool_thought/tool_result给客户端）
         setMaxSteps(reactorConfig.getReactMaxSteps()); // 最大执行步数（防止无限循环）
-        setLlm(new LLM(reactorConfig.getReactModelName(), "")); // 初始化大模型实例（指定ReAct专用模型）
+        setLlm(new LLM(reactorConfig.getReactModelName(), "", runtimeDependencies)); // 初始化大模型实例（指定ReAct专用模型）
 
         // 步骤6：初始化可用工具集合（从上下文加载当前请求可调用的所有工具）
         availableTools = context.getToolCollection();
@@ -229,6 +228,7 @@ public class ReactImplAgent extends ReActAgent {
                         .toolName(command.getFunction().getName())
                         .toolParam(parseToolParam(command))
                         .toolResult(toolResult)
+                        .toolCallId(command.getId())
                         .build(), null);
             }
 
@@ -272,5 +272,12 @@ public class ReactImplAgent extends ReActAgent {
     @Override
     public String run(String request) {
         return super.run(request);
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext context) {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("ReactImplAgent 缺少 ReactorRuntimeDependencies");
+        }
+        return context.getRuntimeDependencies();
     }
 }

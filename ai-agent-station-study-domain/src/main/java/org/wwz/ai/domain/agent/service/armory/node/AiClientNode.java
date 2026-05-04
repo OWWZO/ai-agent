@@ -11,7 +11,7 @@ import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 
@@ -53,16 +53,18 @@ public class AiClientNode extends AbstractArmorySupport {
             }
 
             // 2. 对话模型
-            OpenAiChatModel chatModel = getBean(aiClientVO.getModelBeanName());
+            ChatModel chatModel = aiClientRuntimeRegistry.getRequiredModel(aiClientVO.getModelId());
 
             // 3. MCP 服务
             List<ToolCallback> toolCallbacks = mcpRegistry.getToolCallbacksByMcpIds(aiClientVO.getMcpIdList());
 
             // 4. advisor 顾问角色
             List<Advisor> advisors = new ArrayList<>();
-            List<String> advisorBeanNameList = aiClientVO.getAdvisorBeanNameList();
-            for (String advisorBeanName : advisorBeanNameList) {
-                advisors.add(getBean(advisorBeanName));
+            List<String> advisorIdList = aiClientVO.getAdvisorIdList();
+            if (advisorIdList != null) {
+                for (String advisorId : advisorIdList) {
+                    advisors.add(aiClientRuntimeRegistry.getRequiredAdvisor(advisorId));
+                }
             }
 
 
@@ -80,7 +82,7 @@ public class AiClientNode extends AbstractArmorySupport {
 
             ChatClient chatClient = chatClientBuilder.build();
 
-            registerBean(beanName(aiClientVO.getClientId()), ChatClient.class, chatClient);
+            aiClientRuntimeRegistry.registerChatClient(aiClientVO.getClientId(), chatClient);
         }
 
         return router(requestParameter, dynamicContext);

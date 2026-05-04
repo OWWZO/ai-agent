@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class Step1AnalyzerNode extends AbstractExecuteSupport {
+
+    @Resource
+    private Step2PrecisionExecutorNode step2PrecisionExecutorNode;
+
+    @Resource
+    private Step4LogExecutionSummaryNode step4LogExecutionSummaryNode;
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -60,11 +67,11 @@ public class Step1AnalyzerNode extends AbstractExecuteSupport {
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         // 如果任务已完成或达到最大步数，进入总结阶段
         if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
-            return getBean("step4LogExecutionSummaryNode");
+            return step4LogExecutionSummaryNode;
         }
         
         // 否则继续执行下一步
-        return getBean("step2PrecisionExecutorNode");
+        return step2PrecisionExecutorNode;
     }
 
 }

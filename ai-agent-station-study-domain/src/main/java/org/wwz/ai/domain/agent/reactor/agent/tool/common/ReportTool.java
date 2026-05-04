@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterRequest;
@@ -14,7 +13,6 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
@@ -43,14 +41,14 @@ public class ReportTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个报告工具，可以通过编写HTML、MarkDown报告";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return reactorConfig.getReportToolDesc().isEmpty() ? desc : reactorConfig.getReportToolDesc();
     }
 
     @Override
     public Map<String, Object> toParams() {
 
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getReportToolParams().isEmpty()) {
             return reactorConfig.getReportToolParams();
         }
@@ -124,8 +122,7 @@ public class ReportTool implements BaseTool {
                     .callTimeout(6000, TimeUnit.SECONDS)    // 设置调用超时时间为 10 分钟
                     .build();
 
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             String url = reactorConfig.getCodeInterpreterUrl() + "/v1/tool/report";
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
@@ -167,6 +164,7 @@ public class ReportTool implements BaseTool {
                         StringBuilder stringBuilderIncr = new StringBuilder();
                         String line;
                         String messageId = StringUtil.getUUID();
+                        String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
                         // 获取数字人名称
                         String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
                         BufferedReader reader = new BufferedReader(new InputStreamReader(responseBody.byteStream()));
@@ -183,6 +181,7 @@ public class ReportTool implements BaseTool {
                                     continue;
                                 }
                                 codeResponse = JSONObject.parseObject(data, CodeInterpreterResponse.class);
+                                codeResponse.setToolCallId(toolCallId);
                                 if (codeResponse.getIsFinal()) {
                                     // report_tool 只会输出一个文件，使用模型输出的文件名和描述
                                     if (Objects.nonNull(codeResponse.getFileInfo())) {
@@ -267,5 +266,12 @@ public class ReportTool implements BaseTool {
             return StringUtils.defaultString(text);
         }
         return text.substring(0, maxLen) + "...";
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("ReportTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

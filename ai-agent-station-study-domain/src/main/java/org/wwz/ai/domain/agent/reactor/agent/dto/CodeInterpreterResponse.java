@@ -23,6 +23,7 @@ public class CodeInterpreterResponse {
     private Integer step;
     private String data;
     private Boolean isFinal;
+    private String toolCallId;
 
     @Data
     @Builder

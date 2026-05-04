@@ -4,9 +4,9 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.agent.printer.SSEPrinter;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
@@ -21,7 +21,6 @@ import java.util.Map;
  * React Agent 执行策略：以 AgentRequest 贯穿逻辑树，避免重复转换
  */
 @Slf4j
-@Service("reactAgentExecuteStrategy")
 public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
@@ -52,7 +51,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
         //构建上下文
         DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext = DefaultReactAgentExecuteStrategyFactory.DynamicContext.builder()
-                .emitter(emitter)
+                .printer(new SSEPrinter(emitter, request, request.getAgentType()))
                 .build();
 
         try {

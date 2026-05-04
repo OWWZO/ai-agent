@@ -8,14 +8,12 @@ import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgen
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 自动执行策略
  */
 @Slf4j
-@Service("autoAgentExecuteStrategy")
 public class AutoAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource

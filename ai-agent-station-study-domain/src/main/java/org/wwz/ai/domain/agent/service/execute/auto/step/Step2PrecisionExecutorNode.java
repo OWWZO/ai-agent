@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,9 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
+
+    @Resource
+    private Step3QualitySupervisorNode step3QualitySupervisorNode;
 
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -65,7 +69,7 @@ public class Step2PrecisionExecutorNode extends AbstractExecuteSupport{
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        return getBean("step3QualitySupervisorNode");
+        return step3QualitySupervisorNode;
     }
     
 }

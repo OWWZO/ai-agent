@@ -6,15 +6,14 @@ import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactFormatter;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
 import org.wwz.ai.domain.agent.reactor.agent.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,14 +35,14 @@ public class SummaryAgent extends BaseAgent {
     private static final Pattern ARTIFACT_SPLIT_PATTERN = Pattern.compile(ToolArtifactFormatter.ARTIFACT_KEY_SEPARATOR_REGEX);
 
     public SummaryAgent(AgentContext context) {
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
+        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
         setSystemPrompt(reactorConfig.getSummarySystemPrompt());
 
         setContext(context);
         setRequestId(context.getRequestId());
         // 总结阶段允许单独指定模型；未配置时保持原有兼容逻辑。
-        setLlm(new LLM(resolveSummaryModelName(reactorConfig), ""));
+        setLlm(new LLM(resolveSummaryModelName(reactorConfig), "", runtimeDependencies));
         setMessageSizeLimit(reactorConfig.getMessageSizeLimit());
         setSummaryTemperature(reactorConfig.getSummaryTemperature());
     }
@@ -264,5 +263,12 @@ public class SummaryAgent extends BaseAgent {
             // 构建兜底结果：提示用户任务执行失败，联系管理员，保证方法返回值非null
             return TaskSummaryResult.builder().taskSummary("任务执行失败，请联系管理员！").build();
         }
+    }
+
+    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext context) {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("SummaryAgent 缺少 ReactorRuntimeDependencies");
+        }
+        return context.getRuntimeDependencies();
     }
 }

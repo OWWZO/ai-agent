@@ -6,6 +6,8 @@
 
 触发器层，负责接收外部请求（HTTP 接口）、定时任务调度、消息监听。是系统对外的入口层。
 
+当前收敛边界下，Trigger 入口优先依赖 `ai-agent-station-study-case` 暴露的应用服务；像 `SseEmitter` 这样的协议对象只允许停留在 trigger 适配器中，不再直接穿透到应用编排接口之外。
+
 ---
 
 ## 入口与启动
@@ -72,8 +74,8 @@
 - `spring-boot-starter-web`: Web 支持
 - `spring-tx`: 事务支持
 - `ai-agent-station-study-api`: API 层
+- `ai-agent-station-study-case`: 应用编排层
 - `ai-agent-station-study-types`: 基础类型
-- `ai-agent-station-study-domain`: 领域层
 - `ai-agent-station-study-infrastructure`: 基础设施层
 
 ---

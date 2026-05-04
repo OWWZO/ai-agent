@@ -9,13 +9,12 @@ import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
 import org.wwz.ai.api.dto.ArmoryApiRequestDTO;
 import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.application.agent.armory.IArmoryService;
+import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
-import org.wwz.ai.domain.agent.service.IAgentDispatchService;
-import org.wwz.ai.domain.agent.service.IArmoryService;
 import org.wwz.ai.types.enums.ResponseCode;
 import com.alibaba.fastjson.JSON;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 
 import javax.annotation.Resource;
 import java.io.UnsupportedEncodingException;
@@ -133,7 +133,7 @@ public class AiAgentController implements IAiAgentService {
             try {
                 // 使用 IAgentDispatchService 进行策略调度
                 // AgentRequest 直接传入，避免不必要的转换
-                agentDispatchService.dispatch(request, emitter);
+                agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
 
                 //调用emitter对应方法触发资源回收
                 emitter.complete();

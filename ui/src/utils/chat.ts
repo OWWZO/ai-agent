@@ -140,6 +140,17 @@ function resolveToolCallTargetName(resultMap?: MESSAGE.ResultMap) {
   );
 }
 
+function resolveTaskToolCallId(task?: Partial<MESSAGE.Task> | Partial<CHAT.Task>) {
+  if (!task) {
+    return "";
+  }
+
+  return pickFirstText(
+    task.resultMap?.toolCallId,
+    task.toolResult?.toolCallId,
+  );
+}
+
 function resolveToolCallActionText(task: CHAT.Task) {
   const status = task.resultMap?.status;
   if (status === "success") {
@@ -209,6 +220,43 @@ function findLastTaskIndex(
     }
   }
   return -1;
+}
+
+/**
+ * 大部分富工具结果最终都会携带 toolCallId。
+ * 一旦结果卡片到达，应该直接替换对应的 tool_call 占位，而不是并排保留两张卡。
+ */
+function findToolCallPlaceholderIndex(
+  tasks: MESSAGE.Task[],
+  toolCallId: string | undefined
+) {
+  if (!toolCallId) {
+    return -1;
+  }
+
+  return findLastTaskIndex(tasks, (task) =>
+    task.messageType === "tool_call" &&
+    resolveTaskToolCallId(task) === toolCallId
+  );
+}
+
+function findTaskIndexByToolCallId(
+  tasks: MESSAGE.Task[],
+  toolCallId: string | undefined,
+  options?: {
+    excludeMessageType?: string;
+  }
+) {
+  if (!toolCallId) {
+    return -1;
+  }
+
+  return findLastTaskIndex(tasks, (task) => {
+    if (options?.excludeMessageType && task.messageType === options.excludeMessageType) {
+      return false;
+    }
+    return resolveTaskToolCallId(task) === toolCallId;
+  });
 }
 
 /**
@@ -508,6 +556,15 @@ function handleContentMessage(
   taskIndex: number,
   toolIndex: number
 ) {
+  const nextTask = buildTaskFromEventData(eventData);
+  const placeholderIndex =
+    taskIndex === -1
+      ? -1
+      : findToolCallPlaceholderIndex(
+        currentChat.multiAgent.tasks[taskIndex] || [],
+        resolveTaskToolCallId(nextTask)
+      );
+
   if (taskIndex !== -1) {
     // 更新
     if (toolIndex !== -1) {
@@ -532,8 +589,12 @@ function handleContentMessage(
     } else {
       eventData.resultMap.resultMap = initializeResultMap(eventData.resultMap.resultMap);
 
-      // 添加tool
-      currentChat.multiAgent.tasks[taskIndex].push(buildTaskFromEventData(eventData));
+      if (placeholderIndex !== -1) {
+        currentChat.multiAgent.tasks[taskIndex][placeholderIndex] = buildTaskFromEventData(eventData);
+      } else {
+        // 添加tool
+        currentChat.multiAgent.tasks[taskIndex].push(buildTaskFromEventData(eventData));
+      }
     }
   } else {
 
@@ -675,6 +736,14 @@ function handleDeepSearchMessage(
   taskIndex: number
 ) {
   const resultMap = eventData.resultMap.resultMap;
+  const nextTask = buildTaskFromEventData(eventData);
+  const placeholderIndex =
+    taskIndex === -1
+      ? -1
+      : findToolCallPlaceholderIndex(
+        currentChat.multiAgent.tasks[taskIndex] || [],
+        resolveTaskToolCallId(nextTask)
+      );
   const stage = resolveDeepSearchStage(resultMap?.messageType);
   const toolIndex =
     taskIndex === -1
@@ -688,6 +757,10 @@ function handleDeepSearchMessage(
   if (taskIndex !== -1) {
     if (toolIndex !== -1) {
       updateExistingTaskTool(currentChat, taskIndex, toolIndex, resultMap);
+    } else if (placeholderIndex !== -1) {
+      resultMap.answer = resultMap?.answer || "";
+      ensureSearchResult(resultMap);
+      currentChat.multiAgent.tasks[taskIndex][placeholderIndex] = buildTaskFromEventData(eventData);
     } else {
       addNewToolToExistingTask(currentChat, taskIndex, eventData);
     }
@@ -707,18 +780,31 @@ function handleToolCallMessage(
   toolIndex: number
 ) {
   const nextTask = buildTaskFromEventData(eventData);
+  const toolCallId = resolveTaskToolCallId(nextTask);
 
   if (taskIndex === -1) {
     currentChat.multiAgent.tasks.push([nextTask]);
     return;
   }
 
-  if (toolIndex !== -1) {
-    currentChat.multiAgent.tasks[taskIndex][toolIndex] = nextTask;
+  const taskGroup = currentChat.multiAgent.tasks[taskIndex];
+  const existingResultIndex = findTaskIndexByToolCallId(taskGroup, toolCallId, {
+    excludeMessageType: "tool_call",
+  });
+  if (existingResultIndex !== -1) {
     return;
   }
 
-  currentChat.multiAgent.tasks[taskIndex].push(nextTask);
+  if (toolIndex !== -1) {
+    const currentTask = taskGroup[toolIndex];
+    if (currentTask?.messageType !== "tool_call") {
+      return;
+    }
+    taskGroup[toolIndex] = nextTask;
+    return;
+  }
+
+  taskGroup.push(nextTask);
 }
 
 /**
@@ -924,6 +1010,10 @@ function handleNonStreamingMessage(
 
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
+    const placeholderIndex = findToolCallPlaceholderIndex(
+      taskGroup,
+      resolveTaskToolCallId(nextTask)
+    );
 
     if (isImageGenerationToolResultTask(nextTask)) {
       const fileTaskIndex = findLastTaskIndex(taskGroup, isImageGenerationFileTask);
@@ -945,6 +1035,11 @@ function handleNonStreamingMessage(
         );
         return;
       }
+    }
+
+    if (placeholderIndex !== -1) {
+      taskGroup[placeholderIndex] = nextTask;
+      return;
     }
 
     taskGroup.push(nextTask);

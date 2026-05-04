@@ -13,8 +13,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.wwz.ai.domain.agent.service.runtime.AiClientRuntimeRegistry;
 
 import java.util.Arrays;
 
@@ -35,7 +35,7 @@ public class FlowAgentExecuteTest {
     private DefaultFlowAgentExecuteStrategyFactory defaultFlowAgentExecuteStrategyFactory;
 
     @Resource
-    private ApplicationContext applicationContext;
+    private AiClientRuntimeRegistry aiClientRuntimeRegistry;
 
     @Before
     public void init() throws Exception {
@@ -49,7 +49,7 @@ public class FlowAgentExecuteTest {
                         .build(),
                 new DefaultArmoryStrategyFactory.DynamicContext());
 
-        ChatClient chatClient = (ChatClient) applicationContext.getBean(AiAgentEnumVO.AI_CLIENT.getBeanName("2101"));
+        ChatClient chatClient = aiClientRuntimeRegistry.getRequiredChatClient("2101");
         log.info("客户端构建:{}", chatClient);
     }
 

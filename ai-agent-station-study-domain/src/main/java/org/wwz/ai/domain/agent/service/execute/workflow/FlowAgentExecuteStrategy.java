@@ -8,12 +8,10 @@ import org.wwz.ai.domain.agent.reactor.agent.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
-import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
+import org.wwz.ai.domain.agent.service.runtime.AiClientRuntimeRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.context.ApplicationContext;
-import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import reactor.core.publisher.Flux;
@@ -28,17 +26,16 @@ import java.util.Objects;
  * 固定执行策略
  */
 @Slf4j
-@Service("flowAgentExecuteStrategy")
 public class FlowAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private IAgentRepository repository;
 
     @Resource
-    protected ApplicationContext applicationContext;
+    private ReactorConfig reactorConfig;
 
     @Resource
-    private ReactorConfig reactorConfig;
+    private AiClientRuntimeRegistry aiClientRuntimeRegistry;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
@@ -123,10 +120,6 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
 
 
     private ChatClient getChatClientByClientId(String clientId) {
-        return getBean(AiAgentEnumVO.AI_CLIENT.getBeanName(clientId));
-    }
-
-    private <T> T getBean(String beanName) {
-        return (T) applicationContext.getBean(beanName);
+        return aiClientRuntimeRegistry.getRequiredChatClient(clientId);
     }
 }

@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
@@ -15,7 +14,6 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.DataAnalysisResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.DataAnalysisToolOutput;
@@ -43,14 +41,14 @@ public class DataAnalysisTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个数据分析工具，可以查询并分析数据";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         StringBuilder description = new StringBuilder(reactorConfig.getDataAnalysisToolDesc().isEmpty() ? desc : reactorConfig.getDataAnalysisToolDesc());
         return description.toString();
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getDataAnalysisToolParams().isEmpty()) {
             return reactorConfig.getDataAnalysisToolParams();
         }
@@ -119,8 +117,7 @@ public class DataAnalysisTool implements BaseTool {
                     .callTimeout(30000, TimeUnit.SECONDS)
                     .build();
 
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig duccConfig = applicationContext.getBean(ReactorConfig.class);
+            ReactorConfig duccConfig = requireReactorConfig();
             String url = duccConfig.getDataAnalysisUrl() + "/v1/tool/auto_analysis";
 
             RequestBody body = RequestBody.create(
@@ -154,6 +151,7 @@ public class DataAnalysisTool implements BaseTool {
                         BufferedReader reader = new BufferedReader(new InputStreamReader(responseBody.byteStream()));
                         String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
                         String messageId = StringUtil.getUUID();
+                        String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
                         StringBuilder fullContentBuilder = new StringBuilder();
                         List<CodeInterpreterResponse.FileInfo> finalFileInfo = new ArrayList<>();
                         while ((line = reader.readLine()) != null) {
@@ -196,6 +194,7 @@ public class DataAnalysisTool implements BaseTool {
                                 }
 
                                 analysisResponse.setTask(analysisRequest.getTask());
+                                analysisResponse.setToolCallId(toolCallId);
                                 if (Boolean.TRUE.equals(analysisResponse.getIsFinal())) {
                                     analysisResponse.setData(fullContentBuilder.toString());
                                     agentContext.getPrinter().send(messageId, "data_analysis",
@@ -262,5 +261,12 @@ public class DataAnalysisTool implements BaseTool {
             return text;
         }
         return text.substring(0, maxLen) + "...";
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("DataAnalysisTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

@@ -39,11 +39,11 @@
         </dependency>
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-types</artifactId>
+            <artifactId>ai-agent-station-study-case</artifactId>
         </dependency>
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-domain</artifactId>
+            <artifactId>ai-agent-station-study-types</artifactId>
         </dependency>
         <dependency>
             <groupId>cn.bugstack.ai</groupId>

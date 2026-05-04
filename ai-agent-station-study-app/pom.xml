@@ -133,6 +133,10 @@
         <!-- 工程模块；启动依赖 trigger->domain, infrastructure-->
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
+            <artifactId>ai-agent-station-study-case</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.bugstack.ai</groupId>
             <artifactId>ai-agent-station-study-trigger</artifactId>
         </dependency>
         <dependency>

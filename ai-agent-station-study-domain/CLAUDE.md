@@ -4,9 +4,9 @@
 
 ## 模块职责
 
-核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。实现 Agent 执行引擎、任务调度、策略模式等核心能力。
+核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。实现 Agent 执行引擎、会话记忆、账本、RAG 等核心能力。
 
-Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。`domain` 对外只保留领域模型、领域服务和仓储端口定义。
+Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。当前收敛阶段新增 `ai-agent-station-study-case` 作为应用编排层，`domain` 对外优先保留领域模型、领域服务和仓储端口定义，不再新增 HTTP / SSE 协议适配职责。
 
 ---
 
@@ -21,9 +21,6 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 ### 领域服务接口
 | 接口 | 职责 |
 |-----|------|
-| `IAgentDispatchService` | Agent 策略调度器 |
-| `IArmoryService` | Agent 装配服务 |
-| `ITaskService` | 任务服务 |
 | `IRagService` | RAG 检索服务 |
 | `IAgentConversationService` | 会话管理服务 |
 | `IAgentStreamPersistService` | 流式消息持久化服务 |
@@ -127,12 +124,7 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 ### 领域服务
 | 文件路径 | 说明 |
 |---------|------|
-| `src/main/java/org/wwz/ai/domain/agent/service/IAgentDispatchService.java` | Agent 调度接口 |
-| `src/main/java/org/wwz/ai/domain/agent/service/IArmoryService.java` | 装配服务接口 |
-| `src/main/java/org/wwz/ai/domain/agent/service/ITaskService.java` | 任务服务接口 |
 | `src/main/java/org/wwz/ai/domain/agent/service/IRagService.java` | RAG 服务接口 |
-| `src/main/java/org/wwz/ai/domain/agent/service/armory/ArmoryService.java` | 装配服务实现 |
-| `src/main/java/org/wwz/ai/domain/agent/service/task/AiAgentTaskService.java` | 任务服务实现 |
 | `src/main/java/org/wwz/ai/domain/agent/service/rag/RagService.java` | RAG 服务实现 |
 
 ### 执行策略

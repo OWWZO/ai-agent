@@ -8,7 +8,6 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleResult;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleService;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
 
@@ -42,13 +41,13 @@ public class PlanningTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个计划工具，可让代理创建和管理用于解决复杂任务的计划。\n该工具提供创建计划、更新计划步骤和跟踪进度的功能。\n使用中文回答";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return reactorConfig.getPlanToolDesc().isEmpty() ? desc : reactorConfig.getPlanToolDesc();
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getPlanToolParams().isEmpty()) {
             return reactorConfig.getPlanToolParams();
         }
@@ -298,6 +297,13 @@ public class PlanningTool implements BaseTool {
 
     private Plan snapshot(Plan source) {
         return source == null ? null : source.copy();
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("PlanningTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }
 

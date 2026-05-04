@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
@@ -13,7 +12,6 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.FileRequest;
 import org.wwz.ai.domain.agent.reactor.agent.dto.FileResponse;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
@@ -37,14 +35,14 @@ public class FileTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个文件工具，可以上传或下载文件";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return reactorConfig.getFileToolDesc().isEmpty() ? desc : reactorConfig.getFileToolDesc();
     }
 
     @Override
     public Map<String, Object> toParams() {
 
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getFileToolParams().isEmpty()) {
             return reactorConfig.getFileToolParams();
         }
@@ -126,8 +124,7 @@ public class FileTool implements BaseTool {
                 .callTimeout(30000, TimeUnit.SECONDS)    // 设置调用超时时间为 300 秒
                 .build();
 
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         MediaType mediaType = MediaType.get("application/json; charset=utf-8");
         String url = reactorConfig.getCodeInterpreterUrl() + "/v1/file_tool/upload_file";
 
@@ -193,6 +190,10 @@ public class FileTool implements BaseTool {
             // 构建前端格式
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("command", "写入文件");
+            if (artifactSource != null) {
+                resultMap.put("toolCallId", artifactSource.getToolCallId());
+                resultMap.put("toolName", artifactSource.getToolName());
+            }
             List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
             fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
                     .fileName(fileRequest.getFileName())
@@ -254,8 +255,7 @@ public class FileTool implements BaseTool {
                 .callTimeout(30000, TimeUnit.SECONDS)    // 设置调用超时时间为 60 秒
                 .build();
 
-        ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-        ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         MediaType mediaType = MediaType.get("application/json; charset=utf-8");
         String url = reactorConfig.getCodeInterpreterUrl() + "/v1/file_tool/get_file";
         // 构建请求体
@@ -293,6 +293,11 @@ public class FileTool implements BaseTool {
             // 构建前端格式
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("command", "读取文件");
+            ToolArtifactSource artifactSource = agentContext.getCurrentToolArtifactSource();
+            if (artifactSource != null) {
+                resultMap.put("toolCallId", artifactSource.getToolCallId());
+                resultMap.put("toolName", artifactSource.getToolName());
+            }
             List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
             fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
                     .fileName(fileRequest.getFileName())
@@ -373,5 +378,12 @@ public class FileTool implements BaseTool {
                         .build(),
                 message
         );
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("FileTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

@@ -6,8 +6,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.Assert;
 import org.junit.Test;
-import org.mockito.Mockito;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
@@ -15,9 +13,9 @@ import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.MultiModalAgent;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -42,7 +40,7 @@ public class MultiModalAgentToolTest {
 
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            bindSpringContext(buildConfig(baseUrl));
+            ReactorConfig reactorConfig = buildConfig(baseUrl);
 
             RecordingPrinter printer = new RecordingPrinter();
             ToolCollection toolCollection = new ToolCollection();
@@ -57,6 +55,7 @@ public class MultiModalAgentToolTest {
                     .toolCollection(toolCollection)
                     .productFiles(new ArrayList<>())
                     .taskProductFiles(new ArrayList<>())
+                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
                     .build();
             toolCollection.setAgentContext(agentContext);
 
@@ -99,36 +98,32 @@ public class MultiModalAgentToolTest {
             Assert.assertTrue(agentContext.getTaskProductFiles().get(0).getFileName().endsWith(".md"));
         } finally {
             server.stop(0);
-            ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }
     }
 
     @Test
     public void shouldReturnExplicitFailureWhenQuestionBlank() {
-        bindSpringContext(buildConfig("http://127.0.0.1:1601"));
+        ReactorConfig reactorConfig = buildConfig("http://127.0.0.1:1601");
 
-        try {
-            MultiModalAgent multiModalAgent = new MultiModalAgent();
-            multiModalAgent.setAgentContext(AgentContext.builder()
-                    .requestId("req-mrag-blank")
-                    .sessionId("session-mrag-blank")
-                    .query("空问题")
-                    .isStream(true)
-                    .printer(new RecordingPrinter())
-                    .toolCollection(new ToolCollection())
-                    .productFiles(new ArrayList<>())
-                    .taskProductFiles(new ArrayList<>())
-                    .build());
+        MultiModalAgent multiModalAgent = new MultiModalAgent();
+        multiModalAgent.setAgentContext(AgentContext.builder()
+                .requestId("req-mrag-blank")
+                .sessionId("session-mrag-blank")
+                .query("空问题")
+                .isStream(true)
+                .printer(new RecordingPrinter())
+                .toolCollection(new ToolCollection())
+                .productFiles(new ArrayList<>())
+                .taskProductFiles(new ArrayList<>())
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
+                .build());
 
-            ToolResultPayload payload = (ToolResultPayload) multiModalAgent.execute(JSONObject.parseObject("""
-                    {"question":"   "}
-                    """));
+        ToolResultPayload payload = (ToolResultPayload) multiModalAgent.execute(JSONObject.parseObject("""
+                {"question":"   "}
+                """));
 
-            Assert.assertEquals("multimodalagent_tool 执行失败：question 不能为空。", payload.getToolResult());
-            Assert.assertTrue(payload.getFailed());
-        } finally {
-            ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
-        }
+        Assert.assertEquals("multimodalagent_tool 执行失败：question 不能为空。", payload.getToolResult());
+        Assert.assertTrue(payload.getFailed());
     }
 
     private ReactorConfig buildConfig(String baseUrl) {
@@ -138,12 +133,6 @@ public class MultiModalAgentToolTest {
         ReflectionTestUtils.setField(reactorConfig, "codeInterpreterUrl", baseUrl);
         ReflectionTestUtils.setField(reactorConfig, "multiModalAgentDesc", "多模态知识检索工具");
         return reactorConfig;
-    }
-
-    private void bindSpringContext(ReactorConfig reactorConfig) {
-        ApplicationContext applicationContext = Mockito.mock(ApplicationContext.class);
-        Mockito.when(applicationContext.getBean(ReactorConfig.class)).thenReturn(reactorConfig);
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", applicationContext);
     }
 
     private static class MlagQueryHandler implements HttpHandler {

@@ -41,4 +41,9 @@ public class DataAnalysisResponse {
      * task
      */
     private String task;
+
+    /**
+     * 当前可视化结果所属的 toolCallId，用于前端折叠实时占位卡片。
+     */
+    private String toolCallId;
 }

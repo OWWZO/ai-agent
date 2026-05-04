@@ -178,6 +178,84 @@ function createToolCallEvent(options?: {
   } as unknown as MESSAGE.EventData;
 }
 
+function createFileEvent(options?: {
+  messageId?: string;
+  taskId?: string;
+  toolCallId?: string;
+  command?: string;
+  fileName?: string;
+  isFinal?: boolean;
+}): MESSAGE.EventData {
+  const messageId = options?.messageId || "file-msg-1";
+  const taskId = options?.taskId || "task-tool-call-1";
+  const fileName = options?.fileName || "风险日报.md";
+  const isFinal = options?.isFinal ?? true;
+
+  return {
+    messageType: "task",
+    messageId,
+    taskId,
+    taskOrder: 1,
+    messageOrder: 2,
+    resultMap: {
+      requestId: "req-tool-call-1",
+      messageId,
+      messageType: "file",
+      messageTime: "1714041600666",
+      finish: isFinal,
+      isFinal,
+      resultMap: {
+        isFinal,
+        command: options?.command || "读取文件",
+        toolCallId: options?.toolCallId || "tool-call-file-001",
+        fileInfo: [
+          {
+            fileName,
+            ossUrl: "https://example.com/download/risk.md",
+            domainUrl: "https://example.com/preview/risk.md",
+            fileSize: 128,
+          },
+        ],
+      },
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
+function createToolResultEvent(options?: {
+  messageId?: string;
+  taskId?: string;
+  toolCallId?: string;
+  toolName?: string;
+  query?: string;
+}): MESSAGE.EventData {
+  const messageId = options?.messageId || "tool-result-msg-1";
+  const taskId = options?.taskId || "task-tool-call-1";
+
+  return {
+    messageType: "task",
+    messageId,
+    taskId,
+    taskOrder: 1,
+    messageOrder: 2,
+    resultMap: {
+      requestId: "req-tool-call-1",
+      messageId,
+      messageType: "tool_result",
+      messageTime: "1714041600777",
+      finish: true,
+      isFinal: true,
+      toolResult: {
+        toolName: options?.toolName || "web_search",
+        toolResult: "{\"data\":[]}",
+        toolParam: {
+          query: options?.query || "风险日报",
+        },
+        toolCallId: options?.toolCallId || "tool-call-file-001",
+      },
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
 function createPlannerThoughtEvent(options: {
   plannerRoundId: string;
   planThought: string;
@@ -822,5 +900,81 @@ describe("chat file task title", () => {
     expect(taskList[0].resultMap.status).toBe("success");
     expect(taskList[0].resultMap.isFinal).toBe(true);
     expect(taskList[0].resultMap.summary).toBe("file_tool 调用完成");
+  });
+
+  it("工具结果到达后应替换对应的 tool_call 占位卡片", () => {
+    const currentChat = {
+      sessionId: "session-tool-call-3",
+      requestId: "req-tool-call-3",
+      query: "读取风险日报",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "tool-call-msg-3",
+      taskId: "task-tool-call-3",
+      toolCallId: "tool-call-file-003",
+    }), currentChat);
+    combineData(createFileEvent({
+      messageId: "file-msg-3",
+      taskId: "task-tool-call-3",
+      toolCallId: "tool-call-file-003",
+    }), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].messageType).toBe("file");
+    expect(buildAction(taskList[0])).toMatchObject({
+      action: "读取文件",
+      name: "风险日报.md",
+    });
+  });
+
+  it("已有工具结果卡片后，tool_call 终态回包不应再次追加新卡片", () => {
+    const currentChat = {
+      sessionId: "session-tool-call-4",
+      requestId: "req-tool-call-4",
+      query: "读取风险日报",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "tool-call-msg-4",
+      taskId: "task-tool-call-4",
+      toolCallId: "tool-call-file-004",
+      status: "running",
+    }), currentChat);
+    combineData(createToolResultEvent({
+      messageId: "tool-result-msg-4",
+      taskId: "task-tool-call-4",
+      toolCallId: "tool-call-file-004",
+      toolName: "web_search",
+      query: "风险日报",
+    }), currentChat);
+    combineData(createToolCallEvent({
+      messageId: "tool-call-msg-4",
+      taskId: "task-tool-call-4",
+      toolCallId: "tool-call-file-004",
+      status: "success",
+      isFinal: true,
+      summary: "web_search 调用完成",
+    }), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].messageType).toBe("tool_result");
+    expect(taskList[0].toolResult?.toolCallId).toBe("tool-call-file-004");
   });
 });

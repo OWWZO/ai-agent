@@ -6,6 +6,7 @@ import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiClientTypeEnumVO;
 import org.wwz.ai.domain.agent.service.execute.auto.step.factory.DefaultAutoAgentExecuteStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import lombok.Data;
 import org.springframework.ai.chat.client.ChatClient;
@@ -18,10 +19,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
 
+//    @Resource
+//    private Step1AnalyzerNode step1AnalyzerNode;
+
+    @Resource
+    private Step4LogExecutionSummaryNode step4LogExecutionSummaryNode;
+
     @Override
     protected String doApply(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("\n阶段3:反思与计划修订");
-        
+
         // 从动态上下文中获取执行结果
         String executionResult = dynamicContext.getValue("executionResult");
 
@@ -67,9 +74,9 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
                 【分析阶段】%s
                 【执行阶段】%s
                 【反思和监督阶段】%s
-                """, dynamicContext.getStep(), 
-                dynamicContext.getValue("analysisResult"), 
-                executionResult, 
+                """, dynamicContext.getStep(),
+                dynamicContext.getValue("analysisResult"),
+                executionResult,
                 supervisionResult);
 
         dynamicContext.getExecutionHistory().setLength(0);
@@ -77,25 +84,30 @@ public class Step3QualitySupervisorNode extends AbstractExecuteSupport {
 
 
         dynamicContext.setStep(dynamicContext.getStep() + 1);
-        
+
         // 如果任务已完成或达到最大步数，进入总结阶段
         if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
             return router(requestParameter, dynamicContext);
         }
-        
+
         // 否则继续下一轮执行，返回到Step1AnalyzerNode
         return router(requestParameter, dynamicContext);
     }
 
     @Override
     public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        // 如果任务已完成或达到最大步数，进入总结阶段
-        if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
-            return getBean("step4LogExecutionSummaryNode");
-        }
-        
-        // 否则返回到Step1AnalyzerNode进行下一轮分析
-        return getBean("step1AnalyzerNode");
+        return null;
     }
+
+//    @Override
+//    public StrategyHandler<ExecuteCommandEntity, DefaultAutoAgentExecuteStrategyFactory.DynamicContext, String> get(ExecuteCommandEntity requestParameter, DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+//        // 如果任务已完成或达到最大步数，进入总结阶段
+//        if (dynamicContext.isCompleted() || dynamicContext.getStep() > dynamicContext.getMaxStep()) {
+//            return step4LogExecutionSummaryNode;
+//        }
+//
+//        // 否则返回到Step1AnalyzerNode进行下一轮分析
+//        return step1AnalyzerNode;
+//    }
 
 }

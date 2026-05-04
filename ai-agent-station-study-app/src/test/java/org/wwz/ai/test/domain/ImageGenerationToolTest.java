@@ -6,8 +6,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.Assert;
 import org.junit.Test;
-import org.mockito.Mockito;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
@@ -17,12 +15,12 @@ import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.ImageGenerationRequest;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.ImageGenerationTool;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.impl.ImageGenerationExecutionKernelImpl;
 import org.wwz.ai.infrastructure.gateway.ReactorImageGenerationGateway;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -47,7 +45,8 @@ public class ImageGenerationToolTest {
 
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            bindSpringContext(buildConfig(baseUrl));
+            ReactorConfig reactorConfig = buildConfig(baseUrl);
+            IImageGenerationExecutionKernel kernel = buildKernel(reactorConfig);
 
             RecordingPrinter printer = new RecordingPrinter();
             ToolCollection toolCollection = new ToolCollection();
@@ -60,6 +59,7 @@ public class ImageGenerationToolTest {
                     .toolCollection(toolCollection)
                     .productFiles(new ArrayList<>())
                     .taskProductFiles(new ArrayList<>())
+                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
                     .build();
             toolCollection.setAgentContext(context);
 
@@ -98,7 +98,6 @@ public class ImageGenerationToolTest {
             Assert.assertEquals("gpt-image-1", handler.getLastRequest().getModel());
         } finally {
             server.stop(0);
-            ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }
     }
 
@@ -111,7 +110,8 @@ public class ImageGenerationToolTest {
 
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-            bindSpringContext(buildConfig(baseUrl));
+            ReactorConfig reactorConfig = buildConfig(baseUrl);
+            IImageGenerationExecutionKernel kernel = buildKernel(reactorConfig);
 
             RecordingPrinter printer = new RecordingPrinter();
             ToolCollection toolCollection = new ToolCollection();
@@ -135,6 +135,7 @@ public class ImageGenerationToolTest {
                                     .build()
                     )))
                     .taskProductFiles(new ArrayList<>())
+                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
                     .build();
             toolCollection.setAgentContext(context);
 
@@ -162,7 +163,6 @@ public class ImageGenerationToolTest {
             Assert.assertEquals(List.of("source-image.png"), handler.getLastRequest().getFileNames());
         } finally {
             server.stop(0);
-            ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }
     }
 
@@ -173,14 +173,10 @@ public class ImageGenerationToolTest {
         return reactorConfig;
     }
 
-    private void bindSpringContext(ReactorConfig reactorConfig) {
+    private IImageGenerationExecutionKernel buildKernel(ReactorConfig reactorConfig) {
         ReactorImageGenerationGateway gateway = new ReactorImageGenerationGateway();
         ReflectionTestUtils.setField(gateway, "reactorConfig", reactorConfig);
-        IImageGenerationExecutionKernel kernel = new ImageGenerationExecutionKernelImpl(gateway);
-        ApplicationContext applicationContext = Mockito.mock(ApplicationContext.class);
-        Mockito.when(applicationContext.getBean(ReactorConfig.class)).thenReturn(reactorConfig);
-        Mockito.when(applicationContext.getBean(IImageGenerationExecutionKernel.class)).thenReturn(kernel);
-        ReflectionTestUtils.setField(SpringContextHolder.class, "context", applicationContext);
+        return new ImageGenerationExecutionKernelImpl(gateway);
     }
 
     private static class RecordingImageGenerationHandler implements HttpHandler {

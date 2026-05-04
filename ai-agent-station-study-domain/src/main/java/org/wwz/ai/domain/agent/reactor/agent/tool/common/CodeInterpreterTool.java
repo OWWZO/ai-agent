@@ -8,12 +8,10 @@ import org.wwz.ai.domain.agent.reactor.agent.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
-import org.springframework.context.ApplicationContext;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.CodeInterpreterToolOutput;
@@ -42,14 +40,14 @@ public class CodeInterpreterTool implements BaseTool {
     @Override
     public String getDescription() {
         String desc = "这是一个代码工具，可以通过编写代码完成数据处理、数据分析、图表生成等任务";
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         return reactorConfig.getCodeAgentDesc().isEmpty() ? desc : reactorConfig.getCodeAgentDesc();
     }
 
     @Override
     public Map<String, Object> toParams() {
 
-        ReactorConfig reactorConfig = SpringContextHolder.getApplicationContext().getBean(ReactorConfig.class);
+        ReactorConfig reactorConfig = requireReactorConfig();
         if (!reactorConfig.getCodeAgentParams().isEmpty()) {
             return reactorConfig.getCodeAgentParams();
         }
@@ -105,8 +103,7 @@ public class CodeInterpreterTool implements BaseTool {
                     .callTimeout(300000, TimeUnit.SECONDS)    // 设置调用超时时间为 60 秒
                     .build();
 
-            ApplicationContext applicationContext = SpringContextHolder.getApplicationContext();
-            ReactorConfig reactorConfig = applicationContext.getBean(ReactorConfig.class);
+            ReactorConfig reactorConfig = requireReactorConfig();
             String url = reactorConfig.getCodeInterpreterUrl() + "/v1/tool/code_interpreter";
             RequestBody body = RequestBody.create(
                     MediaType.parse("application/json"),
@@ -226,5 +223,12 @@ public class CodeInterpreterTool implements BaseTool {
                         .build(),
                 message
         );
+    }
+
+    private ReactorConfig requireReactorConfig() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("CodeInterpreterTool 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }

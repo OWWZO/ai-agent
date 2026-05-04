@@ -11,10 +11,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.beans.factory.support.BeanDefinitionBuilder;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.valobj.AiClientToolMcpVO;
@@ -49,9 +45,6 @@ public class McpRegistry {
 
     @Resource
     private McpClientRuntimeFactory runtimeFactory;
-
-    @Resource
-    private ApplicationContext applicationContext;
 
     /**
      * 运行时缓存：key 为 mcpId。
@@ -235,7 +228,6 @@ public class McpRegistry {
                 McpClientRuntime oldRuntime = runtimeCache.put(mcpVO.getMcpId(), runtime);
                 toolCache.put(mcpVO.getMcpId(), tools);
                 toolCallbackCache.remove(mcpVO.getMcpId());
-                registerBean(mcpVO.getMcpId(), McpSyncClient.class, runtime.getSyncClient());
 
                 closeQuietly(oldRuntime, runtime);
                 log.info("MCP 预热成功: mcpId={}, toolCount={}", mcpVO.getMcpId(), tools.size());
@@ -371,7 +363,6 @@ public class McpRegistry {
             toolCache.remove(staleMcpId);
             toolCallbackCache.remove(staleMcpId);
             removeClientBinding(staleMcpId);
-            unregisterBean(staleMcpId);
             closeQuietly(staleRuntime, null);
             log.info("MCP 已从缓存移除: mcpId={}", staleMcpId);
         }
@@ -639,34 +630,6 @@ public class McpRegistry {
             log.warn("MCP 对象序列化失败，降级使用 toString: type={}, reason={}",
                     value.getClass().getName(), e.getMessage());
             return String.valueOf(value);
-        }
-    }
-
-    /**
-     * 注册可复用的 MCP 客户端 Bean。
-     */
-    private synchronized <T> void registerBean(String beanName, Class<T> beanClass, T beanInstance) {
-        DefaultListableBeanFactory beanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
-        BeanDefinitionBuilder beanDefinitionBuilder = BeanDefinitionBuilder.genericBeanDefinition(beanClass, () -> beanInstance);
-        BeanDefinition beanDefinition = beanDefinitionBuilder.getRawBeanDefinition();
-        beanDefinition.setScope(BeanDefinition.SCOPE_SINGLETON);
-
-        if (beanFactory.containsBeanDefinition(beanName)) {
-            beanFactory.removeBeanDefinition(beanName);
-        }
-
-        beanFactory.registerBeanDefinition(beanName, beanDefinition);
-        log.info("成功注册 MCP Bean: {}", beanName);
-    }
-
-    /**
-     * 卸载已经失效的 MCP Bean。
-     */
-    private synchronized void unregisterBean(String beanName) {
-        DefaultListableBeanFactory beanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
-        if (beanFactory.containsBeanDefinition(beanName)) {
-            beanFactory.removeBeanDefinition(beanName);
-            log.info("成功移除 MCP Bean: {}", beanName);
         }
     }
 

@@ -10,12 +10,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.domain.agent.reactor.service.IGptProcessService;
-import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
-import org.wwz.ai.domain.agent.service.IAgentDispatchService;
+import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 
 import java.io.UnsupportedEncodingException;
 import java.util.concurrent.Executors;
@@ -104,23 +104,7 @@ public class ReactorController {
         registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
 
         try {
-            // Build ExecuteCommandEntity
-            ExecuteCommandEntity entity = ExecuteCommandEntity.builder()
-                    // 单次请求追踪ID
-                    .requestId(request.getRequestId())
-                    // 会话ID：使用前端与多智能体统一的 sessionId
-                    .sessionId(request.getSessionId())
-                    .message(request.getQuery())
-                    .agentType(request.getAgentType())
-                    .outputStyle(request.getOutputStyle())
-                    .isStream(request.getIsStream())
-                    .sopPrompt(request.getSopPrompt())
-                    .basePrompt(request.getBasePrompt())
-                    .strategy("reactAgentExecuteStrategy") // Use React strategy
-                    .build();
-
-//            // Dispatch
-//            agentDispatchService.dispatch(entity, emitter);
+            agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
 
         } catch (Exception e) {
             log.error("{} auto agent error", request.getRequestId(), e);
