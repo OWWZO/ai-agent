@@ -4,6 +4,8 @@ import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.File;
 import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.reactor.adapter.repository.IExecutionLedgerReadRepository;
+import org.wwz.ai.domain.agent.reactor.adapter.repository.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
 import org.wwz.ai.domain.agent.reactor.entity.DialogueSession;
 import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
@@ -44,6 +46,8 @@ import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ReportToolI
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ScriptRunnerToolInvocationProjector;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
 import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputWriter;
+import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerReadRepository;
+import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerWriteRepository;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -71,8 +75,14 @@ public final class ExecutionLedgerFixtureFactory {
         InMemoryArtifactLedgerDao artifactDao = new InMemoryArtifactLedgerDao(store);
         InMemoryToolOutputWriter toolOutputWriter = new InMemoryToolOutputWriter(store);
         InMemoryToolOutputReader toolOutputReader = new InMemoryToolOutputReader(store);
+        ExecutionLedgerReadRepository readRepository = new ExecutionLedgerReadRepository(
+                runDao, sessionDao, llmDao, toolDao, artifactDao
+        );
+        ExecutionLedgerWriteRepository writeRepository = new ExecutionLedgerWriteRepository(
+                runDao, sessionDao, llmDao, toolDao, artifactDao
+        );
         ExecutionLedgerQueryServiceImpl queryService = new ExecutionLedgerQueryServiceImpl(
-                runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputReader
+                readRepository, toolOutputReader
         );
         ConversationHistoryReplayService replayService = new ConversationHistoryReplayService(
                 queryService,
@@ -96,10 +106,11 @@ public final class ExecutionLedgerFixtureFactory {
                 new HistoryReplayPrinter()
         );
         AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(
-                runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputWriter
+                writeRepository, toolOutputWriter
         );
         return new LedgerTestContext(
                 store, recorder, queryService, replayService,
+                readRepository, writeRepository,
                 runDao, sessionDao, llmDao, toolDao, artifactDao, toolOutputWriter, toolOutputReader
         );
     }
@@ -178,6 +189,8 @@ public final class ExecutionLedgerFixtureFactory {
         final AgentExecutionRecorder recorder;
         final ExecutionLedgerQueryService queryService;
         final ConversationHistoryReplayService replayService;
+        final ExecutionLedgerReadRepository readRepository;
+        final ExecutionLedgerWriteRepository writeRepository;
         final IDialogueRunLedgerDao runDao;
         final IDialogueSessionLedgerDao sessionDao;
         final ILlmInvocationLedgerDao llmDao;
@@ -190,6 +203,8 @@ public final class ExecutionLedgerFixtureFactory {
                                   AgentExecutionRecorder recorder,
                                   ExecutionLedgerQueryService queryService,
                                   ConversationHistoryReplayService replayService,
+                                  ExecutionLedgerReadRepository readRepository,
+                                  ExecutionLedgerWriteRepository writeRepository,
                                   IDialogueRunLedgerDao runDao,
                                   IDialogueSessionLedgerDao sessionDao,
                                   ILlmInvocationLedgerDao llmDao,
@@ -201,6 +216,8 @@ public final class ExecutionLedgerFixtureFactory {
             this.recorder = recorder;
             this.queryService = queryService;
             this.replayService = replayService;
+            this.readRepository = readRepository;
+            this.writeRepository = writeRepository;
             this.runDao = runDao;
             this.sessionDao = sessionDao;
             this.llmDao = llmDao;

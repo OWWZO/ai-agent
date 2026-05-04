@@ -1,4 +1,4 @@
-package org.wwz.ai.domain.agent.reactor.controller;
+package org.wwz.ai.trigger.http.reactor;
 
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;

@@ -4,7 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.config.DataAgentInitRunner;
+import org.wwz.ai.config.reactor.DataAgentInitRunner;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;

@@ -168,6 +168,11 @@ The React frontend (`ui/`) communicates with the backend via SSE (Server-Sent Ev
   - `domain` does NOT directly depend on Controllers, Mapper XML, or HTTP details
   - `infrastructure` handles DAO, gateways, and MCP external integrations
   - `trigger` should not accumulate business logic; delegate to `domain`
+- **Reactor Phase 1 boundaries:**
+  - legacy `/1/**` 与 `/data/**` HTTP 入口现在归属 `trigger`，后续不要再把 controller 放回 `domain`
+  - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 这类低风险装配归属 `app`
+  - execution ledger 领域服务必须通过 `IExecutionLedgerReadRepository` / `IExecutionLedgerWriteRepository` 访问持久化能力，不能重新注入 ledger `*Dao`
+  - `ReactorConfig` 仍是 Phase 1 明确延后的过渡态共享配置，除非后续 change 明确授权，否则不要物理迁移或改写装配语义
 - **Database:** MyBatis-Plus with Mapper XML in `resources/mybatis/mapper/`
 - **Configuration:** Environment-specific configs in `application-{profile}.yml`
 - **Naming:** English semantics; complex logic and boundary conditions use Chinese comments

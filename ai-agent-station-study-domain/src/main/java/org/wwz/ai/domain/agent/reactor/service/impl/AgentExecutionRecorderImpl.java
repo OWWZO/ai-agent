@@ -5,15 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.reactor.adapter.repository.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
 import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
 import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
-import org.wwz.ai.domain.agent.reactor.mapper.IArtifactLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IDialogueRunLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IDialogueSessionLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.ILlmInvocationLedgerDao;
-import org.wwz.ai.domain.agent.reactor.mapper.IToolInvocationLedgerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
@@ -47,11 +43,7 @@ import java.util.concurrent.atomic.LongAdder;
 @RequiredArgsConstructor
 public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
 
-    private final IDialogueRunLedgerDao dialogueRunLedgerDao;
-    private final IDialogueSessionLedgerDao dialogueSessionLedgerDao;
-    private final ILlmInvocationLedgerDao llmInvocationLedgerDao;
-    private final IToolInvocationLedgerDao toolInvocationLedgerDao;
-    private final IArtifactLedgerDao artifactLedgerDao;
+    private final IExecutionLedgerWriteRepository executionLedgerWriteRepository;
     private final ToolOutputWriter toolOutputWriter;
 
     private final Map<String, LongAdder> successCounters = new ConcurrentHashMap<>();
@@ -80,7 +72,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .startedAt(startedAt)
                 .build();
         try {
-            dialogueRunLedgerDao.insertRun(entity);
+            executionLedgerWriteRepository.insertRun(entity);
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(record.getSessionId())
                     .title(resolveSessionTitle(record.getQueryText()))
@@ -108,13 +100,13 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             return;
         }
         try {
-            DialogueRun existing = dialogueRunLedgerDao.queryByRequestId(record.getRequestId());
+            DialogueRun existing = executionLedgerWriteRepository.queryRunByRequestId(record.getRequestId());
             if (existing == null) {
                 return;
             }
-            List<LlmInvocation> llmInvocations = llmInvocationLedgerDao.queryByRunId(existing.getId());
-            List<ToolInvocation> toolInvocations = toolInvocationLedgerDao.queryByRunId(existing.getId());
-            List<ArtifactRecord> artifacts = artifactLedgerDao.queryByRunId(existing.getId());
+            List<LlmInvocation> llmInvocations = executionLedgerWriteRepository.queryLlmInvocationsByRunId(existing.getId());
+            List<ToolInvocation> toolInvocations = executionLedgerWriteRepository.queryToolInvocationsByRunId(existing.getId());
+            List<ArtifactRecord> artifacts = executionLedgerWriteRepository.queryArtifactsByRunId(existing.getId());
             LocalDateTime finishedAt = defaultNow(record.getFinishedAt());
             DialogueRun updateEntity = DialogueRun.builder()
                     .id(existing.getId())
@@ -131,7 +123,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .finishedAt(finishedAt)
                     .durationMs(calculateDuration(existing.getStartedAt(), finishedAt))
                     .build();
-            dialogueRunLedgerDao.updateRunFinish(updateEntity);
+            executionLedgerWriteRepository.updateRunFinish(updateEntity);
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(existing.getSessionId())
                     .title(resolveSessionTitle(existing.getQueryText()))
@@ -172,7 +164,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .startedAt(defaultNow(record.getStartedAt()))
                 .build();
         try {
-            llmInvocationLedgerDao.insertLlmInvocation(entity);
+            executionLedgerWriteRepository.insertLlmInvocation(entity);
             markSuccess("createLlmInvocation", null);
             return entity.getId();
         } catch (Exception e) {
@@ -188,7 +180,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         }
         try {
             LocalDateTime finishedAt = defaultNow(record.getFinishedAt());
-            llmInvocationLedgerDao.updateLlmInvocationFinish(LlmInvocation.builder()
+            executionLedgerWriteRepository.updateLlmInvocationFinish(LlmInvocation.builder()
                     .id(record.getLlmInvocationId())
                     .status(record.getStatus())
                     .responseText(record.getResponseText())
@@ -230,7 +222,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .startedAt(defaultNow(item.getStartedAt()))
                     .build();
             try {
-                toolInvocationLedgerDao.insertToolInvocation(entity);
+                executionLedgerWriteRepository.insertToolInvocation(entity);
                 mapping.put(item.getToolCallId(), entity.getId());
                 markSuccess("createToolInvocation", null);
             } catch (Exception e) {
@@ -246,7 +238,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             return;
         }
         try {
-            toolInvocationLedgerDao.updateToolInvocationFinish(ToolInvocation.builder()
+            executionLedgerWriteRepository.updateToolInvocationFinish(ToolInvocation.builder()
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
                     .llmObservation(record.getLlmObservation())
@@ -336,7 +328,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         if (entities.isEmpty()) {
             return;
         }
-        int inserted = artifactLedgerDao.batchInsertArtifacts(entities);
+        int inserted = executionLedgerWriteRepository.batchInsertArtifacts(entities);
         if (inserted < entities.size()) {
             throw new IllegalStateException(String.format(
                     "artifact duplicate or ignored, expected=%d, inserted=%d", entities.size(), inserted));
@@ -427,10 +419,10 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
      * 会话主表只承接摘要和排序字段，避免再扫一遍 tool/artifact 明细。
      */
     private void upsertSessionHead(DialogueSessionUpsertRecord record) {
-        if (dialogueSessionLedgerDao == null || record == null || StringUtils.isBlank(record.getSessionId())) {
+        if (record == null || StringUtils.isBlank(record.getSessionId())) {
             return;
         }
-        dialogueSessionLedgerDao.upsertSession(record);
+        executionLedgerWriteRepository.upsertSession(record);
     }
 
     private String resolveSessionTitle(String queryText) {
@@ -446,17 +438,17 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     }
 
     private int queryRunCount(String sessionId) {
-        return dialogueRunLedgerDao.queryBySessionId(sessionId).size();
+        return executionLedgerWriteRepository.queryRunsBySessionId(sessionId).size();
     }
 
     private int queryFinishedRunCount(String sessionId) {
-        return (int) dialogueRunLedgerDao.queryBySessionId(sessionId).stream()
+        return (int) executionLedgerWriteRepository.queryRunsBySessionId(sessionId).stream()
                 .filter(item -> item != null && ExecutionLedgerConstants.STATUS_SUCCESS == defaultZero(item.getStatus()))
                 .count();
     }
 
     private int queryFailedRunCount(String sessionId) {
-        return (int) dialogueRunLedgerDao.queryBySessionId(sessionId).stream()
+        return (int) executionLedgerWriteRepository.queryRunsBySessionId(sessionId).stream()
                 .filter(item -> item != null && isFailedStatus(item.getStatus()))
                 .count();
     }
@@ -469,7 +461,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     }
 
     private LocalDateTime resolveSessionStartedAt(String sessionId, LocalDateTime fallback) {
-        List<DialogueRunView> runs = dialogueRunLedgerDao.queryBySessionId(sessionId);
+        List<DialogueRunView> runs = executionLedgerWriteRepository.queryRunsBySessionId(sessionId);
         if (CollectionUtils.isEmpty(runs) || runs.get(0) == null || runs.get(0).getStartedAt() == null) {
             return fallback;
         }

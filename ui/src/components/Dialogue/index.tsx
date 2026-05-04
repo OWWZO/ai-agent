@@ -51,6 +51,10 @@ import {
   buildPlannerRoundsForDisplay,
   syncPlannerVersionCursor,
 } from "./plannerHistory";
+import {
+  isTimelineTaskContainerCompleted,
+  shouldShowTimelineGroupCompletedIcon,
+} from "./timelineStatus";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -505,30 +509,25 @@ const resolveDigitalEmployee = (task: CHAT.Task): string | undefined => {
   return task.children?.find((child) => child.digitalEmployee)?.digitalEmployee;
 };
 
-const isTaskGroupCompleted = (task: CHAT.Task): boolean => {
-  if (!task.children || task.children.length === 0) return false;
-  return task.children.every((child) => child.finish || child.isFinal);
-};
-
 const TimeLineContent: FC<{
   chat: CHAT.ChatItem;
   tasks: CHAT.Task[];
-  isReactType: boolean;
+  isPlanSolveMessage: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
-}> = ({ chat, tasks, isReactType, changeActiveChat, changePlan, changeFile }) => {
+}> = ({ chat, tasks, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => {
   return (
     <>
       {tasks.map((task, taskIndex) => {
         const digitalEmployee = resolveDigitalEmployee(task);
-        const taskCompleted = isTaskGroupCompleted(task);
+        const taskCompleted = isTimelineTaskContainerCompleted(task);
         return (
           <div
             key={task.id || task.messageId || task.taskId || taskIndex}
             className="overflow-hidden"
           >
-            {!isReactType && task.task ? (
+            {isPlanSolveMessage && task.task ? (
               <div className="mb-1">
                 <div className="font-[500]">{task.task}</div>
                 {digitalEmployee && (
@@ -586,31 +585,37 @@ const TimeLineContent: FC<{
 
 const TimeLine: FC<{
   chat: CHAT.ChatItem;
-  isReactType: boolean;
+  isPlanSolveMessage: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
-}> = ({ chat, isReactType, changeActiveChat, changePlan, changeFile }) => (
+}> = ({ chat, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => (
   <>
     {chat.tasks.map((t, i) => {
       const lastTask = i === chat.tasks.length - 1;
       const groupKey = t[0]?.id || t[0]?.messageId || t[0]?.taskId || i;
+      const showCompletedIcon = shouldShowTimelineGroupCompletedIcon({
+        isPlanSolve: isPlanSolveMessage,
+        isLastGroup: lastTask,
+        loading: chat.loading,
+        tasks: t,
+      });
       return (
         <div className="flex w-full" key={groupKey}>
-          {!isReactType ? (
+          {isPlanSolveMessage ? (
             <div className="relative mb-2 mt-1 w-8 shrink-0 overflow-hidden">
               {lastTask && chat.loading ? (
                 <LoadingSpinner/>
-              ) : (
+              ) : showCompletedIcon ? (
                 <i className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[#0071e3]"></i>
-              )}
+              ) : null}
             </div>
           ) : null}
           <div className="mb-2 flex-1 overflow-hidden">
             <TimeLineContent
               chat={chat}
               tasks={t}
-              isReactType={isReactType}
+              isPlanSolveMessage={isPlanSolveMessage}
               changeActiveChat={changeActiveChat}
               changePlan={changePlan}
               changeFile={changeFile}
@@ -897,7 +902,7 @@ const DialogueComponent: FC<Props> = (props) => {
         <div className="mt-6 w-full">
           <TimeLine
             chat={chat}
-            isReactType={isReactType}
+            isPlanSolveMessage={isPlanSolveMessage}
             changeActiveChat={changeActiveChat}
             changePlan={changePlan}
             changeFile={changeFile}

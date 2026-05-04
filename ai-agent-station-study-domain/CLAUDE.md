@@ -6,6 +6,8 @@
 
 核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。实现 Agent 执行引擎、任务调度、策略模式等核心能力。
 
+Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。`domain` 对外只保留领域模型、领域服务和仓储端口定义。
+
 ---
 
 ## 入口与启动
@@ -84,6 +86,13 @@
 - `SummaryAgent`: 总结 Agent
 - `AgentState`: Agent 状态枚举
 - `AgentType`: Agent 类型枚举
+
+### Reactor Phase 1 边界
+- legacy `/1/**`、`/data/**` controller 已迁到 `ai-agent-station-study-trigger`
+- `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 已迁到 `ai-agent-station-study-app`
+- execution ledger 只在本模块定义 `IExecutionLedgerReadRepository`、`IExecutionLedgerWriteRepository` 端口，由 `infrastructure` 提供生产实现
+- `ReactorConfig` 仍是过渡态共享配置契约，本期仅允许通过测试和文档锁边界，不做物理迁移
+- `SessionContextMemoryServiceImpl`、tool-output 读写、workspace-image 与 ledger 持久化类型物理迁移仍属于后续阶段
 
 ---
 

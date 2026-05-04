@@ -1,10 +1,12 @@
-package org.wwz.ai.domain.agent.reactor.config.data;
+package org.wwz.ai.config.reactor.data;
 
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
+import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
 import org.wwz.ai.domain.agent.reactor.util.ESUtil;
 
 @Slf4j

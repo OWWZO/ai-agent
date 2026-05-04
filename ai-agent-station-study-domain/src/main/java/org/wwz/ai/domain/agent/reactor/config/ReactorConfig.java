@@ -13,6 +13,10 @@ import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Reactor Phase 1 期间保留在 domain 的过渡态共享配置契约。
+ * 后续如继续做边界收敛，需要单独 change 处理，当前阶段禁止顺手迁移或改写读取语义。
+ */
 @Slf4j
 @Getter
 @Configuration

@@ -1,4 +1,4 @@
-package org.wwz.ai.domain.agent.reactor.config;
+package org.wwz.ai.config.reactor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
