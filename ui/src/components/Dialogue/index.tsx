@@ -1,4 +1,4 @@
-import { FC, useState, useCallback, useMemo, memo } from "react";
+import { FC, useState, useCallback, useMemo, memo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -47,6 +47,10 @@ import {
   isPlanSolveConversation,
   isStructuredConversation,
 } from "@/utils/agentMode";
+import {
+  buildPlannerRoundsForDisplay,
+  syncPlannerVersionCursor,
+} from "./plannerHistory";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -118,7 +122,23 @@ const resolvePlanStepTone = (status?: string) => {
   }
 };
 
-const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
+const PlanSection: FC<{
+  plan?: CHAT.Plan;
+  versionLabel?: string;
+  onPrev?: () => void;
+  onNext?: () => void;
+  canPrev?: boolean;
+  canNext?: boolean;
+  staticSnapshot?: boolean;
+}> = memo(({
+  plan,
+  versionLabel,
+  onPrev,
+  onNext,
+  canPrev,
+  canNext,
+  staticSnapshot = false,
+}) => {
   const normalizedPlan = useMemo(() => normalizePlanForDisplay(plan), [plan]);
 
   if (!normalizedPlan || !normalizedPlan.stages.length) {
@@ -162,8 +182,37 @@ const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
             </p>
           </div>
         </div>
-        <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-          {completedCount}/{normalizedPlan.stages.length}
+        <div className="flex items-center gap-2">
+          {versionLabel ? (
+            <div className="inline-flex items-center gap-1 rounded-full bg-[var(--chat-surface)] px-2 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
+              <button
+                type="button"
+                className="rounded px-1 disabled:opacity-40"
+                onClick={onPrev}
+                disabled={!canPrev}
+              >
+                {"<"}
+              </button>
+              <span>{versionLabel}</span>
+              <button
+                type="button"
+                className="rounded px-1 disabled:opacity-40"
+                onClick={onNext}
+                disabled={!canNext}
+              >
+                {">"}
+              </button>
+            </div>
+          ) : null}
+          {!staticSnapshot ? (
+            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+              {completedCount}/{normalizedPlan.stages.length}
+            </div>
+          ) : (
+            <div className="shrink-0 rounded-full bg-[var(--chat-surface)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+              历史快照
+            </div>
+          )}
         </div>
       </div>
       <div className="space-y-2.5">
@@ -199,12 +248,14 @@ const PlanSection: FC<{ plan?: CHAT.Plan }> = memo(({ plan }) => {
                     <span className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
                       {stage}
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone.badgeClass}`}
-                    >
-                      <span className={`h-1.5 w-1.5 rounded-full ${tone.dotClass}`}></span>
-                      {tone.label}
-                    </span>
+                    {!staticSnapshot ? (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone.badgeClass}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${tone.dotClass}`}></span>
+                        {tone.label}
+                      </span>
+                    ) : null}
                   </div>
                   {stepDetail ? (
                     <p className="mt-2 text-[13px] leading-relaxed text-[var(--chat-text-soft)]">
@@ -650,13 +701,48 @@ const DialogueComponent: FC<Props> = (props) => {
   const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
-  const thoughtText = streamingThought ?? chat.thought ?? "";
+  const plannerRounds = useMemo(
+    () => buildPlannerRoundsForDisplay(chat, streamingThought),
+    [chat, streamingThought]
+  );
+  const [thoughtVersionIndex, setThoughtVersionIndex] = useState(() =>
+    Math.max(plannerRounds.length - 1, 0)
+  );
+  const [planVersionIndex, setPlanVersionIndex] = useState(() =>
+    Math.max(plannerRounds.length - 1, 0)
+  );
+  const previousRoundCountRef = useRef(plannerRounds.length);
+  useEffect(() => {
+    const previousCount = previousRoundCountRef.current;
+    const nextCount = plannerRounds.length;
+    setThoughtVersionIndex((current) =>
+      syncPlannerVersionCursor(current, previousCount, nextCount)
+    );
+    setPlanVersionIndex((current) =>
+      syncPlannerVersionCursor(current, previousCount, nextCount)
+    );
+    previousRoundCountRef.current = nextCount;
+  }, [plannerRounds.length]);
+  const latestRoundIndex = Math.max(plannerRounds.length - 1, 0);
+  const selectedThoughtRound = plannerRounds[thoughtVersionIndex];
+  const selectedPlanRound = plannerRounds[planVersionIndex];
+  const thoughtText = selectedThoughtRound?.planThought || "";
+  const displayedPlan = selectedPlanRound?.plan || chat.plan;
+  const thoughtVersionLabel =
+    plannerRounds.length > 1
+      ? `${thoughtVersionIndex + 1}/${plannerRounds.length}`
+      : undefined;
+  const planVersionLabel =
+    plannerRounds.length > 1
+      ? `${planVersionIndex + 1}/${plannerRounds.length}`
+      : undefined;
+  const planIsHistoricalSnapshot = planVersionIndex < latestRoundIndex;
   const conclusionMarkdownScope = resolveConclusionMarkdownScope(chat, deepThink);
   const hasAssistantPayload =
     !!chat.response ||
     !!thoughtText ||
     !!chat.tip ||
-    !!chat.plan ||
+    !!displayedPlan ||
     !!chat.tasks.length ||
     !!chat.conclusion;
   const showStandaloneResponse =
@@ -754,7 +840,37 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
         <div className="mt-6 w-full overflow-hidden rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/40 p-3 shadow-[var(--shadow-sm)] ring-0">
-          <Reasoning isStreaming={chat.loading} defaultOpen className="not-prose mb-0">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-[12px] font-medium text-[var(--chat-text-muted)]">
+              Planner Thought
+            </div>
+            {thoughtVersionLabel ? (
+              <div className="inline-flex items-center gap-1 rounded-full bg-[var(--chat-surface)] px-2 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
+                <button
+                  type="button"
+                  className="rounded px-1 disabled:opacity-40"
+                  onClick={() => setThoughtVersionIndex((current) => Math.max(current - 1, 0))}
+                  disabled={thoughtVersionIndex <= 0}
+                >
+                  {"<"}
+                </button>
+                <span>{thoughtVersionLabel}</span>
+                <button
+                  type="button"
+                  className="rounded px-1 disabled:opacity-40"
+                  onClick={() => setThoughtVersionIndex((current) => Math.min(current + 1, latestRoundIndex))}
+                  disabled={thoughtVersionIndex >= latestRoundIndex}
+                >
+                  {">"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <Reasoning
+            isStreaming={chat.loading && thoughtVersionIndex === latestRoundIndex}
+            defaultOpen
+            className="not-prose mb-0"
+          >
             <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/32" />
             <ReasoningContent>{thoughtText}</ReasoningContent>
           </Reasoning>
@@ -762,9 +878,17 @@ const DialogueComponent: FC<Props> = (props) => {
       ) : null}
 
       {/* 任务计划 */}
-      {!isReactType && chat.plan ? (
+      {!isReactType && displayedPlan ? (
         <div className="mt-6 w-full">
-          <PlanSection plan={chat.plan} />
+          <PlanSection
+            plan={displayedPlan}
+            versionLabel={planVersionLabel}
+            onPrev={() => setPlanVersionIndex((current) => Math.max(current - 1, 0))}
+            onNext={() => setPlanVersionIndex((current) => Math.min(current + 1, latestRoundIndex))}
+            canPrev={planVersionIndex > 0}
+            canNext={planVersionIndex < latestRoundIndex}
+            staticSnapshot={planIsHistoricalSnapshot}
+          />
         </div>
       ) : null}
 

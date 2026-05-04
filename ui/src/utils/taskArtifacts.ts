@@ -157,6 +157,56 @@ const readNestedResultMap = (taskLike: any) => {
   return nested && typeof nested === "object" ? nested : undefined;
 };
 
+const readResultMapFile = (resultMap?: Record<string, unknown>) => {
+  if (!resultMap || typeof resultMap !== "object") {
+    return null;
+  }
+
+  const previewUrl = firstText(resultMap.previewUrl, resultMap.domainUrl, resultMap.url);
+  const downloadUrl = firstText(
+    resultMap.downloadUrl,
+    resultMap.ossUrl,
+    resultMap.previewUrl,
+    resultMap.domainUrl,
+    resultMap.url
+  );
+  const primaryFileName = firstText(
+    resultMap.primaryFileName,
+    resultMap.fileName,
+    resultMap.filename,
+    resultMap.displayName,
+    resultMap.name
+  );
+
+  if (!previewUrl && !downloadUrl && !primaryFileName) {
+    return null;
+  }
+
+  return {
+    previewUrl,
+    downloadUrl,
+    domainUrl: previewUrl,
+    ossUrl: downloadUrl,
+    fileName: primaryFileName,
+    displayName: primaryFileName,
+  };
+};
+
+const readPrimaryResultMapFile = (taskLike: any) => {
+  const nestedResultMap = readNestedResultMap(taskLike);
+  const nestedFile = readResultMapFile(nestedResultMap);
+  const currentFile = readResultMapFile(taskLike?.resultMap);
+
+  if (!nestedFile && !currentFile) {
+    return null;
+  }
+
+  return {
+    ...(nestedFile || {}),
+    ...(currentFile || {}),
+  };
+};
+
 const readRawFiles = (taskLike: any) => {
   if (!taskLike || typeof taskLike !== "object") {
     return [];
@@ -199,9 +249,56 @@ export const getTaskFiles = (taskLike: any): CHAT.TFile[] => {
     dedup.set(key, file);
   });
 
-  return Array.from(dedup.values());
+  const files = Array.from(dedup.values());
+  const primaryFilePatch = normalizeTaskFile(readPrimaryResultMapFile(taskLike));
+
+  if (!primaryFilePatch) {
+    return files;
+  }
+
+  if (!files.length) {
+    return [primaryFilePatch];
+  }
+
+  // 历史回放里 fileInfo 常带预览地址，而顶层 resultMap 更适合补充主文件名和下载地址。
+  files[0] = {
+    ...files[0],
+    name:
+      files[0].name && files[0].name !== "未命名文件"
+        ? files[0].name
+        : primaryFilePatch.name,
+    url: files[0].url || primaryFilePatch.url,
+    downloadUrl: primaryFilePatch.downloadUrl || files[0].downloadUrl,
+    missing: files[0].missing && primaryFilePatch.missing,
+    missingReason: files[0].missingReason || primaryFilePatch.missingReason,
+    resourceKey: files[0].resourceKey || primaryFilePatch.resourceKey,
+    mimeType: files[0].mimeType || primaryFilePatch.mimeType,
+  };
+
+  return files;
 };
 
 export const getPrimaryTaskFile = (taskLike: any): CHAT.TFile | undefined => {
   return getTaskFiles(taskLike)[0];
+};
+
+/**
+ * file/get 的历史回放有时只有正文和主文件名，不一定还能恢复出完整附件引用。
+ * 这里统一补一个文件名兜底，保证工作区和动作标题都能明确展示“读取了哪个文件”。
+ */
+export const getPrimaryTaskFileName = (taskLike: any): string => {
+  const primaryFile = getPrimaryTaskFile(taskLike);
+  if (primaryFile?.name?.trim()) {
+    return primaryFile.name.trim();
+  }
+
+  const nestedResultMap = readNestedResultMap(taskLike);
+  return firstText(
+    taskLike?.resultMap?.primaryFileName,
+    nestedResultMap?.primaryFileName,
+    taskLike?.resultMap?.fileName,
+    nestedResultMap?.fileName,
+    taskLike?.resultMap?.filename,
+    nestedResultMap?.filename
+  );
 };

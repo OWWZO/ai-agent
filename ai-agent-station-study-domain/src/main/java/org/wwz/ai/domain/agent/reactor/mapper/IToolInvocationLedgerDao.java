@@ -19,6 +19,10 @@ public interface IToolInvocationLedgerDao {
 
     List<ToolInvocation> queryByRunId(@Param("runId") Long runId);
 
+    List<ToolInvocation> queryByRunIds(@Param("runIds") List<Long> runIds);
+
+    List<ToolInvocation> queryByLlmInvocationIds(@Param("llmInvocationIds") List<Long> llmInvocationIds);
+
     List<ToolInvocationView> queryRecentByToolName(@Param("toolName") String toolName,
                                                    @Param("limit") int limit);
 }

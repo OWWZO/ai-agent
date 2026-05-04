@@ -3,6 +3,7 @@ import { useRequest } from "ahooks";
 import { Alert } from "antd";
 import MarkdownRenderer from "./MarkdownRenderer";
 import Loading from "./Loading";
+import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
 
 const LOADING_CLASS = 'mr-32';
 const ERROR_CLASS = "m-12 md:m-24 min-w-[260px] max-w-[calc(100%-24px)] md:max-w-[calc(100%-48px)] [&_.ant-alert-description]:break-words [&_.ant-alert-description]:whitespace-normal";
@@ -74,27 +75,46 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
   const markStr = useMemo(() => formatFileContent(ext, data), [ext, data]);
 
   if (loading) {
-    return <Loading className={LOADING_CLASS} />;
+    return (
+      <ViewerPanelShell
+        label="FILE"
+        subtitle={fileName || "文件预览"}
+        className={className}
+      >
+        <Loading className={LOADING_CLASS} />
+      </ViewerPanelShell>
+    );
   }
 
   if (error) {
     return (
-      <Alert
-        type="error"
-        message="内容不可读取"
-        description={resolveUnavailableReason(error as Error)}
-        showIcon
-        className={ERROR_CLASS}
-      />
+      <ViewerPanelShell
+        label="FILE"
+        subtitle={fileName || "文件预览"}
+        className={className}
+      >
+        <Alert
+          type="error"
+          message="内容不可读取"
+          description={resolveUnavailableReason(error as Error)}
+          showIcon
+          className={ERROR_CLASS}
+        />
+      </ViewerPanelShell>
     );
   }
 
   return (
-    <MarkdownRenderer
-      markDownContent={markStr}
+    <ViewerPanelShell
+      label="FILE"
+      subtitle={fileName || "文件预览"}
       className={className}
-      normalizationScope="default"
-    />
+    >
+      <MarkdownRenderer
+        markDownContent={markStr}
+        normalizationScope="default"
+      />
+    </ViewerPanelShell>
   );
 });
 

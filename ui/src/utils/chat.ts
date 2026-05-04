@@ -1,4 +1,4 @@
-import { getPrimaryTaskFile, normalizeTaskFile } from "@/utils/taskArtifacts";
+import { getPrimaryTaskFile, getPrimaryTaskFileName, normalizeTaskFile } from "@/utils/taskArtifacts";
 import {
   formatDeepSearchQueryText,
   resolveDeepSearchActionText,
@@ -27,6 +27,69 @@ export const combineData = (
   }
   return currentChat;
 };
+
+function ensurePlannerRounds(currentChat: CHAT.ChatItem) {
+  if (!Array.isArray(currentChat.multiAgent.plannerRounds)) {
+    currentChat.multiAgent.plannerRounds = [];
+  }
+  return currentChat.multiAgent.plannerRounds;
+}
+
+function resolveLegacyPlannerRoundId(eventData: MESSAGE.EventData) {
+  const resultMap = eventData?.resultMap as MESSAGE.Task | undefined;
+  return (
+    resultMap?.plannerRoundId ||
+    eventData?.taskId ||
+    eventData?.messageId ||
+    ""
+  );
+}
+
+function findPlannerRoundIndex(
+  plannerRounds: CHAT.PlannerRound[],
+  plannerRoundId: string
+) {
+  return plannerRounds.findIndex((item) => item.plannerRoundId === plannerRoundId);
+}
+
+function upsertPlannerRound(
+  currentChat: CHAT.ChatItem,
+  plannerRoundId: string,
+  updater: (round: CHAT.PlannerRound) => void
+) {
+  if (!plannerRoundId) {
+    return undefined;
+  }
+
+  const plannerRounds = ensurePlannerRounds(currentChat);
+  const index = findPlannerRoundIndex(plannerRounds, plannerRoundId);
+  const nextRound =
+    index === -1
+      ? ({ plannerRoundId } as CHAT.PlannerRound)
+      : ({ ...plannerRounds[index] } as CHAT.PlannerRound);
+
+  updater(nextRound);
+
+  if (index === -1) {
+    plannerRounds.push(nextRound);
+  } else {
+    plannerRounds[index] = nextRound;
+  }
+
+  return nextRound;
+}
+
+function syncLatestPlannerAlias(currentChat: CHAT.ChatItem) {
+  const plannerRounds = currentChat.multiAgent.plannerRounds || [];
+  const latestRound = plannerRounds[plannerRounds.length - 1];
+  if (!latestRound) {
+    return;
+  }
+
+  currentChat.multiAgent.plan_thought = latestRound.planThought;
+  currentChat.multiAgent.plan = latestRound.plan;
+  currentChat.thought = latestRound.planThought || "";
+}
 
 type TaskRenderCacheEntry = {
   signature: string;
@@ -128,12 +191,22 @@ function handlePlanMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
-  if (eventData.taskId) {
-    currentChat.multiAgent.plan = {
-      taskId: eventData.taskId,
-      ...eventData?.resultMap,
-    } as unknown as CHAT.Plan;
+  const plannerRoundId = resolveLegacyPlannerRoundId(eventData);
+  if (!plannerRoundId) {
+    return;
   }
+
+  const nextPlan = {
+    taskId: eventData.taskId,
+    ...eventData?.resultMap,
+  } as unknown as CHAT.Plan;
+
+  upsertPlannerRound(currentChat, plannerRoundId, (round) => {
+    round.plan = nextPlan;
+    round.planMessageId = eventData.messageId;
+    round.planTaskId = eventData.taskId;
+  });
+  syncLatestPlannerAlias(currentChat);
 }
 
 /**
@@ -145,17 +218,22 @@ function handlePlanThoughtMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
-  if (!currentChat.multiAgent.plan_thought) {
-    currentChat.multiAgent.plan_thought = "";
+  const plannerRoundId = resolveLegacyPlannerRoundId(eventData);
+  if (!plannerRoundId) {
+    return;
   }
-  if (eventData.resultMap.isFinal) {
-    currentChat.multiAgent.plan_thought = eventData.resultMap.planThought;
-  } else {
-    currentChat.multiAgent.plan_thought += eventData.resultMap.planThought;
-  }
-  // Keep thought in sync immediately so streaming UI can update
-  // without waiting for heavy task aggregation.
-  currentChat.thought = currentChat.multiAgent.plan_thought;
+
+  upsertPlannerRound(currentChat, plannerRoundId, (round) => {
+    const currentThought = round.planThought || "";
+    if (eventData.resultMap.isFinal) {
+      round.planThought = eventData.resultMap.planThought;
+    } else {
+      round.planThought = `${currentThought}${eventData.resultMap.planThought || ""}`;
+    }
+    round.planThoughtMessageId = eventData.messageId;
+    round.planThoughtTaskId = eventData.taskId;
+  });
+  syncLatestPlannerAlias(currentChat);
 }
 
 /**
@@ -211,6 +289,14 @@ function handleTaskMessageByType(
   taskIndex: number
 ) {
   const messageType = eventData.resultMap.messageType;
+  if (messageType === "plan") {
+    handlePlanMessage({
+      ...eventData,
+      messageType: "plan",
+    }, currentChat);
+    return;
+  }
+
   const toolIndex = findToolIndex(
     currentChat.multiAgent.tasks!,
     taskIndex,
@@ -1264,11 +1350,10 @@ export const buildAction = (task: CHAT.Task) => {
    * @returns 动作信息对象
    */
   function handleFileTask(task: any) {
-    const primaryFile = getPrimaryTaskFile(task);
     return {
       action: task?.resultMap?.command || "",
       tool: "文件编辑器",
-      name: primaryFile?.name || ""
+      name: getPrimaryTaskFileName(task)
     };
   }
 

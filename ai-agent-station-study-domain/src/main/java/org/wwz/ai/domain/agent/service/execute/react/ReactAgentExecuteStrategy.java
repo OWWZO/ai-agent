@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.reactor.service.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.service.IExecuteStrategy;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
@@ -29,11 +30,15 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     @Resource
     private ReactorConfig reactorConfig;
 
+    @Resource
+    private SessionContextMemoryService sessionContextMemoryService;
+
     /**
      * 主入口：直接使用 AgentRequest，无转换（AutoAgent 等 Reactor 入口调用）
      */
     @Override
     public void execute(AgentRequest request, SseEmitter emitter) throws Exception {
+        enrichHistoryDialogue(request);
         applyOutputStyle(request);
         doExecute(request, emitter);
     }
@@ -76,6 +81,17 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             // 将风格提示词追加到用户原始查询后面
             request.setQuery(request.getQuery() + append);
         }
+    }
+
+    private void enrichHistoryDialogue(AgentRequest request) {
+        if (request == null) {
+            return;
+        }
+        // 每次进入执行策略前，都先用同一 session 下的历史账本重建 historyDialogue，
+        // 再交给后续 AgentContext 注入链路复用。
+        request.setHistoryDialogue(sessionContextMemoryService == null
+                ? ""
+                : sessionContextMemoryService.buildHistoryDialogue(request.getSessionId(), request.getRequestId()));
     }
 
 }

@@ -61,7 +61,7 @@ public class StreamResponseHandler {
         CompletableFuture<String> future = new CompletableFuture<>();
         StringBuilder allContent = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
-        String messageId = shouldPushStream(context, pushToClient) ? StringUtil.getUUID() : null;
+        String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();
         int[] tokenIndex = new int[]{1};
         int[] emittedLength = new int[]{0};
@@ -119,6 +119,16 @@ public class StreamResponseHandler {
     public CompletableFuture<LLM.ToolCallResponse> handleToolCallStream(AgentContext context,
                                                                         Flux<ChatResponse> flux,
                                                                         long startTimeMs) {
+        return handleToolCallStream(context, flux, startTimeMs, true);
+    }
+
+    /**
+     * 处理工具调用流式响应，并允许调用方决定是否向前端分发流式增量。
+     */
+    public CompletableFuture<LLM.ToolCallResponse> handleToolCallStream(AgentContext context,
+                                                                        Flux<ChatResponse> flux,
+                                                                        long startTimeMs,
+                                                                        boolean pushToClient) {
         // 异步结果容器
         CompletableFuture<LLM.ToolCallResponse> future = new CompletableFuture<>();
 
@@ -127,7 +137,7 @@ public class StreamResponseHandler {
         StringBuilder streamBuffer = new StringBuilder();    // 推送缓冲区
 
         // 流式推送配置
-        String messageId = shouldPushStream(context, true) ? StringUtil.getUUID() : null;
+        String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();   // 推送间隔配置
         int[] tokenIndex = new int[]{1};        // token计数器
 
@@ -153,7 +163,7 @@ public class StreamResponseHandler {
                         allContent.append(chunkContent);
 
                         // 流式推送：缓冲+按条件刷新
-                        if (messageId != null) {
+                        if (pushToClient && messageId != null) {
                             streamBuffer.append(chunkContent);
                             if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
                                 // 发送缓冲区内容(非结束)
@@ -194,7 +204,7 @@ public class StreamResponseHandler {
             () -> {
                 try {
                     // 发送剩余缓冲内容
-                    if (messageId != null && streamBuffer.length() > 0) {
+                    if (pushToClient && messageId != null && streamBuffer.length() > 0) {
                         context.getPrinter().send(messageId, context.getStreamMessageType(),
                             streamBuffer.toString(), false);
                     }
@@ -204,7 +214,7 @@ public class StreamResponseHandler {
                     String content = allContent.toString();
 
                     // 发送结束标记(带完整内容)
-                    if (messageId != null && StringUtils.isNotBlank(content)) {
+                    if (pushToClient && messageId != null && StringUtils.isNotBlank(content)) {
                         context.getPrinter().send(messageId, context.getStreamMessageType(),
                             content, true);  // true=结束
                     }
@@ -220,6 +230,7 @@ public class StreamResponseHandler {
                     future.complete(LLM.ToolCallResponse.builder()
                         .content(StringUtils.isBlank(content) ? null : content)
                         .toolCalls(toolCalls)
+                        .streamMessageId(messageId)
                         .finishReason(finishReason[0])
                         .totalTokens(totalTokens[0])
                         .duration(System.currentTimeMillis() - startTimeMs)
@@ -241,6 +252,12 @@ public class StreamResponseHandler {
         return context != null
                 && Boolean.TRUE.equals(context.getIsStream())
                 && context.getPrinter() != null
+                && StringUtils.isNotBlank(context.getStreamMessageType());
+    }
+
+    private boolean canAllocateStreamMessageId(AgentContext context) {
+        return context != null
+                && Boolean.TRUE.equals(context.getIsStream())
                 && StringUtils.isNotBlank(context.getStreamMessageType());
     }
 

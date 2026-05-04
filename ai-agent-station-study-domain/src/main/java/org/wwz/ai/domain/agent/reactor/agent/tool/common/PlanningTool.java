@@ -5,8 +5,12 @@ import lombok.Data;
 import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
 import org.wwz.ai.domain.agent.reactor.agent.dto.Plan;
 import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
+import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleResult;
+import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleService;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
 
 import java.util.*;
 import java.util.function.Function;
@@ -19,7 +23,9 @@ public class PlanningTool implements BaseTool {
 
     private AgentContext agentContext;
     private final Map<String, Function<Map<String, Object>, String>> commandHandlers = new HashMap<>();
+    private final PlanLifecycleService lifecycleService = new PlanLifecycleService();
     private Plan plan;
+    private boolean closeUpdateMode;
 
     public PlanningTool() {
         commandHandlers.put("create", this::createPlan);
@@ -131,11 +137,18 @@ public class PlanningTool implements BaseTool {
 
         Function<Map<String, Object>, String> handler = commandHandlers.get(command);
         if (handler != null) {
-            return handler.apply(params);
+            String observation = handler.apply(params);
+            return ToolResultPayload.structured(
+                    observation,
+                    observation,
+                    lastStructuredOutput
+            );
         } else {
             throw new IllegalArgumentException("Unknown command: " + command);
         }
     }
+
+    private PlanningToolOutput lastStructuredOutput;
 
     private String createPlan(Map<String, Object> params) {
         String title = (String) params.get("title");
@@ -149,7 +162,12 @@ public class PlanningTool implements BaseTool {
             throw new IllegalStateException("A plan already exists. Delete the current plan first.");
         }
 
-        plan = Plan.create(title, steps);
+        Plan beforePlan = snapshot(plan);
+        PlanLifecycleResult result = closeUpdateMode
+                ? createCompatPlan(title, steps)
+                : lifecycleService.create(title, steps);
+        plan = result.getPlan();
+        lastStructuredOutput = buildStructuredOutput("create", beforePlan, result);
         return "我已创建plan";
     }
 
@@ -160,13 +178,21 @@ public class PlanningTool implements BaseTool {
         if (plan == null) {
             throw new IllegalStateException("No plan exists. Create a plan first.");
         }
+        if (steps == null) {
+            throw new IllegalArgumentException("steps are required for update command");
+        }
 
-        plan.update(title, steps);
+        Plan beforePlan = snapshot(plan);
+        PlanLifecycleResult result = closeUpdateMode
+                ? updateCompatPlan(title, steps)
+                : lifecycleService.update(plan, title, steps);
+        plan = result.getPlan();
+        lastStructuredOutput = buildStructuredOutput("update", beforePlan, result);
         return "我已更新plan";
     }
 
     private String markStep(Map<String, Object> params) {
-        Integer stepIndex = (Integer) params.get("step_index");
+        Integer stepIndex = normalizeStepIndex((Integer) params.get("step_index"));
         String stepStatus = (String) params.get("step_status");
         String stepNotes = (String) params.get("step_notes");
 
@@ -178,23 +204,28 @@ public class PlanningTool implements BaseTool {
             throw new IllegalArgumentException("step_index is required for mark_step command");
         }
 
-        plan.updateStepStatus(stepIndex, stepStatus, stepNotes);
+        Plan beforePlan = snapshot(plan);
+        PlanLifecycleResult result = closeUpdateMode
+                ? markStepCompat(stepIndex, stepStatus, stepNotes)
+                : lifecycleService.markStep(plan, stepIndex, stepStatus, stepNotes);
+        plan = result.getPlan();
+        lastStructuredOutput = buildStructuredOutput("mark_step", beforePlan, result);
 
         return String.format("我已标记plan %d 为 %s", stepIndex, stepStatus);
     }
 
     private String finishPlan(Map<String, Object> params) {
-        if (Objects.isNull(plan)) {
-            plan = new Plan();
-        } else {
-            for (int stepIndex = 0; stepIndex < plan.getSteps().size(); stepIndex++) {
-                plan.updateStepStatus(stepIndex, "completed", "");
-            }
-        }
+        Plan beforePlan = snapshot(plan);
+        PlanLifecycleResult result = lifecycleService.finish(plan);
+        plan = result.getPlan();
+        lastStructuredOutput = buildStructuredOutput("finish", beforePlan, result);
         return "我已更新plan为完成状态";
     }
 
     public void stepPlan() {
+        if (plan == null) {
+            return;
+        }
         plan.stepPlan();
     }
 
@@ -204,6 +235,70 @@ public class PlanningTool implements BaseTool {
             return "目前还没有Plan";
         }
         return plan.format();
+    }
+
+    private PlanLifecycleResult createCompatPlan(String title, List<String> steps) {
+        return lifecycleService.create(title, steps);
+    }
+
+    private PlanLifecycleResult updateCompatPlan(String title, List<String> steps) {
+        plan.update(title, steps);
+        return lifecycleService.ensureExecutable(plan);
+    }
+
+    private PlanLifecycleResult markStepCompat(Integer stepIndex, String stepStatus, String stepNotes) {
+        plan.updateStepStatus(stepIndex, stepStatus, stepNotes);
+        if ("completed".equals(stepStatus)) {
+            return lifecycleService.ensureExecutable(plan);
+        }
+        return PlanLifecycleResult.builder()
+                .plan(plan)
+                .currentStep(plan.getCurrentStep())
+                .currentStepIndex(plan.getCurrentStepIndex())
+                .autoAdvanced(Boolean.FALSE)
+                .autoFinished(lifecycleService.isAllStepsCompleted(plan))
+                .build();
+    }
+
+    private PlanningToolOutput buildStructuredOutput(String command, Plan beforePlan, PlanLifecycleResult result) {
+        return PlanningToolOutput.builder()
+                .command(command)
+                .beforePlan(beforePlan)
+                .afterPlan(snapshot(result == null ? null : result.getPlan()))
+                .currentStep(result == null ? null : result.getCurrentStep())
+                .currentStepIndex(result == null ? null : result.getCurrentStepIndex())
+                .autoAdvanced(result != null && Boolean.TRUE.equals(result.getAutoAdvanced()))
+                .autoFinished(result != null && Boolean.TRUE.equals(result.getAutoFinished()))
+                .build();
+    }
+
+    /**
+     * 兼容模型按展示序号回写 step_index 的情况。
+     * 当前步骤在计划中的展示通常是 1-based，而工具协议本身要求 0-based；
+     * 当仅存在“当前步骤的展示序号”这一种明显候选时，自动折算为真实索引，减少无意义失败。
+     */
+    private Integer normalizeStepIndex(Integer stepIndex) {
+        if (stepIndex == null || plan == null || plan.getSteps() == null || plan.getSteps().isEmpty()) {
+            return stepIndex;
+        }
+        if (stepIndex >= 0 && stepIndex < plan.getSteps().size()) {
+            return stepIndex;
+        }
+
+        Integer currentStepIndex = plan.getCurrentStepIndex();
+        if (currentStepIndex == null) {
+            return stepIndex;
+        }
+
+        int displayedCurrentIndex = currentStepIndex + 1;
+        if (stepIndex.equals(displayedCurrentIndex)) {
+            return currentStepIndex;
+        }
+        return stepIndex;
+    }
+
+    private Plan snapshot(Plan source) {
+        return source == null ? null : source.copy();
     }
 }
 

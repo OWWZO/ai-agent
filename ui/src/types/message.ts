@@ -87,6 +87,17 @@ declare global {
       tasks: Task[][]
       plan?: Plan
       plan_thought?: string
+      plannerRounds?: PlannerRound[]
+    }
+
+    interface PlannerRound {
+      plannerRoundId: string
+      planThought?: string
+      planThoughtMessageId?: string
+      planThoughtTaskId?: string
+      plan?: Plan
+      planMessageId?: string
+      planTaskId?: string
     }
 
     interface Plan {
@@ -115,6 +126,7 @@ declare global {
       result?: string
       toolResult?: ToolResult
       planThought?: string
+      plannerRoundId?: string
       id: string
     }
 
@@ -164,6 +176,9 @@ declare global {
       fileList?: FileInfo[]
       fileInfo?: FileInfo[]
       command?: string
+      primaryFileName?: string
+      previewUrl?: string
+      downloadUrl?: string
       data?: string
       codeOutput?: string
       requestsId?: string
@@ -173,6 +188,7 @@ declare global {
       tip?: string;
       task?: string;
       artifactRefs?: ArtifactReference[]
+      plannerRoundId?: string
       refList?: {
         name: string
         pageContent: string

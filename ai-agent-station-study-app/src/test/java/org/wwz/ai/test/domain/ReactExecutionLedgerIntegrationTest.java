@@ -120,7 +120,7 @@ public class ReactExecutionLedgerIntegrationTest {
                         .planThought("先拆分执行计划")
                         .isFinal(true)
                         .finish(false)
-                        .resultMap(Map.of("agentType", 5))
+                        .resultMap(Map.of("agentType", 5, "plannerRoundId", "9001"))
                         .build(),
                 List.of(),
                 new EventResult()
@@ -136,9 +136,11 @@ public class ReactExecutionLedgerIntegrationTest {
         Assert.assertEquals("5", String.valueOf(realtime.getResultMap().get("agentType")));
         Assert.assertEquals("plan_thought", eventMessageType(realtime));
         Assert.assertEquals("plan_thought", nestedMessageType(realtime));
+        Assert.assertEquals("9001", nestedPlannerRoundId(realtime));
         Assert.assertFalse(historyFrames.isEmpty());
         Assert.assertEquals("plan_thought", eventMessageType(historyFrames.get(0)));
         Assert.assertEquals("plan_thought", nestedMessageType(historyFrames.get(0)));
+        Assert.assertEquals(String.valueOf(llmInvocationId), nestedPlannerRoundId(historyFrames.get(0)));
     }
 
     @SuppressWarnings("unchecked")
@@ -149,6 +151,12 @@ public class ReactExecutionLedgerIntegrationTest {
     @SuppressWarnings("unchecked")
     private String nestedMessageType(GptProcessResult frame) {
         return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("messageType"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String nestedPlannerRoundId(GptProcessResult frame) {
+        Object plannerRoundId = ((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("plannerRoundId");
+        return plannerRoundId == null ? null : String.valueOf(plannerRoundId);
     }
 
     private static final class TestAgent extends BaseAgent {

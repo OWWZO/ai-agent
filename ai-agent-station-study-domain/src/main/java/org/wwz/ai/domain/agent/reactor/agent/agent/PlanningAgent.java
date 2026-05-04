@@ -20,11 +20,14 @@ import org.wwz.ai.domain.agent.reactor.agent.prompt.PlanningPrompt;
 import org.wwz.ai.domain.agent.reactor.agent.tool.common.PlanningTool;
 import org.wwz.ai.domain.agent.reactor.agent.util.FileUtil;
 import org.wwz.ai.domain.agent.reactor.agent.util.SpringContextHolder;
+import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
@@ -46,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 public class PlanningAgent extends ReActAgent {
 
     private static final String STEP_STATUS_COMPLETED = "completed";
+    private static final String PLANNING_TOOL_NAME = "planning";
 
     /**
      * 大模型返回的工具调用列表（记录需要执行的工具及参数）
@@ -85,6 +89,18 @@ public class PlanningAgent extends ReActAgent {
     private String planId;
 
     /**
+     * 记录最近一次已经下发给执行器的 currentStep。
+     * 普通 replan 自动推进后，只允许同一 currentStep 被 dispatch 一次，避免外层循环重复执行同一任务。
+     */
+    private String lastDispatchedTask;
+
+    /**
+     * 当前 planner round 标识。
+     * 约束为 toolInvocationId，供同一轮 thought / plan / task 统一复用。
+     */
+    private String currentPlannerRoundId;
+
+    /**
      * 构造方法：初始化计划智能体的核心配置
      *
      * @param context 智能体上下文：包含用户查询、工具集合、日期信息、SOP提示词、请求ID等核心数据
@@ -121,6 +137,7 @@ public class PlanningAgent extends ReActAgent {
 
         // 6. 关联上下文&配置计划更新开关
         setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
+        planningTool.setCloseUpdateMode(getIsColseUpdate());
 
         // 7. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
         availableTools.addTool(planningTool);
@@ -172,16 +189,29 @@ public class PlanningAgent extends ReActAgent {
                     getMemory().getMessages(),
                     Message.systemMessage(getSystemPrompt(), null),
                     availableTools,
-                    ToolChoice.AUTO, null, context.getIsStream(), 3000
+                    ToolChoice.AUTO, null, context.getIsStream(), false, 3000
             );
 
             // 6. 同步获取异步结果（阻塞等待大模型响应）
             LLM.ToolCallResponse response = future.get();
             setToolCalls(response.getToolCalls()); // 保存大模型返回的工具调用列表
+            bindCurrentPlannerRoundId(response.getToolCalls());
+
+            if (context.getIsStream()
+                    && response.getContent() != null
+                    && !response.getContent().isEmpty()) {
+                printer.sendWithResultMap(
+                        resolvePlannerThoughtMessageId(response),
+                        "plan_thought",
+                        response.getContent(),
+                        buildPlannerRoundResultMap(),
+                        true
+                );
+            }
 
             // 7. 非流式场景：推送思考过程到前端/输出器
             if (!context.getIsStream() && response.getContent() != null && !response.getContent().isEmpty()) {
-                printer.send("plan_thought", response.getContent());
+                printer.sendWithResultMap("plan_thought", response.getContent(), buildPlannerRoundResultMap());
             }
 
             // 8. 日志记录：思考内容、选择的工具数量（用于监控/排查）
@@ -239,13 +269,13 @@ public class PlanningAgent extends ReActAgent {
             ToolExecutionOutcome outcome = executeToolOutcome(toolCall);
             String result = writeToolObservationToMemory(toolCall, outcome);
             results.add(result); // 收集工具执行结果
+            if (outcome != null && !outcome.isSuccess()) {
+                return result;
+            }
         }
 
         // 6. 计划已初始化的场景：处理计划下一步并返回任务
         if (Objects.nonNull(planningTool.getPlan())) {
-            if (isColseUpdate) {
-                planningTool.stepPlan(); // 关闭更新时，执行计划下一步
-            }
             return getNextTask(); // 返回下一步任务
         }
 
@@ -268,6 +298,9 @@ public class PlanningAgent extends ReActAgent {
      * @return 下一步任务标识："finish"（完成）/ 当前步骤字符串 / 空字符串
      */
     private String getNextTask() {
+        if (planningTool.getPlan() == null) {
+            throw new IllegalStateException("planning tool returned without a plan");
+        }
         // 1. 检查计划所有步骤是否都已完成
         boolean allComplete = planningTool.getPlan().getStepStatus().stream()
                 .allMatch(STEP_STATUS_COMPLETED::equals);
@@ -275,23 +308,29 @@ public class PlanningAgent extends ReActAgent {
         // 2. 所有步骤完成：标记智能体状态为FINISHED，推送计划结果，返回"finish"
         if (allComplete) {
             setState(AgentState.FINISHED);
-            printer.send("plan", planningTool.getPlan()); // 推送完整计划到前端
+            lastDispatchedTask = null;
+            printer.sendWithResultMap("plan", planningTool.getPlan(), buildPlannerRoundResultMap()); // 推送完整计划到前端
             return "finish";
         }
 
         // 3. 存在未完成步骤：处理当前步骤
         if (!planningTool.getPlan().getCurrentStep().isEmpty()) {
+            String currentStep = planningTool.getPlan().getCurrentStep();
+            if (Objects.equals(lastDispatchedTask, currentStep)) {
+                throw new IllegalStateException("current task already dispatched; planning must mutate plan before redispatch");
+            }
             setState(AgentState.FINISHED); // 标记当前计划步骤完成（进入下一轮）
             // 切割当前步骤（<sep>为步骤分隔符）
-            String[] currentSteps = planningTool.getPlan().getCurrentStep().split("<sep>");
-            printer.send("plan", planningTool.getPlan()); // 推送最新计划状态
+            String[] currentSteps = currentStep.split("<sep>");
+            printer.sendWithResultMap("plan", planningTool.getPlan(), buildPlannerRoundResultMap()); // 推送最新计划状态
             // 逐个推送当前步骤到前端（task类型消息）
             Arrays.stream(currentSteps).forEach(step -> printer.send("task", step));
-            return planningTool.getPlan().getCurrentStep(); // 返回当前步骤字符串
+            lastDispatchedTask = currentStep;
+            return currentStep; // 返回当前步骤字符串
         }
 
         // 4. 无当前步骤时返回空字符串
-        return "";
+        throw new IllegalStateException("plan has unfinished work but no executable current step");
     }
 
     /**
@@ -310,5 +349,54 @@ public class PlanningAgent extends ReActAgent {
         }
         // 调用父类ReActAgent的run方法：触发think()→act()的循环执行
         return super.run(request);
+    }
+
+    /**
+     * 规划链路要求 final thought / plan / task.messageType=plan 使用同一 round。
+     * 当前唯一稳定的 round key 是 planning tool 的 toolInvocationId。
+     */
+    private void bindCurrentPlannerRoundId(List<ToolCall> toolCalls) {
+        if (context == null || context.getAgentRunState() == null || toolCalls == null || toolCalls.isEmpty()) {
+            currentPlannerRoundId = null;
+            return;
+        }
+        for (ToolCall toolCall : toolCalls) {
+            if (toolCall == null
+                    || toolCall.getFunction() == null
+                    || !PLANNING_TOOL_NAME.equals(toolCall.getFunction().getName())) {
+                continue;
+            }
+            Map<String, Long> mapping = ensureToolInvocationIds(List.of(toolCall));
+            if (!mapping.isEmpty()) {
+                context.getAgentRunState().bindToolInvocationIds(mapping);
+            }
+            Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(toolCall.getId());
+            currentPlannerRoundId = toolInvocationId == null ? null : String.valueOf(toolInvocationId);
+            if (currentPlannerRoundId != null) {
+                return;
+            }
+        }
+        currentPlannerRoundId = null;
+    }
+
+    private Map<String, Object> buildPlannerRoundResultMap() {
+        if (currentPlannerRoundId == null || currentPlannerRoundId.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        resultMap.put("plannerRoundId", currentPlannerRoundId);
+        return resultMap;
+    }
+
+    /**
+     * 规划链路关闭增量透传时，仍需要复用一条稳定 messageId 补发最终 thought。
+     */
+    private String resolvePlannerThoughtMessageId(LLM.ToolCallResponse response) {
+        if (response != null
+                && response.getStreamMessageId() != null
+                && !response.getStreamMessageId().isBlank()) {
+            return response.getStreamMessageId();
+        }
+        return StringUtil.getUUID();
     }
 }

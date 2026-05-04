@@ -25,6 +25,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -184,6 +185,11 @@ public class MultiModalAgentToolTest {
         }
 
         @Override
+        public void send(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, String digitalEmployee, Boolean isFinal) {
+            messageTypes.add(messageType);
+        }
+
+        @Override
         public void send(String messageType, Object message) {
             messageTypes.add(messageType);
         }
@@ -195,6 +201,16 @@ public class MultiModalAgentToolTest {
 
         @Override
         public void send(String messageId, String messageType, Object message, Boolean isFinal) {
+            messageTypes.add(messageType);
+        }
+
+        @Override
+        public void sendWithResultMap(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, Boolean isFinal) {
+            messageTypes.add(messageType);
+        }
+
+        @Override
+        public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
             messageTypes.add(messageType);
         }
 

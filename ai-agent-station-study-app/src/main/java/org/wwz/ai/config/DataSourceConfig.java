@@ -8,11 +8,14 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.core.env.Environment;
+import org.springframework.core.type.AnnotatedTypeMetadata;
 
 import javax.sql.DataSource;
 import java.util.Objects;
@@ -21,6 +24,7 @@ import java.util.Objects;
  * 根据dev的参数 进行mysql 向量数据库的模板创建
  */
 @Configuration
+@Conditional(DataSourceConfig.DatabaseProfileCondition.class)
 public class DataSourceConfig {
 
     @Bean("mysqlDataSource")
@@ -119,6 +123,23 @@ public class DataSourceConfig {
     @Bean("pgVectorJdbcTemplate")
     public JdbcTemplate pgVectorJdbcTemplate(@Qualifier("pgVectorDataSource") DataSource dataSource) {
         return new JdbcTemplate(dataSource);
+    }
+
+    /**
+     * test profile 明确禁用数据库链路，避免在纯单元回归或无库环境中解析缺失占位符。
+     */
+    static class DatabaseProfileCondition implements org.springframework.context.annotation.Condition {
+
+        @Override
+        public boolean matches(org.springframework.context.annotation.ConditionContext context, AnnotatedTypeMetadata metadata) {
+            Environment environment = context.getEnvironment();
+            for (String profile : environment.getActiveProfiles()) {
+                if ("test".equalsIgnoreCase(profile)) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
 }

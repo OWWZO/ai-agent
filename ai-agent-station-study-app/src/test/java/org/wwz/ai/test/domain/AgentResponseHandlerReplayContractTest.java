@@ -25,9 +25,11 @@ public class AgentResponseHandlerReplayContractTest {
 
     @Test
     public void shouldEmitPlanThoughtAsTopLevelPlanThoughtEvent() {
+        EventResult eventResult = new EventResult();
+        eventResult.getResultMap().put("plannerRoundId", "planner-round-001");
         GptProcessResult result = handler.build(
                 AgentRequest.builder().requestId("req-handler-001").build(),
-                new EventResult(),
+                eventResult,
                 AgentResponse.builder()
                         .requestId("req-handler-001")
                         .messageId("msg-plan-thought-1")
@@ -36,13 +38,14 @@ public class AgentResponseHandlerReplayContractTest {
                         .planThought("先规划执行步骤")
                         .isFinal(true)
                         .finish(false)
-                        .resultMap(Map.of("agentType", 3))
+                        .resultMap(Map.of("agentType", 3, "plannerRoundId", "planner-round-001"))
                         .build()
         );
 
         Assert.assertEquals("plan_thought", eventData(result).get("messageType"));
         Assert.assertEquals("先规划执行步骤", frameResultMap(result).get("planThought"));
         Assert.assertEquals(Boolean.TRUE, frameResultMap(result).get("isFinal"));
+        Assert.assertEquals("planner-round-001", frameResultMap(result).get("plannerRoundId"));
     }
 
     @Test
@@ -87,6 +90,50 @@ public class AgentResponseHandlerReplayContractTest {
         Assert.assertEquals("5", String.valueOf(result.getResultMap().get("agentType")));
         Assert.assertEquals("task", eventData(result).get("messageType"));
         Assert.assertEquals("result", frameResultMap(result).get("messageType"));
+    }
+
+    @Test
+    public void shouldReuseSamePlannerRoundIdForPlanThoughtAndTaskWrappedPlan() {
+        EventResult eventResult = new EventResult();
+        eventResult.getResultMap().put("plannerRoundId", "planner-round-002");
+
+        GptProcessResult thoughtFrame = handler.build(
+                AgentRequest.builder().requestId("req-handler-004").build(),
+                eventResult,
+                AgentResponse.builder()
+                        .requestId("req-handler-004")
+                        .messageId("msg-plan-thought-2")
+                        .messageType("plan_thought")
+                        .messageTime("1714630003000")
+                        .planThought("重排计划")
+                        .isFinal(true)
+                        .finish(false)
+                        .resultMap(Map.of("agentType", 3, "plannerRoundId", "planner-round-002"))
+                        .build()
+        );
+        GptProcessResult planFrame = handler.build(
+                AgentRequest.builder().requestId("req-handler-004").build(),
+                eventResult,
+                AgentResponse.builder()
+                        .requestId("req-handler-004")
+                        .messageId("msg-plan-2")
+                        .messageType("plan")
+                        .messageTime("1714630003001")
+                        .plan(AgentResponse.Plan.builder()
+                                .title("第二轮计划")
+                                .stages(List.of("阶段一"))
+                                .steps(List.of("步骤一"))
+                                .stepStatus(List.of("in_progress"))
+                                .notes(List.of(""))
+                                .build())
+                        .isFinal(true)
+                        .finish(false)
+                        .resultMap(Map.of("agentType", 3, "plannerRoundId", "planner-round-002"))
+                        .build()
+        );
+
+        Assert.assertEquals("planner-round-002", frameResultMap(thoughtFrame).get("plannerRoundId"));
+        Assert.assertEquals("planner-round-002", frameResultMap(planFrame).get("plannerRoundId"));
     }
 
     @SuppressWarnings("unchecked")

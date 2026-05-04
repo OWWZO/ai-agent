@@ -31,6 +31,16 @@ public class SSEPrinter implements Printer {
     //TODO:包含重复逻辑
     @Override
     public void send(String messageId, String messageType, Object message, String digitalEmployee, Boolean isFinal) {
+        send(messageId, messageType, message, null, digitalEmployee, isFinal);
+    }
+
+    @Override
+    public void send(String messageId,
+                     String messageType,
+                     Object message,
+                     Map<String, Object> extraResultMap,
+                     String digitalEmployee,
+                     Boolean isFinal) {
         try {
 
             //若未传消息ID，自动生成UUID
@@ -57,6 +67,10 @@ public class SSEPrinter implements Printer {
                     .finish(finish)
                     .isFinal(isFinal)
                     .build();
+
+            if (extraResultMap != null && !extraResultMap.isEmpty()) {
+                resultMap.putAll(extraResultMap);
+            }
 
             if (!StringUtils.isEmpty(digitalEmployee)) {
                 response.setDigitalEmployee(digitalEmployee);
@@ -150,7 +164,21 @@ public class SSEPrinter implements Printer {
 
     @Override
     public void send(String messageId, String messageType, Object message, Boolean isFinal) {
-        send(messageId, messageType, message, null, isFinal);
+        send(messageId, messageType, message, (String) null, isFinal);
+    }
+
+    @Override
+    public void sendWithResultMap(String messageId,
+                                  String messageType,
+                                  Object message,
+                                  Map<String, Object> extraResultMap,
+                                  Boolean isFinal) {
+        send(messageId, messageType, message, extraResultMap, null, isFinal);
+    }
+
+    @Override
+    public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
+        send(null, messageType, message, extraResultMap, null, true);
     }
 
     @Override

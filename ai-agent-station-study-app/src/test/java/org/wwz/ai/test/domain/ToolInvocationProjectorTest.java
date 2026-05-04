@@ -74,7 +74,8 @@ public class ToolInvocationProjectorTest {
                 .structuredOutput(FileToolOutput.builder()
                         .command("get")
                         .primaryFileName("风险日报.md")
-                        .contentStorageMode("artifact_only")
+                        .previewUrl("https://file.example.com/preview/risk.md")
+                        .downloadUrl("https://file.example.com/download/risk.md")
                         .fileRefs(List.of(ToolFileRef.builder().fileName("风险日报.md").build()))
                         .build())
                 .build();
@@ -93,6 +94,9 @@ public class ToolInvocationProjectorTest {
         Assert.assertEquals("task", events.get(0).getMessageType());
         Assert.assertEquals("file", resultMap(events.get(0)).get("messageType"));
         Assert.assertEquals("读取文件", nestedResultMap(events.get(0)).get("command"));
+        Assert.assertEquals("风险日报.md", nestedResultMap(events.get(0)).get("primaryFileName"));
+        Assert.assertEquals("https://file.example.com/preview/risk.md", nestedResultMap(events.get(0)).get("previewUrl"));
+        Assert.assertEquals("https://file.example.com/download/risk.md", nestedResultMap(events.get(0)).get("downloadUrl"));
         Assert.assertEquals(1, events.get(0).getArtifactRefs().size());
     }
 
@@ -102,29 +106,18 @@ public class ToolInvocationProjectorTest {
                 .toolCallId("tool-call-search-001")
                 .toolName("deep_search")
                 .inputJson("{\"query\":\"本周项目风险\"}")
-                .structuredOutput(DeepSearchToolOutput.builder()
-                        .query("本周项目风险")
-                        .stages(List.of(
-                                DeepSearchStage.builder()
-                                        .stage("extend")
-                                        .queries(List.of("项目排期风险"))
-                                        .build(),
-                                DeepSearchStage.builder()
-                                        .stage("search")
-                                        .results(List.of(DeepSearchQueryResult.builder()
-                                                .query("项目排期风险")
-                                                .docs(List.of(DeepSearchDoc.builder()
-                                                        .title("风险日报")
-                                                        .link("https://example.com/risk")
-                                                        .build()))
-                                                .build()))
-                                        .build(),
-                                DeepSearchStage.builder()
-                                        .stage("report")
-                                        .answer("本周主要风险有...")
-                                        .build()
-                        ))
-                        .build())
+                .structuredOutput(DeepSearchToolOutput.of(
+                        "本周项目风险",
+                        null,
+                        List.of(
+                                DeepSearchStage.extend(List.of("项目排期风险")),
+                                DeepSearchStage.search(List.of(DeepSearchQueryResult.of(
+                                        "项目排期风险",
+                                        List.of(DeepSearchDoc.of("风险日报", "https://example.com/risk", null))
+                                ))),
+                                DeepSearchStage.report("本周主要风险有...")
+                        )
+                ))
                 .build();
 
         List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());

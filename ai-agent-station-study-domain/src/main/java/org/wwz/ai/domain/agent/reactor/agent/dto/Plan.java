@@ -38,6 +38,18 @@ public class Plan {
     private List<String> notes;
 
     /**
+     * 创建空计划，便于 finish 等幂等场景复用。
+     */
+    public static Plan empty() {
+        return Plan.builder()
+                .title("")
+                .steps(new ArrayList<>())
+                .stepStatus(new ArrayList<>())
+                .notes(new ArrayList<>())
+                .build();
+    }
+
+    /**
      * 创建新计划
      */
     public static Plan create(String title, List<String> steps) {
@@ -54,6 +66,18 @@ public class Plan {
                 .steps(steps)
                 .stepStatus(status)
                 .notes(notes)
+                .build();
+    }
+
+    /**
+     * 深拷贝计划快照，避免持久化与 replay 共用同一份可变引用。
+     */
+    public Plan copy() {
+        return Plan.builder()
+                .title(title)
+                .steps(copyList(steps))
+                .stepStatus(copyList(stepStatus))
+                .notes(copyList(notes))
                 .build();
     }
 
@@ -117,6 +141,21 @@ public class Plan {
     }
 
     /**
+     * 获取当前进行中的步骤索引。
+     */
+    public Integer getCurrentStepIndex() {
+        if (steps == null || stepStatus == null) {
+            return null;
+        }
+        for (int i = 0; i < steps.size() && i < stepStatus.size(); i++) {
+            if ("in_progress".equals(stepStatus.get(i))) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 更新当前task为 completed，下一个task为 in_progress
      */
     public void stepPlan() {
@@ -160,5 +199,9 @@ public class Plan {
         }
 
         return sb.toString();
+    }
+
+    private List<String> copyList(List<String> source) {
+        return source == null ? new ArrayList<>() : new ArrayList<>(source);
     }
 }

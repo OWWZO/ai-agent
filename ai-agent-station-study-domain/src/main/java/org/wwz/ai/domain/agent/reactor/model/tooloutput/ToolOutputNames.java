@@ -16,6 +16,7 @@ public final class ToolOutputNames {
     public static final String MULTIMODAL_AGENT = "multimodalagent_tool";
     public static final String IMAGE_GENERATION = "image_generation_tool";
     public static final String SCRIPT_RUNNER = "script_runner_tool";
+    public static final String PLANNING = "planning";
 
     public static final Set<String> RICH_TOOL_NAMES = Set.of(
             DEEP_SEARCH,
@@ -25,7 +26,8 @@ public final class ToolOutputNames {
             DATA_ANALYSIS,
             MULTIMODAL_AGENT,
             IMAGE_GENERATION,
-            SCRIPT_RUNNER
+            SCRIPT_RUNNER,
+            PLANNING
     );
 
     private ToolOutputNames() {

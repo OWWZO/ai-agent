@@ -188,7 +188,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_file_tool (
     error_msg            TEXT           NULL COMMENT '错误信息',
     command              VARCHAR(32)    NULL COMMENT '工具命令',
     primary_file_name    VARCHAR(256)   NULL COMMENT '主文件名',
-    content_storage_mode VARCHAR(32)    NULL COMMENT '内容存储模式',
+    preview_url          VARCHAR(1024)  NULL COMMENT '预览地址',
+    download_url         VARCHAR(1024)  NULL COMMENT '下载地址',
     created_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -335,6 +336,31 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_script_runner (
     KEY idx_run_created (run_id, created_at DESC),
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='script_runner_tool 输出表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_tool_output_planning (
+    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
+    run_id             BIGINT         NULL COMMENT '所属 run ID',
+    request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
+    session_id         VARCHAR(64)    NULL COMMENT '会话ID',
+    tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
+    status             TINYINT        NOT NULL COMMENT '终态状态',
+    error_msg          TEXT           NULL COMMENT '错误信息',
+    command            VARCHAR(32)    NOT NULL COMMENT 'planning 命令',
+    before_plan_json   JSON           NULL COMMENT '执行前计划快照',
+    after_plan_json    JSON           NULL COMMENT '执行后计划快照',
+    current_step       TEXT           NULL COMMENT '当前可执行步骤',
+    current_step_index INT            NULL COMMENT '当前可执行步骤索引',
+    auto_advanced      TINYINT(1)     NULL COMMENT '是否自动推进',
+    auto_finished      TINYINT(1)     NULL COMMENT '是否自动结束',
+    created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
+    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
+    KEY idx_run_created (run_id, created_at DESC),
+    KEY idx_status_created (status, created_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='planning 输出表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',

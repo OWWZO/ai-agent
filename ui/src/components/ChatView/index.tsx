@@ -364,6 +364,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         finishedAt: latestChatSnapshot.finishedAt,
       });
       setShowAction(
+        Boolean(conversationTaskData.plan) ||
         conversationTaskData.taskList.some((task) => isWorkspaceRenderableTask(task))
       );
   }, [conversation.chatList, conversation.deepThink, conversation.id, loading]);
@@ -737,7 +738,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     };
 
     const openAction = (tasks: CHAT.Task[]) => {
-      if (tasks.some((item) => isWorkspaceRenderableTask(item))) {
+      if (plan || tasks.some((item) => isWorkspaceRenderableTask(item))) {
         setShowAction(true);
       }
     };

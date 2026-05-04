@@ -20,6 +20,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * StreamResponseHandler 测试
@@ -91,6 +92,33 @@ public class StreamResponseHandlerTest {
         Assert.assertTrue(printer.messages.stream().anyMatch(message -> "先思考".equals(message.message) && message.isFinal));
     }
 
+    @Test
+    public void test_handleToolCallStreamKeepsMessageIdWhenForwardingIsDisabled() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,2\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-3")
+                .isStream(true)
+                .streamMessageType("plan_thought")
+                .printer(printer)
+                .build();
+
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(toolChunk("先规划", new AssistantMessage.ToolCall("call-2", "function", "planning", "{\"command\":\"create\"}"), "tool_calls", 18)),
+                System.currentTimeMillis() - 10,
+                false
+        ).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        Assert.assertNotNull(response.getStreamMessageId());
+        Assert.assertTrue(printer.messages.isEmpty());
+    }
+
     private ChatResponse textChunk(String content) {
         AssistantMessage assistantMessage = AssistantMessage.builder()
                 .content(content)
@@ -132,6 +160,11 @@ public class StreamResponseHandlerTest {
         }
 
         @Override
+        public void send(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, String digitalEmployee, Boolean isFinal) {
+            messages.add(new PrinterMessage(messageId, messageType, message, isFinal));
+        }
+
+        @Override
         public void send(String messageType, Object message) {
             messages.add(new PrinterMessage(null, messageType, message, true));
         }
@@ -144,6 +177,16 @@ public class StreamResponseHandlerTest {
         @Override
         public void send(String messageId, String messageType, Object message, Boolean isFinal) {
             messages.add(new PrinterMessage(messageId, messageType, message, isFinal));
+        }
+
+        @Override
+        public void sendWithResultMap(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, Boolean isFinal) {
+            messages.add(new PrinterMessage(messageId, messageType, message, isFinal));
+        }
+
+        @Override
+        public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
+            messages.add(new PrinterMessage(null, messageType, message, true));
         }
 
         @Override

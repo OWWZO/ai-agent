@@ -35,7 +35,7 @@ public class ToolInvocationProjectorRegistry {
                                               List<ArtifactView> artifacts,
                                               EventResult state,
                                               boolean reuseCurrentTaskGroup) {
-        if (!reuseCurrentTaskGroup) {
+        if (!reuseCurrentTaskGroup && !supportsPlannerTaskGrouping(invocation)) {
             state.renewTaskId();
         }
         for (ToolInvocationProjector projector : projectors) {
@@ -44,5 +44,9 @@ public class ToolInvocationProjectorRegistry {
             }
         }
         return defaultProjector.project(invocation, artifacts, state);
+    }
+
+    private boolean supportsPlannerTaskGrouping(ToolInvocationView invocation) {
+        return invocation != null && "planning".equals(invocation.getToolName());
     }
 }

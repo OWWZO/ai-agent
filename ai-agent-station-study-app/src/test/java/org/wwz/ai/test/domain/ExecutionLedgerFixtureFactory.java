@@ -23,6 +23,7 @@ import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.reactor.service.impl.AgentExecutionRecorderImpl;
@@ -534,6 +535,17 @@ public final class ExecutionLedgerFixtureFactory {
                     .map(ExecutionLedgerFixtureFactory::cloneLlm)
                     .toList();
         }
+
+        @Override
+        public List<LlmInvocation> queryByRunIds(List<Long> runIds) {
+            return store.llmInvocations.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
+                    .sorted(Comparator.comparing(LlmInvocation::getRunId)
+                            .thenComparing(LlmInvocation::getInvocationSeq)
+                            .thenComparing(LlmInvocation::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneLlm)
+                    .toList();
+        }
     }
 
     static final class InMemoryToolInvocationLedgerDao implements IToolInvocationLedgerDao {
@@ -585,6 +597,29 @@ public final class ExecutionLedgerFixtureFactory {
         public List<ToolInvocation> queryByRunId(Long runId) {
             return store.toolInvocations.values().stream()
                     .filter(item -> item.getDeleted() == 0 && item.getRunId().equals(runId))
+                    .sorted(Comparator.comparing(ToolInvocation::getLlmInvocationId)
+                            .thenComparing(ToolInvocation::getDispatchIndex)
+                            .thenComparing(ToolInvocation::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneTool)
+                    .toList();
+        }
+
+        @Override
+        public List<ToolInvocation> queryByRunIds(List<Long> runIds) {
+            return store.toolInvocations.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
+                    .sorted(Comparator.comparing(ToolInvocation::getRunId)
+                            .thenComparing(ToolInvocation::getLlmInvocationId)
+                            .thenComparing(ToolInvocation::getDispatchIndex)
+                            .thenComparing(ToolInvocation::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneTool)
+                    .toList();
+        }
+
+        @Override
+        public List<ToolInvocation> queryByLlmInvocationIds(List<Long> llmInvocationIds) {
+            return store.toolInvocations.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && llmInvocationIds.contains(item.getLlmInvocationId()))
                     .sorted(Comparator.comparing(ToolInvocation::getLlmInvocationId)
                             .thenComparing(ToolInvocation::getDispatchIndex)
                             .thenComparing(ToolInvocation::getId))
@@ -674,6 +709,35 @@ public final class ExecutionLedgerFixtureFactory {
             return store.artifacts.values().stream()
                     .filter(item -> item.getDeleted() == 0 && runIds.contains(item.getRunId()))
                     .sorted(Comparator.comparing(ArtifactRecord::getRunId).reversed()
+                            .thenComparing(ArtifactRecord::getCreateTime)
+                            .thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
+
+        @Override
+        public List<ArtifactRecord> queryByToolInvocationIds(List<Long> toolInvocationIds) {
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && item.getToolInvocationId() != null
+                            && toolInvocationIds.contains(item.getToolInvocationId())
+                            && ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT.equals(item.getArtifactRole())
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getToolInvocationId)
+                            .thenComparing(ArtifactRecord::getCreateTime)
+                            .thenComparing(ArtifactRecord::getId))
+                    .map(ExecutionLedgerFixtureFactory::cloneArtifact)
+                    .toList();
+        }
+
+        @Override
+        public List<ArtifactRecord> queryInputArtifactsByRunIds(List<Long> runIds) {
+            return store.artifacts.values().stream()
+                    .filter(item -> item.getDeleted() == 0
+                            && runIds.contains(item.getRunId())
+                            && ExecutionLedgerConstants.ARTIFACT_ROLE_INPUT.equals(item.getArtifactRole())
+                            && ExecutionLedgerConstants.VISIBILITY_VISIBLE.equals(item.getVisibility()))
+                    .sorted(Comparator.comparing(ArtifactRecord::getRunId)
                             .thenComparing(ArtifactRecord::getCreateTime)
                             .thenComparing(ArtifactRecord::getId))
                     .map(ExecutionLedgerFixtureFactory::cloneArtifact)

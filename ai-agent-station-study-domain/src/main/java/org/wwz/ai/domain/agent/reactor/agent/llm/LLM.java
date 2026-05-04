@@ -391,6 +391,23 @@ public class LLM {
             boolean stream,
             int timeout
     ) {
+        return askTool(context, messages, systemMsgs, tools, toolChoice, temperature, stream, true, timeout);
+    }
+
+    /**
+     * 工具调用统一门面，并允许调用方控制是否向前端透传流式增量。
+     */
+    public CompletableFuture<ToolCallResponse> askTool(
+            AgentContext context,
+            List<Message> messages,
+            Message systemMsgs,
+            ToolCollection tools,
+            ToolChoice toolChoice,
+            Double temperature,
+            boolean stream,
+            boolean pushToClient,
+            int timeout
+    ) {
         try {
             if (!ToolChoice.isValid(toolChoice)) {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
@@ -441,7 +458,7 @@ public class LLM {
                 });
             }
 
-            return streamResponseHandler.handleToolCallStream(context, chatModel.stream(prompt), startTime)
+            return streamResponseHandler.handleToolCallStream(context, chatModel.stream(prompt), startTime, pushToClient)
                     .whenComplete((response, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(context, invocationHandle, response, null);
@@ -1208,6 +1225,7 @@ public class LLM {
     public static class ToolCallResponse {
         private String content;
         private List<ToolCall> toolCalls;
+        private String streamMessageId;
         private String finishReason;
         private Integer promptTokens;
         private Integer completionTokens;

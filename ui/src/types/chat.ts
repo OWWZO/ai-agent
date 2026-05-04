@@ -110,6 +110,7 @@ declare global {
     type PlanStatus = MESSAGE.PlanStatus;
 
     export type Plan = MESSAGE.Plan;
+    export type PlannerRound = MESSAGE.PlannerRound;
 
     export type Product = {
       name: string;

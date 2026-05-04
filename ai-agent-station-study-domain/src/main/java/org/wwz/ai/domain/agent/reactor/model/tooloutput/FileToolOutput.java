@@ -21,7 +21,9 @@ public class FileToolOutput implements ToolStructuredOutput {
 
     private String primaryFileName;
 
-    private String contentStorageMode;
+    private String previewUrl;
+
+    private String downloadUrl;
 
     @Builder.Default
     private List<ToolFileRef> fileRefs = new ArrayList<>();

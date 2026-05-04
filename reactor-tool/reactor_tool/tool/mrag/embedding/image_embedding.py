@@ -10,15 +10,31 @@ from ..utils import image_utils
 from ..utils.logger_utils import logger
 
 
+def _normalize_dashscope_multimodal_embedding_base_url(base_url: str | None) -> str:
+    """兼容把 OpenAI 兼容地址误填为多模态 embedding 地址的场景。"""
+    default_url = (
+        "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
+        "multimodal-embedding/multimodal-embedding"
+    )
+    if not base_url:
+        return default_url
+
+    normalized = base_url.strip().rstrip("/")
+    if normalized.endswith("/compatible-mode/v1"):
+        return default_url
+    return normalized
+
+
 class QwenVLEmbedding(ImageEmbedding):
     def __init__(self):
         super().__init__()
         self.timeout = int(os.getenv("API_TIMEOUT", 300))
         self.api_key = os.getenv("DASHSCOPE_API_KEY")
+        self.dimension = int(os.getenv("IMAGE_EMBEDDING_DIMENSION", "0"))
         self.model_name = "qwen2.5-vl-embedding"
-        self.dashscope_base_url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
-        if os.getenv("DASHSCOPE_MULTIMODAL_EMBEDDING_BASE_URL"):
-            self.dashscope_base_url = os.getenv("DASHSCOPE_MULTIMODAL_EMBEDDING_BASE_URL")
+        self.dashscope_base_url = _normalize_dashscope_multimodal_embedding_base_url(
+            os.getenv("DASHSCOPE_MULTIMODAL_EMBEDDING_BASE_URL")
+        )
 
         if os.getenv("DASHSCOPE_MULTIMODAL_EMBEDDING_MODEL_NAME"):
             self.model_name = os.getenv("DASHSCOPE_MULTIMODAL_EMBEDDING_MODEL_NAME")
@@ -48,6 +64,7 @@ class QwenVLEmbedding(ImageEmbedding):
                 "contents": [{"image": self._image_to_base64(image)}]
             }
         }
+        self._apply_dimension(body)
 
         resp = requests.post(
             self.dashscope_base_url,
@@ -94,6 +111,7 @@ class QwenVLEmbedding(ImageEmbedding):
                     "contents": contents
                 }
             }
+            self._apply_dimension(body)
 
             resp = requests.post(
                 self.dashscope_base_url,
@@ -133,6 +151,12 @@ class QwenVLEmbedding(ImageEmbedding):
             embedding = self._encode_text(text)
             embeddings.append(embedding)
         return embeddings
+
+    def _apply_dimension(self, body: dict) -> None:
+        """将配置中的向量维度显式透传给百炼接口，避免依赖服务端默认值。"""
+        if self.dimension <= 0:
+            return
+        body["parameters"] = {"dimension": self.dimension}
 
 
 def get_image_embedding_model() -> ImageEmbedding:

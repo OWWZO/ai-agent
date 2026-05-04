@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputDeepSearchDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputFileToolDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputImageGenerationDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputMultimodalAgentDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputPlanningDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputReportToolDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputScriptRunnerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
@@ -42,6 +43,7 @@ public class ToolOutputArtifactBackfillTest {
         IToolOutputMultimodalAgentDao multimodalAgentDao = Mockito.mock(IToolOutputMultimodalAgentDao.class);
         IToolOutputImageGenerationDao imageGenerationDao = Mockito.mock(IToolOutputImageGenerationDao.class);
         IToolOutputScriptRunnerDao scriptRunnerDao = Mockito.mock(IToolOutputScriptRunnerDao.class);
+        IToolOutputPlanningDao planningDao = Mockito.mock(IToolOutputPlanningDao.class);
         IArtifactLedgerDao artifactLedgerDao = Mockito.mock(IArtifactLedgerDao.class);
 
         Map<String, Object> row = new LinkedHashMap<>();
@@ -69,6 +71,7 @@ public class ToolOutputArtifactBackfillTest {
                 multimodalAgentDao,
                 imageGenerationDao,
                 scriptRunnerDao,
+                planningDao,
                 artifactLedgerDao
         );
 
@@ -90,6 +93,7 @@ public class ToolOutputArtifactBackfillTest {
         IToolOutputMultimodalAgentDao multimodalAgentDao = Mockito.mock(IToolOutputMultimodalAgentDao.class);
         IToolOutputImageGenerationDao imageGenerationDao = Mockito.mock(IToolOutputImageGenerationDao.class);
         IToolOutputScriptRunnerDao scriptRunnerDao = Mockito.mock(IToolOutputScriptRunnerDao.class);
+        IToolOutputPlanningDao planningDao = Mockito.mock(IToolOutputPlanningDao.class);
         IArtifactLedgerDao artifactLedgerDao = Mockito.mock(IArtifactLedgerDao.class);
         Mockito.when(deepSearchDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
         Mockito.when(codeInterpreterDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
@@ -98,6 +102,7 @@ public class ToolOutputArtifactBackfillTest {
         Mockito.when(multimodalAgentDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
         Mockito.when(imageGenerationDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
         Mockito.when(scriptRunnerDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
+        Mockito.when(planningDao.queryByRequestToolCall(Mockito.anyString(), Mockito.anyString())).thenReturn(null);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("request_id", "req-artifact-reader-002");
@@ -123,6 +128,7 @@ public class ToolOutputArtifactBackfillTest {
                 multimodalAgentDao,
                 imageGenerationDao,
                 scriptRunnerDao,
+                planningDao,
                 artifactLedgerDao
         );
 
@@ -144,6 +150,7 @@ public class ToolOutputArtifactBackfillTest {
         IToolOutputMultimodalAgentDao multimodalAgentDao = Mockito.mock(IToolOutputMultimodalAgentDao.class);
         IToolOutputImageGenerationDao imageGenerationDao = Mockito.mock(IToolOutputImageGenerationDao.class);
         IToolOutputScriptRunnerDao scriptRunnerDao = Mockito.mock(IToolOutputScriptRunnerDao.class);
+        IToolOutputPlanningDao planningDao = Mockito.mock(IToolOutputPlanningDao.class);
         Mockito.when(fileToolDao.insert(Mockito.anyMap())).thenReturn(1);
         Mockito.when(reportToolDao.insert(Mockito.anyMap())).thenReturn(1);
 
@@ -155,7 +162,8 @@ public class ToolOutputArtifactBackfillTest {
                 dataAnalysisDao,
                 multimodalAgentDao,
                 imageGenerationDao,
-                scriptRunnerDao
+                scriptRunnerDao,
+                planningDao
         );
 
         writer.write(ToolOutputPersistCommand.builder()

@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputDeepSearchDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputFileToolDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputImageGenerationDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputMultimodalAgentDao;
+import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputPlanningDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputReportToolDao;
 import org.wwz.ai.domain.agent.reactor.mapper.IToolOutputScriptRunnerDao;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
@@ -21,6 +22,7 @@ import org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.MultimodalAgentToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ScriptRunnerToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
@@ -48,6 +50,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
     private final IToolOutputMultimodalAgentDao multimodalAgentDao;
     private final IToolOutputImageGenerationDao imageGenerationDao;
     private final IToolOutputScriptRunnerDao scriptRunnerDao;
+    private final IToolOutputPlanningDao planningDao;
 
     @Override
     public void write(ToolOutputPersistCommand command) {
@@ -85,6 +88,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
                 case ToolOutputNames.MULTIMODAL_AGENT -> handleInsertResult(command, multimodalAgentDao.insert(buildMultimodalRow(command, cast(command, MultimodalAgentToolOutput.class))), strict);
                 case ToolOutputNames.IMAGE_GENERATION -> handleInsertResult(command, imageGenerationDao.insert(buildImageGenerationRow(command, cast(command, ImageGenerationToolOutput.class))), strict);
                 case ToolOutputNames.SCRIPT_RUNNER -> handleInsertResult(command, scriptRunnerDao.insert(buildScriptRunnerRow(command, cast(command, ScriptRunnerToolOutput.class))), strict);
+                case ToolOutputNames.PLANNING -> handleInsertResult(command, planningDao.insert(buildPlanningRow(command, cast(command, PlanningToolOutput.class))), strict);
                 default -> log.debug("skip unsupported tool output persist, toolName={}", toolName);
             }
         } catch (DuplicateKeyException e) {
@@ -108,7 +112,8 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         Map<String, Object> row = baseRow(command);
         row.put("command", output.getCommand());
         row.put("primaryFileName", output.getPrimaryFileName());
-        row.put("contentStorageMode", output.getContentStorageMode());
+        row.put("previewUrl", output.getPreviewUrl());
+        row.put("downloadUrl", output.getDownloadUrl());
         return row;
     }
 
@@ -167,6 +172,18 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("stdout", output.getStdout());
         row.put("stderr", output.getStderr());
         row.put("summary", output.getSummary());
+        return row;
+    }
+
+    private Map<String, Object> buildPlanningRow(ToolOutputPersistCommand command, PlanningToolOutput output) {
+        Map<String, Object> row = baseRow(command);
+        row.put("command", output.getCommand());
+        row.put("beforePlanJson", toJson(output.getBeforePlan()));
+        row.put("afterPlanJson", toJson(output.getAfterPlan()));
+        row.put("currentStep", output.getCurrentStep());
+        row.put("currentStepIndex", output.getCurrentStepIndex());
+        row.put("autoAdvanced", output.getAutoAdvanced());
+        row.put("autoFinished", output.getAutoFinished());
         return row;
     }
 

@@ -31,8 +31,14 @@ public class FileToolInvocationProjector extends AbstractToolInvocationProjector
         Map<String, Object> resultMap = new LinkedHashMap<>();
         resultMap.put("command", translateCommand(output == null ? null : output.getCommand()));
         resultMap.put("fileInfo", mergeFileRefs(output == null ? null : output.getFileRefs(), artifacts));
-        if (StringUtils.isNotBlank(output == null ? null : output.getContentStorageMode())) {
-            resultMap.put("contentStorageMode", output.getContentStorageMode());
+        if (StringUtils.isNotBlank(output == null ? null : output.getPrimaryFileName())) {
+            resultMap.put("primaryFileName", output.getPrimaryFileName());
+        }
+        if (StringUtils.isNotBlank(output == null ? null : output.getPreviewUrl())) {
+            resultMap.put("previewUrl", output.getPreviewUrl());
+        }
+        if (StringUtils.isNotBlank(output == null ? null : output.getDownloadUrl())) {
+            resultMap.put("downloadUrl", output.getDownloadUrl());
         }
         return List.of(buildTaskEvent(
                 state,

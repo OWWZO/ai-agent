@@ -60,6 +60,32 @@
         ORDER BY run_id DESC, create_time ASC, id ASC
     </select>
 
+    <select id="queryByToolInvocationIds" resultMap="ArtifactRecordMap">
+        SELECT *
+        FROM ai_agent_artifact
+        WHERE deleted = 0
+          AND artifact_role = 'output'
+          AND visibility = 'visible'
+          AND tool_invocation_id IN
+        <foreach collection="toolInvocationIds" item="toolInvocationId" open="(" separator="," close=")">
+            #{toolInvocationId}
+        </foreach>
+        ORDER BY tool_invocation_id ASC, create_time ASC, id ASC
+    </select>
+
+    <select id="queryInputArtifactsByRunIds" resultMap="ArtifactRecordMap">
+        SELECT *
+        FROM ai_agent_artifact
+        WHERE deleted = 0
+          AND artifact_role = 'input'
+          AND visibility = 'visible'
+          AND run_id IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+        ORDER BY run_id ASC, create_time ASC, id ASC
+    </select>
+
     <select id="queryOutputArtifactsByToolInvocationId" resultMap="ArtifactRecordMap">
         SELECT *
         FROM ai_agent_artifact

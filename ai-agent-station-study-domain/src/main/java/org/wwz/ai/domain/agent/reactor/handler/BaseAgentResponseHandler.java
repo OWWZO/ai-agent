@@ -80,10 +80,12 @@ public class BaseAgentResponseHandler {
                 && "deep_search".equals(agentResponse.getMessageType())
                 && agentResponse.getResultMap().containsKey("messageType")
                 && Objects.equals(agentResponse.getResultMap().get("messageType"), "extend"));
+        syncPlannerRoundId(eventResult, agentResponse);
         Map<String, Object> payload = buildAgentResponsePayload(agentResponse);
         if (payload == null) {
             return null;
         }
+        appendPlannerRoundId(payload, eventResult == null ? null : eventResult.getPlannerRoundId());
 
         switch (agentResponse.getMessageType()) {
             case "plan_thought":
@@ -109,7 +111,7 @@ public class BaseAgentResponseHandler {
                             .messageId(agentResponse.getMessageId())
                             .messageType("plan")
                             .messageOrder(1)
-                            .resultMap(buildPlanPayload(agentResponse))
+                            .resultMap(buildPlanPayload(agentResponse, eventResult == null ? null : eventResult.getPlannerRoundId()))
                             .build();
                 }
                 return buildTaskEvent(eventResult, agentResponse, payload, isFinal);
@@ -155,7 +157,7 @@ public class BaseAgentResponseHandler {
                 .build();
     }
 
-    private Map<String, Object> buildPlanPayload(AgentResponse agentResponse) {
+    private Map<String, Object> buildPlanPayload(AgentResponse agentResponse, String fallbackPlannerRoundId) {
         if (agentResponse == null || agentResponse.getPlan() == null) {
             return Map.of();
         }
@@ -165,6 +167,8 @@ public class BaseAgentResponseHandler {
         payload.put("steps", agentResponse.getPlan().getSteps());
         payload.put("stepStatus", agentResponse.getPlan().getStepStatus());
         payload.put("notes", agentResponse.getPlan().getNotes());
+        appendPlannerRoundId(payload, agentResponse == null ? null : agentResponse.getResultMap());
+        appendPlannerRoundId(payload, fallbackPlannerRoundId);
         return payload;
     }
 
@@ -239,6 +243,35 @@ public class BaseAgentResponseHandler {
                 }
                 break;
         }
+        appendPlannerRoundId(payload, agentResponse.getResultMap());
         return payload;
+    }
+
+    private void syncPlannerRoundId(EventResult eventResult, AgentResponse agentResponse) {
+        if (eventResult == null || agentResponse == null || agentResponse.getResultMap() == null) {
+            return;
+        }
+        Object plannerRoundId = agentResponse.getResultMap().get(EventResult.PLANNER_ROUND_ID_KEY);
+        if (plannerRoundId == null) {
+            return;
+        }
+        eventResult.setPlannerRoundId(String.valueOf(plannerRoundId));
+    }
+
+    private void appendPlannerRoundId(Map<String, Object> payload, Map<String, Object> resultMap) {
+        if (payload == null || resultMap == null) {
+            return;
+        }
+        Object plannerRoundId = resultMap.get(EventResult.PLANNER_ROUND_ID_KEY);
+        if (plannerRoundId != null) {
+            payload.put(EventResult.PLANNER_ROUND_ID_KEY, String.valueOf(plannerRoundId));
+        }
+    }
+
+    private void appendPlannerRoundId(Map<String, Object> payload, String plannerRoundId) {
+        if (payload == null || plannerRoundId == null || plannerRoundId.isBlank()) {
+            return;
+        }
+        payload.putIfAbsent(EventResult.PLANNER_ROUND_ID_KEY, plannerRoundId);
     }
 }

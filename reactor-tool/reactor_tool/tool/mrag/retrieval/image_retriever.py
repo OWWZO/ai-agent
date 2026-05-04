@@ -21,6 +21,7 @@ from PIL import Image
 
 from ..embedding.image_embedding import get_image_embedding_model
 from ..storage import VectorStore
+from ..utils.logger_utils import logger
 
 
 class ImageRetriever:
@@ -37,12 +38,19 @@ class ImageRetriever:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
         text_embeddings = self.embedding_model.encode_text_batch(queries)
-        return self.vector_store.search_image_vector(
-            query_vectors=text_embeddings,
-            limit=limit,
-            score_threshold=score_threshold,
-            filter_conditions=filter_conditions
-        )
+        if self._has_empty_vectors(text_embeddings):
+            logger.warning("text2image_search skipped because image embedding returned empty vectors")
+            return [[] for _ in queries]
+        try:
+            return self.vector_store.search_image_vector(
+                query_vectors=text_embeddings,
+                limit=limit,
+                score_threshold=score_threshold,
+                filter_conditions=filter_conditions
+            )
+        except ValueError as e:
+            logger.warning(f"text2image_search skipped because vector search is incompatible: {e}")
+            return [[] for _ in queries]
 
     def image2image_search(self,
                            kb_id: str, image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
@@ -66,12 +74,19 @@ class ImageRetriever:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
         text_embeddings = self.embedding_model.encode_text_batch(queries)
-        return self.vector_store.search_page_vector(
-            query_vectors=text_embeddings,
-            limit=limit,
-            score_threshold=score_threshold,
-            filter_conditions=filter_conditions
-        )
+        if self._has_empty_vectors(text_embeddings):
+            logger.warning("text2page_search skipped because image embedding returned empty vectors")
+            return [[] for _ in queries]
+        try:
+            return self.vector_store.search_page_vector(
+                query_vectors=text_embeddings,
+                limit=limit,
+                score_threshold=score_threshold,
+                filter_conditions=filter_conditions
+            )
+        except ValueError as e:
+            logger.warning(f"text2page_search skipped because vector search is incompatible: {e}")
+            return [[] for _ in queries]
 
     def image2page_search(self,
                           kb_id: str, image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
@@ -87,3 +102,9 @@ class ImageRetriever:
             score_threshold=score_threshold,
             filter_conditions=filter_conditions
         )
+
+    @staticmethod
+    def _has_empty_vectors(vectors: list[list[float]]) -> bool:
+        if not vectors:
+            return True
+        return any(not vector for vector in vectors)

@@ -95,7 +95,7 @@ public class ReplayProjector {
                 continue;
             }
             String messageType = resolveLlmMessageType(invocation);
-            events.add(buildLlmReplayEvent(bundle, state, invocation, messageType));
+            events.add(buildLlmReplayEvent(bundle, state, invocation, messageType, null));
         }
         return events;
     }
@@ -123,13 +123,19 @@ public class ReplayProjector {
                 continue;
             }
 
+            List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             String messageType = null;
             if (StringUtils.isNotBlank(llmInvocation.getResponseText())) {
                 messageType = resolveLlmMessageType(llmInvocation);
-                events.add(buildLlmReplayEvent(bundle, state, llmInvocation, messageType));
+                events.add(buildLlmReplayEvent(
+                        bundle,
+                        state,
+                        llmInvocation,
+                        messageType,
+                        resolvePlannerRoundId(messageType, linkedTools)
+                ));
             }
 
-            List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             if (linkedTools == null || linkedTools.isEmpty()) {
                 continue;
             }
@@ -156,7 +162,9 @@ public class ReplayProjector {
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
                                                      EventResult state,
                                                      LlmInvocationView invocation,
-                                                     String messageType) {
+                                                     String messageType,
+                                                     String plannerRoundId) {
+        syncPlannerRoundState(state, messageType, plannerRoundId);
         List<Map<String, Object>> artifactRefs = null;
         if ("result".equals(messageType)) {
             SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
@@ -169,7 +177,7 @@ public class ReplayProjector {
                 .messageId(resolveLlmMessageId(invocation))
                 .messageType(resolveOuterMessageType(messageType))
                 .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
-                .resultMap(buildLlmResponse(bundle, invocation, messageType))
+                .resultMap(buildLlmResponse(bundle, invocation, messageType, plannerRoundId))
                 .artifactRefs(artifactRefs)
                 .build();
     }
@@ -284,7 +292,8 @@ public class ReplayProjector {
 
     private Object buildLlmResponse(ReplayFactBundle bundle,
                                     LlmInvocationView invocation,
-                                    String messageType) {
+                                    String messageType,
+                                    String plannerRoundId) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("requestId", bundle == null || bundle.getRun() == null ? null : bundle.getRun().getRequestId());
         response.put("messageId", resolveLlmMessageId(invocation));
@@ -296,6 +305,7 @@ public class ReplayProjector {
         response.put("finish", "result".equals(messageType));
         if ("plan_thought".equals(messageType)) {
             response.put("planThought", invocation.getResponseText());
+            appendPlannerRoundId(response, plannerRoundId);
         } else if ("tool_thought".equals(messageType)) {
             response.put("toolThought", invocation.getResponseText());
         } else if ("task_summary".equals(messageType)) {
@@ -314,6 +324,36 @@ public class ReplayProjector {
             response.put("taskSummary", invocation.getResponseText());
         }
         return response;
+    }
+
+    private void syncPlannerRoundState(EventResult state, String messageType, String plannerRoundId) {
+        if (state == null) {
+            return;
+        }
+        if ("plan_thought".equals(messageType)) {
+            state.setPlannerRoundId(plannerRoundId);
+        }
+    }
+
+    private void appendPlannerRoundId(Map<String, Object> response, String plannerRoundId) {
+        if (response == null || StringUtils.isBlank(plannerRoundId)) {
+            return;
+        }
+        response.put(EventResult.PLANNER_ROUND_ID_KEY, plannerRoundId);
+    }
+
+    private String resolvePlannerRoundId(String messageType, List<ToolInvocationView> linkedTools) {
+        if (!"plan_thought".equals(messageType) || linkedTools == null || linkedTools.isEmpty()) {
+            return null;
+        }
+        for (ToolInvocationView linkedTool : linkedTools) {
+            if (linkedTool != null
+                    && "planning".equals(linkedTool.getToolName())
+                    && linkedTool.getId() != null) {
+                return String.valueOf(linkedTool.getId());
+            }
+        }
+        return null;
     }
 
     private GptProcessResult toFrame(String requestId,

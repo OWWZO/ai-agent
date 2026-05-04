@@ -67,4 +67,15 @@
         ORDER BY invocation_seq ASC, id ASC
     </select>
 
+    <select id="queryByRunIds" resultMap="LlmInvocationMap">
+        SELECT *
+        FROM ai_agent_llm_invocation
+        WHERE deleted = 0
+          AND run_id IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+        ORDER BY run_id ASC, invocation_seq ASC, id ASC
+    </select>
+
 </mapper>

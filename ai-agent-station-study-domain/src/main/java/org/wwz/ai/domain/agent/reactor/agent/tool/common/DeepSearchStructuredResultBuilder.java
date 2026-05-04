@@ -183,35 +183,19 @@ public class DeepSearchStructuredResultBuilder {
     private DeepSearchToolOutput buildOutput(String normalizedAnswer) {
         List<DeepSearchStage> stages = new ArrayList<>();
         if (!decomposedQueries.isEmpty()) {
-            stages.add(DeepSearchStage.builder()
-                    .stage("extend")
-                    .queries(new ArrayList<>(decomposedQueries))
-                    .build());
+            stages.add(DeepSearchStage.extend(new ArrayList<>(decomposedQueries)));
         }
         if (!searchResults.isEmpty()) {
             List<DeepSearchQueryResult> results = new ArrayList<>();
             for (Map.Entry<String, List<DeepSearchrResponse.SearchDoc>> entry : searchResults.entrySet()) {
-                results.add(DeepSearchQueryResult.builder()
-                        .query(entry.getKey())
-                        .docs(toDocs(entry.getValue()))
-                        .build());
+                results.add(DeepSearchQueryResult.of(entry.getKey(), toDocs(entry.getValue())));
             }
-            stages.add(DeepSearchStage.builder()
-                    .stage("search")
-                    .results(results)
-                    .build());
+            stages.add(DeepSearchStage.search(results));
         }
         if (StringUtils.isNotBlank(normalizedAnswer)) {
-            stages.add(DeepSearchStage.builder()
-                    .stage("report")
-                    .answer(normalizedAnswer)
-                    .build());
+            stages.add(DeepSearchStage.report(normalizedAnswer));
         }
-        return DeepSearchToolOutput.builder()
-                .query(query)
-                .answerSummary(normalizedAnswer)
-                .stages(stages)
-                .build();
+        return DeepSearchToolOutput.of(query, normalizedAnswer, stages);
     }
 
     private String buildDocDedupKey(DeepSearchrResponse.SearchDoc doc) {
@@ -240,11 +224,11 @@ public class DeepSearchStructuredResultBuilder {
             if (rawDoc == null) {
                 continue;
             }
-            docs.add(DeepSearchDoc.builder()
-                    .title(StringUtils.defaultString(rawDoc.getTitle()))
-                    .link(StringUtils.defaultString(rawDoc.getLink()))
-                    .summary(StringUtils.defaultString(rawDoc.getContent()))
-                    .build());
+            docs.add(DeepSearchDoc.of(
+                    StringUtils.defaultString(rawDoc.getTitle()),
+                    StringUtils.defaultString(rawDoc.getLink()),
+                    StringUtils.defaultString(rawDoc.getContent())
+            ));
         }
         return docs;
     }

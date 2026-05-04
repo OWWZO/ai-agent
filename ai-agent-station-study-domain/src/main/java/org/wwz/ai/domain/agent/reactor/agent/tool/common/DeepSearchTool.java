@@ -312,10 +312,7 @@ public class DeepSearchTool implements BaseTool {
         return ToolResultPayload.failure(
                 message,
                 message,
-                DeepSearchToolOutput.builder()
-                        .query("")
-                        .answerSummary(message)
-                        .build(),
+                DeepSearchToolOutput.of("", message, null),
                 message
         );
     }

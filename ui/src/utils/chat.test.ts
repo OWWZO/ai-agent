@@ -140,6 +140,97 @@ function createHtmlEvent(options?: {
   } as unknown as MESSAGE.EventData;
 }
 
+function createPlannerThoughtEvent(options: {
+  plannerRoundId: string;
+  planThought: string;
+  isFinal?: boolean;
+  messageId?: string;
+}): MESSAGE.EventData {
+  return {
+    messageType: "plan_thought",
+    messageId: options.messageId || `thought-${options.plannerRoundId}`,
+    taskId: `planner-task-${options.plannerRoundId}`,
+    taskOrder: 1,
+    messageOrder: 1,
+    resultMap: {
+      requestId: "req-planner-1",
+      messageId: options.messageId || `thought-${options.plannerRoundId}`,
+      messageType: "plan_thought",
+      messageTime: "1714041604000",
+      isFinal: options.isFinal ?? true,
+      finish: false,
+      planThought: options.planThought,
+      plannerRoundId: options.plannerRoundId,
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
+function createPlannerPlanEvent(options: {
+  plannerRoundId: string;
+  taskId?: string;
+  title: string;
+  stages?: string[];
+  steps: string[];
+  stepStatus: MESSAGE.PlanStatus[];
+  notes?: string[];
+  messageId?: string;
+}): MESSAGE.EventData {
+  return {
+    messageType: "plan",
+    messageId: options.messageId || `plan-${options.plannerRoundId}`,
+    taskId: options.taskId || `planner-task-${options.plannerRoundId}`,
+    taskOrder: 1,
+    messageOrder: 1,
+    resultMap: {
+      requestId: "req-planner-1",
+      messageId: options.messageId || `plan-${options.plannerRoundId}`,
+      messageType: "plan",
+      messageTime: "1714041605000",
+      isFinal: true,
+      finish: false,
+      plannerRoundId: options.plannerRoundId,
+      title: options.title,
+      stages: options.stages || options.steps,
+      steps: options.steps,
+      stepStatus: options.stepStatus,
+      notes: options.notes || options.steps.map(() => ""),
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
+function createTaskWrappedPlanEvent(options: {
+  plannerRoundId: string;
+  taskId?: string;
+  title: string;
+  steps: string[];
+  stepStatus: MESSAGE.PlanStatus[];
+  stages?: string[];
+  notes?: string[];
+  messageId?: string;
+}): MESSAGE.EventData {
+  return {
+    messageType: "task",
+    messageId: options.messageId || `task-plan-${options.plannerRoundId}`,
+    taskId: options.taskId || `planner-task-${options.plannerRoundId}`,
+    taskOrder: 1,
+    messageOrder: 1,
+    resultMap: {
+      requestId: "req-planner-1",
+      messageId: options.messageId || `task-plan-${options.plannerRoundId}`,
+      messageType: "plan",
+      messageTime: "1714041606000",
+      isFinal: true,
+      finish: false,
+      plannerRoundId: options.plannerRoundId,
+      title: options.title,
+      stages: options.stages || options.steps,
+      steps: options.steps,
+      stepStatus: options.stepStatus,
+      notes: options.notes || options.steps.map(() => ""),
+    } as unknown as MESSAGE.Task,
+  } as unknown as MESSAGE.EventData;
+}
+
 describe("chat deep_search progress", () => {
   it("extend 阶段会立即进入任务列表并展示查询分解", () => {
     const currentChat = createChatItem(createDeepSearchTask("extend"));
@@ -441,7 +532,7 @@ describe("chat deep_search progress", () => {
                 codeOutput: "# 第一组",
                 fileInfo: [],
               },
-            } as MESSAGE.Task,
+            } as unknown as MESSAGE.Task,
           ],
           [
             {
@@ -458,7 +549,7 @@ describe("chat deep_search progress", () => {
                 codeOutput: "# 第二组",
                 fileInfo: [],
               },
-            } as MESSAGE.Task,
+            } as unknown as MESSAGE.Task,
           ],
         ],
       },
@@ -470,5 +561,161 @@ describe("chat deep_search progress", () => {
     expect(result.currentChat.tasks).toHaveLength(2);
     expect(result.currentChat.tasks[0]?.[0]?.children).toHaveLength(1);
     expect(result.currentChat.tasks[1]?.[0]?.children).toHaveLength(1);
+  });
+
+  it("实时普通 replan 在第二个任务开始后仍保留总任务 plan", () => {
+    const currentChat = {
+      sessionId: "session-plan-1",
+      requestId: "req-plan-1",
+      query: "执行普通 replan",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData({
+      messageType: "plan",
+      messageId: "plan-msg-1",
+      taskId: "task-plan-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-plan-1",
+        messageId: "plan-msg-1",
+        messageType: "plan",
+        messageTime: "1714041603000",
+        finish: false,
+        isFinal: true,
+        title: "普通 replan",
+        stages: ["阶段一", "阶段二"],
+        steps: ["步骤一", "步骤二"],
+        stepStatus: ["completed", "in_progress"],
+        notes: ["已完成", ""],
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "task-msg-2",
+      taskId: "task-group-2",
+      taskOrder: 2,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-plan-1",
+        messageId: "task-msg-2",
+        messageType: "task",
+        messageTime: "1714041603001",
+        finish: false,
+        isFinal: true,
+        task: "步骤二",
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const result = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(result.plan?.title).toBe("普通 replan");
+    expect(result.currentChat.plan?.title).toBe("普通 replan");
+    expect(result.currentChat.planList).toHaveLength(2);
+  });
+
+  it("多轮 replan 会按 plannerRoundId 保留完整 planner history，并同步 latest alias", () => {
+    const currentChat = {
+      sessionId: "session-planner-1",
+      requestId: "req-planner-1",
+      query: "执行多轮 replan",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createPlannerThoughtEvent({
+      plannerRoundId: "planner-round-1",
+      planThought: "先收集背景信息",
+    }), currentChat);
+    combineData(createPlannerPlanEvent({
+      plannerRoundId: "planner-round-1",
+      title: "第一轮计划",
+      steps: ["收集资料"],
+      stepStatus: ["in_progress"],
+    }), currentChat);
+    combineData(createPlannerThoughtEvent({
+      plannerRoundId: "planner-round-2",
+      planThought: "根据新信息重排计划",
+    }), currentChat);
+    combineData(createPlannerPlanEvent({
+      plannerRoundId: "planner-round-2",
+      title: "第二轮计划",
+      steps: ["收集资料", "输出总结"],
+      stepStatus: ["completed", "in_progress"],
+    }), currentChat);
+
+    expect(currentChat.multiAgent.plannerRounds).toHaveLength(2);
+    expect(currentChat.multiAgent.plannerRounds?.map((item) => item.plannerRoundId)).toEqual([
+      "planner-round-1",
+      "planner-round-2",
+    ]);
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.planThought).toBe("先收集背景信息");
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.plan?.title).toBe("第一轮计划");
+    expect(currentChat.multiAgent.plannerRounds?.[1]?.planThought).toBe("根据新信息重排计划");
+    expect(currentChat.multiAgent.plan_thought).toBe("根据新信息重排计划");
+    expect(currentChat.multiAgent.plan?.title).toBe("第二轮计划");
+    expect(currentChat.thought).toBe("根据新信息重排计划");
+  });
+
+  it("task-wrapped plan 会写回同一 planner round，而不是覆盖旧轮次", () => {
+    const currentChat = {
+      sessionId: "session-planner-2",
+      requestId: "req-planner-1",
+      query: "恢复 task-wrapped plan",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createPlannerThoughtEvent({
+      plannerRoundId: "planner-round-legacy",
+      planThought: "先规划主流程",
+    }), currentChat);
+    combineData(createTaskWrappedPlanEvent({
+      plannerRoundId: "planner-round-legacy",
+      title: "主流程计划",
+      steps: ["步骤一", "步骤二"],
+      stepStatus: ["completed", "in_progress"],
+    }), currentChat);
+
+    expect(currentChat.multiAgent.plannerRounds).toHaveLength(1);
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.plannerRoundId).toBe(
+      "planner-round-legacy"
+    );
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.planThought).toBe("先规划主流程");
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.plan?.title).toBe("主流程计划");
+    expect(currentChat.multiAgent.plan?.title).toBe("主流程计划");
+    expect(currentChat.multiAgent.plan_thought).toBe("先规划主流程");
+  });
+});
+
+describe("chat file task title", () => {
+  it("uses primary file name fallback for file get history task", () => {
+    const task = {
+      messageType: "file",
+      resultMap: {
+        command: "读取文件",
+        primaryFileName: "风险日报.md",
+      },
+    } as unknown as CHAT.Task;
+
+    expect(buildAction(task)).toMatchObject({
+      action: "读取文件",
+      name: "风险日报.md",
+    });
   });
 });

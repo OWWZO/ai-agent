@@ -2,6 +2,7 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.wwz.ai.domain.agent.reactor.agent.dto.Plan;
 import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
 import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationView;
@@ -11,6 +12,7 @@ import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.reactor.model.replay.ProjectedReplayEvent;
 import org.wwz.ai.domain.agent.reactor.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry;
@@ -144,6 +146,109 @@ public class ReplayProjectorTest {
     }
 
     @Test
+    public void shouldPreferStructuredPlanningOutputOverLegacyInputJson() {
+        ToolInvocationView planningInvocation = ToolInvocationView.builder()
+                .id(11L)
+                .toolCallId("tool-call-plan-002")
+                .toolName("planning")
+                .inputJson("{\"command\":\"create\",\"title\":\"旧标题\",\"steps\":[\"旧步骤\"]}")
+                .structuredOutput(PlanningToolOutput.builder()
+                        .command("update")
+                        .afterPlan(Plan.builder()
+                                .title("重排后的计划")
+                                .steps(List.of("步骤一", "新步骤A", "新步骤B"))
+                                .stepStatus(List.of("completed", "in_progress", "not_started"))
+                                .notes(List.of("已完成", "", ""))
+                                .build())
+                        .currentStep("新步骤A")
+                        .currentStepIndex(1)
+                        .autoAdvanced(true)
+                        .autoFinished(false)
+                        .build())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finishedAt(LocalDateTime.of(2026, 5, 2, 15, 10, 0))
+                .build();
+
+        List<ProjectedReplayEvent> events = replayProjector.projectHistory(ReplayFactBundle.builder()
+                .toolInvocations(List.of(planningInvocation))
+                .build());
+
+        Assert.assertEquals(2, events.size());
+        Assert.assertEquals("plan", events.get(0).getMessageType());
+        Assert.assertEquals("重排后的计划", plainResultMap(events.get(0)).get("title"));
+        Assert.assertEquals("11", String.valueOf(plainResultMap(events.get(0)).get("plannerRoundId")));
+        Assert.assertEquals("task", events.get(1).getMessageType());
+        Assert.assertEquals("新步骤A", plainResultMap(events.get(1)).get("task"));
+        Assert.assertEquals("11", String.valueOf(plainResultMap(events.get(1)).get("plannerRoundId")));
+    }
+
+    @Test
+    public void shouldNotProjectPhantomTaskWhenPlanningOutputIsAlreadyFinished() {
+        ToolInvocationView planningInvocation = ToolInvocationView.builder()
+                .id(12L)
+                .toolCallId("tool-call-plan-003")
+                .toolName("planning")
+                .structuredOutput(PlanningToolOutput.builder()
+                        .command("mark_step")
+                        .afterPlan(Plan.builder()
+                                .title("已完成计划")
+                                .steps(List.of("步骤一"))
+                                .stepStatus(List.of("completed"))
+                                .notes(List.of("全部完成"))
+                                .build())
+                        .currentStep("")
+                        .currentStepIndex(null)
+                        .autoAdvanced(false)
+                        .autoFinished(true)
+                        .build())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finishedAt(LocalDateTime.of(2026, 5, 2, 15, 20, 0))
+                .build();
+
+        List<ProjectedReplayEvent> events = replayProjector.projectHistory(ReplayFactBundle.builder()
+                .toolInvocations(List.of(planningInvocation))
+                .build());
+
+        Assert.assertEquals(1, events.size());
+        Assert.assertEquals("plan", events.get(0).getMessageType());
+        Assert.assertEquals("已完成计划", plainResultMap(events.get(0)).get("title"));
+    }
+
+    @Test
+    public void shouldIgnoreLegacyInvalidMarkStepIndexDuringFallbackReplay() {
+        ToolInvocationView createInvocation = ToolInvocationView.builder()
+                .id(13L)
+                .toolCallId("tool-call-plan-004")
+                .toolName("planning")
+                .inputJson("{\"command\":\"create\",\"title\":\"旧计划\",\"steps\":[\"执行顺序1. 第一步\"]}")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finishedAt(LocalDateTime.of(2026, 5, 2, 15, 30, 0))
+                .build();
+        ToolInvocationView invalidMarkStepInvocation = ToolInvocationView.builder()
+                .id(14L)
+                .toolCallId("tool-call-plan-005")
+                .toolName("planning")
+                .inputJson("{\"command\":\"mark_step\",\"step_index\":1,\"step_status\":\"completed\"}")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finishedAt(LocalDateTime.of(2026, 5, 2, 15, 31, 0))
+                .build();
+
+        List<ProjectedReplayEvent> events = replayProjector.projectHistory(ReplayFactBundle.builder()
+                .toolInvocations(List.of(createInvocation, invalidMarkStepInvocation))
+                .build());
+
+        Assert.assertEquals(4, events.size());
+        Assert.assertEquals("plan", events.get(0).getMessageType());
+        Assert.assertEquals("task", events.get(1).getMessageType());
+        Assert.assertEquals("plan", events.get(2).getMessageType());
+        Assert.assertEquals("task", events.get(3).getMessageType());
+        Assert.assertEquals("旧计划", plainResultMap(events.get(2)).get("title"));
+        Assert.assertEquals("第一步", plainResultMap(events.get(3)).get("task"));
+        Assert.assertEquals("13", String.valueOf(plainResultMap(events.get(0)).get("plannerRoundId")));
+        Assert.assertEquals("14", String.valueOf(plainResultMap(events.get(2)).get("plannerRoundId")));
+    }
+
+    @Test
     public void shouldProjectExecutorNoToolLlmAsTaskSummary() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 16, 0, 0);
         LlmInvocationView executorInvocation = LlmInvocationView.builder()
@@ -219,6 +324,35 @@ public class ReplayProjectorTest {
         Assert.assertEquals(eventTaskId(frames.get(0)), eventTaskId(frames.get(1)));
         Assert.assertEquals(eventTaskId(frames.get(2)), eventTaskId(frames.get(3)));
         Assert.assertEquals(eventTaskId(frames.get(1)), eventTaskId(frames.get(2)));
+    }
+
+    @Test
+    public void shouldExposePlannerRoundIdOnPlanningThoughtReplayFrame() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 30, 0);
+        LlmInvocationView planningInvocation = LlmInvocationView.builder()
+                .id(901L)
+                .invocationSeq(1)
+                .agentName("planning")
+                .responseText("先规划执行路线")
+                .finishedAt(now)
+                .build();
+        ToolInvocationView planningToolInvocation = ToolInvocationView.builder()
+                .id(1001L)
+                .llmInvocationId(901L)
+                .toolCallId("tool-call-plan-round-001")
+                .toolName("planning")
+                .inputJson("{\"command\":\"create\",\"title\":\"执行路线\",\"steps\":[\"步骤一\"]}")
+                .finishedAt(now.plusSeconds(1))
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(planningInvocation))
+                .toolInvocations(List.of(planningToolInvocation))
+                .build());
+
+        Assert.assertEquals(3, frames.size());
+        Assert.assertEquals("plan_thought", eventMessageType(frames.get(0)));
+        Assert.assertEquals("1001", String.valueOf(frameResultMap(frames.get(0)).get("plannerRoundId")));
     }
 
     @Test

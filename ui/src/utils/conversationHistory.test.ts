@@ -42,6 +42,26 @@ function createPlanEvent(): MESSAGE.EventData {
   };
 }
 
+function createRoundPlanEvent(roundId: string, title: string, steps: string[]): MESSAGE.EventData {
+  return {
+    taskId: `task-${roundId}`,
+    taskOrder: 1,
+    messageType: "plan",
+    messageOrder: 1,
+    messageId: `msg-plan-${roundId}`,
+    resultMap: {
+      title,
+      stages: steps,
+      steps,
+      stepStatus: steps.map((_, index) =>
+        index === steps.length - 1 ? "in_progress" : "completed"
+      ),
+      notes: steps.map(() => ""),
+      plannerRoundId: roundId,
+    } as unknown as MESSAGE.Task,
+  };
+}
+
 function createToolThoughtEvent(toolThought: string): MESSAGE.EventData {
   return {
     taskId: "task-1",
@@ -76,6 +96,26 @@ function createPlanThoughtEvent(planThought: string): MESSAGE.EventData {
       isFinal: true,
       finish: false,
       planThought,
+    } as unknown as MESSAGE.Task,
+  };
+}
+
+function createRoundPlanThoughtEvent(roundId: string, planThought: string): MESSAGE.EventData {
+  return {
+    taskId: `task-${roundId}`,
+    taskOrder: 1,
+    messageType: "plan_thought",
+    messageOrder: 2,
+    messageId: `msg-plan-thought-${roundId}`,
+    resultMap: {
+      requestId: "req-history-001",
+      messageId: `msg-plan-thought-${roundId}`,
+      messageType: "plan_thought",
+      messageTime: "1714620000500",
+      isFinal: true,
+      finish: false,
+      planThought,
+      plannerRoundId: roundId,
     } as unknown as MESSAGE.Task,
   };
 }
@@ -225,6 +265,50 @@ describe("conversationHistory hydrate", () => {
       "tool_result",
     ]);
     expect(history.chatList[0].conclusion?.result).toBe("这是最终结论");
+  });
+
+  it("replay 多轮 planner history 会复用 combineData 并恢复 latest alias", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-history-rounds-001",
+      title: "多轮规划历史",
+      status: "SUCCESS",
+      outputStyle: "docs",
+      deepThink: true,
+      role: null,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      startedAt: "2026-05-02T14:10:00",
+      lastActiveAt: "2026-05-02T14:16:00",
+      runs: [
+        {
+          requestId: "req-history-rounds-001",
+          status: "SUCCESS",
+          queryText: "多轮 replan",
+          finalSummaryText: "最终按第二轮执行",
+          startedAt: "2026-05-02T14:10:00",
+          finishedAt: "2026-05-02T14:16:00",
+          replayFrames: [
+            createReplayFrame(createRoundPlanThoughtEvent("planner-round-1", "先输出第一轮思路")),
+            createReplayFrame(createRoundPlanEvent("planner-round-1", "第一轮计划", ["收集资料"])),
+            createReplayFrame(createRoundPlanThoughtEvent("planner-round-2", "再输出第二轮思路")),
+            createReplayFrame(createRoundPlanEvent("planner-round-2", "第二轮计划", ["收集资料", "形成结论"])),
+            createReplayFrame(createResultEvent("最终按第二轮执行")),
+          ],
+        },
+      ],
+    });
+
+    expect(history.chatList).toHaveLength(1);
+    expect(history.chatList[0].multiAgent.plannerRounds).toHaveLength(2);
+    expect(history.chatList[0].multiAgent.plannerRounds?.map((item) => item.plannerRoundId)).toEqual([
+      "planner-round-1",
+      "planner-round-2",
+    ]);
+    expect(history.chatList[0].multiAgent.plan?.title).toBe("第二轮计划");
+    expect(history.chatList[0].multiAgent.plan_thought).toBe("再输出第二轮思路");
+    expect(history.chatList[0].thought).toBe("再输出第二轮思路");
+    expect(history.chatList[0].plan?.title).toBe("第二轮计划");
   });
 
   it("keeps empty history as blank state input", () => {

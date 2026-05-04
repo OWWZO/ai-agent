@@ -82,6 +82,28 @@
         ORDER BY llm_invocation_id ASC, dispatch_index ASC, id ASC
     </select>
 
+    <select id="queryByRunIds" resultMap="ToolInvocationMap">
+        SELECT *
+        FROM ai_agent_tool_invocation
+        WHERE deleted = 0
+          AND run_id IN
+        <foreach collection="runIds" item="runId" open="(" separator="," close=")">
+            #{runId}
+        </foreach>
+        ORDER BY run_id ASC, llm_invocation_id ASC, dispatch_index ASC, id ASC
+    </select>
+
+    <select id="queryByLlmInvocationIds" resultMap="ToolInvocationMap">
+        SELECT *
+        FROM ai_agent_tool_invocation
+        WHERE deleted = 0
+          AND llm_invocation_id IN
+        <foreach collection="llmInvocationIds" item="llmInvocationId" open="(" separator="," close=")">
+            #{llmInvocationId}
+        </foreach>
+        ORDER BY llm_invocation_id ASC, dispatch_index ASC, id ASC
+    </select>
+
     <select id="queryRecentByToolName" resultMap="ToolInvocationViewMap">
         SELECT t.id,
                t.run_id,

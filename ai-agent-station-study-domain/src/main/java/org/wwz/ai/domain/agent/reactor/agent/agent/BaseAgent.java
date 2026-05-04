@@ -277,7 +277,7 @@ public abstract class BaseAgent {
      * 包含预登记、执行、observation 收口、账本落库与产物登记。
      */
     protected ToolExecutionOutcome executeToolOutcome(ToolCall command) {
-        Map<String, Long> toolInvocationIds = preRegisterToolInvocations(command == null ? List.of() : List.of(command));
+        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(command == null ? List.of() : List.of(command));
         if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
@@ -377,7 +377,7 @@ public abstract class BaseAgent {
             return result;
         }
 
-        Map<String, Long> toolInvocationIds = preRegisterToolInvocations(commands);
+        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
         if (context != null && context.getAgentRunState() != null) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }
@@ -409,7 +409,38 @@ public abstract class BaseAgent {
     /**
      * 主线程预登记工具调用，稳定保存 dispatchIndex 与 toolInvocationId。
      */
-    private Map<String, Long> preRegisterToolInvocations(List<ToolCall> commands) {
+    protected Map<String, Long> ensureToolInvocationIds(List<ToolCall> commands) {
+        if (context == null || context.getAgentRunState() == null || commands == null || commands.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> existing = new LinkedHashMap<>();
+        List<ToolCall> missingCommands = new ArrayList<>();
+        for (ToolCall command : commands) {
+            if (command == null || StringUtils.isBlank(command.getId())) {
+                continue;
+            }
+            Long existingInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
+            if (existingInvocationId != null) {
+                existing.put(command.getId(), existingInvocationId);
+            } else {
+                missingCommands.add(command);
+            }
+        }
+        if (missingCommands.isEmpty()) {
+            return existing;
+        }
+        Map<String, Long> created = preRegisterToolInvocations(missingCommands);
+        if (existing.isEmpty()) {
+            return created;
+        }
+        if (created.isEmpty()) {
+            return existing;
+        }
+        existing.putAll(created);
+        return existing;
+    }
+
+    protected Map<String, Long> preRegisterToolInvocations(List<ToolCall> commands) {
         if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
             return Map.of();
         }

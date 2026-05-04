@@ -83,6 +83,21 @@ public class EventResult {
      */
     private Map<String, Object> resultMap = new HashMap<>();
 
+    public static final String PLANNER_ROUND_ID_KEY = "plannerRoundId";
+
+    public String getPlannerRoundId() {
+        Object plannerRoundId = resultMap.get(PLANNER_ROUND_ID_KEY);
+        return plannerRoundId == null ? null : String.valueOf(plannerRoundId);
+    }
+
+    public void setPlannerRoundId(String plannerRoundId) {
+        if (plannerRoundId == null || plannerRoundId.isBlank()) {
+            resultMap.remove(PLANNER_ROUND_ID_KEY);
+            return;
+        }
+        resultMap.put(PLANNER_ROUND_ID_KEY, plannerRoundId);
+    }
+
     public List<Object> getResulMapTask() {
         if (this.resultMap.containsKey("tasks")) {
             Object obj = this.resultMap.get("tasks");

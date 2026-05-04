@@ -227,7 +227,8 @@ public class FileTool implements BaseTool {
                     FileToolOutput.builder()
                             .command("upload")
                             .primaryFileName(fileRequest.getFileName())
-                            .contentStorageMode("artifact_only")
+                            .previewUrl(fileResponse.getDomainUrl())
+                            .downloadUrl(fileResponse.getOssUrl())
                             .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
                             .build()
             );
@@ -321,7 +322,8 @@ public class FileTool implements BaseTool {
                         FileToolOutput.builder()
                                 .command("get")
                                 .primaryFileName(fileRequest.getFileName())
-                                .contentStorageMode("artifact_only")
+                                .previewUrl(fileResponse.getDomainUrl())
+                                .downloadUrl(fileResponse.getOssUrl())
                                 .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
                                 .build()
                 );
@@ -368,7 +370,6 @@ public class FileTool implements BaseTool {
                 FileToolOutput.builder()
                         .command(command)
                         .primaryFileName(fileName)
-                        .contentStorageMode("artifact_only")
                         .build(),
                 message
         );
