@@ -58,6 +58,55 @@ public class SpringRuntimeBoundaryTest {
         );
     }
 
+    @Test
+    public void shouldKeepSseProtocolOnlyInTriggerSideAdapters() throws IOException {
+        List<String> offenders = findFilesContaining("SseEmitter");
+        Assert.assertTrue(
+                "domain 中不应再保留 SSE 协议对象: " + offenders,
+                offenders.isEmpty()
+        );
+    }
+
+    @Test
+    public void shouldRemoveDirectOkHttpClientCreationFromDomainRuntime() throws IOException {
+        List<String> offenders = findFilesContaining("new OkHttpClient");
+        Assert.assertTrue(
+                "domain 运行时不应再直接创建 OkHttpClient: " + offenders,
+                offenders.isEmpty()
+        );
+    }
+
+    @Test
+    public void shouldRemoveJdbcProvidersFromDomainRuntime() throws IOException {
+        List<String> offenders = findFilesContaining("JdbcDataProvider");
+        Assert.assertTrue(
+                "domain 运行时不应再直接依赖 JdbcDataProvider: " + offenders,
+                offenders.isEmpty()
+        );
+    }
+
+    @Test
+    public void shouldKeepLegacyExecuteAndArmoryPackagesInsideCaseAndDomainOnly() throws IOException {
+        assertNoImportsFrom(
+                PROJECT_ROOT.resolve("ai-agent-station-study-trigger").resolve("src").resolve("main").resolve("java"),
+                "org.wwz.ai.domain.agent.service.execute.",
+                "org.wwz.ai.domain.agent.service.armory.",
+                "org.wwz.ai.domain.agent.service.runtime."
+        );
+        assertNoImportsFrom(
+                PROJECT_ROOT.resolve("ai-agent-station-study-app").resolve("src").resolve("main").resolve("java"),
+                "org.wwz.ai.domain.agent.service.execute.",
+                "org.wwz.ai.domain.agent.service.armory.",
+                "org.wwz.ai.domain.agent.service.runtime."
+        );
+        assertNoImportsFrom(
+                PROJECT_ROOT.resolve("ai-agent-station-study-infrastructure").resolve("src").resolve("main").resolve("java"),
+                "org.wwz.ai.domain.agent.service.execute.",
+                "org.wwz.ai.domain.agent.service.armory.",
+                "org.wwz.ai.domain.agent.service.runtime."
+        );
+    }
+
     private List<String> findFilesContaining(String needle) throws IOException {
         try (Stream<Path> pathStream = Files.walk(DOMAIN_JAVA_DIR)) {
             return pathStream
@@ -66,6 +115,40 @@ public class SpringRuntimeBoundaryTest {
                     .map(path -> PROJECT_ROOT.relativize(path).toString().replace('\\', '/'))
                     .sorted()
                     .collect(Collectors.toList());
+        }
+    }
+
+    private void assertNoImportsFrom(Path root, String... importPrefixes) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> pathStream = Files.walk(root)) {
+            List<String> offenders = pathStream
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> containsAnyImportPrefix(path, importPrefixes))
+                    .map(path -> PROJECT_ROOT.relativize(path).toString().replace('\\', '/'))
+                    .sorted()
+                    .collect(Collectors.toList());
+            Assert.assertTrue("旧 execute/armory/runtime 目录不应扩张到非 case/domain 主链路: " + offenders,
+                    offenders.isEmpty());
+        }
+    }
+
+    private boolean containsAnyImportPrefix(Path path, String... importPrefixes) {
+        try {
+            return Files.readAllLines(path, StandardCharsets.UTF_8).stream()
+                    .map(String::trim)
+                    .filter(line -> line.startsWith("import "))
+                    .anyMatch(line -> {
+                        for (String importPrefix : importPrefixes) {
+                            if (line.startsWith("import " + importPrefix)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    });
+        } catch (IOException e) {
+            throw new IllegalStateException("读取文件失败: " + path, e);
         }
     }
 

@@ -5,7 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import org.wwz.ai.domain.agent.reactor.data.dto.VectorModelSchema;
 import org.wwz.ai.domain.agent.reactor.data.dto.VectorRecallReq;
 import org.wwz.ai.domain.agent.reactor.data.dto.VectorSaveReq;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 import io.qdrant.client.PointIdFactory;
 import io.qdrant.client.grpc.JsonWithInt;
 import io.qdrant.client.grpc.Points;

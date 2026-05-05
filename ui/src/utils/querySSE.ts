@@ -16,9 +16,10 @@ const SSE_HEADERS: Record<string, string> = {
   'X-Device-Id': getDeviceId(),
 };
 
-interface SSEConfig {
-  body: any;
-  handleMessage: (data: any) => void;
+interface SSEConfig<TMessage = unknown> {
+  body: unknown;
+  parser?: (raw: unknown) => TMessage;
+  handleMessage: (data: TMessage) => void;
   handleError: (error: Error) => void;
   handleClose: () => void;
 }
@@ -28,8 +29,11 @@ interface SSEConfig {
  * @param config SSE 配置
  * @param url 可选的自定义 URL
  */
-export default (config: SSEConfig, url: string = DEFAULT_SSE_URL): void => {
-  const { body = null, handleMessage, handleError, handleClose } = config;
+export default <TMessage = unknown>(
+  config: SSEConfig<TMessage>,
+  url: string = DEFAULT_SSE_URL
+): void => {
+  const { body = null, parser, handleMessage, handleError, handleClose } = config;
 
   fetchEventSource(url, {
     method: 'POST',
@@ -41,7 +45,7 @@ export default (config: SSEConfig, url: string = DEFAULT_SSE_URL): void => {
       if (event.data) {
         try {
           const parsedData = JSON.parse(event.data);
-          handleMessage(parsedData);
+          handleMessage(parser ? parser(parsedData) : (parsedData as TMessage));
         } catch (error) {
           console.error('Error parsing SSE message:', error);
           handleError(new Error('Failed to parse SSE message'));

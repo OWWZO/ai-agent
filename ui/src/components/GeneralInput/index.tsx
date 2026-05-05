@@ -1,17 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertCircleIcon,
   ArrowUpIcon,
   BarChart3Icon,
   BrainCircuitIcon,
   CheckIcon,
   ChevronDownIcon,
-  FileIcon,
-  LoaderCircleIcon,
   PlusIcon,
-  RefreshCwIcon,
   SearchIcon,
-  XIcon,
   ZapIcon,
 } from "lucide-react";
 
@@ -30,7 +25,6 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
-  usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -41,8 +35,10 @@ import {
 } from "@/components/ui/tooltip";
 import ChatRoleSelector from "@/components/ChatRoleSelector";
 import { cn } from "@/lib/utils";
-import { agentFileApi, type UploadedConversationFile } from "@/services/agentFile";
 import { defaultProduct, productList } from "@/utils/constants";
+import UploadAttachmentChip from "./UploadAttachmentChip";
+import { buildSubmitPayload } from "./inputMode";
+import { useAttachmentUploads } from "./useAttachmentUploads";
 
 type Props = {
   sessionId: string;
@@ -62,16 +58,6 @@ type Props = {
 };
 
 type InputModeKey = "quick" | "think" | "research";
-type UploadStatus = "pending" | "uploading" | "success" | "error";
-
-type UploadAttachmentState = {
-  id: string;
-  file: File;
-  status: UploadStatus;
-  error?: string;
-  uploadedFile?: CHAT.TFile;
-};
-
 const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 const OUTPUT_PRODUCTS = productList.filter((item) => OUTPUT_TYPES.includes(item.type)) as CHAT.Product[];
 const CHAT_PRODUCT =
@@ -236,138 +222,6 @@ const menuIconWrapClassName = (tone: SelectorTone, active: boolean) =>
       : cn("bg-transparent ring-0", tone.icon)
   );
 
-const formatAttachmentSize = (size?: number) => {
-  if (typeof size !== "number" || Number.isNaN(size) || size < 0) {
-    return "未知大小";
-  }
-
-  const units = ["B", "KB", "MB", "GB"];
-  let unitIndex = 0;
-  let currentSize = size;
-  while (currentSize >= 1024 && unitIndex < units.length - 1) {
-    currentSize /= 1024;
-    unitIndex += 1;
-  }
-  return `${currentSize.toFixed(2)} ${units[unitIndex]}`;
-};
-
-const resolveFileExtension = (fileName?: string, mimeType?: string | null) => {
-  const ext = fileName?.split(".").pop()?.trim().toLowerCase();
-  if (ext) {
-    return ext;
-  }
-  if (mimeType?.includes("/")) {
-    return mimeType.split("/").pop() || "";
-  }
-  return "";
-};
-
-const normalizeUploadedFile = (file: UploadedConversationFile): CHAT.TFile => {
-  const previewUrl = file.previewUrl || file.url || file.downloadUrl || "";
-  return {
-    name: file.name,
-    url: previewUrl,
-    type: file.type || resolveFileExtension(file.name, file.mimeType),
-    size: Number(file.size) || 0,
-    previewUrl,
-    downloadUrl: file.downloadUrl,
-    resourceKey: file.resourceKey,
-    mimeType: file.mimeType ?? null,
-    originFileName: file.originFileName,
-  };
-};
-
-const resolveUploadStatusLabel = (uploadState?: UploadAttachmentState) => {
-  if (!uploadState) {
-    return "";
-  }
-  switch (uploadState.status) {
-    case "pending":
-    case "uploading":
-      return "上传中";
-    case "success":
-      return formatAttachmentSize(uploadState.uploadedFile?.size ?? uploadState.file.size);
-    case "error":
-      return uploadState.error || "上传失败";
-    default:
-      return "";
-  }
-};
-
-const UploadAttachmentChip: React.FC<{
-  attachment: PromptInputAttachmentItem;
-  uploadState?: UploadAttachmentState;
-  onRemoveAttachment: (id: string) => void;
-  onRetryAttachment: (id: string) => void;
-}> = ({ attachment, uploadState, onRemoveAttachment, onRetryAttachment }) => {
-  const attachments = usePromptInputAttachments();
-  const isImage = attachment.mediaType?.startsWith("image/") && attachment.url;
-  const isUploading = uploadState?.status === "pending" || uploadState?.status === "uploading";
-  const isSuccess = uploadState?.status === "success";
-  const isError = uploadState?.status === "error";
-
-  const removeAttachment = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    attachments.remove(attachment.id);
-    onRemoveAttachment(attachment.id);
-  };
-
-  const retryAttachment = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    onRetryAttachment(attachment.id);
-  };
-
-  return (
-    <div className="group flex min-w-0 max-w-full items-center gap-2 rounded-2xl bg-[var(--chat-surface-muted)]/78 px-2.5 py-2 text-[13px] shadow-[var(--shadow-xs)]">
-      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/90">
-        {isImage ? (
-          <img
-            alt={attachment.filename || "attachment"}
-            className="size-full object-cover"
-            src={attachment.url}
-          />
-        ) : (
-          <FileIcon className="size-4 text-[var(--chat-text-soft)]" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-[var(--chat-text)]">
-          {attachment.filename || "未命名文件"}
-        </div>
-        <div
-          className={cn(
-            "flex items-center gap-1 text-[11px] leading-4",
-            isError
-              ? "text-[#d14343]"
-              : "text-[var(--chat-text-soft)]"
-          )}
-        >
-          {isUploading ? <LoaderCircleIcon className="size-3 animate-spin" /> : null}
-          {isSuccess ? <CheckIcon className="size-3 text-[#0a74da]" /> : null}
-          {isError ? <AlertCircleIcon className="size-3" /> : null}
-          <span className="truncate">{resolveUploadStatusLabel(uploadState)}</span>
-        </div>
-      </div>
-      {isError ? (
-        <button
-          type="button"
-          className="flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-white hover:text-[var(--chat-text)]"
-          onClick={retryAttachment}
-        >
-          <RefreshCwIcon className="size-3.5" />
-        </button>
-      ) : null}
-      <button
-        type="button"
-        className="flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-white hover:text-[var(--chat-text)]"
-        onClick={removeAttachment}
-      >
-        <XIcon className="size-3.5" />
-      </button>
-    </div>
-  );
-};
-
 const GeneralInput: ReactorType.FC<Props> = (props) => {
   const {
     sessionId,
@@ -389,18 +243,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const [question, setQuestion] = useState("");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [outputMenuOpen, setOutputMenuOpen] = useState(false);
-  const [attachmentUploads, setAttachmentUploads] = useState<Record<string, UploadAttachmentState>>({});
-  const [attachmentOrder, setAttachmentOrder] = useState<string[]>([]);
   const tempData = useRef<{ compositing?: boolean }>({});
-  const attachmentUploadsRef = useRef<Record<string, UploadAttachmentState>>({});
-  const clearAttachmentUploads = useCallback(() => {
-    setAttachmentUploads({});
-    setAttachmentOrder([]);
-  }, []);
-
-  useEffect(() => {
-    attachmentUploadsRef.current = attachmentUploads;
-  }, [attachmentUploads]);
+  const {
+    attachmentUploads,
+    attachmentOrder,
+    clearAttachmentUploads,
+    removeAttachmentUpload,
+    retryAttachmentUpload,
+    addAttachmentUploads,
+  } = useAttachmentUploads(sessionId);
 
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
@@ -421,10 +272,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     lastStandardModeRef.current = currentMode;
     lastOutputProductRef.current = resolvedOutputProduct;
   }, [currentMode, product?.type, resolvedOutputProduct]);
-
-  useEffect(() => {
-    clearAttachmentUploads();
-  }, [clearAttachmentUploads, sessionId]);
 
   const visibleMode = isDataAgent ? lastStandardModeRef.current : currentMode;
   const visibleOutputProduct = isDataAgent ? lastOutputProductRef.current : resolvedOutputProduct;
@@ -450,120 +297,18 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const showOutputSelector = showBtn && visibleMode !== "quick";
   const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
 
-  const removeAttachmentUpload = useCallback((id: string) => {
-    setAttachmentUploads((prev) => {
-      if (!prev[id]) {
-        return prev;
-      }
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    setAttachmentOrder((prev) => prev.filter((itemId) => itemId !== id));
-  }, []);
-
-  const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
-    setAttachmentUploads((prev) => {
-      const current = prev[attachmentId];
-      if (!current) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [attachmentId]: {
-          ...current,
-          status: "uploading",
-          error: undefined,
-        },
-      };
-    });
-
-    try {
-      const uploadedFile = normalizeUploadedFile(
-        await agentFileApi.uploadConversationFile(sessionId, file)
-      );
-      setAttachmentUploads((prev) => {
-        const current = prev[attachmentId];
-        if (!current) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [attachmentId]: {
-            ...current,
-            status: "success",
-            error: undefined,
-            uploadedFile,
-          },
-        };
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error && error.message
-          ? error.message
-          : "上传失败，请稍后重试";
-      setAttachmentUploads((prev) => {
-        const current = prev[attachmentId];
-        if (!current) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [attachmentId]: {
-            ...current,
-            status: "error",
-            error: errorMessage,
-          },
-        };
-      });
-    }
-  }, [sessionId]);
-
   const handleAttachmentsAdded = useCallback((attachments: PromptInputAttachmentItem[]) => {
     const nextAttachments = attachments.filter(
       (attachment): attachment is PromptInputAttachmentItem & { file: File } =>
         Boolean(attachment.file)
     );
-    if (!nextAttachments.length) {
-      return;
-    }
-
-    setAttachmentUploads((prev) => {
-      const next = { ...prev };
-      nextAttachments.forEach((attachment) => {
-        if (next[attachment.id]) {
-          return;
-        }
-        next[attachment.id] = {
-          id: attachment.id,
-          file: attachment.file,
-          status: "pending",
-        };
-      });
-      return next;
-    });
-    setAttachmentOrder((prev) => {
-      const next = [...prev];
-      nextAttachments.forEach((attachment) => {
-        if (!next.includes(attachment.id)) {
-          next.push(attachment.id);
-        }
-      });
-      return next;
-    });
-
-    nextAttachments.forEach((attachment) => {
-      void uploadAttachment(attachment.id, attachment.file);
-    });
-  }, [uploadAttachment]);
-
-  const retryAttachmentUpload = useCallback((id: string) => {
-    const target = attachmentUploadsRef.current[id];
-    if (!target) {
-      return;
-    }
-    void uploadAttachment(id, target.file);
-  }, [uploadAttachment]);
+    addAttachmentUploads(
+      nextAttachments.map((attachment) => ({
+        id: attachment.id,
+        file: attachment.file,
+      }))
+    );
+  }, [addAttachmentUploads]);
 
   const handleSelectionChange = (nextProduct: CHAT.Product, nextDeepThink: boolean) => {
     onSelectionChange?.({
@@ -591,15 +336,16 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const handleSubmit = ({ text }: { text: string; files: unknown[] }) => {
     if (!text.trim() || disabled || hasUploadingAttachment || hasFailedAttachment) return;
 
-    const outputStyle = isDataAgent ? "dataAgent" : visibleMode === "quick" ? "chat" : visibleOutputProduct.type;
-
-    send({
-      message: text.trim(),
-      outputStyle,
-      deepThink: outputStyle !== "chat" && outputStyle !== "dataAgent" ? visibleMode === "research" : false,
-      files: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-      aiAgentId: outputStyle === "chat" ? chatRole?.agentId : undefined,
-    });
+    send(
+      buildSubmitPayload({
+        question: text,
+        visibleMode,
+        isDataAgent,
+        visibleOutputProduct,
+        uploadedFiles,
+        chatRole: chatRole || null,
+      })
+    );
 
     setQuestion("");
     clearAttachmentUploads();

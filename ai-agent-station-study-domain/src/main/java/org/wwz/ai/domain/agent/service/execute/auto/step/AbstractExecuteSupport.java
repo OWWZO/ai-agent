@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto.step;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.domain.agent.adapter.port.AgentMessageStream;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
@@ -54,13 +54,13 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     protected void sendSseResult(DefaultAutoAgentExecuteStrategyFactory.DynamicContext dynamicContext, 
                                 AgentExecuteResultEntity result) {
         try {
-            SseEmitter emitter = dynamicContext.getValue("emitter");
-            if (emitter != null) {
+            AgentMessageStream stream = dynamicContext.getValue("emitter");
+            if (stream != null) {
                 // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
-                emitter.send(sseData);
+                stream.send(sseData);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("发送SSE结果失败：{}", e.getMessage(), e);
         }
     }

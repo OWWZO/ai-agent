@@ -3,7 +3,8 @@ package org.wwz.ai.domain.agent.reactor.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import org.wwz.ai.domain.agent.reactor.agent.util.OkHttpUtil;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -21,6 +22,8 @@ import java.util.Map;
 public class EmbeddingService {
     @Autowired
     private DataAgentConfig dataAgentConfig;
+    @Autowired
+    private RemoteHttpPort remoteHttpPort;
 
     public String resolveEmbeddingUrl() {
         if (dataAgentConfig.getQdrantConfig() != null && StringUtils.isNotBlank(dataAgentConfig.getQdrantConfig().getEmbeddingUrl())) {
@@ -60,7 +63,12 @@ public class EmbeddingService {
             JSONObject body = new JSONObject();
             body.put("inputs", text);
             body.put("normalize", true);
-            String res = OkHttpUtil.postJsonBody(embeddingUrl, null, body.toJSONString());
+            String res = remoteHttpPort.execute(RemoteHttpRequest.builder()
+                    .method("POST")
+                    .url(embeddingUrl)
+                    .headers(java.util.Map.of("Content-Type", "application/json"))
+                    .body(body.toJSONString())
+                    .build());
             return parseEmbeddingResponse(res);
         } catch (Exception e) {
             log.error("embedding failed, error:{}", e.getMessage(), e);

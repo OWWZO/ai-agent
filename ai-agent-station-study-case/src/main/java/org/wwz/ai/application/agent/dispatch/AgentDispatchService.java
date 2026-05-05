@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.types.exception.BizException;
 

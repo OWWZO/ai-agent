@@ -7,16 +7,16 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.dto.ImageGenerationRequest;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.ImageGenerationTool;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.dto.ImageGenerationRequest;
+import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.impl.ImageGenerationExecutionKernelImpl;
 import org.wwz.ai.infrastructure.gateway.ReactorImageGenerationGateway;
@@ -244,7 +244,7 @@ public class ImageGenerationToolTest {
         }
 
         @Override
-        public void updateAgentType(org.wwz.ai.domain.agent.reactor.agent.enums.AgentType agentType) {
+        public void updateAgentType(org.wwz.ai.domain.agent.runtime.enums.AgentType agentType) {
         }
 
         private List<String> messageTypes() {

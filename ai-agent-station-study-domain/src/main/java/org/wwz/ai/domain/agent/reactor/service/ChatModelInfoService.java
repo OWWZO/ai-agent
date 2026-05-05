@@ -10,6 +10,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.adapter.port.DataQueryExecutionPort;
+import org.wwz.ai.domain.agent.adapter.port.DataQueryMetadataPort;
 import org.springframework.transaction.annotation.Transactional;
 import org.wwz.ai.domain.agent.reactor.adapter.repository.IChatModelMetadataRepository;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
@@ -24,12 +26,8 @@ import org.wwz.ai.domain.agent.reactor.data.dto.VectorModelSchema;
 import org.wwz.ai.domain.agent.reactor.data.dto.VectorSaveReq;
 import org.wwz.ai.domain.agent.reactor.data.exception.JdbcBizException;
 import org.wwz.ai.domain.agent.reactor.data.model.StandardColumnType;
-import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcDataMetaProvider;
-import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcDataProvider;
-import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcQueryRequest;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
-import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 
 import java.sql.SQLException;
 import java.util.*;
@@ -46,8 +44,8 @@ public class ChatModelInfoService {
 
     private final IChatModelMetadataRepository chatModelMetadataRepository;
     private final DataAgentConfig dataAgentConfig;
-    private final JdbcDataMetaProvider jdbcDataMetaProvider;
-    private final JdbcDataProvider jdbcDataProvider;
+    private final DataQueryMetadataPort dataQueryMetadataPort;
+    private final DataQueryExecutionPort dataQueryExecutionPort;
     private final ChatModelSchemaService chatModelSchemaService;
     private final VectorService vectorService;
     private final ColumnValueSyncService columnValueSyncService;
@@ -132,11 +130,8 @@ public class ChatModelInfoService {
 
     private Map<String, Set<String>> queryModelFewShot(DataAgentModelConfig modelConfig, List<TableColumn> tableSchema) throws SQLException {
         String fewShotSql = getFewShotSql(modelConfig, tableSchema);
-        JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-        jdbcQueryRequest.setSql(fewShotSql);
-        QueryResult queryResult = jdbcDataProvider.queryData(jdbcQueryRequest);
+        QueryResult queryResult = dataQueryExecutionPort.query(dbConfig, fewShotSql);
         List<Map<String, Object>> dataList = queryResult.getDataList();
         if (CollectionUtils.isEmpty(dataList)) {
             return new HashMap<>();
@@ -269,19 +264,13 @@ public class ChatModelInfoService {
     }
 
     public List<TableColumn> getSqlSchema(DataAgentModelConfig modelConfig) throws SQLException {
-        JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-        jdbcQueryRequest.setSql(modelConfig.getContent());
-        jdbcQueryRequest.setLimit(1);
-        return jdbcDataMetaProvider.getTableColumnsOfSql(jdbcQueryRequest);
+        return dataQueryMetadataPort.getTableColumnsOfSql(dbConfig, modelConfig.getContent(), 1);
     }
 
     public List<TableColumn> getTableSchema(DataAgentModelConfig modelConfig) throws SQLException {
-        JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-        return jdbcDataMetaProvider.queryColumns(jdbcQueryRequest, modelConfig.getContent(), dbConfig.getSchema());
+        return dataQueryMetadataPort.queryColumns(dbConfig, modelConfig.getContent(), dbConfig.getSchema());
     }
 
     public List<ChatModelInfoDto> queryAllModelsWithSchema() {
@@ -321,11 +310,8 @@ public class ChatModelInfoService {
             sql += modelInfo.getContent();
         }
         sql += " LIMIT 100";
-        JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-        jdbcQueryRequest.setSql(sql);
-        return jdbcDataProvider.queryData(jdbcQueryRequest);
+        return dataQueryExecutionPort.query(dbConfig, sql);
     }
 
 }

@@ -4,10 +4,10 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.ReActAgent;
-import org.wwz.ai.domain.agent.reactor.agent.agent.ReactImplAgent;
-import org.wwz.ai.domain.agent.reactor.agent.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
+import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 

@@ -2,12 +2,20 @@ package org.wwz.ai.test.spring.ai;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.definition.ToolDefinition;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.McpToolInfo;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.RegistryBackedToolCallback;
-import org.wwz.ai.domain.agent.reactor.agent.util.ToolSchemaNormalizer;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.GrepTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.ReadTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.ScriptRunnerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.RegistryBackedToolCallback;
+import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,6 +97,30 @@ public class ToolSchemaNormalizerTest {
         Assert.assertTrue(normalized.get("properties") instanceof Map);
         Assert.assertTrue(((Map<?, ?>) normalized.get("properties")).isEmpty());
         Assert.assertEquals(List.of(), normalized.get("required"));
+    }
+
+    @Test
+    public void test_validSkillToolSchemasShouldNotEmitIncompleteSchemaWarning() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ToolSchemaNormalizer.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        logger.addAppender(listAppender);
+
+        try {
+            ToolSchemaNormalizer.normalizeSchema(new SkillTool(null).toParams(), "skill_tool");
+            ToolSchemaNormalizer.normalizeSchema(new ReadTool(null, null).toParams(), "read_tool");
+            ToolSchemaNormalizer.normalizeSchema(new GrepTool(null, null).toParams(), "grep_tool");
+            ToolSchemaNormalizer.normalizeSchema(new ScriptRunnerTool(null, null, null).toParams(), "script_runner_tool");
+
+            boolean hasIncompleteSchemaWarning = listAppender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .anyMatch(message -> message.contains("检测到不完整 object schema"));
+
+            Assert.assertFalse("合法 schema 不应该触发不完整 object schema 告警", hasIncompleteSchemaWarning);
+        } finally {
+            logger.detachAppender(listAppender);
+            listAppender.stop();
+        }
     }
 
     private Map<String, Object> parseSchema(String schema) {

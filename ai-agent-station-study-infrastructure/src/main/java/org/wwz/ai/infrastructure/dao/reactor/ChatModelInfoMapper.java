@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
 
 @Mapper
 public interface ChatModelInfoMapper extends BaseMapper<ChatModelInfo> {

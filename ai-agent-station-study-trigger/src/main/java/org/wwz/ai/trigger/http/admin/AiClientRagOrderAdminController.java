@@ -5,7 +5,7 @@ import org.wwz.ai.api.dto.AiClientRagOrderQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderResponseDTO;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.domain.agent.service.IRagService;
+import org.wwz.ai.application.agent.rag.IRagApplicationService;
 import org.wwz.ai.infrastructure.dao.IAiClientRagOrderDao;
 import org.wwz.ai.infrastructure.dao.po.AiClientRagOrder;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -36,7 +36,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     private IAiClientRagOrderDao aiClientRagOrderDao;
 
     @Resource
-    private IRagService ragService;
+    private IRagApplicationService ragApplicationService;
 
     @Override
     @PostMapping("/create")
@@ -425,7 +425,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> uploadRagFile(@RequestParam("name") String name, @RequestParam("tag") String tag, @RequestParam("files") List<MultipartFile> files) {
         try {
             log.info("上传知识库，请求 {}", name);
-            ragService.storeRagFile(name, tag, files);
+            ragApplicationService.storeRagFile(name, tag, files);
             Response<Boolean> response = Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

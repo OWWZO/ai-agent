@@ -17,22 +17,15 @@ import {
   Search,
 } from "lucide-react";
 import RunStatus from "./RunStatus";
-import {
-  resolveDeepSearchStage,
-  resolveDeepSearchTitle,
-  shouldRenderDeepSearchWorkspace,
-} from "@/utils/deepSearch";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
-import { getStableTaskIdentity } from "@/utils/chat";
-
-const getStableTaskRenderKey = (taskItem?: CHAT.Task | PanelItemType) => {
-  if (!taskItem) {
-    return "empty";
-  }
-
-  // deep_search 的不同阶段可能复用 messageId，这里复用统一稳定键，避免预览面板串到别的卡片。
-  return getStableTaskIdentity(taskItem) || "empty";
-};
+import {
+  filterPreviewTaskList,
+  resolvePreviewCanPreview,
+  resolvePreviewLeadingIcon,
+  resolvePreviewTaskRenderKey,
+  resolvePreviewTaskSelection,
+  resolvePreviewTitle,
+} from "./filePreviewModel";
 
 // 空状态动画组件
 const EmptyState = () => (
@@ -149,26 +142,10 @@ const FilePreview: React.FC<{
   };
 }> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp, runState }) => {
   const taskList = useMemo(() => {
-    return taskListProp?.filter(
-      (item) =>
-        !["task_summary", "result"].includes(item.messageType) &&
-        (
-          item.messageType !== "deep_search" ||
-          shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
-        )
-    );
+    return filterPreviewTaskList(taskListProp);
   }, [taskListProp]);
 
   const [curActiveTaskIndex, setCurActiveTaskIndex] = useState<number | undefined>();
-
-  let taskItem =
-    typeof curActiveTaskIndex === "number"
-      ? taskList?.[curActiveTaskIndex] || defaultTaskItem
-      : defaultTaskItem;
-
-  if (!taskItem) {
-    taskItem = taskList?.[taskList.length - 1];
-  }
 
   useEffect(() => {
     if (defaultTaskItem) {
@@ -176,12 +153,13 @@ const FilePreview: React.FC<{
     }
   }, [defaultTaskItem]);
 
-  const realActiveTaskIndex = useMemo(() => {
-    const index = taskList?.findIndex((item) => item.id === taskItem?.id);
-    return index !== undefined && index >= 0 ? index : 0;
-  }, [taskItem?.id, taskList]);
-
-  const taskLength = taskList?.length || 0;
+  const { taskItem, realActiveTaskIndex, taskLength } = useMemo(() => {
+    return resolvePreviewTaskSelection({
+      defaultTaskItem,
+      taskList,
+      activeTaskIndex: curActiveTaskIndex,
+    });
+  }, [curActiveTaskIndex, defaultTaskItem, taskList]);
 
   const next = useMemoizedFn(() => {
     setCurActiveTaskIndex(Math.min(taskLength - 1, realActiveTaskIndex + 1));
@@ -196,46 +174,29 @@ const FilePreview: React.FC<{
   const artifactMissing = Boolean(primaryFile?.missing);
 
   const title = useMemo(() => {
-    if (!taskItem) return "";
-    const { messageType, resultMap } = taskItem;
-    if (messageType === "tool_result") {
-      if (
-        taskItem.toolResult?.toolName === "image_generation_tool" &&
-        primaryFile?.name
-      ) {
-        return primaryFile.name;
-      }
-      return taskItem.toolResult?.toolName || "工具执行";
-    }
-    if (["file", "html", "markdown", "code", "ppt", "data_analysis"].includes(messageType)) {
-      return primaryFile?.name || messageType;
-    }
-    if (messageType === "deep_search") {
-      const stage = resolveDeepSearchStage(resultMap?.messageType);
-      const titleQueries =
-        stage === "report" ? resultMap?.query : resultMap?.searchResult?.query;
-      return resolveDeepSearchTitle(stage, titleQueries);
-    }
-    return messageType;
+    return resolvePreviewTitle(taskItem, primaryFile);
   }, [primaryFile, taskItem]);
 
+  const leadingIconType = useMemo(() => resolvePreviewLeadingIcon(taskItem), [taskItem]);
   const headerLeadingIcon = useMemo(() => {
-    if (!taskItem) return undefined;
-    const deepSearchStage =
-      taskItem.messageType === "deep_search"
-        ? resolveDeepSearchStage(taskItem.resultMap?.messageType)
-        : undefined;
-    if (
-      taskItem.messageType === "deep_search" &&
-      (deepSearchStage === "extend" || deepSearchStage === "search")
-    ) {
-      return <Search className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />;
+    if (leadingIconType !== "search") {
+      return undefined;
     }
-    return undefined;
-  }, [taskItem]);
+    return <Search className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />;
+  }, [leadingIconType]);
 
-  const canPreview = !artifactMissing && (useFile || useHtml || useExcel || useImage);
-  const taskRenderKey = useMemo(() => getStableTaskRenderKey(taskItem), [taskItem]);
+  const canPreview = useMemo(() => {
+    return resolvePreviewCanPreview(
+      {
+        useFile,
+        useHtml,
+        useExcel,
+        useImage,
+      },
+      artifactMissing
+    );
+  }, [artifactMissing, useExcel, useFile, useHtml, useImage]);
+  const taskRenderKey = useMemo(() => resolvePreviewTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State
   if (!taskItem) {
@@ -337,7 +298,7 @@ const FilePreview: React.FC<{
               >
                 <Clock className="h-3 w-3" />
                 <span>
-                  {dayjs(+(taskList?.[realActiveTaskIndex]?.messageTime || 0)).format(
+                  {dayjs(+(taskList[realActiveTaskIndex]?.messageTime || 0)).format(
                     "HH:mm:ss"
                   )}
                 </span>

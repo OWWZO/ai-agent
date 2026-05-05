@@ -4,10 +4,10 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.ReActAgent;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 /**
  * 数字员工提示词格式化测试。

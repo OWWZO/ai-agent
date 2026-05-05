@@ -24,11 +24,11 @@ class TableRagSharedConfigTest(unittest.TestCase):
 
         self.assertIsNone(config["url"])
         self.assertIsNone(config["host"])
-        self.assertEqual(6334, config["port"])
+        self.assertEqual(0, config["port"])
         self.assertIsNone(config["api_key"])
-        self.assertTrue(config["prefer_grpc"])
+        self.assertFalse(config["prefer_grpc"])
 
-    def test_should_keep_table_rag_override_priority(self):
+    def test_should_ignore_table_rag_qdrant_override(self):
         with patch.dict(
             os.environ,
             {
@@ -44,11 +44,10 @@ class TableRagSharedConfigTest(unittest.TestCase):
         ):
             config = resolve_table_rag_qdrant_config()
 
-        # 显式 host override 生效后，不再继续携带共享 url，避免直连配置被混用。
         self.assertIsNone(config["url"])
-        self.assertEqual("override-qdrant.internal", config["host"])
-        self.assertEqual(7001, config["port"])
-        self.assertEqual("override-key", config["api_key"])
+        self.assertIsNone(config["host"])
+        self.assertEqual(0, config["port"])
+        self.assertIsNone(config["api_key"])
         self.assertFalse(config["prefer_grpc"])
 
     def test_should_fallback_to_data_agent_qdrant_config_only(self):

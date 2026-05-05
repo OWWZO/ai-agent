@@ -2,9 +2,9 @@ package org.wwz.ai.infrastructure.dao.reactor;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.wwz.ai.domain.agent.reactor.entity.DialogueSession;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
+import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
+import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 
 import java.util.List;
 

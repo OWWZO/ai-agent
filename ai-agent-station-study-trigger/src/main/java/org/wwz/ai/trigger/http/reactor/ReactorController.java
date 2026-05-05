@@ -11,13 +11,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
+import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.reactor.service.IGptProcessService;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
+import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
 
 import java.io.UnsupportedEncodingException;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -32,57 +34,9 @@ public class ReactorController {
     @Autowired
     protected ReactorConfig reactorConfig;
     @Autowired
-    private IGptProcessService gptProcessService;
+    private IGptQueryApplicationService gptQueryApplicationService;
     @Autowired
     private IAgentDispatchService agentDispatchService;
-
-    /**
-     * 开启SSE心跳
-     * @param emitter
-     * @param requestId
-     * @return
-     */
-    private ScheduledFuture<?> startHeartbeat(SseEmitter emitter, String requestId) {
-        return executor.scheduleAtFixedRate(() -> {
-            try {
-                // 发送心跳消息
-                log.info("{} send heartbeat", requestId);
-                emitter.send("heartbeat");
-            } catch (Exception e) {
-                // 发送心跳失败，关闭连接
-                log.error("{} heartbeat failed, closing connection", requestId, e);
-                emitter.completeWithError(e);
-            }
-        }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * 注册SSE事件
-     * @param emitter
-     * @param requestId
-     * @param heartbeatFuture
-     */
-    private void registerSSEMonitor(SseEmitter emitter, String requestId, ScheduledFuture<?> heartbeatFuture) {
-        // 监听SSE异常事件
-        emitter.onCompletion(() -> {
-            log.info("{} SSE connection completed normally", requestId);
-            heartbeatFuture.cancel(true);
-        });
-
-        // 监听连接超时事件
-        emitter.onTimeout(() -> {
-            log.info("{} SSE connection timed out", requestId);
-            heartbeatFuture.cancel(true);
-            emitter.complete();
-        });
-
-        // 监听连接错误事件
-        emitter.onError((ex) -> {
-            log.info("{} SSE connection error: ", requestId, ex);
-            heartbeatFuture.cancel(true);
-            emitter.completeWithError(ex);
-        });
-    }
 
     /**
      * 执行智能体调度
@@ -97,11 +51,13 @@ public class ReactorController {
 
         Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
 
-        SseEmitter emitter = new SseEmitter(AUTO_AGENT_SSE_TIMEOUT);
+        SseEmitter emitter = SseLifecycleSupport.createEmitter(AUTO_AGENT_SSE_TIMEOUT);
         // SSE心跳
-        ScheduledFuture<?> heartbeatFuture = startHeartbeat(emitter, request.getRequestId());
+        ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
+                executor, emitter, request.getRequestId(), HEARTBEAT_INTERVAL, log
+        );
         // 监听SSE事件
-        registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
+        SseLifecycleSupport.registerLifecycle(emitter, request.getRequestId(), heartbeatFuture, log);
 
         try {
             agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
@@ -132,7 +88,13 @@ public class ReactorController {
      */
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
-        return gptProcessService.queryMultiAgentIncrStream(params);
+        SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
+        SseLifecycleSupport.registerLifecycle(emitter,
+                Objects.toString(params.getRequestId(), "legacy-gpt-query"),
+                null,
+                log);
+        gptQueryApplicationService.queryAgentStreamIncr(params, new SseEmitterAgentSessionStream(emitter));
+        return emitter;
     }
 
 }

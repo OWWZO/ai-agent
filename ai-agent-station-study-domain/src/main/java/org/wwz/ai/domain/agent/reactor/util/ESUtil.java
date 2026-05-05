@@ -45,8 +45,14 @@ public class ESUtil {
     }
 
     public static RestHighLevelClient buildRestClient(String esClusterHost, String esClusterUser, String esClusterPassword, String esClusterApiKey, int timeout, String scheme) {
-        String normalizedHost = StringUtils.defaultIfBlank(esClusterHost, "127.0.0.1:65535");
-        String normalizedScheme = StringUtils.defaultIfBlank(scheme, "http");
+        String normalizedHost = StringUtils.trimToNull(esClusterHost);
+        String normalizedScheme = StringUtils.trimToNull(scheme);
+        if (normalizedHost == null) {
+            throw new IllegalArgumentException("esClusterHost is blank");
+        }
+        if (normalizedScheme == null) {
+            throw new IllegalArgumentException("es scheme is blank");
+        }
         String[] split = normalizedHost.split("[,;]");
         HttpHost[] httpHostArray = new HttpHost[split.length];
         String pathPrefix = null;

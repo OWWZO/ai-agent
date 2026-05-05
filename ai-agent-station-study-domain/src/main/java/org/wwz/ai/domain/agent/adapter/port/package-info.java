@@ -1,4 +1,5 @@
 /**
- * 外部接口适配器层；当需要调用外部接口时，则创建出这一层，并定义接口，之后由基础设施层的 adapter 层具体实现
+ * Agent 外部能力端口。
+ * domain 只在这里声明模型调用、文件产物、远端工具等能力契约，具体实现必须下沉到 infrastructure。
  */
 package org.wwz.ai.domain.agent.adapter.port;

@@ -2,9 +2,9 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.PlanningTool;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.tool.common.PlanningTool;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
 
 import java.util.LinkedHashMap;
 import java.util.List;

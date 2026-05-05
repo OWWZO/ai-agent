@@ -2,10 +2,10 @@ package org.wwz.ai.config.reactor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
-import org.wwz.ai.domain.agent.reactor.handler.AgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.handler.PlanSolveAgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.handler.ReactAgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.PlanSolveAgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.ReactAgentResponseHandler;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -13,6 +13,7 @@ import java.util.Map;
 
 /**
  * Reactor handler 装配归 app 模块所有。
+ * 这里仅做 Bean 拓扑归并，避免 handler 选择职责回流到 domain 或 trigger。
  */
 @Configuration
 public class AgentHandlerAutoConfiguration {

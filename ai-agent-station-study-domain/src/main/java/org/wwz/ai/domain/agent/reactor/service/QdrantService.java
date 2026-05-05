@@ -14,14 +14,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import okhttp3.MediaType;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.wwz.ai.domain.agent.reactor.agent.util.OkHttpUtil;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
 import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
@@ -58,6 +56,8 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     @Autowired
     private DataAgentConfig dataAgentConfig;
+    @Autowired
+    private RemoteHttpPort remoteHttpPort;
 
     private volatile QdrantClient client;
     public static final int maxLimitSize = 5000;
@@ -79,8 +79,15 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     public ResolvedQdrantEndpoint resolveEndpoint(QdrantConfig qdrantConfig) {
         String url = StringUtils.trimToNull(qdrantConfig.getUrl());
-        int port = qdrantConfig.getPort() == null || qdrantConfig.getPort() <= 0 ? 6334 : qdrantConfig.getPort();
-        boolean preferGrpc = qdrantConfig.getPreferGrpc() == null || qdrantConfig.getPreferGrpc();
+        Integer configuredPort = qdrantConfig.getPort();
+        if (configuredPort == null || configuredPort <= 0) {
+            throw new IllegalStateException("Qdrant port is blank");
+        }
+        int port = configuredPort;
+        Boolean preferGrpc = qdrantConfig.getPreferGrpc();
+        if (preferGrpc == null) {
+            throw new IllegalStateException("Qdrant preferGrpc is blank");
+        }
         if (StringUtils.isNotBlank(url)) {
             if (url.contains("://")) {
                 URI uri = URI.create(url);
@@ -442,19 +449,19 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     private String executeRestRequest(ResolvedQdrantEndpoint endpoint, String method, String path, Object body) throws IOException {
         String requestUrl = buildRestBaseUrl(endpoint) + path;
-        RequestBody requestBody = body == null ? null : RequestBody.create(JSON.toJSONString(body), JSON_MEDIA_TYPE);
-        Request.Builder requestBuilder = new Request.Builder().url(requestUrl);
+        Map<String, String> headers = new LinkedHashMap<>();
         if (StringUtils.isNotBlank(endpoint.getApiKey())) {
-            requestBuilder.addHeader("api-key", endpoint.getApiKey());
+            headers.put("api-key", endpoint.getApiKey());
         }
-        requestBuilder.method(method, requestBody);
-        try (Response response = OkHttpUtil.getOkHttpClient().newCall(requestBuilder.build()).execute()) {
-            String responseBody = response.body() == null ? "" : response.body().string();
-            if (!response.isSuccessful()) {
-                throw new IOException(String.format("Qdrant REST request failed, method=%s, url=%s, code=%s, body=%s", method, requestUrl, response.code(), responseBody));
-            }
-            return responseBody;
+        if (body != null) {
+            headers.put("Content-Type", JSON_MEDIA_TYPE.toString());
         }
+        return remoteHttpPort.execute(RemoteHttpRequest.builder()
+                .method(method)
+                .url(requestUrl)
+                .headers(headers)
+                .body(body == null ? null : JSON.toJSONString(body))
+                .build());
     }
 
     private String buildRestBaseUrl(ResolvedQdrantEndpoint endpoint) {

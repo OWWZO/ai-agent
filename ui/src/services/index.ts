@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import type { AxiosRequestConfig } from "axios";
 
 interface ApiResponse<T> {
   code: number | string
@@ -8,17 +9,17 @@ interface ApiResponse<T> {
 }
 
 export const api = {
-  get: <T>(url: string, params?: any) =>
-    request.get<ApiResponse<T>>(url, { params }),
+  get: <T>(url: string, params?: any, config?: AxiosRequestConfig) =>
+    request.get<ApiResponse<T>>(url, { ...config, params }),
 
-  post: <T>(url: string, data?: any) =>
-    request.post<ApiResponse<T>>(url, data),
+  post: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
+    request.post<ApiResponse<T>>(url, data, config),
 
-  put: <T>(url: string, data?: any) =>
-    request.put<ApiResponse<T>>(url, data),
+  put: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
+    request.put<ApiResponse<T>>(url, data, config),
 
-  delete: <T>(url: string, params?: any) =>
-    request.delete<ApiResponse<T>>(url, { params }),
+  delete: <T>(url: string, params?: any, config?: AxiosRequestConfig) =>
+    request.delete<ApiResponse<T>>(url, { ...config, params }),
 };
 
 export default api;

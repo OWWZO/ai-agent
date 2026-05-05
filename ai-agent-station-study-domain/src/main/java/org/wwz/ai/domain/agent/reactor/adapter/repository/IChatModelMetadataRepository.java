@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.reactor.adapter.repository;
 
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 
 import java.util.List;
 

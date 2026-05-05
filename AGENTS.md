@@ -1,6 +1,6 @@
 ﻿# ai-agent-station-study Development Guidelines
 
-Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-05-02
+Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-05-05
 
 ## Active Technologies
 - Java 17（后端）；TypeScript 5 + React 19（`ui/`） + Spring Boot 3.4.3, Spring AI 1.1.4, MyBatis/MyBatis-Plus 风格 DAO + Mapper XML, OkHttp SSE, React 19, Vite 6, Ant Design 5, Radix UI (001-fix-role-library)
@@ -35,6 +35,10 @@ Auto-generated from project architecture and Spec Kit setup. Last updated: 2026-
 - MySQL（删除 `ai_agent_tool_invocation.output_json`，新增 8 张 `ai_agent_tool_output_*` 工具输出表；继续复用 `ai_agent_artifact`） (014-tool-output-refactor)
 - Java 17（后端主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MyBatis-Plus 3.5.14、MySQL 8、OkHttp SSE、React 19、Vite 6、Ant Design 5、现有 `ToolInvocationProjectorRegistry` 与 `combineData / handleTaskData` 前端恢复链 (017-conversation-history-projector-replay)
 - MySQL（新增 `ai_agent_dialogue_session`，复用 `ai_agent_dialogue_run`、`ai_agent_llm_invocation`、`ai_agent_tool_invocation`、`ai_agent_artifact`、`ai_agent_tool_output_*`） (017-conversation-history-projector-replay)
+- Java 17（仅后端 Maven 多模块主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 3.5.14、MySQL 8、OkHttp、现有 `ai-agent-station-study-case` 应用编排层、execution ledger / history replay / session memory 领域能力 (019-agent-ddd-convergence)
+- 复用现有 MySQL 会话、执行账本、tool-output 与 session memory 持久化；本期不新增表、不改 schema (019-agent-ddd-convergence)
+- Java 17（仅后端 Maven 多模块主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 3.5.14、MySQL 8、OkHttp、现有 `ai-agent-station-study-case` 应用编排层、runtime/ledger/memory/rag/role 子域骨架、既有 dataquery / image generation / history replay / session memory 能力 (020-prune-agent-bridges)
+- 复用现有 MySQL 会话、账本、tool-output 与 session memory 持久化；本期不新增表、不改 schema (020-prune-agent-bridges)
 
 - Java 17 + Spring Boot 3.4.3 + Spring AI 1.1.4 + MyBatis-Plus 3.5.14
 - MySQL 8 + PostgreSQL 15/pgvector + Maven multi-module
@@ -82,9 +86,9 @@ ai-agent-station-study/
 - 命名保持英文语义化；复杂逻辑、边界条件和关键设计决策使用中文注释说明。
 
 ## Recent Changes
+- 020-prune-agent-bridges: Added Java 17（仅后端 Maven 多模块主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 3.5.14、MySQL 8、OkHttp、现有 `ai-agent-station-study-case` 应用编排层、runtime/ledger/memory/rag/role 子域骨架、既有 dataquery / image generation / history replay / session memory 能力
+- 019-agent-ddd-convergence: Added Java 17（仅后端 Maven 多模块主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / MyBatis-Plus 3.5.14、MySQL 8、OkHttp、现有 `ai-agent-station-study-case` 应用编排层、execution ledger / history replay / session memory 领域能力
 - 017-conversation-history-projector-replay: Added Java 17（后端主链路） + TypeScript 5 / React 19（`ui/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis / Mapper XML、MyBatis-Plus 3.5.14、MySQL 8、OkHttp SSE、React 19、Vite 6、Ant Design 5、现有 `ToolInvocationProjectorRegistry` 与 `combineData / handleTaskData` 前端恢复链
-- 014-tool-output-refactor: Added Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、FastJSON 1.2.83、现有 Reactor `AgentContext / BaseAgent / AgentExecutionRecorderImpl / ToolArtifactRegistry / ToolInvocationProjectorRegistry` 抽象
-- 013-dialogue-persistence: Added Java 17（仅后端主链路；本期不改 `ui/`、`reactor-tool/`、`reactor-client/`） + Spring Boot 3.4.3、Spring AI 1.1.4、MyBatis-Plus 3.5.14、MyBatis Mapper XML、MySQL 8、OkHttp SSE、现有 Reactor `AgentContext / BaseAgent / LLM / SSEPrinter / ToolArtifactRegistry` 运行时抽象
 
 
 <!-- MANUAL ADDITIONS START -->

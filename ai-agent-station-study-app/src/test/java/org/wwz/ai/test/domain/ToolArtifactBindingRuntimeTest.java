@@ -2,14 +2,14 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.BaseAgent;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactBinding;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactBinding;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
 import java.util.List;

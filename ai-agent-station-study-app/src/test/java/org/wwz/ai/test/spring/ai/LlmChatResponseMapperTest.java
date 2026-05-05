@@ -8,8 +8,8 @@ import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 
 import java.util.List;
 

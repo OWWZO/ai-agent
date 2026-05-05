@@ -1,6 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto1.step.factory;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.domain.agent.adapter.port.AgentMessageStream;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentClientFlowConfigVO;
 
@@ -53,8 +53,8 @@ public class DefaultFlowAgentExecuteStrategyFactory {
 
         private Map<String, AiAgentClientFlowConfigVO> aiAgentClientFlowConfigVOMap;
 
-        // SSE emitter（用于将结果流式推送到前端，避免通过 magic key 在 Map 中传递）
-        private SseEmitter emitter;
+        // 协议无关流端口（用于将结果流式推送到前端，避免在 domain 中直接依赖 SSE）
+        private AgentMessageStream emitter;
 
         // 结构化执行计划（贯穿 Flow 全流程，避免 JSON↔文本↔正则的反复转换）
         private List<ExecutionPlanStep> executionPlan;

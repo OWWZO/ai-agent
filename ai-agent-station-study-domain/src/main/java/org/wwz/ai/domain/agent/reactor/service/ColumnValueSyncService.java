@@ -7,16 +7,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.adapter.port.DataQueryExecutionPort;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
 import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
 import org.wwz.ai.domain.agent.reactor.data.QueryResult;
-import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcDataProvider;
-import org.wwz.ai.domain.agent.reactor.data.provider.jdbc.JdbcQueryRequest;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 import org.wwz.ai.domain.agent.reactor.util.ESUtil;
-import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -35,7 +33,7 @@ public class ColumnValueSyncService {
     @Autowired
     DataAgentConfig dataAgentConfig;
     @Autowired
-    JdbcDataProvider jdbcDataProvider;
+    DataQueryExecutionPort dataQueryExecutionPort;
 
     public void initColumnValueIndex() {
         if (ESUtil.isExistsIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX)) {
@@ -86,11 +84,8 @@ public class ColumnValueSyncService {
     public void syncColumnValue(ChatModelInfo modelInfo, ChatModelSchema column) throws SQLException {
         String tableName = getTableName(modelInfo);
         String valueSql = String.format("select %s as `value` FROM %s WHERE %s IS NOT NULL GROUP BY %s Limit  10000", column.getColumnId(), tableName, column.getColumnId(), column.getColumnId());
-        JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
-        jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
-        jdbcQueryRequest.setSql(valueSql);
-        QueryResult queryResult = jdbcDataProvider.queryData(jdbcQueryRequest);
+        QueryResult queryResult = dataQueryExecutionPort.query(dbConfig, valueSql);
         List<Map<String, Object>> dataList = queryResult.getDataList();
         List<Map<String, Object>> syncList = new ArrayList<>(dataList.size());
         try {

@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IDialogueSessionLedgerDao">
 
-    <resultMap id="DialogueSessionMap" type="org.wwz.ai.domain.agent.reactor.entity.DialogueSession">
+    <resultMap id="DialogueSessionMap" type="org.wwz.ai.domain.agent.ledger.entity.DialogueSession">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="title" property="title"/>
@@ -20,7 +20,7 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
-    <resultMap id="DialogueSessionViewMap" type="org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView">
+    <resultMap id="DialogueSessionViewMap" type="org.wwz.ai.domain.agent.ledger.model.DialogueSessionView">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="title" property="title"/>
@@ -36,7 +36,7 @@
         <result column="create_time" property="createTime"/>
     </resultMap>
 
-    <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord">
+    <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
             session_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
             run_count, finished_run_count, failed_run_count, started_at, last_active_at,

@@ -4,11 +4,11 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.wwz.ai.config.reactor.AgentHandlerAutoConfiguration;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
-import org.wwz.ai.domain.agent.reactor.handler.AgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.handler.PlanSolveAgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.handler.ReactAgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.PlanSolveAgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.handler.ReactAgentResponseHandler;
+import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 
 import java.util.List;
 import java.util.Map;

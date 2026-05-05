@@ -41,7 +41,7 @@ declare global {
       messageIdExt?: string;
       isFinal: boolean;
       status?: string;
-      payload?: Record<string, any>;
+      payload?: Record<string, unknown>;
     };
 
     type PlanItem = {
@@ -73,12 +73,12 @@ declare global {
 
     export type TAbortController = {
       signal: AbortSignal;
-      abort(reason?: any): void;
+      abort(reason?: unknown): void;
     };
 
     export type FetchEventSourceInit = {
       onopen: (event: Event) => void;
-      onmessage: (event: any) => void;
+      onmessage: (event: unknown) => void;
       onerror: (event?: Event) => void;
       onclose: (event?: Event) => void;
       headers?: Record<string, string>;
@@ -104,6 +104,34 @@ declare global {
         children?: Task[];
       }
     >;
+
+    export type DataChatChartItem = Record<string, unknown>;
+
+    export type DataChatItem = {
+      query: string;
+      loading: boolean;
+      think: string;
+      chartData?: DataChatChartItem[];
+      error: string;
+    };
+
+    export type DataChatEvent =
+      | {
+        eventType: "THINK";
+        data: string;
+      }
+      | {
+        eventType: "CHART_DATA";
+        data: DataChatChartItem[];
+      }
+      | {
+        eventType: "ERROR";
+        data: string;
+      }
+      | {
+        eventType: "READY";
+        data?: unknown;
+      };
 
     export type FileList = MESSAGE.FileInfo;
 
@@ -131,7 +159,7 @@ declare global {
       updatedAt: number;
       chatTitle: string;
       chatList: ChatItem[];
-      dataChatList: Record<string, any>[];
+      dataChatList: DataChatItem[];
     };
 
     export type ModelInfo = {

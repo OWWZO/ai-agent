@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IToolInvocationLedgerDao">
 
-    <resultMap id="ToolInvocationMap" type="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation">
+    <resultMap id="ToolInvocationMap" type="org.wwz.ai.domain.agent.ledger.entity.ToolInvocation">
         <id column="id" property="id"/>
         <result column="run_id" property="runId"/>
         <result column="llm_invocation_id" property="llmInvocationId"/>
@@ -24,7 +24,7 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
-    <resultMap id="ToolInvocationViewMap" type="org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView">
+    <resultMap id="ToolInvocationViewMap" type="org.wwz.ai.domain.agent.ledger.model.ToolInvocationView">
         <id column="id" property="id"/>
         <result column="run_id" property="runId"/>
         <result column="llm_invocation_id" property="llmInvocationId"/>
@@ -47,7 +47,7 @@
         <result column="create_time" property="createTime"/>
     </resultMap>
 
-    <insert id="insertToolInvocation" parameterType="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insertToolInvocation" parameterType="org.wwz.ai.domain.agent.ledger.entity.ToolInvocation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_tool_invocation (
             run_id, llm_invocation_id, tool_call_id, dispatch_index, agent_name, step_no,
             tool_name, tool_provider, input_json, llm_oberserve, status, error_msg,
@@ -59,7 +59,7 @@
         )
     </insert>
 
-    <update id="updateToolInvocationFinish" parameterType="org.wwz.ai.domain.agent.reactor.entity.ToolInvocation">
+    <update id="updateToolInvocationFinish" parameterType="org.wwz.ai.domain.agent.ledger.entity.ToolInvocation">
         UPDATE ai_agent_tool_invocation
         SET status = #{status},
             llm_oberserve = #{llmObservation},

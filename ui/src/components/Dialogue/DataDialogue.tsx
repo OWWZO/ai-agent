@@ -4,7 +4,7 @@ import { Message, MessageContent, MessageResponse } from "@/components/ai-elemen
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 
 type Props = {
-  chat: Record<string, any>;
+  chat: CHAT.DataChatItem;
 };
 
 const DataDialogue: FC<Props> = (props) => {
@@ -35,7 +35,7 @@ const DataDialogue: FC<Props> = (props) => {
             <MessageContent>
               <MessageResponse isStreaming={chat.loading}>输出结果</MessageResponse>
               <div className="mt-3">
-                {chat.chartData.map((n: Record<string, any> | undefined, index: number) => {
+                {chat.chartData.map((n, index: number) => {
                   return <DataChat key={index} data={n} />;
                 })}
               </div>

@@ -4,6 +4,55 @@ import {
   resolveDeepSearchActionText,
   resolveDeepSearchStage,
 } from "@/utils/deepSearch";
+import { parseEventData } from "@/utils/sseParsers";
+import {
+  handlePlanMessage,
+  handlePlanThoughtMessage,
+} from "./chat/planner";
+import {
+  clonePlanForRender,
+  cloneTaskSnapshot,
+  processTaskForRender,
+} from "./chat/renderTasks";
+import {
+  ensureTimelineTaskContainer,
+  ensureTimelineTaskGroup,
+  upsertTimelineTaskContainer,
+  type TimelineTaskContainer,
+} from "./chat/timeline";
+import {
+  findLastTaskIndex,
+  findTaskIndexByToolCallId,
+  findToolCallPlaceholderIndex,
+  isImageGenerationFileTask,
+  isImageGenerationToolResultTask,
+  mergeImageGenerationToolTask,
+  mergeTaskArtifactRefs,
+  resolveTaskToolCallId,
+  resolveToolCallActionText,
+  resolveToolCallTargetName,
+} from "./chat/toolCalls";
+
+type NestedTaskResultMap = MESSAGE.ResultMap & {
+  resultMap?: MESSAGE.ResultMap;
+};
+
+function toNestedResultMap(resultMap?: MESSAGE.ResultMap): NestedTaskResultMap {
+  return (resultMap || {}) as NestedTaskResultMap;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function normalizeEventData(eventData: unknown): MESSAGE.EventData | undefined {
+  try {
+    return parseEventData(eventData);
+  } catch (error) {
+    console.warn("忽略无法识别的 SSE eventData", error);
+    return undefined;
+  }
+}
 
 export const combineData = (
   eventData: MESSAGE.EventData,
@@ -27,143 +76,6 @@ export const combineData = (
   }
   return currentChat;
 };
-
-function ensurePlannerRounds(currentChat: CHAT.ChatItem) {
-  if (!Array.isArray(currentChat.multiAgent.plannerRounds)) {
-    currentChat.multiAgent.plannerRounds = [];
-  }
-  return currentChat.multiAgent.plannerRounds;
-}
-
-function resolveLegacyPlannerRoundId(eventData: MESSAGE.EventData) {
-  const resultMap = eventData?.resultMap as MESSAGE.Task | undefined;
-  return (
-    resultMap?.plannerRoundId ||
-    eventData?.taskId ||
-    eventData?.messageId ||
-    ""
-  );
-}
-
-function findPlannerRoundIndex(
-  plannerRounds: CHAT.PlannerRound[],
-  plannerRoundId: string
-) {
-  return plannerRounds.findIndex((item) => item.plannerRoundId === plannerRoundId);
-}
-
-function upsertPlannerRound(
-  currentChat: CHAT.ChatItem,
-  plannerRoundId: string,
-  updater: (round: CHAT.PlannerRound) => void
-) {
-  if (!plannerRoundId) {
-    return undefined;
-  }
-
-  const plannerRounds = ensurePlannerRounds(currentChat);
-  const index = findPlannerRoundIndex(plannerRounds, plannerRoundId);
-  const nextRound =
-    index === -1
-      ? ({ plannerRoundId } as CHAT.PlannerRound)
-      : ({ ...plannerRounds[index] } as CHAT.PlannerRound);
-
-  updater(nextRound);
-
-  if (index === -1) {
-    plannerRounds.push(nextRound);
-  } else {
-    plannerRounds[index] = nextRound;
-  }
-
-  return nextRound;
-}
-
-function syncLatestPlannerAlias(currentChat: CHAT.ChatItem) {
-  const plannerRounds = currentChat.multiAgent.plannerRounds || [];
-  const latestRound = plannerRounds[plannerRounds.length - 1];
-  if (!latestRound) {
-    return;
-  }
-
-  currentChat.multiAgent.plan_thought = latestRound.planThought;
-  currentChat.multiAgent.plan = latestRound.plan;
-  currentChat.thought = latestRound.planThought || "";
-}
-
-type TaskRenderCacheEntry = {
-  signature: string;
-  items: CHAT.Task[];
-};
-
-const taskRenderCache = new WeakMap<object, TaskRenderCacheEntry>();
-
-function pickFirstText(...values: unknown[]) {
-  for (const value of values) {
-    if (typeof value !== "string") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-  return "";
-}
-
-function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
-  const input = resultMap?.input;
-  if (input && typeof input === "object" && !Array.isArray(input)) {
-    return input as Record<string, unknown>;
-  }
-
-  const toolParam = resultMap?.toolParam;
-  if (toolParam && typeof toolParam === "object" && !Array.isArray(toolParam)) {
-    return toolParam as Record<string, unknown>;
-  }
-
-  return {};
-}
-
-function resolveToolCallTargetName(resultMap?: MESSAGE.ResultMap) {
-  const input = resolveToolCallInput(resultMap);
-  return pickFirstText(
-    resultMap?.primaryFileName,
-    input.fileName,
-    input.file_name,
-    input.filename,
-    input.outputFileName,
-    input.displayName,
-    input.name,
-    input.path,
-    input.targetPath,
-  );
-}
-
-function resolveTaskToolCallId(task?: Partial<MESSAGE.Task> | Partial<CHAT.Task>) {
-  if (!task) {
-    return "";
-  }
-
-  return pickFirstText(
-    task.resultMap?.toolCallId,
-    task.toolResult?.toolCallId,
-  );
-}
-
-function resolveToolCallActionText(task: CHAT.Task) {
-  const status = task.resultMap?.status;
-  if (status === "success") {
-    return "工具调用完成";
-  }
-  if (status === "failed") {
-    return "工具调用失败";
-  }
-  if (task.resultMap?.isFinal) {
-    return "工具调用完成";
-  }
-  return "正在调用工具";
-}
 
 /**
  * 实时 SSE 的文件类事件会把 artifactRefs 放在 eventData 顶层，
@@ -198,146 +110,6 @@ export function getStableTaskIdentity(
     (task.taskId && task.messageTime ? `${task.taskId}:${task.messageTime}` : "") ||
     ""
   );
-}
-
-function isImageGenerationToolResultTask(task?: Partial<MESSAGE.Task>) {
-  return task?.messageType === "tool_result" &&
-    task?.toolResult?.toolName === "image_generation_tool";
-}
-
-function isImageGenerationFileTask(task?: Partial<MESSAGE.Task>) {
-  return task?.messageType === "file" &&
-    task?.resultMap?.command === "生成图片";
-}
-
-function findLastTaskIndex(
-  tasks: MESSAGE.Task[],
-  matcher: (task: MESSAGE.Task) => boolean
-) {
-  for (let index = tasks.length - 1; index >= 0; index -= 1) {
-    if (matcher(tasks[index])) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/**
- * 大部分富工具结果最终都会携带 toolCallId。
- * 一旦结果卡片到达，应该直接替换对应的 tool_call 占位，而不是并排保留两张卡。
- */
-function findToolCallPlaceholderIndex(
-  tasks: MESSAGE.Task[],
-  toolCallId: string | undefined
-) {
-  if (!toolCallId) {
-    return -1;
-  }
-
-  return findLastTaskIndex(tasks, (task) =>
-    task.messageType === "tool_call" &&
-    resolveTaskToolCallId(task) === toolCallId
-  );
-}
-
-function findTaskIndexByToolCallId(
-  tasks: MESSAGE.Task[],
-  toolCallId: string | undefined,
-  options?: {
-    excludeMessageType?: string;
-  }
-) {
-  if (!toolCallId) {
-    return -1;
-  }
-
-  return findLastTaskIndex(tasks, (task) => {
-    if (options?.excludeMessageType && task.messageType === options.excludeMessageType) {
-      return false;
-    }
-    return resolveTaskToolCallId(task) === toolCallId;
-  });
-}
-
-/**
- * 图像生成会先后发 file / tool_result 两类事件。
- * 前端统一把它们折叠成一个 tool_result 任务，既保留“工具调用”语义，又带上图片产物引用。
- */
-function mergeImageGenerationToolTask(
-  toolTask: MESSAGE.Task,
-  fileTask: MESSAGE.Task
-): MESSAGE.Task {
-  const artifactRefs = Array.isArray(fileTask.artifactRefs)
-    ? [...fileTask.artifactRefs]
-    : Array.isArray(toolTask.artifactRefs)
-      ? [...toolTask.artifactRefs]
-      : undefined;
-  const mergedFileInfo = Array.isArray(fileTask.resultMap?.fileInfo)
-    ? [...fileTask.resultMap.fileInfo]
-    : toolTask.resultMap?.fileInfo;
-
-  return {
-    ...toolTask,
-    ...(artifactRefs?.length ? { artifactRefs } : {}),
-    resultMap: {
-      ...(toolTask.resultMap || {}),
-      ...(mergedFileInfo?.length ? { fileInfo: mergedFileInfo } : {}),
-    },
-  };
-}
-
-/**
- * 处理计划类型的消息
- * @param eventData 事件数据
- * @param currentChat 当前聊天对象
- */
-function handlePlanMessage(
-  eventData: MESSAGE.EventData,
-  currentChat: CHAT.ChatItem
-) {
-  const plannerRoundId = resolveLegacyPlannerRoundId(eventData);
-  if (!plannerRoundId) {
-    return;
-  }
-
-  const nextPlan = {
-    taskId: eventData.taskId,
-    ...eventData?.resultMap,
-  } as unknown as CHAT.Plan;
-
-  upsertPlannerRound(currentChat, plannerRoundId, (round) => {
-    round.plan = nextPlan;
-    round.planMessageId = eventData.messageId;
-    round.planTaskId = eventData.taskId;
-  });
-  syncLatestPlannerAlias(currentChat);
-}
-
-/**
- * 处理计划思考类型的消息
- * @param eventData 事件数据
- * @param currentChat 当前聊天对象
- */
-function handlePlanThoughtMessage(
-  eventData: MESSAGE.EventData,
-  currentChat: CHAT.ChatItem
-) {
-  const plannerRoundId = resolveLegacyPlannerRoundId(eventData);
-  if (!plannerRoundId) {
-    return;
-  }
-
-  upsertPlannerRound(currentChat, plannerRoundId, (round) => {
-    const currentThought = round.planThought || "";
-    if (eventData.resultMap.isFinal) {
-      round.planThought = eventData.resultMap.planThought;
-    } else {
-      round.planThought = `${currentThought}${eventData.resultMap.planThought || ""}`;
-    }
-    round.planThoughtMessageId = eventData.messageId;
-    round.planThoughtTaskId = eventData.taskId;
-  });
-  syncLatestPlannerAlias(currentChat);
 }
 
 /**
@@ -469,7 +241,7 @@ function handleAgentStreamMessage(
 
   streamConclusion.result = `${streamConclusion.result || ""}${chunk}`;
   if (!streamConclusion.resultMap) {
-    streamConclusion.resultMap = {} as any;
+    streamConclusion.resultMap = {};
   }
   streamConclusion.resultMap.taskSummary = `${streamConclusion.resultMap.taskSummary || ""}${chunk}`;
 }
@@ -612,11 +384,14 @@ function handleContentMessage(
  * @param originalResultMap 原始结果映射
  * @returns 初始化后的结果映射
  */
-export function initializeResultMap(originalResultMap: any) {
+export function initializeResultMap(originalResultMap: unknown) {
+  const nextResultMap = isRecord(originalResultMap)
+    ? (originalResultMap as MESSAGE.ResultMap)
+    : {};
   return {
-    ...originalResultMap,
-    codeOutput: originalResultMap.codeOutput || originalResultMap.data || '',
-    fileInfo: originalResultMap.fileInfo || [],
+    ...nextResultMap,
+    codeOutput: nextResultMap.codeOutput || nextResultMap.data || '',
+    fileInfo: nextResultMap.fileInfo || [],
   };
 }
 
@@ -633,7 +408,7 @@ export function handleExistingTask(
   taskIndex: number,
   toolIndex: number,
   eventData: MESSAGE.EventData,
-  resultMap: any
+  resultMap: MESSAGE.ResultMap
 ) {
   if (toolIndex !== -1) {
     updateExistingTool(currentChat, taskIndex, toolIndex, resultMap, eventData);
@@ -653,7 +428,7 @@ function updateExistingTool(
   currentChat: CHAT.ChatItem,
   taskIndex: number,
   toolIndex: number,
-  resultMap: any,
+  resultMap: MESSAGE.ResultMap,
   eventData?: MESSAGE.EventData
 ) {
   const tool = currentChat.multiAgent.tasks[taskIndex][toolIndex];
@@ -680,28 +455,12 @@ function addNewTool(
   currentChat: CHAT.ChatItem,
   taskIndex: number,
   eventData: MESSAGE.EventData,
-  resultMap: any
+  resultMap: MESSAGE.ResultMap
 ) {
   currentChat.multiAgent.tasks[taskIndex].push({
     ...buildTaskFromEventData(eventData),
     resultMap: resultMap,
   } as MESSAGE.Task);
-}
-
-function mergeTaskArtifactRefs(targetTask: MESSAGE.Task | undefined, eventData?: MESSAGE.EventData) {
-  if (!targetTask || !eventData) {
-    return;
-  }
-
-  const artifactRefs = Array.isArray(eventData.artifactRefs)
-    ? [...eventData.artifactRefs]
-    : [];
-
-  if (!artifactRefs.length) {
-    return;
-  }
-
-  targetTask.artifactRefs = artifactRefs as any;
 }
 
 /**
@@ -713,7 +472,7 @@ function mergeTaskArtifactRefs(targetTask: MESSAGE.Task | undefined, eventData?:
 export function handleNewTask(
   currentChat: CHAT.ChatItem,
   eventData: MESSAGE.EventData,
-  resultMap: any
+  resultMap: MESSAGE.ResultMap
 ) {
   currentChat.multiAgent.tasks.push([
     {
@@ -735,7 +494,7 @@ function handleDeepSearchMessage(
   currentChat: CHAT.ChatItem,
   taskIndex: number
 ) {
-  const resultMap = eventData.resultMap.resultMap;
+  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
   const nextTask = buildTaskFromEventData(eventData);
   const placeholderIndex =
     taskIndex === -1
@@ -788,9 +547,7 @@ function handleToolCallMessage(
   }
 
   const taskGroup = currentChat.multiAgent.tasks[taskIndex];
-  const existingResultIndex = findTaskIndexByToolCallId(taskGroup, toolCallId, {
-    excludeMessageType: "tool_call",
-  });
+  const existingResultIndex = findTaskIndexByToolCallId(taskGroup, toolCallId, { excludeMessageType: "tool_call" });
   if (existingResultIndex !== -1) {
     return;
   }
@@ -873,7 +630,7 @@ function addNewToolToExistingTask(
   taskIndex: number,
   eventData: MESSAGE.EventData
 ) {
-  const resultMap = eventData.resultMap.resultMap;
+  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
 
   resultMap.answer = resultMap?.answer || "";
   ensureSearchResult(resultMap);
@@ -885,7 +642,7 @@ function addNewToolToExistingTask(
  * 添加新任务
  */
 function addNewTask(currentChat: CHAT.ChatItem, eventData: MESSAGE.EventData) {
-  const resultMap = eventData.resultMap.resultMap;
+  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
 
   resultMap.answer = resultMap?.answer || "";
   ensureSearchResult(resultMap);
@@ -920,85 +677,6 @@ function ensureSearchResult(resultMap: MESSAGE.ResultMap) {
       docs: []
     };
   }
-}
-
-type TimelineTaskContainer = {
-  hidden: boolean;
-  task?: string;
-  children: CHAT.Task[];
-  __placeholder?: boolean;
-} & Partial<MESSAGE.Task>;
-
-/**
- * 历史回放里即便不是 deepThink，也可能存在多个任务组。
- * 这里按索引兜底创建时间线分组，避免后续容器逻辑读到 undefined。
- */
-function ensureTimelineTaskGroup(
-  chatList: TimelineTaskContainer[][],
-  groupIndex: number
-) {
-  if (!Array.isArray(chatList[groupIndex])) {
-    chatList[groupIndex] = [];
-  }
-
-  return chatList[groupIndex];
-}
-
-/**
- * 某些任务组里工具事件会早于 task 父节点到达，
- * 这里先创建一个临时容器承接左侧时间线子项，避免查询分解等阶段被直接丢弃。
- */
-function ensureTimelineTaskContainer(
-  taskGroup: TimelineTaskContainer[],
-  task?: MESSAGE.Task
-): TimelineTaskContainer {
-  const lastContainer = taskGroup[taskGroup.length - 1];
-  if (lastContainer) {
-    return lastContainer;
-  }
-
-  const placeholder: TimelineTaskContainer = {
-    hidden: false,
-    task: task?.task || "",
-    taskId: task?.taskId,
-    messageId: task?.messageId,
-    messageTime: task?.messageTime,
-    children: [],
-    __placeholder: true,
-  };
-  taskGroup.push(placeholder);
-  return placeholder;
-}
-
-/**
- * task 父节点晚到时，用正式 task 信息回填占位容器，
- * 保留之前已经挂上的工具子项。
- */
-function upsertTimelineTaskContainer(
-  taskGroup: TimelineTaskContainer[],
-  task: MESSAGE.Task
-): TimelineTaskContainer {
-  const lastContainer = taskGroup[taskGroup.length - 1];
-  if (lastContainer?.__placeholder) {
-    const children = lastContainer.children || [];
-    Object.assign(lastContainer, {
-      ...task,
-      task: task.task,
-      hidden: false,
-      children,
-    });
-    delete lastContainer.__placeholder;
-    return lastContainer;
-  }
-
-  const nextContainer: TimelineTaskContainer = {
-    ...task,
-    task: task.task,
-    hidden: false,
-    children: [],
-  };
-  taskGroup.push(nextContainer);
-  return nextContainer;
 }
 
 function handleNonStreamingMessage(
@@ -1181,107 +859,6 @@ export const handleTaskData = (
   };
 };
 
-function getTaskRenderSignature(task: any, baseId: string): string {
-  const resultMap = task.resultMap || {};
-  const searchResult = resultMap.searchResult;
-  const plan = task.plan;
-  const artifactRefs = Array.isArray(task.artifactRefs) ? task.artifactRefs : [];
-  const toolCallTargetName = resolveToolCallTargetName(resultMap);
-  const querySignature = Array.isArray(searchResult?.query)
-    ? searchResult.query.join("||")
-    : "";
-  const docsSignature = Array.isArray(searchResult?.docs)
-    ? searchResult.docs
-      .map((docs: MESSAGE.Doc[] | MESSAGE.Doc) => (Array.isArray(docs) ? docs.length : 0))
-      .join(",")
-    : "";
-
-  return [
-    baseId,
-    task.messageId || "",
-    task.messageType || "",
-    task.messageTime || "",
-    resultMap.messageType || "",
-    resultMap.isFinal ? "1" : "0",
-    resultMap.searchFinish ? "1" : "0",
-    resultMap.status || "",
-    resultMap.summary || "",
-    resultMap.toolName || "",
-    resultMap.toolCallId || "",
-    toolCallTargetName,
-    task.toolThought?.length || 0,
-    resultMap.answer?.length || 0,
-    resultMap.codeOutput?.length || 0,
-    resultMap.data?.length || 0,
-    artifactRefs.length,
-    artifactRefs[0]?.resourceKey || artifactRefs[0]?.previewUrl || artifactRefs[0]?.downloadUrl || "",
-    querySignature,
-    docsSignature,
-    Array.isArray(plan?.stepStatus) ? plan.stepStatus.join(",") : "",
-  ].join("|");
-}
-
-function clonePlanForRender(plan?: MESSAGE.Plan) {
-  if (!plan) {
-    return plan;
-  }
-
-  return {
-    ...plan,
-    notes: [...(plan.notes || [])],
-    stages: [...(plan.stages || [])],
-    stepStatus: [...(plan.stepStatus || [])],
-    steps: [...(plan.steps || [])],
-  };
-}
-
-function cloneSearchResultSnapshot(searchResult?: MESSAGE.SearchResult) {
-  if (!searchResult) {
-    return searchResult;
-  }
-
-  return {
-    ...searchResult,
-    query: [...(searchResult.query || [])],
-    docs: (searchResult.docs || []).map((item) =>
-      Array.isArray(item) ? [...item] : item
-    ),
-  };
-}
-
-function cloneResultMapSnapshot(
-  resultMap?: MESSAGE.ResultMap
-): MESSAGE.ResultMap {
-  if (!resultMap) {
-    return {} as MESSAGE.ResultMap;
-  }
-
-  return {
-    ...resultMap,
-    searchResult: cloneSearchResultSnapshot(resultMap.searchResult),
-    fileInfo: [...(resultMap.fileInfo || [])],
-    fileList: [...(resultMap.fileList || [])],
-    refList: [...(resultMap.refList || [])],
-    steps: [...(resultMap.steps || [])],
-  };
-}
-
-function cloneTaskSnapshot(task: MESSAGE.Task): MESSAGE.Task {
-  return {
-    ...task,
-    plan: clonePlanForRender(task.plan),
-    resultMap: cloneResultMapSnapshot(task.resultMap),
-    toolResult: task.toolResult
-      ? {
-        ...task.toolResult,
-        toolParam: task.toolResult.toolParam
-          ? { ...task.toolResult.toolParam }
-          : task.toolResult.toolParam,
-      }
-      : task.toolResult,
-  };
-}
-
 /**
  * 为当前会话快照重建工作区任务数据。
  * 这里统一把缓存下来的任务结果重新整理成界面消费结构，
@@ -1307,88 +884,6 @@ export const buildConversationTaskData = (
 
   return handleTaskData(snapshotChat, deepThink, snapshotChat.multiAgent);
 };
-
-function createRenderTask(
-  task: any,
-  id: string,
-  searchResult?: {
-    query: string;
-    docs: MESSAGE.Doc[];
-  }
-): CHAT.Task {
-  const nextTask = {
-    ...task,
-    id,
-    resultMap: task.resultMap ? { ...task.resultMap } : task.resultMap,
-    plan: clonePlanForRender(task.plan),
-  } as CHAT.Task;
-
-  if (searchResult && nextTask.resultMap) {
-    nextTask.resultMap.searchResult = searchResult as any;
-  }
-
-  return nextTask;
-}
-
-function processTaskForRender(task: any, baseId: string): CHAT.Task[] {
-  const signature = getTaskRenderSignature(task, baseId);
-  const cached = taskRenderCache.get(task);
-  if (cached?.signature === signature) {
-    return cached.items;
-  }
-
-  let items: CHAT.Task[];
-  if (task.messageType === "deep_search") {
-    items = processDeepSearchTask(task, baseId);
-  } else {
-    items = [createRenderTask(task, baseId)];
-  }
-
-  taskRenderCache.set(task, {
-    signature,
-    items,
-  });
-
-  return items;
-}
-
-/**
- * 处理深度搜索任务的辅助函数
- * @param task 深度搜索任务
- * @param baseId 基础ID
- * @returns 处理后的任务信息数组
- */
-function processDeepSearchTask(task: any, baseId: string): CHAT.Task[] {
-  const messageType = task.resultMap?.messageType;
-  if (messageType === "report") {
-    return [
-      createRenderTask(task, baseId),
-    ];
-  }
-
-  if (messageType === "extend" || messageType === "search") {
-    const queries = task.resultMap?.searchResult?.query || [];
-
-    // 查询分解和检索阶段都按 query 拆分；没有真实 query 时不制造伪占位项。
-    if (!queries.length) {
-      return [];
-    }
-
-    return queries.map((query: string, index: number) => {
-      const rawDocs = task.resultMap.searchResult?.docs?.[index];
-      const searchResult = {
-        query: query,
-        docs: Array.isArray(rawDocs) ? rawDocs : rawDocs ? [rawDocs] : [],
-      };
-
-      return createRenderTask(task, baseId.concat(String(index)), searchResult);
-    });
-  }
-
-  return [
-    createRenderTask(task, baseId),
-  ];
-}
 
 /**
  * 构建任务动作信息
@@ -1535,7 +1030,7 @@ export const buildAction = (task: CHAT.Task) => {
     return {
       action: resolveToolCallActionText(task),
       tool: task?.resultMap?.toolName || "",
-      name: resolveToolCallTargetName(task?.resultMap)
+      name: resolveToolCallTargetName(task?.resultMap as unknown as MESSAGE.ResultMap | undefined)
     };
   }
 
@@ -1544,7 +1039,7 @@ export const buildAction = (task: CHAT.Task) => {
    * @param task 任务对象
    * @returns 动作信息对象
    */
-  function handleFileTask(task: any) {
+  function handleFileTask(task: CHAT.Task) {
     return {
       action: task?.resultMap?.command || "",
       tool: "文件编辑器",
@@ -1557,7 +1052,7 @@ export const buildAction = (task: CHAT.Task) => {
    * @param task 任务对象
    * @returns 动作信息对象
    */
-  function handleDeepSearchTask(task: any) {
+  function handleDeepSearchTask(task: CHAT.Task) {
     const stage = resolveDeepSearchStage(task?.resultMap?.messageType);
     const queryText =
       stage === "report"

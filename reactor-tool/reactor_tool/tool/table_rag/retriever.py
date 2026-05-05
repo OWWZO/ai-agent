@@ -74,18 +74,18 @@ class Retriever:
     def get_es_client(self):
         # 读取环境变量
         config = {}
-        config["host"] = _first_non_blank_env("TR_ES_CONFIGS_HOST", "DATA_AGENT_ES_HOST")
+        config["host"] = _first_non_blank_env("DATA_AGENT_ES_HOST")
         config["port"] = os.getenv("port")
-        config["scheme"] = _first_non_blank_env("TR_ES_CONFIGS_SCHEME", "DATA_AGENT_ES_SCHEME", default="http")
-        config["user"] = _first_non_blank_env("TR_ES_CONFIGS_USER", "DATA_AGENT_ES_USER")
-        config["password"] = _first_non_blank_env("TR_ES_CONFIGS_PASSWORD", "DATA_AGENT_ES_PASSWORD")
-        config["api_key"] = _first_non_blank_env("TR_ES_CONFIGS_API_KEY", "DATA_AGENT_ES_API_KEY")
-        self.es_index = _first_non_blank_env("TR_ES_CONFIGS_INDEX", default="reactor_model_column_value")
+        config["scheme"] = _first_non_blank_env("DATA_AGENT_ES_SCHEME")
+        config["user"] = _first_non_blank_env("DATA_AGENT_ES_USER")
+        config["password"] = _first_non_blank_env("DATA_AGENT_ES_PASSWORD")
+        config["api_key"] = _first_non_blank_env("DATA_AGENT_ES_API_KEY")
+        self.es_index = _first_non_blank_env("TR_ES_CONFIGS_INDEX")
 
         # 未配置 ES 时不初始化客户端，避免因无 ES 导致 table_rag 报错
         host = config.get("host")
         if not host or (isinstance(host, str) and not host.strip()):
-            logger.warning("[Retriever] TR_ES_CONFIGS_HOST not set, ES client will not be initialized")
+            logger.warning("[Retriever] DATA_AGENT_ES_HOST not set, ES client will not be initialized")
             return None
 
         try:
@@ -113,9 +113,9 @@ class Retriever:
             return {}
 
     async def qdrant_recall(self, query, model_code_list):
-        qdrant_enable_env = os.getenv("TR_QDRANT_ENABLE")
+        qdrant_enable_env = os.getenv("DATA_AGENT_QDRANT_ENABLE")
         if qdrant_enable_env is None:
-            qdrant_enable_env = os.getenv("DATA_AGENT_QDRANT_ENABLE", "false")
+            return []
         QDRANT_ENABLE = qdrant_enable_env.lower() == "true"
         TR_QDRANT_URL = os.getenv("TR_QDRANT_URL", None)
         if not QDRANT_ENABLE:

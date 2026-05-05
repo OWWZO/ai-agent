@@ -14,6 +14,7 @@ import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
+import { resolvePanelView } from "./panelResolver";
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;
@@ -23,9 +24,8 @@ interface ActionPanelProps {
 }
 
 // 内容包装动画组件
-const ContentWrapper = ({ children, key }: { children: React.ReactNode; key?: string }) => (
+const ContentWrapper = ({ children }: { children: React.ReactNode }) => (
   <motion.div
-    key={key}
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, y: -6 }}
@@ -88,98 +88,20 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
 
   const { codeOutput } = resultMap || {};
 
-  const panelNode = useMemo(() => {
-    const renderContent = () => {
-      if (!taskItem) return null;
-      const { useHtml, useCode, useFile, useImage, isHtml, useExcel, useJSON, searchList, usePpt } = msgTypes || {};
-
-      if (searchList?.length) {
-        return (
-          <ContentWrapper key="search">
-            <SearchListRenderer list={searchList} />
-          </ContentWrapper>
-        );
-      }
-
-      if (useHtml || usePpt) {
-        return (
-          <ContentWrapper key="html">
-            <HTMLRenderer
-              htmlUrl={htmlUrl}
-              className="h-full"
-              downloadUrl={downloadHtmlUrl}
-              missingReason={missingReason}
-              outputCode={codeOutput}
-              showToolBar={allowShowToolBar && resultMap?.isFinal}
-              isStreaming={!resultMap?.isFinal}
-            />
-          </ContentWrapper>
-        );
-      }
-
-      if (useCode && isHtml) {
-        return (
-          <ContentWrapper key="code">
-            <HTMLRenderer
-              htmlUrl={`data:text/html;charset=utf-8,${encodeURIComponent(toolResult?.toolResult || '')}`}
-            />
-          </ContentWrapper>
-        );
-      }
-
-      if (useExcel) {
-        return (
-          <ContentWrapper key="excel">
-            <TableRenderer
-              fileUrl={primaryFile?.url || ""}
-              fileName={primaryFile?.name}
-              missingReason={missingReason}
-            />
-          </ContentWrapper>
-        );
-      }
-
-      if (useImage) {
-        return (
-          <ContentWrapper key="image">
-            <ImageRenderer
-              imageUrl={primaryFile?.url || ""}
-              fileName={primaryFile?.name}
-              missingReason={missingReason}
-            />
-          </ContentWrapper>
-        );
-      }
-
-      if (useFile) {
-        return (
-          <ContentWrapper key="file">
-            <FileRenderer
-              fileUrl={primaryFile?.url || ""}
-              fileName={primaryFile?.name}
-              missingReason={missingReason}
-            />
-          </ContentWrapper>
-        );
-      }
-
-      if (useJSON) {
-        return (
-          <ContentWrapper key="json">
-            <JsonViewer data={JSON.parse(toolResult?.toolResult || "{}")} />
-          </ContentWrapper>
-        );
-      }
-
-      return (
-        <StreamingMarkdownWrapper
-          content={markDownContent}
-          isStreaming={!resultMap?.isFinal}
-        />
-      );
-    };
-
-    return renderContent();
+  const panelView = useMemo(() => {
+    return resolvePanelView({
+      taskItem,
+      msgTypes,
+      markDownContent,
+      htmlUrl,
+      downloadHtmlUrl,
+      missingReason,
+      allowShowToolBar,
+      isFinal: resultMap?.isFinal,
+      codeOutput,
+      toolResultText: toolResult?.toolResult,
+      primaryFile,
+    });
   }, [
     taskItem,
     msgTypes,
@@ -193,6 +115,84 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     primaryFile,
     codeOutput,
   ]);
+
+  const panelNode = useMemo(() => {
+    switch (panelView.type) {
+      case "empty":
+        return null;
+      case "search":
+        return (
+          <ContentWrapper key="search">
+            <SearchListRenderer list={panelView.searchList} />
+          </ContentWrapper>
+        );
+      case "html":
+        return (
+          <ContentWrapper key="html">
+            <HTMLRenderer
+              htmlUrl={panelView.htmlUrl}
+              className="h-full"
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+              outputCode={panelView.outputCode}
+              showToolBar={panelView.showToolBar}
+              isStreaming={panelView.isStreaming}
+            />
+          </ContentWrapper>
+        );
+      case "inline-html":
+        return (
+          <ContentWrapper key="code">
+            <HTMLRenderer htmlUrl={panelView.htmlUrl} />
+          </ContentWrapper>
+        );
+      case "excel":
+        return (
+          <ContentWrapper key="excel">
+            <TableRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "image":
+        return (
+          <ContentWrapper key="image">
+            <ImageRenderer
+              imageUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "file":
+        return (
+          <ContentWrapper key="file">
+            <FileRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "json":
+        return (
+          <ContentWrapper key="json">
+            <JsonViewer data={panelView.jsonData} />
+          </ContentWrapper>
+        );
+      case "markdown":
+        return (
+          <StreamingMarkdownWrapper
+            content={panelView.content}
+            isStreaming={panelView.isStreaming}
+          />
+        );
+      default:
+        return null;
+    }
+  }, [panelView]);
 
   const ref = useRef<HTMLDivElement>(null);
   const shouldAutoFollowRef = useRef(true);

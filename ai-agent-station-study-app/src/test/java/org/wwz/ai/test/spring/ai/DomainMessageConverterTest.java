@@ -7,9 +7,9 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.dto.Message;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.agent.llm.DomainMessageConverter;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.nio.charset.StandardCharsets;

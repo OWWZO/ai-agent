@@ -40,13 +40,14 @@ class ElasticsearchClientAuthTest(unittest.TestCase):
             http_auth=("elastic", "pwd"),
         )
 
-    def test_retriever_should_fallback_to_data_agent_es_config(self):
+    def test_retriever_should_read_data_agent_es_config_only(self):
         with patch.dict(
             os.environ,
             {
                 "DATA_AGENT_ES_HOST": "https://elastic.example.com:443",
                 "DATA_AGENT_ES_SCHEME": "https",
                 "DATA_AGENT_ES_API_KEY": "encoded-api-key",
+                "TR_ES_CONFIGS_INDEX": "reactor_model_column_value",
             },
             clear=True,
         ):

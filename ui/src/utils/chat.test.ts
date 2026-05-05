@@ -817,6 +817,35 @@ describe("chat deep_search progress", () => {
     expect(currentChat.multiAgent.plan?.title).toBe("主流程计划");
     expect(currentChat.multiAgent.plan_thought).toBe("先规划主流程");
   });
+
+  it("plan_thought 非 final 时应追加到同一 plannerRound", () => {
+    const chat = createChatItem(createDeepSearchTask("search"));
+    chat.multiAgent.plannerRounds = [];
+
+    combineData({
+      messageType: "plan_thought",
+      messageId: "thought-msg-1",
+      taskId: "planner-task-1",
+      resultMap: {
+        plannerRoundId: "round-1",
+        planThought: "第一段",
+        isFinal: false,
+      },
+    } as unknown as MESSAGE.EventData, chat);
+
+    combineData({
+      messageType: "plan_thought",
+      messageId: "thought-msg-1",
+      taskId: "planner-task-1",
+      resultMap: {
+        plannerRoundId: "round-1",
+        planThought: "第二段",
+        isFinal: false,
+      },
+    } as unknown as MESSAGE.EventData, chat);
+
+    expect(chat.multiAgent.plannerRounds?.[0]?.planThought).toBe("第一段第二段");
+  });
 });
 
 describe("chat file task title", () => {

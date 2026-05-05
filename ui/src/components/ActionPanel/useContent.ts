@@ -1,7 +1,7 @@
 import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
 import { PanelItemType } from "./type";
 
-function buildToolCallMarkdown(resultMap?: MESSAGE.ResultMap) {
+function buildToolCallMarkdown(resultMap?: PanelItemType["resultMap"]) {
   if (!resultMap) {
     return "";
   }

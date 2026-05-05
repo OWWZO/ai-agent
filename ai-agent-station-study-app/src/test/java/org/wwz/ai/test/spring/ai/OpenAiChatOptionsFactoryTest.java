@@ -3,11 +3,11 @@ package org.wwz.ai.test.spring.ai;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolChoice;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmToolCallbackProvider;
-import org.wwz.ai.domain.agent.reactor.agent.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
+import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.LinkedHashMap;
 import java.util.List;

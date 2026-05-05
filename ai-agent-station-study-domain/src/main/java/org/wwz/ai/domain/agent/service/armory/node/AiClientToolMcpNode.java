@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.service.armory.node;
 
 import org.wwz.ai.domain.agent.model.entity.ArmoryCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
 import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;

@@ -75,10 +75,8 @@ function hydrateRun(
     timeline: [],
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
-    metrics: {
-      status: runStatus,
-    },
-  } as unknown as CHAT.ChatItem;
+    metrics: { status: runStatus },
+  } as CHAT.ChatItem;
 
   for (const frame of run.replayFrames || []) {
     const eventData = readEventData(frame);
@@ -147,9 +145,7 @@ function buildFallbackConclusionEventData(
     messageType: "task",
     messageOrder: 1,
     messageId: `${run.requestId}-summary`,
-    ...(resolvedSummary.artifactRefs.length
-      ? { artifactRefs: resolvedSummary.artifactRefs as any }
-      : {}),
+    ...(resolvedSummary.artifactRefs.length ? { artifactRefs: resolvedSummary.artifactRefs } : {}),
     resultMap: {
       requestId: run.requestId,
       messageId: `${run.requestId}-summary`,

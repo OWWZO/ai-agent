@@ -2,8 +2,8 @@ package org.wwz.ai.infrastructure.dao.reactor;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 
 import java.util.List;
 

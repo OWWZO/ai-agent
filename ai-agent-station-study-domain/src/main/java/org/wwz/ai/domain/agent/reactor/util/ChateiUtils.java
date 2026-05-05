@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.reactor.util;
 
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AutoBotsResultStatus;
+import org.wwz.ai.domain.agent.runtime.enums.AutoBotsResultStatus;
 import org.wwz.ai.domain.agent.reactor.model.dto.AutoBotsResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;

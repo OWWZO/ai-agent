@@ -4,12 +4,12 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.core.io.ClassPathResource;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.skill.SkillTool;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.DefaultSkillRegistry;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillMarkdownParser;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillPathGuard;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRuntimeOptions;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillScriptDiscoverer;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
+import org.wwz.ai.domain.agent.runtime.tool.skill.DefaultSkillRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMarkdownParser;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDiscoverer;
 
 import java.util.Collections;
 import java.util.List;

@@ -5,9 +5,9 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
-import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
-import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 

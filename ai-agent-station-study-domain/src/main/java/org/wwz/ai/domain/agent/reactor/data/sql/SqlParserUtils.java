@@ -13,7 +13,6 @@ import org.apache.calcite.sql.util.SqlBasicVisitor;
 import org.apache.calcite.sql.validate.SqlConformanceEnum;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.data.jdbc.dialect.DialectEnum;
 import org.wwz.ai.domain.agent.reactor.data.model.*;
 import org.wwz.ai.domain.agent.reactor.data.sql.dialect.ClickHouseSqlDialect2;
 import org.wwz.ai.domain.agent.reactor.data.sql.dialect.MysqlCustomSqlDialect;
@@ -36,13 +35,16 @@ public class SqlParserUtils {
     }
 
     private static SqlParser.Config parserConfig(@NonNull String dialectString) {
-        DialectEnum dialectEnum = DialectEnum.of(dialectString);
-        return switch (dialectEnum) {
-            case H2, MYSQL -> MysqlCustomSqlDialect.DEFAULT.configureParser(SqlParser.config())
-                    .withConformance(SqlConformanceEnum.MYSQL_5);
-            case CLICKHOUSE -> ClickHouseSqlDialect2.DEFAULT.configureParser(SqlParser.config())
+        if (isClickHouseDialect(dialectString)) {
+            return ClickHouseSqlDialect2.DEFAULT.configureParser(SqlParser.config())
                     .withConformance(SqlConformanceEnum.LENIENT);
-        };
+        }
+        return MysqlCustomSqlDialect.DEFAULT.configureParser(SqlParser.config())
+                .withConformance(SqlConformanceEnum.MYSQL_5);
+    }
+
+    private static boolean isClickHouseDialect(String dialectString) {
+        return StringUtils.equalsIgnoreCase("clickhouse", StringUtils.trimToEmpty(dialectString));
     }
 
     public static SqlParser.Config parserConfigWithoutQuoted(@NonNull String dialectString) {

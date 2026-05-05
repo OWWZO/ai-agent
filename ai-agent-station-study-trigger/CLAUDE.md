@@ -7,6 +7,7 @@
 触发器层，负责接收外部请求（HTTP 接口）、定时任务调度、消息监听。是系统对外的入口层。
 
 当前收敛边界下，Trigger 入口优先依赖 `ai-agent-station-study-case` 暴露的应用服务；像 `SseEmitter` 这样的协议对象只允许停留在 trigger 适配器中，不再直接穿透到应用编排接口之外。
+`AiAgentController`、`ReactorController`、`DataAgentController`、角色库和 RAG 管理入口都必须通过 `case` seam 进入主链路，不允许重新依赖已删除的 GPT query / dataagent bridge。
 
 ---
 
@@ -117,6 +118,8 @@ A: Admin 接口是面向运营后台的 HTTP 接口，属于触发器职责。
 | 文件路径 | 说明 |
 |---------|------|
 | `src/main/java/org/wwz/ai/trigger/http/AiAgentController.java` | 核心 Agent 接口 |
+| `src/main/java/org/wwz/ai/trigger/http/reactor/ReactorController.java` | legacy Reactor HTTP 入口 |
+| `src/main/java/org/wwz/ai/trigger/http/dataagent/DataAgentController.java` | legacy DataAgent HTTP 入口 |
 | `src/main/java/org/wwz/ai/trigger/http/agent/AgentConversationController.java` | 会话管理接口 |
 | `src/main/java/org/wwz/ai/trigger/http/agent/AgentMessageController.java` | 消息接口 |
 | `src/main/java/org/wwz/ai/trigger/http/admin/AdminUserAdminController.java` | 管理员接口 |
@@ -149,6 +152,8 @@ A: Admin 接口是面向运营后台的 HTTP 接口，属于触发器职责。
 ### 工具类
 | 文件路径 | 说明 |
 |---------|------|
+| `src/main/java/org/wwz/ai/trigger/http/reactor/support/SseEmitterAgentSessionStream.java` | trigger 侧 SSE 协议适配 |
+| `src/main/java/org/wwz/ai/trigger/http/reactor/support/SseLifecycleSupport.java` | SSE 生命周期与心跳支持 |
 | `src/main/java/org/wwz/ai/trigger/http/admin/util/DrawConfigParser.java` | 绘图配置解析器 |
 | `src/main/java/org/wwz/ai/trigger/config/BaseFilterConfig.java` | 过滤器配置 |
 

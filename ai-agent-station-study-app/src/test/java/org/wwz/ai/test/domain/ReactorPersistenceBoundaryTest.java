@@ -14,9 +14,8 @@ import java.util.List;
  */
 public class ReactorPersistenceBoundaryTest {
 
-    private static final Path PROJECT_ROOT = Path.of("..").toAbsolutePath().normalize();
+    private static final Path PROJECT_ROOT = resolveProjectRoot();
     private static final Path DOMAIN_ROOT = PROJECT_ROOT.resolve("ai-agent-station-study-domain/src/main/java");
-    private static final Path INFRASTRUCTURE_ROOT = PROJECT_ROOT.resolve("ai-agent-station-study-infrastructure/src/main/java");
     private static final Path MAPPER_ROOT = PROJECT_ROOT.resolve("ai-agent-station-study-app/src/main/resources/mybatis/mapper");
 
     @Test
@@ -58,5 +57,21 @@ public class ReactorPersistenceBoundaryTest {
     private void assertContains(Path file, String expectedContent) throws IOException {
         String content = Files.readString(file, StandardCharsets.UTF_8);
         Assert.assertTrue(file + " 应包含: " + expectedContent, content.contains(expectedContent));
+    }
+
+    /**
+     * app 模块下执行测试时，工作目录会落在模块根而不是仓库根，需要向上回溯定位真实项目根目录。
+     */
+    private static Path resolveProjectRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            if (Files.exists(current.resolve("ai-agent-station-study-domain"))
+                    && Files.exists(current.resolve("ai-agent-station-study-infrastructure"))
+                    && Files.exists(current.resolve("ai-agent-station-study-app"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("无法定位项目根目录");
     }
 }

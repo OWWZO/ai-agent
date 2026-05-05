@@ -1,46 +1,46 @@
 package org.wwz.ai.test.domain;
 
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.agent.tool.ToolCollection;
-import org.wwz.ai.domain.agent.reactor.adapter.repository.IExecutionLedgerReadRepository;
-import org.wwz.ai.domain.agent.reactor.adapter.repository.IExecutionLedgerWriteRepository;
-import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
-import org.wwz.ai.domain.agent.reactor.entity.DialogueSession;
-import org.wwz.ai.domain.agent.reactor.entity.DialogueRun;
-import org.wwz.ai.domain.agent.reactor.entity.LlmInvocation;
-import org.wwz.ai.domain.agent.reactor.entity.ToolInvocation;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunView;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionUpsertRecord;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueSessionView;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationStartRecord;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputPersistCommand;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolStructuredOutput;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
-import org.wwz.ai.domain.agent.reactor.service.AgentExecutionRecorder;
-import org.wwz.ai.domain.agent.reactor.service.ExecutionLedgerQueryService;
-import org.wwz.ai.domain.agent.reactor.service.impl.AgentExecutionRecorderImpl;
-import org.wwz.ai.domain.agent.reactor.service.impl.ExecutionLedgerQueryServiceImpl;
-import org.wwz.ai.domain.agent.reactor.service.replay.ConversationHistoryReplayService;
-import org.wwz.ai.domain.agent.reactor.service.replay.HistoryReplayPrinter;
-import org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.CodeInterpreterToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DataAnalysisToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DefaultToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DeepSearchToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.FileToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ImageGenerationToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.MultiModalToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.PlanningToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ReportToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.ScriptRunnerToolInvocationProjector;
-import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
-import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputWriter;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
+import org.wwz.ai.domain.agent.ledger.IExecutionLedgerWriteRepository;
+import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
+import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
+import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
+import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
+import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
+import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
+import org.wwz.ai.domain.agent.ledger.impl.AgentExecutionRecorderImpl;
+import org.wwz.ai.domain.agent.ledger.impl.ExecutionLedgerQueryServiceImpl;
+import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
+import org.wwz.ai.domain.agent.ledger.replay.HistoryReplayPrinter;
+import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DataAnalysisToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ImageGenerationToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.MultiModalToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ReportToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ScriptRunnerToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
+import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputWriter;
 import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerReadRepository;
 import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerWriteRepository;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
@@ -131,7 +131,7 @@ public final class ExecutionLedgerFixtureFactory {
     }
 
     static Long activateRun(AgentContext context, AgentExecutionRecorder recorder, String entryAgent) {
-        Long runId = recorder.createRun(org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunStartRecord.builder()
+        Long runId = recorder.createRun(org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord.builder()
                 .runUid(context.getRequestId())
                 .requestId(context.getRequestId())
                 .sessionId(context.getSessionId())

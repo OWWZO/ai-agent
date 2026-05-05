@@ -1,5 +1,6 @@
 package org.wwz.ai.domain.agent.service.execute.auto1.step;
 
+import org.wwz.ai.domain.agent.adapter.port.AgentMessageStream;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.AgentExecuteResultEntity;
 import org.wwz.ai.domain.agent.model.entity.ExecuteCommandEntity;
@@ -12,10 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
-import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -199,14 +198,16 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
     protected void sendSseResult(DefaultFlowAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                 Object result) {
         try {
-            // 优先使用强类型 emitter 字段，兼容老逻辑从 Map 中获取
-            SseEmitter emitter = dynamicContext.getEmitter() != null ? dynamicContext.getEmitter() : dynamicContext.getValue("emitter");
-            if (emitter != null) {
+            // 优先使用强类型流端口字段，兼容老逻辑从 Map 中获取
+            AgentMessageStream stream = dynamicContext.getEmitter() != null
+                    ? dynamicContext.getEmitter()
+                    : dynamicContext.getValue("emitter");
+            if (stream != null) {
                 // 发送SSE格式的数据
                 String sseData = "data: " + JSON.toJSONString(result) + "\n\n";
-                emitter.send(sseData);
+                stream.send(sseData);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("发送SSE结果失败：{}", e.getMessage(), e);
         }
     }

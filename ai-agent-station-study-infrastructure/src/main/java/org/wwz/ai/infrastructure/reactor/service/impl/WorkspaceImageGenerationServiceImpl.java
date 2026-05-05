@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
-import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageFile;
@@ -12,14 +12,14 @@ import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGener
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryBatch;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationHistoryPage;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.WorkspaceImageGenerationResult;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ImageGenerationToolOutput;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputNames;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.ToolOutputView;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.reactor.service.IWorkspaceImageGenerationService;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationBatchPersistenceService;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
-import org.wwz.ai.domain.agent.reactor.service.tooloutput.ToolOutputReader;
+import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 
 import javax.annotation.Resource;

@@ -8,7 +8,7 @@ import org.wwz.ai.domain.agent.reactor.config.data.DataAgentModelConfig;
 import org.wwz.ai.domain.agent.reactor.data.TableColumn;
 import org.wwz.ai.domain.agent.reactor.data.dto.ChatSchemaDto;
 import org.wwz.ai.domain.agent.reactor.adapter.repository.IChatModelMetadataRepository;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;

@@ -167,6 +167,7 @@ declare global {
       eventResult?: EventResult
       agentType?: number
       searchResult?: SearchResult
+      resultMap?: ResultMap
       messageType?: string
       requestId?: string
       query?: string

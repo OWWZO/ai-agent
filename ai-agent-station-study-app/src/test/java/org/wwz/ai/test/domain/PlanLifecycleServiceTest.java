@@ -2,9 +2,9 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.dto.Plan;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleResult;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.planning.PlanLifecycleService;
+import org.wwz.ai.domain.agent.runtime.dto.Plan;
+import org.wwz.ai.domain.agent.runtime.tool.common.planning.PlanLifecycleResult;
+import org.wwz.ai.domain.agent.runtime.tool.common.planning.PlanLifecycleService;
 
 import java.util.ArrayList;
 import java.util.List;

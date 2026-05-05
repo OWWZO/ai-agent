@@ -1,8 +1,5 @@
 package org.wwz.ai.config;
 
-import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
-import org.wwz.ai.application.agent.armory.IArmoryService;
-import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,13 +7,16 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Configuration;
+import org.wwz.ai.application.agent.armory.IArmoryService;
+import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 
 import javax.annotation.Resource;
 import java.util.List;
 
 /**
  * AI Agent 自动装配配置类
- * 在Spring Boot应用启动完成后，根据配置自动装配AI客户端
+ * 在 Spring Boot 应用启动完成后，根据配置触发应用层装配入口。
+ * 装配主归属留在 case 层，app 只负责启动时机与 Bean wiring。
  *
  * @author xiaofuge bugstack.cn @小傅哥
  * 2025/1/15 10:00
@@ -29,9 +29,6 @@ public class AiAgentAutoConfiguration implements ApplicationListener<Application
 
     @Resource
     private AiAgentAutoConfigProperties aiAgentAutoConfigProperties;
-
-    @Resource
-    private DefaultArmoryStrategyFactory defaultArmoryStrategyFactory;
 
     @Resource
     private IArmoryService armoryService;
@@ -47,6 +44,7 @@ public class AiAgentAutoConfiguration implements ApplicationListener<Application
                 return;
             }
 
+            // 运行时策略工厂仍由 Spring 提前装配，这里只触发应用层入口，不在 app 内拼业务逻辑。
             List<AiAgentVO> aiAgentVOS = armoryService.acceptArmoryAllAvailableAgents();
 
             log.info("AI Agent 自动装配完成 {}", JSON.toJSONString(aiAgentVOS));

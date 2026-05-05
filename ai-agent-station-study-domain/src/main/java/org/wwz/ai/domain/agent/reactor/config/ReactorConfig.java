@@ -8,14 +8,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Reactor Phase 1 期间保留在 domain 的过渡态共享配置契约。
- * 后续如继续做边界收敛，需要单独 change 处理，当前阶段禁止顺手迁移或改写读取语义。
+ * 删除/迁移时机：当 Reactor 共享配置被单独 change 收敛到 app 或专用配置模块后再迁移；
+ * 当前阶段禁止顺手改写读取语义。
  */
 @Slf4j
 @Getter

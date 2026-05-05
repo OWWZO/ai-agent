@@ -6,7 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 
 import java.util.List;

@@ -2,15 +2,15 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.BaseAgent;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.dto.tool.ToolCall;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationView;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 
 import java.lang.reflect.Method;
 import java.util.List;

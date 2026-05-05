@@ -9,7 +9,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.gateway.IReactorImageGenerationGateway;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationGatewayFile;

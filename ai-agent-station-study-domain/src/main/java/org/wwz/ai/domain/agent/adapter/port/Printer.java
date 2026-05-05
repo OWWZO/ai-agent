@@ -1,7 +1,7 @@
 
 package org.wwz.ai.domain.agent.adapter.port;
 
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 
 public interface Printer {
     /**

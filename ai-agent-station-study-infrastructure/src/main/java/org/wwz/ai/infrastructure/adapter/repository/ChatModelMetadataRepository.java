@@ -5,8 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.reactor.adapter.repository.IChatModelMetadataRepository;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelInfo;
-import org.wwz.ai.domain.agent.reactor.entity.ChatModelSchema;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelInfo;
+import org.wwz.ai.domain.agent.ledger.entity.ChatModelSchema;
 import org.wwz.ai.infrastructure.dao.reactor.ChatModelInfoMapper;
 import org.wwz.ai.infrastructure.dao.reactor.ChatModelSchemaMapper;
 

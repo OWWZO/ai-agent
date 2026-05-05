@@ -41,16 +41,21 @@ public class CloudVectorConfigBindingTest {
     }
 
     @Test
-    public void shouldKeepSafeDefaults() {
+    public void shouldKeepExplicitConfigOnly() {
         QdrantConfig qdrantConfig = new QdrantConfig();
         EsConfig esConfig = new EsConfig();
         DataAgentConfig dataAgentConfig = new DataAgentConfig();
 
-        Assert.assertFalse(qdrantConfig.getEnable());
-        Assert.assertEquals(Integer.valueOf(6334), qdrantConfig.getPort());
-        Assert.assertTrue(qdrantConfig.getPreferGrpc());
-        Assert.assertFalse(esConfig.getEnable());
-        Assert.assertEquals("http", esConfig.getScheme());
+        Assert.assertNull(qdrantConfig.getEnable());
+        Assert.assertNull(qdrantConfig.getPort());
+        Assert.assertNull(qdrantConfig.getPreferGrpc());
+        Assert.assertNull(esConfig.getEnable());
+        Assert.assertNull(esConfig.getScheme());
         Assert.assertFalse(dataAgentConfig.getForceRefresh());
+        Assert.assertNotNull(dataAgentConfig.getQdrantConfig());
+        Assert.assertNotNull(dataAgentConfig.getEsConfig());
+        Assert.assertNotNull(dataAgentConfig.getDbConfig());
+        Assert.assertNull(dataAgentConfig.getQdrantConfig().getEnable());
+        Assert.assertNull(dataAgentConfig.getEsConfig().getEnable());
     }
 }

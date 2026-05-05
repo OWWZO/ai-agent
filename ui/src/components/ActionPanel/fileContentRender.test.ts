@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getPrimaryTaskFile, getPrimaryTaskFileName } from "@/utils/taskArtifacts";
 import { useMsgTypes } from "./useMsgTypes";
+import { resolvePanelView } from "./panelResolver";
 
 describe("ActionPanel file content rendering", () => {
   const buildFileTask = (overrides?: Partial<MESSAGE.Task>): MESSAGE.Task => ({
@@ -69,5 +70,29 @@ describe("ActionPanel file content rendering", () => {
     renderToStaticMarkup(createElement(HookProbe));
 
     expect(msgTypes?.useFile).toBe(true);
+  });
+
+  it("should resolve file get task to file panel view", () => {
+    const task = buildFileTask();
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+
+    renderToStaticMarkup(createElement(HookProbe));
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+
+    expect(panelView.type).toBe("file");
+    if (panelView.type === "file") {
+      expect(panelView.fileName).toBe("风险日报.md");
+    }
   });
 });

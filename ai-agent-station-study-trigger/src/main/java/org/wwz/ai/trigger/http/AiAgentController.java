@@ -11,7 +11,8 @@ import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.armory.IArmoryService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
-import org.wwz.ai.domain.agent.reactor.agent.util.ThreadUtil;
+import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
+import org.wwz.ai.domain.agent.runtime.util.ThreadUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 
 import javax.annotation.Resource;
@@ -33,7 +35,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.wwz.ai.domain.agent.reactor.service.IGptProcessService;
 
 /**
  * AutoAgent 自动智能对话体
@@ -57,56 +58,7 @@ public class AiAgentController implements IAiAgentService {
     private IArmoryService armoryService;
 
     @Resource
-    private IGptProcessService gptProcessService;
-    /**
-     * 开启SSE心跳
-     * @param emitter
-     * @param requestId
-     * @return
-     */
-    private ScheduledFuture<?> startHeartbeat(SseEmitter emitter, String requestId) {
-        // 定时执行任务：首次延迟 HEARTBEAT_INTERVAL 后执行，之后每隔相同时间循环执行
-        return executor.scheduleAtFixedRate(() -> {
-            try {
-                // 发送心跳消息 防止被nginx 网关误杀
-                log.info("{} send heartbeat", requestId);
-                emitter.send("heartbeat");
-            } catch (Exception e) {
-                // 发送心跳失败，关闭连接
-                log.error("{} heartbeat failed, closing connection", requestId, e);
-                emitter.completeWithError(e);
-            }
-        }, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * 防止心跳任务在连接断开后继续运行，造成内存泄漏。
-     * @param emitter
-     * @param requestId
-     * @param heartbeatFuture
-     */
-    private void registerSSEMonitor(SseEmitter emitter, String requestId, ScheduledFuture<?> heartbeatFuture) {
-        // 连接正常完成时触发（客户端主动关闭或服务端complete）
-        emitter.onCompletion(() -> {
-            log.info("{} SSE connection completed normally", requestId);
-            //取消对应的周期性事件 下面同理
-            heartbeatFuture.cancel(true);
-        });
-
-        //连接超时时触发（超过SseEmitter设置的超时时间）
-        emitter.onTimeout(() -> {
-            log.info("{} SSE connection timed out", requestId);
-            heartbeatFuture.cancel(true);
-            emitter.complete();
-        });
-
-        // 连接发生异常时触发（网络中断、客户端异常关闭等）
-        emitter.onError((ex) -> {
-            log.info("{} SSE connection error: ", requestId, ex);
-            heartbeatFuture.cancel(true);
-            emitter.completeWithError(ex);
-        });
-    }
+    private IGptQueryApplicationService gptQueryApplicationService;
 
     /**
      * 执行智能体调度
@@ -121,12 +73,14 @@ public class AiAgentController implements IAiAgentService {
 
         Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
 
-        SseEmitter emitter = new SseEmitter(AUTO_AGENT_SSE_TIMEOUT);
+        SseEmitter emitter = SseLifecycleSupport.createEmitter(AUTO_AGENT_SSE_TIMEOUT);
         // 定义定时任务规则 定时发送心跳包
-        ScheduledFuture<?> heartbeatFuture = startHeartbeat(emitter, request.getRequestId());
+        ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
+                executor, emitter, request.getRequestId(), HEARTBEAT_INTERVAL, log
+        );
 
         // 注册后续各种事件的处理逻辑
-        registerSSEMonitor(emitter, request.getRequestId(), heartbeatFuture);
+        SseLifecycleSupport.registerLifecycle(emitter, request.getRequestId(), heartbeatFuture, log);
 
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
         ThreadUtil.execute(() -> {
@@ -169,7 +123,13 @@ public class AiAgentController implements IAiAgentService {
      */
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
-        return gptProcessService.queryMultiAgentIncrStream(params);
+        SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
+        SseLifecycleSupport.registerLifecycle(emitter,
+                Objects.toString(params.getRequestId(), "legacy-gpt-query"),
+                null,
+                log);
+        gptQueryApplicationService.queryAgentStreamIncr(params, new SseEmitterAgentSessionStream(emitter));
+        return emitter;
     }
 
 //    @RequestMapping(value = "auto_agent1", method = RequestMethod.POST)

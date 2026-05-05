@@ -5,6 +5,7 @@
 ## 模块职责
 
 应用启动模块，负责 Spring Boot 应用启动、全局配置、依赖装配。是系统的入口模块。
+在 `019-agent-ddd-convergence` 与 `020-prune-agent-bridges` 中，`app` 额外负责把 runtime port adapter、handlerMap、DataAgent 初始化器和边界守卫测试装配成最终收敛入口。
 
 ---
 
@@ -51,6 +52,13 @@ java -jar target/ai-agent-station-study-app.jar
 ### 模块依赖
 - `ai-agent-station-study-trigger`: 触发器层
 - `ai-agent-station-study-infrastructure`: 基础设施层
+
+### Agent DDD 最终边界（019）
+- `ReactorRuntimeAutoConfiguration` 负责把 `RemoteHttpPort`、`RemoteStreamPort`、`FileArtifactPort` 注入 `ReactorRuntimeDependencies`
+- `AgentHandlerAutoConfiguration` 负责 runtime handlerMap 拓扑，不允许把这类装配回流到 `domain`
+- `DataAgentInitRunner`、`Es7HighLevelClientConfig` 等技术初始化留在 `app`
+- `src/test/java/org/wwz/ai/test/domain/AgentContextConvergenceBoundaryTest.java` 负责锁定 GPT query / dataagent bridge 删除结果
+- `src/test/java/org/wwz/ai/test/domain/**` 里的边界守卫测试是最终边界验收门槛
 
 ---
 

@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao">
 
-    <resultMap id="LlmInvocationMap" type="org.wwz.ai.domain.agent.reactor.entity.LlmInvocation">
+    <resultMap id="LlmInvocationMap" type="org.wwz.ai.domain.agent.ledger.entity.LlmInvocation">
         <id column="id" property="id"/>
         <result column="run_id" property="runId"/>
         <result column="invocation_seq" property="invocationSeq"/>
@@ -27,7 +27,7 @@
         <result column="deleted" property="deleted"/>
     </resultMap>
 
-    <insert id="insertLlmInvocation" parameterType="org.wwz.ai.domain.agent.reactor.entity.LlmInvocation" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insertLlmInvocation" parameterType="org.wwz.ai.domain.agent.ledger.entity.LlmInvocation" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_llm_invocation (
             run_id, invocation_seq, agent_name, step_no, call_kind, streaming, model_name, response_text,
             tool_call_count, prompt_tokens, completion_tokens, total_tokens, finish_reason, status, error_msg,
@@ -39,7 +39,7 @@
         )
     </insert>
 
-    <update id="updateLlmInvocationFinish" parameterType="org.wwz.ai.domain.agent.reactor.entity.LlmInvocation">
+    <update id="updateLlmInvocationFinish" parameterType="org.wwz.ai.domain.agent.ledger.entity.LlmInvocation">
         UPDATE ai_agent_llm_invocation
         SET status = #{status},
             response_text = #{responseText},

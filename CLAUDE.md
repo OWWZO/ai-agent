@@ -100,7 +100,7 @@ The project follows DDD layered architecture (inspired by 小傅哥扳手工程 
                      ┌────────▼────────┐
                      │  domain         │  Core business logic, entities,
                      │  (领域层)        │  value objects, domain services,
-                     │                 │  reactor (Agent execution engine)
+                     │                 │  runtime / ledger / memory / rag / role
                      └────────┬────────┘
                               │ depends on
                      ┌────────▼────────┐
@@ -122,17 +122,17 @@ The project follows DDD layered architecture (inspired by 小傅哥扳手工程 
 
 - `org.wwz.ai.Application` in `ai-agent-station-study-app`
 
-### Agent Execution Engine (Reactor)
+### Agent Execution Engine
 
-The core execution logic lives in `domain/agent/reactor/` and supports three strategies:
+Agent 主链路已收敛为：
 
-1. **AutoAgent** (`auto/`): Planner -> Executor -> Summary multi-stage pipeline
-2. **FlowAgent** (`flow/`): YAML-configured execution flow
-3. **ReAct** (`react/`): Reasoning-Action loop with tool calling
+1. `trigger` 负责 HTTP / SSE / Job 协议适配
+2. `case` 负责 dispatch / execute / armory / task / query / dataagent 应用编排
+3. `domain` 负责 `runtime / ledger / memory / rag / role` 五类子域语义，以及少量明确延期的 legacy contract
+4. `infrastructure` 承接 HTTP、流式远端调用、JDBC/dataquery、文件产物与持久化适配
 
-Strategy selection is handled by factory classes:
-- `DefaultAutoAgentExecuteStrategyFactory`
-- `DefaultFlowAgentExecuteStrategyFactory`
+仍保留的执行策略工厂主要位于 `domain/agent/service/execute/**`，但它们不再是 Trigger 入口可直接依赖的应用编排边界。
+`reactor/config/data/**`、`reactor/model/{req,response,multi,dto,imagegeneration}/**`、`reactor/service/**`、`service/{execute,armory,runtime}/**` 目前被界定为明确延期的 legacy contract；可以继续被登记的主链路消费，但禁止扩张为新的 bridge 或 catch-all 目录。
 
 ### Persistence Architecture
 
@@ -174,6 +174,13 @@ The React frontend (`ui/`) communicates with the backend via SSE (Server-Sent Ev
   - `case` owns dispatch / execute / armory / task orchestration and stream protocol adaptation
   - `infrastructure` handles DAO, gateways, and MCP external integrations
   - `trigger` should not accumulate business logic; delegate to `case`
+- **Agent DDD convergence (019):**
+  - `SseEmitter` only stays in `ai-agent-station-study-trigger`
+  - `domain` must not directly create `OkHttpClient`, use `JdbcDataProvider`, or call `SpringContextHolder` / `applicationContext.getBean(...)`
+  - `RemoteHttpPort` / `RemoteStreamPort` / `FileArtifactPort` and `DataQuery*Port` are the stable seam from `domain` to `infrastructure`
+  - GPT query / dataagent bridge (`IGptProcessService` / `IMultiAgentService` / `DataAgentService` / `Nl2SqlService`) has been removed; new mainline orchestration must stay on `runtime` / `rag` seams
+  - orphan handler bridges (`AgentHandlerService` / `AgentHandlerFactory` / `PlanSolveHandlerImpl` / `ReactHandlerImpl`) have been removed
+  - `domain/agent/service` and `domain/agent/reactor` still contain deferred legacy contracts and strategy nodes; do not add new mainline orchestration there
 - **Reactor Phase 1 boundaries:**
   - legacy `/1/**` 与 `/data/**` HTTP 入口现在归属 `trigger`，后续不要再把 controller 放回 `domain`
   - `ReplayProjectorAutoConfiguration`、`DataAgentInitRunner`、`Es7HighLevelClientConfig` 这类低风险装配归属 `app`
@@ -238,6 +245,6 @@ To run excluded tests individually, use `-Dtest=ClassName` with `-DskipTests=fal
 
 ## Current Active Work
 
-- **Branch:** `017-conversation-history-projector-replay`
-- **Focus:** Conversation history replay with projector-based event reconstruction — combining the execution ledger (dialogue_run / llm_invocation / tool_invocation / artifact / tool_output_*) with ToolInvocationProjectorRegistry to replay historical tool executions as structured events consumable by the frontend.
-- **Specs:** Located in `specs/017-conversation-history-projector-replay/`
+- **Branch:** `019-agent-ddd-convergence`
+- **Focus:** Lock the final Agent bounded-context seam so Trigger enters through Case, Domain owns `runtime / ledger / memory / rag / role`, and Infrastructure owns HTTP / JDBC / artifact executors with boundary guards and module docs preventing regression.
+- **Specs:** Located in `specs/019-agent-ddd-convergence/`

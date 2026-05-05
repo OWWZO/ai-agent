@@ -7,6 +7,8 @@
 基础设施层，负责数据持久化、外部服务调用、仓储实现。包含 MyBatis-Plus DAO、PO 实体、外部网关接口等。
 
 当前收敛边界下，`case` 负责应用编排，`domain` 负责领域规则，`infrastructure` 继续承接 DAO、HTTP/MCP 网关、技术执行器与仓储适配实现。
+在 `019-agent-ddd-convergence` 中，HTTP / 流式远端调用、JDBC/dataquery 与文件产物能力已经明确下沉到本模块。
+在 `020-prune-agent-bridges` 中，`infrastructure` 继续消费少量已登记的 legacy contract，包括 dataagent 配置契约与工作台生图契约；这些引用属于明确延期项，禁止继续扩张为新的通用 bridge。
 
 ---
 
@@ -96,6 +98,16 @@
 - `ExecutionLedgerReadRepository`、`ExecutionLedgerWriteRepository`、`ChatModelMetadataRepository` 负责把领域仓储端口映射到这些 DAO
 - `ToolOutputReaderImpl`、`ToolOutputWriterImpl`、`SessionContextMemoryServiceImpl`、`WorkspaceImageGenerationServiceImpl` 当前属于允许直接协作 DAO 的过渡态技术实现
 - 后续阶段若继续收敛，会优先新增 repository seam，而不是把 DAO 或 MyBatis-Plus 细节重新带回 `domain`
+
+### Agent DDD 最终边界（019）
+- `OkHttpRemoteHttpAdapter`、`OkHttpRemoteStreamAdapter`、`ReactorToolFileArtifactAdapter` 是 runtime 对外部 HTTP / 文件产物的主适配器
+- `DataQueryExecutionAdapter`、`DataQueryMetadataAdapter` 与 `infrastructure.dataquery.jdbc/**` 承接 JDBC provider、catalog、dialect、连接池
+- `domain` 只能通过 port / repository seam 使用这些能力，禁止重新引入技术执行器到领域层
+
+### Legacy Contract Allowlist（020）
+- 允许继续引用 `org.wwz.ai.domain.agent.reactor.config.data.*`，因为 `DataQueryExecutionAdapter`、`DataQueryMetadataAdapter`、`JdbcUtils` 仍需要共享数据库连接配置契约
+- 允许继续引用 `org.wwz.ai.domain.agent.reactor.model.imagegeneration.*` 与 `org.wwz.ai.domain.agent.reactor.service.IWorkspaceImageGenerationService` / `org.wwz.ai.domain.agent.reactor.service.imagegeneration.*`，因为工作台生图入口与技术执行器仍共用这组稳定历史契约
+- 不允许新增对 `org.wwz.ai.domain.agent.service.execute.*`、`org.wwz.ai.domain.agent.service.armory.*`、已删除 bridge 或其它未登记 legacy 包的依赖
 
 ---
 

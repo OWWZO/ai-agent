@@ -3,18 +3,24 @@ package org.wwz.ai.test.domain.support;
 import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.llm.DomainMessageConverter;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatModelResolver;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatResponseMapper;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmToolCallbackProvider;
-import org.wwz.ai.domain.agent.reactor.agent.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.reactor.agent.llm.StreamResponseHandler;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpRegistry;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
+import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
+import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
+import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.runtime.ReactorLlmDependencies;
-import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteHttpAdapter;
+import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteStreamAdapter;
+import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
 
 /**
  * Reactor 运行时测试夹具。
@@ -57,6 +63,9 @@ public final class ReactorRuntimeTestSupport {
                 .responseMapper(responseMapper)
                 .streamResponseHandler(streamResponseHandler)
                 .build();
+        RemoteHttpPort remoteHttpPort = new OkHttpRemoteHttpAdapter();
+        RemoteStreamPort remoteStreamPort = new OkHttpRemoteStreamAdapter();
+        FileArtifactPort fileArtifactPort = new ReactorToolFileArtifactAdapter(remoteHttpPort);
 
         return ReactorRuntimeDependencies.builder()
                 .reactorConfig(reactorConfig)
@@ -64,6 +73,9 @@ public final class ReactorRuntimeTestSupport {
                 .llmDependencies(llmDependencies)
                 .mcpToolExecutor(null)
                 .imageGenerationExecutionKernel(imageKernel)
+                .remoteHttpPort(remoteHttpPort)
+                .remoteStreamPort(remoteStreamPort)
+                .fileArtifactPort(fileArtifactPort)
                 .build();
     }
 }

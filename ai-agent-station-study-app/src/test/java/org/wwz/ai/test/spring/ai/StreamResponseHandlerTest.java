@@ -9,12 +9,12 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.enums.AgentType;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LLM;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatResponseMapper;
-import org.wwz.ai.domain.agent.reactor.agent.llm.StreamResponseHandler;
-import org.wwz.ai.domain.agent.reactor.agent.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import reactor.core.publisher.Flux;
 

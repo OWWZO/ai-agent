@@ -59,29 +59,21 @@ def resolve_shared_qdrant_config() -> dict:
 
 
 def resolve_data_agent_qdrant_config() -> dict:
-    """解析 DataAgent 专属 Qdrant 配置，不再回退共享 MRAG 配置。"""
+    """解析 DataAgent 专属 Qdrant 配置。"""
     override_url = _trimmed_env("DATA_AGENT_QDRANT_URL")
     override_host = _trimmed_env("DATA_AGENT_QDRANT_HOST")
     return {
         "url": None if override_host else override_url,
         "host": override_host,
-        "port": _env_int("DATA_AGENT_QDRANT_PORT", 6334),
+        "port": _env_int("DATA_AGENT_QDRANT_PORT", 0),
         "api_key": _trimmed_env("DATA_AGENT_QDRANT_API_KEY"),
-        "prefer_grpc": _env_bool("DATA_AGENT_QDRANT_PREFER_GRPC", True),
+        "prefer_grpc": _env_bool("DATA_AGENT_QDRANT_PREFER_GRPC", False),
     }
 
 
 def resolve_table_rag_qdrant_config() -> dict:
-    """解析 table_rag 直连 Qdrant 配置，优先级为 TR_QDRANT_* > DATA_AGENT_QDRANT_*。"""
-    data_agent_config = resolve_data_agent_qdrant_config()
-    override_host = _trimmed_env("TR_QDRANT_HOST")
-    return {
-        "url": None if override_host else data_agent_config["url"],
-        "host": override_host or data_agent_config["host"],
-        "port": _env_int("TR_QDRANT_PORT", data_agent_config["port"]),
-        "api_key": _trimmed_env("TR_QDRANT_API_KEY") or data_agent_config["api_key"],
-        "prefer_grpc": _env_bool("TR_QDRANT_PREFER_GRPC", data_agent_config["prefer_grpc"]),
-    }
+    """解析 table_rag 直连 Qdrant 配置，仅使用 DataAgent 配置。"""
+    return resolve_data_agent_qdrant_config()
 
 
 def has_direct_qdrant_config(config: dict) -> bool:

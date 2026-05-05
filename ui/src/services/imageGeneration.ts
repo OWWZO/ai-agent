@@ -5,6 +5,8 @@ import type {
 } from "@/pages/WorkspaceImageGeneration/types";
 import { extractImageFromUnknown, extractTextFromUnknown, trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
 
+const IMAGE_GENERATION_REQUEST_TIMEOUT_MS = 330_000;
+
 type DirectChatRequest = {
   baseUrl: string;
   apiKey: string;
@@ -48,6 +50,8 @@ export async function requestImageGenerationTool(
       fileDescription: payload.fileDescription,
       size: payload.size,
       n: payload.n,
+    }, {
+      timeout: IMAGE_GENERATION_REQUEST_TIMEOUT_MS,
     })) as unknown as ImageGenerationToolResponse;
   } catch (error) {
     throw new ImageGenerationRequestError(

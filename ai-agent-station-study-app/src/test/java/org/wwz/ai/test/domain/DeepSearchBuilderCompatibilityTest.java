@@ -2,8 +2,8 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse;
-import org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchStructuredResultBuilder;
+import org.wwz.ai.domain.agent.runtime.dto.DeepSearchrResponse;
+import org.wwz.ai.domain.agent.runtime.tool.common.DeepSearchStructuredResultBuilder;
 
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -87,16 +87,16 @@ public class DeepSearchBuilderCompatibilityTest {
     private static final class DeepSearchCompatibilityClassLoader extends URLClassLoader {
 
         private static final Set<String> BLOCKED_CLASS_NAMES = new LinkedHashSet<>(List.of(
-                "org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchStage$DeepSearchStageBuilder",
-                "org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchToolOutput$DeepSearchToolOutputBuilder",
-                "org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchQueryResult$DeepSearchQueryResultBuilder",
-                "org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearchDoc$DeepSearchDocBuilder"
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage$DeepSearchStageBuilder",
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput$DeepSearchToolOutputBuilder",
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult$DeepSearchQueryResultBuilder",
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc$DeepSearchDocBuilder"
         ));
 
         private static final List<String> CHILD_FIRST_PREFIXES = List.of(
-                "org.wwz.ai.domain.agent.reactor.agent.tool.common.DeepSearchStructuredResultBuilder",
-                "org.wwz.ai.domain.agent.reactor.agent.dto.DeepSearchrResponse",
-                "org.wwz.ai.domain.agent.reactor.model.tooloutput.DeepSearch"
+                "org.wwz.ai.domain.agent.runtime.tool.common.DeepSearchStructuredResultBuilder",
+                "org.wwz.ai.domain.agent.runtime.dto.DeepSearchrResponse",
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearch"
         );
 
         private DeepSearchCompatibilityClassLoader(URL[] urls, ClassLoader parent) {

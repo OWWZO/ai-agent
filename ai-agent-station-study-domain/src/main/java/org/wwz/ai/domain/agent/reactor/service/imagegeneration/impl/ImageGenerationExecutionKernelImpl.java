@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
-import org.wwz.ai.domain.agent.reactor.agent.util.StringUtil;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.gateway.IReactorImageGenerationGateway;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecuteCommand;
 import org.wwz.ai.domain.agent.reactor.model.imagegeneration.ImageGenerationExecutionResult;

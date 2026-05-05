@@ -4,10 +4,10 @@ import lombok.Data;
 
 @Data
 public class EsConfig {
-    private Boolean enable = false;
+    private Boolean enable;
     private String host;
     private String user;
     private String password;
     private String apiKey;
-    private String scheme = "http";
+    private String scheme;
 }

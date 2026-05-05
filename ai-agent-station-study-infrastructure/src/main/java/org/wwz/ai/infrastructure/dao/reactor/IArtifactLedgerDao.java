@@ -2,7 +2,7 @@ package org.wwz.ai.infrastructure.dao.reactor;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.wwz.ai.domain.agent.reactor.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
 
 import java.util.List;
 

@@ -2,16 +2,16 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.BaseAgent;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.handler.ReactAgentResponseHandler;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
-import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.handler.ReactAgentResponseHandler;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -102,10 +102,10 @@ public class ReactExecutionLedgerIntegrationTest {
                 .build());
 
         ReactAgentResponseHandler handler = new ReactAgentResponseHandler(
-                new org.wwz.ai.domain.agent.reactor.service.replay.ReplayProjector(
-                        new org.wwz.ai.domain.agent.reactor.service.replay.projector.ToolInvocationProjectorRegistry(
+                new org.wwz.ai.domain.agent.ledger.replay.ReplayProjector(
+                        new org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry(
                                 List.of(),
-                                new org.wwz.ai.domain.agent.reactor.service.replay.projector.impl.DefaultToolInvocationProjector()
+                                new org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector()
                         )
                 )
         );

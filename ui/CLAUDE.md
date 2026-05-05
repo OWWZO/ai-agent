@@ -243,6 +243,14 @@ pnpm fix       # 自动修复
 - 路径别名：`@/` 指向 `src/`
 - 代码风格：严格借鉴项目的其他代码来写 要求写出来的代码风格符合其他已有代码
 
+## Frontend Maintenance Notes
+
+- `Home/index.tsx` 只保留入口装配；会话 bootstrap 和近期会话逻辑进入 `pages/Home` 子模块。
+- `GeneralInput/index.tsx` 只保留输入编排；模式推导与上传状态机进入 `components/GeneralInput` 子模块。
+- `WorkspaceMRag/index.tsx` 只保留 view 装配；知识库目录、文件管理、问答流分别进入独立 hook。
+- `DataChat` 不再新增 JS 配置工具；图表配置一律走 TypeScript 纯函数。
+- `ActionPanel` 和 `FilePreview` 的 renderer / title / navigation 派生统一走 resolver/model 纯函数。
+
 ---
 
 ## AI 使用指引

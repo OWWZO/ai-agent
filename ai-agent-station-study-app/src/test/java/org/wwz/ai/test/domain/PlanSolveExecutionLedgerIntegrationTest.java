@@ -2,18 +2,18 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.reactor.agent.agent.AgentContext;
-import org.wwz.ai.domain.agent.reactor.agent.agent.BaseAgent;
-import org.wwz.ai.domain.agent.reactor.agent.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.reactor.agent.dto.File;
-import org.wwz.ai.domain.agent.reactor.agent.tool.BaseTool;
-import org.wwz.ai.domain.agent.reactor.agent.dto.Plan;
-import org.wwz.ai.domain.agent.reactor.model.ledger.DialogueRunFinishRecord;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.ledger.ExecutionRunDetail;
-import org.wwz.ai.domain.agent.reactor.model.ledger.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.dto.Plan;
+import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
-import org.wwz.ai.domain.agent.reactor.model.tooloutput.PlanningToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
 
 import java.util.List;
 import java.util.Map;
@@ -139,13 +139,13 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                 ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
         );
         Map<String, Long> toolIds = ledger.recorder.createToolInvocations(
-                org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.builder()
+                org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord.builder()
                         .runId(runId)
                         .requestId(context.getRequestId())
                         .llmInvocationId(llmInvocationId)
                         .agentName("planning")
                         .stepNo(1)
-                        .items(List.of(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.Item.builder()
+                        .items(List.of(org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord.Item.builder()
                                 .toolCallId("plan-history-tool-001")
                                 .dispatchIndex(1)
                                 .toolName("planning")
@@ -155,7 +155,7 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                                 .build()))
                         .build()
         );
-        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord.builder()
+        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolIds.get("plan-history-tool-001"))
                 .runId(runId)
                 .requestId(context.getRequestId())
@@ -198,14 +198,14 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                 ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
         );
         Map<String, Long> toolIds = ledger.recorder.createToolInvocations(
-                org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.builder()
+                org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord.builder()
                         .runId(runId)
                         .requestId(context.getRequestId())
                         .llmInvocationId(llmInvocationId)
                         .agentName("planning")
                         .stepNo(1)
                         .items(List.of(
-                                org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.Item.builder()
+                                org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord.Item.builder()
                                         .toolCallId("plan-history-tool-002")
                                         .dispatchIndex(1)
                                         .toolName("planning")
@@ -213,7 +213,7 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                                         .inputJson("{\"command\":\"create\",\"title\":\"旧计划\",\"steps\":[\"旧步骤\"]}")
                                         .startedAt(java.time.LocalDateTime.now())
                                         .build(),
-                                org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationBatchStartRecord.Item.builder()
+                                org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord.Item.builder()
                                         .toolCallId("plan-history-tool-003")
                                         .dispatchIndex(2)
                                         .toolName("planning")
@@ -223,7 +223,7 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                                         .build()))
                         .build()
         );
-        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord.builder()
+        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolIds.get("plan-history-tool-002"))
                 .runId(runId)
                 .requestId(context.getRequestId())
@@ -247,7 +247,7 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                         .build())
                 .finishedAt(java.time.LocalDateTime.now())
                 .build());
-        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.reactor.model.ledger.ToolInvocationFinishRecord.builder()
+        ledger.recorder.finishToolInvocation(org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord.builder()
                 .toolInvocationId(toolIds.get("plan-history-tool-003"))
                 .runId(runId)
                 .requestId(context.getRequestId())

@@ -17,78 +17,30 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  ImageGenerationRequestError,
-  requestDirectChat,
-  requestImageGenerationHistory,
-  requestImageGenerationTool,
-} from "@/services/imageGeneration";
 import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
-import { runImageBatchRequests, shouldUseImageBatchMode, type ImageBatchExecutionResult } from "./batch";
 
 import type {
-  AssistantMessage,
   DecodeResult,
-  EditorImageItem,
-  GenerationConfig,
-  GenerationMessage,
-  ImageGenerationHistoryBatch,
   RequestMode,
-  ResultImageItem,
-  UserMessage,
   WorkspaceTab,
 } from "./types";
 import {
-  IMAGE_GENERATION_STORAGE_KEY,
-  buildMaskedComposite,
   checkerboardStyle,
-  createLocalId,
   downloadDataUrl,
-  fileToDataUrl,
   formatBytes,
   formatHistoryTime,
-  hasCanvasDrawing,
-  loadImageElement,
   normalizeToDataUrl,
   resolveDownloadUrl,
-  resolveImageNaturalSize,
   resolvePreviewUrl,
   toPrettyJson,
-  trimTrailingSlash,
 } from "./utils";
-
-type StatusTone = "default" | "success" | "error";
-const HISTORY_PAGE_SIZE = 10;
-
-const createDefaultConfig = (): GenerationConfig => ({
-  baseUrl: "https://www.openclaudecode.cn",
-  apiKey: "",
-  model: "gpt-image-2",
-  mode: "images",
-  size: "1024x1024",
-  n: 1,
-  batchMode: true,
-});
-
-const loadStoredConfig = (): GenerationConfig => {
-  const defaults = createDefaultConfig();
-  try {
-    const raw = localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY);
-    if (!raw) {
-      return defaults;
-    }
-    const parsed = JSON.parse(raw) as Partial<GenerationConfig>;
-    return {
-      ...defaults,
-      ...parsed,
-      mode: (parsed.mode as RequestMode) || defaults.mode,
-      n: Math.max(1, Math.min(10, Number(parsed.n) || defaults.n)),
-      batchMode: typeof parsed.batchMode === "boolean" ? parsed.batchMode : defaults.batchMode,
-    };
-  } catch {
-    return defaults;
-  }
-};
+import { useImageGenerationConfig } from "./useImageGenerationConfig";
+import { useImageGenerationHistory } from "./useImageGenerationHistory";
+import { useImageEditor } from "./useImageEditor";
+import {
+  type StatusTone,
+  useImageGenerationSession,
+} from "./useImageGenerationSession";
 
 interface WorkspaceImageGenerationProps {
   embedded?: boolean;
@@ -96,50 +48,55 @@ interface WorkspaceImageGenerationProps {
 
 const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = ({ embedded }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("generate");
-  const [config, setConfig] = useState<GenerationConfig>(() => loadStoredConfig());
-  const [statusText, setStatusText] = useState("");
-  const [statusTone, setStatusTone] = useState<StatusTone>("default");
-  const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<GenerationMessage[]>([]);
-  const [debugPayload, setDebugPayload] = useState<unknown>("（尚未请求）");
+  const { config, updateConfig } = useImageGenerationConfig();
   const [decodeInput, setDecodeInput] = useState("");
   const [decodeResult, setDecodeResult] = useState<DecodeResult | null>(null);
   const [decodeStatus, setDecodeStatus] = useState("");
   const [decodeStatusTone, setDecodeStatusTone] = useState<StatusTone>("default");
-  const [images, setImages] = useState<EditorImageItem[]>([]);
-  const [editingImageId, setEditingImageId] = useState<string | null>(null);
-  const [brushSize, setBrushSize] = useState(32);
-  const [toolMode, setToolMode] = useState<"brush" | "eraser">("brush");
-  const [historyBatches, setHistoryBatches] = useState<ImageGenerationHistoryBatch[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyPageNo, setHistoryPageNo] = useState(1);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
-  const [historyError, setHistoryError] = useState("");
+  const {
+    historyBatches,
+    historyTotal,
+    historyPageNo,
+    historyLoading,
+    historyLoadingMore,
+    historyError,
+    loadHistory,
+  } = useImageGenerationHistory();
+  const {
+    images,
+    editingImage,
+    brushSize,
+    toolMode,
+    editorImageRef,
+    maskCanvasRef,
+    addFiles,
+    collectEffectiveImages,
+    closeEditor,
+    openEditor,
+    removeImage,
+    clearCurrentMask,
+    refreshEditorLayout,
+    buildMaskCompositeDataUrls,
+    setBrushSize,
+    setToolMode,
+  } = useImageEditor({ mode: config.mode });
+  const {
+    prompt,
+    setPrompt,
+    messages,
+    clearMessages,
+    handleSend,
+    statusText,
+    statusTone,
+    debugPayload,
+  } = useImageGenerationSession({
+    config,
+    collectEffectiveImages,
+    buildMaskCompositeDataUrls,
+    reloadHistory: () => loadHistory(1, true),
+  });
 
   const chatRef = useRef<HTMLDivElement>(null);
-  const editorImageRef = useRef<HTMLImageElement>(null);
-  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
-  const maskContextRef = useRef<CanvasRenderingContext2D | null>(null);
-  const isDrawingRef = useRef(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
-  const imagesRef = useRef<EditorImageItem[]>([]);
-
-  const editingImage = images.find((item) => item.id === editingImageId) || null;
-
-  useEffect(() => {
-    localStorage.setItem(IMAGE_GENERATION_STORAGE_KEY, JSON.stringify(config));
-  }, [config]);
-
-  useEffect(() => {
-    imagesRef.current = images;
-  }, [images]);
-
-  useEffect(() => {
-    return () => {
-      imagesRef.current.forEach((item) => URL.revokeObjectURL(item.objectUrl));
-    };
-  }, []);
 
   useEffect(() => {
     if (!chatRef.current) {
@@ -151,353 +108,9 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
     });
   }, [messages]);
 
-  useEffect(() => {
-    if (config.mode !== "edits") {
-      return;
-    }
-
-    const handlePaste = (event: ClipboardEvent) => {
-      const clipboardItems = event.clipboardData?.items;
-      if (!clipboardItems?.length) {
-        return;
-      }
-
-      const pastedImages: File[] = [];
-      Array.from(clipboardItems).forEach((item) => {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) {
-            pastedImages.push(file);
-          }
-        }
-      });
-
-      if (!pastedImages.length) {
-        return;
-      }
-
-      event.preventDefault();
-      void addFiles(pastedImages);
-    };
-
-    document.addEventListener("paste", handlePaste);
-    return () => document.removeEventListener("paste", handlePaste);
-  }, [config.mode]);
-
-  useEffect(() => {
-    if (!editingImage) {
-      return;
-    }
-
-    let cancelled = false;
-
-    // 让画布始终跟随图片当前显示尺寸，避免窗口缩放后蒙版错位。
-    const syncCanvas = async () => {
-      const imageElement = editorImageRef.current;
-      const canvas = maskCanvasRef.current;
-      if (!imageElement || !canvas || cancelled) {
-        return;
-      }
-
-      const width = imageElement.clientWidth;
-      const height = imageElement.clientHeight;
-      if (!width || !height) {
-        return;
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) {
-        return;
-      }
-
-      context.clearRect(0, 0, width, height);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      maskContextRef.current = context;
-
-      if (editingImage.maskDataUrl) {
-        try {
-          const maskImage = await loadImageElement(editingImage.maskDataUrl);
-          if (!cancelled) {
-            context.drawImage(maskImage, 0, 0, width, height);
-          }
-        } catch {
-          // 旧蒙版加载失败时忽略，避免卡住后续编辑。
-        }
-      }
-    };
-
-    const handleResize = () => {
-      void syncCanvas();
-    };
-
-    window.addEventListener("resize", handleResize);
-    void syncCanvas();
-    return () => {
-      cancelled = true;
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [editingImage]);
-
-  useEffect(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas || !editingImage) {
-      return;
-    }
-
-    const getPoint = (event: MouseEvent | TouchEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const source =
-        "touches" in event ? event.touches[0] : event;
-      return {
-        x: source.clientX - rect.left,
-        y: source.clientY - rect.top,
-      };
-    };
-
-    const drawDot = (x: number, y: number) => {
-      const context = maskContextRef.current;
-      if (!context) {
-        return;
-      }
-      context.globalCompositeOperation = toolMode === "eraser" ? "destination-out" : "source-over";
-      context.fillStyle = "rgba(239, 68, 68, 0.55)";
-      context.beginPath();
-      context.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      context.fill();
-    };
-
-    const drawSegment = (startX: number, startY: number, endX: number, endY: number) => {
-      const context = maskContextRef.current;
-      if (!context) {
-        return;
-      }
-      context.globalCompositeOperation = toolMode === "eraser" ? "destination-out" : "source-over";
-      context.strokeStyle = "rgba(239, 68, 68, 0.55)";
-      context.lineWidth = brushSize;
-      context.beginPath();
-      context.moveTo(startX, startY);
-      context.lineTo(endX, endY);
-      context.stroke();
-    };
-
-    const handleStart = (event: MouseEvent | TouchEvent) => {
-      event.preventDefault();
-      isDrawingRef.current = true;
-      const point = getPoint(event);
-      lastPointRef.current = point;
-      drawDot(point.x, point.y);
-    };
-
-    const handleMove = (event: MouseEvent | TouchEvent) => {
-      if (!isDrawingRef.current || !lastPointRef.current) {
-        return;
-      }
-      event.preventDefault();
-      const point = getPoint(event);
-      drawSegment(lastPointRef.current.x, lastPointRef.current.y, point.x, point.y);
-      drawDot(point.x, point.y);
-      lastPointRef.current = point;
-    };
-
-    const handleEnd = () => {
-      isDrawingRef.current = false;
-      lastPointRef.current = null;
-    };
-
-    canvas.addEventListener("mousedown", handleStart as EventListener);
-    window.addEventListener("mousemove", handleMove as EventListener);
-    window.addEventListener("mouseup", handleEnd);
-    canvas.addEventListener("touchstart", handleStart as EventListener, { passive: false });
-    window.addEventListener("touchmove", handleMove as EventListener, { passive: false });
-    window.addEventListener("touchend", handleEnd);
-
-    return () => {
-      canvas.removeEventListener("mousedown", handleStart as EventListener);
-      window.removeEventListener("mousemove", handleMove as EventListener);
-      window.removeEventListener("mouseup", handleEnd);
-      canvas.removeEventListener("touchstart", handleStart as EventListener);
-      window.removeEventListener("touchmove", handleMove as EventListener);
-      window.removeEventListener("touchend", handleEnd);
-    };
-  }, [brushSize, editingImage, toolMode]);
-
-  const setStatus = (text: string, tone: StatusTone = "default") => {
-    setStatusText(text);
-    setStatusTone(tone);
-  };
-
   const setDecodeNotice = (text: string, tone: StatusTone = "default") => {
     setDecodeStatus(text);
     setDecodeStatusTone(tone);
-  };
-
-  const updateConfig = <K extends keyof GenerationConfig>(key: K, value: GenerationConfig[K]) => {
-    setConfig((previous) => ({
-      ...previous,
-      [key]: value,
-    }));
-  };
-
-  const loadHistory = async (pageNo = 1, replace = true) => {
-    if (replace) {
-      setHistoryLoading(true);
-    } else {
-      setHistoryLoadingMore(true);
-    }
-    setHistoryError("");
-    try {
-      const page = await requestImageGenerationHistory({
-        pageNo,
-        pageSize: HISTORY_PAGE_SIZE,
-      });
-      setHistoryTotal(page.total || 0);
-      setHistoryPageNo(pageNo);
-      setHistoryBatches((previous) =>
-        replace ? page.list || [] : [...previous, ...(page.list || [])]
-      );
-    } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : "历史查询失败");
-    } finally {
-      setHistoryLoading(false);
-      setHistoryLoadingMore(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadHistory(1, true);
-  }, []);
-
-  const addFiles = async (fileList: FileList | File[]) => {
-    const selectedFiles = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-    if (!selectedFiles.length) {
-      return;
-    }
-
-    const nextItems = await Promise.all(
-      selectedFiles.map(async (file) => {
-        const objectUrl = URL.createObjectURL(file);
-        try {
-          const size = await resolveImageNaturalSize(objectUrl);
-          return {
-            id: createLocalId("img"),
-            file,
-            objectUrl,
-            naturalWidth: size.width,
-            naturalHeight: size.height,
-            maskDataUrl: null,
-          } satisfies EditorImageItem;
-        } catch {
-          return {
-            id: createLocalId("img"),
-            file,
-            objectUrl,
-            naturalWidth: 0,
-            naturalHeight: 0,
-            maskDataUrl: null,
-          } satisfies EditorImageItem;
-        }
-      })
-    );
-
-    setImages((previous) => [...previous, ...nextItems]);
-  };
-
-  const collectEffectiveImages = () => {
-    if (!editingImageId || !maskCanvasRef.current) {
-      return images;
-    }
-
-    const currentImage = images.find((item) => item.id === editingImageId);
-    if (!currentImage) {
-      return images;
-    }
-
-    const sourceCanvas = maskCanvasRef.current;
-    const naturalWidth =
-      currentImage.naturalWidth || editorImageRef.current?.naturalWidth || sourceCanvas.width;
-    const naturalHeight =
-      currentImage.naturalHeight || editorImageRef.current?.naturalHeight || sourceCanvas.height;
-
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = naturalWidth;
-    outputCanvas.height = naturalHeight;
-
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      return images;
-    }
-
-    outputContext.drawImage(sourceCanvas, 0, 0, naturalWidth, naturalHeight);
-    const nextMaskDataUrl = hasCanvasDrawing(outputCanvas)
-      ? outputCanvas.toDataURL("image/png")
-      : null;
-
-    const nextImages = images.map((item) =>
-      item.id === editingImageId
-        ? {
-          ...item,
-          naturalWidth,
-          naturalHeight,
-          maskDataUrl: nextMaskDataUrl,
-        }
-        : item
-    );
-    setImages(nextImages);
-    return nextImages;
-  };
-
-  const closeEditor = () => {
-    collectEffectiveImages();
-    setEditingImageId(null);
-  };
-
-  const openEditor = (imageId: string) => {
-    collectEffectiveImages();
-    setEditingImageId(imageId);
-  };
-
-  const removeImage = (imageId: string) => {
-    setImages((previous) => {
-      const target = previous.find((item) => item.id === imageId);
-      if (target) {
-        URL.revokeObjectURL(target.objectUrl);
-      }
-      return previous.filter((item) => item.id !== imageId);
-    });
-    if (editingImageId === imageId) {
-      setEditingImageId(null);
-    }
-  };
-
-  const clearCurrentMask = () => {
-    if (!maskCanvasRef.current) {
-      return;
-    }
-    const context = maskCanvasRef.current.getContext("2d");
-    if (context) {
-      context.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
-    }
-    if (editingImageId) {
-      setImages((previous) =>
-        previous.map((item) =>
-          item.id === editingImageId
-            ? {
-              ...item,
-              maskDataUrl: null,
-            }
-            : item
-        )
-      );
-    }
-  };
-
-  const clearMessages = () => {
-    setMessages([]);
-    setStatus("", "default");
-    setDebugPayload("（尚未请求）");
   };
 
   const handleDecode = () => {
@@ -511,317 +124,6 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
         error instanceof Error ? error.message : "解析失败",
         "error"
       );
-    }
-  };
-
-  const createAssistantMessage = (assistantId: string): AssistantMessage => ({
-    id: assistantId,
-    role: "assistant",
-    status: "loading",
-    summary: "正在生成图像...",
-    images: [],
-    timestamp: Date.now(),
-  });
-
-  const updateAssistantMessage = (
-    assistantId: string,
-    updater: (previous: AssistantMessage) => AssistantMessage
-  ) => {
-    setMessages((previous) =>
-      previous.map((item) => {
-        if (item.role !== "assistant" || item.id !== assistantId) {
-          return item;
-        }
-        return updater(item);
-      })
-    );
-  };
-
-  const buildOutputName = (text: string) => {
-    const normalized = text
-      .trim()
-      .slice(0, 16)
-      .split("")
-      .map((char) => {
-        const code = char.charCodeAt(0);
-        if (code < 32 || /[<>:"/\\|?*]/.test(char)) {
-          return "_";
-        }
-        return char;
-      })
-      .join("");
-    return normalized || "图片生成结果";
-  };
-
-  const toRequestError = (error: unknown) =>
-    error instanceof ImageGenerationRequestError
-      ? error
-      : new ImageGenerationRequestError(
-        error instanceof Error ? error.message : "请求失败"
-      );
-
-  const mapToolFilesToResultImages = (
-    fileInfo: ImageGenerationHistoryBatch["images"],
-    prefix?: string
-  ): ResultImageItem[] => {
-    const outputImages: ResultImageItem[] = [];
-    (fileInfo || []).forEach((item, index) => {
-      const previewUrl = resolvePreviewUrl(item);
-      if (!previewUrl) {
-        return;
-      }
-      outputImages.push({
-        url: previewUrl,
-        label: prefix ? `${prefix} · ${item.fileName || `结果图 ${index + 1}`}` : item.fileName || `结果图 ${index + 1}`,
-        downloadUrl: resolveDownloadUrl(item),
-      });
-    });
-    return outputImages;
-  };
-
-  const buildBatchAssistantPayload = (results: ImageBatchExecutionResult[]) => {
-    const outputImages: ResultImageItem[] = [];
-    const failureLines: string[] = [];
-    let successCount = 0;
-    let failureCount = 0;
-    let usedFallbackAny = false;
-
-    results.forEach((result) => {
-      const batchLabel = `#${result.index + 1}`;
-      if (result.success) {
-        successCount += 1;
-        usedFallbackAny = usedFallbackAny || Boolean(result.response.usedFallback);
-        const currentImages = mapToolFilesToResultImages(result.response.fileInfo || [], batchLabel);
-        outputImages.push(...currentImages);
-        if (!currentImages.length) {
-          failureLines.push(`${batchLabel} 未返回可预览图片`);
-        }
-        return;
-      }
-      failureCount += 1;
-      const requestError = toRequestError(result.error);
-      failureLines.push(`${batchLabel} ${requestError.message}`);
-    });
-
-    const summary =
-      failureCount > 0
-        ? `批处理完成，成功 ${successCount}/${results.length} 个请求，共生成 ${outputImages.length} 张图`
-        : `批处理完成，共处理 ${results.length} 个请求，生成 ${outputImages.length} 张图`;
-    const finalSummary = usedFallbackAny ? `${summary}（部分请求已自动切换兼容接口）` : summary;
-    const debugPayload = {
-      mode: "batch",
-      total: results.length,
-      successCount,
-      failureCount,
-      results: results.map((result) =>
-        result.success
-          ? {
-            index: result.index + 1,
-            success: true,
-            usedFallback: Boolean(result.response.usedFallback),
-            data: result.response.data,
-            rawResponse: result.response.rawResponse ?? result.response,
-          }
-          : {
-            index: result.index + 1,
-            success: false,
-            error: toRequestError(result.error).message,
-            rawResponse: toRequestError(result.error).rawResponse ?? toRequestError(result.error).message,
-          }
-      ),
-    };
-    return {
-      outputImages,
-      failureLines,
-      successCount,
-      failureCount,
-      usedFallbackAny,
-      summary: finalSummary,
-      debugPayload,
-    };
-  };
-
-  const handleSend = async () => {
-    const currentPrompt = prompt.trim();
-
-    if (!currentPrompt) {
-      setStatus("请先输入 Prompt", "error");
-      return;
-    }
-
-    const effectiveImages = collectEffectiveImages();
-    if (config.mode === "edits" && !effectiveImages.length) {
-      setStatus("请先上传至少一张参考图片", "error");
-      return;
-    }
-
-    const userMessage: UserMessage = {
-      id: createLocalId("user"),
-      role: "user",
-      prompt: currentPrompt,
-      mode: config.mode,
-      images: config.mode === "edits" ? effectiveImages.map((item) => item.objectUrl) : [],
-      timestamp: Date.now(),
-    };
-    const assistantId = createLocalId("assistant");
-
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-      createAssistantMessage(assistantId),
-    ]);
-    setPrompt("");
-    setStatus("请求发送中...", "default");
-    setDebugPayload("请求发送中...");
-
-    try {
-      if (config.mode === "chat") {
-        const currentBaseUrl = trimTrailingSlash(config.baseUrl);
-        if (!currentBaseUrl || !config.apiKey.trim() || !config.model.trim()) {
-          setStatus("请填写完整的对话调试配置与 Prompt", "error");
-          return;
-        }
-        const chatResult = await requestDirectChat({
-          baseUrl: currentBaseUrl,
-          apiKey: config.apiKey.trim(),
-          model: config.model.trim(),
-          prompt: currentPrompt,
-        });
-
-        setDebugPayload(chatResult.rawResponse);
-        const outputImages: ResultImageItem[] = [];
-        if (chatResult.image?.dataUrl) {
-          outputImages.push({
-            url: chatResult.image.dataUrl,
-            label: "对话返回图片",
-          });
-        } else if (chatResult.image?.url) {
-          outputImages.push({
-            url: chatResult.image.url,
-            label: "对话返回图片",
-            downloadUrl: chatResult.image.url,
-          });
-        }
-
-        updateAssistantMessage(assistantId, () => ({
-          id: assistantId,
-          role: "assistant",
-          status: outputImages.length || chatResult.text ? "done" : "error",
-          summary: outputImages.length
-            ? "对话接口返回了图片结果"
-            : chatResult.text || "响应中未识别到图片内容",
-          text: chatResult.text || undefined,
-          images: outputImages,
-          rawResponse: chatResult.rawResponse,
-          timestamp: Date.now(),
-        }));
-        setStatus(outputImages.length ? "生成完成" : "未识别到图片内容", outputImages.length ? "success" : "error");
-        return;
-      }
-
-      const sourceImageDataUrls = await Promise.all(
-        effectiveImages.map((item) => fileToDataUrl(item.file))
-      );
-      const maskFileNames: string[] = [];
-      for (let index = 0; index < effectiveImages.length; index += 1) {
-        const currentImage = effectiveImages[index];
-        if (currentImage.maskDataUrl) {
-          const composite = await buildMaskedComposite({
-            imageSrc: sourceImageDataUrls[index],
-            maskDataUrl: currentImage.maskDataUrl,
-            width: currentImage.naturalWidth,
-            height: currentImage.naturalHeight,
-          });
-          maskFileNames.push(composite);
-        } else {
-          maskFileNames.push("");
-        }
-      }
-
-      if (
-        shouldUseImageBatchMode({
-          mode: config.mode,
-          imageCount: effectiveImages.length,
-          batchMode: config.batchMode,
-        })
-      ) {
-        const batchResults = await runImageBatchRequests({
-          prompt: currentPrompt,
-          size: config.size.trim(),
-          n: config.n,
-          plans: effectiveImages.map((item, index) => ({
-            key: String(index + 1),
-            fileNames: [sourceImageDataUrls[index]],
-            maskFileNames: [maskFileNames[index] || ""],
-            fileName: buildOutputName(item.file.name || `图片生成结果_${index + 1}`),
-          })),
-          createRequestId: (index) => createLocalId(`image-batch-${index + 1}`),
-          request: requestImageGenerationTool,
-        });
-
-        const batchPayload = buildBatchAssistantPayload(batchResults);
-        setDebugPayload(batchPayload.debugPayload);
-        updateAssistantMessage(assistantId, () => ({
-          id: assistantId,
-          role: "assistant",
-          status: batchPayload.outputImages.length ? "done" : "error",
-          summary: batchPayload.summary,
-          text: batchPayload.failureLines.length ? batchPayload.failureLines.join("\n") : undefined,
-          images: batchPayload.outputImages,
-          rawResponse: batchPayload.debugPayload,
-          timestamp: Date.now(),
-        }));
-        setStatus(
-          batchPayload.summary,
-          batchPayload.failureCount === 0 ? "success" : batchPayload.outputImages.length ? "default" : "error"
-        );
-        void loadHistory(1, true);
-        return;
-      }
-
-      const toolResponse = await requestImageGenerationTool({
-        requestId: createLocalId("image"),
-        prompt: currentPrompt,
-        mode: config.mode,
-        size: config.size.trim(),
-        n: config.n,
-        fileNames: config.mode === "edits" ? sourceImageDataUrls : [],
-        maskFileNames: config.mode === "edits" ? maskFileNames : [],
-        fileName: buildOutputName(currentPrompt),
-        fileDescription: currentPrompt.slice(0, 80),
-      });
-
-      setDebugPayload(toolResponse.rawResponse ?? toolResponse);
-      const outputImages = mapToolFilesToResultImages(toolResponse.fileInfo || []);
-
-      updateAssistantMessage(assistantId, () => ({
-        id: assistantId,
-        role: "assistant",
-        status: outputImages.length ? "done" : "error",
-        summary: toolResponse.data,
-        images: outputImages,
-        rawResponse: toolResponse.rawResponse ?? toolResponse,
-        timestamp: Date.now(),
-      }));
-      setStatus(
-        toolResponse.usedFallback ? "生成完成（已自动切换兼容接口）" : "生成完成",
-        "success"
-      );
-      void loadHistory(1, true);
-    } catch (error) {
-      const requestError = toRequestError(error);
-      setDebugPayload(requestError.rawResponse ?? requestError.message);
-      updateAssistantMessage(assistantId, () => ({
-        id: assistantId,
-        role: "assistant",
-        status: "error",
-        summary: "请求失败",
-        images: [],
-        error: requestError.message,
-        rawResponse: requestError.rawResponse,
-        timestamp: Date.now(),
-      }));
-      setStatus("请求失败", "error");
     }
   };
 
@@ -1264,8 +566,8 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
                           alt="编辑中的参考图"
                           draggable={false}
                           onLoad={() => {
-                            // 图片重新布局后触发 useEffect 中的同步逻辑。
-                            setImages((previous) => [...previous]);
+                            // 图片重新布局后刷新编辑器快照，触发内部同步逻辑。
+                            refreshEditorLayout();
                           }}
                           className="block max-h-[360px] max-w-full select-none rounded-lg"
                         />

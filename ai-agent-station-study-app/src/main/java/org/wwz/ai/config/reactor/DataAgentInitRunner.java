@@ -8,19 +8,18 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
-import org.wwz.ai.domain.agent.reactor.agent.tool.skill.SkillRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
 import org.wwz.ai.domain.agent.reactor.config.data.DbConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.EsConfig;
 import org.wwz.ai.domain.agent.reactor.config.data.QdrantConfig;
-
-import org.wwz.ai.domain.agent.reactor.data.jdbc.connection.JdbcConnectionFactory;
 import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.reactor.service.ColumnValueSyncService;
 import org.wwz.ai.domain.agent.reactor.service.EmbeddingService;
 import org.wwz.ai.domain.agent.reactor.service.QdrantService;
-import org.wwz.ai.domain.agent.reactor.util.JdbcUtils;
+import org.wwz.ai.infrastructure.dataquery.jdbc.connection.JdbcConnectionFactory;
+import org.wwz.ai.infrastructure.dataquery.util.JdbcUtils;
 
 import java.sql.Connection;
 

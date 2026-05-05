@@ -4,8 +4,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.application.agent.role.IFixRoleQueryService;
 import org.wwz.ai.domain.agent.model.valobj.FixRoleVO;
-import org.wwz.ai.domain.agent.service.IFixRoleService;
 import org.wwz.ai.trigger.http.agent.vo.FixRoleRespVO;
 import org.wwz.ai.types.enums.ResponseCode;
 
@@ -21,11 +21,11 @@ import java.util.stream.Collectors;
 public class AgentRoleLibraryController {
 
     @Resource
-    private IFixRoleService fixRoleService;
+    private IFixRoleQueryService fixRoleQueryService;
 
     @GetMapping("/list")
     public Response<List<FixRoleRespVO>> list() {
-        List<FixRoleRespVO> roles = fixRoleService.queryAvailableRoles().stream()
+        List<FixRoleRespVO> roles = fixRoleQueryService.queryAvailableRoles().stream()
                 .map(this::toRespVO)
                 .collect(Collectors.toList());
 

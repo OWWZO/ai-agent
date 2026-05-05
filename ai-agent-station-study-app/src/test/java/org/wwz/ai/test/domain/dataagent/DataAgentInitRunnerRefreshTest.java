@@ -90,6 +90,28 @@ public class DataAgentInitRunnerRefreshTest {
         Mockito.verifyNoInteractions(columnValueSyncService);
     }
 
+    @Test
+    public void shouldSkipOptionalCapabilitiesWhenNestedConfigsAreAbsent() throws Exception {
+        DataAgentInitRunner runner = new DataAgentInitRunner();
+        DataAgentConfig dataAgentConfig = new DataAgentConfig();
+        ChatModelInfoService chatModelInfoService = Mockito.mock(ChatModelInfoService.class);
+        QdrantService qdrantService = Mockito.mock(QdrantService.class);
+        ColumnValueSyncService columnValueSyncService = Mockito.mock(ColumnValueSyncService.class);
+        EmbeddingService embeddingService = Mockito.mock(EmbeddingService.class);
+
+        ReflectionTestUtils.setField(runner, "dataAgentConfig", dataAgentConfig);
+        ReflectionTestUtils.setField(runner, "qdrantService", qdrantService);
+        ReflectionTestUtils.setField(runner, "chatModelInfoService", chatModelInfoService);
+        ReflectionTestUtils.setField(runner, "columnValueSyncService", columnValueSyncService);
+        ReflectionTestUtils.setField(runner, "embeddingService", embeddingService);
+
+        runner.run();
+
+        Mockito.verify(chatModelInfoService).initModelInfo(dataAgentConfig);
+        Mockito.verifyNoInteractions(qdrantService);
+        Mockito.verifyNoInteractions(columnValueSyncService);
+    }
+
     private DataAgentConfig buildDataAgentConfig(boolean forceRefresh, boolean qdrantEnabled, boolean esEnabled) {
         DataAgentConfig dataAgentConfig = new DataAgentConfig();
         QdrantConfig qdrantConfig = new QdrantConfig();

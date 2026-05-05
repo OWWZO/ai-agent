@@ -3,20 +3,24 @@ package org.wwz.ai.config.reactor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.wwz.ai.domain.agent.reactor.agent.llm.DomainMessageConverter;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatModelResolver;
-import org.wwz.ai.domain.agent.reactor.agent.llm.LlmChatResponseMapper;
-import org.wwz.ai.domain.agent.reactor.agent.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.reactor.agent.llm.StreamResponseHandler;
-import org.wwz.ai.domain.agent.reactor.agent.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
+import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
+import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
+import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.runtime.ReactorLlmDependencies;
-import org.wwz.ai.domain.agent.reactor.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 
 /**
  * Reactor 运行时依赖装配。
- * app 负责把 Spring Bean 组装成 domain 可消费的 typed runtime bundle。
+ * app 负责把 Spring Bean 组装成 domain 可消费的 typed runtime bundle，
+ * 不在此处承接执行编排或 controller 协议适配。
  */
 @Configuration
 public class ReactorRuntimeAutoConfiguration {
@@ -41,13 +45,19 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  Environment environment,
                                                                  ReactorLlmDependencies reactorLlmDependencies,
                                                                  McpToolExecutor mcpToolExecutor,
-                                                                 IImageGenerationExecutionKernel imageGenerationExecutionKernel) {
+                                                                 IImageGenerationExecutionKernel imageGenerationExecutionKernel,
+                                                                 RemoteHttpPort remoteHttpPort,
+                                                                 RemoteStreamPort remoteStreamPort,
+                                                                 FileArtifactPort fileArtifactPort) {
         return ReactorRuntimeDependencies.builder()
                 .reactorConfig(reactorConfig)
                 .environment(environment)
                 .llmDependencies(reactorLlmDependencies)
                 .mcpToolExecutor(mcpToolExecutor)
                 .imageGenerationExecutionKernel(imageGenerationExecutionKernel)
+                .remoteHttpPort(remoteHttpPort)
+                .remoteStreamPort(remoteStreamPort)
+                .fileArtifactPort(fileArtifactPort)
                 .build();
     }
 }

@@ -25,10 +25,10 @@ class QdrantRecall(object):
         qdrant_config = resolve_table_rag_qdrant_config()
         
         self.collection_name = os.getenv("TR_QDRANT_COLLECTION_NAME")
-        self.qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K', 20))
+        self.qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K'))
         
-        self.qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD', 0.6))
-        self.qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT', 30))
+        self.qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD'))
+        self.qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT'))
         
         client = build_qdrant_client(
             url=qdrant_config.get("url"),
@@ -67,11 +67,11 @@ class QdrantRecall(object):
 
 @timer("table_rag")
 def get_qd_server_recall(query, model_code_list):
-    qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD', 0.6))
+    qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD'))
     collectionName = os.getenv('TR_QDRANT_COLLECTION_NAME', None)
     qdrant_url = os.getenv('TR_QDRANT_URL', None)
-    qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K', 20))
-    qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT', 3000))
+    qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K'))
+    qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT'))
     
     body = {
         "scoreThreshold": qd_threshhold,

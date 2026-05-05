@@ -4,9 +4,9 @@
 
 ## 模块职责
 
-核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。实现 Agent 执行引擎、会话记忆、账本、RAG 等核心能力。
+核心业务逻辑层，包含领域模型、领域服务、仓储接口定义。当前 Agent 有界上下文已按 `runtime / ledger / memory / rag / role` 收敛核心能力，并仅保留少量 `service` / `reactor` 延期契约与策略节点。
 
-Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。当前收敛阶段新增 `ai-agent-station-study-case` 作为应用编排层，`domain` 对外优先保留领域模型、领域服务和仓储端口定义，不再新增 HTTP / SSE 协议适配职责。
+Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不再承载低风险 Spring 装配类型；这些职责分别回到 `trigger` 与 `app`。当前收敛阶段新增 `ai-agent-station-study-case` 作为应用编排层，`domain` 对外优先保留领域模型、领域服务、仓储端口与外部能力 port 定义，不再新增 HTTP / SSE 协议适配职责。
 
 ---
 
@@ -22,9 +22,9 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 | 接口 | 职责 |
 |-----|------|
 | `IRagService` | RAG 检索服务 |
-| `IAgentConversationService` | 会话管理服务 |
-| `IAgentStreamPersistService` | 流式消息持久化服务 |
-| `IGptProcessService` | GPT 处理服务 |
+| `AgentQueryService` | GPT 查询与多智能体运行时查询服务 |
+| `DataAgentQueryService` | 数据问答运行时查询服务 |
+| `ExecutionLedgerQueryService` | 执行账本查询服务 |
 
 ### 执行策略工厂
 | 工厂 | 职责 |
@@ -96,6 +96,16 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - `SessionContextMemoryService`、`IWorkspaceImageGenerationService` 仍在 `domain` 定义接口，但其基于 DAO 的技术实现已下沉到 `infrastructure`
 - tool-output 读写与 execution ledger 持久化协作统一依赖 `infrastructure.dao.reactor.*`
 
+### Agent DDD 最终边界（019）
+- `trigger` 只能依赖 `case` 暴露的 dispatch / role / rag / query / dataagent seam
+- `domain` 中禁止新增 `SseEmitter`、`new OkHttpClient`、`JdbcDataProvider`、`SpringContextHolder`、`applicationContext.getBean(...)`
+- `RemoteHttpPort`、`RemoteStreamPort`、`FileArtifactPort`、`DataQueryExecutionPort`、`DataQueryMetadataPort` 是当前稳定 seam
+- GPT query / dataagent bridge 已删除，新增逻辑必须优先进入 `runtime / ledger / memory / rag / role`
+- `domain/agent/service`、`domain/agent/reactor` 中剩余内容仅允许作为延期契约或策略节点，禁止继续新增 catch-all 主逻辑
+- 已删除的旧 handler bridge：`AgentHandlerService`、`AgentHandlerFactory`、`PlanSolveHandlerImpl`、`ReactHandlerImpl`
+- 明确延期的 legacy contract 包：`reactor/config/data/**`、`reactor/model/{req,response,multi,dto,imagegeneration}/**`、`reactor/service/**`、`service/{execute,armory,runtime}/**`
+- 延期目录必须带中文职责说明，且只允许承载已登记语义，禁止继续扩张
+
 ---
 
 ## 测试与质量
@@ -124,8 +134,10 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 ### 领域服务
 | 文件路径 | 说明 |
 |---------|------|
-| `src/main/java/org/wwz/ai/domain/agent/service/IRagService.java` | RAG 服务接口 |
-| `src/main/java/org/wwz/ai/domain/agent/service/rag/RagService.java` | RAG 服务实现 |
+| `src/main/java/org/wwz/ai/domain/agent/rag/IRagService.java` | RAG 服务接口 |
+| `src/main/java/org/wwz/ai/domain/agent/rag/RagService.java` | RAG 服务实现 |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/AgentQueryService.java` | GPT 查询稳定运行时 seam |
+| `src/main/java/org/wwz/ai/domain/agent/rag/DataAgentQueryService.java` | 数据问答稳定查询 seam |
 
 ### 执行策略
 | 文件路径 | 说明 |
@@ -137,17 +149,19 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 ### Reactor 核心
 | 文件路径 | 说明 |
 |---------|------|
-| `src/main/java/org/wwz/ai/domain/agent/reactor/model/req/AgentRequest.java` | Agent 请求 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/BaseAgent.java` | Agent 基类 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/PlanningAgent.java` | 规划 Agent |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/ReactImplAgent.java` | ReAct Agent |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/agent/SummaryAgent.java` | 总结 Agent |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/context/AgentContext.java` | Agent 上下文 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/enums/AgentState.java` | Agent 状态 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/agent/enums/AgentType.java` | Agent 类型 |
+| `src/main/java/org/wwz/ai/domain/agent/reactor/model/req/AgentRequest.java` | 延期保留的 legacy Agent 请求契约 |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/agent/BaseAgent.java` | Agent 基类 |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/agent/PlanningAgent.java` | 规划 Agent |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/agent/ReactImplAgent.java` | ReAct Agent |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/agent/SummaryAgent.java` | 总结 Agent |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/agent/AgentContext.java` | Agent 上下文 |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/enums/AgentState.java` | Agent 状态 |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/enums/AgentType.java` | Agent 类型 |
+| `src/main/java/org/wwz/ai/domain/agent/ledger/ExecutionLedgerQueryService.java` | 执行账本查询 |
+| `src/main/java/org/wwz/ai/domain/agent/memory/SessionContextMemoryService.java` | 会话记忆服务 |
+| `src/main/java/org/wwz/ai/domain/agent/role/IFixRoleService.java` | 角色库领域服务 |
 | `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentConversationService.java` | 会话服务接口 |
 | `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentStreamPersistService.java` | 流式持久化接口 |
-| `src/main/java/org/wwz/ai/domain/agent/reactor/service/IGptProcessService.java` | GPT 处理接口 |
 
 ---
 
