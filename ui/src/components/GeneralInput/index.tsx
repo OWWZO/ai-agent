@@ -20,7 +20,6 @@ import {
   type PromptInputAttachmentItem,
   PromptInputAttachments,
   PromptInputBody,
-  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -439,15 +438,13 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               )}
             >
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger>
-                  <PromptInputButton
-                    size="icon-sm"
-                    variant="ghost"
-                    disabled={disabled}
-                    className="rounded-full border-0 bg-white text-[#111827] shadow-none ring-0 transition-all duration-200 hover:bg-[#f9fafb] focus-visible:ring-0"
-                  >
-                    <PlusIcon className="size-5" />
-                  </PromptInputButton>
+                <PromptInputActionMenuTrigger
+                  size="icon-sm"
+                  variant="ghost"
+                  disabled={disabled}
+                  className="rounded-full border-0 bg-white text-[#111827] shadow-none ring-0 transition-all duration-200 hover:bg-[#f9fafb] focus-visible:ring-0"
+                >
+                  <PlusIcon className="size-5" />
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent className={cn("min-w-[180px]", menuContentClassName)}>
                   <PromptInputActionAddAttachments label="上传附件" />

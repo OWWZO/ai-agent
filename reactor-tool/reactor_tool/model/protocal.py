@@ -32,6 +32,11 @@ class CIRequest(BaseModel):
     file_names: Optional[List[str]] = Field(default=[], alias="fileNames", description="输入的文件列表")
     file_name: Optional[str] = Field(default=None, alias="fileName", description="返回的生成的文件名称")
     file_description: Optional[str] = Field(default=None, alias="fileDescription", description="返回的生成的文件描述")
+    permission_profile: Literal["analysis", "workspace"] = Field(
+        default="analysis",
+        alias="permissionProfile",
+        description="代码解释器权限档位，默认 analysis",
+    )
     stream: bool = True
     stream_mode: Optional[StreamMode] = Field(default=StreamMode(), alias="streamMode", description="流式模式")
     origin_file_names: Optional[List[dict]] = Field(default=None, alias="originFileNames", description="原始文本信息")
@@ -71,7 +76,7 @@ class DeepSearchRequest(BaseModel):
     query: str = Field(description="搜索查询")
     max_loop: Optional[int] = Field(default=1, alias="maxLoop", description="最大循环次数")
 
-    # bing, jina, sogou, serp, exa
+    # ddg, bing, jina, sogou, serp, exa
     search_engines: List[str] = Field(default=[], description="使用哪些搜索引擎")
 
     stream: bool = Field(default=True, description="是否流式响应")

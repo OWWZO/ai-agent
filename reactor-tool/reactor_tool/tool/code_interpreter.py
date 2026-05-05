@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Any, List, Optional
 
 import pandas as pd
@@ -27,6 +28,13 @@ from smolagents import (
 )
 
 from reactor_tool.tool.ci_agent import CIAgent
+from reactor_tool.tool.code_interpreter_policy import (
+    CodeExecutionPermissionError,
+    CodeInterpreterPermissionPolicy,
+    build_permission_policy,
+    build_runtime_helpers,
+    validate_code_against_policy,
+)
 from reactor_tool.util.file_util import download_all_files_in_path, upload_file, upload_file_by_path
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.llm_util import ask_llm_sync_iter
@@ -226,13 +234,27 @@ async def code_interpreter_agent(
     max_tokens: int = 32000,
     request_id: str = "",
     stream: bool = True,
+    permission_profile: str = "analysis",
 ):
     work_dir = ""
     try:
         work_dir = tempfile.mkdtemp()
-        output_dir = os.path.join(work_dir, "output")
+        workspace_root = str(Path(work_dir).resolve())
+        output_dir = str(Path(workspace_root).joinpath("output").resolve())
         os.makedirs(output_dir, exist_ok=True)
         import_files = await download_all_files_in_path(file_names=file_names, work_dir=work_dir)
+        permission_policy = build_permission_policy(
+            profile=permission_profile,
+            workspace_root=workspace_root,
+            output_dir=output_dir,
+            input_files=[
+                {
+                    "name": item.get("file_name"),
+                    "path": item.get("file_path"),
+                }
+                for item in (import_files or [])
+            ],
+        )
 
         # 1. 文件处理
         files = []
@@ -283,10 +305,16 @@ async def code_interpreter_agent(
             max_tokens=max_tokens,
             return_full_result=True,
             output_dir=output_dir,
+            permission_policy=permission_policy,
         )
 
         template_task = Template(ci_prompt_template["task_template"]).render(
-            files=files, task=task, output_dir=output_dir
+            files=files,
+            task=task,
+            output_dir=output_dir,
+            permission_profile=permission_policy.profile,
+            available_helpers=permission_policy.to_prompt_context()["available_helpers"],
+            input_file_names=permission_policy.to_prompt_context()["input_file_names"],
         )
 
         if stream:
@@ -328,8 +356,10 @@ async def code_interpreter_agent(
                 await asyncio.sleep(0)
                 
         else:
-            output = agent.run(task=task)
+            output = agent.run(task=str(template_task))
             yield output
+    except CodeExecutionPermissionError as e:
+        raise e
     except Exception as e:
         raise e
 
@@ -423,6 +453,7 @@ def create_ci_agent(
     max_tokens: int = 16000,
     return_full_result: bool = True,
     output_dir: str = "",
+    permission_policy: CodeInterpreterPermissionPolicy | None = None,
 ) -> CIAgent:
     model_id, litellm_extra = _ci_model_id_and_litellm_kwargs()
     api_base = litellm_extra.get("api_base")
@@ -444,36 +475,29 @@ def create_ci_agent(
             **{k: v for k, v in litellm_extra.items() if k not in ("api_base", "api_key")},
         )
 
+    if permission_policy is None:
+        workspace_root = str(Path(output_dir or tempfile.mkdtemp()).resolve())
+        final_output_dir = str(Path(output_dir or Path(workspace_root).joinpath("output")).resolve())
+        permission_policy = build_permission_policy(
+            profile="analysis",
+            workspace_root=workspace_root,
+            output_dir=final_output_dir,
+            input_files=[],
+        )
+
+    runtime_helpers = build_runtime_helpers(permission_policy)
+    runtime_variables = permission_policy.to_runtime_variables()
+
     return CIAgent(
         model=model,
         prompt_templates=prompt_templates,
         tools=[PythonInterpreterTool()],
         return_full_result=return_full_result,
-        additional_authorized_imports=[
-            "altair",
-            "csv",
-            "json",
-            "matplotlib",
-            "matplotlib.*",
-            "numpy",
-            "openpyxl",
-            "pandas",
-            "pathlib",
-            "plotly",
-            "plotly.*",
-            "scipy",
-            "scipy.*",
-            "seaborn",
-            "sklearn",
-            "sklearn.*",
-            "sqlalchemy",
-            "sqlalchemy.*",
-            "statsmodels",
-            "statsmodels.*",
-            "tabulate",
-            "yaml",
-        ],
+        additional_authorized_imports=list(permission_policy.authorized_imports),
+        executor_kwargs={"additional_functions": runtime_helpers},
         output_dir=output_dir,
+        before_execute=lambda code_action: validate_code_against_policy(code_action, permission_policy),
+        runtime_variables=runtime_variables,
     )
 
 

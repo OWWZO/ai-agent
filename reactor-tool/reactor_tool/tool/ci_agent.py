@@ -4,7 +4,7 @@ import os
 import re
 import time
 from collections.abc import Callable, Generator
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 import uuid
 from smolagents import (
     CodeAgent,
@@ -118,10 +118,14 @@ class CIAgent(CodeAgent):
         executor_kwargs: dict[str, Any] | None = None,
         grammar: dict[str, str] | None = None,
         output_dir: Optional[str] = None,
+        before_execute: Optional[Callable[[str], None]] = None,
+        runtime_variables: Optional[dict[str, Any]] = None,
         *args,
         **kwargs,
     ):
         self.output_dir = output_dir
+        self.before_execute = before_execute
+        self.runtime_variables = runtime_variables or {}
         super().__init__(
             tools=tools,
             model=model,
@@ -133,6 +137,8 @@ class CIAgent(CodeAgent):
             executor_kwargs=executor_kwargs,
             **kwargs,
         )
+        if getattr(self, "python_executor", None) and self.runtime_variables:
+            self.python_executor.send_variables(self.runtime_variables)
 
     @timer()
     def _step_stream(
@@ -221,6 +227,9 @@ class CIAgent(CodeAgent):
         self.logger.log_code(
             title="Executing parsed code:", content=code_action, level=LogLevel.INFO
         )
+
+        if self.before_execute is not None:
+            self.before_execute(code_action)
 
         unsafe_issues = _scan_unsafe_code(code_action)
         if unsafe_issues:

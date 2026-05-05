@@ -14,6 +14,10 @@ from typing import List
 from urllib.parse import quote
 import aiohttp
 from bs4 import BeautifulSoup
+try:
+    from ddgs import DDGS
+except ImportError:
+    DDGS = None
 
 from reactor_tool.model.document import Doc
 from reactor_tool.util.log_util import timer
@@ -43,31 +47,82 @@ class SearchBase(ABC):
         raise NotImplementedError
 
     @staticmethod
+    async def _fetch_content_with_jina_reader(source_url: str, timeout: int) -> str:
+        """优先通过 Jina Reader 抓取清洗后的正文。"""
+        if not _search_url_ok(source_url):
+            return ""
+        headers = {
+            "Content-Type": "application/json",
+            "X-Return-Format": "text",
+            "X-Timeout": str(timeout),
+        }
+        jina_api_key = (os.getenv("JINA_API_KEY") or "").strip()
+        if jina_api_key:
+            headers["Authorization"] = f"Bearer {jina_api_key}"
+        client_timeout = aiohttp.ClientTimeout(connect=5, total=timeout)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                        "https://r.jina.ai/",
+                        json={"url": source_url},
+                        headers=headers,
+                        timeout=client_timeout,
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(f"jina reader skipped: url=[{source_url}] status={response.status}")
+                        return ""
+                    content = (await response.text()).strip()
+                    return content
+        except Exception as e:
+            logger.warning(f"jina reader error: url=[{source_url}] error={e}")
+            return ""
+
+    @staticmethod
+    async def _fetch_content_with_direct_http(source_url: str, timeout: int) -> str:
+        """Jina Reader 不可用时，回退到直接抓取原始页面。"""
+        if not _search_url_ok(source_url):
+            return ""
+        client_timeout = aiohttp.ClientTimeout(connect=5, total=timeout)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(source_url, timeout=client_timeout) as response:
+                    content_type = (response.content_type or "").lower()
+                    if content_type not in [
+                        "text/html", "text/plain", "text/xml", "application/json",
+                        "application/xml", "application/octet-stream"
+                    ]:
+                        logger.warning(f"parser content-type[{response.content_type}] not parser: url=[{source_url}]")
+                        return ""
+                    raw_bytes = await response.read()
+        except Exception as e:
+            logger.warning(f"parser error: url=[{source_url}] error={e}")
+            return ""
+
+        try:
+            raw_text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raw_text = raw_bytes.decode("gb2312", errors="ignore")
+
+        soup = BeautifulSoup(raw_text, "html.parser")
+        return soup.get_text(" ", strip=True)
+
+    @staticmethod
     @timer()
     async def parser(docs: List[Doc], timeout: int = 15, **kwargs) -> List[Doc]:
-        async def _parser(source_url, timeout):
-            # connect 超时短一些，墙内无法访问的站点会快速失败
-            client_timeout = aiohttp.ClientTimeout(connect=5, total=timeout)
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(source_url, timeout=client_timeout) as response:
-                        if response.content_type.lower() in [
-                                "text/html", "text/plain", "text/xml", "application/json", "application/xml", "application/octet-stream"]:
-                            return await response.text()
-                        else:
-                            # TODO 其他类型暂时不解析
-                            logger.warning(f"parser content-type[{response.content_type}] not parser: url=[{source_url}]")
-                            return ""
-                except UnicodeDecodeError as ude:
-                    return ude.args[1].decode("gb2312", errors="ignore")
-                except Exception as e:
-                    logger.warning(f"parser error: url=[{source_url}] error={e}")
-                    return ""
+        async def _resolve_content(doc: Doc) -> str:
+            # 先走 Jina Reader，失败后再回退直连抓取，避免单点依赖。
+            jina_timeout = int(os.getenv("JINA_READER_TIMEOUT", timeout))
+            jina_content = await SearchBase._fetch_content_with_jina_reader(doc.link, jina_timeout)
+            if jina_content and jina_content.strip():
+                return jina_content.strip()
+            direct_content = await SearchBase._fetch_content_with_direct_http(doc.link, timeout)
+            return direct_content.strip() if direct_content else ""
+
         async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(_parser(doc.link, timeout)) for doc in docs]
-        results = [BeautifulSoup(task.result(), "html.parser") for task in tasks]
-        results = [soup.get_text() if soup.get_text() and len(soup.get_text().strip()) > 50 else str(soup.text) for soup in results]
-        for doc, result in zip(docs, results):
+            tasks = [tg.create_task(_resolve_content(doc)) for doc in docs]
+
+        for doc, task in zip(docs, tasks):
+            result = task.result()
             if result:
                 doc.content = result
         return docs
@@ -104,6 +159,43 @@ class SearchBase(ABC):
                 deduped_docs.append(doc)
                 seen_docs.add(doc.content)
         return deduped_docs
+
+
+class DDGSearch(SearchBase):
+
+    def __init__(self):
+        super().__init__()
+        self._engine = "ddg"
+        self._region = os.getenv("DDG_REGION", "wt-wt")
+        self._safesearch = os.getenv("DDG_SAFESEARCH", "moderate")
+
+    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+        if DDGS is None:
+            logger.warning("ddgs library not installed, skip ddg search")
+            return []
+
+        def _run_text_search() -> List[dict]:
+            client = DDGS(timeout=self._timeout)
+            results = client.text(
+                query,
+                region=self._region,
+                safesearch=self._safesearch,
+                max_results=self._count,
+            )
+            return list(results) if results else []
+
+        raw_results = await asyncio.to_thread(_run_text_search)
+        return [
+            Doc(
+                doc_type="web_page",
+                content=item.get("body", "") or item.get("snippet", ""),
+                title=item.get("title", ""),
+                link=item.get("href", item.get("url", "")),
+                data={"search_engine": self._engine},
+            )
+            for item in raw_results
+            if item.get("href", item.get("url", ""))
+        ]
 
 
 class BingSearch(SearchBase):
@@ -320,6 +412,7 @@ class MixSearch(BingSearch):
     def __init__(self):
         super().__init__()
         self._engine = "mix_search"
+        self._ddg_engine = DDGSearch()
         self._bing_engine = BingSearch()
         self._jina_engine = JinaSearch()
         self._sogou_engine = SogouSearch()
@@ -328,10 +421,12 @@ class MixSearch(BingSearch):
 
     async def search(
             self, query: str, request_id: str = None,
-            use_bing: bool = True, use_jina: bool = True, use_sogou: bool = True,
-            use_serp: bool = True, use_exa: bool = True, *args, **kwargs) -> List[Doc]:
-        assert use_bing or use_jina or use_sogou or use_serp or use_exa
+            use_ddg: bool = True, use_bing: bool = False, use_jina: bool = False, use_sogou: bool = False,
+            use_serp: bool = False, use_exa: bool = False, *args, **kwargs) -> List[Doc]:
+        assert use_ddg or use_bing or use_jina or use_sogou or use_serp or use_exa
         engines = []
+        if use_ddg:
+            engines.append(self._ddg_engine)
         if use_bing:
             engines.append(self._bing_engine)
         if use_jina:

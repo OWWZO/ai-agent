@@ -36,6 +36,7 @@ from reactor_tool.model.protocal import (
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
 )
+from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.middleware_util import RequestHandlerRoute
@@ -85,88 +86,102 @@ async def post_code_interpreter(
         acc_content = ""
         acc_token = 0
         acc_time = time.time()
-        async for chunk in code_interpreter_agent(
-            task=body.task,
-            file_names=body.file_names,
-            request_id=body.request_id,
-            stream=True,
-        ):
+        try:
+            async for chunk in code_interpreter_agent(
+                task=body.task,
+                file_names=body.file_names,
+                request_id=body.request_id,
+                stream=True,
+                permission_profile=body.permission_profile,
+            ):
 
 
-            if isinstance(chunk, CodeOuput):
-                yield ServerSentEvent(
-                    data=json.dumps(
-                        {
-                            "requestId": body.request_id,
-                            "code": chunk.code,
-                            "fileInfo": chunk.file_list,
-                            "isFinal": False,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
-            elif isinstance(chunk, ActionOutput):
-                yield ServerSentEvent(
-                    data=json.dumps(
-                        {
-                            "requestId": body.request_id,
-                            "codeOutput": chunk.content,
-                            "fileInfo": chunk.file_list,
-                            "isFinal": True,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
-                yield ServerSentEvent(data="[DONE]")
-            elif isinstance(chunk, str):
-                acc_content += chunk
-                acc_token += 1
-                if body.stream_mode.mode == "general":
-                    yield ServerSentEvent(
-                        data=json.dumps(
-                            {"requestId": body.request_id, "data": chunk, "isFinal": False},
-                            ensure_ascii=False,
-                        )
-                    )
-                elif body.stream_mode.mode == "token":
-                    if acc_token >= body.stream_mode.token:
-                        yield ServerSentEvent(
-                            data=json.dumps(
-                                {
-                                    "requestId": body.request_id,
-                                    "data": acc_content,
-                                    "isFinal": False,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
-                        acc_token = 0
-                        acc_content = ""
-                elif body.stream_mode.mode == "time":
-                    if time.time() - acc_time > body.stream_mode.time:
-                        yield ServerSentEvent(
-                            data=json.dumps(
-                                {
-                                    "requestId": body.request_id,
-                                    "data": acc_content,
-                                    "isFinal": False,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
-                        acc_time = time.time()
-                        acc_content = ""
-                if body.stream_mode.mode in ["time", "token"] and acc_content:
+                if isinstance(chunk, CodeOuput):
                     yield ServerSentEvent(
                         data=json.dumps(
                             {
                                 "requestId": body.request_id,
-                                "data": acc_content,
+                                "code": chunk.code,
+                                "fileInfo": chunk.file_list,
                                 "isFinal": False,
                             },
                             ensure_ascii=False,
                         )
                     )
+                elif isinstance(chunk, ActionOutput):
+                    yield ServerSentEvent(
+                        data=json.dumps(
+                            {
+                                "requestId": body.request_id,
+                                "codeOutput": chunk.content,
+                                "fileInfo": chunk.file_list,
+                                "isFinal": True,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                    yield ServerSentEvent(data="[DONE]")
+                elif isinstance(chunk, str):
+                    acc_content += chunk
+                    acc_token += 1
+                    if body.stream_mode.mode == "general":
+                        yield ServerSentEvent(
+                            data=json.dumps(
+                                {"requestId": body.request_id, "data": chunk, "isFinal": False},
+                                ensure_ascii=False,
+                            )
+                        )
+                    elif body.stream_mode.mode == "token":
+                        if acc_token >= body.stream_mode.token:
+                            yield ServerSentEvent(
+                                data=json.dumps(
+                                    {
+                                        "requestId": body.request_id,
+                                        "data": acc_content,
+                                        "isFinal": False,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            )
+                            acc_token = 0
+                            acc_content = ""
+                    elif body.stream_mode.mode == "time":
+                        if time.time() - acc_time > body.stream_mode.time:
+                            yield ServerSentEvent(
+                                data=json.dumps(
+                                    {
+                                        "requestId": body.request_id,
+                                        "data": acc_content,
+                                        "isFinal": False,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            )
+                            acc_time = time.time()
+                            acc_content = ""
+                    if body.stream_mode.mode in ["time", "token"] and acc_content:
+                        yield ServerSentEvent(
+                            data=json.dumps(
+                                {
+                                    "requestId": body.request_id,
+                                    "data": acc_content,
+                                    "isFinal": False,
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+        except CodeExecutionPermissionError as exc:
+            yield ServerSentEvent(
+                data=json.dumps(
+                    {
+                        "requestId": body.request_id,
+                        "data": exc.to_public_payload(),
+                        "isFinal": True,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            yield ServerSentEvent(data="[DONE]")
             
 
     if body.stream:
@@ -177,18 +192,31 @@ async def post_code_interpreter(
         )
     else:
         content = ""
-        async for chunk in code_interpreter_agent(
-            task=body.task,
-            file_names=body.file_names,
-            request_id=body.request_id,
-            stream=body.stream,
-        ):
-            # stream=False yields a single RunResult from smolagents
-            if hasattr(chunk, "output"):
-                content = str(chunk.output) if chunk.output is not None else ""
-                break
-            if isinstance(chunk, str):
-                content += chunk
+        try:
+            async for chunk in code_interpreter_agent(
+                task=body.task,
+                file_names=body.file_names,
+                request_id=body.request_id,
+                stream=body.stream,
+                permission_profile=body.permission_profile,
+            ):
+                # stream=False yields a single RunResult from smolagents
+                if hasattr(chunk, "output"):
+                    content = str(chunk.output) if chunk.output is not None else ""
+                    break
+                if isinstance(chunk, str):
+                    content += chunk
+        except CodeExecutionPermissionError as exc:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "code": 400,
+                    "data": exc.to_public_payload(),
+                    "requestId": body.request_id,
+                },
+            )
+        if not content:
+            content = ""
         out_file_name = body.file_name or "code_output"
         out_file_type = getattr(body, "file_type", None) or "md"
         if out_file_type == "ppt":

@@ -16,7 +16,8 @@ public class MysqlDialect implements JdbcDialect {
 
     @Override
     public String driverName() {
-        return "com.mysql.jdbc.Driver";
+        // 使用 MySQL 8+ 官方驱动类，避免旧驱动弃用告警。
+        return "com.mysql.cj.jdbc.Driver";
     }
 
     @Override

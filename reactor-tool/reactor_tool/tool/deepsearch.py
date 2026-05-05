@@ -30,15 +30,29 @@ class DeepSearch:
     """深度搜索工具"""
 
     def __init__(self, engines: List[str] = []):
-        if not engines:
-            engines = os.getenv("USE_SEARCH_ENGINE", "bing").split(",")
-        use_bing = "bing" in engines
-        use_jina = "jina" in engines
-        use_sogou = "sogou" in engines
-        use_serp = "serp" in engines
-        use_exa = "exa" in engines
+        normalized_engines = [engine.strip().lower() for engine in engines if engine and engine.strip()]
+        if not normalized_engines:
+            env_value = os.getenv("USE_SEARCH_ENGINE", "ddg")
+            normalized_engines = [engine.strip().lower() for engine in env_value.split(",") if engine.strip()]
+        if not normalized_engines:
+            normalized_engines = ["ddg"]
+
+        self.engines = normalized_engines
+        use_ddg = "ddg" in normalized_engines
+        use_bing = "bing" in normalized_engines
+        use_jina = "jina" in normalized_engines
+        use_sogou = "sogou" in normalized_engines
+        use_serp = "serp" in normalized_engines
+        use_exa = "exa" in normalized_engines
         self._search_single_query = partial(
-            MixSearch().search_and_dedup, use_bing=use_bing, use_jina=use_jina, use_sogou=use_sogou, use_serp=use_serp, use_exa=use_exa)
+            MixSearch().search_and_dedup,
+            use_ddg=use_ddg,
+            use_bing=use_bing,
+            use_jina=use_jina,
+            use_sogou=use_sogou,
+            use_serp=use_serp,
+            use_exa=use_exa,
+        )
         self.searched_queries = []
         self.current_docs = []
 

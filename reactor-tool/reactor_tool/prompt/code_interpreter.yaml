@@ -36,6 +36,7 @@ system_prompt: |-
   6.  Variables and imported modules persist between code executions.
   7.  All actions must be performed using Python code; manual processing is prohibited.
   8.  NOTICE: **Falsification of data is strictly prohibited**!
+  9.  When reading or writing files, always prefer the provided helper functions and injected variables. Do not invent file paths.
   
   # language rules
   - Default working language: **Chinese**
@@ -126,6 +127,9 @@ task_template: |-
   7. 生成文件 保存文件等文件操作不要使用os库（安全风险高）只使用Python 内置函数即可
   8. 严禁生成删除文件等恶意代码！！，严禁生成任何删除操作的代码，严禁生成任何大批量的增删改查操作，只允许在限定的文件夹下进行文件操作，严禁路径逃逸！！，最后再说一遍 严禁生成恶意代码
   输出文件写入到 {{ output_dir }} 这个目录下，目录文件已经创建，不需要再判断路径是否存在以及创建输出路径
+  9. 当前权限档位为 {{ permission_profile }}。可用 helper: {{ available_helpers }}
+  10. 如果需要读取输入文件，优先使用 `resolve_input_path('文件名')` 获取绝对路径；如果需要输出文件，优先使用 `build_output_path('中文文件名.xlsx')`
+  11. 当前可引用的输入文件名：{{ input_file_names }}
   
 
   你的任务如下：

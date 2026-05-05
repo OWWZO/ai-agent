@@ -61,3 +61,11 @@ cd reactor-tool
 - 启动脚本会把本地文件落盘目录设置为 `FILE_SAVE_PATH=skilloutput`，同时保留 `FILE_SERVER_URL=http://127.0.0.1:1601/v1/file_tool` 作为前端可访问的 HTTP 文件服务地址。
 - 不要把 `FILE_SERVER_URL` 配置成本地磁盘目录，否则前端拿到的 `domainUrl/downloadUrl` 会变成不可访问路径，文件组件点击后将无法预览。
 - 图片生成工具依赖 `IMAGE_GENERATION_BASE_URL`、`IMAGE_GENERATION_API_KEY`、`IMAGE_GENERATION_MODEL`；如果和通用 LLM 走同一个 OpenAI 兼容网关，可以在 `.env` 里直接映射到 `OPENAI_*`。
+
+## DeepSearch 说明
+
+- Query 分解与 `extend/search/report` 三阶段 SSE 协议保持不变。
+- 默认搜索提供方已切换为 `DuckDuckGo`，通过 `USE_SEARCH_ENGINE=ddg` 启用。
+- 页面正文优先通过 `Jina Reader` 抓取，失败时会自动回退到原始 HTTP 页面解析。
+- 可通过 `DDG_REGION`、`DDG_SAFESEARCH`、`JINA_API_KEY`、`JINA_READER_TIMEOUT` 调整抓取行为。
+- Java 侧 `deep_search` 调用、数据库持久化与前端历史回放展示无需额外改造。

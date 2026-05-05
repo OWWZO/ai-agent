@@ -10,6 +10,7 @@ dependencies = [
     "beautifulsoup4>=4.13.4",
     "boto3>=1.41.2",
     "crawl4ai>=0.7.7",
+    "ddgs>=9.10.0",
     "elasticsearch==7.17.12",
     "fastapi>=0.115.14",
     "greenlet>=3.2.3",
