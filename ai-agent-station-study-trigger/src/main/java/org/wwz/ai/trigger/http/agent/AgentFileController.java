@@ -7,9 +7,11 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.infrastructure.gateway.ReactorFileGateway;
 import org.wwz.ai.infrastructure.gateway.dto.ConversationUploadFileDTO;
 import org.wwz.ai.trigger.http.agent.vo.AgentFileUploadRespVO;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
@@ -24,6 +26,9 @@ public class AgentFileController {
 
     @Resource
     private ReactorFileGateway reactorFileGateway;
+
+    @Resource
+    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<AgentFileUploadRespVO> upload(@RequestParam("sessionId") String sessionId,
@@ -42,6 +47,11 @@ public class AgentFileController {
         }
 
         try {
+            conversationSessionOwnershipApplicationService.ensureSessionAccessible(
+                    VisitorRequestContext.requireVisitorId(),
+                    sessionId,
+                    null
+            );
             ConversationUploadFileDTO fileDTO = reactorFileGateway.uploadConversationFile(sessionId, file);
             AgentFileUploadRespVO respVO = new AgentFileUploadRespVO();
             BeanUtils.copyProperties(fileDTO, respVO);

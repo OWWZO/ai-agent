@@ -15,6 +15,17 @@ spring:
       max-request-size: 300MB # 默认请求总大小上限
 
 autobots:
+  execution:
+    visitor-cookie:
+      name: ai_agent_visitor_token
+      http-only: true
+      secure: false
+      same-site: Lax
+      path: /
+      max-age-days: 365
+      allowed-origins:
+        - http://localhost:3000
+        - http://127.0.0.1:3000
   autoagent:
     # 生图工作台与图片工具统一通过该地址转发到 reactor-tool
     image_generation_url: "http://127.0.0.1:1601"

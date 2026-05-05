@@ -27,6 +27,8 @@ public class ToolInvocationView {
 
     private String sessionId;
 
+    private String visitorId;
+
     private String toolCallId;
 
     private Integer dispatchIndex;

@@ -347,6 +347,22 @@ public class AgentContextConvergenceBoundaryTest {
                 getBeanOffenders.isEmpty());
     }
 
+    @Test
+    public void shouldRemoveUnmanagedMainlineAsyncEntrypoints() throws IOException {
+        List<String> threadUtilOffenders = findFilesContaining(
+                DOMAIN_JAVA_DIR,
+                "ThreadUtil.execute("
+        );
+        Assert.assertTrue("主链路不应再使用 ThreadUtil.execute(...): " + threadUtilOffenders, threadUtilOffenders.isEmpty());
+
+        List<String> commonPoolOffenders = findFilesContaining(
+                DOMAIN_JAVA_DIR,
+                "CompletableFuture.supplyAsync(() ->"
+        );
+        commonPoolOffenders.removeIf(path -> path.endsWith("AgentExecutorSupport.java"));
+        Assert.assertTrue("主链路不应再使用默认 common pool: " + commonPoolOffenders, commonPoolOffenders.isEmpty());
+    }
+
     private void assertNoLegacyRootImports(Path root, List<String> bannedImports) throws IOException {
         for (String bannedImport : bannedImports) {
             List<String> offenders = findFilesContaining(root, "import " + bannedImport + ";");

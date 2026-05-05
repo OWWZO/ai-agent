@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IVisitorIdentityDao">
+
+    <resultMap id="VisitorIdentityPOMap" type="org.wwz.ai.infrastructure.dao.po.VisitorIdentityPO">
+        <id column="id" property="id"/>
+        <result column="visitor_id" property="visitorId"/>
+        <result column="token_digest" property="tokenDigest"/>
+        <result column="status" property="status"/>
+        <result column="first_seen_at" property="firstSeenAt"/>
+        <result column="last_seen_at" property="lastSeenAt"/>
+        <result column="last_ip" property="lastIp"/>
+        <result column="last_user_agent" property="lastUserAgent"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.VisitorIdentityPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_visitor_identity (
+            visitor_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{visitorId}, #{tokenDigest}, #{status}, #{firstSeenAt}, #{lastSeenAt}, #{lastIp}, #{lastUserAgent},
+            NOW(), NOW(), #{deleted}
+        )
+    </insert>
+
+    <select id="queryByTokenDigest" resultMap="VisitorIdentityPOMap">
+        SELECT *
+        FROM ai_agent_visitor_identity
+        WHERE token_digest = #{tokenDigest}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <update id="updateLastSeen">
+        UPDATE ai_agent_visitor_identity
+        SET last_seen_at = #{lastSeenAt},
+            last_ip = #{lastIp},
+            last_user_agent = #{lastUserAgent},
+            update_time = NOW()
+        WHERE visitor_id = #{visitorId}
+          AND deleted = 0
+    </update>
+</mapper>

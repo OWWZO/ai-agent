@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.ledger;
 
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
@@ -16,6 +17,8 @@ import java.util.List;
 public interface IExecutionLedgerWriteRepository {
 
     void insertRun(DialogueRun run);
+
+    DialogueSession querySessionBySessionId(String sessionId);
 
     DialogueRun queryRunByRequestId(String requestId);
 

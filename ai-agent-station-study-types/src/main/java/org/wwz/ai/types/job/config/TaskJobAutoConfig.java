@@ -6,6 +6,7 @@ import org.wwz.ai.types.job.service.ITaskJobService;
 import org.wwz.ai.types.job.service.TaskJobService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -19,7 +20,6 @@ import java.util.List;
 /**
  * 任务调度器自动配置类
  *
- * @author @小傅哥
  */
 @Configuration
 @EnableScheduling
@@ -40,15 +40,16 @@ public class TaskJobAutoConfig {
         scheduler.setWaitForTasksToCompleteOnShutdown(properties.isWaitForTasksToCompleteOnShutdown());
         scheduler.setAwaitTerminationSeconds(properties.getAwaitTerminationSeconds());
         scheduler.initialize();
-        
-        log.info("xfg-wrench，任务调度器初始化完成。线程池大小: {}, 线程名前缀: {}", 
+
+        log.info("xfg-wrench，任务调度器初始化完成。线程池大小: {}, 线程名前缀: {}",
                 properties.getPoolSize(), properties.getThreadNamePrefix());
-        
+
         return scheduler;
     }
 
     @Bean
-    public ITaskJobService taskJobService(TaskScheduler xfgWrenchTaskScheduler, List<ITaskDataProvider> taskDataProviders) {
+    public ITaskJobService taskJobService(@Qualifier("xfgWrenchTaskScheduler") TaskScheduler xfgWrenchTaskScheduler,
+                                          List<ITaskDataProvider> taskDataProviders) {
         // 实例化任务并初始化调度
         TaskJobService taskJobService = new TaskJobService(xfgWrenchTaskScheduler, taskDataProviders);
         taskJobService.initializeTasks();
@@ -61,7 +62,7 @@ public class TaskJobAutoConfig {
      */
     @Bean
     public TaskJob taskJob(TaskJobAutoProperties properties, ITaskJobService taskJobService) {
-        log.info("xfg-wrench，任务调度作业初始化完成。刷新间隔: {}ms, 清理cron: {}", 
+        log.info("xfg-wrench，任务调度作业初始化完成。刷新间隔: {}ms, 清理cron: {}",
                 properties.getRefreshInterval(), properties.getCleanInvalidTasksCron());
         return new TaskJob(properties, taskJobService);
     }

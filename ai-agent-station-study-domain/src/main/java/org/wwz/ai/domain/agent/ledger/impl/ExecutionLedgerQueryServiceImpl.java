@@ -93,6 +93,22 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         return executionLedgerReadRepository.queryRecentSessions(normalizeLimit(limit));
     }
 
+    @Override
+    public DialogueSessionView querySession(String visitorId, String sessionId) {
+        if (StringUtils.isAnyBlank(visitorId, sessionId)) {
+            return null;
+        }
+        return executionLedgerReadRepository.querySession(visitorId, sessionId);
+    }
+
+    @Override
+    public List<DialogueSessionView> queryRecentSessions(String visitorId, int limit) {
+        if (StringUtils.isBlank(visitorId)) {
+            return List.of();
+        }
+        return executionLedgerReadRepository.queryRecentSessions(visitorId, normalizeLimit(limit));
+    }
+
     private List<DialogueRunView> attachArtifactSummaries(List<DialogueRunView> runViews) {
         if (CollectionUtils.isEmpty(runViews)) {
             return runViews;
@@ -135,6 +151,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
+                .visitorId(run.getVisitorId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())

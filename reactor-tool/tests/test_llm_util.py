@@ -7,6 +7,7 @@ from reactor_tool.util.llm_util import (
     OPENAI_COMPAT_DEFAULT_USER_AGENT,
     _build_openai_compat_headers,
     _prepare_litellm_params,
+    ask_llm,
 )
 
 
@@ -53,6 +54,50 @@ class LlmUtilRoutingTest(unittest.TestCase):
 
         self.assertEqual("application/json", headers["Accept"])
         self.assertEqual(OPENAI_COMPAT_DEFAULT_USER_AGENT, headers["User-Agent"])
+
+class LlmUtilAsyncHeaderTest(unittest.IsolatedAsyncioTestCase):
+    async def test_should_use_raw_http_for_openai_prefixed_model_when_api_base_is_not_dashscope(self):
+        captured_raw_call = {}
+
+        async def fake_raw_openai_like_request(*args, **kwargs):
+            captured_raw_call.update(kwargs)
+            yield "ok"
+
+        async def fake_acompletion(*args, **kwargs):
+            raise AssertionError("non-dashscope api_base should not fallback to litellm primary path")
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_BASE_URL": "https://www.openclaudecode.cn/v1/chat/completions",
+                "OPENAI_API_KEY": "test-openai-key",
+            },
+            clear=False,
+        ), patch(
+            "reactor_tool.util.llm_util._raw_openai_like_request",
+            new=fake_raw_openai_like_request,
+        ), patch(
+            "reactor_tool.util.llm_util.acompletion",
+            new=fake_acompletion,
+        ):
+            async for _ in ask_llm(
+                messages="hello",
+                model="openai/z-ai/glm-4.5-air:free",
+                stream=False,
+                only_content=True,
+                api_base="https://www.openclaudecode.cn/v1/chat/completions",
+                api_key="test-openai-key",
+            ):
+                pass
+
+        self.assertEqual(
+            OPENAI_COMPAT_DEFAULT_USER_AGENT,
+            captured_raw_call["params"]["extra_headers"]["User-Agent"],
+        )
+        self.assertEqual(
+            "https://www.openclaudecode.cn/v1/chat/completions",
+            captured_raw_call["params"]["api_base"],
+        )
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
     <resultMap id="DialogueSessionMap" type="org.wwz.ai.domain.agent.ledger.entity.DialogueSession">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
+        <result column="visitor_id" property="visitorId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -23,6 +24,7 @@
     <resultMap id="DialogueSessionViewMap" type="org.wwz.ai.domain.agent.ledger.model.DialogueSessionView">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
+        <result column="visitor_id" property="visitorId"/>
         <result column="title" property="title"/>
         <result column="status" property="status"/>
         <result column="latest_request_id" property="latestRequestId"/>
@@ -38,15 +40,19 @@
 
     <insert id="upsertSession" parameterType="org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord">
         INSERT INTO ai_agent_dialogue_session (
-            session_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
+            session_id, visitor_id, title, status, latest_request_id, latest_query_text, latest_summary_text,
             run_count, finished_run_count, failed_run_count, started_at, last_active_at,
             create_time, update_time, deleted
         ) VALUES (
-            #{sessionId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
+            #{sessionId}, #{visitorId}, #{title}, #{status}, #{latestRequestId}, #{latestQueryText}, #{latestSummaryText},
             #{runCount}, #{finishedRunCount}, #{failedRunCount}, #{startedAt}, #{lastActiveAt},
             NOW(), NOW(), 0
         )
         ON DUPLICATE KEY UPDATE
+            visitor_id = CASE
+                WHEN visitor_id IS NULL OR visitor_id = '' THEN VALUES(visitor_id)
+                ELSE visitor_id
+            END,
             title = VALUES(title),
             status = VALUES(status),
             latest_request_id = VALUES(latest_request_id),
@@ -80,6 +86,24 @@
         SELECT *
         FROM ai_agent_dialogue_session
         WHERE deleted = 0
+        ORDER BY last_active_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="querySessionViewByVisitor" resultMap="DialogueSessionViewMap">
+        SELECT *
+        FROM ai_agent_dialogue_session
+        WHERE session_id = #{sessionId}
+          AND visitor_id = #{visitorId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="queryRecentSessionsByVisitor" resultMap="DialogueSessionViewMap">
+        SELECT *
+        FROM ai_agent_dialogue_session
+        WHERE visitor_id = #{visitorId}
+          AND deleted = 0
         ORDER BY last_active_at DESC, id DESC
         LIMIT #{limit}
     </select>

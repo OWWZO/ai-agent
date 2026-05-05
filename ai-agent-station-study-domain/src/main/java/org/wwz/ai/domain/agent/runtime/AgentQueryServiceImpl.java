@@ -21,6 +21,7 @@ import org.wwz.ai.domain.agent.reactor.util.ChateiUtils;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.enums.ResponseTypeEnum;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -200,6 +201,7 @@ public class AgentQueryServiceImpl implements AgentQueryService {
         AgentRequest request = new AgentRequest();
         request.setRequestId(req.getTraceId());
         request.setSessionId(req.getSessionId());
+        request.setVisitorId(VisitorRequestContext.currentVisitorId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
         request.setSessionFiles(req.getSessionFiles());

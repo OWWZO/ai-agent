@@ -9,6 +9,12 @@ package org.wwz.ai.domain.agent.runtime.agent;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
@@ -29,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.time.LocalDateTime;
 
 /**
  * 计划型智能体（PlanningAgent）
@@ -116,7 +123,7 @@ public class PlanningAgent extends ReActAgent {
 
         // 3. 构建工具提示词：拼接所有可用工具的名称+描述，用于填充提示词模板
         String toolPrompt = buildToolPrompt(context.getToolCollection());
-        initializePrompts(
+        initializePromptsWithHistoryOnlyInSystem(
                 reactorConfig.getPlannerSystemPromptMap(),
                 reactorConfig.getPlannerNextStepPromptMap(),
                 PlanningPrompt.SYSTEM_PROMPT,
@@ -155,7 +162,6 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
-        long startTime = System.currentTimeMillis(); // 记录思考开始时间（可用于性能监控）
         // 1. 格式化产品文件信息：将上下文的产品文件转为字符串，填充到提示词中（false表示不展示文件完整路径）
         String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), false);
         // 更新系统提示词：替换{{files}}占位符（使用快照避免叠加替换）
@@ -167,7 +173,7 @@ public class PlanningAgent extends ReActAgent {
         // 2. 特殊场景：关闭计划动态更新时，直接执行计划下一步（不调用大模型思考）
         if (isColseUpdate) {
             if (Objects.nonNull(planningTool.getPlan())) { // 计划已初始化
-                planningTool.stepPlan(); // 执行计划的下一步
+                recordCompatPlanningAdvance(); // 执行计划的下一步，并补齐可回放账本事实
                 return true;
             }
         }
@@ -406,5 +412,94 @@ public class PlanningAgent extends ReActAgent {
             throw new IllegalStateException("PlanningAgent 缺少 ReactorRuntimeDependencies");
         }
         return context.getRuntimeDependencies();
+    }
+
+    /**
+     * close_update=1 不再重新走 Planner 思考，但历史账本仍需要看到真实的计划推进事实。
+     * 这里补一条内部 planning 调用记录，复用既有 tool invocation + structured output 账本体系，
+     * 避免历史回放继续只看到首轮 create 快照。
+     */
+    private void recordCompatPlanningAdvance() {
+        PlanningToolOutput output = planningTool.advanceCompatPlanAndCapture();
+        if (output == null
+                || context == null
+                || !context.hasActiveLedgerRun()
+                || context.getExecutionRecorder() == null
+                || context.getAgentRunState() == null) {
+            return;
+        }
+
+        Long llmInvocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
+                .runId(context.getAgentRunState().getRunId())
+                .requestId(context.getRequestId())
+                .invocationSeq(context.getAgentRunState().nextInvocationSeq())
+                .agentName(getName())
+                .stepNo(getCurrentStep())
+                .callKind(ExecutionLedgerConstants.CALL_KIND_ASK_TOOL)
+                .streaming(false)
+                .modelName(getLlm() == null ? null : getLlm().getModel())
+                .startedAt(LocalDateTime.now())
+                .build());
+        if (llmInvocationId == null) {
+            return;
+        }
+
+        context.getAgentRunState().bindCurrentLlmInvocationId(llmInvocationId);
+        String toolCallId = buildCompatPlanningToolCallId(getCurrentStep());
+        Map<String, Long> mapping = context.getExecutionRecorder().createToolInvocations(ToolInvocationBatchStartRecord.builder()
+                .runId(context.getAgentRunState().getRunId())
+                .requestId(context.getRequestId())
+                .llmInvocationId(llmInvocationId)
+                .agentName(getName())
+                .stepNo(getCurrentStep())
+                .items(List.of(ToolInvocationBatchStartRecord.Item.builder()
+                        .toolCallId(toolCallId)
+                        .dispatchIndex(1)
+                        .toolName(PLANNING_TOOL_NAME)
+                        .toolProvider(ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL)
+                        .inputJson(buildCompatPlanningInputJson(output))
+                        .startedAt(LocalDateTime.now())
+                        .build()))
+                .build());
+        context.getAgentRunState().bindToolInvocationIds(mapping);
+
+        Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(toolCallId);
+        if (toolInvocationId != null) {
+            context.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
+                    .toolInvocationId(toolInvocationId)
+                    .runId(context.getAgentRunState().getRunId())
+                    .requestId(context.getRequestId())
+                    .sessionId(context.getSessionId())
+                    .toolCallId(toolCallId)
+                    .toolName(PLANNING_TOOL_NAME)
+                    .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                    .llmObservation("兼容顺推已推进计划")
+                    .structuredOutput(output)
+                    .finishedAt(LocalDateTime.now())
+                    .build());
+        }
+
+        context.getExecutionRecorder().finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(llmInvocationId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .responseText(null)
+                .toolCallCount(1)
+                .finishReason("tool_calls")
+                .finishedAt(LocalDateTime.now())
+                .build());
+        currentPlannerRoundId = null;
+    }
+
+    private String buildCompatPlanningToolCallId(int stepNo) {
+        return String.format("compat-planning-%s-%d", context.getRequestId(), stepNo);
+    }
+
+    private String buildCompatPlanningInputJson(PlanningToolOutput output) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("command", output.getCommand());
+        payload.put("step_index", output.getBeforePlan() == null ? null : output.getBeforePlan().getCurrentStepIndex());
+        payload.put("step_status", STEP_STATUS_COMPLETED);
+        return com.alibaba.fastjson.JSON.toJSONString(payload);
     }
 }

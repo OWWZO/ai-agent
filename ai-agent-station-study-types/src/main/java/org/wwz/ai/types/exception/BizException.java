@@ -7,8 +7,6 @@ import java.io.Serial;
 
 /**
  * 业务异常
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/9/2 07:10
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -50,5 +48,5 @@ public class BizException extends RuntimeException{
                 ", info='" + info + '\'' +
                 '}';
     }
-    
+
 }

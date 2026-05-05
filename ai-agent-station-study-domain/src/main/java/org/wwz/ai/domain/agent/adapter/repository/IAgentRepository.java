@@ -7,9 +7,6 @@ import java.util.Map;
 
 /**
  * AiAgent 仓储接口
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/6/27 16:48
  */
 public interface IAgentRepository {
 

@@ -18,6 +18,8 @@ public class DialogueSessionUpsertRecord {
 
     private String sessionId;
 
+    private String visitorId;
+
     private String title;
 
     private Integer status;

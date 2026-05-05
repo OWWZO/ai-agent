@@ -2,6 +2,7 @@ package org.wwz.ai.test.domain.support;
 
 import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.scheduling.concurrent.ConcurrentTaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
@@ -21,6 +22,8 @@ import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationE
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteHttpAdapter;
 import org.wwz.ai.infrastructure.adapter.port.OkHttpRemoteStreamAdapter;
 import org.wwz.ai.infrastructure.adapter.port.ReactorToolFileArtifactAdapter;
+
+import java.util.concurrent.Executor;
 
 /**
  * Reactor 运行时测试夹具。
@@ -66,6 +69,7 @@ public final class ReactorRuntimeTestSupport {
         RemoteHttpPort remoteHttpPort = new OkHttpRemoteHttpAdapter();
         RemoteStreamPort remoteStreamPort = new OkHttpRemoteStreamAdapter();
         FileArtifactPort fileArtifactPort = new ReactorToolFileArtifactAdapter(remoteHttpPort);
+        Executor sameThreadExecutor = Runnable::run;
 
         return ReactorRuntimeDependencies.builder()
                 .reactorConfig(reactorConfig)
@@ -76,6 +80,9 @@ public final class ReactorRuntimeTestSupport {
                 .remoteHttpPort(remoteHttpPort)
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
+                .llmExecutor(sameThreadExecutor)
+                .toolExecutor(sameThreadExecutor)
+                .heartbeatScheduler(new ConcurrentTaskScheduler())
                 .build();
     }
 }

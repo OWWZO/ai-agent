@@ -24,8 +24,10 @@ import org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq;
 import org.wwz.ai.domain.agent.reactor.model.response.ChatDataMessage;
 import org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService;
 import org.wwz.ai.domain.agent.reactor.service.ChatModelSchemaService;
-import org.wwz.ai.domain.agent.runtime.util.ThreadUtil;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
 
+import jakarta.annotation.Resource;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -37,6 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -55,6 +58,9 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     private final Nl2SqlQueryService nl2SqlQueryService;
     private final DataQueryExecutionPort dataQueryExecutionPort;
     private final SchemaRecallService schemaRecallService;
+
+    @Resource(name = AgentExecutorNames.TOOL_EXECUTOR)
+    private Executor toolExecutor;
 
     @Override
     public NL2SQLReq queryAllSchemaNl2SqlReq() {
@@ -82,7 +88,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     public void chatQuery(DataAgentChatReq req, AgentMessageStream stream) throws Exception {
         NL2SQLReq nl2SqlReq = prepareNl2SqlReq(req.getContent(), null);
         stream.send(ChatDataMessage.ofStatus(EventTypeEnum.DEBUG.name(), nl2SqlReq.getRequestId()));
-        ThreadUtil.execute(() -> {
+        AgentExecutorSupport.execute(toolExecutor, "dataAgentChatQuery", () -> {
             try {
                 List<ChatQueryData> result = nl2SqlQueryService.runNL2SQLSse(nl2SqlReq, stream);
                 stream.send(ChatDataMessage.ofData(result));

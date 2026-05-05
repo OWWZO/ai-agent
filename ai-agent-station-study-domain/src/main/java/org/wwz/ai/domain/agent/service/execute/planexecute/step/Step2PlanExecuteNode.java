@@ -12,7 +12,7 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
-import org.wwz.ai.domain.agent.runtime.util.ThreadUtil;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -26,8 +26,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -75,9 +76,10 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                 executorResult = executor.run(planningResults.get(0));
             } else {
                 Map<String, String> tmpTaskResult = new ConcurrentHashMap<>();
-                CountDownLatch taskCount = ThreadUtil.getCountDownLatch(planningResults.size());
                 int memoryIndex = executor.getMemory().size();
                 List<ExecutorAgent> slaveExecutors = new ArrayList<>();
+                List<CompletableFuture<Void>> futures = new ArrayList<>(planningResults.size());
+                Executor toolExecutor = resolveToolExecutor(agentContext);
 
                 for (String task : planningResults) {
                     ExecutorAgent slaveExecutor = new ExecutorAgent(agentContext);
@@ -86,17 +88,14 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                     slaveExecutor.getMemory().addMessages(executor.getMemory().getMessages());
                     slaveExecutors.add(slaveExecutor);
 
-                    ThreadUtil.execute(() -> {
-                        try {
-                            String taskResult = slaveExecutor.run(task);
-                            tmpTaskResult.put(task, taskResult);
-                        } finally {
-                            taskCount.countDown();
-                        }
-                    });
+                    futures.add(AgentExecutorSupport.supplyAsync(toolExecutor, "planSolveExecutorTask", () -> {
+                        String taskResult = slaveExecutor.run(task);
+                        tmpTaskResult.put(task, taskResult);
+                        return null;
+                    }));
                 }
 
-                ThreadUtil.await(taskCount);
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
                 for (ExecutorAgent slaveExecutor : slaveExecutors) {
                     for (int i = memoryIndex; i < slaveExecutor.getMemory().size(); i++) {
@@ -191,5 +190,15 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                 errorCode,
                 errorMsg
         );
+    }
+
+    /**
+     * PlanSolve 并发执行器任务统一复用受控工具执行器。
+     */
+    private Executor resolveToolExecutor(AgentContext agentContext) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            return Runnable::run;
+        }
+        return agentContext.getRuntimeDependencies().requireToolExecutor();
     }
 }

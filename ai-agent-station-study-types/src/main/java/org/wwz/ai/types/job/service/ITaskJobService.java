@@ -4,8 +4,6 @@ import org.wwz.ai.types.job.model.TaskScheduleVO;
 
 /**
  * 任务调度服务接口
- *
- * @author @小傅哥
  */
 public interface ITaskJobService {
 
@@ -27,23 +25,23 @@ public interface ITaskJobService {
      * 刷新任务调度配置
      */
     void refreshTasks();
-    
+
     /**
      * 清理无效任务
      */
     void cleanInvalidTasks();
-    
+
     /**
      * 停止所有任务
      */
     void stopAllTasks();
-    
+
     /**
      * 获取当前活跃任务数量
      * @return 活跃任务数量
      */
     int getActiveTaskCount();
-    
+
     /**
      * 初始化任务调度配置
      * 在服务启动时加载所有有效的任务调度配置

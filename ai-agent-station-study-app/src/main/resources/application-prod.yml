@@ -47,6 +47,11 @@ spring:
         default-role-id: 85374287
 
 autobots:
+  execution:
+    visitor-cookie:
+      secure: true
+      same-site: Lax
+      allowed-origins: []
   autoagent:
     skill:
       enabled: false

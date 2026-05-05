@@ -16,8 +16,6 @@ import java.util.concurrent.ScheduledFuture;
 
 /**
  * 任务调度服务实现类
- *
- * @author @小傅哥
  */
 public class TaskJobService implements ITaskJobService, DisposableBean {
 
@@ -39,7 +37,7 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
         this.taskScheduler = taskScheduler;
         this.taskDataProviders = taskDataProviders;
     }
-    
+
     @Override
     public void initializeTasks() {
         log.info("开始初始化任务调度配置");
@@ -52,13 +50,13 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                     allTaskSchedules.addAll(taskSchedules);
                 }
             }
-            
+
             // 处理每个任务调度配置
             for (TaskScheduleVO task : allTaskSchedules) {
                 // 创建并调度新任务
                 scheduleTask(task);
             }
-            
+
             log.info("任务调度配置初始化完成，已加载任务数: {}", scheduledTasks.size());
         } catch (Exception e) {
             log.error("初始化任务调度配置时发生错误", e);
@@ -150,7 +148,7 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
             log.error("执行任务时发生错误（函数式），ID: {}", task.getId(), e);
         }
     }
-    
+
     @Override
     public void refreshTasks() {
         log.info("开始刷新任务调度配置（动态更新）");
@@ -212,14 +210,14 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                     allInvalidTaskIds.addAll(invalidTaskIds);
                 }
             }
-            
+
             if (allInvalidTaskIds.isEmpty()) {
                 log.info("没有发现无效的任务需要清理");
                 return;
             }
-            
+
             log.info("发现{}个无效任务需要清理", allInvalidTaskIds.size());
-            
+
             // 从调度器中移除这些任务
             for (Long taskId : allInvalidTaskIds) {
                 ScheduledFuture<?> future = scheduledTasks.remove(taskId);
@@ -228,7 +226,7 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                     log.info("已移除无效任务，ID: {}", taskId);
                 }
             }
-            
+
             log.info("无效任务清理完成，当前活跃任务数: {}", scheduledTasks.size());
         } catch (Exception e) {
             log.error("清理无效任务时发生错误", e);

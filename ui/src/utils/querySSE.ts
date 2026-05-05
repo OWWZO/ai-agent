@@ -1,8 +1,9 @@
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 
 import { getDeviceId } from '@/services/agentConversation';
+import { resolveServiceBaseUrl } from './origin';
 
-const customHost = SERVICE_BASE_URL || '';
+const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 /**
  * 历史会话接口已下线，主聊天统一回到当前仍然保留的 Reactor SSE 入口。
  */

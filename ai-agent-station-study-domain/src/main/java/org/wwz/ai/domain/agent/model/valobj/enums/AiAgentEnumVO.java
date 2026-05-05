@@ -8,9 +8,6 @@ import java.util.Map;
 
 /**
  * Agent 通用枚举
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/6/27 16:52
  */
 @Getter
 @AllArgsConstructor

@@ -15,9 +15,14 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
+
+import jakarta.annotation.Resource;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -30,6 +35,9 @@ public class VectorService {
 
     private EmbeddingService embeddingService;
     private QdrantService qdrantService;
+
+    @Resource(name = AgentExecutorNames.TOOL_EXECUTOR)
+    private Executor toolExecutor;
 
     @Autowired
     public void setEmbeddingService(EmbeddingService embeddingService) {
@@ -52,7 +60,7 @@ public class VectorService {
 
         CompletableFuture<List<Map<String, Object>>> future = null;
         try {
-            future = CompletableFuture.supplyAsync(() -> recall(req));
+            future = AgentExecutorSupport.supplyAsync(toolExecutor, "vectorRecall", () -> recall(req));
             future.exceptionally(throwable -> null);
             List<Map<String, Object>> maps = future.get(req.getTimeout(), TimeUnit.MILLISECONDS);
             if (maps == null || maps.isEmpty()) {

@@ -9,6 +9,7 @@ import os
 import time
 
 from reactor_tool.util.llm_util import ask_llm
+from reactor_tool.util.llm_util import resolve_openai_compat_env
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.prompt_util import get_prompt
 
@@ -17,6 +18,7 @@ from reactor_tool.util.prompt_util import get_prompt
 async def answer_question(query: str, search_content: str):
     prompt_template = get_prompt("deepsearch")["answer_prompt"]
 
+    llm_config = resolve_openai_compat_env("DEEPSEARCH")
     model = os.getenv("SEARCH_ANSWER_MODEL", "gpt-4.1")
     answer_length = os.getenv("SEARCH_ANSWER_LENGTH", "1000")
 
@@ -31,6 +33,8 @@ async def answer_question(query: str, search_content: str):
             model=model,
             stream=True,
             only_content=True,  # 只返回内容
+            api_base=llm_config["api_base"],
+            api_key=llm_config["api_key"],
     ):
         if chunk:
             yield chunk

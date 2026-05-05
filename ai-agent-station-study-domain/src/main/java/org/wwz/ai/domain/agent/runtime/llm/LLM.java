@@ -32,6 +32,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
@@ -346,7 +347,7 @@ public class LLM {
                     context.getRequestId(), model, stream);
 
             if (!stream) {
-                return CompletableFuture.supplyAsync(() -> {
+                return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", () -> {
                     try {
                         ChatResponse response = chatModel.call(prompt);
                         String content = responseMapper.toText(response);
@@ -475,7 +476,10 @@ public class LLM {
                     context.getRequestId(), model, stream);
 
             if (!stream) {
-                CompletableFuture<ToolCallResponse> springFuture = CompletableFuture.supplyAsync(() -> {
+                CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.supplyAsync(
+                        runtimeDependencies.requireLlmExecutor(),
+                        "llmAskToolFunctionCall",
+                        () -> {
                     try {
                         ChatResponse response = chatModel.call(prompt);
                         return responseMapper.toToolCallResponse(response, startTime);
@@ -539,7 +543,7 @@ public class LLM {
                 context.getRequestId(), model, stream);
 
         if (!stream) {
-            return CompletableFuture.supplyAsync(() -> {
+            return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAskToolStructParse", () -> {
                 try {
                     ChatResponse response = chatModel.call(prompt);
                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
@@ -1155,7 +1159,7 @@ public class LLM {
      * 最小化保留的旧 HTTP 调用能力，仅用于受控回退。
      */
     protected CompletableFuture<String> callOpenAI(Map<String, Object> params, int timeout) {
-        return CompletableFuture.supplyAsync(() -> {
+        return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "legacyHttpLlm", () -> {
             try {
                 return runtimeDependencies.requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
                         .method("POST")

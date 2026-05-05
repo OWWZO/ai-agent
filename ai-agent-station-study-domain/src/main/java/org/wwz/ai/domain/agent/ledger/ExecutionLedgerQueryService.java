@@ -23,4 +23,8 @@ public interface ExecutionLedgerQueryService {
     DialogueSessionView querySession(String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(int limit);
+
+    DialogueSessionView querySession(String visitorId, String sessionId);
+
+    List<DialogueSessionView> queryRecentSessions(String visitorId, int limit);
 }

@@ -17,6 +17,7 @@
 - Cookie 名称统一使用 `ai_agent_visitor_token`，采用 HttpOnly，不允许前端 JavaScript 读取。
 - 同站点生产默认使用 `Secure=true`、`Path=/`；`SameSite` 采用适合同站点子域部署的保守配置，由配置项显式控制，不写死“跨站兼容”语义。
 - 只对白名单前端 Origin 开放凭证型 CORS；禁止继续使用“`allowCredentials=true` + `*`/宽泛模式”的组合。
+- 现有无 `visitor_id` 的历史 execution ledger / 会话数据在上线前直接清空；本计划不做历史数据迁移、回填或兼容读取。
 - 访问控制统一收口为：先解析当前 `visitorId`，再校验 `sessionId` 归属；不能靠前端传的 `sessionId` 自证。
 - 历史详情接口必须在进入 `ConversationHistoryReplayService` 前完成 visitor 归属校验，避免知道别人 `sessionId` 就能回放全量历史。
 - execution ledger 的 visitor 过滤必须贯穿 `ExecutionLedgerQueryService -> IExecutionLedgerReadRepository -> ExecutionLedgerReadRepository -> *Dao/XML` 全链路，不能只改 service 实现类。
@@ -131,6 +132,7 @@
 - 单机部署，不引入 Redis 分布式锁、消息队列或跨节点粘性会话方案。
 - 后端会话串行化暂不实现；只依赖前端“任务执行中禁输入”约束。
 - 只对会话相关接口加 visitor 归属校验；角色库等纯只读公共接口不引入 visitor 过滤。
+- 上线前由人工清空旧历史数据；实现中不增加迁移脚本、回填任务或“旧数据临时可见”的兼容分支。
 - 不把匿名访客升级为正式账号，也不做跨设备合并。
 
 ## Verification Commands

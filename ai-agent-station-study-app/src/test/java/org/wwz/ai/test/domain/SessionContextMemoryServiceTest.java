@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
+import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
 import org.wwz.ai.infrastructure.reactor.service.impl.SessionContextMemoryServiceImpl;
 
 import java.time.LocalDateTime;
@@ -148,6 +149,59 @@ public class SessionContextMemoryServiceTest {
 
         Assert.assertEquals("", service.buildHistoryDialogue("", "req-blank"));
         Assert.assertEquals("", service.buildHistoryDialogue(null, "req-blank"));
+    }
+
+    @Test
+    public void shouldTruncateHistoryDialogueByMaxTokensKeepingLatestRuns() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedHistoryRun(
+                ctx,
+                "req-memory-truncate-001",
+                "session-memory-truncate-001",
+                LocalDateTime.of(2026, 5, 4, 12, 0),
+                List.of(),
+                List.of(cycleSeed("react", 1, "旧历史".repeat(40), List.of()))
+        );
+        seedHistoryRun(
+                ctx,
+                "req-memory-truncate-002",
+                "session-memory-truncate-001",
+                LocalDateTime.of(2026, 5, 4, 12, 10),
+                List.of(),
+                List.of(cycleSeed("react", 1, "中间历史".repeat(30), List.of()))
+        );
+        seedHistoryRun(
+                ctx,
+                "req-memory-truncate-003",
+                "session-memory-truncate-001",
+                LocalDateTime.of(2026, 5, 4, 12, 20),
+                List.of(),
+                List.of(cycleSeed("react", 1, "最新历史".repeat(40), List.of()))
+        );
+        seedHistoryRun(
+                ctx,
+                "req-memory-truncate-004-current",
+                "session-memory-truncate-001",
+                LocalDateTime.of(2026, 5, 4, 12, 30),
+                List.of(),
+                List.of(cycleSeed("react", 1, "当前请求不应该被注入", List.of()))
+        );
+
+        SessionContextMemoryServiceImpl service = new SessionContextMemoryServiceImpl(
+                ctx.queryService,
+                ctx.llmDao,
+                ctx.toolDao,
+                ctx.artifactDao,
+                260
+        );
+
+        String historyDialogue = service.buildHistoryDialogue("session-memory-truncate-001", "req-memory-truncate-004-current");
+
+        Assert.assertTrue(historyDialogue.startsWith("## 单会话历史记忆"));
+        Assert.assertTrue(historyDialogue.contains("### Run req-memory-truncate-003"));
+        Assert.assertFalse(historyDialogue.contains("### Run req-memory-truncate-001"));
+        Assert.assertFalse(historyDialogue.contains("req-memory-truncate-004-current"));
+        Assert.assertTrue(new TokenCounter().countText(historyDialogue) <= 260);
     }
 
     private Long createRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,

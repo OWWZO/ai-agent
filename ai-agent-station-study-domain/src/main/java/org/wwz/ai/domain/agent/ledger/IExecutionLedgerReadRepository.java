@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.ledger;
 
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
@@ -33,6 +34,12 @@ public interface IExecutionLedgerReadRepository {
     DialogueSessionView querySession(String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(int limit);
+
+    DialogueSession querySessionEntity(String sessionId);
+
+    DialogueSessionView querySession(String visitorId, String sessionId);
+
+    List<DialogueSessionView> queryRecentSessions(String visitorId, int limit);
 
     List<ArtifactRecord> queryArtifactsByRunIds(List<Long> runIds);
 }

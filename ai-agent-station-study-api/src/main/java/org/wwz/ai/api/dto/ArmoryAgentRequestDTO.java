@@ -10,9 +10,6 @@ import java.io.Serializable;
 
 /**
  * ArmoryAgent 装配请求 DTO
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/1/15 10:00
  */
 @Data
 @Builder

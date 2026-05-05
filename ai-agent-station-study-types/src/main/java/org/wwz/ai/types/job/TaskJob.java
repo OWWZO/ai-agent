@@ -8,7 +8,6 @@ import org.springframework.scheduling.annotation.Scheduled;
  * 任务调度作业
  * 定时获取有效的任务调度配置，并动态创建新的任务
  *
- * @author @小傅哥
  */
 public class TaskJob {
 

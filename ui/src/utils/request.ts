@@ -1,11 +1,13 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { showMessage } from './utils';
 import { getDeviceId } from '@/services/agentConversation';
+import { resolveServiceBaseUrl } from './origin';
 
 // 创建axios实例
 const request: AxiosInstance = axios.create({
-  baseURL: SERVICE_BASE_URL,
+  baseURL: resolveServiceBaseUrl(SERVICE_BASE_URL),
   timeout: 10000,
+  withCredentials: true,
   headers: {'Content-Type': 'application/json',},
 });
 

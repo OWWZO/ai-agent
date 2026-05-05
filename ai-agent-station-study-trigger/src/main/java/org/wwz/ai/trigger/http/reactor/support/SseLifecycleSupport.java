@@ -1,11 +1,12 @@
 package org.wwz.ai.trigger.http.reactor.support;
 
 import org.slf4j.Logger;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.concurrent.ScheduledExecutorService;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 /**
  * trigger 侧统一管理 SSE 生命周期，避免心跳、超时和异常处理散落在 domain。
@@ -19,12 +20,12 @@ public final class SseLifecycleSupport {
         return new SseEmitterUtf8(timeoutMillis);
     }
 
-    public static ScheduledFuture<?> startHeartbeat(ScheduledExecutorService executor,
+    public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
                                                     SseEmitter emitter,
                                                     String requestId,
                                                     long heartbeatIntervalMillis,
                                                     Logger log) {
-        return executor.scheduleAtFixedRate(() -> {
+        return scheduler.scheduleAtFixedRate(() -> {
             try {
                 log.info("{} send heartbeat", requestId);
                 emitter.send("heartbeat");
@@ -37,7 +38,7 @@ public final class SseLifecycleSupport {
                 log.warn("{} heartbeat failed, closing connection", requestId, e);
                 emitter.completeWithError(e);
             }
-        }, heartbeatIntervalMillis, heartbeatIntervalMillis, TimeUnit.MILLISECONDS);
+        }, Instant.now().plusMillis(heartbeatIntervalMillis), Duration.ofMillis(heartbeatIntervalMillis));
     }
 
     public static void registerLifecycle(SseEmitter emitter,

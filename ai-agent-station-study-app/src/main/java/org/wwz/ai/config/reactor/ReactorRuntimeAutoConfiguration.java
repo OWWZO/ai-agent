@@ -1,8 +1,10 @@
 package org.wwz.ai.config.reactor;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.scheduling.TaskScheduler;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
@@ -16,6 +18,9 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
+
+import java.util.concurrent.Executor;
 
 /**
  * Reactor 运行时依赖装配。
@@ -48,7 +53,10 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  IImageGenerationExecutionKernel imageGenerationExecutionKernel,
                                                                  RemoteHttpPort remoteHttpPort,
                                                                  RemoteStreamPort remoteStreamPort,
-                                                                 FileArtifactPort fileArtifactPort) {
+                                                                 FileArtifactPort fileArtifactPort,
+                                                                 @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
+                                                                 @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
+                                                                 @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler) {
         return ReactorRuntimeDependencies.builder()
                 .reactorConfig(reactorConfig)
                 .environment(environment)
@@ -58,6 +66,9 @@ public class ReactorRuntimeAutoConfiguration {
                 .remoteHttpPort(remoteHttpPort)
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
+                .llmExecutor(llmExecutor)
+                .toolExecutor(toolExecutor)
+                .heartbeatScheduler(heartbeatScheduler)
                 .build();
     }
 }

@@ -2,21 +2,37 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
+import org.wwz.ai.domain.agent.runtime.agent.PlanningAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.enums.AgentType;
+import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.dto.Plan;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * PlanSolve 并发工具账本运行时回归。
@@ -303,6 +319,81 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         Assert.assertEquals("新步骤A", nestedTask(historyFrames.get(3)));
     }
 
+    @Test
+    public void shouldPersistCompatibilityPlanningProgressForHistoryReplay() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        AgentContext context = newPlanningAgentContext(
+                "req-plan-history-compat-001",
+                "session-plan-history-compat-001",
+                ledger.recorder,
+                "1"
+        );
+        Long runId = ExecutionLedgerFixtureFactory.activateRun(
+                context,
+                ledger.recorder,
+                ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
+        );
+        Long llmInvocationId = ExecutionLedgerFixtureFactory.createLlmInvocation(
+                context,
+                ledger.recorder,
+                "planning",
+                1,
+                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
+        );
+        PlanningAgent agent = newCompatibilityPlanningAgent(context);
+        agent.setToolCalls(List.of(ExecutionLedgerFixtureFactory.newToolCall(
+                "plan-compat-tool-001",
+                "planning",
+                "{\"command\":\"create\",\"title\":\"兼容计划\",\"steps\":[\"步骤一\",\"步骤二\"]}"
+        )));
+
+        Assert.assertEquals("步骤一", agent.run(context.getQuery()));
+        ledger.recorder.finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(llmInvocationId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .responseText("先创建兼容计划")
+                .toolCallCount(1)
+                .finishReason("tool_calls")
+                .finishedAt(LocalDateTime.now())
+                .build());
+
+        Assert.assertEquals("步骤二", agent.run("步骤一执行完成"));
+        Assert.assertEquals("finish", agent.run("步骤二执行完成"));
+
+        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId(context.getRequestId())
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("兼容计划已完成")
+                .build());
+
+        ExecutionRunDetail detail = ledger.queryService.queryRunDetail(context.getRequestId());
+        List<ToolInvocationView> planningInvocations = detail.getToolInvocations().stream()
+                .filter(item -> "planning".equals(item.getToolName()))
+                .toList();
+
+        Assert.assertEquals(3, planningInvocations.size());
+        Assert.assertEquals(List.of("create", "mark_step", "mark_step"), planningInvocations.stream()
+                .map(item -> ((PlanningToolOutput) item.getStructuredOutput()).getCommand())
+                .toList());
+        PlanningToolOutput finalOutput = (PlanningToolOutput) planningInvocations.get(planningInvocations.size() - 1)
+                .getStructuredOutput();
+        Assert.assertEquals(List.of("completed", "completed"), finalOutput.getAfterPlan().getStepStatus());
+
+        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
+                .getRuns()
+                .get(0)
+                .getReplayFrames();
+
+        List<GptProcessResult> planFrames = historyFrames.stream()
+                .filter(frame -> "plan".equals(eventMessageType(frame)))
+                .toList();
+        Assert.assertEquals(3, planFrames.size());
+        Assert.assertEquals(List.of("completed", "completed"),
+                plainResultMap(planFrames.get(planFrames.size() - 1)).get("stepStatus"));
+    }
+
     @SuppressWarnings("unchecked")
     private String eventMessageType(GptProcessResult frame) {
         return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
@@ -323,6 +414,69 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("task"));
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> plainResultMap(GptProcessResult frame) {
+        return (Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap");
+    }
+
+    private AgentContext newPlanningAgentContext(String requestId,
+                                                 String sessionId,
+                                                 org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder recorder,
+                                                 String closeUpdate) {
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setPlannerSystemPromptMap("{}");
+        reactorConfig.setPlannerNextStepPromptMap("{}");
+        ReflectionTestUtils.setField(reactorConfig, "plannerModelName", "test-planner-model");
+        ReflectionTestUtils.setField(reactorConfig, "plannerMaxSteps", 10);
+        ReflectionTestUtils.setField(reactorConfig, "planningCloseUpdate", closeUpdate);
+        ReflectionTestUtils.setField(reactorConfig, "llmSettingsMap", Map.of(
+                "test-planner-model",
+                LLMSettings.builder()
+                        .model("test-planner-model")
+                        .maxTokens(1024)
+                        .temperature(0)
+                        .baseUrl("http://127.0.0.1")
+                        .interfaceUrl("/v1/chat/completions")
+                        .functionCallType("function_call")
+                        .apiKey("test-key")
+                        .maxInputTokens(4096)
+                        .build()
+        ));
+        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
+        ToolCollection toolCollection = new ToolCollection();
+        AgentContext context = AgentContext.builder()
+                .requestId(requestId)
+                .sessionId(sessionId)
+                .query("执行兼容计划")
+                .dateInfo("2026-05-05")
+                .basePrompt("")
+                .sopPrompt("")
+                .historyDialogue("")
+                .printer(new SilentPrinter())
+                .toolCollection(toolCollection)
+                .productFiles(new ArrayList<>())
+                .taskProductFiles(new ArrayList<>())
+                .executionRecorder(recorder)
+                .isStream(false)
+                .runtimeDependencies(runtimeDependencies)
+                .build();
+        toolCollection.setAgentContext(context);
+        return context;
+    }
+
+    private PlanningAgent newCompatibilityPlanningAgent(AgentContext context) {
+        PlanningAgent agent = new PlanningAgent(context);
+        LLM llm = Mockito.mock(LLM.class);
+        Mockito.when(llm.askTool(Mockito.any(), Mockito.anyList(), Mockito.any(), Mockito.any(),
+                        Mockito.any(), Mockito.any(), Mockito.anyBoolean(), Mockito.anyBoolean(), Mockito.anyInt()))
+                .thenAnswer(invocation -> CompletableFuture.completedFuture(LLM.ToolCallResponse.builder()
+                        .content("mock planning thought")
+                        .toolCalls(agent.getToolCalls() == null ? List.of() : agent.getToolCalls())
+                        .build()));
+        agent.setLlm(llm);
+        return agent;
+    }
+
     private static final class TestAgent extends BaseAgent {
         private TestAgent(String name, AgentContext context) {
             setName(name);
@@ -332,6 +486,45 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         @Override
         public String step() {
             return "";
+        }
+    }
+
+    private static final class SilentPrinter implements Printer {
+
+        @Override
+        public void send(String messageId, String messageType, Object message, String digitalEmployee, Boolean isFinal) {
+        }
+
+        @Override
+        public void send(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, String digitalEmployee, Boolean isFinal) {
+        }
+
+        @Override
+        public void send(String messageType, Object message) {
+        }
+
+        @Override
+        public void send(String messageType, Object message, String digitalEmployee) {
+        }
+
+        @Override
+        public void send(String messageId, String messageType, Object message, Boolean isFinal) {
+        }
+
+        @Override
+        public void sendWithResultMap(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, Boolean isFinal) {
+        }
+
+        @Override
+        public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public void updateAgentType(AgentType agentType) {
         }
     }
 

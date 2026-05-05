@@ -79,7 +79,7 @@ mvn spring-boot:run
 
 ### DDD Layered Modules
 
-The project follows DDD layered architecture (inspired by 小傅哥扳手工程 `xfg-wrench-bom`):
+The project follows DDD layered architecture (inspired by 扳手工程 `xfg-wrench-bom`):
 
 ```
                      ┌─────────────────┐

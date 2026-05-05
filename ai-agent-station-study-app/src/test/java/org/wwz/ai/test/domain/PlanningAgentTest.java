@@ -224,11 +224,24 @@ public class PlanningAgentTest {
                 .collect(Collectors.toList()));
     }
 
+    @Test
+    public void shouldInjectHistoryDialogueOnlyIntoSystemPrompt() {
+        PlanningAgent agent = newPlanningAgent("0", new RecordingPrinter(), "历史上下文片段");
+
+        Assert.assertTrue(agent.getSystemPrompt().contains("历史上下文片段"));
+        Assert.assertFalse(agent.getNextStepPrompt().contains("历史上下文片段"));
+        Assert.assertFalse(agent.getNextStepPrompt().contains("<history_dialogue>"));
+    }
+
     private PlanningAgent newPlanningAgent(String closeUpdate) {
         return newPlanningAgent(closeUpdate, new RecordingPrinter());
     }
 
     private PlanningAgent newPlanningAgent(String closeUpdate, RecordingPrinter printer) {
+        return newPlanningAgent(closeUpdate, printer, "");
+    }
+
+    private PlanningAgent newPlanningAgent(String closeUpdate, RecordingPrinter printer, String historyDialogue) {
         ReactorConfig reactorConfig = buildReactorConfig(closeUpdate);
         ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
 
@@ -243,7 +256,7 @@ public class PlanningAgentTest {
                 .dateInfo("2026-05-03")
                 .basePrompt("")
                 .sopPrompt("")
-                .historyDialogue("")
+                .historyDialogue(historyDialogue)
                 .printer(printer)
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())

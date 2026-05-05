@@ -1,8 +1,13 @@
 package org.wwz.ai.trigger.http;
 
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.TaskScheduler;
 import org.wwz.ai.api.IAiAgentService;
 import org.wwz.ai.api.dto.AiAgentResponseDTO;
 import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
@@ -12,29 +17,30 @@ import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.armory.IArmoryService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
-import org.wwz.ai.domain.agent.runtime.util.ThreadUtil;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
+import org.wwz.ai.types.agent.config.AgentExecutorProperties;
+import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 import com.alibaba.fastjson.JSON;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 
-import javax.annotation.Resource;
 import java.io.UnsupportedEncodingException;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * AutoAgent 自动智能对话体
@@ -43,10 +49,6 @@ import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 @RestController
 @RequestMapping("/")
 public class AiAgentController implements IAiAgentService {
-
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
-
-    private static final long HEARTBEAT_INTERVAL = 10_000L; // 10秒心跳间隔
 
     @Autowired
     protected ReactorConfig reactorConfig;
@@ -59,6 +61,20 @@ public class AiAgentController implements IAiAgentService {
 
     @Resource
     private IGptQueryApplicationService gptQueryApplicationService;
+
+    @Resource
+    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+
+    @Resource
+    private AgentExecutorProperties agentExecutorProperties;
+
+    @Resource
+    @Qualifier(AgentExecutorNames.DISPATCH_EXECUTOR)
+    private Executor dispatchExecutor;
+
+    @Resource
+    @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER)
+    private TaskScheduler heartbeatScheduler;
 
     /**
      * 执行智能体调度
@@ -74,34 +90,65 @@ public class AiAgentController implements IAiAgentService {
         Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
 
         SseEmitter emitter = SseLifecycleSupport.createEmitter(AUTO_AGENT_SSE_TIMEOUT);
+        try {
+            String visitorId = resolveVisitorId(request);
+            request.setVisitorId(visitorId);
+            conversationSessionOwnershipApplicationService.ensureSessionAccessible(
+                    visitorId,
+                    request.getSessionId(),
+                    request.getQuery()
+            );
+        } catch (Exception e) {
+            log.warn("{} reject auto agent request before dispatch", request.getRequestId(), e);
+            emitter.completeWithError(e);
+            return emitter;
+        }
         // 定义定时任务规则 定时发送心跳包
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
-                executor, emitter, request.getRequestId(), HEARTBEAT_INTERVAL, log
+                heartbeatScheduler,
+                emitter,
+                request.getRequestId(),
+                agentExecutorProperties.getHeartbeat().getIntervalMillis(),
+                log
         );
 
         // 注册后续各种事件的处理逻辑
         SseLifecycleSupport.registerLifecycle(emitter, request.getRequestId(), heartbeatFuture, log);
 
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
-        ThreadUtil.execute(() -> {
-            try {
-                // 使用 IAgentDispatchService 进行策略调度
-                // AgentRequest 直接传入，避免不必要的转换
-                agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
-
-                //调用emitter对应方法触发资源回收
-                emitter.complete();
-            } catch (Exception e) {
-                log.error("{} auto agent error", request.getRequestId(), e);
+        try {
+            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", () -> {
                 try {
-                    emitter.completeWithError(e);
-                } catch (Exception ex) {
-                    log.warn("{} emitter completeWithError failed", request.getRequestId(), ex);
+                    // 使用 IAgentDispatchService 进行策略调度
+                    // AgentRequest 直接传入，避免不必要的转换
+                    agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
+
+                    //调用emitter对应方法触发资源回收
+                    emitter.complete();
+                } catch (Exception e) {
+                    log.error("{} auto agent error", request.getRequestId(), e);
+                    try {
+                        emitter.completeWithError(e);
+                    } catch (Exception ex) {
+                        log.warn("{} emitter completeWithError failed", request.getRequestId(), ex);
+                    }
                 }
-            }
-        });
+            });
+        } catch (AgentExecutorBusyException e) {
+            log.warn("{} dispatch rejected", request.getRequestId(), e);
+            emitter.completeWithError(e);
+        }
 
         return emitter;
+    }
+
+    private String resolveVisitorId(AgentRequest request) {
+        String contextVisitorId = VisitorRequestContext.currentVisitorId();
+        String visitorId = StringUtils.defaultIfBlank(contextVisitorId, request == null ? null : request.getVisitorId());
+        if (StringUtils.isBlank(visitorId)) {
+            throw new IllegalArgumentException("visitorId不能为空");
+        }
+        return visitorId;
     }
 
 

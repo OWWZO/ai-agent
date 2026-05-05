@@ -11,6 +11,7 @@ import time
 from json_repair import repair_json
 
 from reactor_tool.util.llm_util import ask_llm
+from reactor_tool.util.llm_util import resolve_openai_compat_env
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.log_util import timer
 
@@ -22,6 +23,7 @@ async def search_reasoning(
     if not request_id or not query or not content:
         return {}
 
+    llm_config = resolve_openai_compat_env("DEEPSEARCH")
     model = os.getenv("SEARCH_REASONING_MODEL", "gpt-4.1")
     prompt = get_prompt("deepsearch")["reasoning_prompt"]
     prompt_content = prompt.format(
@@ -36,6 +38,8 @@ async def search_reasoning(
             model=model,
             stream=True,
             only_content=True,  # 只返回内容
+            api_base=llm_config["api_base"],
+            api_key=llm_config["api_key"],
     ):
         if chunk:
             content += chunk

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
@@ -16,6 +17,7 @@ import org.wwz.ai.domain.agent.ledger.replay.ConversationHistoryReplayService;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationRoleRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
@@ -35,10 +37,14 @@ public class AgentConversationHistoryController {
     @Resource
     private ConversationHistoryReplayService conversationHistoryReplayService;
 
+    @Resource
+    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+
     @GetMapping
     public Response<List<ConversationSessionRespVO>> list(
             @RequestParam(name = "limit", defaultValue = "20") Integer limit) {
-        List<ConversationSessionRespVO> sessions = executionLedgerQueryService.queryRecentSessions(limit == null ? 20 : limit)
+        String visitorId = VisitorRequestContext.requireVisitorId();
+        List<ConversationSessionRespVO> sessions = executionLedgerQueryService.queryRecentSessions(visitorId, limit == null ? 20 : limit)
                 .stream()
                 .map(this::toSessionRespVO)
                 .collect(Collectors.toList());
@@ -52,6 +58,17 @@ public class AgentConversationHistoryController {
 
     @GetMapping("/{sessionId}")
     public Response<ConversationHistoryDetailRespVO> detail(@PathVariable("sessionId") String sessionId) {
+        try {
+            conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
+                    VisitorRequestContext.requireVisitorId(),
+                    sessionId
+            );
+        } catch (Exception e) {
+            return Response.<ConversationHistoryDetailRespVO>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build();
+        }
         ConversationHistoryDetail detail = conversationHistoryReplayService.queryConversationHistory(sessionId);
         return Response.<ConversationHistoryDetailRespVO>builder()
                 .code(ResponseCode.SUCCESS.getCode())

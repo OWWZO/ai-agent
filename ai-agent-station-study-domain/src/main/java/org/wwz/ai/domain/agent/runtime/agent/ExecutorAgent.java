@@ -52,20 +52,19 @@ public class ExecutorAgent extends ReActAgent {
         String nextPromptKey = "default";
         setSystemPrompt(injectHistoryDialogue(
                 reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString())
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{sopPrompt}}", context.getSopPrompt())
-                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
+                        .replace("{{tools}}", toolPrompt.toString())
+                        .replace("{{query}}", context.getQuery())
+                        .replace("{{date}}", context.getDateInfo())
+                        .replace("{{sopPrompt}}", context.getSopPrompt())
+                        .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
                 context.getHistoryDialogue()));
-        setNextStepPrompt(injectHistoryDialogue(
+        setNextStepPrompt(
                 reactorConfig.getExecutorNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
-                .replace("{{tools}}", toolPrompt.toString())
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{sopPrompt}}", context.getSopPrompt())
-                .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
-                context.getHistoryDialogue()));
+                        .replace("{{tools}}", toolPrompt.toString())
+                        .replace("{{query}}", context.getQuery())
+                        .replace("{{date}}", context.getDateInfo())
+                        .replace("{{sopPrompt}}", context.getSopPrompt())
+                        .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")));
 
         setSystemPromptSnapshot(getSystemPrompt());
         setNextStepPromptSnapshot(getNextStepPrompt());

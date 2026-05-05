@@ -131,10 +131,18 @@ public final class ExecutionLedgerFixtureFactory {
     }
 
     static Long activateRun(AgentContext context, AgentExecutionRecorder recorder, String entryAgent) {
+        return activateRun(context, recorder, entryAgent, null);
+    }
+
+    static Long activateRun(AgentContext context,
+                            AgentExecutionRecorder recorder,
+                            String entryAgent,
+                            String visitorId) {
         Long runId = recorder.createRun(org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord.builder()
                 .runUid(context.getRequestId())
                 .requestId(context.getRequestId())
                 .sessionId(context.getSessionId())
+                .visitorId(visitorId)
                 .entryAgent(entryAgent)
                 .queryText(context.getQuery())
                 .startedAt(LocalDateTime.now())
@@ -459,6 +467,9 @@ public final class ExecutionLedgerFixtureFactory {
                         .build();
                 store.sessions.put(session.getId(), session);
             }
+            if (isBlank(session.getVisitorId())) {
+                session.setVisitorId(record.getVisitorId());
+            }
             session.setTitle(record.getTitle());
             session.setStatus(record.getStatus());
             session.setLatestRequestId(record.getLatestRequestId());
@@ -492,6 +503,26 @@ public final class ExecutionLedgerFixtureFactory {
         public List<DialogueSessionView> queryRecentSessions(int limit) {
             return store.sessions.values().stream()
                     .filter(item -> item.getDeleted() == 0)
+                    .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
+                    .limit(limit)
+                    .map(ExecutionLedgerFixtureFactory::toSessionView)
+                    .toList();
+        }
+
+        @Override
+        public DialogueSessionView querySessionViewByVisitor(String visitorId, String sessionId) {
+            DialogueSession session = queryBySessionId(sessionId);
+            if (session == null || !equalsNullable(visitorId, session.getVisitorId())) {
+                return null;
+            }
+            return toSessionView(session);
+        }
+
+        @Override
+        public List<DialogueSessionView> queryRecentSessionsByVisitor(String visitorId, int limit) {
+            return store.sessions.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && equalsNullable(visitorId, item.getVisitorId()))
                     .sorted(Comparator.comparing(DialogueSession::getLastActiveAt, Comparator.nullsLast(Comparator.reverseOrder()))
                             .thenComparing(DialogueSession::getId, Comparator.reverseOrder()))
                     .limit(limit)
@@ -822,6 +853,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
+                .visitorId(run.getVisitorId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())
@@ -847,6 +879,7 @@ public final class ExecutionLedgerFixtureFactory {
         return DialogueSession.builder()
                 .id(session.getId())
                 .sessionId(session.getSessionId())
+                .visitorId(session.getVisitorId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())
@@ -970,6 +1003,7 @@ public final class ExecutionLedgerFixtureFactory {
                 .runUid(run.getRunUid())
                 .requestId(run.getRequestId())
                 .sessionId(run.getSessionId())
+                .visitorId(run.getVisitorId())
                 .entryAgent(run.getEntryAgent())
                 .status(run.getStatus())
                 .queryText(run.getQueryText())
@@ -993,6 +1027,7 @@ public final class ExecutionLedgerFixtureFactory {
         return DialogueSessionView.builder()
                 .id(session.getId())
                 .sessionId(session.getSessionId())
+                .visitorId(session.getVisitorId())
                 .title(session.getTitle())
                 .status(session.getStatus())
                 .latestRequestId(session.getLatestRequestId())

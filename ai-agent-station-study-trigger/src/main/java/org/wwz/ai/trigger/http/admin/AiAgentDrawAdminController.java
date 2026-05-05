@@ -31,9 +31,6 @@ import java.util.UUID;
 
 /**
  * 拖拉拽
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/9/28 07:35
  */
 @Slf4j
 @RestController
@@ -201,20 +198,20 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                         for (AiClientConfig config : configRelations) {
                             // 检查是否已经存在相同的记录
                             List<AiClientConfig> existingConfigs = aiClientConfigDao.queryByConditions(
-                                config.getSourceType(), 
-                                config.getSourceId(), 
-                                config.getTargetType(), 
+                                config.getSourceType(),
+                                config.getSourceId(),
+                                config.getTargetType(),
                                 config.getTargetId()
                             );
-                            
+
                             if (existingConfigs.isEmpty()) {
                                 // 设置扩展参数，记录来源配置ID
                                 config.setExtParam("{\"configId\":\"" + configId + "\"}");
                                 aiClientConfigDao.insert(config);
-                                log.debug("插入新的配置关系: sourceType={}, sourceId={}, targetType={}, targetId={}", 
+                                log.debug("插入新的配置关系: sourceType={}, sourceId={}, targetType={}, targetId={}",
                                     config.getSourceType(), config.getSourceId(), config.getTargetType(), config.getTargetId());
                             } else {
-                                log.debug("配置关系已存在，跳过插入: sourceType={}, sourceId={}, targetType={}, targetId={}", 
+                                log.debug("配置关系已存在，跳过插入: sourceType={}, sourceId={}, targetType={}, targetId={}",
                                     config.getSourceType(), config.getSourceId(), config.getTargetType(), config.getTargetId());
                             }
                         }
@@ -291,7 +288,7 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                             JsonNode inputsValuesNode = dataNode.get("inputsValues");
                             if (inputsValuesNode != null) {
                                 log.debug("开始解析agent节点的inputsValues: {}", inputsValuesNode.toString());
-                                
+
                                 // 提取agent信息
                                 String agentName = extractValueFromInputs(inputsValuesNode, "agentName");
                                 String description = extractValueFromInputs(inputsValuesNode, "description");
@@ -303,7 +300,7 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                                 agentInfo[2] = channel != null ? channel : "";
                                 agentInfo[3] = strategy != null ? strategy : "";
 
-                                log.info("解析到agent信息: agentName={}, description={}, channel={}, strategy={}", 
+                                log.info("解析到agent信息: agentName={}, description={}, channel={}, strategy={}",
                                         agentName, description, channel, strategy);
                                 break; // 找到第一个agent节点就退出
                             }
@@ -388,7 +385,7 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
     private String extractValueFromInputs(JsonNode inputsValuesNode, String fieldName) {
         JsonNode fieldNode = inputsValuesNode.get(fieldName);
         log.debug("提取字段 '{}': fieldNode={}", fieldName, fieldNode != null ? fieldNode.toString() : "null");
-        
+
         if (fieldNode != null) {
             // 处理数组格式：[{"key": "xxx", "value": "yyy"}] 或 [{"key": "xxx", "value": {"content": "yyy"}}]
             if (fieldNode.isArray() && !fieldNode.isEmpty()) {
@@ -396,7 +393,7 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                 if (firstItem != null) {
                     JsonNode valueNode = firstItem.get("value");
                     log.debug("字段 '{}' 数组格式，valueNode={}", fieldName, valueNode != null ? valueNode.toString() : "null");
-                    
+
                     if (valueNode != null) {
                         // 如果value是对象，尝试获取content字段
                         if (valueNode.isObject()) {
@@ -429,7 +426,7 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                 return result;
             }
         }
-        
+
         log.debug("字段 '{}' 未找到有效值", fieldName);
         return null;
     }

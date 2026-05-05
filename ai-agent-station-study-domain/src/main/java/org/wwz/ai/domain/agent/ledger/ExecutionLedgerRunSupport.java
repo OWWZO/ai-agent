@@ -38,6 +38,7 @@ public final class ExecutionLedgerRunSupport {
                 .runUid(request.getRequestId())
                 .requestId(request.getRequestId())
                 .sessionId(request.getSessionId())
+                .visitorId(request.getVisitorId())
                 .entryAgent(entryAgent)
                 .queryText(request.getQuery())
                 .build());

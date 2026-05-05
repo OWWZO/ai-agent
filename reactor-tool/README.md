@@ -65,6 +65,7 @@ cd reactor-tool
 ## DeepSearch 说明
 
 - Query 分解与 `extend/search/report` 三阶段 SSE 协议保持不变。
+- DeepSearch 的 LLM 调用支持独立配置 `DEEPSEARCH_BASE_URL`、`DEEPSEARCH_API_KEY`；留空时自动回退到 `OPENAI_BASE_URL`、`OPENAI_API_KEY`。
 - 默认搜索提供方已切换为 `DuckDuckGo`，通过 `USE_SEARCH_ENGINE=ddg` 启用。
 - 页面正文优先通过 `Jina Reader` 抓取，失败时会自动回退到原始 HTTP 页面解析。
 - 可通过 `DDG_REGION`、`DDG_SAFESEARCH`、`JINA_API_KEY`、`JINA_READER_TIMEOUT` 调整抓取行为。

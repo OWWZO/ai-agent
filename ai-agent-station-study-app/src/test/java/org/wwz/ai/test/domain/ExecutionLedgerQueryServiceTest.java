@@ -26,8 +26,8 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldQueryRunDetailRecentToolsAndRecentSessionRuns() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-query-001", "session-query-001", "file_tool", 1, "report-1.md");
-        seedRun(ctx, "req-query-002", "session-query-001", "file_tool", 2, "report-2.md");
+        seedRun(ctx, "req-query-001", "session-query-001", "visitor-query-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-query-002", "session-query-001", "visitor-query-001", "file_tool", 2, "report-2.md");
 
         ExecutionRunDetail detail = ctx.queryService.queryRunDetail("req-query-001");
         Assert.assertNotNull(detail);
@@ -125,8 +125,8 @@ public class ExecutionLedgerQueryServiceTest {
     @Test
     public void shouldBuildConversationHistoryWithSummaryFallback() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        seedRun(ctx, "req-history-001", "session-history-001", "file_tool", 1, "report-1.md");
-        seedRun(ctx, "req-history-002", "session-history-001", "read_tool", 2, "report-2.md");
+        seedRun(ctx, "req-history-001", "session-history-001", "visitor-history-001", "file_tool", 1, "report-1.md");
+        seedRun(ctx, "req-history-002", "session-history-001", "visitor-history-001", "read_tool", 2, "report-2.md");
 
         ConversationHistoryDetail detail = ctx.replayService.queryConversationHistory("session-history-001");
 
@@ -147,6 +147,7 @@ public class ExecutionLedgerQueryServiceTest {
                     ctx,
                     String.format("req-session-limit-%03d", index),
                     String.format("session-limit-%03d", index),
+                    String.format("visitor-limit-%03d", index),
                     "file_tool",
                     index,
                     "report-limit-" + index + ".md"
@@ -162,9 +163,29 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals(Integer.valueOf(1), recentSessions.get(0).getRunCount());
     }
 
+    @Test
+    public void shouldFilterSessionQueriesByVisitorOwnership() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        seedRun(ctx, "req-visitor-001", "session-visitor-001", "visitor-001", "file_tool", 1, "visitor-001.md");
+        seedRun(ctx, "req-visitor-002", "session-visitor-002", "visitor-002", "file_tool", 2, "visitor-002.md");
+
+        Assert.assertNotNull(ctx.queryService.querySession("visitor-001", "session-visitor-001"));
+        Assert.assertNull(ctx.queryService.querySession("visitor-002", "session-visitor-001"));
+
+        List<?> visitorOneSessions = ctx.queryService.queryRecentSessions("visitor-001", 20);
+        List<?> visitorTwoSessions = ctx.queryService.queryRecentSessions("visitor-002", 20);
+
+        Assert.assertEquals(1, visitorOneSessions.size());
+        Assert.assertEquals(1, visitorTwoSessions.size());
+        Assert.assertEquals("session-visitor-001", ctx.queryService.queryRecentSessions("visitor-001", 20).get(0).getSessionId());
+        Assert.assertEquals("session-visitor-002", ctx.queryService.queryRecentSessions("visitor-002", 20).get(0).getSessionId());
+        Assert.assertTrue(ctx.queryService.queryRecentSessions("visitor-003", 20).isEmpty());
+    }
+
     private void seedRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,
                          String requestId,
                          String sessionId,
+                         String visitorId,
                          String toolName,
                          int dispatchIndex,
                          String fileName) {
@@ -173,6 +194,7 @@ public class ExecutionLedgerQueryServiceTest {
                 .runUid(requestId)
                 .requestId(requestId)
                 .sessionId(sessionId)
+                .visitorId(visitorId)
                 .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
                 .queryText("seed:" + requestId)
                 .startedAt(now)

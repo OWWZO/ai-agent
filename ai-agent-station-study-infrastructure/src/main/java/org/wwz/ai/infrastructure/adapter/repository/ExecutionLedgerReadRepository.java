@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
@@ -67,6 +68,11 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     }
 
     @Override
+    public DialogueSession querySessionEntity(String sessionId) {
+        return dialogueSessionLedgerDao.queryBySessionId(sessionId);
+    }
+
+    @Override
     public DialogueSessionView querySession(String sessionId) {
         return dialogueSessionLedgerDao.querySessionView(sessionId);
     }
@@ -74,6 +80,16 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
     @Override
     public List<DialogueSessionView> queryRecentSessions(int limit) {
         return dialogueSessionLedgerDao.queryRecentSessions(limit);
+    }
+
+    @Override
+    public DialogueSessionView querySession(String visitorId, String sessionId) {
+        return dialogueSessionLedgerDao.querySessionViewByVisitor(visitorId, sessionId);
+    }
+
+    @Override
+    public List<DialogueSessionView> queryRecentSessions(String visitorId, int limit) {
+        return dialogueSessionLedgerDao.queryRecentSessionsByVisitor(visitorId, limit);
     }
 
     @Override

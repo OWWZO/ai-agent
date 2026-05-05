@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
@@ -34,6 +35,11 @@ public class ExecutionLedgerWriteRepository implements IExecutionLedgerWriteRepo
     @Override
     public void insertRun(DialogueRun run) {
         dialogueRunLedgerDao.insertRun(run);
+    }
+
+    @Override
+    public DialogueSession querySessionBySessionId(String sessionId) {
+        return dialogueSessionLedgerDao.queryBySessionId(sessionId);
     }
 
     @Override

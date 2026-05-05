@@ -8,9 +8,10 @@ import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRoute
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
 
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -23,8 +24,8 @@ public abstract class AbstractArmorySupport extends AbstractMultiThreadStrategyR
     @Resource
     protected AiClientRuntimeRegistry aiClientRuntimeRegistry;
 
-    @Resource
-    protected ThreadPoolExecutor threadPoolExecutor;
+    @Resource(name = AgentExecutorNames.TOOL_EXECUTOR)
+    protected Executor threadPoolExecutor;
 
     @Resource
     protected IAgentRepository repository;

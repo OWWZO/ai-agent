@@ -22,6 +22,8 @@ public class DialogueRunStartRecord {
 
     private String sessionId;
 
+    private String visitorId;
+
     private String entryAgent;
 
     private String queryText;

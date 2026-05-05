@@ -24,6 +24,10 @@ public class AgentRequest {
      * 会话ID，用于多轮对话上下文复用
      */
     private String sessionId;
+    /**
+     * 匿名访客ID。
+     */
+    private String visitorId;
     private String erp;
     private String query;
     private Integer agentType;

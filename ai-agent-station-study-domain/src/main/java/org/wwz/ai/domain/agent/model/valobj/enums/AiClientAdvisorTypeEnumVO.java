@@ -16,9 +16,6 @@ import java.util.Map;
 
 /**
  * 顾问类型枚举
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/7/19 09:02
  */
 @Getter
 @AllArgsConstructor
@@ -36,7 +33,7 @@ public enum AiClientAdvisorTypeEnumVO {
             ).build();
         }
     },
-    
+
     RAG_ANSWER("RagAnswer", "知识库") {
         @Override
         public Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore) {
@@ -47,22 +44,22 @@ public enum AiClientAdvisorTypeEnumVO {
                     .build());
         }
     }
-    
+
     ;
 
     private String code;
     private String info;
-    
+
     // 静态Map缓存，用于快速查找
     private static final Map<String, AiClientAdvisorTypeEnumVO> CODE_MAP = new HashMap<>();
-    
+
     // 静态初始化块，在类加载时初始化Map
     static {
         for (AiClientAdvisorTypeEnumVO enumVO : values()) {
             CODE_MAP.put(enumVO.getCode(), enumVO);
         }
     }
-    
+
     /**
      * 策略方法：创建顾问对象
      * @param aiClientAdvisorVO 顾问配置对象
@@ -70,7 +67,7 @@ public enum AiClientAdvisorTypeEnumVO {
      * @return 顾问对象
      */
     public abstract Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO, VectorStore vectorStore);
-    
+
     /**
      * 根据code获取枚举
      * @param code 编码

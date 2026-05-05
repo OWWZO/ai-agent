@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
+import org.springframework.scheduling.concurrent.ConcurrentTaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.application.agent.dataquery.DataAgentApplicationService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.dataquery.IDataAgentApplicationService;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.reactor.data.QueryResult;
 import org.wwz.ai.domain.agent.reactor.data.dto.ColumnEsRecallReq;
 import org.wwz.ai.domain.agent.reactor.data.dto.ColumnVectorRecallReq;
@@ -24,6 +26,7 @@ import org.wwz.ai.trigger.http.admin.AiClientRagOrderAdminController;
 import org.wwz.ai.trigger.http.agent.AgentRoleLibraryController;
 import org.wwz.ai.trigger.http.dataagent.DataAgentController;
 import org.wwz.ai.trigger.http.reactor.ReactorController;
+import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -31,6 +34,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -126,6 +130,11 @@ public class ReactorHttpControllerTest {
         ReactorController reactorController = new ReactorController();
         IGptQueryApplicationService gptQueryApplicationService = Mockito.mock(IGptQueryApplicationService.class);
         ReflectionTestUtils.setField(reactorController, "gptQueryApplicationService", gptQueryApplicationService);
+        ReflectionTestUtils.setField(reactorController, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
+        ReflectionTestUtils.setField(reactorController, "agentExecutorProperties", new AgentExecutorProperties());
+        ReflectionTestUtils.setField(reactorController, "dispatchExecutor", (Executor) Runnable::run);
+        ReflectionTestUtils.setField(reactorController, "heartbeatScheduler", new ConcurrentTaskScheduler());
 
         GptQueryReq gptQueryReq = new GptQueryReq();
         Mockito.doNothing().when(gptQueryApplicationService).queryAgentStreamIncr(Mockito.eq(gptQueryReq), Mockito.any());

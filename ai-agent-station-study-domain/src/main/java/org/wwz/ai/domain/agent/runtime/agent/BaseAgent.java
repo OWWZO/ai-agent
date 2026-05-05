@@ -18,7 +18,7 @@ import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
-import org.wwz.ai.domain.agent.runtime.util.ThreadUtil;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
@@ -30,8 +30,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 
 /**
  * 所有 Agent 的抽象基类。
@@ -214,6 +215,41 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 初始化系统提示词与下一步提示词。
+     * 仅在 systemPrompt 中注入历史上下文，避免 nextStepPrompt 进入记忆后重复放大会话历史。
+     */
+    protected void initializePromptsWithHistoryOnlyInSystem(Map<String, String> systemPromptMap,
+                                                            Map<String, String> nextStepPromptMap,
+                                                            String defaultSystemPrompt,
+                                                            String defaultNextStepPrompt,
+                                                            String toolPrompt,
+                                                            String extraPlaceholder,
+                                                            String extraValue) {
+        String promptKey = "default";
+        String nextPromptKey = "default";
+
+        String systemTemplate = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt)
+                .replace("{{tools}}", toolPrompt)
+                .replace("{{query}}", context.getQuery())
+                .replace("{{date}}", context.getDateInfo())
+                .replace("{{basePrompt}}", context.getBasePrompt());
+        if (extraPlaceholder != null) {
+            systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue);
+        }
+        setSystemPrompt(injectHistoryDialogue(systemTemplate, context.getHistoryDialogue()));
+
+        String nextTemplate = nextStepPromptMap.getOrDefault(nextPromptKey, defaultNextStepPrompt)
+                .replace("{{tools}}", toolPrompt)
+                .replace("{{query}}", context.getQuery())
+                .replace("{{date}}", context.getDateInfo())
+                .replace("{{basePrompt}}", context.getBasePrompt());
+        if (extraPlaceholder != null) {
+            nextTemplate = nextTemplate.replace(extraPlaceholder, extraValue);
+        }
+        setNextStepPrompt(nextTemplate);
+    }
+
+    /**
      * 为单次工具结果追加当前 toolCall 的文件摘要。
      */
     protected String attachToolArtifactSummary(String result, String toolCallId) {
@@ -388,22 +424,21 @@ public abstract class BaseAgent {
         }
         emitToolCallRunningEvents(commands, dispatchIndexMapping);
 
-        CountDownLatch taskCount = ThreadUtil.getCountDownLatch(commands.size());
+        List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
+        Executor toolExecutor = resolveToolExecutor();
         for (ToolCall toolCall : commands) {
-            ThreadUtil.execute(() -> {
-                try {
-                    ToolExecutionOutcome outcome = finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall));
-                    result.put(toolCall.getId(), outcome);
-                    finishToolInvocation(toolCall, outcome);
-                    recordToolArtifacts(toolCall);
-                    emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
-                } finally {
-                    taskCount.countDown();
-                }
-            });
+            CompletableFuture<Void> future = AgentExecutorSupport
+                    .supplyAsync(toolExecutor, "toolBatch", () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)))
+                    .thenAccept(outcome -> {
+                        result.put(toolCall.getId(), outcome);
+                        finishToolInvocation(toolCall, outcome);
+                        recordToolArtifacts(toolCall);
+                        emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
+                    });
+            futures.add(future);
         }
 
-        ThreadUtil.await(taskCount);
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
         for (ToolCall command : commands) {
             if (command != null && StringUtils.isNotBlank(command.getId())) {
@@ -713,6 +748,16 @@ public abstract class BaseAgent {
             return ExecutionLedgerConstants.TOOL_PROVIDER_MCP;
         }
         return ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL;
+    }
+
+    /**
+     * 工具批量执行优先走运行时托管执行器；缺少上下文时回退当前线程，兼容单测夹具。
+     */
+    private Executor resolveToolExecutor() {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            return Runnable::run;
+        }
+        return context.getRuntimeDependencies().requireToolExecutor();
     }
 
     private String resolveStorageKey(File file) {

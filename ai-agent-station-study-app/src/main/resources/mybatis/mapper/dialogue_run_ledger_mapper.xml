@@ -7,6 +7,7 @@
         <result column="run_uid" property="runUid"/>
         <result column="request_id" property="requestId"/>
         <result column="session_id" property="sessionId"/>
+        <result column="visitor_id" property="visitorId"/>
         <result column="entry_agent" property="entryAgent"/>
         <result column="status" property="status"/>
         <result column="query_text" property="queryText"/>
@@ -32,6 +33,7 @@
         <result column="run_uid" property="runUid"/>
         <result column="request_id" property="requestId"/>
         <result column="session_id" property="sessionId"/>
+        <result column="visitor_id" property="visitorId"/>
         <result column="entry_agent" property="entryAgent"/>
         <result column="status" property="status"/>
         <result column="query_text" property="queryText"/>
@@ -52,13 +54,13 @@
 
     <insert id="insertRun" parameterType="org.wwz.ai.domain.agent.ledger.entity.DialogueRun" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_dialogue_run (
-            run_uid, request_id, session_id, entry_agent, status, query_text, final_summary_text,
+            run_uid, request_id, session_id, visitor_id, entry_agent, status, query_text, final_summary_text,
             llm_call_count, tool_call_count, artifact_count,
             prompt_tokens_total, completion_tokens_total, total_tokens_total,
             error_code, error_msg, started_at, finished_at, duration_ms,
             create_time, update_time, deleted
         ) VALUES (
-            #{runUid}, #{requestId}, #{sessionId}, #{entryAgent}, #{status}, #{queryText}, #{finalSummaryText},
+            #{runUid}, #{requestId}, #{sessionId}, #{visitorId}, #{entryAgent}, #{status}, #{queryText}, #{finalSummaryText},
             #{llmCallCount}, #{toolCallCount}, #{artifactCount},
             #{promptTokensTotal}, #{completionTokensTotal}, #{totalTokensTotal},
             #{errorCode}, #{errorMsg}, #{startedAt}, #{finishedAt}, #{durationMs},

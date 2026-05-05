@@ -12,6 +12,7 @@ import time
 from loguru import logger
 
 from reactor_tool.util.llm_util import ask_llm
+from reactor_tool.util.llm_util import resolve_openai_compat_env
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.model.context import RequestIdCtx
 from reactor_tool.util.log_util import timer
@@ -22,6 +23,7 @@ async def query_decompose(
         query: str,
         **kwargs
 ):
+    llm_config = resolve_openai_compat_env("DEEPSEARCH")
     model = os.getenv("QUERY_DECOMPOSE_MODEL", "gpt-4.1")
     think_model = os.getenv("QUERY_DECOMPOSE_THINK_MODEL", "gpt-4.1")
     current_date = time.strftime("%Y-%m-%d", time.localtime())
@@ -33,6 +35,8 @@ async def query_decompose(
             model=think_model,
             stream=True,
             only_content=True,  # 只返回内容
+            api_base=llm_config["api_base"],
+            api_key=llm_config["api_key"],
     ):
         if chunk:
             think_content += chunk
@@ -53,6 +57,8 @@ async def query_decompose(
             model=model,
             stream=True,
             only_content=True,  # 只返回内容
+            api_base=llm_config["api_base"],
+            api_key=llm_config["api_key"],
     ):
         if chunk:
             extend_queries += chunk

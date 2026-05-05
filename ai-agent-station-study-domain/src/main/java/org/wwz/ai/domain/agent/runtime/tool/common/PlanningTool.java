@@ -228,6 +228,29 @@ public class PlanningTool implements BaseTool {
         plan.stepPlan();
     }
 
+    /**
+     * 兼容顺推模式下，按既有 stepPlan 语义推进一步，并产出可持久化的 planning 结构化快照。
+     * 这样历史回放可以恢复真实完成进度，而不再只能停留在 create 初始态。
+     */
+    public PlanningToolOutput advanceCompatPlanAndCapture() {
+        if (plan == null) {
+            return null;
+        }
+        Plan beforePlan = snapshot(plan);
+        Integer currentStepIndex = plan.getCurrentStepIndex();
+        if (currentStepIndex == null) {
+            PlanLifecycleResult result = lifecycleService.ensureExecutable(plan);
+            plan = result.getPlan();
+            lastStructuredOutput = buildStructuredOutput("mark_step", beforePlan, result);
+            return lastStructuredOutput;
+        }
+
+        PlanLifecycleResult result = markStepCompat(currentStepIndex, "completed", plan.getNotes().get(currentStepIndex));
+        plan = result.getPlan();
+        lastStructuredOutput = buildStructuredOutput("mark_step", beforePlan, result);
+        return lastStructuredOutput;
+    }
+
 
     public String getFormatPlan() {
         if (plan == null) {

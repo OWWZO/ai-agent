@@ -10,10 +10,12 @@ import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.springframework.scheduling.TaskScheduler;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 
 /**
  * Reactor 运行时依赖包。
@@ -38,6 +40,12 @@ public class ReactorRuntimeDependencies {
     RemoteStreamPort remoteStreamPort;
 
     FileArtifactPort fileArtifactPort;
+
+    Executor llmExecutor;
+
+    Executor toolExecutor;
+
+    TaskScheduler heartbeatScheduler;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -69,6 +77,18 @@ public class ReactorRuntimeDependencies {
 
     public FileArtifactPort requireFileArtifactPort() {
         return Objects.requireNonNull(fileArtifactPort, "FileArtifactPort must not be null");
+    }
+
+    public Executor requireLlmExecutor() {
+        return Objects.requireNonNull(llmExecutor, "llmExecutor must not be null");
+    }
+
+    public Executor requireToolExecutor() {
+        return Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
+    }
+
+    public TaskScheduler requireHeartbeatScheduler() {
+        return Objects.requireNonNull(heartbeatScheduler, "heartbeatScheduler must not be null");
     }
 
     /**

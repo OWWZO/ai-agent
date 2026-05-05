@@ -20,6 +20,8 @@ public class DialogueSession {
 
     private String sessionId;
 
+    private String visitorId;
+
     private String title;
 
     private Integer status;

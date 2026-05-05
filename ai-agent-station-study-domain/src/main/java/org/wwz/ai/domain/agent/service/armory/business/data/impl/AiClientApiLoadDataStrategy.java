@@ -4,6 +4,7 @@ import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.entity.ArmoryCommandEntity;
 import org.wwz.ai.domain.agent.model.valobj.AiClientApiVO;
 import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
+import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.service.armory.business.data.ILoadDataStrategy;
 import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
 import jakarta.annotation.Resource;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executor;
 
 /**
  * API 数据加载
@@ -25,16 +26,16 @@ public class AiClientApiLoadDataStrategy implements ILoadDataStrategy {
     private IAgentRepository repository;
 
     @Resource
-    protected ThreadPoolExecutor threadPoolExecutor;
+    protected Executor threadPoolExecutor;
 
     @Override
     public void loadData(ArmoryCommandEntity armoryCommandEntity, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) {
         List<String> apiIdList = armoryCommandEntity.getCommandIdList();
 
-        CompletableFuture<List<AiClientApiVO>> aiClientApiListFuture = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<List<AiClientApiVO>> aiClientApiListFuture = AgentExecutorSupport.supplyAsync(threadPoolExecutor, "armoryApiLoad", () -> {
             log.info("查询配置数据(ai_client_api) {}", apiIdList);
             return repository.queryAiClientApiVOListByApiIds(apiIdList);
-        }, threadPoolExecutor);
+        });
 
         CompletableFuture.allOf(aiClientApiListFuture).thenRun(() -> {
             dynamicContext.setValue(AiAgentEnumVO.AI_CLIENT_API.getDataName(), aiClientApiListFuture.join());

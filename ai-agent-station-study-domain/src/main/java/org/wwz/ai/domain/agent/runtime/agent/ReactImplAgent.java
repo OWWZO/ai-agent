@@ -91,7 +91,7 @@ public class ReactImplAgent extends ReActAgent {
 
         // 步骤3：构建工具描述提示词（整合所有可用工具的名称+描述，供大模型决策参考）
         String toolPrompt = buildToolPrompt(context.getToolCollection());
-        initializePrompts(
+        initializePromptsWithHistoryOnlyInSystem(
                 reactorConfig.getReactSystemPromptMap(),
                 reactorConfig.getReactNextStepPromptMap(),
                 ToolCallPrompt.SYSTEM_PROMPT,

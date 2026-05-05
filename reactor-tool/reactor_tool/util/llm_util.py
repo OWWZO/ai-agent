@@ -43,6 +43,30 @@ OPENAI_COMPAT_DEFAULT_USER_AGENT = (
 )
 
 
+def _trimmed_env(*keys: str) -> str | None:
+    """按顺序读取环境变量，返回首个非空白值。"""
+    for key in keys:
+        value = os.getenv(key)
+        if value is None:
+            continue
+        trimmed = value.strip()
+        if trimmed:
+            return trimmed
+    return None
+
+
+def resolve_openai_compat_env(prefix: str) -> dict[str, str | None]:
+    """解析指定前缀的 OpenAI 兼容配置，并兼容回退到全局 OPENAI_*。"""
+    normalized_prefix = (prefix or "").strip().upper()
+    if not normalized_prefix:
+        return {"api_base": _trimmed_env("OPENAI_BASE_URL", "OPENAI_API_BASE"), "api_key": _trimmed_env("OPENAI_API_KEY")}
+
+    return {
+        "api_base": _trimmed_env(f"{normalized_prefix}_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE"),
+        "api_key": _trimmed_env(f"{normalized_prefix}_API_KEY", "OPENAI_API_KEY"),
+    }
+
+
 def _normalize_api_base(api_base: str) -> str:
     """Ensure api_base ends with /v1 for chat-completions style endpoints."""
     if not api_base:
@@ -498,7 +522,7 @@ async def ask_llm(
         merged_headers.update(params.get("extra_headers"))
     if isinstance(extra_headers, dict):
         merged_headers.update(extra_headers)
-    if params.get("custom_llm_provider") in {"openai", "openai_like"}:
+    if params.get("custom_llm_provider") in {"openai", "openai_like"} or params.get("api_base"):
         merged_headers = _build_openai_compat_headers(merged_headers)
     lower_header_keys = {str(k).lower() for k in merged_headers.keys()}
     if "content-type" not in lower_header_keys:
@@ -514,9 +538,9 @@ async def ask_llm(
         or "gpt-4"
     ).strip()
     openai_compat_http_primary = (
-        params.get("custom_llm_provider") in {"openai", "openai_like"}
-        and bool(params.get("api_base"))
+        bool(params.get("api_base"))
         and bool(params.get("api_key"))
+        and not _is_dashscope_api_base(str(params.get("api_base")))
     )
     allow_litellm_fallback_for_openai_compat = (
         os.getenv("OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK", "false").strip().lower() == "true"

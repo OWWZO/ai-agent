@@ -14,9 +14,6 @@ import java.util.Map;
 
 /**
  * 工厂类
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/6/27 07:14
  */
 @Service
 public class DefaultArmoryStrategyFactory {
