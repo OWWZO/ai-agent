@@ -1,7 +1,0 @@
-{
-  "integration": "codex",
-  "version": "0.6.1",
-  "scripts": {
-    "update-context": ".specify/integrations/codex/scripts/update-context.ps1"
-  }
-}

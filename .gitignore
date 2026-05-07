@@ -59,3 +59,14 @@ runtime/skills/*/tools/vector_index.json
 Thumbs.db
 *.tmp
 *.swp
+
+# 本地 Agent / Spec 工作流资产不纳入版本控制
+/.agents/
+/.claude/
+/.codex/
+/.specify/
+/CLAUDE.md
+/AGENTS.md
+/PROMPT_CONTEXT_MEMORY_REARCH.md
+/specs/
+/openspec/
