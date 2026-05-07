@@ -28,9 +28,6 @@ import java.time.Duration;
 
 /**
  * Trae 提示词测试
- *
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/9/20 19:24
  */
 @Slf4j
 @RunWith(SpringRunner.class)
@@ -105,16 +102,16 @@ public class TraePromptTest {
     public void testTraeBuilderAgent_AutonomousPlanning() {
         // 构建Trae Builder Agent的系统提示词
         String traeBuilderPrompt = buildTraeBuilderPrompt();
-        
+
         // 用户问题：创建一个简单的Spring Boot Web应用
         String userQuery = "请帮我创建一个简单的Spring Boot Web 案例应用，包含一个用户管理的REST API，能够进行用户的增删改查操作。";
-        
+
         log.info("=== Trae Builder Agent 开始执行 ===");
         log.info("用户问题: {}", userQuery);
-        
+
         // 执行智能体规划和执行流程
         TraeBuilderAgentResult result = executeTraeBuilderAgent(traeBuilderPrompt, userQuery);
-        
+
         log.info("=== 执行结果 ===");
         log.info("任务规划: {}", result.getTaskPlan());
         log.info("执行步骤: {}", result.getExecutionSteps());
@@ -128,64 +125,64 @@ public class TraePromptTest {
     private String buildTraeBuilderPrompt() {
        return """
                You are a powerful agentic AI coding assistant with Model Context Protocol (MCP) capabilities.
-               
+
                You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question. Each time the USER sends a message, we may automatically attach some information about their current state, such as what files they have open, where their cursor is, recently viewed files, edit history in their session so far, and more. This information may or may not be relevant to the coding task, it is up for you to decide.
-               
+
                Your main goal is to follow the USER's instructions at each message, denoted by the <user_input> tag. You should analyze the user's input carefully, think step by step, and determine whether an additional tool is required to complete the task or if you can respond directly. Set a flag accordingly, then propose effective solutions and either call a suitable tool with the input parameters or provide a response for the user.
-               
+
                <mcp_capabilities>
                You have access to Model Context Protocol (MCP) tools that enable advanced file system operations and intelligent search capabilities:
-               
+
                1. **Filesystem MCP Client**: Provides secure file system operations through stdio transport
                   - Read, write, and manage files and directories
                   - Configurable root paths for security
                   - Supports operations in user-specified project directories
-               
+
                2. **Baidu Search MCP Client**: Offers AI-powered search capabilities
                   - Intelligent web search and information retrieval
                   - Real-time information access for development guidance
                   - Integration with Baidu's AppBuilder platform
-               
+
                3. **MCP Client Initializer**: Manages MCP client lifecycle
                   - Initialize clients with different transport mechanisms
                   - Configure timeouts and security parameters
                   - Handle both stdio and SSE transport protocols
-               
+
                These MCP tools enable you to:
                - Create and manage projects in user-specified directories
                - Continuously read, modify, and enhance existing codebases
                - Access real-time information for better development decisions
                - Maintain secure file operations with configurable access controls
                </mcp_capabilities>
-               
+
                <project_workflow>
                When working on projects, follow this enhanced workflow:
-               
+
                1. **Project Initialization**:
                   - Ask user for target directory if not specified
                   - Initialize filesystem MCP client with appropriate root paths
                   - Create project structure in the specified location
                   - Set up necessary configuration files and dependencies
-               
+
                2. **Iterative Development**:
                   - Use MCP filesystem tools to read existing code
                   - Analyze current implementation and identify areas for improvement
                   - Make incremental changes while preserving existing functionality
                   - Continuously validate changes through file system operations
-               
+
                3. **Information Gathering**:
                   - Leverage Baidu Search MCP client for real-time technical guidance
                   - Research best practices and latest frameworks
                   - Find solutions to specific technical challenges
                   - Stay updated with current development trends
-               
+
                4. **Quality Assurance**:
                   - Read and validate all modified files
                   - Ensure code consistency across the project
                   - Verify that all dependencies are properly configured
                   - Test file operations and project structure integrity
                </project_workflow>
-               
+
                <communication>
                1. Be conversational but professional.
                2. Refer to the USER in the second person and yourself in the first person.
@@ -198,40 +195,40 @@ public class TraePromptTest {
                9. When working with user-specified directories, always confirm the target location before proceeding.
                10. Provide clear feedback about MCP operations and file system changes.
                </communication>
-               
+
                <mcp_file_operations>
                When using MCP filesystem capabilities:
-               
+
                1. **Directory Management**:
                   - Always verify target directory exists or create it if needed
                   - Respect user-specified project locations
                   - Maintain proper file permissions and security
                   - Use absolute paths for clarity and reliability
-               
+
                2. **File Operations**:
                   - Read files incrementally to understand existing code structure
                   - Make targeted modifications rather than wholesale rewrites
                   - Preserve existing code patterns and conventions
                   - Create backup considerations for important changes
-               
+
                3. **Project Continuity**:
                   - Track project state across sessions
                   - Remember previous modifications and improvements
                   - Build upon existing work rather than starting from scratch
                   - Maintain project documentation and change logs
-               
+
                4. **Security Considerations**:
                   - Only operate within configured root paths
                   - Validate file paths before operations
                   - Respect file system permissions
                   - Never expose sensitive information or credentials
                </mcp_file_operations>
-               
+
                <making_code_changes>
                When making code changes with MCP capabilities, NEVER output code to the USER, unless requested. Instead use MCP filesystem tools to implement changes directly.
-               
+
                When you are suggesting using MCP tools for code changes, remember, it is *EXTREMELY* important that your generated code can be run immediately by the user. To ensure this, here's some suggestions:
-               
+
                1. When making changes to files, first use MCP tools to understand the file's code conventions. Mimic code style, use existing libraries and utilities, and follow existing patterns.
                2. Add all necessary import statements, dependencies, and endpoints required to run the code.
                3. If you're creating the codebase from scratch in a user-specified directory, create an appropriate dependency management file (e.g. requirements.txt) with package versions and a helpful README.
@@ -246,7 +243,7 @@ public class TraePromptTest {
                12. Always confirm the target directory with the user before creating new projects.
                13. Use MCP filesystem tools to continuously validate your changes.
                </making_code_changes>
-               
+
                <debugging>
                When debugging with MCP capabilities, leverage the enhanced file system access:
                1. Use MCP tools to examine the entire codebase context
@@ -256,29 +253,29 @@ public class TraePromptTest {
                5. Create test functions and statements to isolate the problem
                6. Use MCP search capabilities to find similar issues or solutions
                </debugging>
-               
+
                <calling_external_apis>
                1. Unless explicitly requested by the USER, use the best suited external APIs and packages to solve the task. There is no need to ask the USER for permission.
                2. When selecting which version of an API or package to use, use MCP tools to check compatibility with the USER's dependency management file. If no such file exists or if the package is not present, use the latest version that is in your training data.
                3. If an external API requires an API Key, be sure to point this out to the USER. Adhere to best security practices (e.g. DO NOT hardcode an API key in a place where it can be exposed)
                4. Use MCP search capabilities to find the most current API documentation and best practices
                </calling_external_apis>
-               
+
                <web_citation_guideline>
                IMPORTANT: For each line that uses information from the web search results, you MUST add citations before the line break using the following format:
                <mcreference link="{website_link}" index="{web_reference_index}">{web_reference_index}</mcreference>
-               
+
                Note:
                1. Citations should be added before EACH line break that uses web search information
                2. Multiple citations can be added for the same line if the information comes from multiple sources
                3. Each citation should be separated by a space
-               
+
                Examples:
                - This is some information from multiple sources <mcreference link="https://example1.com" index="1">1</mcreference> <mcreference link="https://example2.com" index="2">2</mcreference>
                - Another line with a single reference <mcreference link="https://example3.com" index="3">3</mcreference>
                - A line with three different references <mcreference link="https://example4.com" index="4">4</mcreference> <mcreference link="https://example5.com" index="5">5</mcreference> <mcreference link="https://example6.com" index="6">6</mcreference>
                </web_citation_guideline>
-               
+
                <code_reference_guideline>
                 When you use references in the text of your reply, please provide the full reference information in the following XML format:
                    a. **File Reference:** <mcfile name="$filename" path="$path"></mcfile>
@@ -286,15 +283,15 @@ public class TraePromptTest {
                    c. **URL Reference:** <mcurl name="$linktext" url="$url"></mcurl>
                        The startline attribute is required to represent the first line on which the Symbol is defined. Line numbers start from 1 and include all lines, **even blank lines and comment lines must be counted**.
                    d. **Folder Reference:** <mcfolder name="$foldername" path="$path"></mcfolder>
-               
+
                    **Symbols Definition:** refer to Classes or Functions. When referring the symbol, use the following symboltype:
                        a. Classes: class
                        b. Functions, Methods, Constructors, Destructors: function
-               
+
                    When you mention any of these symbols in your reply, please use the <mcsymbol></mcsymbol> format as specified.
                        a. **Important:** Please **strictly follow** the above format.
                        b. If you encounter an **unknown type**, format the reference using standard Markdown. For example: Unknown Type Reference: [Reference Name](Reference Link)
-               
+
                    Example Usage:
                        a. If you are referring to `message.go`, and your reply includes references, you should write:
                            I will modify the contents of the <mcfile name="message.go" path="src/backend/message/message.go"></mcfile> file to provide the new method <mcsymbol name="createMultiModalMessage" filename="message.go" path="src/backend/message/message.go" lines="100-120"></mcsymbol>.
@@ -306,11 +303,11 @@ public class TraePromptTest {
                        The use of backticks around references is strictly prohibited. Don't add backticks around reference tags such as <mcfile></mcfile>, <mcurl>, <mcsymbol></mcsymbol>, and <mcfolder></mcfolder>.
                        For example, do not write <mcfile name="message.go" path="src/backend/message/message.go"></mcfile>; instead, write it correctly as <mcfile name="message.go" path="src/backend/message/message.go"></mcfile>.
                </code_reference_guideline>
-               
+
                IMPORTANT: These reference formats are entirely separate from the web citation format (<mcreference></mcreference>). Use the appropriate format for each context:
                - Use <mcreference></mcreference> only for citing web search results with index numbers
                - Use <mcfile></mcfile>, <mcurl>, <mcsymbol></mcsymbol>, and <mcfolder></mcfolder> for referencing code elements
-               
+
                <mcp_toolcall_guidelines>
                Follow these guidelines regarding MCP tool calls:
                1. Only call MCP tools when you think it's necessary, you MUST minimize unnecessary calls and prioritize strategies that solve problems efficiently with fewer calls.
@@ -327,19 +324,19 @@ public class TraePromptTest {
                9. Use MCP search capabilities to enhance your understanding of the codebase and find relevant information.
                10. Leverage MCP tools for continuous project improvement and maintenance.
                </mcp_toolcall_guidelines>
-               
+
                <example>
                  User: I want to create a new React project in my /home/projects directory and then continuously improve it.
                  Assistant: I'll help you create a new React project in your specified directory and set up MCP capabilities for continuous development.
-               
+
                  *Initializes filesystem MCP client with /home/projects as root path*
                  *Creates React project structure with modern best practices*
                  *Sets up development environment and dependencies*
-               
+
                  Your React project has been created successfully! The MCP filesystem client is now configured to work within your /home/projects directory. I can continuously read, modify, and enhance your project as needed.
-               
+
                  Would you like me to add any specific features or components to get started?
-               
+
                  <reasoning>
                    The assistant used MCP capabilities because:
                      1. User specified a target directory for project creation
@@ -348,19 +345,19 @@ public class TraePromptTest {
                      4. MCP tools provide the foundation for iterative development
                  </reasoning>
                </example>
-               
+
                <example>
                  User: I have an existing Python project in /workspace/myapp. Can you help me add new features and improve the code?
                  Assistant: I'll help you enhance your existing Python project. Let me first initialize MCP access to your project directory and examine the current codebase.
-               
+
                  *Initializes filesystem MCP client with /workspace/myapp as root path*
                  *Reads existing project structure and code*
                  *Analyzes current implementation and identifies improvement opportunities*
-               
+
                  I've analyzed your project structure and code. I can see several areas for enhancement. Let me start by improving the error handling in your main module and adding some new features.
-               
+
                  *Uses MCP filesystem tools to make targeted improvements*
-               
+
                  <reasoning>
                    The assistant used MCP capabilities because:
                      1. User has an existing project that needs continuous improvement
@@ -369,22 +366,22 @@ public class TraePromptTest {
                      4. MCP tools enable iterative enhancement without disrupting existing functionality
                  </reasoning>
                </example>
-               
+
                Remember: Always confirm the target directory with users before initializing MCP clients, and use MCP capabilities to provide continuous, iterative development support that builds upon existing work rather than starting from scratch.
                """;
     }
-    
+
     /**
      * 默认的Builder提示词（当文件读取失败时使用）
      */
     private String getDefaultBuilderPrompt() {
         return """
-            You are a powerful agentic AI coding assistant. 
-            
-            You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, 
+            You are a powerful agentic AI coding assistant.
+
+            You are pair programming with a USER to solve their coding task. The task may require creating a new codebase,
             modifying or debugging an existing codebase, or simply answering a question.
-            
-            Your main goal is to follow the USER's instructions at each message. You should analyze the user's input carefully, 
+
+            Your main goal is to follow the USER's instructions at each message. You should analyze the user's input carefully,
             think step by step, and determine whether an additional tool is required to complete the task.
             """;
     }
@@ -395,41 +392,41 @@ public class TraePromptTest {
      */
     private TraeBuilderAgentResult executeTraeBuilderAgent(String systemPrompt, String userQuery) {
         TraeBuilderAgentResult result = new TraeBuilderAgentResult();
-        
+
         try {
             // 第一阶段：任务规划
             log.info("--- 第一阶段：任务规划 ---");
             String planningPrompt = systemPrompt + "\n\n请分析以下用户需求并制定详细的执行计划：\n" + userQuery;
-            
+
             ChatResponse planningResponse = chatModel.call(Prompt.builder()
                     .messages(new UserMessage(planningPrompt))
                     .build());
-            
+
             String taskPlan = planningResponse.getResult().getOutput().getText();
             result.setTaskPlan(taskPlan);
             log.info("任务规划完成: {}", taskPlan);
-            
+
             // 第二阶段：执行监控 - 真实执行项目创建
             log.info("--- 第二阶段：执行监控 ---");
             StringBuilder executionSteps = new StringBuilder();
-            
+
             // 检查是否是Spring Boot项目创建请求
             if (userQuery.toLowerCase().contains("spring boot") || userQuery.toLowerCase().contains("web应用")) {
                 executionSteps.append("开始创建Spring Boot项目...\n");
-                
+
                 // 使用MCP客户端创建实际的项目文件
                 McpSyncClient mcpClient = stdioMcpClient();
-                
+
                 try {
                     // 创建项目根目录
                     String projectPath = "/Users/fuzhengwei/coding/temp/spring-boot-demo";
                     executionSteps.append("1. 创建项目目录: ").append(projectPath).append("\n");
-                    
+
                     // 创建基本的Spring Boot项目结构
                     createSpringBootProject(mcpClient, projectPath, executionSteps);
-                    
+
                     executionSteps.append("Spring Boot项目创建完成！\n");
-                    
+
                 } catch (Exception e) {
                     log.error("创建项目文件时发生错误", e);
                     executionSteps.append("项目创建失败: ").append(e.getMessage()).append("\n");
@@ -443,11 +440,11 @@ public class TraePromptTest {
             } else {
                 // 对于非Spring Boot项目，仍然使用原来的步骤生成逻辑
                 String[] steps = generateExecutionSteps(taskPlan, userQuery);
-                
+
                 for (String step : steps) {
                     log.info("执行步骤: {}", step);
                     executionSteps.append(step).append("\n");
-                    
+
                     // 模拟执行时间
                     try {
                         Thread.sleep(100);
@@ -456,31 +453,31 @@ public class TraePromptTest {
                     }
                 }
             }
-            
+
             result.setExecutionSteps(executionSteps.toString());
-            
+
             // 第三阶段：结果评估
             log.info("--- 第三阶段：结果评估 ---");
-            String evaluationPrompt = "请评估以下执行结果并提供总结：\n" + 
+            String evaluationPrompt = "请评估以下执行结果并提供总结：\n" +
                                     "任务规划：" + taskPlan + "\n" +
                                     "执行步骤：" + executionSteps.toString();
-            
+
             ChatResponse evaluationResponse = chatModel.call(Prompt.builder()
                     .messages(new SystemMessage(systemPrompt), new UserMessage(evaluationPrompt))
                     .build());
-            
+
             String finalResult = evaluationResponse.getResult().getOutput().getText();
             result.setFinalResult(finalResult);
             result.setStatus("SUCCESS");
-            
+
             log.info("结果评估完成: {}", finalResult);
-            
+
         } catch (Exception e) {
             log.error("执行过程中发生错误", e);
             result.setStatus("ERROR");
             result.setFinalResult("执行失败: " + e.getMessage());
         }
-        
+
         return result;
     }
 
@@ -495,16 +492,16 @@ public class TraePromptTest {
                     "任务规划：\n" + taskPlan + "\n\n" +
                     "用户需求：\n" + userQuery + "\n\n" +
                     "请生成6-8个具体可执行的步骤，每个步骤要明确、可操作。";
-            
+
             ChatResponse stepResponse = chatModel.call(Prompt.builder()
                     .messages(new UserMessage(stepGenerationPrompt))
                     .build());
-            
+
             String stepsText = stepResponse.getResult().getOutput().getText();
-            
+
             // 解析AI生成的步骤文本
             return parseStepsFromText(stepsText);
-            
+
         } catch (Exception e) {
             log.warn("动态生成执行步骤失败，使用默认步骤: {}", e.getMessage());
             // 如果AI生成失败，返回通用步骤作为备选
@@ -518,7 +515,7 @@ public class TraePromptTest {
             };
         }
     }
-    
+
     /**
      * 解析AI生成的步骤文本
      */
@@ -526,81 +523,81 @@ public class TraePromptTest {
         if (stepsText == null || stepsText.trim().isEmpty()) {
             return new String[]{"1. 执行任务"};
         }
-        
+
         // 按行分割并过滤空行
         String[] lines = stepsText.split("\\n");
         java.util.List<String> steps = new java.util.ArrayList<>();
-        
+
         for (String line : lines) {
              line = line.trim();
              if (!line.isEmpty() && (line.matches("^\\d+\\s*\\.\\s*.+") || line.matches("^[一二三四五六七八九十]\\s*\\.\\s*.+"))) {
                  steps.add(line);
              }
          }
-        
+
         // 如果解析失败，返回默认步骤
         if (steps.isEmpty()) {
             return new String[]{"1. 执行规划任务"};
         }
-        
+
         return steps.toArray(new String[0]);
     }
-    
+
     /**
      * 使用MCP客户端创建Spring Boot项目
      */
     private void createSpringBootProject(McpSyncClient mcpClient, String projectPath, StringBuilder executionSteps) throws Exception {
         // 创建项目目录结构
         executionSteps.append("2. 创建Maven项目结构...\n");
-        
+
         // 创建pom.xml
         String pomContent = generatePomXml();
         String pomPath = projectPath + "/pom.xml";
         writeFileWithMcp(mcpClient, pomPath, pomContent);
         executionSteps.append("   - 创建pom.xml\n");
-        
+
         // 创建src/main/java目录结构
         String packagePath = projectPath + "/src/main/java/com/example/demo";
-        
+
         // 创建主应用类
         String mainClassContent = generateMainClass();
         String mainClassPath = packagePath + "/DemoApplication.java";
         writeFileWithMcp(mcpClient, mainClassPath, mainClassContent);
         executionSteps.append("   - 创建主应用类 DemoApplication.java\n");
-        
+
         // 创建Controller
         String controllerContent = generateUserController();
         String controllerPath = packagePath + "/controller/UserController.java";
         writeFileWithMcp(mcpClient, controllerPath, controllerContent);
         executionSteps.append("   - 创建用户管理控制器 UserController.java\n");
-        
+
         // 创建Entity
         String entityContent = generateUserEntity();
         String entityPath = packagePath + "/entity/User.java";
         writeFileWithMcp(mcpClient, entityPath, entityContent);
         executionSteps.append("   - 创建用户实体类 User.java\n");
-        
+
         // 创建Service
         String serviceContent = generateUserService();
         String servicePath = packagePath + "/service/UserService.java";
         writeFileWithMcp(mcpClient, servicePath, serviceContent);
         executionSteps.append("   - 创建用户服务类 UserService.java\n");
-        
+
         // 创建Repository
         String repositoryContent = generateUserRepository();
         String repositoryPath = packagePath + "/repository/UserRepository.java";
         writeFileWithMcp(mcpClient, repositoryPath, repositoryContent);
         executionSteps.append("   - 创建用户数据访问层 UserRepository.java\n");
-        
+
         // 创建application.yml
         String configContent = generateApplicationYml();
         String configPath = projectPath + "/src/main/resources/application.yml";
         writeFileWithMcp(mcpClient, configPath, configContent);
         executionSteps.append("   - 创建配置文件 application.yml\n");
-        
+
         executionSteps.append("3. Spring Boot项目结构创建完成\n");
     }
-    
+
     /**
      * 使用MCP客户端写入文件
      */
@@ -608,16 +605,16 @@ public class TraePromptTest {
         // 这里应该调用MCP的文件写入工具
         // 由于当前MCP客户端的具体API可能不同，这里先用日志记录
         log.info("创建文件: {} (长度: {} 字符)", filePath, content.length());
-        
+
         // 实际项目中，这里会调用类似以下的MCP工具：
         // mcpClient.callTool("write_file", Map.of("path", filePath, "content", content));
-        
+
         // 为了演示，我们使用Java NIO直接创建文件
         Path path = Paths.get(filePath);
         Files.createDirectories(path.getParent());
         Files.write(path, content.getBytes(StandardCharsets.UTF_8));
     }
-    
+
     private String generatePomXml() {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                 "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n" +
@@ -656,7 +653,7 @@ public class TraePromptTest {
                 "    </dependencies>\n" +
                 "</project>";
     }
-    
+
     private String generateMainClass() {
         return "package com.example.demo;\n\n" +
                 "import org.springframework.boot.SpringApplication;\n" +
@@ -668,7 +665,7 @@ public class TraePromptTest {
                 "    }\n" +
                 "}";
     }
-    
+
     private String generateUserController() {
         return "package com.example.demo.controller;\n\n" +
                 "import com.example.demo.entity.User;\n" +
@@ -703,7 +700,7 @@ public class TraePromptTest {
                 "    }\n" +
                 "}";
     }
-    
+
     private String generateUserEntity() {
         return "package com.example.demo.entity;\n\n" +
                 "import javax.persistence.*;\n\n" +
@@ -730,7 +727,7 @@ public class TraePromptTest {
                 "    public void setEmail(String email) { this.email = email; }\n" +
                 "}";
     }
-    
+
     private String generateUserService() {
         return "package com.example.demo.service;\n\n" +
                 "import com.example.demo.entity.User;\n" +
@@ -765,7 +762,7 @@ public class TraePromptTest {
                 "    }\n" +
                 "}";
     }
-    
+
     private String generateUserRepository() {
         return "package com.example.demo.repository;\n\n" +
                 "import com.example.demo.entity.User;\n" +
@@ -775,7 +772,7 @@ public class TraePromptTest {
                 "public interface UserRepository extends JpaRepository<User, Long> {\n" +
                 "}";
     }
-    
+
     private String generateApplicationYml() {
         return "server:\n" +
                 "  port: 8080\n\n" +
@@ -803,17 +800,17 @@ public class TraePromptTest {
         private String executionSteps;
         private String finalResult;
         private String status;
-        
+
         // Getters and Setters
         public String getTaskPlan() { return taskPlan; }
         public void setTaskPlan(String taskPlan) { this.taskPlan = taskPlan; }
-        
+
         public String getExecutionSteps() { return executionSteps; }
         public void setExecutionSteps(String executionSteps) { this.executionSteps = executionSteps; }
-        
+
         public String getFinalResult() { return finalResult; }
         public void setFinalResult(String finalResult) { this.finalResult = finalResult; }
-        
+
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
     }
@@ -826,13 +823,13 @@ public class TraePromptTest {
     public void testAdvancedTraeBuilderAgent_MultiToolCollaboration() {
         String systemPrompt = buildAdvancedTraeBuilderPrompt();
         String userQuery = "分析当前项目的代码质量，找出潜在问题，并提供改进建议。";
-        
+
         log.info("=== 高级Trae Builder Agent - 多工具协作测试 ===");
         log.info("用户问题: {}", userQuery);
-        
+
         // 执行多工具协作流程
         MultiToolCollaborationResult result = executeMultiToolCollaboration(systemPrompt, userQuery);
-        
+
         log.info("=== 协作执行结果 ===");
         log.info("工具调用序列: {}", result.getToolCallSequence());
         log.info("分析结果: {}", result.getAnalysisResult());
@@ -846,14 +843,14 @@ public class TraePromptTest {
     private String buildAdvancedTraeBuilderPrompt() {
         try {
             StringBuilder promptBuilder = new StringBuilder();
-            
+
             // 读取基础Builder Prompt
             Path builderPromptPath = Paths.get("docs/dev-ops/prompt/trae/Builder-Prompt.txt");
             if (Files.exists(builderPromptPath)) {
                 promptBuilder.append(Files.readString(builderPromptPath, StandardCharsets.UTF_8));
                 promptBuilder.append("\n\n");
             }
-            
+
             // 读取工具定义
             Path toolsPath = Paths.get("docs/dev-ops/prompt/trae/Builder-Tools.json");
             if (Files.exists(toolsPath)) {
@@ -862,7 +859,7 @@ public class TraePromptTest {
                 promptBuilder.append(toolsContent);
                 promptBuilder.append("\n</available_tools>\n\n");
             }
-            
+
             // 添加高级功能说明
             promptBuilder.append("""
                 <advanced_capabilities>
@@ -873,22 +870,22 @@ public class TraePromptTest {
                 4. **结果优化**: 持续改进直到达到最佳效果
                 </advanced_capabilities>
                 """);
-            
+
             return promptBuilder.toString();
-            
+
         } catch (Exception e) {
             log.error("构建高级提示词失败", e);
             return getDefaultAdvancedPrompt();
         }
     }
-    
+
     /**
      * 默认的高级提示词
      */
     private String getDefaultAdvancedPrompt() {
         return """
             You are an advanced Trae AI Builder agent with multi-tool collaboration capabilities.
-            
+
             Your core abilities include:
             1. **Intelligent Task Decomposition**: Break complex tasks into manageable subtasks
             2. **Multi-tool Coordination**: Orchestrate multiple tools to complete complex operations
@@ -903,26 +900,26 @@ public class TraePromptTest {
      */
     private MultiToolCollaborationResult executeMultiToolCollaboration(String systemPrompt, String userQuery) {
         MultiToolCollaborationResult result = new MultiToolCollaborationResult();
-        
+
         try {
             // 工具调用序列
             StringBuilder toolSequence = new StringBuilder();
-            
+
             // 1. 代码搜索和分析
             toolSequence.append("1. 代码搜索工具 - 扫描项目结构\n");
             toolSequence.append("2. 静态分析工具 - 检测代码问题\n");
             toolSequence.append("3. 依赖分析工具 - 分析依赖关系\n");
-            
+
             // 2. 质量评估
             toolSequence.append("4. 质量评估工具 - 计算质量指标\n");
             toolSequence.append("5. 测试覆盖率工具 - 检查测试覆盖\n");
-            
+
             // 3. 改进建议生成
             toolSequence.append("6. 知识库查询工具 - 获取最佳实践\n");
             toolSequence.append("7. 建议生成工具 - 生成改进方案\n");
-            
+
             result.setToolCallSequence(toolSequence.toString());
-            
+
             // 模拟分析结果
             String analysisResult = """
                 代码质量分析结果：
@@ -933,20 +930,20 @@ public class TraePromptTest {
                 - 性能问题：2个
                 """;
             result.setAnalysisResult(analysisResult);
-            
+
             // 生成改进建议
             ChatResponse suggestionResponse = chatModel.call(Prompt.builder()
-                    .messages(new SystemMessage(systemPrompt), 
+                    .messages(new SystemMessage(systemPrompt),
                              new UserMessage("基于以下分析结果，请提供具体的改进建议：\n" + analysisResult))
                     .build());
-            
+
             result.setImprovementSuggestions(suggestionResponse.getResult().getOutput().getText());
-            
+
         } catch (Exception e) {
             log.error("多工具协作执行失败", e);
             result.setAnalysisResult("执行失败: " + e.getMessage());
         }
-        
+
         return result;
     }
 
@@ -957,14 +954,14 @@ public class TraePromptTest {
         private String toolCallSequence;
         private String analysisResult;
         private String improvementSuggestions;
-        
+
         // Getters and Setters
         public String getToolCallSequence() { return toolCallSequence; }
         public void setToolCallSequence(String toolCallSequence) { this.toolCallSequence = toolCallSequence; }
-        
+
         public String getAnalysisResult() { return analysisResult; }
         public void setAnalysisResult(String analysisResult) { this.analysisResult = analysisResult; }
-        
+
         public String getImprovementSuggestions() { return improvementSuggestions; }
 
         public void setImprovementSuggestions(String improvementSuggestions) { this.improvementSuggestions = improvementSuggestions; }

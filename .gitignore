@@ -70,3 +70,16 @@ Thumbs.db
 /PROMPT_CONTEXT_MEMORY_REARCH.md
 /specs/
 /openspec/
+/docs/
+
+# 敏感配置与本地运行文件不纳入版本控制
+/ai-agent-station-study-app/src/main/resources/application-dev.yml
+/ai-agent-station-study-app/src/main/resources/application-test.yml
+/mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
+/mcp-server-csdn/data/log/
+/reactor-tool/cookies.json
+/reactor-tool/skilloutput/
+/reactor-tool/新建 文本文档.txt
+/ui/.env
+/ui/.claude/
+/ui/.serena/

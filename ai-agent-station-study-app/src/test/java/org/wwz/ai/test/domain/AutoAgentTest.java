@@ -19,8 +19,6 @@ import org.wwz.ai.domain.agent.service.runtime.AiClientRuntimeRegistry;
 import java.util.Arrays;
 
 /**
- * @author xiaofuge bugstack.cn @小傅哥
- * 2025/7/27 17:52
  */
 @Slf4j
 @RunWith(SpringRunner.class)
