@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 
 /**
  * AI智能体拖拉拽配置历史表
- * @author bugstack虫洞栈
  * @description AI智能体拖拉拽配置历史表 PO 对象
  */
 @Data

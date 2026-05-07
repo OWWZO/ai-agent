@@ -10,8 +10,6 @@ import java.io.Serializable;
 
 /**
  * 知识库配置请求 DTO
- *
- * @author bugstack虫洞栈
  * @description 知识库配置请求数据传输对象
  */
 @Data

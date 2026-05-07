@@ -10,8 +10,6 @@ import java.io.Serializable;
 
 /**
  * MCP客户端配置查询请求 DTO
- *
- * @author bugstack虫洞栈
  * @description MCP客户端配置查询请求数据传输对象
  */
 @Data

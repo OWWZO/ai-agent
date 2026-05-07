@@ -11,8 +11,6 @@ import java.time.LocalDateTime;
 
 /**
  * 管理员用户响应 DTO
- *
- * @author bugstack虫洞栈
  * @description 管理员用户响应数据传输对象
  */
 @Data

@@ -9,8 +9,6 @@ import java.util.List;
 
 /**
  * 系统提示词配置管理服务接口
- *
- * @author bugstack虫洞栈
  * @description 系统提示词配置管理服务接口
  */
 public interface IAiClientSystemPromptAdminService {

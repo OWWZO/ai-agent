@@ -10,8 +10,6 @@ import java.io.Serializable;
 
 /**
  * 顾问配置查询请求 DTO
- *
- * @author bugstack虫洞栈
  * @description 顾问配置查询请求数据传输对象
  */
 @Data

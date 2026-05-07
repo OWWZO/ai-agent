@@ -8,7 +8,6 @@ import java.util.List;
 
 /**
  * AI智能体拖拉拽配置主表 DAO
- * @author bugstack虫洞栈
  * @description AI智能体拖拉拽配置主表数据访问对象
  */
 @Mapper

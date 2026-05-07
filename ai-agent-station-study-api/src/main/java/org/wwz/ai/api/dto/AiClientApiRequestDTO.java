@@ -10,8 +10,6 @@ import java.io.Serializable;
 
 /**
  * AI客户端API配置请求 DTO
- *
- * @author bugstack虫洞栈
  * @description AI客户端API配置请求数据传输对象
  */
 @Data

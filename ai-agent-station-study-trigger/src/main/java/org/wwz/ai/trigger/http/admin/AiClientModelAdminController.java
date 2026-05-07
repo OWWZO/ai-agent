@@ -20,8 +20,6 @@ import java.util.stream.Collectors;
 
 /**
  * AI客户端模型管理控制器
- *
- * @author bugstack虫洞栈
  * @description AI客户端模型配置管理控制器
  */
 @Slf4j
@@ -38,14 +36,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> createAiClientModel(@RequestBody AiClientModelRequestDTO request) {
         try {
             log.info("创建AI客户端模型配置请求：{}", request);
-            
+
             // DTO转PO
             AiClientModel aiClientModel = convertToAiClientModel(request);
             aiClientModel.setCreateTime(LocalDateTime.now());
             aiClientModel.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientModelDao.insert(aiClientModel);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -66,7 +64,7 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> updateAiClientModelById(@RequestBody AiClientModelRequestDTO request) {
         try {
             log.info("根据ID更新AI客户端模型配置请求：{}", request);
-            
+
             if (request.getId() == null) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -74,13 +72,13 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientModel aiClientModel = convertToAiClientModel(request);
             aiClientModel.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientModelDao.updateById(aiClientModel);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -101,7 +99,7 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> updateAiClientModelByModelId(@RequestBody AiClientModelRequestDTO request) {
         try {
             log.info("根据模型ID更新AI客户端模型配置请求：{}", request);
-            
+
             if (!StringUtils.hasText(request.getModelId())) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -109,13 +107,13 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientModel aiClientModel = convertToAiClientModel(request);
             aiClientModel.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientModelDao.updateByModelId(aiClientModel);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -136,9 +134,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> deleteAiClientModelById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID删除AI客户端模型配置请求：{}", id);
-            
+
             int result = aiClientModelDao.deleteById(id);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -159,9 +157,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> deleteAiClientModelByModelId(@PathVariable("modelId") String modelId) {
         try {
             log.info("根据模型ID删除AI客户端模型配置请求：{}", modelId);
-            
+
             int result = aiClientModelDao.deleteByModelId(modelId);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -182,9 +180,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<AiClientModelResponseDTO> queryAiClientModelById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID查询AI客户端模型配置请求：{}", id);
-            
+
             AiClientModel aiClientModel = aiClientModelDao.queryById(id);
-            
+
             if (aiClientModel == null) {
                 return Response.<AiClientModelResponseDTO>builder()
                         .code(ResponseCode.UN_ERROR.getCode())
@@ -192,10 +190,10 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                         .data(null)
                         .build();
             }
-            
+
             // PO转DTO
             AiClientModelResponseDTO responseDTO = convertToAiClientModelResponseDTO(aiClientModel);
-            
+
             return Response.<AiClientModelResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -216,9 +214,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<AiClientModelResponseDTO> queryAiClientModelByModelId(@PathVariable("modelId") String modelId) {
         try {
             log.info("根据模型ID查询AI客户端模型配置请求：{}", modelId);
-            
+
             AiClientModel aiClientModel = aiClientModelDao.queryByModelId(modelId);
-            
+
             if (aiClientModel == null) {
                 return Response.<AiClientModelResponseDTO>builder()
                         .code(ResponseCode.UN_ERROR.getCode())
@@ -226,10 +224,10 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                         .data(null)
                         .build();
             }
-            
+
             // PO转DTO
             AiClientModelResponseDTO responseDTO = convertToAiClientModelResponseDTO(aiClientModel);
-            
+
             return Response.<AiClientModelResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -250,14 +248,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<List<AiClientModelResponseDTO>> queryAiClientModelsByApiId(@PathVariable("apiId") String apiId) {
         try {
             log.info("根据API配置ID查询AI客户端模型配置列表请求：{}", apiId);
-            
+
             List<AiClientModel> aiClientModels = aiClientModelDao.queryByApiId(apiId);
-            
+
             // PO转DTO
             List<AiClientModelResponseDTO> responseDTOs = aiClientModels.stream()
                     .map(this::convertToAiClientModelResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientModelResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -278,14 +276,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<List<AiClientModelResponseDTO>> queryAiClientModelsByModelType(@PathVariable("modelType") String modelType) {
         try {
             log.info("根据模型类型查询AI客户端模型配置列表请求：{}", modelType);
-            
+
             List<AiClientModel> aiClientModels = aiClientModelDao.queryByModelType(modelType);
-            
+
             // PO转DTO
             List<AiClientModelResponseDTO> responseDTOs = aiClientModels.stream()
                     .map(this::convertToAiClientModelResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientModelResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -306,14 +304,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<List<AiClientModelResponseDTO>> queryEnabledAiClientModels() {
         try {
             log.info("查询所有启用的AI客户端模型配置请求");
-            
+
             List<AiClientModel> aiClientModels = aiClientModelDao.queryEnabledModels();
-            
+
             // PO转DTO
             List<AiClientModelResponseDTO> responseDTOs = aiClientModels.stream()
                     .map(this::convertToAiClientModelResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientModelResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -334,9 +332,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<List<AiClientModelResponseDTO>> queryAiClientModelList(@RequestBody AiClientModelQueryRequestDTO request) {
         try {
             log.info("根据条件查询AI客户端模型配置列表请求：{}", request);
-            
+
             List<AiClientModel> aiClientModels;
-            
+
             // 根据不同条件查询
             if (StringUtils.hasText(request.getModelId())) {
                 AiClientModel model = aiClientModelDao.queryByModelId(request.getModelId());
@@ -354,12 +352,12 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             } else {
                 aiClientModels = aiClientModelDao.queryAll();
             }
-            
+
             // PO转DTO
             List<AiClientModelResponseDTO> responseDTOs = aiClientModels.stream()
                     .map(this::convertToAiClientModelResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientModelResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -380,14 +378,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<List<AiClientModelResponseDTO>> queryAllAiClientModels() {
         try {
             log.info("查询所有AI客户端模型配置请求");
-            
+
             List<AiClientModel> aiClientModels = aiClientModelDao.queryAll();
-            
+
             // PO转DTO
             List<AiClientModelResponseDTO> responseDTOs = aiClientModels.stream()
                     .map(this::convertToAiClientModelResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientModelResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

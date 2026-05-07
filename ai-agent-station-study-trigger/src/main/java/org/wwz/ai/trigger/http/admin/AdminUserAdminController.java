@@ -21,8 +21,6 @@ import java.util.stream.Collectors;
 
 /**
  * 管理员用户管理控制器
- *
- * @author bugstack虫洞栈
  * @description 管理员用户管理控制器
  */
 @Slf4j
@@ -39,14 +37,14 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> createAdminUser(@RequestBody AdminUserRequestDTO request) {
         try {
             log.info("创建管理员用户请求：{}", request);
-            
+
             // DTO转PO
             AdminUser adminUser = convertToAdminUser(request);
             adminUser.setCreateTime(LocalDateTime.now());
             adminUser.setUpdateTime(LocalDateTime.now());
-            
+
             int result = adminUserDao.insert(adminUser);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -67,7 +65,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> updateAdminUserById(@RequestBody AdminUserRequestDTO request) {
         try {
             log.info("根据ID更新管理员用户请求：{}", request);
-            
+
             if (request.getId() == null) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -75,13 +73,13 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AdminUser adminUser = convertToAdminUser(request);
             adminUser.setUpdateTime(LocalDateTime.now());
-            
+
             int result = adminUserDao.updateById(adminUser);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -102,7 +100,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> updateAdminUserByUserId(@RequestBody AdminUserRequestDTO request) {
         try {
             log.info("根据用户ID更新管理员用户请求：{}", request);
-            
+
             if (!StringUtils.hasText(request.getUserId())) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -110,13 +108,13 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AdminUser adminUser = convertToAdminUser(request);
             adminUser.setUpdateTime(LocalDateTime.now());
-            
+
             int result = adminUserDao.updateByUserId(adminUser);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -137,9 +135,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> deleteAdminUserById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID删除管理员用户请求：{}", id);
-            
+
             int result = adminUserDao.deleteById(id);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -160,9 +158,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> deleteAdminUserByUserId(@PathVariable("userId") String userId) {
         try {
             log.info("根据用户ID删除管理员用户请求：{}", userId);
-            
+
             int result = adminUserDao.deleteByUserId(userId);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -183,7 +181,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<AdminUserResponseDTO> queryAdminUserById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID查询管理员用户请求：{}", id);
-            
+
             AdminUser adminUser = adminUserDao.queryById(id);
             if (adminUser == null) {
                 return Response.<AdminUserResponseDTO>builder()
@@ -192,9 +190,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             AdminUserResponseDTO responseDTO = convertToAdminUserResponseDTO(adminUser);
-            
+
             return Response.<AdminUserResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -215,7 +213,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<AdminUserResponseDTO> queryAdminUserByUserId(@PathVariable("userId") String userId) {
         try {
             log.info("根据用户ID查询管理员用户请求：{}", userId);
-            
+
             AdminUser adminUser = adminUserDao.queryByUserId(userId);
             if (adminUser == null) {
                 return Response.<AdminUserResponseDTO>builder()
@@ -224,9 +222,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             AdminUserResponseDTO responseDTO = convertToAdminUserResponseDTO(adminUser);
-            
+
             return Response.<AdminUserResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -247,7 +245,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<AdminUserResponseDTO> queryAdminUserByUsername(@PathVariable("username") String username) {
         try {
             log.info("根据用户名查询管理员用户请求：{}", username);
-            
+
             AdminUser adminUser = adminUserDao.queryByUsername(username);
             if (adminUser == null) {
                 return Response.<AdminUserResponseDTO>builder()
@@ -256,9 +254,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             AdminUserResponseDTO responseDTO = convertToAdminUserResponseDTO(adminUser);
-            
+
             return Response.<AdminUserResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -279,12 +277,12 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<List<AdminUserResponseDTO>> queryEnabledAdminUsers() {
         try {
             log.info("查询启用状态的管理员用户列表");
-            
+
             List<AdminUser> adminUsers = adminUserDao.queryEnabledUsers();
             List<AdminUserResponseDTO> responseDTOs = adminUsers.stream()
                     .map(this::convertToAdminUserResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AdminUserResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -305,12 +303,12 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<List<AdminUserResponseDTO>> queryAdminUsersByStatus(@PathVariable("status") Integer status) {
         try {
             log.info("根据状态查询管理员用户列表请求：{}", status);
-            
+
             List<AdminUser> adminUsers = adminUserDao.queryByStatus(status);
             List<AdminUserResponseDTO> responseDTOs = adminUsers.stream()
                     .map(this::convertToAdminUserResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AdminUserResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -331,10 +329,10 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<List<AdminUserResponseDTO>> queryAdminUserList(@RequestBody AdminUserQueryRequestDTO request) {
         try {
             log.info("根据条件查询管理员用户列表请求：{}", request);
-            
+
             // 这里可以根据查询条件进行过滤，暂时先查询所有
             List<AdminUser> adminUsers = adminUserDao.queryAll();
-            
+
             // 根据查询条件进行过滤
             List<AdminUser> filteredUsers = adminUsers.stream()
                     .filter(user -> {
@@ -351,18 +349,18 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         return match;
                     })
                     .collect(Collectors.toList());
-            
+
             // 分页处理
             int pageNum = request.getPageNum() != null ? request.getPageNum() : 1;
             int pageSize = request.getPageSize() != null ? request.getPageSize() : 10;
             int startIndex = (pageNum - 1) * pageSize;
             int endIndex = Math.min(startIndex + pageSize, filteredUsers.size());
-            
+
             List<AdminUser> pagedUsers = filteredUsers.subList(startIndex, endIndex);
             List<AdminUserResponseDTO> responseDTOs = pagedUsers.stream()
                     .map(this::convertToAdminUserResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AdminUserResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -383,12 +381,12 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<List<AdminUserResponseDTO>> queryAllAdminUsers() {
         try {
             log.info("查询所有管理员用户");
-            
+
             List<AdminUser> adminUsers = adminUserDao.queryAll();
             List<AdminUserResponseDTO> responseDTOs = adminUsers.stream()
                     .map(this::convertToAdminUserResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AdminUserResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -409,7 +407,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<AdminUserResponseDTO> loginAdminUser(@RequestBody AdminUserLoginRequestDTO request) {
         try {
             log.info("管理员用户登录请求：{}", request.getUsername());
-            
+
             AdminUser adminUser = adminUserDao.queryByUsernameAndPassword(request.getUsername(), request.getPassword());
             if (adminUser == null) {
                 return Response.<AdminUserResponseDTO>builder()
@@ -418,7 +416,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             // 检查用户状态
             if (adminUser.getStatus() == 0) {
                 return Response.<AdminUserResponseDTO>builder()
@@ -427,7 +425,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             if (adminUser.getStatus() == 2) {
                 return Response.<AdminUserResponseDTO>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -435,9 +433,9 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(null)
                         .build();
             }
-            
+
             AdminUserResponseDTO responseDTO = convertToAdminUserResponseDTO(adminUser);
-            
+
             return Response.<AdminUserResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -458,7 +456,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     public Response<Boolean> validateAdminUserLogin(@RequestBody AdminUserLoginRequestDTO request) {
         try {
             log.info("管理员用户登录校验请求：{}", request.getUsername());
-            
+
             // 参数校验
             if (!StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
                 return Response.<Boolean>builder()
@@ -467,7 +465,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             // 查询用户
             AdminUser adminUser = adminUserDao.queryByUsernameAndPassword(request.getUsername(), request.getPassword());
             if (adminUser == null) {
@@ -477,7 +475,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             // 检查用户状态
             if (adminUser.getStatus() == 0) {
                 return Response.<Boolean>builder()
@@ -486,7 +484,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             if (adminUser.getStatus() == 2) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.LOGIN_FAILED.getCode())
@@ -494,7 +492,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
                         .data(false)
                         .build();
             }
-            
+
             // 登录校验成功
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())

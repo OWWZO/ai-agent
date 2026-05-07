@@ -22,8 +22,6 @@ import java.util.stream.Collectors;
 
 /**
  * 知识库配置管理控制器
- *
- * @author bugstack虫洞栈
  * @description 知识库配置管理控制器
  */
 @Slf4j
@@ -43,14 +41,14 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> createAiClientRagOrder(@RequestBody AiClientRagOrderRequestDTO request) {
         try {
             log.info("创建知识库配置请求：{}", request);
-            
+
             // DTO转PO
             AiClientRagOrder aiClientRagOrder = convertToAiClientRagOrder(request);
             aiClientRagOrder.setCreateTime(LocalDateTime.now());
             aiClientRagOrder.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientRagOrderDao.insert(aiClientRagOrder);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -71,7 +69,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> updateAiClientRagOrderById(@RequestBody AiClientRagOrderRequestDTO request) {
         try {
             log.info("根据ID更新知识库配置请求：{}", request);
-            
+
             if (request.getId() == null) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -79,13 +77,13 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientRagOrder aiClientRagOrder = convertToAiClientRagOrder(request);
             aiClientRagOrder.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientRagOrderDao.updateById(aiClientRagOrder);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -106,7 +104,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> updateAiClientRagOrderByRagId(@RequestBody AiClientRagOrderRequestDTO request) {
         try {
             log.info("根据知识库ID更新知识库配置请求：{}", request);
-            
+
             if (!StringUtils.hasText(request.getRagId())) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -114,13 +112,13 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientRagOrder aiClientRagOrder = convertToAiClientRagOrder(request);
             aiClientRagOrder.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientRagOrderDao.updateByRagId(aiClientRagOrder);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -141,9 +139,9 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> deleteAiClientRagOrderById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID删除知识库配置：{}", id);
-            
+
             int result = aiClientRagOrderDao.deleteById(id);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -164,9 +162,9 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<Boolean> deleteAiClientRagOrderByRagId(@PathVariable("ragId") String ragId) {
         try {
             log.info("根据知识库ID删除知识库配置：{}", ragId);
-            
+
             int result = aiClientRagOrderDao.deleteByRagId(ragId);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -187,7 +185,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<AiClientRagOrderResponseDTO> queryAiClientRagOrderById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID查询知识库配置：{}", id);
-            
+
             AiClientRagOrder aiClientRagOrder = aiClientRagOrderDao.queryById(id);
             if (aiClientRagOrder == null) {
                 return Response.<AiClientRagOrderResponseDTO>builder()
@@ -196,9 +194,9 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                         .data(null)
                         .build();
             }
-            
+
             AiClientRagOrderResponseDTO responseDTO = convertToAiClientRagOrderResponseDTO(aiClientRagOrder);
-            
+
             return Response.<AiClientRagOrderResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -219,7 +217,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<AiClientRagOrderResponseDTO> queryAiClientRagOrderByRagId(@PathVariable("ragId") String ragId) {
         try {
             log.info("根据知识库ID查询知识库配置：{}", ragId);
-            
+
             AiClientRagOrder aiClientRagOrder = aiClientRagOrderDao.queryByRagId(ragId);
             if (aiClientRagOrder == null) {
                 return Response.<AiClientRagOrderResponseDTO>builder()
@@ -228,9 +226,9 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                         .data(null)
                         .build();
             }
-            
+
             AiClientRagOrderResponseDTO responseDTO = convertToAiClientRagOrderResponseDTO(aiClientRagOrder);
-            
+
             return Response.<AiClientRagOrderResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -251,12 +249,12 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<List<AiClientRagOrderResponseDTO>> queryEnabledAiClientRagOrders() {
         try {
             log.info("查询启用的知识库配置");
-            
+
             List<AiClientRagOrder> aiClientRagOrders = aiClientRagOrderDao.queryEnabledRagOrders();
             List<AiClientRagOrderResponseDTO> responseDTOs = aiClientRagOrders.stream()
                     .map(this::convertToAiClientRagOrderResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientRagOrderResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -277,12 +275,12 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<List<AiClientRagOrderResponseDTO>> queryAiClientRagOrdersByKnowledgeTag(@PathVariable("knowledgeTag") String knowledgeTag) {
         try {
             log.info("根据知识标签查询知识库配置：{}", knowledgeTag);
-            
+
             List<AiClientRagOrder> aiClientRagOrders = aiClientRagOrderDao.queryByKnowledgeTag(knowledgeTag);
             List<AiClientRagOrderResponseDTO> responseDTOs = aiClientRagOrders.stream()
                     .map(this::convertToAiClientRagOrderResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientRagOrderResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -303,14 +301,14 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<List<AiClientRagOrderResponseDTO>> queryAiClientRagOrdersByStatus(@PathVariable("status") Integer status) {
         try {
             log.info("根据状态查询知识库配置：{}", status);
-            
+
             // 这里需要根据实际的DAO方法实现，如果没有可以通过queryAll然后过滤
             List<AiClientRagOrder> aiClientRagOrders = aiClientRagOrderDao.queryAll();
             List<AiClientRagOrderResponseDTO> responseDTOs = aiClientRagOrders.stream()
                     .filter(order -> order.getStatus().equals(status))
                     .map(this::convertToAiClientRagOrderResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientRagOrderResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -331,10 +329,10 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<List<AiClientRagOrderResponseDTO>> queryAiClientRagOrderList(@RequestBody AiClientRagOrderQueryRequestDTO request) {
         try {
             log.info("分页查询知识库配置列表：{}", request);
-            
+
             // 这里简化实现，实际项目中可能需要实现分页查询
             List<AiClientRagOrder> aiClientRagOrders = aiClientRagOrderDao.queryAll();
-            
+
             // 根据查询条件过滤
             List<AiClientRagOrder> filteredOrders = aiClientRagOrders.stream()
                     .filter(order -> {
@@ -354,7 +352,7 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                         return match;
                     })
                     .collect(Collectors.toList());
-            
+
             // 简单分页处理
             if (request.getPageNum() != null && request.getPageSize() != null) {
                 int start = (request.getPageNum() - 1) * request.getPageSize();
@@ -365,11 +363,11 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
                     filteredOrders.clear();
                 }
             }
-            
+
             List<AiClientRagOrderResponseDTO> responseDTOs = filteredOrders.stream()
                     .map(this::convertToAiClientRagOrderResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientRagOrderResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -390,12 +388,12 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
     public Response<List<AiClientRagOrderResponseDTO>> queryAllAiClientRagOrders() {
         try {
             log.info("查询所有知识库配置");
-            
+
             List<AiClientRagOrder> aiClientRagOrders = aiClientRagOrderDao.queryAll();
             List<AiClientRagOrderResponseDTO> responseDTOs = aiClientRagOrders.stream()
                     .map(this::convertToAiClientRagOrderResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientRagOrderResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

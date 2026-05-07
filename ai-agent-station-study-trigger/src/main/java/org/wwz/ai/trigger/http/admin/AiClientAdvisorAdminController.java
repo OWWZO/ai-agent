@@ -20,8 +20,6 @@ import java.util.stream.Collectors;
 
 /**
  * 顾问配置管理控制器
- *
- * @author bugstack虫洞栈
  * @description 顾问配置管理控制器
  */
 @Slf4j
@@ -38,14 +36,14 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<Boolean> createAiClientAdvisor(@RequestBody AiClientAdvisorRequestDTO request) {
         try {
             log.info("创建顾问配置请求：{}", request);
-            
+
             // DTO转PO
             AiClientAdvisor aiClientAdvisor = convertToAiClientAdvisor(request);
             aiClientAdvisor.setCreateTime(LocalDateTime.now());
             aiClientAdvisor.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientAdvisorDao.insert(aiClientAdvisor);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -66,7 +64,7 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<Boolean> updateAiClientAdvisorById(@RequestBody AiClientAdvisorRequestDTO request) {
         try {
             log.info("根据ID更新顾问配置请求：{}", request);
-            
+
             if (request.getId() == null) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -74,13 +72,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientAdvisor aiClientAdvisor = convertToAiClientAdvisor(request);
             aiClientAdvisor.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientAdvisorDao.updateById(aiClientAdvisor);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -101,7 +99,7 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<Boolean> updateAiClientAdvisorByAdvisorId(@RequestBody AiClientAdvisorRequestDTO request) {
         try {
             log.info("根据顾问ID更新顾问配置请求：{}", request);
-            
+
             if (!StringUtils.hasText(request.getAdvisorId())) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -109,13 +107,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientAdvisor aiClientAdvisor = convertToAiClientAdvisor(request);
             aiClientAdvisor.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientAdvisorDao.updateByAdvisorId(aiClientAdvisor);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -136,9 +134,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<Boolean> deleteAiClientAdvisorById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID删除顾问配置请求：{}", id);
-            
+
             int result = aiClientAdvisorDao.deleteById(id);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -159,9 +157,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<Boolean> deleteAiClientAdvisorByAdvisorId(@PathVariable("advisorId") String advisorId) {
         try {
             log.info("根据顾问ID删除顾问配置请求：{}", advisorId);
-            
+
             int result = aiClientAdvisorDao.deleteByAdvisorId(advisorId);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -182,9 +180,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<AiClientAdvisorResponseDTO> queryAiClientAdvisorById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID查询顾问配置请求：{}", id);
-            
+
             AiClientAdvisor aiClientAdvisor = aiClientAdvisorDao.queryById(id);
-            
+
             if (aiClientAdvisor == null) {
                 return Response.<AiClientAdvisorResponseDTO>builder()
                         .code(ResponseCode.SUCCESS.getCode())
@@ -192,9 +190,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                         .data(null)
                         .build();
             }
-            
+
             AiClientAdvisorResponseDTO responseDTO = convertToAiClientAdvisorResponseDTO(aiClientAdvisor);
-            
+
             return Response.<AiClientAdvisorResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -215,9 +213,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<AiClientAdvisorResponseDTO> queryAiClientAdvisorByAdvisorId(@PathVariable("advisorId") String advisorId) {
         try {
             log.info("根据顾问ID查询顾问配置请求：{}", advisorId);
-            
+
             AiClientAdvisor aiClientAdvisor = aiClientAdvisorDao.queryByAdvisorId(advisorId);
-            
+
             if (aiClientAdvisor == null) {
                 return Response.<AiClientAdvisorResponseDTO>builder()
                         .code(ResponseCode.SUCCESS.getCode())
@@ -225,9 +223,9 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                         .data(null)
                         .build();
             }
-            
+
             AiClientAdvisorResponseDTO responseDTO = convertToAiClientAdvisorResponseDTO(aiClientAdvisor);
-            
+
             return Response.<AiClientAdvisorResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -248,13 +246,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<List<AiClientAdvisorResponseDTO>> queryEnabledAiClientAdvisors() {
         try {
             log.info("查询所有启用的顾问配置");
-            
+
             List<AiClientAdvisor> aiClientAdvisors = aiClientAdvisorDao.queryByStatus(1);
-            
+
             List<AiClientAdvisorResponseDTO> responseDTOs = aiClientAdvisors.stream()
                     .map(this::convertToAiClientAdvisorResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientAdvisorResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -275,13 +273,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<List<AiClientAdvisorResponseDTO>> queryAiClientAdvisorsByStatus(@PathVariable("status") Integer status) {
         try {
             log.info("根据状态查询顾问配置请求：{}", status);
-            
+
             List<AiClientAdvisor> aiClientAdvisors = aiClientAdvisorDao.queryByStatus(status);
-            
+
             List<AiClientAdvisorResponseDTO> responseDTOs = aiClientAdvisors.stream()
                     .map(this::convertToAiClientAdvisorResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientAdvisorResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -302,13 +300,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<List<AiClientAdvisorResponseDTO>> queryAiClientAdvisorsByType(@PathVariable("advisorType") String advisorType) {
         try {
             log.info("根据顾问类型查询顾问配置请求：{}", advisorType);
-            
+
             List<AiClientAdvisor> aiClientAdvisors = aiClientAdvisorDao.queryByAdvisorType(advisorType);
-            
+
             List<AiClientAdvisorResponseDTO> responseDTOs = aiClientAdvisors.stream()
                     .map(this::convertToAiClientAdvisorResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientAdvisorResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -329,10 +327,10 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<List<AiClientAdvisorResponseDTO>> queryAiClientAdvisorList(@RequestBody AiClientAdvisorQueryRequestDTO request) {
         try {
             log.info("根据条件查询顾问配置列表请求：{}", request);
-            
+
             // 根据查询条件获取数据
             List<AiClientAdvisor> aiClientAdvisors;
-            
+
             if (StringUtils.hasText(request.getAdvisorId())) {
                 // 如果有顾问ID，直接查询
                 AiClientAdvisor advisor = aiClientAdvisorDao.queryByAdvisorId(request.getAdvisorId());
@@ -347,12 +345,12 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                 // 否则查询所有
                 aiClientAdvisors = aiClientAdvisorDao.queryAll();
             }
-            
+
             // 过滤条件
             List<AiClientAdvisor> filteredAdvisors = aiClientAdvisors.stream()
                     .filter(advisor -> {
                         // 顾问名称模糊查询
-                        if (StringUtils.hasText(request.getAdvisorName()) && 
+                        if (StringUtils.hasText(request.getAdvisorName()) &&
                             !advisor.getAdvisorName().contains(request.getAdvisorName())) {
                             return false;
                         }
@@ -363,25 +361,25 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
                         return true;
                     })
                     .collect(Collectors.toList());
-            
+
             // 分页处理（简单实现）
             if (request.getPageNum() != null && request.getPageSize() != null) {
                 int pageNum = Math.max(1, request.getPageNum());
                 int pageSize = Math.max(1, request.getPageSize());
                 int startIndex = (pageNum - 1) * pageSize;
                 int endIndex = Math.min(startIndex + pageSize, filteredAdvisors.size());
-                
+
                 if (startIndex < filteredAdvisors.size()) {
                     filteredAdvisors = filteredAdvisors.subList(startIndex, endIndex);
                 } else {
                     filteredAdvisors = List.of();
                 }
             }
-            
+
             List<AiClientAdvisorResponseDTO> responseDTOs = filteredAdvisors.stream()
                     .map(this::convertToAiClientAdvisorResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientAdvisorResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -402,13 +400,13 @@ public class AiClientAdvisorAdminController implements IAiClientAdvisorAdminServ
     public Response<List<AiClientAdvisorResponseDTO>> queryAllAiClientAdvisors() {
         try {
             log.info("查询所有顾问配置");
-            
+
             List<AiClientAdvisor> aiClientAdvisors = aiClientAdvisorDao.queryAll();
-            
+
             List<AiClientAdvisorResponseDTO> responseDTOs = aiClientAdvisors.stream()
                     .map(this::convertToAiClientAdvisorResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientAdvisorResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

@@ -9,8 +9,6 @@ import java.util.List;
 
 /**
  * MCP客户端配置管理服务接口
- *
- * @author bugstack虫洞栈
  * @description MCP客户端配置管理服务接口
  */
 public interface IAiClientToolMcpAdminService {

@@ -20,8 +20,6 @@ import java.util.stream.Collectors;
 
 /**
  * 系统提示词配置管理控制器
- *
- * @author bugstack虫洞栈
  * @description 系统提示词配置管理控制器
  */
 @Slf4j
@@ -38,14 +36,14 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<Boolean> createAiClientSystemPrompt(@RequestBody AiClientSystemPromptRequestDTO request) {
         try {
             log.info("创建系统提示词配置请求：{}", request);
-            
+
             // DTO转PO
             AiClientSystemPrompt aiClientSystemPrompt = convertToAiClientSystemPrompt(request);
             aiClientSystemPrompt.setCreateTime(LocalDateTime.now());
             aiClientSystemPrompt.setUpdateTime(LocalDateTime.now());
-            
+
             aiClientSystemPromptDao.insert(aiClientSystemPrompt);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -66,7 +64,7 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<Boolean> updateAiClientSystemPromptById(@RequestBody AiClientSystemPromptRequestDTO request) {
         try {
             log.info("根据ID更新系统提示词配置请求：{}", request);
-            
+
             if (request.getId() == null) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -74,13 +72,13 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientSystemPrompt aiClientSystemPrompt = convertToAiClientSystemPrompt(request);
             aiClientSystemPrompt.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientSystemPromptDao.updateById(aiClientSystemPrompt);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -101,7 +99,7 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<Boolean> updateAiClientSystemPromptByPromptId(@RequestBody AiClientSystemPromptRequestDTO request) {
         try {
             log.info("根据提示词ID更新系统提示词配置请求：{}", request);
-            
+
             if (!StringUtils.hasText(request.getPromptId())) {
                 return Response.<Boolean>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -109,13 +107,13 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
                         .data(false)
                         .build();
             }
-            
+
             // DTO转PO
             AiClientSystemPrompt aiClientSystemPrompt = convertToAiClientSystemPrompt(request);
             aiClientSystemPrompt.setUpdateTime(LocalDateTime.now());
-            
+
             int result = aiClientSystemPromptDao.updateByPromptId(aiClientSystemPrompt);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -136,9 +134,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<Boolean> deleteAiClientSystemPromptById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID删除系统提示词配置：{}", id);
-            
+
             int result = aiClientSystemPromptDao.deleteById(id);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -159,9 +157,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<Boolean> deleteAiClientSystemPromptByPromptId(@PathVariable("promptId") String promptId) {
         try {
             log.info("根据提示词ID删除系统提示词配置：{}", promptId);
-            
+
             int result = aiClientSystemPromptDao.deleteByPromptId(promptId);
-            
+
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -182,9 +180,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<AiClientSystemPromptResponseDTO> queryAiClientSystemPromptById(@PathVariable("id") Long id) {
         try {
             log.info("根据ID查询系统提示词配置：{}", id);
-            
+
             AiClientSystemPrompt aiClientSystemPrompt = aiClientSystemPromptDao.queryById(id);
-            
+
             if (aiClientSystemPrompt == null) {
                 return Response.<AiClientSystemPromptResponseDTO>builder()
                         .code(ResponseCode.UN_ERROR.getCode())
@@ -192,9 +190,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
                         .data(null)
                         .build();
             }
-            
+
             AiClientSystemPromptResponseDTO responseDTO = convertToAiClientSystemPromptResponseDTO(aiClientSystemPrompt);
-            
+
             return Response.<AiClientSystemPromptResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -215,9 +213,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<AiClientSystemPromptResponseDTO> queryAiClientSystemPromptByPromptId(@PathVariable("promptId") String promptId) {
         try {
             log.info("根据提示词ID查询系统提示词配置：{}", promptId);
-            
+
             AiClientSystemPrompt aiClientSystemPrompt = aiClientSystemPromptDao.queryByPromptId(promptId);
-            
+
             if (aiClientSystemPrompt == null) {
                 return Response.<AiClientSystemPromptResponseDTO>builder()
                         .code(ResponseCode.UN_ERROR.getCode())
@@ -225,9 +223,9 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
                         .data(null)
                         .build();
             }
-            
+
             AiClientSystemPromptResponseDTO responseDTO = convertToAiClientSystemPromptResponseDTO(aiClientSystemPrompt);
-            
+
             return Response.<AiClientSystemPromptResponseDTO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -248,13 +246,13 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<List<AiClientSystemPromptResponseDTO>> queryAllAiClientSystemPrompts() {
         try {
             log.info("查询所有系统提示词配置");
-            
+
             List<AiClientSystemPrompt> aiClientSystemPrompts = aiClientSystemPromptDao.queryAll();
-            
+
             List<AiClientSystemPromptResponseDTO> responseDTOs = aiClientSystemPrompts.stream()
                     .map(this::convertToAiClientSystemPromptResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientSystemPromptResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -275,13 +273,13 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<List<AiClientSystemPromptResponseDTO>> queryEnabledAiClientSystemPrompts() {
         try {
             log.info("查询启用的系统提示词配置");
-            
+
             List<AiClientSystemPrompt> aiClientSystemPrompts = aiClientSystemPromptDao.queryEnabledPrompts();
-            
+
             List<AiClientSystemPromptResponseDTO> responseDTOs = aiClientSystemPrompts.stream()
                     .map(this::convertToAiClientSystemPromptResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientSystemPromptResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -302,13 +300,13 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<List<AiClientSystemPromptResponseDTO>> queryAiClientSystemPromptsByPromptName(@PathVariable("promptName") String promptName) {
         try {
             log.info("根据提示词名称查询系统提示词配置：{}", promptName);
-            
+
             List<AiClientSystemPrompt> aiClientSystemPrompts = aiClientSystemPromptDao.queryByPromptName(promptName);
-            
+
             List<AiClientSystemPromptResponseDTO> responseDTOs = aiClientSystemPrompts.stream()
                     .map(this::convertToAiClientSystemPromptResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientSystemPromptResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
@@ -329,10 +327,10 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
     public Response<List<AiClientSystemPromptResponseDTO>> queryAiClientSystemPromptList(@RequestBody AiClientSystemPromptQueryRequestDTO request) {
         try {
             log.info("根据条件查询系统提示词配置列表：{}", request);
-            
+
             // 根据查询条件构建查询逻辑
             List<AiClientSystemPrompt> aiClientSystemPrompts;
-            
+
             if (StringUtils.hasText(request.getPromptId())) {
                 // 根据提示词ID查询
                 AiClientSystemPrompt prompt = aiClientSystemPromptDao.queryByPromptId(request.getPromptId());
@@ -354,18 +352,18 @@ public class AiClientSystemPromptAdminController implements IAiClientSystemPromp
                 // 查询所有
                 aiClientSystemPrompts = aiClientSystemPromptDao.queryAll();
             }
-            
+
             // 应用状态过滤（如果有其他条件的话）
             if (request.getStatus() != null && !StringUtils.hasText(request.getPromptId()) && !StringUtils.hasText(request.getPromptName())) {
                 aiClientSystemPrompts = aiClientSystemPrompts.stream()
                         .filter(prompt -> prompt.getStatus().equals(request.getStatus()))
                         .collect(Collectors.toList());
             }
-            
+
             List<AiClientSystemPromptResponseDTO> responseDTOs = aiClientSystemPrompts.stream()
                     .map(this::convertToAiClientSystemPromptResponseDTO)
                     .collect(Collectors.toList());
-            
+
             return Response.<List<AiClientSystemPromptResponseDTO>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

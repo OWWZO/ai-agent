@@ -7,7 +7,6 @@ import java.util.List;
 
 /**
  * 聊天模型配置表 DAO
- * @author bugstack虫洞栈
  * @description 聊天模型配置表数据访问对象
  */
 @Mapper

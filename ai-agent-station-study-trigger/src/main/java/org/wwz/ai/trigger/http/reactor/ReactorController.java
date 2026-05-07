@@ -34,6 +34,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+
+//暂时不用仅做调试 前端请求发到AiAgentController
 @Slf4j
 @RestController
 @RequestMapping("/1")
