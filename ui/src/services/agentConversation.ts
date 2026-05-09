@@ -26,6 +26,12 @@ export interface FixRoleItem {
   defaultRole: boolean;
 }
 
+export interface VisitorBootstrapInfo {
+  visitorId: string;
+  username?: string;
+  named: boolean;
+}
+
 export interface ConversationSessionItem {
   sessionId: string;
   title: string;
@@ -84,6 +90,13 @@ export interface ConversationHistoryDetail {
 export const roleLibraryApi = {
   list: () =>
     api.get<FixRoleItem[]>(`/api/agent/role-library/list`) as unknown as Promise<FixRoleItem[]>,
+};
+
+export const visitorApi = {
+  bootstrap: () =>
+    api.get<VisitorBootstrapInfo>(`/api/agent/visitor/bootstrap`) as unknown as Promise<VisitorBootstrapInfo>,
+  naming: (username: string) =>
+    api.post<VisitorBootstrapInfo>(`/api/agent/visitor/naming`, { username }) as unknown as Promise<VisitorBootstrapInfo>,
 };
 
 export const conversationHistoryApi = {

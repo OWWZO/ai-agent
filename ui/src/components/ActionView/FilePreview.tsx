@@ -46,7 +46,7 @@ const EmptyState = () => (
         >
           <Clock className="h-5 w-5 text-[#86868b]" />
         </motion.div>
-        <p className="text-sm font-medium text-[#1d1d1f]">实时跟随</p>
+        <p className="text-sm font-medium text-[#1d1d1f]">动态</p>
         <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
       </CardContent>
     </Card>

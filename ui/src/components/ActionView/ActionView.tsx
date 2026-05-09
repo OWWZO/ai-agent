@@ -9,7 +9,6 @@ import { useConstants } from "@/hooks";
 import FilePreview from "./FilePreview";
 import { ActionViewItemEnum } from "@/utils";
 
-import BrowserList from "./BrowserList";
 import FileList from "./FileList";
 import { PlanView, PlanViewAction } from "../PlanView";
 import { PanelItemType } from "../ActionPanel";
@@ -45,6 +44,9 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   const planRef = useRef<PlanViewAction>(null);
   const { defaultActiveActionView, actionViewOptions } = useConstants();
   const [activeActionView, setActiveActionView] = useSafeState(defaultActiveActionView);
+  const resolvedActiveActionView = actionViewOptions.some((item) => item.value === activeActionView)
+    ? activeActionView
+    : defaultActiveActionView;
 
   useImperativeHandle(ref, () => {
     return {
@@ -62,18 +64,30 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
       className={classNames("flex h-full w-full flex-col bg-white/50", className)}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+      transition={{
+        duration: 0.4,
+        ease: [0.25, 0.46, 0.45, 0.94],
+      }}
     >
       {/* Header Section */}
       <motion.div
         className="flex flex-col gap-3 px-5 py-4"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
+        initial={{
+          opacity: 0,
+          y: -10,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+        }}
+        transition={{
+          duration: 0.3,
+          delay: 0.1,
+        }}
       >
-        <Title onClose={onClose}>{title || "工作空间"}</Title>
+        <Title onClose={onClose}>{title || "智能体工作区"}</Title>
         <Tabs
-          value={activeActionView}
+          value={resolvedActiveActionView}
           onChange={setActiveActionView}
           options={actionViewOptions}
           className="min-h-[36px]"
@@ -86,15 +100,27 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
           className="flex-1 overflow-auto p-5"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
+          transition={{
+            duration: 0.4,
+            delay: 0.2,
+          }}
         >
           <AnimatePresence mode="wait">
-            {activeActionView === ActionViewItemEnum.follow && (
+            {resolvedActiveActionView === ActionViewItemEnum.follow && (
               <motion.div
                 key="follow"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -10,
+                }}
                 transition={{ duration: 0.3 }}
                 className="h-full"
               >
@@ -106,24 +132,21 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                 />
               </motion.div>
             )}
-            {activeActionView === ActionViewItemEnum.browser && (
-              <motion.div
-                key="browser"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="h-full"
-              >
-                <BrowserList taskList={taskList} />
-              </motion.div>
-            )}
-            {activeActionView === ActionViewItemEnum.file && (
+            {resolvedActiveActionView === ActionViewItemEnum.file && (
               <motion.div
                 key="file"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -10,
+                }}
                 transition={{ duration: 0.3 }}
                 className="h-full"
               >

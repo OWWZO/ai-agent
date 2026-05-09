@@ -32,6 +32,11 @@ public class AnonymousVisitorRecord {
 
     private String lastUserAgent;
 
+    /**
+     * 当前浏览器访客首次命名后的用户名。
+     */
+    private String username;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

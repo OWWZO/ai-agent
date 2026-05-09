@@ -136,21 +136,13 @@ export function formatSecondsToMinutes(seconds: number): string {
 }
 
 export const getSessionId = () => {
-  // Same tab/session should reuse a single sessionId.
-  // sessionStorage is scoped to the current browser tab and cleared when the tab closes.
-  const storageKey = "reactor.sessionId";
-  try {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const existing = window.sessionStorage.getItem(storageKey);
-      if (existing) return existing;
-      const created = `session-${getUniqId()}`;
-      window.sessionStorage.setItem(storageKey, created);
-      return created;
-    }
-  } catch {
-    // ignore storage access errors and fall back to generating
+  const existing = peekSessionId();
+  if (existing) {
+    return existing;
   }
-  return `session-${getUniqId()}`;
+  const created = createSessionId();
+  setSessionId(created);
+  return created;
 };
 
 /**
@@ -169,6 +161,25 @@ export const setSessionId = (sessionId: string) => {
   }
   return sessionId;
 };
+
+/**
+ * 仅查看当前 tab 已记录的 sessionId，不主动生成新值。
+ */
+export const peekSessionId = () => {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      return window.sessionStorage.getItem("reactor.sessionId");
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  return null;
+};
+
+/**
+ * 创建新的稳定会话 ID。
+ */
+export const createSessionId = () => `session-${getUniqId()}`;
 
 /**
  * 设置全局消息实例，以便在应用中统一管理消息提示

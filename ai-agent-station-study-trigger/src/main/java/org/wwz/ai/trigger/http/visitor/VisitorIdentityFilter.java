@@ -36,6 +36,7 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         return !(StringUtils.startsWith(path, "/web/api/v1/gpt/queryAgentStreamIncr")
                 || StringUtils.startsWith(path, "/1/web/api/v1/gpt/queryAgentStreamIncr")
+                || StringUtils.startsWith(path, "/api/agent/visitor")
                 || StringUtils.startsWith(path, "/api/agent/conversation/sessions")
                 || StringUtils.startsWith(path, "/api/agent/file"));
     }

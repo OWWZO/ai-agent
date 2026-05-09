@@ -11,7 +11,11 @@ public interface IAnonymousVisitorRepository {
 
     AnonymousVisitorRecord queryByTokenDigest(String tokenDigest);
 
+    AnonymousVisitorRecord queryByVisitorId(String visitorId);
+
     void save(AnonymousVisitorRecord record);
 
     void touchVisitor(String visitorId, LocalDateTime lastSeenAt, String lastIp, String lastUserAgent);
+
+    boolean bindUsernameIfAbsent(String visitorId, String username, LocalDateTime updateTime);
 }

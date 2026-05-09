@@ -25,6 +25,12 @@ public class AnonymousVisitorRepository implements IAnonymousVisitorRepository {
     }
 
     @Override
+    public AnonymousVisitorRecord queryByVisitorId(String visitorId) {
+        VisitorIdentityPO po = visitorIdentityDao.queryByVisitorId(visitorId);
+        return po == null ? null : toRecord(po);
+    }
+
+    @Override
     public void save(AnonymousVisitorRecord record) {
         visitorIdentityDao.insert(VisitorIdentityPO.builder()
                 .visitorId(record.getVisitorId())
@@ -34,6 +40,7 @@ public class AnonymousVisitorRepository implements IAnonymousVisitorRepository {
                 .lastSeenAt(record.getLastSeenAt())
                 .lastIp(record.getLastIp())
                 .lastUserAgent(record.getLastUserAgent())
+                .username(record.getUsername())
                 .deleted(record.getDeleted())
                 .build());
     }
@@ -41,6 +48,11 @@ public class AnonymousVisitorRepository implements IAnonymousVisitorRepository {
     @Override
     public void touchVisitor(String visitorId, LocalDateTime lastSeenAt, String lastIp, String lastUserAgent) {
         visitorIdentityDao.updateLastSeen(visitorId, lastSeenAt, lastIp, lastUserAgent);
+    }
+
+    @Override
+    public boolean bindUsernameIfAbsent(String visitorId, String username, LocalDateTime updateTime) {
+        return visitorIdentityDao.bindUsernameIfAbsent(visitorId, username, updateTime) > 0;
     }
 
     private AnonymousVisitorRecord toRecord(VisitorIdentityPO po) {
@@ -53,6 +65,7 @@ public class AnonymousVisitorRepository implements IAnonymousVisitorRepository {
                 .lastSeenAt(po.getLastSeenAt())
                 .lastIp(po.getLastIp())
                 .lastUserAgent(po.getLastUserAgent())
+                .username(po.getUsername())
                 .createTime(po.getCreateTime())
                 .updateTime(po.getUpdateTime())
                 .deleted(po.getDeleted())

@@ -259,7 +259,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     [displayOutput, product]
   );
 
-  // 记住上一次标准任务模式，切到“智能问数”后仍能保持用户刚才的选择感。
+  // 记住上一次标准任务模式，切到“数据分析”后仍能保持用户刚才的选择感。
   const lastStandardModeRef = useRef<InputModeKey>(currentMode === "quick" ? "think" : currentMode);
   const lastOutputProductRef = useRef<CHAT.Product>(resolvedOutputProduct);
 
@@ -586,7 +586,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       <span className={chipIconWrapClassName(DATA_AGENT_TONE, isDataAgent)}>
                         <BarChart3Icon className="size-4" />
                       </span>
-                      <span className="truncate">智能问数</span>
+                      <span className="truncate">数据分析</span>
                     </button>
                   ) : null}
                 </div>

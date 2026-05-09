@@ -26,13 +26,9 @@ export const iconType: Record<string, string> = {
 
 export const actionViewOptions = [
   {
-    label: "实时跟随",
+    label: "动态",
     value: ActionViewItemEnum.follow,
     split: false,
-  },
-  {
-    label: "浏览器",
-    value: ActionViewItemEnum.browser,
   },
   {
     label: "文件",
@@ -43,10 +39,22 @@ export const actionViewOptions = [
 export const defaultActiveActionView = actionViewOptions[0].value;
 
 export const chatQustions = [
-  { label: "2024年各月销量变化趋势如何？", type: 1 },
-  { label: "采购成本最高的前十名商品是什么？", type: 1 },
-  { label: "对销售数据进行综合分析", type: 2 },
-  { label: "分析产品的销售表现", type: 2 },
+  {
+    label: "2024年各月销量变化趋势如何？",
+    type: 1,
+  },
+  {
+    label: "采购成本最高的前十名商品是什么？",
+    type: 1,
+  },
+  {
+    label: "对销售数据进行综合分析",
+    type: 2,
+  },
+  {
+    label: "分析产品的销售表现",
+    type: 2,
+  },
 ];
 
 export const productList = [
@@ -58,7 +66,7 @@ export const productList = [
     color: "text-[#4040FF]",
   },
   {
-    name: "智能问数",
+    name: "数据分析",
     img: "icon-xinjianduihua",
     type: "dataAgent",
     placeholder: "Reactor 会完成你的数据分析任务",

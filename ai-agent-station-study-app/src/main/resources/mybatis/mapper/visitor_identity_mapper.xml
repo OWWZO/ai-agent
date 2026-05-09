@@ -11,6 +11,7 @@
         <result column="last_seen_at" property="lastSeenAt"/>
         <result column="last_ip" property="lastIp"/>
         <result column="last_user_agent" property="lastUserAgent"/>
+        <result column="username" property="username"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
         <result column="deleted" property="deleted"/>
@@ -18,10 +19,10 @@
 
     <insert id="insert" parameterType="org.wwz.ai.infrastructure.dao.po.VisitorIdentityPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_agent_visitor_identity (
-            visitor_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent,
+            visitor_id, token_digest, status, first_seen_at, last_seen_at, last_ip, last_user_agent, username,
             create_time, update_time, deleted
         ) VALUES (
-            #{visitorId}, #{tokenDigest}, #{status}, #{firstSeenAt}, #{lastSeenAt}, #{lastIp}, #{lastUserAgent},
+            #{visitorId}, #{tokenDigest}, #{status}, #{firstSeenAt}, #{lastSeenAt}, #{lastIp}, #{lastUserAgent}, #{username},
             NOW(), NOW(), #{deleted}
         )
     </insert>
@@ -34,6 +35,14 @@
         LIMIT 1
     </select>
 
+    <select id="queryByVisitorId" resultMap="VisitorIdentityPOMap">
+        SELECT *
+        FROM ai_agent_visitor_identity
+        WHERE visitor_id = #{visitorId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
     <update id="updateLastSeen">
         UPDATE ai_agent_visitor_identity
         SET last_seen_at = #{lastSeenAt},
@@ -42,5 +51,14 @@
             update_time = NOW()
         WHERE visitor_id = #{visitorId}
           AND deleted = 0
+    </update>
+
+    <update id="bindUsernameIfAbsent">
+        UPDATE ai_agent_visitor_identity
+        SET username = #{username},
+            update_time = #{updateTime}
+        WHERE visitor_id = #{visitorId}
+          AND deleted = 0
+          AND (username IS NULL OR username = '')
     </update>
 </mapper>

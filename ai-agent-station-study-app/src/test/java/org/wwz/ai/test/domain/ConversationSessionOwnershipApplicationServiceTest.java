@@ -55,4 +55,20 @@ public class ConversationSessionOwnershipApplicationServiceTest {
 
         service.ensureSessionAccessible("visitor-002", "session-001", "尝试越权访问");
     }
+
+    @Test
+    public void shouldRejectMissingSessionWithExplicitMessage() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        ConversationSessionOwnershipApplicationService service = new ConversationSessionOwnershipApplicationService(
+                ctx.readRepository,
+                ctx.writeRepository
+        );
+
+        try {
+            service.ensureExistingSessionAccessible("visitor-001", "session-missing-001");
+            Assert.fail("缺失会话应被拒绝");
+        } catch (SessionOwnershipDeniedException exception) {
+            Assert.assertEquals("当前会话不存在", exception.getMessage());
+        }
+    }
 }

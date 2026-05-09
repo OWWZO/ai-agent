@@ -5,6 +5,7 @@ from unittest.mock import patch
 import httpx
 
 from reactor_tool.tool.image_generation import (
+    DEFAULT_IMAGE_MODEL,
     _build_generation_requests,
     _execute_generation_request,
     _resolve_api_key,
@@ -96,7 +97,7 @@ class ImageGenerationToolTest(unittest.TestCase):
         ):
             self.assertEqual("", _resolve_base_url())
             self.assertEqual("", _resolve_api_key())
-            self.assertEqual("", _resolve_model_name())
+            self.assertEqual(DEFAULT_IMAGE_MODEL, _resolve_model_name())
 
     def test_should_raise_actionable_error_when_image_generation_env_missing(self):
         request = ImageGenerationRequest.model_validate(
@@ -136,6 +137,8 @@ class ImageGenerationToolTest(unittest.TestCase):
                 )
                 self.assertEqual("https://example.com/v1/images/edits", primary["url"])
                 self.assertTrue(primary.get("multipart"))
+                self.assertEqual(("model", (None, "gpt-image-2")), primary["body"][0])
+                self.assertEqual(("prompt", (None, "把图片改成黄昏氛围")), primary["body"][1])
                 self.assertEqual("https://example.com/v1/chat/completions", fallback["url"])
 
         asyncio.run(_run())

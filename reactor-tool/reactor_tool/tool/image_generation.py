@@ -252,13 +252,13 @@ async def _build_native_edit_request(
     image_reference = request.file_names[0]
     image_bytes, _ = await _reference_to_image_bytes(client, image_reference)
     files: list[tuple[str, tuple[str, bytes, str] | str]] = [
-        ("model", model_name),
-        ("prompt", request.prompt),
-        ("response_format", "b64_json"),
+        ("model", (None, model_name)),
+        ("prompt", (None, request.prompt)),
+        ("response_format", (None, "b64_json")),
         ("image", ("image.png", image_bytes, "image/png")),
     ]
     if request.size:
-        files.append(("size", request.size))
+        files.append(("size", (None, request.size)))
 
     mask_reference = request.mask_file_names[0] if request.mask_file_names else ""
     if mask_reference:
@@ -580,7 +580,8 @@ def _resolve_api_key() -> str:
 
 
 def _resolve_model_name() -> str:
-    return os.getenv("IMAGE_GENERATION_MODEL", "").strip()
+    """优先读取专用环境变量，缺省时回退到绘画智能体默认模型。"""
+    return os.getenv("IMAGE_GENERATION_MODEL", DEFAULT_IMAGE_MODEL).strip() or DEFAULT_IMAGE_MODEL
 
 
 def _build_generation_summary(

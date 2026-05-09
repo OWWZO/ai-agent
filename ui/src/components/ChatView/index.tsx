@@ -179,7 +179,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     runtime.draftController.commit(nextConversation);
   });
 
-
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
     setIsRightCollapsed(false);
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
@@ -612,7 +611,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               <button
                 onClick={toggleRightPanel}
                 className="flex h-10 w-10 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
-                title="展开工作空间"
+                title="展开智能体工作区"
               >
                 <PanelLeftClose className="h-5 w-5" />
               </button>
@@ -650,7 +649,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               </h2>
               <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
                 <i className="font_family icon-shendusikao text-[11px]"></i>
-                <span>智能问数</span>
+                <span>数据分析</span>
               </div>
             </div>
           </div>

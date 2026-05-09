@@ -18,10 +18,17 @@ import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import { defaultProduct, productList } from "@/utils/constants";
-import { getSessionId, getUniqId, setSessionId } from "@/utils";
+import {
+  createSessionId,
+  getUniqId,
+  peekSessionId,
+  setSessionId,
+} from "@/utils";
 import {
   conversationHistoryApi,
   roleLibraryApi,
+  visitorApi,
+  type VisitorBootstrapInfo,
   type ConversationSessionItem,
   type FixRoleItem,
 } from "@/services/agentConversation";
@@ -30,8 +37,15 @@ import {
   isHistoryDetailEmpty,
 } from "@/utils/conversationHistory";
 import { deriveConversationMetaFromInput } from "./homeState";
-import { useConversationBootstrap } from "./useConversationBootstrap";
+import { resolveInitialSessionId } from "./sessionBootstrap";
 import { useRecentSessions } from "./useRecentSessions";
+import {
+  resolveVisitorWorkspaceStage,
+  shouldBootstrapVisitor,
+  shouldLoadVisitorProtectedData,
+} from "./visitorGate";
+import VisitorBootstrapScreen from "./VisitorBootstrapScreen";
+import VisitorLoginGate from "./VisitorLoginGate";
 import WelcomeView from "./WelcomeView";
 
 type HomeProps = Record<string, never>;
@@ -93,7 +107,7 @@ const createConversation = (
   const now = Date.now();
   return {
     id: partial.id || `conversation-${getUniqId()}`,
-    sessionId: partial.sessionId || getSessionId(),
+    sessionId: partial.sessionId || createSessionId(),
     title: partial.title || "新对话",
     productType: partial.productType || "chat",
     deepThink: Boolean(partial.deepThink),
@@ -116,7 +130,7 @@ const createInitialState = (): InitialState => {
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
-  const hydratedSessionIdsRef = useRef<Set<string>>(new Set());
+  const initializedVisitorIdRef = useRef<string | null>(null);
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
   const {
     recentSessions,
@@ -135,6 +149,23 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     () => productList.find((item) => item.type === "html") ?? defaultProduct
   );
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
+  const [visitorBootstrap, setVisitorBootstrap] = useState<VisitorBootstrapInfo>();
+  const [visitorBootstrapLoaded, setVisitorBootstrapLoaded] = useState(false);
+  const [visitorBootstrapLoading, setVisitorBootstrapLoading] = useState(false);
+  const [visitorNamingLoading, setVisitorNamingLoading] = useState(false);
+  const [conversationBootstrapLoading, setConversationBootstrapLoading] =
+    useState(false);
+
+  const visitorWorkspaceStage = resolveVisitorWorkspaceStage({
+    bootstrapLoaded: visitorBootstrapLoaded,
+    bootstrapLoading: visitorBootstrapLoading,
+    visitorNamed: visitorBootstrap?.named,
+  });
+  const visitorProtectedDataReady = shouldLoadVisitorProtectedData({
+    bootstrapLoaded: visitorBootstrapLoaded,
+    bootstrapLoading: visitorBootstrapLoading,
+    visitorNamed: visitorBootstrap?.named,
+  });
 
   const defaultFixRole = useMemo(
     () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
@@ -176,8 +207,95 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   }, []);
 
   useEffect(() => {
-    refreshRecentSessions();
-  }, [refreshRecentSessions]);
+    if (!shouldBootstrapVisitor({
+      bootstrapLoaded: visitorBootstrapLoaded,
+      bootstrapLoading: visitorBootstrapLoading,
+    })) {
+      return;
+    }
+    setVisitorBootstrapLoading(true);
+    visitorApi
+      .bootstrap()
+      .then((info) => {
+        setVisitorBootstrap(info);
+        setVisitorBootstrapLoaded(true);
+      })
+      .catch((error) => {
+        console.error("加载访客状态失败", error);
+      })
+      .finally(() => {
+        setVisitorBootstrapLoading(false);
+      });
+  }, [visitorBootstrapLoaded, visitorBootstrapLoading]);
+
+  useEffect(() => {
+    if (!visitorProtectedDataReady) {
+      initializedVisitorIdRef.current = null;
+      return;
+    }
+    const visitorId = visitorBootstrap?.visitorId;
+    if (!visitorId || initializedVisitorIdRef.current === visitorId) {
+      return;
+    }
+
+    let disposed = false;
+    initializedVisitorIdRef.current = visitorId;
+    setConversationBootstrapLoading(true);
+
+    refreshRecentSessions(true)
+      .then((sessions) => {
+        if (disposed) {
+          return;
+        }
+
+        const initialSessionId = resolveInitialSessionId({
+          recentSessions: sessions,
+          storedSessionId: peekSessionId(),
+        });
+
+        if (!initialSessionId) {
+          setCurrentConversation(
+            createConversation({
+              productType: initialRef.current.productType,
+            })
+          );
+          return;
+        }
+
+        return conversationHistoryApi
+          .getSessionDetail(initialSessionId)
+          .then((detail) => {
+            if (disposed || !detail || isHistoryDetailEmpty(detail)) {
+              return;
+            }
+            setCurrentConversation(hydrateConversationFromReplayFrames(detail));
+          })
+          .catch((error) => {
+            console.error("加载默认会话详情失败", error);
+            if (disposed) {
+              return;
+            }
+            setCurrentConversation(
+              createConversation({
+                productType: initialRef.current.productType,
+              })
+            );
+          });
+      })
+      .finally(() => {
+        if (!disposed) {
+          setConversationBootstrapLoading(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [
+    refreshRecentSessions,
+    visitorBootstrap?.visitorId,
+    visitorProtectedDataReady,
+  ]);
 
   useEffect(() => {
     if (
@@ -231,8 +349,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
-      const nextSessionId = override?.sessionId || `session-${getUniqId()}`;
-      hydratedSessionIdsRef.current.add(nextSessionId);
+      const nextSessionId = override?.sessionId || createSessionId();
       setActiveView("chat");
       setCurrentConversation(
         createConversation({
@@ -275,7 +392,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           if (!detail || isHistoryDetailEmpty(detail)) {
             return;
           }
-          hydratedSessionIdsRef.current.add(session.sessionId);
           setCurrentConversation(hydrateConversationFromReplayFrames(detail));
           setActiveView("chat");
           resetInput();
@@ -288,14 +404,26 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   useEffect(() => {
+    if (conversationBootstrapLoading) {
+      return;
+    }
     setSessionId(currentConversation.sessionId);
-  }, [currentConversation.sessionId]);
+  }, [conversationBootstrapLoading, currentConversation.sessionId]);
 
-  useConversationBootstrap({
-    conversation: currentConversation,
-    hydratedSessionIdsRef,
-    onHydrated: setCurrentConversation,
-  });
+  const handleSubmitVisitorName = useCallback((username: string) => {
+    setVisitorNamingLoading(true);
+    visitorApi
+      .naming(username.trim())
+      .then((info) => {
+        setVisitorBootstrap(info);
+      })
+      .catch((error) => {
+        console.error("提交访客用户名失败", error);
+      })
+      .finally(() => {
+        setVisitorNamingLoading(false);
+      });
+  }, []);
 
   const changeInputInfo = useCallback(
     (info: CHAT.TInputInfo) => {
@@ -384,6 +512,23 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [changeInputInfo]
   );
 
+  if (visitorWorkspaceStage === "bootstrapping") {
+    return <VisitorBootstrapScreen />;
+  }
+
+  if (visitorWorkspaceStage === "ready" && conversationBootstrapLoading) {
+    return <VisitorBootstrapScreen />;
+  }
+
+  if (visitorWorkspaceStage === "naming") {
+    return (
+      <VisitorLoginGate
+        loading={visitorNamingLoading}
+        onSubmit={handleSubmitVisitorName}
+      />
+    );
+  }
+
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
       <div className="flex h-full w-full">
@@ -435,7 +580,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                     ? `当前模式：${currentModeName}`
                     : activeView === "mrag"
                       ? "当前工作台：MRAG"
-                      : "当前工作台：米醋画图"}
+                      : "当前工作台：绘图智能体"}
                 </div>
               </div>
 
@@ -496,6 +641,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 fixRoles={fixRoles}
                 recentSessions={recentSessions}
                 recentSessionsLoading={recentSessionsLoading}
+                visitorUsername={visitorBootstrap?.username}
                 videoModalOpen={videoModalOpen}
                 onSelectionChange={handleInputSelectionChange}
                 onRoleSelect={handleRoleSelect}

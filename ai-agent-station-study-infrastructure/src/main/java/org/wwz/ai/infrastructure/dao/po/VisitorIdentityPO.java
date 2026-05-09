@@ -32,6 +32,8 @@ public class VisitorIdentityPO {
 
     private String lastUserAgent;
 
+    private String username;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

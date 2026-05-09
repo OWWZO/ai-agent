@@ -146,7 +146,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
             </div>
             <div>
               <h1 className="text-[15px] font-semibold tracking-tight text-[var(--chat-text)]">
-                米醋画图
+                绘图智能体
               </h1>
               <p className="text-[12px] text-[var(--chat-text-muted)]">
                 AI 图像生成工作台

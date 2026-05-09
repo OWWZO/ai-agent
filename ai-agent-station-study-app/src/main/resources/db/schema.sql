@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_visitor_identity (
     last_seen_at     DATETIME(3)    NOT NULL COMMENT '最近访问时间',
     last_ip          VARCHAR(128)   NULL COMMENT '最近访问IP',
     last_user_agent  VARCHAR(512)   NULL COMMENT '最近访问UA',
+    username         VARCHAR(64)    NULL COMMENT '当前浏览器访客首次命名用户名',
     create_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted          TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',

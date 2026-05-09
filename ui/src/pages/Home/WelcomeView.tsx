@@ -119,6 +119,7 @@ export default function WelcomeView(props: {
   fixRoles: CHAT.FixRole[];
   recentSessions: CHAT.ConversationSessionItem[];
   recentSessionsLoading: boolean;
+  visitorUsername?: string;
   videoModalOpen?: string;
   onSelectionChange: (selection: {
     product: CHAT.Product;
@@ -135,6 +136,11 @@ export default function WelcomeView(props: {
     <div className="h-full w-full px-6 md:px-12 lg:px-16">
       <div className="mx-auto flex h-full w-full max-w-[1000px] flex-col items-center justify-center py-12">
         <div className="mb-10 text-center">
+          {props.visitorUsername && (
+            <div className="mb-4 text-[13px] text-[var(--chat-text-soft)]">
+              当前用户：{props.visitorUsername}
+            </div>
+          )}
           <h1
             className="mb-3 text-[34px] font-medium leading-[1.05] tracking-normal text-[var(--chat-text)] md:text-[46px] lg:text-[52px]"
             style={{ fontFamily: "var(--font-sans)" }}

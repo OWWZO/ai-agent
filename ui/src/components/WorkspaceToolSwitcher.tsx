@@ -22,7 +22,7 @@ const workspaceToolItems: WorkspaceToolItem[] = [
   },
   {
     key: "image-generation",
-    label: "米醋画图",
+    label: "绘图智能体",
     description: "图片生成与 Base64 解析",
     icon: WandSparkles,
     to: ROUTES.WORKSPACE_IMAGE_GENERATION,
@@ -81,4 +81,3 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
 };
 
 export default WorkspaceToolSwitcher;
-

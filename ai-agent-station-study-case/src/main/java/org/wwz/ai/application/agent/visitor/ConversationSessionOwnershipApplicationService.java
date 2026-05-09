@@ -45,7 +45,7 @@ public class ConversationSessionOwnershipApplicationService {
         DialogueSession existing = executionLedgerReadRepository.querySessionEntity(sessionId);
         if (existing == null) {
             if (!allowBindWhenMissing) {
-                throw new SessionOwnershipDeniedException("当前访客无权访问该会话");
+                throw new SessionOwnershipDeniedException("当前会话不存在");
             }
             LocalDateTime now = LocalDateTime.now();
             executionLedgerWriteRepository.upsertSession(DialogueSessionUpsertRecord.builder()
