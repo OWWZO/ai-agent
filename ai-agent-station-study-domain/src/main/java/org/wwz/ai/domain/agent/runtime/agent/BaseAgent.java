@@ -419,6 +419,7 @@ public abstract class BaseAgent {
 
         Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
+
         if (context != null && context.getAgentRunState() != null) {
             context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
         }

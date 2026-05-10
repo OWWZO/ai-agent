@@ -41,6 +41,7 @@ public class ReactorRuntimeDependencies {
 
     FileArtifactPort fileArtifactPort;
 
+    //预留给之后并发调用llm
     Executor llmExecutor;
 
     Executor toolExecutor;
