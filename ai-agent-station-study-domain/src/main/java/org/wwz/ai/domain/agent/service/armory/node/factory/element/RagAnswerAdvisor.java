@@ -13,14 +13,15 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.Filter;
-import org.springframework.ai.vectorstore.filter.FilterExpressionTextParser;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
+import org.wwz.ai.domain.agent.model.valobj.AiClientAdvisorVO;
+import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
+import org.wwz.ai.domain.agent.reactor.data.dto.VectorRecallReq;
+import org.wwz.ai.domain.agent.reactor.service.VectorService;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,11 +29,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class RagAnswerAdvisor implements BaseAdvisor {
 
-    /** 向量存储库核心对象，用于执行文档的相似性检索（Spring AI封装的向量库操作接口，适配PGVector/Chroma等） */
-    private final VectorStore vectorStore;
+    /** 现有成熟的 Qdrant 检索服务，统一承接知识库召回。 */
+    private final VectorService vectorService;
 
-    /** 基础检索请求模板，复用预设的检索配置（如检索数量、相似度阈值、默认过滤表达式等） */
-    private final SearchRequest searchRequest;
+    /** 顾问配置中的 RAG 检索参数。 */
+    private final AiClientAdvisorVO.RagAnswer ragAnswer;
 
     /**
      * RAG提示词模板，用于约束大模型的回答规则
@@ -43,12 +44,12 @@ public class RagAnswerAdvisor implements BaseAdvisor {
 
     /**
      * 构造方法，注入核心依赖并初始化RAG提示词模板
-     * @param vectorStore 向量存储库对象（由Spring容器注入，如PGVectorStore）
-     * @param searchRequest 基础检索请求模板（由外部配置，预设检索参数）
+     * @param vectorService Qdrant 向量检索服务
+     * @param ragAnswer 顾问 RAG 配置
      */
-    public RagAnswerAdvisor(VectorStore vectorStore, SearchRequest searchRequest) {
-        this.vectorStore = vectorStore;
-        this.searchRequest = searchRequest;
+    public RagAnswerAdvisor(VectorService vectorService, AiClientAdvisorVO.RagAnswer ragAnswer) {
+        this.vectorService = vectorService;
+        this.ragAnswer = ragAnswer;
         // 初始化RAG提示词模板，明确大模型的回答约束
         this.userTextAdvise = "\nContext information is below, surrounded by ---------------------\n\n---------------------\n{question_answer_context}\n---------------------\n\nGiven the context and provided history information and not prior knowledge,\nreply to the user comment. If the answer is not in the context, inform\nthe user that you can't answer the question.\n";
     }
@@ -75,13 +76,12 @@ public class RagAnswerAdvisor implements BaseAdvisor {
         String advisedUserText = userText + System.lineSeparator() + this.userTextAdvise;
 
         // 3. 构建最终的检索请求：复用基础模板配置 + 绑定用户问题 + 追加上下文过滤条件
-        SearchRequest searchRequestToUse = SearchRequest.from(this.searchRequest)
-                .query(userText) // 设置检索关键词为用户原始问题
-                .filterExpression(this.doGetFilterExpression(context)) // 设置动态过滤表达式
-                .build();
+        VectorRecallReq vectorRecallReq = buildVectorRecallReq(userText, context);
 
-        // 4. 调用向量库执行相似性检索，获取与用户问题相关的文档列表
-        List<Document> documents = this.vectorStore.similaritySearch(searchRequestToUse);
+        // 4. 调用现有 Qdrant 检索服务，获取与用户问题相关的文档列表
+        List<Document> documents = this.vectorService.vectorRecall(vectorRecallReq).stream()
+                .map(this::toDocument)
+                .collect(Collectors.toList());
 
         // 5. 将检索到的文档存入上下文，供后置处理/后续节点使用
         context.put("qa_retrieved_documents", documents);
@@ -92,18 +92,17 @@ public class RagAnswerAdvisor implements BaseAdvisor {
                 .collect(Collectors.joining(System.lineSeparator())); // 跨平台换行符拼接，避免格式问题
 
         // 7. 构建提示词参数，替换模板中的{question_answer_context}占位符
-        Map<String, Object> advisedUserParams = new HashMap<>(chatClientRequest.context());
-        advisedUserParams.put("question_answer_context", documentContext);
+        context.put("question_answer_context", documentContext);
 
         // 8. 构建新的对话请求，包含拼接后的提示词和更新后的上下文
         return ChatClientRequest.builder()
                 .prompt(Prompt.builder()
                         .messages(
                                 new UserMessage(advisedUserText), // 新的用户提示（原始问题+RAG模板）
-                                new AssistantMessage(JSON.toJSONString(advisedUserParams)) // 传递模板参数，供大模型解析
+                                new AssistantMessage(JSON.toJSONString(context)) // 传递模板参数，供大模型解析
                         )
                         .build())
-                .context(advisedUserParams) // 传递更新后的上下文（含检索文档、模板参数）
+                .context(context) // 传递更新后的上下文（含检索文档、模板参数）
                 .build();
     }
 
@@ -194,17 +193,55 @@ public class RagAnswerAdvisor implements BaseAdvisor {
      * @param context 对话请求的上下文，可传递自定义过滤表达式键：qa_filter_expression
      * @return 向量库可识别的过滤表达式对象，若无可返回null
      */
-    protected Filter.Expression doGetFilterExpression(Map<String, Object> context) {
-        // 1. 检查上下文是否包含有效自定义过滤表达式（键：qa_filter_expression）
-        boolean hasCustomFilter = context.containsKey("qa_filter_expression")
-                && StringUtils.hasText(context.get("qa_filter_expression").toString());
+    protected VectorRecallReq buildVectorRecallReq(String userText, Map<String, Object> context) {
+        VectorRecallReq req = new VectorRecallReq();
+        req.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
+        req.setQuery(userText);
+        req.setLimit(resolveTopK());
+        req.setKeywordFilterMap(resolveKeywordFilter(context));
+        return req;
+    }
 
-        // 2. 有自定义表达式则通过解析器转换为Filter.Expression，无则使用默认表达式
-        if (hasCustomFilter) {
-            return new FilterExpressionTextParser().parse(context.get("qa_filter_expression").toString());
-        } else {
-            return this.searchRequest.getFilterExpression();
+    /**
+     * 当前项目里知识库顾问的过滤表达式实际只在用 `knowledge == 'xxx'` 这一种形式。
+     * 这里直接解析成现有 Qdrant keywordFilterMap，避免继续维护 pgvector/Filter AST 语义。
+     */
+    protected Map<String, Object> resolveKeywordFilter(Map<String, Object> context) {
+        String filterExpression = resolveFilterExpression(context);
+        if (!StringUtils.hasText(filterExpression)) {
+            return null;
         }
+        String normalized = filterExpression.trim();
+        if (normalized.startsWith("knowledge == '") && normalized.endsWith("'")) {
+            String knowledge = normalized.substring("knowledge == '".length(), normalized.length() - 1);
+            Map<String, Object> filters = new LinkedHashMap<>();
+            filters.put("knowledge", knowledge);
+            return filters;
+        }
+        throw new IllegalArgumentException("当前仅支持 knowledge == 'xxx' 形式的知识库过滤表达式: " + filterExpression);
+    }
+
+    protected String resolveFilterExpression(Map<String, Object> context) {
+        Object filterExpression = context.get("qa_filter_expression");
+        if (filterExpression != null && StringUtils.hasText(filterExpression.toString())) {
+            return filterExpression.toString();
+        }
+        return ragAnswer == null ? null : ragAnswer.getFilterExpression();
+    }
+
+    protected int resolveTopK() {
+        if (ragAnswer == null || ragAnswer.getTopK() <= 0) {
+            return 4;
+        }
+        return ragAnswer.getTopK();
+    }
+
+    private Document toDocument(Map<String, Object> payload) {
+        Map<String, Object> metadata = new HashMap<>(payload);
+        Object text = metadata.remove("content");
+        metadata.remove("score");
+        metadata.remove("_id");
+        return new Document(text == null ? "" : text.toString(), metadata);
     }
 
 }

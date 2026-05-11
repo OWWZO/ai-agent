@@ -63,8 +63,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * LLM 门面。
- * 对外保留既有构造方式与 ask/askTool 契约，内部统一编排 Spring AI。
+ * LLM主体类。
  */
 @Slf4j
 @Data

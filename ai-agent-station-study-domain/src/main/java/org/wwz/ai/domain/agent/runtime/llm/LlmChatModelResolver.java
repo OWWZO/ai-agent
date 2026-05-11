@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * todo:后续实现前端拖拉编排组装agent模型配置
  * 基于 LLMSettings 解析并缓存 OpenAiChatModel。
  * 第一阶段优先复用 Reactor 既有 llm.settings，避免强依赖 Armory modelId 装配。
  */

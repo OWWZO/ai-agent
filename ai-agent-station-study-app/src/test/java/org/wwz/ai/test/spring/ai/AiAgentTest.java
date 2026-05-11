@@ -1,6 +1,5 @@
 package org.wwz.ai.test.spring.ai;
 
-import org.wwz.ai.test.spring.ai.advisors.RagAnswerAdvisor;
 import com.alibaba.fastjson.JSON;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -25,10 +24,11 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.wwz.ai.domain.agent.model.valobj.AiClientAdvisorVO;
+import org.wwz.ai.domain.agent.reactor.service.VectorService;
+import org.wwz.ai.domain.agent.service.armory.node.factory.element.RagAnswerAdvisor;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
@@ -45,7 +45,7 @@ public class AiAgentTest {
     private ChatClient chatClient;
 
     @Resource
-    private PgVectorStore vectorStore;
+    private VectorService vectorService;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
@@ -90,10 +90,7 @@ public class AiAgentTest {
                                         .maxMessages(100)
                                         .build()
                         ).build(),
-                        new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
-                                .topK(5)
-                                .filterExpression("knowledge == 'article-prompt-words'")
-                                .build()),
+                        buildRagAnswerAdvisor("knowledge == 'article-prompt-words'", 5),
                         SimpleLoggerAdvisor.builder().build())
                 .build();
     }
@@ -221,10 +218,7 @@ public class AiAgentTest {
                                         .maxMessages(100)
                                         .build()
                         ).build()
-                        , new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
-                                .topK(5)
-                                .filterExpression("knowledge == 'article-prompt-words'")
-                                .build())
+                        , buildRagAnswerAdvisor("knowledge == 'article-prompt-words'", 5)
                 )
                 .defaultOptions(OpenAiChatOptions.builder()
                         .model("deepseek-v3.2")
@@ -322,6 +316,16 @@ public class AiAgentTest {
         System.out.println("SSE MCP Initialized: " + init);
 
         return mcpSyncClient;
+    }
+
+    private RagAnswerAdvisor buildRagAnswerAdvisor(String filterExpression, int topK) {
+        return new RagAnswerAdvisor(
+                vectorService,
+                AiClientAdvisorVO.RagAnswer.builder()
+                        .topK(topK)
+                        .filterExpression(filterExpression)
+                        .build()
+        );
     }
 
 }

@@ -5,7 +5,6 @@ import org.wwz.ai.api.dto.AiClientRagOrderQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderResponseDTO;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.agent.rag.IRagApplicationService;
 import org.wwz.ai.infrastructure.dao.IAiClientRagOrderDao;
 import org.wwz.ai.infrastructure.dao.po.AiClientRagOrder;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -13,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
@@ -32,9 +30,6 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
 
     @Resource
     private IAiClientRagOrderDao aiClientRagOrderDao;
-
-    @Resource
-    private IRagApplicationService ragApplicationService;
 
     @Override
     @PostMapping("/create")
@@ -416,29 +411,6 @@ public class AiClientRagOrderAdminController implements IAiClientRagOrderAdminSe
         AiClientRagOrder aiClientRagOrder = new AiClientRagOrder();
         BeanUtils.copyProperties(requestDTO, aiClientRagOrder);
         return aiClientRagOrder;
-    }
-
-    @Override
-    @RequestMapping(value = "file/upload", method = RequestMethod.POST, headers = "content-type=multipart/form-data")
-    public Response<Boolean> uploadRagFile(@RequestParam("name") String name, @RequestParam("tag") String tag, @RequestParam("files") List<MultipartFile> files) {
-        try {
-            log.info("上传知识库，请求 {}", name);
-            ragApplicationService.storeRagFile(name, tag, files);
-            Response<Boolean> response = Response.<Boolean>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(true)
-                    .build();
-            log.info("上传知识库，结果 {} {}", name, response);
-            return response;
-        } catch (Exception e) {
-            log.error("上传知识库，异常 {}", name, e);
-            return Response.<Boolean>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .data(false)
-                    .build();
-        }
     }
 
     /**

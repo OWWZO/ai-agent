@@ -4,8 +4,6 @@ import org.wwz.ai.api.dto.AiClientRagOrderQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderRequestDTO;
 import org.wwz.ai.api.dto.AiClientRagOrderResponseDTO;
 import org.wwz.ai.api.response.Response;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.util.List;
 
 
@@ -92,14 +90,5 @@ public interface IAiClientRagOrderAdminService {
      * @return 知识库配置列表
      */
     Response<List<AiClientRagOrderResponseDTO>> queryAllAiClientRagOrders();
-
-    /**
-     * 上传知识库文件
-     * @param name 知识库名称
-     * @param tag 知识库标签
-     * @param files 上传的文件列表
-     * @return 操作结果
-     */
-    Response<Boolean> uploadRagFile(String name, String tag, List<MultipartFile> files);
 
 }

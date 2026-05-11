@@ -146,7 +146,7 @@ public class AgentContextConvergenceBoundaryTest {
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("application").resolve("agent")
                 .resolve("role").resolve("IFixRoleQueryService.java")));
-        Assert.assertTrue(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-case")
+        Assert.assertFalse(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-case")
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("application").resolve("agent")
                 .resolve("rag").resolve("IRagApplicationService.java")));
@@ -159,7 +159,7 @@ public class AgentContextConvergenceBoundaryTest {
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("domain").resolve("agent")
                 .resolve("role").resolve("IFixRoleService.java")));
-        Assert.assertTrue(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-domain")
+        Assert.assertFalse(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-domain")
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("domain").resolve("agent")
                 .resolve("rag").resolve("IRagService.java")));

@@ -10,8 +10,8 @@ import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.reactor.service.VectorService;
 
 import java.util.List;
 
@@ -23,7 +23,7 @@ import java.util.List;
 public class AiClientAdvisorNode extends AbstractArmorySupport {
 
     @Resource
-    private VectorStore vectorStore;
+    private VectorService vectorService;
 
     @Resource
     private AiClientNode aiClientNode;
@@ -66,7 +66,7 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
-        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorStore);
+        return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorService);
     }
 
 }

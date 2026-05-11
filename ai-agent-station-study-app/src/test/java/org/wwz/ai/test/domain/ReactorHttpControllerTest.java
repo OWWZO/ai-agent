@@ -121,7 +121,7 @@ public class ReactorHttpControllerTest {
         Assert.assertTrue(roleLibraryFieldTypes.contains("org.wwz.ai.application.agent.role.IFixRoleQueryService"));
         Assert.assertFalse(roleLibraryFieldTypes.contains("org.wwz.ai.domain.agent.role.IFixRoleService"));
 
-        Assert.assertTrue(ragAdminFieldTypes.contains("org.wwz.ai.application.agent.rag.IRagApplicationService"));
+        Assert.assertFalse(ragAdminFieldTypes.contains("org.wwz.ai.application.agent.rag.IRagApplicationService"));
         Assert.assertFalse(ragAdminFieldTypes.contains("org.wwz.ai.domain.agent.rag.IRagService"));
     }
 

@@ -15,8 +15,6 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +22,10 @@ import org.springframework.core.io.Resource;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
+import org.wwz.ai.domain.agent.reactor.config.data.DataAgentConstants;
+import org.wwz.ai.domain.agent.reactor.data.dto.VectorRecallReq;
+import org.wwz.ai.domain.agent.reactor.data.dto.VectorSaveReq;
+import org.wwz.ai.domain.agent.reactor.service.VectorService;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
@@ -54,7 +56,7 @@ public class OpenAiTest {
     private OpenAiChatModel openAiChatModel;
 
     @Autowired
-    private PgVectorStore pgVectorStore;
+    private VectorService vectorService;
 
     private final TokenTextSplitter tokenTextSplitter = new TokenTextSplitter();
 
@@ -122,7 +124,10 @@ public class OpenAiTest {
 
         documentSplitterList.forEach(doc -> doc.getMetadata().put("knowledge", "grafana-mcp-tools-guide"));
 
-        pgVectorStore.accept(documentSplitterList);
+        VectorSaveReq req = new VectorSaveReq();
+        req.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
+        req.setDataList(documentSplitterList.stream().map(this::toVectorData).collect(Collectors.toList()));
+        vectorService.saveVector(req);
 
         log.info("上传完成");
     }
@@ -139,13 +144,15 @@ public class OpenAiTest {
                     {documents}
                 """;
 
-        SearchRequest request = SearchRequest.builder()
-                .query(message)
-                .topK(5)
-                .filterExpression("knowledge == '知识库名称-v4'")
-                .build();
+        VectorRecallReq request = new VectorRecallReq();
+        request.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
+        request.setQuery(message);
+        request.setLimit(5);
+        request.setKeywordFilterMap(Map.of("knowledge", "知识库名称-v4"));
 
-        List<Document> documents = pgVectorStore.similaritySearch(request);
+        List<Document> documents = vectorService.vectorRecall(request).stream()
+                .map(this::toDocument)
+                .collect(Collectors.toList());
 
         String documentsCollectors = null == documents ? "" : documents.stream().map(Document::getText).collect(Collectors.joining());
 
@@ -162,6 +169,18 @@ public class OpenAiTest {
                         .build()));
 
         log.info("测试结果:{}", JSON.toJSONString(chatResponse));
+    }
+
+    private VectorSaveReq.VectorData toVectorData(Document document) {
+        VectorSaveReq.VectorData vectorData = new VectorSaveReq.VectorData();
+        vectorData.setEmbeddingText(document.getText());
+        vectorData.setPayloads(document.getMetadata());
+        return vectorData;
+    }
+
+    private Document toDocument(Map<String, Object> payload) {
+        Object content = payload.get("content");
+        return new Document(content == null ? "" : content.toString(), payload);
     }
 
 }

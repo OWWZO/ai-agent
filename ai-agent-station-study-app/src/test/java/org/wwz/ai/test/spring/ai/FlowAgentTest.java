@@ -1,6 +1,5 @@
 package org.wwz.ai.test.spring.ai;
 
-import org.wwz.ai.test.spring.ai.advisors.RagAnswerAdvisor;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
@@ -17,10 +16,11 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.wwz.ai.domain.agent.model.valobj.AiClientAdvisorVO;
+import org.wwz.ai.domain.agent.reactor.service.VectorService;
+import org.wwz.ai.domain.agent.service.armory.node.factory.element.RagAnswerAdvisor;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -44,7 +44,7 @@ public class FlowAgentTest {
     private ChatClient mcpToolsChatClient;
 
     @Resource
-    private PgVectorStore vectorStore;
+    private VectorService vectorService;
 
     public static final String CHAT_MEMORY_CONVERSATION_ID_KEY = "chat_memory_conversation_id";
     public static final String CHAT_MEMORY_RETRIEVE_SIZE_KEY = "chat_memory_response_size";
@@ -108,10 +108,7 @@ public class FlowAgentTest {
                                         .maxMessages(50)
                                         .build()
                         ).build(),
-                        new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
-                                .topK(5)
-                                .filterExpression("knowledge == 'article'")
-                                .build()))
+                        buildRagAnswerAdvisor("knowledge == 'article'", 5))
                 .build();
 
         // 初始化执行器客户端
@@ -175,10 +172,7 @@ public class FlowAgentTest {
                                         .maxMessages(20)
                                         .build()
                         ).build(),
-                        new RagAnswerAdvisor(vectorStore, SearchRequest.builder()
-                                .topK(5)
-                                .filterExpression("knowledge == 'article'")
-                                .build()))
+                        buildRagAnswerAdvisor("knowledge == 'article'", 5))
                 .build();
 
         // 初始化MCP工具客户端
@@ -892,6 +886,16 @@ public class FlowAgentTest {
         }
 
         throw new RuntimeException(String.format("操作 %s 在 %d 次尝试后仍然失败", operationName, maxRetries), lastException);
+    }
+
+    private RagAnswerAdvisor buildRagAnswerAdvisor(String filterExpression, int topK) {
+        return new RagAnswerAdvisor(
+                vectorService,
+                AiClientAdvisorVO.RagAnswer.builder()
+                        .topK(topK)
+                        .filterExpression(filterExpression)
+                        .build()
+        );
     }
 
 }

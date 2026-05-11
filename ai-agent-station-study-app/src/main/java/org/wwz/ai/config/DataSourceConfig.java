@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.util.StringUtils;
@@ -22,7 +21,7 @@ import javax.sql.DataSource;
 import java.util.Objects;
 
 /**
- * 根据dev的参数 进行mysql 向量数据库的模板创建
+ * 根据环境参数创建业务主库数据源。
  */
 @Configuration
 @Conditional(DataSourceConfig.DatabaseProfileCondition.class)
@@ -92,40 +91,6 @@ public class DataSourceConfig {
         return new SqlSessionTemplate(sqlSessionFactory);
     }
 
-    @Bean("pgVectorDataSource")
-    public DataSource pgVectorDataSource(@Value("${spring.datasource.pgvector.driver-class-name}") String driverClassName,
-                                         @Value("${spring.datasource.pgvector.url}") String url,
-                                         @Value("${spring.datasource.pgvector.username}") String username,
-                                         @Value("${spring.datasource.pgvector.password}") String password,
-                                         @Value("${spring.datasource.pgvector.hikari.maximum-pool-size:5}") int maximumPoolSize,
-                                         @Value("${spring.datasource.pgvector.hikari.minimum-idle:2}") int minimumIdle,
-                                         @Value("${spring.datasource.pgvector.hikari.idle-timeout:30000}") long idleTimeout,
-                                         @Value("${spring.datasource.pgvector.hikari.connection-timeout:30000}") long connectionTimeout) {
-        // 连接池配置
-        HikariDataSource dataSource = new HikariDataSource();
-        dataSource.setDriverClassName(driverClassName);
-        dataSource.setJdbcUrl(url);
-        dataSource.setUsername(username);
-        dataSource.setPassword(password);
-
-        dataSource.setMaximumPoolSize(maximumPoolSize);
-        dataSource.setMinimumIdle(minimumIdle);
-        dataSource.setIdleTimeout(idleTimeout);
-        dataSource.setConnectionTimeout(connectionTimeout);
-
-        // 确保在启动时连接数据库
-        dataSource.setInitializationFailTimeout(1);  // 设置为1ms，如果连接失败则快速失败
-        dataSource.setConnectionTestQuery("SELECT 1"); // 简单的连接测试查询
-        dataSource.setAutoCommit(true);
-        dataSource.setPoolName("PgVectorHikariPool");
-        return dataSource;
-    }
-
-    @Bean("pgVectorJdbcTemplate")
-    public JdbcTemplate pgVectorJdbcTemplate(@Qualifier("pgVectorDataSource") DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
-    }
-
     /**
      * 仅在显式配置 mysql 数据源时启用数据库装配。
      * 这样 test profile 与无库探针场景都不会因为缺失占位符而提前失败。
@@ -155,4 +120,3 @@ public class DataSourceConfig {
     }
 
 }
-

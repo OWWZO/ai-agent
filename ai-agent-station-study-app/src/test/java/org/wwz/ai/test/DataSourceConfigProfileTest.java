@@ -12,7 +12,7 @@ import org.wwz.ai.config.DataSourceConfig;
 
 /**
  * 数据源配置 profile 回归。
- * test profile 明确禁用数据库链路时，不应再强制解析 mysql/pgvector 占位符。
+ * test profile 明确禁用数据库链路时，不应再强制解析 mysql 相关占位符。
  */
 public class DataSourceConfigProfileTest {
 
@@ -38,7 +38,6 @@ public class DataSourceConfigProfileTest {
                         "--spring.config.location=classpath:/application-test.yml"
                 )) {
             Assert.isTrue(!context.containsBean("mysqlDataSource"), "mysqlDataSource 不应在缺失 mysql 配置时创建");
-            Assert.isTrue(!context.containsBean("pgVectorDataSource"), "pgVectorDataSource 不应在缺失 mysql 配置时创建");
         }
     }
 
