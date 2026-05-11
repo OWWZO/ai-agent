@@ -3,11 +3,11 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>ai-agent-station-study</artifactId>
+        <artifactId>Reactor-agent</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>ai-agent-station-study-types</artifactId>
+    <artifactId>Reactor-agent-types</artifactId>
 
     <dependencies>
         <dependency>
@@ -33,7 +33,7 @@
     </dependencies>
 
     <build>
-        <finalName>ai-agent-station-study-types</finalName>
+        <finalName>Reactor-agent-types</finalName>
     </build>
 
 </project>

@@ -1,0 +1,70 @@
+server:
+  port: 8100
+
+# 线程池配置
+thread:
+  pool:
+    executor:
+      config:
+        core-pool-size: 20
+        max-pool-size: 50
+        keep-alive-time: 5000
+        block-queue-size: 5000
+        policy: CallerRunsPolicy
+
+# 简化配置，禁用数据库自动配置
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
+  ai:
+    openai:
+      base-url: https://apis.itedus.cn
+      api-key: sk-sLvFUs1wSIgtbWcE03464f199d254cFcA3A5F2A353C8EdDe
+    agent:
+      chat:
+        default-role-id: 85374287
+      auto-config:
+        enabled: false
+
+# 日志
+logging:
+  level:
+    root: info
+    cn.bugstack.ai: debug
+  config: classpath:logback-spring.xml
+
+autobots:
+  autoagent:
+    skill:
+      enabled: false
+      # 测试环境默认指向仓库内运行时目录，便于用测试夹具覆盖
+      directories:
+        - ${user.dir}/runtime/skills
+      react-enabled: true
+      plan-solve-enabled: true
+      max-read-chars: 12000
+      max-list-entries: 200
+      max-glob-results: 100
+      max-grep-matches: 100
+      default-script-timeout-seconds: 120
+  data-agent:
+    agent-url: http://127.0.0.1:1601
+    force-refresh: false
+    es-config:
+      enable: false
+      host: 127.0.0.1:9200
+      scheme: http
+      user: user
+      password: pwd
+      apiKey:
+    qdrantConfig:
+      enable: false
+      url: https://test-qdrant.example.com
+      embeddingUrl: http://127.0.0.1:1601/v1/tool/embedding/text
+      host: 127.0.0.1
+      port: 6334
+      apiKey: test-key
+      preferGrpc: true

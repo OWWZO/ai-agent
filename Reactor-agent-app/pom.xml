@@ -3,11 +3,11 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>ai-agent-station-study</artifactId>
+        <artifactId>Reactor-agent</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>ai-agent-station-study-app</artifactId>
+    <artifactId>Reactor-agent-app</artifactId>
 
     <packaging>jar</packaging>
 
@@ -128,20 +128,20 @@
         <!-- 工程模块；启动依赖 trigger->domain, infrastructure-->
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-case</artifactId>
+            <artifactId>Reactor-agent-case</artifactId>
         </dependency>
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-trigger</artifactId>
+            <artifactId>Reactor-agent-trigger</artifactId>
         </dependency>
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-infrastructure</artifactId>
+            <artifactId>Reactor-agent-infrastructure</artifactId>
         </dependency>
     </dependencies>
 
     <build>
-        <finalName>ai-agent-station-study-app</finalName>
+        <finalName>Reactor-agent-app</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>

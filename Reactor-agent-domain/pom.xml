@@ -3,11 +3,11 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>ai-agent-station-study</artifactId>
+        <artifactId>Reactor-agent</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>ai-agent-station-study-domain</artifactId>
+    <artifactId>Reactor-agent-domain</artifactId>
 
     <dependencies>
         <dependency>
@@ -129,12 +129,12 @@
         <!-- 系统模块 -->
         <dependency>
             <groupId>cn.bugstack.ai</groupId>
-            <artifactId>ai-agent-station-study-types</artifactId>
+            <artifactId>Reactor-agent-types</artifactId>
         </dependency>
     </dependencies>
 
     <build>
-        <finalName>ai-agent-station-study-domain</finalName>
+        <finalName>Reactor-agent-domain</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

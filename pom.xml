@@ -3,18 +3,18 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>cn.bugstack.ai</groupId>
-    <artifactId>ai-agent-station-study</artifactId>
+    <artifactId>Reactor-agent</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
-        <module>ai-agent-station-study-api</module>
-        <module>ai-agent-station-study-app</module>
-        <module>ai-agent-station-study-case</module>
-        <module>ai-agent-station-study-domain</module>
-        <module>ai-agent-station-study-trigger</module>
-        <module>ai-agent-station-study-infrastructure</module>
-        <module>ai-agent-station-study-types</module>
+        <module>Reactor-agent-api</module>
+        <module>Reactor-agent-app</module>
+        <module>Reactor-agent-case</module>
+        <module>Reactor-agent-domain</module>
+        <module>Reactor-agent-trigger</module>
+        <module>Reactor-agent-infrastructure</module>
+        <module>Reactor-agent-types</module>
     </modules>
 
     <repositories>
@@ -147,32 +147,32 @@
             <!-- 工程模块 -->
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-api</artifactId>
+                <artifactId>Reactor-agent-api</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-domain</artifactId>
+                <artifactId>Reactor-agent-domain</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-case</artifactId>
+                <artifactId>Reactor-agent-case</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-infrastructure</artifactId>
+                <artifactId>Reactor-agent-infrastructure</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-types</artifactId>
+                <artifactId>Reactor-agent-types</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>cn.bugstack.ai</groupId>
-                <artifactId>ai-agent-station-study-trigger</artifactId>
+                <artifactId>Reactor-agent-trigger</artifactId>
                 <version>1.0-SNAPSHOT</version>
             </dependency>
         </dependencies>
@@ -233,21 +233,21 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <properties>
-                <java_jvm>-Xms1G -Xmx1G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/ai-agent-station-study-boot -Xloggc:/export/Logs/ai-agent-station-study-boot/gc-ai-agent-station-study-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
+                <java_jvm>-Xms1G -Xmx1G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Reactor-agent-boot -Xloggc:/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
                 <profileActive>dev</profileActive>
             </properties>
         </profile>
         <profile>
             <id>test</id>
             <properties>
-                <java_jvm>-Xms1G -Xmx1G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/ai-agent-station-study-boot -Xloggc:/export/Logs/ai-agent-station-study-boot/gc-ai-agent-station-study-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
+                <java_jvm>-Xms1G -Xmx1G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=test -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/Reactor-agent-boot -Xloggc:/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
                 <profileActive>test</profileActive>
             </properties>
         </profile>
         <profile>
             <id>prod</id>
             <properties>
-                <java_jvm>-Xms6G -Xmx6G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=release -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/fq-mall-activity-app -Xloggc:/export/Logs/ai-agent-station-study-boot/gc-ai-agent-station-study-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
+                <java_jvm>-Xms6G -Xmx6G -server  -XX:MaxPermSize=256M -Xss256K -Dspring.profiles.active=release -XX:+DisableExplicitGC -XX:+UseG1GC  -XX:LargePageSizeInBytes=128m -XX:+UseFastAccessorMethods -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/export/Logs/fq-mall-activity-app -Xloggc:/export/Logs/Reactor-agent-boot/gc-Reactor-agent-boot.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps</java_jvm>
                 <profileActive>prod</profileActive>
             </properties>
         </profile>
