@@ -44,6 +44,8 @@ public class ReactorRuntimeDependencies {
     //预留给之后并发调用llm
     Executor llmExecutor;
 
+    Executor taskExecutor;
+
     Executor toolExecutor;
 
     TaskScheduler heartbeatScheduler;
@@ -86,6 +88,10 @@ public class ReactorRuntimeDependencies {
 
     public Executor requireToolExecutor() {
         return Objects.requireNonNull(toolExecutor, "toolExecutor must not be null");
+    }
+
+    public Executor requireTaskExecutor() {
+        return Objects.requireNonNull(taskExecutor, "taskExecutor must not be null");
     }
 
     public TaskScheduler requireHeartbeatScheduler() {

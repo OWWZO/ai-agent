@@ -25,15 +25,9 @@ public class AgentRunState {
 
     private String runUid;
 
-    private String currentAgentName;
-
-    private Integer currentStepNo;
-
     @Builder.Default
     @ToString.Exclude
     private AtomicInteger nextLlmInvocationSeq = new AtomicInteger(1);
-
-    private Long currentLlmInvocationId;
 
     @Builder.Default
     @ToString.Exclude
@@ -62,8 +56,6 @@ public class AgentRunState {
      * 标记当前线程的执行位置。
      */
     public void markExecutionPosition(String agentName, Integer stepNo) {
-        this.currentAgentName = agentName;
-        this.currentStepNo = stepNo;
         currentAgentNameHolder.set(agentName);
         currentStepNoHolder.set(stepNo);
     }
@@ -72,7 +64,6 @@ public class AgentRunState {
      * 绑定当前线程的 LLM invocation。
      */
     public void bindCurrentLlmInvocationId(Long llmInvocationId) {
-        this.currentLlmInvocationId = llmInvocationId;
         currentLlmInvocationIdHolder.set(llmInvocationId);
     }
 
@@ -80,7 +71,6 @@ public class AgentRunState {
      * 清理当前线程的 LLM invocation 视图。
      */
     public void clearCurrentLlmInvocationId() {
-        this.currentLlmInvocationId = null;
         currentLlmInvocationIdHolder.remove();
     }
 
@@ -102,17 +92,14 @@ public class AgentRunState {
     }
 
     public String getCurrentAgentName() {
-        String agentName = currentAgentNameHolder.get();
-        return agentName != null ? agentName : currentAgentName;
+        return currentAgentNameHolder.get();
     }
 
     public Integer getCurrentStepNo() {
-        Integer stepNo = currentStepNoHolder.get();
-        return stepNo != null ? stepNo : currentStepNo;
+        return currentStepNoHolder.get();
     }
 
     public Long getCurrentLlmInvocationId() {
-        Long llmInvocationId = currentLlmInvocationIdHolder.get();
-        return llmInvocationId != null ? llmInvocationId : currentLlmInvocationId;
+        return currentLlmInvocationIdHolder.get();
     }
 }

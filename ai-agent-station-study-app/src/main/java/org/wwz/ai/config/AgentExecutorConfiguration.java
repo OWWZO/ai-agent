@@ -31,6 +31,11 @@ public class AgentExecutorConfiguration {
         return buildExecutor(properties.getLlm());
     }
 
+    @Bean(name = AgentExecutorNames.TASK_EXECUTOR)
+    public ThreadPoolTaskExecutor agentTaskExecutor(AgentExecutorProperties properties) {
+        return buildExecutor(properties.getTask());
+    }
+
     @Bean(name = AgentExecutorNames.TOOL_EXECUTOR)
     public ThreadPoolTaskExecutor agentToolExecutor(AgentExecutorProperties properties) {
         return buildExecutor(properties.getTool());

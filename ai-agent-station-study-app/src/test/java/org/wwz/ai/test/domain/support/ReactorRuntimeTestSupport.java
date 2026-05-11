@@ -81,6 +81,7 @@ public final class ReactorRuntimeTestSupport {
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
                 .llmExecutor(sameThreadExecutor)
+                .taskExecutor(sameThreadExecutor)
                 .toolExecutor(sameThreadExecutor)
                 .heartbeatScheduler(new ConcurrentTaskScheduler())
                 .build();

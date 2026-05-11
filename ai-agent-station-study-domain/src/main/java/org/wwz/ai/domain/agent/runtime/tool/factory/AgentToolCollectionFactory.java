@@ -52,6 +52,16 @@ public class AgentToolCollectionFactory {
         return build(agentContext, request, SkillAttachScope.PLAN_SOLVE);
     }
 
+    public ToolCollection buildForParallelTask(AgentContext agentContext,
+                                               AgentRequest request,
+                                               ToolCollection parentToolCollection) {
+        ToolCollection childToolCollection = buildForPlanSolve(agentContext, request);
+        if (parentToolCollection != null) {
+            childToolCollection.restoreTaskScopedState(parentToolCollection.snapshotTaskScopedState());
+        }
+        return childToolCollection;
+    }
+
     private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
         ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(agentContext);
         ToolCollection toolCollection = new ToolCollection();

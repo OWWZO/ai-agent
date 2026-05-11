@@ -307,6 +307,35 @@ public class AgentContext {
                 && agentRunState.getRunId() != null;
     }
 
+    /**
+     * 为并发子任务创建轻量上下文分叉。
+     * child context 共享 run 级依赖与账本事实，但复制任务态兼容视图，避免并发写回父上下文。
+     */
+    public AgentContext forkForParallelTask(String parallelTask) {
+        return AgentContext.builder()
+                .requestId(requestId)
+                .sessionId(sessionId)
+                .query(query)
+                .task(parallelTask)
+                .printer(printer)
+                .runtimeDependencies(runtimeDependencies)
+                .dateInfo(dateInfo)
+                .productFiles(copyFiles(productFiles))
+                .isStream(isStream)
+                .streamMessageType(streamMessageType)
+                .sopPrompt(sopPrompt)
+                .basePrompt(basePrompt)
+                .historyDialogue(historyDialogue)
+                .agentType(agentType)
+                .toolArtifactRegistry(toolArtifactRegistry)
+                .currentToolArtifactSourceHolder(new ThreadLocal<>())
+                .executionRecorder(executionRecorder)
+                .agentRunState(agentRunState)
+                .taskProductFiles(copyFiles(taskProductFiles))
+                .templateType(templateType)
+                .build();
+    }
+
     private synchronized List<File> ensureProductFiles() {
         if (productFiles == null) {
             productFiles = new ArrayList<>();
@@ -326,6 +355,10 @@ public class AgentContext {
             agentRunState = AgentRunState.builder().build();
         }
         return agentRunState;
+    }
+
+    private List<File> copyFiles(List<File> sourceFiles) {
+        return sourceFiles == null ? new ArrayList<>() : new ArrayList<>(sourceFiles);
     }
 
     @Override

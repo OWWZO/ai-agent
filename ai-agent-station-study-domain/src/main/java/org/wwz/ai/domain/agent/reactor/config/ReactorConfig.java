@@ -214,6 +214,9 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.planner.max_steps:40}")
     private Integer plannerMaxSteps;
 
+    @Value("${autobots.autoagent.planner.max_parallel_tasks:2}")
+    private Integer plannerMaxParallelTasks;
+
     @Value("${autobots.autoagent.executor.max_steps:40}")
     private Integer executorMaxSteps;
 

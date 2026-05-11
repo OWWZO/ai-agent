@@ -207,6 +207,32 @@ public class ToolCollection {
         return (String) digitalEmployees.get(toolName);
     }
 
+    /**
+     * 复制当前任务态快照。
+     * 并发 child task 只允许继承父 task 的初始视图，后续修改必须彼此隔离。
+     */
+    public TaskScopedStateSnapshot snapshotTaskScopedState() {
+        return new TaskScopedStateSnapshot(
+                currentTask,
+                digitalEmployees == null ? null : JSONFieldCopySupport.copyJsonObject(digitalEmployees)
+        );
+    }
+
+    /**
+     * 恢复一份任务态快照。
+     */
+    public void restoreTaskScopedState(TaskScopedStateSnapshot snapshot) {
+        if (snapshot == null) {
+            currentTask = null;
+            digitalEmployees = null;
+            return;
+        }
+        currentTask = snapshot.currentTask();
+        digitalEmployees = snapshot.digitalEmployees() == null
+                ? null
+                : JSONFieldCopySupport.copyJsonObject(snapshot.digitalEmployees());
+    }
+
     @Override
     public String toString() {
         return "ToolCollection(" +
@@ -214,5 +240,27 @@ public class ToolCollection {
                 ", mcpToolMap=" + (mcpToolMap != null ? mcpToolMap.keySet() : "null") +
                 ", currentTask='" + currentTask + '\'' +
                 ')';
+    }
+
+    /**
+     * task 级运行态快照，仅复制并发路径需要隔离的可变字段。
+     */
+    public record TaskScopedStateSnapshot(String currentTask, JSONObject digitalEmployees) {
+    }
+
+    /**
+     * 统一封装 JSON 对象深拷贝，避免到处散落 FastJSON 细节。
+     */
+    private static final class JSONFieldCopySupport {
+
+        private JSONFieldCopySupport() {
+        }
+
+        private static JSONObject copyJsonObject(JSONObject source) {
+            if (source == null) {
+                return null;
+            }
+            return JSONObject.parseObject(source.toJSONString());
+        }
     }
 }

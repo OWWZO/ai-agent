@@ -6,14 +6,16 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.config.AgentExecutorConfiguration;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 import org.wwz.ai.types.job.config.TaskJobAutoConfig;
 import org.wwz.ai.types.job.service.ITaskJobService;
+import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -31,14 +33,17 @@ public class AgentExecutorConfigurationTest {
 
             Executor dispatchExecutor = context.getBean(AgentExecutorNames.DISPATCH_EXECUTOR, Executor.class);
             Executor llmExecutor = context.getBean(AgentExecutorNames.LLM_EXECUTOR, Executor.class);
+            ThreadPoolTaskExecutor taskExecutor = context.getBean(AgentExecutorNames.TASK_EXECUTOR, ThreadPoolTaskExecutor.class);
             ThreadPoolTaskExecutor toolExecutor = context.getBean(AgentExecutorNames.TOOL_EXECUTOR, ThreadPoolTaskExecutor.class);
             TaskScheduler heartbeatScheduler = context.getBean(AgentExecutorNames.HEARTBEAT_SCHEDULER, TaskScheduler.class);
             ThreadPoolExecutor legacyBridgeExecutor = context.getBean("threadPoolExecutor", ThreadPoolExecutor.class);
 
             Assert.assertNotNull(dispatchExecutor);
             Assert.assertNotNull(llmExecutor);
+            Assert.assertNotNull(taskExecutor);
             Assert.assertNotNull(toolExecutor);
             Assert.assertNotNull(heartbeatScheduler);
+            Assert.assertNotSame(taskExecutor.getThreadPoolExecutor(), toolExecutor.getThreadPoolExecutor());
             Assert.assertSame(toolExecutor.getThreadPoolExecutor(), legacyBridgeExecutor);
         } finally {
             context.close();
@@ -63,6 +68,21 @@ public class AgentExecutorConfigurationTest {
                 .agentToolExecutor(properties);
 
         Assert.assertTrue(executor.getThreadPoolExecutor().getRejectedExecutionHandler() instanceof ThreadPoolExecutor.CallerRunsPolicy);
+    }
+
+    @Test
+    public void shouldExposeTaskExecutorDefaultsAndPlannerParallelismThroughRuntimeFixture() {
+        AgentExecutorProperties properties = new AgentExecutorProperties();
+        Assert.assertNotNull(properties.getTask());
+        Assert.assertEquals("agent-task-", properties.getTask().getThreadNamePrefix());
+
+        ReactorConfig reactorConfig = new ReactorConfig();
+        ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 3);
+
+        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
+
+        Assert.assertEquals(Integer.valueOf(3), runtimeDependencies.requireReactorConfig().getPlannerMaxParallelTasks());
+        Assert.assertNotNull(runtimeDependencies.requireTaskExecutor());
     }
 
     @Test

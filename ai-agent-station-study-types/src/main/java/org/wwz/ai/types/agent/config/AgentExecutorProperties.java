@@ -17,6 +17,8 @@ public class AgentExecutorProperties {
 
     private Pool llm = Pool.llmDefault();
 
+    private Pool task = Pool.taskDefault();
+
     private Pool tool = Pool.toolDefault();
 
     private Heartbeat heartbeat = Heartbeat.defaultValue();
@@ -63,6 +65,17 @@ public class AgentExecutorProperties {
             pool.setKeepAliveSeconds(60L);
             pool.setRejectPolicy("AbortPolicy");
             pool.setThreadNamePrefix("agent-tool-");
+            return pool;
+        }
+
+        public static Pool taskDefault() {
+            Pool pool = new Pool();
+            pool.setCorePoolSize(8);
+            pool.setMaxPoolSize(16);
+            pool.setQueueCapacity(50);
+            pool.setKeepAliveSeconds(60L);
+            pool.setRejectPolicy("AbortPolicy");
+            pool.setThreadNamePrefix("agent-task-");
             return pool;
         }
     }

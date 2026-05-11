@@ -55,6 +55,7 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  RemoteStreamPort remoteStreamPort,
                                                                  FileArtifactPort fileArtifactPort,
                                                                  @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
+                                                                 @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
                                                                  @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
                                                                  @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler) {
         return ReactorRuntimeDependencies.builder()
@@ -67,6 +68,7 @@ public class ReactorRuntimeAutoConfiguration {
                 .remoteStreamPort(remoteStreamPort)
                 .fileArtifactPort(fileArtifactPort)
                 .llmExecutor(llmExecutor)
+                .taskExecutor(taskExecutor)
                 .toolExecutor(toolExecutor)
                 .heartbeatScheduler(heartbeatScheduler)
                 .build();

@@ -10,9 +10,12 @@ import org.wwz.ai.domain.agent.runtime.agent.PlanningAgent;
 import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.SubTaskExecutionResult;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -24,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -39,8 +43,13 @@ import java.util.stream.Collectors;
 @Service
 public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
+    private static final int DEFAULT_PLANNER_MAX_PARALLEL_TASKS = 2;
+
     @Resource
     private ReactorConfig reactorConfig;
+
+    @Resource
+    private AgentToolCollectionFactory agentToolCollectionFactory;
 
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -75,37 +84,9 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
             if (planningResults.size() == 1) {
                 executorResult = executor.run(planningResults.get(0));
             } else {
-                Map<String, String> tmpTaskResult = new ConcurrentHashMap<>();
-                int memoryIndex = executor.getMemory().size();
-                List<ExecutorAgent> slaveExecutors = new ArrayList<>();
-                List<CompletableFuture<Void>> futures = new ArrayList<>(planningResults.size());
-                Executor toolExecutor = resolveToolExecutor(agentContext);
-
-                for (String task : planningResults) {
-                    ExecutorAgent slaveExecutor = new ExecutorAgent(agentContext);
-                    slaveExecutor.setState(executor.getState());
-                    slaveExecutor.getMemory().clear();
-                    slaveExecutor.getMemory().addMessages(executor.getMemory().getMessages());
-                    slaveExecutors.add(slaveExecutor);
-
-                    futures.add(AgentExecutorSupport.supplyAsync(toolExecutor, "planSolveExecutorTask", () -> {
-                        String taskResult = slaveExecutor.run(task);
-                        tmpTaskResult.put(task, taskResult);
-                        return null;
-                    }));
-                }
-
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-                for (ExecutorAgent slaveExecutor : slaveExecutors) {
-                    for (int i = memoryIndex; i < slaveExecutor.getMemory().size(); i++) {
-                        executor.getMemory().addMessage(slaveExecutor.getMemory().get(i));
-                    }
-                    slaveExecutor.getMemory().clear();
-                    executor.setState(slaveExecutor.getState());
-                }
-
-                executorResult = String.join("\n", tmpTaskResult.values());
+                List<SubTaskExecutionResult> childResults = executeParallelTasks(agentContext, requestParameter, executor, planningResults);
+                mergeChildResultsIntoParent(executor, childResults);
+                executorResult = joinTaskResults(childResults);
             }
 
             planningResult = planning.run(executorResult);
@@ -193,12 +174,161 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
     }
 
     /**
-     * PlanSolve 并发执行器任务统一复用受控工具执行器。
+     * PlanSolve 外层 task 并发统一走独立 taskExecutor。
      */
-    private Executor resolveToolExecutor(AgentContext agentContext) {
+    protected Executor resolveTaskExecutor(AgentContext agentContext) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return Runnable::run;
         }
-        return agentContext.getRuntimeDependencies().requireToolExecutor();
+        return agentContext.getRuntimeDependencies().requireTaskExecutor();
+    }
+
+    protected List<SubTaskExecutionResult> executeParallelTasks(AgentContext parentContext,
+                                                                AgentRequest request,
+                                                                ExecutorAgent parentExecutor,
+                                                                List<String> tasks) {
+        int maxParallelTasks = resolvePlannerMaxParallelTasks();
+        Map<String, SubTaskExecutionResult> resultMap = new ConcurrentHashMap<>();
+        Executor taskExecutor = resolveTaskExecutor(parentContext);
+
+        for (List<String> taskBatch : partitionTasks(tasks, maxParallelTasks)) {
+            List<CompletableFuture<Void>> futures = new ArrayList<>(taskBatch.size());
+            for (String task : taskBatch) {
+                futures.add(AgentExecutorSupport.supplyAsync(taskExecutor, "planSolveExecutorTask", () -> {
+                    resultMap.put(task, executeSingleParallelTask(parentContext, request, parentExecutor, task));
+                    return null;
+                }));
+            }
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        }
+
+        List<SubTaskExecutionResult> orderedResults = new ArrayList<>(tasks.size());
+        for (String task : tasks) {
+            orderedResults.add(resultMap.get(task));
+        }
+        return orderedResults;
+    }
+
+    protected SubTaskExecutionResult executeSingleParallelTask(AgentContext parentContext,
+                                                               AgentRequest request,
+                                                               ExecutorAgent parentExecutor,
+                                                               String task) {
+        AgentContext childContext = parentContext.forkForParallelTask(task);
+        ToolCollection childToolCollection = agentToolCollectionFactory.buildForParallelTask(
+                childContext,
+                request,
+                parentContext.getToolCollection()
+        );
+        childContext.setToolCollection(childToolCollection);
+
+        ExecutorAgent childExecutor = new ExecutorAgent(childContext);
+        childExecutor.setState(parentExecutor.getState());
+        childExecutor.getMemory().clear();
+        childExecutor.getMemory().addMessages(copyMessages(parentExecutor.getMemory().getMessages()));
+        int baselineMemorySize = childExecutor.getMemory().size();
+
+        String taskResult = childExecutor.run(task);
+        List<Message> memoryIncrementMessages = new ArrayList<>();
+        for (int i = baselineMemorySize; i < childExecutor.getMemory().size(); i++) {
+            memoryIncrementMessages.add(childExecutor.getMemory().get(i));
+        }
+        return SubTaskExecutionResult.builder()
+                .task(task)
+                .taskResult(taskResult)
+                .state(childExecutor.getState())
+                .memoryIncrementMessages(memoryIncrementMessages)
+                .build();
+    }
+
+    protected void mergeChildResultsIntoParent(ExecutorAgent parentExecutor, List<SubTaskExecutionResult> childResults) {
+        if (childResults == null || childResults.isEmpty()) {
+            return;
+        }
+        for (SubTaskExecutionResult childResult : childResults) {
+            if (childResult == null || childResult.getMemoryIncrementMessages() == null) {
+                continue;
+            }
+            for (Message message : childResult.getMemoryIncrementMessages()) {
+                parentExecutor.getMemory().addMessage(message);
+            }
+        }
+        parentExecutor.setState(reduceParentState(childResults));
+    }
+
+    protected AgentState reduceParentState(List<SubTaskExecutionResult> childResults) {
+        boolean hasIdle = false;
+        boolean allFinished = true;
+        for (SubTaskExecutionResult childResult : childResults) {
+            AgentState childState = childResult == null ? null : childResult.getState();
+            if (childState == AgentState.ERROR) {
+                return AgentState.ERROR;
+            }
+            if (childState == AgentState.IDLE) {
+                hasIdle = true;
+            }
+            if (childState != AgentState.FINISHED) {
+                allFinished = false;
+            }
+        }
+        if (hasIdle) {
+            return AgentState.IDLE;
+        }
+        if (allFinished) {
+            return AgentState.FINISHED;
+        }
+        return AgentState.IDLE;
+    }
+
+    protected String joinTaskResults(List<SubTaskExecutionResult> childResults) {
+        Map<String, String> orderedResults = new LinkedHashMap<>();
+        for (SubTaskExecutionResult childResult : childResults) {
+            if (childResult == null) {
+                continue;
+            }
+            orderedResults.put(childResult.getTask(), childResult.getTaskResult());
+        }
+        return String.join("\n", orderedResults.values());
+    }
+
+    protected int resolvePlannerMaxParallelTasks() {
+        Integer configuredLimit = reactorConfig.getPlannerMaxParallelTasks();
+        if (configuredLimit == null || configuredLimit <= 0) {
+            return DEFAULT_PLANNER_MAX_PARALLEL_TASKS;
+        }
+        return configuredLimit;
+    }
+
+    protected List<List<String>> partitionTasks(List<String> tasks, int batchSize) {
+        if (tasks == null || tasks.isEmpty()) {
+            return List.of();
+        }
+        List<List<String>> batches = new ArrayList<>();
+        for (int start = 0; start < tasks.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, tasks.size());
+            batches.add(new ArrayList<>(tasks.subList(start, end)));
+        }
+        return batches;
+    }
+
+    private List<Message> copyMessages(List<Message> sourceMessages) {
+        if (sourceMessages == null || sourceMessages.isEmpty()) {
+            return List.of();
+        }
+        List<Message> copies = new ArrayList<>(sourceMessages.size());
+        for (Message sourceMessage : sourceMessages) {
+            if (sourceMessage == null) {
+                continue;
+            }
+            copies.add(Message.builder()
+                    .role(sourceMessage.getRole())
+                    .content(sourceMessage.getContent())
+                    .base64Image(sourceMessage.getBase64Image())
+                    .toolCallId(sourceMessage.getToolCallId())
+                    .toolCalls(sourceMessage.getToolCalls() == null
+                            ? null
+                            : new ArrayList<>(sourceMessage.getToolCalls()))
+                    .build());
+        }
+        return copies;
     }
 }
