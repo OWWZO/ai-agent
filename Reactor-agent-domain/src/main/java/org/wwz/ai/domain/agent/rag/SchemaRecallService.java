@@ -30,7 +30,7 @@ import java.util.Map;
 @Service
 public class SchemaRecallService {
 
-    @Autowired
+    @Autowired(required = false)
     RestHighLevelClient dataAgentEsClient;
     @Autowired
     VectorService vectorService;
@@ -50,6 +50,10 @@ public class SchemaRecallService {
     }
 
     public List<Map<String, Object>> esValueRecall(ColumnEsRecallReq req) throws IOException {
+        if (dataAgentEsClient == null) {
+            log.warn("ES 客户端不可用，返回空的列值召回结果");
+            return new ArrayList<>();
+        }
         SearchRequest searchRequest = new SearchRequest(DataAgentConstants.COLUMN_VALUE_ES_INDEX);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();

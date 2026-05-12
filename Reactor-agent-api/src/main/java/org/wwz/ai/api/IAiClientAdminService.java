@@ -7,7 +7,7 @@ import org.wwz.ai.api.response.Response;
 
 import java.util.List;
 
-
+//todo:预留给后续开发
 public interface IAiClientAdminService {
 
     /**

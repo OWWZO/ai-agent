@@ -28,7 +28,7 @@ import java.util.Map;
 @Slf4j
 public class ColumnValueSyncService {
 
-    @Autowired
+    @Autowired(required = false)
     RestHighLevelClient dataAgentEsClient;
     @Autowired
     DataAgentConfig dataAgentConfig;
@@ -36,6 +36,7 @@ public class ColumnValueSyncService {
     DataQueryExecutionPort dataQueryExecutionPort;
 
     public void initColumnValueIndex() {
+        requireEsClient();
         if (ESUtil.isExistsIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX)) {
             log.info("es index 已存在，无需创建");
             return;
@@ -48,6 +49,7 @@ public class ColumnValueSyncService {
     }
 
     public void recreateColumnValueIndex() {
+        requireEsClient();
         if (ESUtil.isExistsIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX)) {
             boolean deleted = ESUtil.deleteIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX);
             if (!deleted) {
@@ -82,6 +84,10 @@ public class ColumnValueSyncService {
 
 
     public void syncColumnValue(ChatModelInfo modelInfo, ChatModelSchema column) throws SQLException {
+        if (dataAgentEsClient == null) {
+            log.warn("ES 客户端不可用，跳过字段值同步：{}", column.getColumnId());
+            return;
+        }
         String tableName = getTableName(modelInfo);
         String valueSql = String.format("select %s as `value` FROM %s WHERE %s IS NOT NULL GROUP BY %s Limit  10000", column.getColumnId(), tableName, column.getColumnId(), column.getColumnId());
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
@@ -117,6 +123,12 @@ public class ColumnValueSyncService {
             log.info("字段值信息写入ES完成：{},size:{}", column.getColumnId(), syncList.size());
         } catch (Exception ex) {
             log.error("同步字段值信息失败：{}", ex.getMessage(), ex);
+        }
+    }
+
+    private void requireEsClient() {
+        if (dataAgentEsClient == null) {
+            throw new IllegalStateException("ES 客户端未启用或未完成装配");
         }
     }
 

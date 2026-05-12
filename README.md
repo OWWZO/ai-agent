@@ -2,10 +2,8 @@
 
 ## 项目简介
 
-`ai-agent-station-study` 是一个面向业务提效与 AI 应用落地的 **Reactor 多智能体协同应用平台**。  
+`Reactor-agent` 是一个面向业务提效与 AI 应用落地的 **Reactor 多智能体协同应用平台**。  
 平台围绕复杂任务自动化场景，提供多策略 Agent 调度、MCP 工具编排、RAG 检索增强、会话记忆、执行过程持久化与历史回放能力，能够按业务场景动态组织多智能体分工协作，完成复杂任务拆解、工具调用、结果汇聚与执行链路追踪，提升运维、分析、知识处理等场景下的自动化与智能化水平。
-
-项目目标不是构建单一问答机器人，而是沉淀一套可扩展、可观测、可复用的 Agent 应用基础设施，让复杂任务能够在统一运行时中被规划、执行、审计与回放。
 
 ## 技术栈
 
@@ -14,7 +12,6 @@
 - 智能检索：RAG、混合召回、Rerank、多轮检索
 - 前端：React 19、TypeScript、Vite、Ant Design
 - Python 工具侧：FastAPI、Pydantic、MCP Tooling
-- 架构风格：DDD 分层、多模块 Maven 工程、跨语言工具运行时
 
 ## 系统架构图
 
@@ -111,47 +108,6 @@ flowchart TD
 
 这条链路体现了平台的核心设计思想：复杂任务先做全局规划，再进入任务级 ReAct 执行；工具执行过程中产生的中间结果不会丢失，而是统一沉淀到会话级工作区，供后续工具继续复用，最终形成可回放、可审计的完整执行闭环。
 
-## 模块依赖图
-
-```mermaid
-flowchart TB
-    APP[ai-agent-station-study-app\n启动与装配]
-    TRIGGER[ai-agent-station-study-trigger\n入口适配层]
-    CASE[ai-agent-station-study-case\n应用编排层]
-    DOMAIN[ai-agent-station-study-domain\n核心领域层]
-    INFRA[ai-agent-station-study-infrastructure\n基础设施层]
-    API[ai-agent-station-study-api\n接口契约层]
-    TYPES[ai-agent-station-study-types\n基础类型层]
-
-    APP --> TRIGGER
-    APP --> CASE
-    APP --> DOMAIN
-    APP --> INFRA
-
-    TRIGGER --> CASE
-    TRIGGER --> API
-    CASE --> DOMAIN
-    CASE --> API
-    DOMAIN --> INFRA
-
-    API --> TYPES
-    CASE --> TYPES
-    DOMAIN --> TYPES
-    INFRA --> TYPES
-    TRIGGER --> TYPES
-    APP --> TYPES
-```
-
-模块划分遵循多模块 DDD 思路：
-
-- `types` 提供通用常量、异常、枚举与调度接口
-- `api` 提供 DTO 与服务契约
-- `case` 负责多智能体编排、任务调度与应用层协同
-- `domain` 负责运行时、记忆、执行账本、RAG 与角色能力等核心领域逻辑
-- `infrastructure` 负责 DAO、仓储实现、远端工具与外部网关适配
-- `trigger` 负责 HTTP / SSE / Job 等外部入口协议
-- `app` 负责 Spring Boot 启动、配置绑定与模块装配
-
 ## 典型应用场景
 
 - 运维排障与流程自动化
@@ -163,19 +119,18 @@ flowchart TB
 ## 项目结构
 
 ```text
-ai-agent-station-study/
-├── ai-agent-station-study-types/           # 基础类型、常量、任务调度接口
-├── ai-agent-station-study-api/             # DTO 与服务接口契约
-├── ai-agent-station-study-case/            # 应用编排层：调度、执行、任务与能力组织
-├── ai-agent-station-study-domain/          # 领域核心：runtime / ledger / memory / rag / role
-├── ai-agent-station-study-infrastructure/  # DAO、仓储实现、外部网关、持久化适配
-├── ai-agent-station-study-trigger/         # Controller、SSE、Job 等入口适配层
-├── ai-agent-station-study-app/             # Spring Boot 启动、配置、Mapper XML
+Reactor-agent/
+├── Reactor-agent-types/           # 基础类型、常量、任务调度接口
+├── Reactor-agent-api/             # DTO 与服务接口契约
+├── Reactor-agent-case/            # 应用编排层：调度、执行、任务与能力组织
+├── Reactor-agent-domain/          # 领域核心：runtime / ledger / memory / rag / role
+├── Reactor-agent-infrastructure/  # DAO、仓储实现、外部网关、持久化适配
+├── Reactor-agent-trigger/         # Controller、SSE、Job 等入口适配层
+├── Reactor-agent-app/             # Spring Boot 启动、配置、Mapper XML
 ├── reactor-tool/                           # Python 工具集、脚本执行与工具服务
 ├── ui/                                     # React 前端
 ├── runtime/skills/                         # 运行时 Skill 目录
-├── specs/                                  # 规格、方案与演进文档
-└── docs/                                   # 运维、设计与补充文档
+└── docs/                                   # 设计与补充文档
 ```
 
 ## 架构说明
@@ -195,7 +150,7 @@ ai-agent-station-study/
 ### 1. 启动后端
 
 ```bash
-mvn -pl ai-agent-station-study-app spring-boot:run
+mvn -pl Reactor-agent-app spring-boot:run
 ```
 
 ### 2. 启动前端
@@ -219,13 +174,13 @@ uv run python server.py
 
 ```bash
 # 启动应用
-mvn -pl ai-agent-station-study-app spring-boot:run
+mvn -pl Reactor-agent-app spring-boot:run
 
 # 运行应用测试
-mvn test -pl ai-agent-station-study-app -DskipTests=false
+mvn test -pl Reactor-agent-app -DskipTests=false
 
 # 运行领域层回归测试
-mvn test -pl ai-agent-station-study-domain -am -DskipTests=false
+mvn test -pl Reactor-agent-domain -am -DskipTests=false
 ```
 
 ### 前端
@@ -257,7 +212,6 @@ uv run python server.py
 ## 后续演进方向
 
 - 更细粒度的工具权限与运行时隔离
-- 更丰富的多模态检索与跨模态理解能力
 - 更智能的多 Agent 协作策略与角色编排
 - 更完善的管理后台、配置中心与可观测性能力
 

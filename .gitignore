@@ -43,9 +43,9 @@ build/
 ### Mac OS ###
 .DS_Store
 /.idea/
-/ai-agent-station-study-app/data/
+/Reactor-agent-app/data/
 /data/
-/ai-agent-station-study-app/.local-config
+/Reactor-agent-app/.local-config
 __pycache__/
 *.pyc
 .venv/
@@ -73,8 +73,8 @@ Thumbs.db
 /docs/
 
 # 敏感配置与本地运行文件不纳入版本控制
-/ai-agent-station-study-app/src/main/resources/application-dev.yml
-/ai-agent-station-study-app/src/main/resources/application-test.yml
+/Reactor-agent-app/src/main/resources/application-dev.yml
+/Reactor-agent-app/src/main/resources/application-test.yml
 /mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
 /mcp-server-csdn/data/log/
 /reactor-tool/cookies.json
