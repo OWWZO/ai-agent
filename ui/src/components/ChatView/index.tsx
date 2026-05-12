@@ -419,8 +419,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction) {
       return (
-        <div className="flex h-full w-full justify-center px-4 pt-4 md:px-6">
-          <div className="flex min-h-0 w-full max-w-[980px] flex-col" id="chat-view">
+        <div className="flex h-full w-full justify-center overflow-hidden px-4 pt-4 md:px-6">
+          <div
+            className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
+            id="chat-view"
+          >
             <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
               <div className="flex min-w-0 items-center gap-3">
                 <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
@@ -435,14 +438,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               </div>
             </div>
 
-            <Conversation className="chat-fade-bottom min-h-0 flex-1">
+            <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden">
               <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
                 {renderChatDialogues()}
               </ConversationContent>
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+            <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
               <div className="mx-auto w-full max-w-[860px]">
                 <GeneralInput
                   key={`input-${conversation.sessionId}-single`}
@@ -530,8 +533,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               </div>
 
               {/* Messages */}
-              <div className="flex min-h-0 flex-1 flex-col">
-                <Conversation className="chat-fade-bottom min-h-0 flex-1 px-5 pt-5">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden px-5 pt-5">
                   <ConversationContent>
                     {renderChatDialogues()}
                   </ConversationContent>
@@ -539,7 +542,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 </Conversation>
 
                 {/* Input */}
-                <div className="sticky bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
+                <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
                   <GeneralInput
                     key={`input-${conversation.sessionId}-left`}
                     sessionId={conversation.sessionId}
@@ -640,8 +643,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="flex h-full w-full justify-center px-4 pt-4 md:px-6">
-        <div className="flex min-h-0 w-full max-w-[980px] flex-col" id="chat-view">
+      <div className="flex h-full w-full justify-center overflow-hidden px-4 pt-4 md:px-6">
+        <div
+          className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
+          id="chat-view"
+        >
           <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
             <div className="flex min-w-0 items-center gap-3">
               <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
@@ -654,14 +660,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </div>
           </div>
 
-          <Conversation className="chat-fade-bottom min-h-0 flex-1">
+          <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden">
             <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
               {renderDataDialogues()}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
 
-          <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+          <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
             <div className="mx-auto w-full max-w-[860px]">
               <GeneralInput
                 key={`input-${conversation.sessionId}-data`}

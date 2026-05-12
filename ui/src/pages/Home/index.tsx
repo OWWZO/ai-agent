@@ -195,6 +195,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     activeView === "chat" &&
     (hasConversationContent(currentConversation) || inputInfo.message.length > 0);
 
+  const contentContainerClassName =
+    activeView === "chat" && canRenderChatView
+      ? "min-h-0 flex-1 overflow-hidden"
+      : "min-h-0 flex-1 overflow-auto";
+
   useEffect(() => {
     roleLibraryApi
       .list()
@@ -568,7 +573,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-3 backdrop-blur-md sm:px-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
@@ -617,7 +622,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className={contentContainerClassName}>
             {activeView === "mrag" ? (
               <WorkspaceMRag embedded />
             ) : activeView === "image-generation" ? (

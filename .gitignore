@@ -73,6 +73,7 @@ Thumbs.db
 /docs/
 
 # 敏感配置与本地运行文件不纳入版本控制
+/mcp-server-csdn/
 /Reactor-agent-app/src/main/resources/application-dev.yml
 /Reactor-agent-app/src/main/resources/application-test.yml
 /mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
@@ -83,3 +84,7 @@ Thumbs.db
 /ui/.env
 /ui/.claude/
 /ui/.serena/
+
+# 自动执行旧目录仅保留本地，不再纳入版本控制
+/Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/auto/step/
+/Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/auto1/step/

@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于内存缓存的 AI Client 运行时注册表实现。
- * 保持“相同业务 ID 后写覆盖前写”的装配语义，替代原有动态 Bean 注册。
  */
 @Component
 public class InMemoryAiClientRuntimeRegistry implements AiClientRuntimeRegistry {

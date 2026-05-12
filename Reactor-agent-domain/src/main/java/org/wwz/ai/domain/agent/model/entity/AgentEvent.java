@@ -7,14 +7,12 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
-/**
- * JoyAgent 前端兼容的事件实体
- */
+
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class JoyAgentEvent {
+public class AgentEvent {
     private String taskId;
     private String messageType; // "plan", "task", "plan_thought", "tool_thought", "tool_result"
     private Map<String, Object> resultMap;
