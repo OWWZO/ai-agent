@@ -120,48 +120,64 @@ flowchart LR
 
 ## 执行链路图
 
+原图信息量过大且节点文案过长，GitHub README 会把整块 Mermaid 画布整体缩小。这里拆成 `ReAct` 与 `PlanSolve` 两张纵向链路图，优先保证首页可读性。
+
+### ReAct 链路
+
 ```mermaid
 flowchart TD
-    subgraph R1["ReAct 内部链路"]
-        R0["AgentContext: query、history、files、ToolCollection"] --> R1A["ReactImplAgent run"]
-        R1A --> R1B["think: 组装 prompt 与 user message"]
-        R1B --> R1C["LLM askTool"]
-        R1C --> R1D["得到 thought 和 toolCalls"]
-        R1D --> R1E{"toolCalls 是否为空"}
-        R1E -->|否| R1F["BaseAgent executeToolOutcomes"]
-        R1F --> R1G["executeToolInternal 调用 Common Tool、MCP、Skill"]
-        R1G --> R1H["得到 toolResult、llmObservation、structuredOutput"]
-        R1H --> R1I["ToolArtifactRegistry 登记 artifact"]
-        R1H --> R1J["writeToolObservationToMemory 写回 observation"]
-        R1I --> R1K["更新 productFiles 与 taskProductFiles"]
-        R1J --> R1L{"AgentState 是否结束"}
-        R1K --> R1B
-        R1L -->|否| R1B
-        R1E -->|是| R1M["直接返回最终回答"]
-        R1L -->|是| R1N["返回最终结果或 summary"]
-    end
+A["AgentContext<br/>query / history / files / tools"]
+B["ReactImplAgent.run"]
+C["think<br/>组装 prompt 与 user message"]
+D["LLM.askTool"]
+E["thought + toolCalls"]
+F{"toolCalls 为空?"}
+G["executeToolOutcomes"]
+H["执行 Common Tool / MCP / Skill"]
+I["得到 toolResult / observation<br/>structuredOutput"]
+J["登记 artifact"]
+K["写回 memory observation"]
+L["更新 productFiles<br/>taskProductFiles"]
+M{"AgentState 结束?"}
+N["直接返回最终回答"]
+O["返回最终结果 / summary"]
 
-    subgraph P1["PlanSolve 内部链路"]
-        P0["AgentContext: query、history、files、tools、sopPrompt"] --> P1A["PlanningAgent run"]
-        P1A --> P1B["think: 注入 files、SOP、history"]
-        P1B --> P1C["LLM askTool"]
-        P1C --> P1D["调用 planning tool 生成或更新 plan"]
-        P1D --> P1E["得到 plan、currentStep、plannerRoundId"]
-        P1E --> P1F{"plan 是否完成"}
-        P1F -->|否| P1G["拆出 currentTask"]
-        P1G --> P1H["ExecutorAgent run currentTask"]
-        P1H --> P1I["think: 围绕 currentTask 选择 toolCalls"]
-        P1I --> P1J["BaseAgent executeToolOutcomes"]
-        P1J --> P1K["执行工具并得到 taskResult、observation、artifact"]
-        P1K --> P1L["写回 executor memory 与 taskProductFiles"]
-        P1L --> P1M["回到 PlanningAgent 推进 stepStatus 与 currentStep"]
-        P1M --> P1E
-        P1F -->|是| P1N["SummaryAgent 汇总 task 结果与产物"]
-        P1N --> P1O["输出最终回答、报告或文件引用"]
-    end
+A --> B --> C --> D --> E --> F
+F -->|否| G --> H --> I
+I --> J --> L --> C
+I --> K --> M
+M -->|否| C
+F -->|是| N
+M -->|是| O
 ```
 
-两套模式共享的公共底座是 `AgentContext`、`ToolCollection`、`ToolArtifactRegistry` 与 `SessionContextMemoryService`；外围的 Trigger 接入、SSE 推流、执行账本、artifact 持久化与历史回放，都是围绕这套内部数据流同步承接的横切能力。
+### PlanSolve 链路
+
+```mermaid
+flowchart TD
+A["AgentContext<br/>query / history / files / tools / sopPrompt"]
+B["PlanningAgent.run"]
+C["think<br/>注入 files / SOP / history"]
+D["LLM.askTool"]
+E["生成或更新 plan"]
+F["得到 plan / currentStep<br/>plannerRoundId"]
+G{"plan 已完成?"}
+H["拆出 currentTask"]
+I["ExecutorAgent.run"]
+J["围绕 currentTask 选择 toolCalls"]
+K["executeToolOutcomes"]
+L["得到 taskResult / observation<br/>artifact"]
+M["写回 executor memory<br/>taskProductFiles"]
+N["回到 PlanningAgent<br/>推进 stepStatus / currentStep"]
+O["SummaryAgent 汇总结果与产物"]
+P["输出最终回答 / 报告 / 文件引用"]
+
+A --> B --> C --> D --> E --> F --> G
+G -->|否| H --> I --> J --> K --> L --> M --> N --> F
+G -->|是| O --> P
+```
+
+两套模式共享的公共底座是 `AgentContext`、`ToolCollection`、`ToolArtifactRegistry` 与 `SessionContextMemoryService`；外围的 Trigger 接入、SSE 推流、执行账本、artifact 持久化与历史回放，作为横切能力统一承接这两条执行链路。
 
 ## 项目结构
 
@@ -303,4 +319,3 @@ Reactor-agent/
 - 更丰富的工具组合
 - 跑数据飞轮，将每轮任务的计划步骤持续沉淀为 `SOP` 标准作业流程，逐步提升复杂任务的可复用性与执行稳定性
 - 构建长期记忆，记录用户偏好与使用习惯，形成稳定用户画像，让智能体在持续交互中更懂用户
-
