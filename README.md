@@ -2,16 +2,37 @@
 
 ## 项目简介
 
-`Reactor-agent` 是一个面向业务提效与 AI 应用落地的 **Reactor 多智能体协同应用平台**。  
-平台围绕复杂任务自动化场景，提供多策略 Agent 调度、MCP 工具编排、RAG 检索增强、会话记忆、执行过程持久化与历史回放能力，能够按业务场景动态组织多智能体分工协作，完成复杂任务拆解、工具调用、结果汇聚与执行链路追踪，提升运维、分析、知识处理等场景下的自动化与智能化水平。
+`Reactor-agent` 是一个面向复杂任务自动化与 AI 应用工程化落地的 **Reactor 多智能体协同应用平台**。  
+它不是只做“单轮对话 + 单次工具调用”的 Demo，而是把复杂任务拆解、多 Agent 协作、MCP 工具编排、RAG 检索增强、会话记忆、执行事实持久化与历史回放串成一条可运行、可追踪、可复用的完整执行链路。
+
+
+## 解决的痛点
+
+- 传统单 Agent / 单轮对话难以承接复杂任务，缺少任务拆解、分工协作与结果汇聚能力
+- 工具调用往往是一次性动作，搜索、分析、报告等中间结果难沉淀、难复用
+- 多步骤 AI 流程过度依赖 Prompt 临场发挥，容易跑偏、漏步骤，执行稳定性不足
+- 执行过程缺少结构化记录，出现问题后难审计、难回放、难定位
+- AI 能力与业务系统之间常常存在落地鸿沟，Demo 能跑，但工程体系难以长期演进
+
+## 目标用户
+
+- 想构建 Multi-Agent 平台、复杂工作流或 AI 自动化系统的后端工程师
+- 需要把检索、分析、报告、脚本执行等能力串成闭环的业务技术团队
+- 想要学习 Multi-Agent 协作的学者/学生
+
+## 典型应用场景
+
+- 多步骤任务编排与结果汇总
+- 知识检索与图文混合问答
+- 数据分析与报告生成
+- 复杂业务流程中的子智能体辅助执行
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3、Spring AI、MyBatis / MyBatis-Plus、OkHttp SSE
+- 后端：Java 17、Spring Boot 3、Spring AI、MyBatis 、OkHttp SSE、Elasticsearch
 - 数据层：MySQL、Qdrant
-- 智能检索：RAG、混合召回、Rerank、多轮检索
+- 多模态智能检索：RAG、多路混合召回、Rerank、多轮检索
 - 前端：React 19、TypeScript、Vite、Ant Design
-- Python 工具侧：FastAPI、Pydantic、MCP Tooling
 
 ## 系统架构图
 
@@ -84,37 +105,66 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[用户请求进入系统] --> B[Work-Level 全局规划\nPlan Execute]
-    B --> C[任务拆解为多个 Task]
-    C --> D[Task-Level 细粒度执行\nReAct]
-    D --> E[选择工具 / Skill / SOP]
+    subgraph S1[1. 请求接入阶段]
+        A[用户在前端发起请求] --> B[Trigger 接收请求并建立 SSE 通道]
+        B --> C[Case 创建本次 Dialogue Run 与执行上下文]
+    end
 
-    E --> F1[Deep Search / RAG 检索]
-    E --> F2[Data Analysis / Code Interpreter]
-    E --> F3[Report / Image Generation]
-    E --> F4[MultiModal / Script Runner]
+    subgraph S2[2. 上下文装载阶段]
+        C --> D[装载角色配置 / Tool Registry / Skill 与 SOP 能力]
+        D --> E[读取历史摘要 / Session Memory / Workspace Artifact]
+    end
 
-    F1 --> G[生成中间结果与文件产物]
-    F2 --> G
-    F3 --> G
-    F4 --> G
+    subgraph S3[3. 全局规划阶段]
+        E --> F[Work-Level Planner 判断任务类型与执行策略]
+        F --> G{是否需要拆解子任务}
+        G -->|是| H[生成 Plan / 子任务列表 / 执行顺序 / 并发策略]
+        G -->|否| I[生成单任务执行目标]
+    end
 
-    G --> H[统一登记到会话级工作区\nArtifact Registry]
-    H --> I[后续工具复用前序结果]
-    I --> J[结果汇聚 / 总结 / 交付]
-    J --> K[执行事实持久化\nRun / LLM / Tool / Output / Artifact]
-    K --> L[历史回放 / 审计 / 问题定位]
+    subgraph S4[4. Task-Level 执行循环]
+        H --> J[进入 Task-Level Executor]
+        I --> J
+        J --> K[为当前 Task 组装上下文]
+        K --> L[ReAct 循环: Think -> Act -> Observe]
+        L --> M[选择 Tool / Skill / SOP]
+    end
+
+    subgraph S5[5. 工具执行与产物回流]
+        M --> N1[Deep Search / RAG 检索]
+        M --> N2[Data Analysis / Code Interpreter]
+        M --> N3[Report / Image Generation]
+        M --> N4[MultiModal / Script Runner]
+        N1 --> O[返回文本结果 / 结构化数据 / 文件产物]
+        N2 --> O
+        N3 --> O
+        N4 --> O
+        O --> P[登记 Tool Output 与 Artifact]
+        P --> Q[更新会话级 Workspace 与可复用中间结果]
+    end
+
+    subgraph S6[6. 阶段性输出与状态推进]
+        Q --> R[通过 SSE 向前端推送阶段性结果]
+        R --> S[写入 Run / LLM / Tool Invocation / Output / Artifact]
+        S --> T{当前 Task 是否完成}
+        T -->|否| K
+        T -->|是| U{是否还有剩余 Task}
+        U -->|是| J
+    end
+
+    subgraph S7[7. 结果汇聚与结束阶段]
+        U -->|否| V[汇聚所有 Task 结果与中间产物]
+        V --> W[生成最终答复 / 报告 / 文件 / 图像]
+        W --> X[更新 Session Memory Snapshot 与会话摘要]
+        X --> Y[支持历史回放 / 审计 / 问题定位 / 展示恢复]
+    end
 ```
 
-这条链路体现了平台的核心设计思想：复杂任务先做全局规划，再进入任务级 ReAct 执行；工具执行过程中产生的中间结果不会丢失，而是统一沉淀到会话级工作区，供后续工具继续复用，最终形成可回放、可审计的完整执行闭环。
+这条链路比传统“用户提问 -> LLM 回答”的流程更强调运行时闭环。一次请求进入系统后，平台会先建立执行会话并装载历史摘要、会话记忆、角色配置、工具能力和已有工作区产物，再由 `Work-Level Planner` 决定是否拆解任务、是否并行，以及每个子任务适合走哪类执行策略。
 
-## 典型应用场景
+进入执行阶段后，`Task-Level Executor` 会围绕单个 Task 进入 `ReAct` 循环，在思考、选择工具、观察结果之间不断推进。无论调用的是检索、分析、报告、图像还是脚本能力，工具返回的中间结果都会被统一登记为 `Tool Output + Artifact`，沉淀到会话级工作区，后续任务可以继续复用，而不是像一次性脚本那样执行完即丢失。
 
-- 运维排障与流程自动化
-- 数据分析与报告生成
-- 知识检索与图文混合问答
-- 多步骤任务编排与结果汇总
-- 复杂业务流程中的智能辅助执行
+同时，阶段性结果会通过 SSE 持续推送给前端，执行事实则会同步写入运行账本，覆盖 `Run / LLM / Tool Invocation / Output / Artifact / Memory Snapshot` 等关键节点。这样，平台不仅能完成复杂任务，还能在结束后支持历史恢复、过程审计、问题定位和结果展示重建。
 
 ## 项目结构
 
