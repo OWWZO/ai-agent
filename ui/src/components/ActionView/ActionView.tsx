@@ -1,8 +1,7 @@
 import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import classNames from "classnames";
 import { motion, AnimatePresence } from "motion/react";
-import Title from "./Title";
-import { GetProps } from "antd";
+import { X, Maximize2, Minimize2 } from "lucide-react";
 import Tabs from "../Tabs";
 import { useSafeState } from "ahooks";
 import { useConstants } from "@/hooks";
@@ -34,11 +33,14 @@ type ActionViewProps = {
     errorMsg?: string;
     finishedAt?: string;
   };
+  isFocusMode?: boolean;
+  onToggleFocusMode?: () => void;
+  onClose?: () => void;
   ref?: React.Ref<ActionViewRef>;
-} & GetProps<typeof Title>;
+};
 
 const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
-  const { className, onClose, title, activeTask, streamTask, taskList, plan, runState } = props;
+  const { className, onClose, activeTask, streamTask, taskList, plan, runState, isFocusMode, onToggleFocusMode } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();
   const planRef = useRef<PlanViewAction>(null);
@@ -69,9 +71,9 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
         ease: [0.25, 0.46, 0.45, 0.94],
       }}
     >
-      {/* Header Section */}
+      {/* Header Section — Title 层删除，Tab 与工具按钮同行 */}
       <motion.div
-        className="flex flex-col gap-3 px-5 py-4"
+        className="flex items-center justify-between gap-3 px-4 py-3"
         initial={{
           opacity: 0,
           y: -10,
@@ -85,19 +87,40 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
           delay: 0.1,
         }}
       >
-        <Title onClose={onClose}>{title || "智能体工作区"}</Title>
         <Tabs
           value={resolvedActiveActionView}
           onChange={setActiveActionView}
           options={actionViewOptions}
           className="min-h-[36px]"
         />
+        <div className="flex shrink-0 items-center gap-1">
+          {onToggleFocusMode && (
+            <button
+              onClick={onToggleFocusMode}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-all duration-200 hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+              title={isFocusMode ? "退出专注模式" : "专注模式"}
+            >
+              {isFocusMode ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-all duration-200 hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+            title="关闭智能体工作区"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </motion.div>
 
       {/* Content Area */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <motion.div
-          className="flex-1 overflow-auto p-5"
+          className="flex-1 overflow-auto px-3 py-2"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{

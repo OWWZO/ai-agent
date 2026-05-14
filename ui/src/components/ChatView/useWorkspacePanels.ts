@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const DEFAULT_LEFT_WIDTH = 38;
+const MIN_LEFT_WIDTH = 28;
+const MAX_LEFT_WIDTH = 60;
+
 /**
  * 统一收口聊天区 / 工作区的布局状态，避免主组件继续堆叠拖拽与折叠细节。
+ * 默认对话区 38%、工作区 62%，让产物预览拿到更多展示空间；
+ * 同时支持专注模式（隐藏对话区，工作区全屏接管）。
  */
 export function useWorkspacePanels() {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const dragStartXRef = useRef(0);
-  const dragStartWidthRef = useRef(50);
+  const dragStartWidthRef = useRef(DEFAULT_LEFT_WIDTH);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleDragStart = useCallback((event: React.MouseEvent) => {
@@ -30,7 +37,10 @@ export function useWorkspacePanels() {
       const containerWidth = containerRef.current.offsetWidth;
       const deltaPixels = event.clientX - dragStartXRef.current;
       const deltaPercent = (deltaPixels / containerWidth) * 100;
-      const nextWidth = Math.max(30, Math.min(70, dragStartWidthRef.current + deltaPercent));
+      const nextWidth = Math.max(
+        MIN_LEFT_WIDTH,
+        Math.min(MAX_LEFT_WIDTH, dragStartWidthRef.current + deltaPercent)
+      );
       setLeftPanelWidth(nextWidth);
     };
 
@@ -59,7 +69,7 @@ export function useWorkspacePanels() {
     setIsLeftCollapsed((previous) => {
       const nextCollapsed = !previous;
       if (!nextCollapsed) {
-        setLeftPanelWidth(50);
+        setLeftPanelWidth(DEFAULT_LEFT_WIDTH);
       }
       return nextCollapsed;
     });
@@ -69,16 +79,23 @@ export function useWorkspacePanels() {
     setIsRightCollapsed((previous) => !previous);
   }, []);
 
+  const toggleFocusMode = useCallback(() => {
+    setIsFocusMode((previous) => !previous);
+  }, []);
+
   return {
     leftPanelWidth,
     isDragging,
     isLeftCollapsed,
     isRightCollapsed,
+    isFocusMode,
     containerRef,
     handleDragStart,
     setIsLeftCollapsed,
     setIsRightCollapsed,
+    setIsFocusMode,
     toggleLeftPanel,
     toggleRightPanel,
+    toggleFocusMode,
   };
 }

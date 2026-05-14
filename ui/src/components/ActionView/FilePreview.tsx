@@ -1,30 +1,18 @@
 import classNames from "classnames";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import ActionPanel, { PanelItemType, useMsgTypes } from "../ActionPanel";
+import ActionPanel, { PanelItemType } from "../ActionPanel";
 import { useMemoizedFn } from "ahooks";
 import dayjs from "dayjs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  FileText,
-  Maximize2,
-  Search,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import RunStatus from "./RunStatus";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import {
   filterPreviewTaskList,
-  resolvePreviewCanPreview,
-  resolvePreviewLeadingIcon,
   resolvePreviewTaskRenderKey,
   resolvePreviewTaskSelection,
-  resolvePreviewTitle,
 } from "./filePreviewModel";
 
 // 空状态动画组件
@@ -53,74 +41,12 @@ const EmptyState = () => (
   </div>
 );
 
-// 头部动画组件
-const Header = ({
-  title,
-  canPreview,
-  leadingIcon,
-}: {
-  title: string;
-  canPreview?: boolean;
-  leadingIcon?: ReactNode;
-}) => (
-  <div className="flex items-center justify-between px-4 py-3">
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <div>
-        {leadingIcon ?? (
-          <FileText className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />
-        )}
-      </div>
-      <span
-        className={classNames(
-          "truncate text-[13px] font-medium",
-          canPreview ? "cursor-pointer text-[#0071e3] hover:underline" : "text-[#1d1d1f]"
-        )}
-      >
-        {title}
-      </span>
-      <AnimatePresence>
-        {canPreview && (
-          <motion.div
-            initial={{
-              opacity: 0,
-              scale: 0.8
-            }}
-            animate={{
-              opacity: 1,
-              scale: 1
-            }}
-            exit={{
-              opacity: 0,
-              scale: 0.8
-            }}
-          >
-            <Badge variant="secondary" className="ml-2 h-4 shrink-0 text-[10px]">
-              可预览
-            </Badge>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-    {canPreview && (
-      <div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-[#86868b] hover:text-[#1d1d1f]"
-        >
-          <Maximize2 className="h-4 w-4" />
-        </Button>
-      </div>
-    )}
-  </div>
-);
-
 const MissingArtifactState = ({ reason }: { reason?: string }) => (
   <div className="flex h-full items-center justify-center">
     <Card className="w-72 border-dashed bg-muted/15 shadow-none">
       <CardContent className="flex flex-col items-center justify-center py-8 text-center">
         <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]">
-          <FileText className="h-5 w-5 text-[#86868b]" />
+          <span className="text-lg text-[#86868b]">?</span>
         </div>
         <p className="text-sm font-medium text-[#1d1d1f]">引用内容不可读取</p>
         <p className="mt-1 text-xs text-[#86868b]">
@@ -169,33 +95,8 @@ const FilePreview: React.FC<{
     setCurActiveTaskIndex(Math.max(0, realActiveTaskIndex - 1));
   });
 
-  const { useFile, useHtml, useExcel, useImage } = useMsgTypes(taskItem) || {};
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const artifactMissing = Boolean(primaryFile?.missing);
-
-  const title = useMemo(() => {
-    return resolvePreviewTitle(taskItem, primaryFile);
-  }, [primaryFile, taskItem]);
-
-  const leadingIconType = useMemo(() => resolvePreviewLeadingIcon(taskItem), [taskItem]);
-  const headerLeadingIcon = useMemo(() => {
-    if (leadingIconType !== "search") {
-      return undefined;
-    }
-    return <Search className="h-4 w-4 shrink-0 text-[#86868b]" strokeWidth={1.75} />;
-  }, [leadingIconType]);
-
-  const canPreview = useMemo(() => {
-    return resolvePreviewCanPreview(
-      {
-        useFile,
-        useHtml,
-        useExcel,
-        useImage,
-      },
-      artifactMissing
-    );
-  }, [artifactMissing, useExcel, useFile, useHtml, useImage]);
   const taskRenderKey = useMemo(() => resolvePreviewTaskRenderKey(taskItem), [taskItem]);
 
   // Empty State
@@ -205,19 +106,14 @@ const FilePreview: React.FC<{
 
   return (
     <div className={classNames("flex h-full flex-col", className)}>
-      {/* Header */}
-      <Header title={title} canPreview={canPreview} leadingIcon={headerLeadingIcon} />
-
-      <Separator className="bg-[#e8e8ed]" />
-
-      {/* Content */}
+      {/* Content — 删除内部 Header，直接上内容 */}
       <div className="flex-1 overflow-hidden">
         <div className="flex h-full flex-col">
           <RunStatus
             status={runState?.status}
             errorMsg={runState?.errorMsg}
             finishedAt={runState?.finishedAt}
-            className="mx-4 mt-4 mb-2"
+            className="mx-3 mt-2 mb-1"
           />
           <div className="min-h-0 flex-1">
             {artifactMissing ? (
@@ -228,15 +124,15 @@ const FilePreview: React.FC<{
                   key={taskRenderKey}
                   initial={{
                     opacity: 0,
-                    y: 8
+                    y: 8,
                   }}
                   animate={{
                     opacity: 1,
-                    y: 0
+                    y: 0,
                   }}
                   exit={{
                     opacity: 0,
-                    y: -6
+                    y: -6,
                   }}
                   transition={{ duration: 0.2 }}
                   className="h-full"
@@ -253,25 +149,24 @@ const FilePreview: React.FC<{
         </div>
       </div>
 
-      {/* Footer Navigation */}
+      {/* Footer Navigation — 仅当有多页时才显示 */}
       <AnimatePresence>
         {!!taskLength && taskLength > 1 && (
           <motion.div
             initial={{
               opacity: 0,
-              y: 10
+              y: 10,
             }}
             animate={{
               opacity: 1,
-              y: 0
+              y: 0,
             }}
             exit={{
               opacity: 0,
-              y: 10
+              y: 10,
             }}
           >
-            <Separator className="bg-[#e8e8ed]" />
-            <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center justify-between px-4 py-2">
               <Button
                 variant="ghost"
                 size="sm"
@@ -288,11 +183,11 @@ const FilePreview: React.FC<{
                 key={realActiveTaskIndex}
                 initial={{
                   opacity: 0,
-                  scale: 0.9
+                  scale: 0.9,
                 }}
                 animate={{
                   opacity: 1,
-                  scale: 1
+                  scale: 1,
                 }}
                 transition={{ duration: 0.2 }}
               >

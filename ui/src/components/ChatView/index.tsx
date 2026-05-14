@@ -64,11 +64,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     isDragging,
     isLeftCollapsed,
     isRightCollapsed,
+    isFocusMode,
     containerRef,
     handleDragStart,
     setIsRightCollapsed,
+    setIsFocusMode,
     toggleLeftPanel,
     toggleRightPanel: toggleWorkspaceRightPanel,
+    toggleFocusMode,
   } = useWorkspacePanels();
   const actionViewRef = ActionView.useActionView();
   const [modal, contextHolder] = Modal.useModal();
@@ -519,13 +522,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       );
     }
 
-    // 50/50 双面板布局
+    // 38/62 双面板布局；专注模式隐藏对话区，把工作区拉满
     return (
       <div
         ref={containerRef}
         className="flex h-full w-full gap-0.5 p-2"
       >
         {/* Left Panel - Chat Area */}
+        {!isFocusMode && (
         <div
           className={classNames(
             "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90 transition-all duration-300",
@@ -615,9 +619,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </>
           )}
         </div>
+        )}
 
         {/* Drag Handle */}
-        {!isLeftCollapsed && !isRightCollapsed && (
+        {!isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
           <div
             onMouseDown={handleDragStart}
             className={classNames(
@@ -646,7 +651,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
-          style={!isRightCollapsed ? { flex: `0 0 ${100 - leftPanelWidth - (isLeftCollapsed ? 0 : 0)}%` } : undefined}
+          style={!isRightCollapsed && !isFocusMode ? { flex: `0 0 ${100 - leftPanelWidth - (isLeftCollapsed ? 0 : 0)}%` } : undefined}
         >
           {isRightCollapsed ? (
             // 折叠状态
@@ -667,10 +672,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               taskList={taskList}
               plan={plan}
               runState={activeRunState}
+              isFocusMode={isFocusMode}
+              onToggleFocusMode={toggleFocusMode}
               ref={actionViewRef}
               onClose={() => {
-                changeActionStatus(false);
-                setIsRightCollapsed(true);
+                if (isFocusMode) {
+                  setIsFocusMode(false);
+                } else {
+                  changeActionStatus(false);
+                  setIsRightCollapsed(true);
+                }
               }}
             />
           )}

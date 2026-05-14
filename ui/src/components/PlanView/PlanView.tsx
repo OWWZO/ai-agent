@@ -27,7 +27,7 @@ const PlanView: ReactorType.FC<{
   const { plan } = props;
   const { stages, stepStatus, steps } = plan || {};
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     openPlanView: () => setOpen(true),
@@ -51,7 +51,7 @@ const PlanView: ReactorType.FC<{
   }
 
   return (
-    <div className="mt-3 w-full px-3 pb-2 md:px-4">
+    <div className="w-full px-3 pb-1">
       <Plan open={open} onOpenChange={setOpen} isStreaming={isStreaming}>
         <PlanHeader>
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -59,12 +59,22 @@ const PlanView: ReactorType.FC<{
               initial={false}
               animate={
                 isStreaming
-                  ? { scale: [1, 1.04, 1], opacity: [0.85, 1, 0.85] }
-                  : { scale: 1, opacity: 1 }
+                  ? {
+                    scale: [1, 1.04, 1],
+                    opacity: [0.85, 1, 0.85],
+                  }
+                  : {
+                    scale: 1,
+                    opacity: 1,
+                  }
               }
               transition={
                 isStreaming
-                  ? { duration: 2.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+                  ? {
+                    duration: 2.2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }
                   : { duration: 0.2 }
               }
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/95 text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]"
@@ -100,7 +110,11 @@ const PlanView: ReactorType.FC<{
                   className="h-full rounded-full bg-[#0071e3]/90"
                   initial={false}
                   animate={{ width: `${pct}%` }}
-                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 380,
+                    damping: 32,
+                  }}
                 />
               </div>
             </div>
@@ -116,8 +130,14 @@ const PlanView: ReactorType.FC<{
                 <motion.div
                   key={`${name}-${index}`}
                   layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{
+                    opacity: 0,
+                    y: 8,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                  }}
                   transition={{
                     delay: Math.min(index * 0.05, 0.35),
                     duration: 0.22,
