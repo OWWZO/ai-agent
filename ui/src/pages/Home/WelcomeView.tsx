@@ -2,7 +2,6 @@ import { motion } from "motion/react";
 import classNames from "classnames";
 
 import GeneralInput from "@/components/GeneralInput";
-import RecentSessionList from "./RecentSessionList";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import { chatQustions, demoList } from "@/utils/constants";
@@ -117,8 +116,6 @@ export default function WelcomeView(props: {
   displayOutput: CHAT.Product;
   currentConversationRole: CHAT.ConversationRole | null;
   fixRoles: CHAT.FixRole[];
-  recentSessions: CHAT.ConversationSessionItem[];
-  recentSessionsLoading: boolean;
   visitorUsername?: string;
   videoModalOpen?: string;
   onSelectionChange: (selection: {
@@ -127,7 +124,6 @@ export default function WelcomeView(props: {
   }) => void;
   onRoleSelect: (role: CHAT.FixRole) => void;
   onSend: (inputInfo: CHAT.TInputInfo) => void;
-  onSelectRecentSession: (session: CHAT.ConversationSessionItem) => void;
   onSendQuestion: (query: { label: string; type: number }) => void;
   onOpenVideo: (url: string) => void;
   onCloseVideo: () => void;
@@ -226,13 +222,6 @@ export default function WelcomeView(props: {
             ))}
           </div>
         </motion.div>
-
-        <RecentSessionList
-          sessions={props.recentSessions}
-          loading={props.recentSessionsLoading}
-          selectedSessionId={props.currentConversation.sessionId}
-          onSelect={props.onSelectRecentSession}
-        />
 
         {SHOW_FEATURED_CASES && (
           <div className="mx-auto mt-8 w-full max-w-[1000px] pb-24">

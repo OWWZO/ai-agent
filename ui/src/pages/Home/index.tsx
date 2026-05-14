@@ -5,15 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentType,
 } from "react";
-import classNames from "classnames";
-import {
-  DatabaseZap,
-  MessageSquarePlus,
-  MessagesSquare,
-  WandSparkles,
-} from "lucide-react";
+import { MessageSquarePlus } from "lucide-react";
 import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
@@ -47,6 +40,7 @@ import {
 import VisitorBootstrapScreen from "./VisitorBootstrapScreen";
 import VisitorLoginGate from "./VisitorLoginGate";
 import WelcomeView from "./WelcomeView";
+import ConversationSidebar from "./ConversationSidebar";
 
 type HomeProps = Record<string, never>;
 
@@ -61,16 +55,6 @@ const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
   deepThink: false,
 };
-
-const navItems: {
-  key: SidebarView;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-}[] = [
-  { key: "chat", label: "对话", icon: MessagesSquare },
-  { key: "mrag", label: "MRAG", icon: DatabaseZap },
-  { key: "image-generation", label: "生图", icon: WandSparkles },
-];
 
 const getModeName = (type: string) => {
   return productList.find((item) => item.type === type)?.name || type;
@@ -537,41 +521,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
       <div className="flex h-full w-full">
-        <div className="hidden h-full w-[88px] shrink-0 border-r border-[var(--chat-border)] bg-[var(--chat-surface)]/95 lg:flex lg:flex-col lg:items-center lg:justify-between lg:px-3 lg:py-4">
-          <div className="flex w-full flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => createNewChat()}
-              className="flex h-11 w-full items-center justify-center rounded-2xl bg-[var(--chat-text)] text-[var(--chat-surface)] transition-colors hover:bg-[var(--chat-text)]/90"
-              title="新对话"
-            >
-              <MessageSquarePlus className="h-5 w-5" />
-            </button>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setActiveView(item.key)}
-                  className={classNames(
-                    "flex h-11 w-full items-center justify-center rounded-2xl transition-colors",
-                    isActive
-                      ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-                      : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                  )}
-                  title={item.label}
-                >
-                  <Icon className="h-5 w-5" />
-                </button>
-              );
-            })}
-          </div>
-          <div className="text-center text-[11px] text-[var(--chat-text-muted)]">
-            单会话
-          </div>
-        </div>
+        <ConversationSidebar
+          activeView={activeView}
+          recentSessions={recentSessions}
+          recentSessionsLoading={recentSessionsLoading}
+          selectedSessionId={currentConversation.sessionId}
+          visitorUsername={visitorBootstrap?.username}
+          onNewChat={createNewChat}
+          onSelectSession={handleSelectRecentSession}
+          onChangeView={setActiveView}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-3 backdrop-blur-md sm:px-6">
@@ -590,26 +549,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeView === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setActiveView(item.key)}
-                      className={classNames(
-                        "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[13px] transition-colors",
-                        isActive
-                          ? "border-[var(--chat-border-strong)] bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-                          : "border-[var(--chat-border)] text-[var(--chat-text-soft)] hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)]"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
                 <button
                   type="button"
                   onClick={() => createNewChat()}
@@ -644,14 +583,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 displayOutput={displayOutput}
                 currentConversationRole={currentConversationRole}
                 fixRoles={fixRoles}
-                recentSessions={recentSessions}
-                recentSessionsLoading={recentSessionsLoading}
                 visitorUsername={visitorBootstrap?.username}
                 videoModalOpen={videoModalOpen}
                 onSelectionChange={handleInputSelectionChange}
                 onRoleSelect={handleRoleSelect}
                 onSend={changeInputInfo}
-                onSelectRecentSession={handleSelectRecentSession}
                 onSendQuestion={toSendMessage}
                 onOpenVideo={setVideoModalOpen}
                 onCloseVideo={() => setVideoModalOpen(undefined)}
