@@ -12,7 +12,9 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
@@ -87,6 +89,74 @@ public class ConversationHistoryControllerTest {
         Assert.assertEquals("第二个会话", response.getData().get(0).getLatestQueryText());
         Assert.assertEquals("session-list-001", response.getData().get(1).getSessionId());
         Assert.assertEquals("SUCCESS", response.getData().get(1).getStatus());
+    }
+
+    @Test
+    public void shouldRestoreStructuredReactSessionModeFromHistoryDetail() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String fileName = "react-history-report.html";
+        seedRun(
+                ctx,
+                "req-react-structured-001",
+                "session-react-structured-001",
+                ExecutionLedgerConstants.ENTRY_AGENT_REACT,
+                "report_tool",
+                "帮我输出网页报告",
+                LocalDateTime.of(2026, 5, 2, 11, 0, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS,
+                "summary:req-react-structured-001",
+                ReportToolOutput.builder()
+                        .fileType("html")
+                        .content("<html><body>网页报告</body></html>")
+                        .fileRefs(List.of(buildFileRef(fileName)))
+                        .build(),
+                fileName
+        );
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+
+        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-react-structured-001");
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertNotNull(response.getData());
+        Assert.assertEquals("html", response.getData().getOutputStyle());
+        Assert.assertEquals(Boolean.FALSE, response.getData().getDeepThink());
+    }
+
+    @Test
+    public void shouldRestorePlanSolveHistoryAsDeepResearchMode() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String fileName = "plan-solve-history-report.html";
+        seedRun(
+                ctx,
+                "req-plan-solve-001",
+                "session-plan-solve-001",
+                ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE,
+                "report_tool",
+                "帮我做深度研究并输出网页报告",
+                LocalDateTime.of(2026, 5, 2, 11, 30, 0),
+                ExecutionLedgerConstants.STATUS_SUCCESS,
+                "summary:req-plan-solve-001",
+                ReportToolOutput.builder()
+                        .fileType("html")
+                        .content("<html><body>深度研究报告</body></html>")
+                        .fileRefs(List.of(buildFileRef(fileName)))
+                        .build(),
+                fileName
+        );
+
+        AgentConversationHistoryController controller = new AgentConversationHistoryController();
+        ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
+        ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+
+        Response<ConversationHistoryDetailRespVO> response = controller.detail("session-plan-solve-001");
+
+        Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
+        Assert.assertNotNull(response.getData());
+        Assert.assertEquals("html", response.getData().getOutputStyle());
+        Assert.assertEquals(Boolean.TRUE, response.getData().getDeepThink());
     }
 
     @Test
@@ -180,11 +250,44 @@ public class ConversationHistoryControllerTest {
                          Integer runStatus,
                          String finalSummaryText,
                          String fileName) {
+        ToolStructuredOutput structuredOutput = "file_tool".equals(toolName)
+                ? FileToolOutput.builder()
+                .command("upload")
+                .primaryFileName(fileName)
+                .fileRefs(fileName == null ? List.of() : List.of(buildFileRef(fileName)))
+                .build()
+                : null;
+        seedRun(
+                ctx,
+                requestId,
+                sessionId,
+                ExecutionLedgerConstants.ENTRY_AGENT_REACT,
+                toolName,
+                queryText,
+                startedAt,
+                runStatus,
+                finalSummaryText,
+                structuredOutput,
+                fileName
+        );
+    }
+
+    private void seedRun(ExecutionLedgerFixtureFactory.LedgerTestContext ctx,
+                         String requestId,
+                         String sessionId,
+                         String entryAgent,
+                         String toolName,
+                         String queryText,
+                         LocalDateTime startedAt,
+                         Integer runStatus,
+                         String finalSummaryText,
+                         ToolStructuredOutput structuredOutput,
+                         String fileName) {
         Long runId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
                 .runUid(requestId)
                 .requestId(requestId)
                 .sessionId(sessionId)
-                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
+                .entryAgent(entryAgent)
                 .queryText(queryText)
                 .startedAt(startedAt)
                 .build());
@@ -215,18 +318,7 @@ public class ConversationHistoryControllerTest {
                 .status(runStatus)
                 .llmObservation(runStatus != null && runStatus == ExecutionLedgerConstants.STATUS_SUCCESS ? "done" : "failed")
                 .errorMsg(runStatus != null && runStatus == ExecutionLedgerConstants.STATUS_SUCCESS ? null : "tool_failed")
-                .structuredOutput("file_tool".equals(toolName)
-                        ? FileToolOutput.builder()
-                        .command("upload")
-                        .primaryFileName(fileName)
-                        .fileRefs(fileName == null ? List.of() : List.of(ToolFileRef.builder()
-                                .fileName(fileName)
-                                .ossUrl("oss://" + fileName)
-                                .downloadUrl("https://file.example.com/download/" + fileName)
-                                .previewUrl("https://file.example.com/preview/" + fileName)
-                                .build()))
-                        .build()
-                        : null)
+                .structuredOutput(structuredOutput)
                 .finishedAt(startedAt.plusSeconds(2))
                 .build());
 
@@ -255,6 +347,15 @@ public class ConversationHistoryControllerTest {
                 .errorMsg(runStatus != null && runStatus == ExecutionLedgerConstants.STATUS_SUCCESS ? null : "run_failed")
                 .finishedAt(startedAt.plusSeconds(3))
                 .build());
+    }
+
+    private ToolFileRef buildFileRef(String fileName) {
+        return ToolFileRef.builder()
+                .fileName(fileName)
+                .ossUrl("oss://" + fileName)
+                .downloadUrl("https://file.example.com/download/" + fileName)
+                .previewUrl("https://file.example.com/preview/" + fileName)
+                .build();
     }
 
 }

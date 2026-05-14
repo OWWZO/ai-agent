@@ -1,5 +1,5 @@
 from abc import abstractmethod, ABC
-from typing import List
+from typing import List, Optional
 
 from .models.kb_file_model import KBFileModel
 
@@ -33,6 +33,13 @@ class KBFileStore(ABC):
     def count_kb_files(self, kb_id: str) -> int:
         pass
 
+    @abstractmethod
+    def get_file(self, kb_id: str, file_id: str) -> Optional[KBFileModel]:
+        pass
+
+    @abstractmethod
+    def delete_by_kb_id(self, kb_id: str) -> int:
+        pass
 
 
 

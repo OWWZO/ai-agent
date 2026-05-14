@@ -2,6 +2,7 @@ import { FC } from "react";
 import DataChat from "@/components/DataChat";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
+import ThinkingMessage from "./ThinkingMessage";
 
 type Props = {
   chat: CHAT.DataChatItem;
@@ -20,11 +21,15 @@ const DataDialogue: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {(chat.loading || chat.think) ? (
+      {chat.loading && !chat.think && !chat.chartData && !chat.error ? (
+        <ThinkingMessage />
+      ) : null}
+
+      {chat.think ? (
         <div className="mt-6 w-full">
           <Reasoning isStreaming={chat.loading} defaultOpen>
             <ReasoningTrigger />
-            <ReasoningContent>{chat.think || " "}</ReasoningContent>
+            <ReasoningContent>{chat.think}</ReasoningContent>
           </Reasoning>
         </div>
       ) : null}

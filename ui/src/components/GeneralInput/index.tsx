@@ -59,8 +59,6 @@ type Props = {
 type InputModeKey = "quick" | "think" | "research";
 const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 const OUTPUT_PRODUCTS = productList.filter((item) => OUTPUT_TYPES.includes(item.type)) as CHAT.Product[];
-const CHAT_PRODUCT =
-  (productList.find((item) => item.type === "chat") as CHAT.Product | undefined) ?? defaultProduct;
 const DATA_AGENT_PRODUCT =
   (productList.find((item) => item.type === "dataAgent") as CHAT.Product | undefined) ?? defaultProduct;
 const DEFAULT_OUTPUT_PRODUCT = (OUTPUT_PRODUCTS[0] ?? defaultProduct) as CHAT.Product;
@@ -90,6 +88,8 @@ const MODE_OPTIONS: Array<{
     icon: SearchIcon,
   },
 ];
+
+const VISIBLE_MODE_OPTIONS = MODE_OPTIONS.filter((item) => item.key !== "quick");
 
 const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
   if (productType === "chat") {
@@ -317,12 +317,11 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   };
 
   const handleModeSelect = (modeKey: InputModeKey) => {
+    // 前端暂时关闭对话模式切换，菜单里不再暴露 quick。
     if (modeKey === "quick") {
-      handleSelectionChange(CHAT_PRODUCT, false);
       setModeMenuOpen(false);
       return;
     }
-
     handleSelectionChange(visibleOutputProduct, modeKey === "research");
     setModeMenuOpen(false);
   };
@@ -486,7 +485,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     >
                       <div className={menuTitleClassName}>推理模式</div>
                       <div className="space-y-1">
-                        {MODE_OPTIONS.map((option) => {
+                        {VISIBLE_MODE_OPTIONS.map((option) => {
                           const isActive = option.key === visibleMode;
                           const tone = MODE_TONES[option.key];
                           return (

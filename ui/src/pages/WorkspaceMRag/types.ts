@@ -2,6 +2,13 @@ export type MRagFileStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED" | "UNK
 
 export type MRagSourceType = "file" | "url";
 
+export type MRagFullContentStatus =
+  | "IDLE"
+  | "READY"
+  | "PROCESSING"
+  | "FAILED"
+  | "UNAVAILABLE";
+
 export type MRagWorkspaceStoredState = {
   toolBaseUrl: string;
   selectedKnowledgeBaseId: string;
@@ -58,3 +65,21 @@ export type MRagChunkEnvelope = {
   finishReason?: string | null;
 };
 
+export type KnowledgeBaseDeleteResult = {
+  kbId: string;
+  deletedFileCount: number;
+};
+
+export type KnowledgeBaseFileFullContent = {
+  knowledgeBaseId: string;
+  fileId: string;
+  title: string;
+  sourceType: MRagSourceType;
+  sourceUrl: string;
+  fileStatus: MRagFileStatus;
+  contentStatus: MRagFullContentStatus;
+  contentFormat: string;
+  content: string;
+  errorMessage: string;
+  raw: Record<string, unknown>;
+};

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal } from "antd";
 
 import WorkspaceMRagView from "./view";
 import {
@@ -8,6 +9,7 @@ import {
 import { showMessage } from "@/utils";
 import { trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
 import {
+  resolveKnowledgeBaseAfterDeletion,
   resolveSelectedKnowledgeBaseId,
   shouldBootstrapKnowledgeBases,
 } from "./knowledgeBaseState";
@@ -93,6 +95,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
       );
     });
   }, [
+    catalog,
     catalog.refreshKnowledgeBases,
     initialWorkspaceState.selectedKnowledgeBaseId,
     workspaceState.toolBaseUrl,
@@ -125,6 +128,34 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
             setSelectedKnowledgeBaseId((previous) =>
               resolveSelectedKnowledgeBaseId(nextKnowledgeBases, previous)
             );
+          });
+        }}
+        deletingKnowledgeBaseId={catalog.deletingKnowledgeBaseId}
+        onDeleteKnowledgeBase={(kbId) => {
+          Modal.confirm({
+            title: "确认删除这个知识库吗？",
+            content: "删除后会同时清理向量数据、文件记录和正文回显记录。",
+            okText: "确认删除",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            async onOk() {
+              const deletedResult = await catalog.deleteKnowledgeBaseById(kbId);
+              if (!deletedResult) {
+                return;
+              }
+
+              const nextKnowledgeBases = await catalog.refreshKnowledgeBases({ silent: true });
+              setSelectedKnowledgeBaseId((previous) =>
+                resolveKnowledgeBaseAfterDeletion(nextKnowledgeBases, previous, kbId)
+              );
+              filesState.resetFullContentState();
+              queryState.handleClearQueryResult();
+              showMessage()?.success(
+                deletedResult.deletedFileCount > 0
+                  ? `知识库已删除，并清理 ${deletedResult.deletedFileCount} 条资料记录`
+                  : "知识库已删除"
+              );
+            },
           });
         }}
         createKnowledgeBaseName={catalog.createKnowledgeBaseName}
@@ -167,6 +198,17 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
             void filesState.refreshFiles(selectedKnowledgeBaseId);
           }
         }}
+        activeFullContentFileId={filesState.activeFullContentFileId}
+        fullContentLoading={filesState.fullContentLoading}
+        fullContentDrawerOpen={filesState.fullContentDrawerOpen}
+        fullContentTitle={filesState.fullContentTitle}
+        fullContentStatus={filesState.fullContentStatus}
+        fullContentError={filesState.fullContentError}
+        fullContentMarkdown={filesState.fullContentMarkdown}
+        onOpenFullContent={(fileId) => {
+          void filesState.handleOpenFullContent(fileId);
+        }}
+        onCloseFullContent={filesState.handleCloseFullContent}
         onDeleteFile={filesState.handleDeleteFile}
         question={queryState.question}
         onQuestionChange={queryState.setQuestion}

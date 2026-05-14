@@ -11,6 +11,7 @@ import {
   ReasoningTrigger,
   ReasoningContent,
 } from "@/components/ai-elements/reasoning";
+import ThinkingMessage from "./ThinkingMessage";
 import {
 } from "lucide-react";
 import {
@@ -75,7 +76,7 @@ const ConclusionSection: FC<{
           markDownContent={summary}
           isStreaming={summaryStreaming}
           normalizationScope={normalizationScope}
-          className="text-[15px] leading-8"
+          className="conclusion-markdown text-[15px] leading-8"
         />
       </div>
       <AttachmentList
@@ -86,18 +87,6 @@ const ConclusionSection: FC<{
     </div>
   );
 };
-
-const ThinkingMessage: FC = () => (
-  <div className="mt-6 flex w-full justify-start">
-    <Message from="assistant" className="w-full max-w-full">
-      <MessageContent>
-        <div className="flex items-center text-[15px] font-medium text-muted-foreground">
-          <span className="thinking-shimmer text-[15px] font-medium tracking-[0.02em]">Thinking</span>
-        </div>
-      </MessageContent>
-    </Message>
-  </div>
-);
 
 const DialogueComponent: FC<Props> = (props) => {
   const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;

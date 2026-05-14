@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  deleteKnowledgeBase,
+  getKnowledgeBaseFileFullContent,
   MRagWorkspaceRequestError,
   extractMragChunkContent,
   hasProcessingFiles,
@@ -11,6 +13,13 @@ import {
   resolveWorkspaceDownloadUrl,
   resolveWorkspacePreviewUrl,
 } from "./mragWorkspace";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  globalThis.fetch = originalFetch;
+});
 
 describe("mragWorkspace service utils", () => {
   it("归一化知识库结构并保留核心字段", () => {
@@ -133,5 +142,76 @@ describe("mragWorkspace service utils", () => {
     ).toBe("请求失败");
     expect(mapMragError(new Error("网络中断"))).toBe("网络中断");
   });
-});
 
+  it("调用知识库删除接口并返回删除结果摘要", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "success",
+          data: {
+            kb_id: "kb-1",
+            deleted_file_count: 3,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    ) as typeof fetch;
+
+    await expect(deleteKnowledgeBase("http://127.0.0.1:1601", "kb-1")).resolves.toEqual({
+      kbId: "kb-1",
+      deletedFileCount: 3,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:1601/v1/documents/delete_knowledge_base",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ kb_id: "kb-1" }),
+      })
+    );
+  });
+
+  it("查询整篇正文时返回稳定内容状态", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          msg: "success",
+          data: {
+            kb_id: "kb-1",
+            file_id: "file-1",
+            title: "demo.pdf",
+            file_url: "http://127.0.0.1:1601/download/req/demo.pdf",
+            source_type: "file",
+            file_status: "SUCCESS",
+            content_status: "READY",
+            content_format: "markdown",
+            content: "# 正文标题\n\n这里是正文。",
+            error_message: "",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    ) as typeof fetch;
+
+    await expect(
+      getKnowledgeBaseFileFullContent("http://127.0.0.1:1601", {
+        kbId: "kb-1",
+        fileId: "file-1",
+      })
+    ).resolves.toMatchObject({
+      knowledgeBaseId: "kb-1",
+      fileId: "file-1",
+      contentStatus: "READY",
+      contentFormat: "markdown",
+      content: "# 正文标题\n\n这里是正文。",
+      sourceType: "file",
+    });
+  });
+});

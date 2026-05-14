@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   createKnowledgeBase,
+  deleteKnowledgeBase,
   listKnowledgeBases,
   mapMragError,
 } from "@/services/mragWorkspace";
@@ -19,6 +20,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
   const [createKnowledgeBaseName, setCreateKnowledgeBaseName] = useState("");
   const [createKnowledgeBaseDesc, setCreateKnowledgeBaseDesc] = useState("");
   const [creatingKnowledgeBase, setCreatingKnowledgeBase] = useState(false);
+  const [deletingKnowledgeBaseId, setDeletingKnowledgeBaseId] = useState("");
 
   const refreshKnowledgeBases = useCallback(
     async (options?: RefreshKnowledgeBaseOptions) => {
@@ -67,6 +69,26 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
     }
   }, [createKnowledgeBaseDesc, createKnowledgeBaseName, toolBaseUrl]);
 
+  const deleteKnowledgeBaseById = useCallback(
+    async (kbId: string) => {
+      if (!kbId) {
+        return null;
+      }
+
+      setDeletingKnowledgeBaseId(kbId);
+      try {
+        const deletedResult = await deleteKnowledgeBase(toolBaseUrl, kbId);
+        return deletedResult;
+      } catch (error) {
+        showMessage()?.error(mapMragError(error));
+        return null;
+      } finally {
+        setDeletingKnowledgeBaseId("");
+      }
+    },
+    [toolBaseUrl]
+  );
+
   return {
     knowledgeBases,
     knowledgeBasesLoading,
@@ -74,9 +96,11 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
     createKnowledgeBaseName,
     createKnowledgeBaseDesc,
     creatingKnowledgeBase,
+    deletingKnowledgeBaseId,
     setCreateKnowledgeBaseName,
     setCreateKnowledgeBaseDesc,
     refreshKnowledgeBases,
     handleCreateKnowledgeBase,
+    deleteKnowledgeBaseById,
   };
 }

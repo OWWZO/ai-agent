@@ -31,6 +31,8 @@ describe("WorkspaceMRagView", () => {
           selectedKnowledgeBaseId="kb-1"
           onSelectKnowledgeBase={() => {}}
           onRefreshKnowledgeBases={() => {}}
+          deletingKnowledgeBaseId=""
+          onDeleteKnowledgeBase={() => {}}
           createKnowledgeBaseName=""
           createKnowledgeBaseDesc=""
           onCreateKnowledgeBaseNameChange={() => {}}
@@ -95,6 +97,15 @@ describe("WorkspaceMRagView", () => {
           onUploadFiles={() => {}}
           onAddWebUrl={() => {}}
           onRefreshFiles={() => {}}
+          activeFullContentFileId=""
+          fullContentLoading={false}
+          fullContentDrawerOpen={true}
+          fullContentTitle="demo.pdf"
+          fullContentStatus="READY"
+          fullContentError=""
+          fullContentMarkdown={"# 正文标题\n\n这里是正文。"}
+          onOpenFullContent={() => {}}
+          onCloseFullContent={() => {}}
           onDeleteFile={() => {}}
           question="资料里有哪些关键流程？"
           onQuestionChange={() => {}}
@@ -115,7 +126,71 @@ describe("WorkspaceMRagView", () => {
     expect(html).toContain("预览");
     expect(html).toContain("下载");
     expect(html).toContain("打开原链接");
-    expect(html).toContain("调试原始 SSE Chunk");
+    expect(html).toContain("查看正文");
+    expect(html).toContain("原始资料");
+    expect(html).toContain("整篇正文");
+    expect(html).toContain("正文标题");
+    expect(html).toContain("调试");
     expect(html).toContain("命中了产品接入流程说明");
+  });
+
+  it("在正文不可用时展示明确提示", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/workspace/mrag"]}>
+        <WorkspaceMRagView
+          toolBaseUrlDraft="http://127.0.0.1:1601"
+          activeToolBaseUrl="http://127.0.0.1:1601"
+          onToolBaseUrlChange={() => {}}
+          onApplyToolBaseUrl={() => {}}
+          knowledgeBases={[]}
+          knowledgeBasesLoading={false}
+          knowledgeBasesError=""
+          selectedKnowledgeBaseId=""
+          onSelectKnowledgeBase={() => {}}
+          onRefreshKnowledgeBases={() => {}}
+          deletingKnowledgeBaseId=""
+          onDeleteKnowledgeBase={() => {}}
+          createKnowledgeBaseName=""
+          createKnowledgeBaseDesc=""
+          onCreateKnowledgeBaseNameChange={() => {}}
+          onCreateKnowledgeBaseDescChange={() => {}}
+          creatingKnowledgeBase={false}
+          onCreateKnowledgeBase={() => {}}
+          selectedKnowledgeBase={null}
+          files={[]}
+          filesLoading={false}
+          filesError=""
+          uploadingFiles={false}
+          addingWebUrl={false}
+          webUrl=""
+          onWebUrlChange={() => {}}
+          onUploadFiles={() => {}}
+          onAddWebUrl={() => {}}
+          onRefreshFiles={() => {}}
+          activeFullContentFileId="file-2"
+          fullContentLoading={false}
+          fullContentDrawerOpen={true}
+          fullContentTitle="官网说明"
+          fullContentStatus="FAILED"
+          fullContentError="解析失败"
+          fullContentMarkdown=""
+          onOpenFullContent={() => {}}
+          onCloseFullContent={() => {}}
+          onDeleteFile={() => {}}
+          question=""
+          onQuestionChange={() => {}}
+          querying={false}
+          queryAnswer=""
+          queryError=""
+          queryRawChunks={[]}
+          onSubmitQuery={() => {}}
+          onStopQuery={() => {}}
+          onClearQueryResult={() => {}}
+        />
+      </MemoryRouter>
+    );
+
+    expect(html).toContain("正文暂不可用");
+    expect(html).toContain("解析失败");
   });
 });

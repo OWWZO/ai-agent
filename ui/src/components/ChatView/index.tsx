@@ -283,6 +283,38 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const loading = streamLoading || dataLoading;
+  const optimisticDataChat = useMemo(() => {
+    const targetOutput = inputInfoProp.outputStyle || conversation.productType;
+    const lastDataChat = conversation.dataChatList[conversation.dataChatList.length - 1];
+    const latestChatAlreadyHydrated =
+      lastDataChat?.loading &&
+      lastDataChat.query === inputInfoProp.message &&
+      !lastDataChat.chartData &&
+      !lastDataChat.error;
+    const shouldRenderOptimisticPlaceholder =
+      targetOutput === "dataAgent" &&
+      !inputInfoProp.deepThink &&
+      inputInfoProp.message?.length > 0 &&
+      !latestChatAlreadyHydrated;
+
+    if (!shouldRenderOptimisticPlaceholder) {
+      return undefined;
+    }
+
+    return {
+      query: inputInfoProp.message,
+      loading: true,
+      think: "",
+      chartData: undefined,
+      error: "",
+    } satisfies CHAT.DataChatItem;
+  }, [
+    conversation.dataChatList,
+    conversation.productType,
+    inputInfoProp.deepThink,
+    inputInfoProp.message,
+    inputInfoProp.outputStyle,
+  ]);
 
   const currentProduct = useMemo(() => {
     return getProductByType(conversation.productType || product?.type);
@@ -362,6 +394,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const renderDataDialogues = () => {
+    const visibleDataChats = optimisticDataChat
+      ? [...conversation.dataChatList, optimisticDataChat]
+      : conversation.dataChatList;
+
     if (isConversationSwitching) {
       return (
         <motion.div
@@ -379,7 +415,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             ease: [0.25, 0.46, 0.45, 0.94]
           }}
         >
-          {conversation.dataChatList.map((chat, idx) => (
+          {visibleDataChats.map((chat, idx) => (
             <DataDialogue key={`${conversation.id}-${idx}`} chat={chat} />
           ))}
         </motion.div>
@@ -388,7 +424,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
     return (
       <AnimatePresence mode="popLayout" initial={false}>
-        {conversation.dataChatList.map((chat, idx) => (
+        {visibleDataChats.map((chat, idx) => (
           <motion.div
             key={`${conversation.id}-${idx}`}
             initial={{
@@ -461,9 +497,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   size="medium"
                   disabled={loading || conversation.role?.available === false}
                   product={currentProduct}
+                  deepThink={conversation.deepThink}
+                  displayOutput={currentProduct}
                   chatRole={conversation.role}
                   chatRoles={chatRoles}
-                  showRoleSelector={conversation.productType === "chat"}
+                  showRoleSelector={false}
                   onRoleSelect={onRoleSelect}
                   send={(info) =>
                     sendMessage({
@@ -557,9 +595,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     size="medium"
                     disabled={loading || conversation.role?.available === false}
                     product={currentProduct}
+                    deepThink={conversation.deepThink}
+                    displayOutput={currentProduct}
                     chatRole={conversation.role}
                     chatRoles={chatRoles}
-                    showRoleSelector={conversation.productType === "chat"}
+                    showRoleSelector={false}
                     onRoleSelect={onRoleSelect}
                     send={(info) =>
                       sendMessage({
@@ -677,6 +717,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 size="medium"
                 disabled={loading}
                 product={currentProduct}
+                deepThink={false}
+                displayOutput={currentProduct}
                 send={(info) =>
                   sendDataMessage({
                     ...info,

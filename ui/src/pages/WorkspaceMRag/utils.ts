@@ -99,27 +99,27 @@ export function resolveFileStatusMeta(status: MRagFileStatus): FileStatusMeta {
     case "SUCCESS":
       return {
         label: "已完成",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        className: "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
       };
     case "FAILED":
       return {
         label: "失败",
-        className: "border-rose-200 bg-rose-50 text-rose-700",
+        className: "bg-[var(--status-failed-bg)] text-[var(--status-failed-text)]",
       };
     case "RUNNING":
       return {
         label: "处理中",
-        className: "border-sky-200 bg-sky-50 text-sky-700",
+        className: "bg-[var(--status-running-bg)] text-[var(--status-running-text)]",
       };
     case "PENDING":
       return {
         label: "排队中",
-        className: "border-amber-200 bg-amber-50 text-amber-700",
+        className: "bg-[var(--status-pending-bg)] text-[var(--status-pending-text)]",
       };
     default:
       return {
         label: "未知",
-        className: "border-slate-200 bg-slate-100 text-slate-600",
+        className: "bg-[var(--status-neutral-bg)] text-[var(--status-neutral-text)]",
       };
   }
 }

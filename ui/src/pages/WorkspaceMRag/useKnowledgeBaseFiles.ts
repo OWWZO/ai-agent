@@ -5,6 +5,7 @@ import { Modal } from "antd";
 import {
   addWebUrlToKnowledgeBase,
   deleteKnowledgeBaseFiles,
+  getKnowledgeBaseFileFullContent,
   ingestLocalFilesToKnowledgeBase,
   listKnowledgeBaseFiles,
   mapMragError,
@@ -15,7 +16,10 @@ import {
   MRAG_FILE_REFRESH_DELAY_MS,
 } from "./utils";
 import { shouldPollKnowledgeBaseFiles } from "./knowledgeBaseState";
-import type { KnowledgeBaseFile } from "./types";
+import type {
+  KnowledgeBaseFile,
+  MRagFullContentStatus,
+} from "./types";
 
 type RefreshFilesOptions = {
   silent?: boolean;
@@ -31,9 +35,27 @@ export function useKnowledgeBaseFiles(
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [webUrl, setWebUrl] = useState("");
   const [addingWebUrl, setAddingWebUrl] = useState(false);
+  const [activeFullContentFileId, setActiveFullContentFileId] = useState("");
+  const [fullContentDrawerOpen, setFullContentDrawerOpen] = useState(false);
+  const [fullContentLoading, setFullContentLoading] = useState(false);
+  const [fullContentTitle, setFullContentTitle] = useState("");
+  const [fullContentStatus, setFullContentStatus] =
+    useState<MRagFullContentStatus>("IDLE");
+  const [fullContentError, setFullContentError] = useState("");
+  const [fullContentMarkdown, setFullContentMarkdown] = useState("");
 
   const delayedRefreshTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const resetFullContentState = useCallback(() => {
+    setActiveFullContentFileId("");
+    setFullContentDrawerOpen(false);
+    setFullContentLoading(false);
+    setFullContentTitle("");
+    setFullContentStatus("IDLE");
+    setFullContentError("");
+    setFullContentMarkdown("");
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -53,14 +75,22 @@ export function useKnowledgeBaseFiles(
         const nextFiles = await listKnowledgeBaseFiles(toolBaseUrl, knowledgeBaseId);
         setFiles(nextFiles);
         setFilesError("");
+
+        if (
+          activeFullContentFileId &&
+          !nextFiles.some((file) => file.id === activeFullContentFileId)
+        ) {
+          resetFullContentState();
+        }
       } catch (error) {
         setFilesError(mapMragError(error));
         setFiles([]);
+        resetFullContentState();
       } finally {
         setFilesLoading(false);
       }
     },
-    [toolBaseUrl]
+    [activeFullContentFileId, resetFullContentState, toolBaseUrl]
   );
 
   const scheduleDelayedFileRefresh = useCallback(
@@ -169,22 +199,72 @@ export function useKnowledgeBaseFiles(
             fileIds: [fileId],
           });
           showMessage()?.success("资料已删除");
+          if (activeFullContentFileId === fileId) {
+            resetFullContentState();
+          }
           await refreshFiles(selectedKnowledgeBaseId, { silent: true });
         },
       });
     },
-    [refreshFiles, selectedKnowledgeBaseId, toolBaseUrl]
+    [
+      activeFullContentFileId,
+      refreshFiles,
+      resetFullContentState,
+      selectedKnowledgeBaseId,
+      toolBaseUrl,
+    ]
   );
+
+  const handleOpenFullContent = useCallback(
+    async (fileId: string) => {
+      if (!selectedKnowledgeBaseId) {
+        showMessage()?.error("请先选择知识库");
+        return;
+      }
+
+      const targetFile = files.find((file) => file.id === fileId);
+      setActiveFullContentFileId(fileId);
+      setFullContentDrawerOpen(true);
+      setFullContentLoading(true);
+      setFullContentTitle(targetFile?.title || "");
+      setFullContentStatus("IDLE");
+      setFullContentError("");
+      setFullContentMarkdown("");
+
+      try {
+        const fullContent = await getKnowledgeBaseFileFullContent(toolBaseUrl, {
+          kbId: selectedKnowledgeBaseId,
+          fileId,
+        });
+        setFullContentTitle(fullContent.title || targetFile?.title || "");
+        setFullContentStatus(fullContent.contentStatus);
+        setFullContentError(fullContent.errorMessage);
+        setFullContentMarkdown(fullContent.content);
+      } catch (error) {
+        setFullContentStatus("FAILED");
+        setFullContentError(mapMragError(error));
+        setFullContentMarkdown("");
+      } finally {
+        setFullContentLoading(false);
+      }
+    },
+    [files, selectedKnowledgeBaseId, toolBaseUrl]
+  );
+
+  const handleCloseFullContent = useCallback(() => {
+    setFullContentDrawerOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId) {
       setFiles([]);
       setFilesError("");
+      resetFullContentState();
       return;
     }
 
     void refreshFiles(selectedKnowledgeBaseId);
-  }, [refreshFiles, selectedKnowledgeBaseId]);
+  }, [refreshFiles, resetFullContentState, selectedKnowledgeBaseId]);
 
   useEffect(() => {
     if (!selectedKnowledgeBaseId || !shouldPollKnowledgeBaseFiles(files)) {
@@ -206,11 +286,21 @@ export function useKnowledgeBaseFiles(
     uploadingFiles,
     webUrl,
     addingWebUrl,
+    activeFullContentFileId,
+    fullContentDrawerOpen,
+    fullContentLoading,
+    fullContentTitle,
+    fullContentStatus,
+    fullContentError,
+    fullContentMarkdown,
     setWebUrl,
     refreshFiles,
     handleFileInputChange,
     handleUploadFiles,
     handleAddWebUrl,
     handleDeleteFile,
+    handleOpenFullContent,
+    handleCloseFullContent,
+    resetFullContentState,
   };
 }

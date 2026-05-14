@@ -1,27 +1,56 @@
-import LoadingSpinner from "@/components/LoadingSpinner";
+import { motion } from "motion/react";
 
 /**
- * visitor bootstrap 进行中的独立加载界面。
+ * 访客引导加载界面 — 与登录入口保持一致的视觉语言
  */
 export default function VisitorBootstrapScreen() {
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-[var(--page-gradient)] px-6 text-foreground">
-      <div className="w-full max-w-[420px] rounded-[32px] border border-[var(--chat-border)] bg-[var(--chat-surface)]/92 p-10 text-center shadow-[var(--shadow-sm)] backdrop-blur-md">
-        <div className="mb-6 flex justify-center">
-          <LoadingSpinner
-            size="lg"
-            color="rgba(255,255,255,0.92)"
-            className="text-[var(--primary)]"
-          />
-        </div>
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden">
+      {/* 背景层 */}
+      <div className="absolute inset-0 bg-[var(--page-gradient)]" />
+
+      {/* 装饰光斑 */}
+      <div
+        className="pointer-events-none absolute -right-32 top-1/4 h-[500px] w-[500px] rounded-full opacity-60"
+        style={{
+          background: "radial-gradient(circle, oklch(0.7 0.05 260 / 0.06), transparent 70%)",
+          filter: "blur(60px)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute -left-24 bottom-1/4 h-[400px] w-[400px] rounded-full opacity-50"
+        style={{
+          background: "radial-gradient(circle, oklch(0.65 0.04 200 / 0.05), transparent 70%)",
+          filter: "blur(50px)",
+        }}
+      />
+
+      {/* 内容 */}
+      <motion.div
+        className="relative z-10 text-center"
+        initial={{
+          opacity: 0,
+          y: 16
+        }}
+        animate={{
+          opacity: 1,
+          y: 0
+        }}
+        transition={{
+          duration: 0.5,
+          ease: [0.16, 1, 0.3, 1]
+        }}
+      >
         <h1
-          className="mb-3 text-[30px] font-medium leading-[1.08] text-[var(--chat-text)]"
-          style={{ fontFamily: "var(--font-sans)" }}
+          className="mb-2 text-[28px] font-normal leading-[1.15] tracking-tight text-[var(--chat-text)]"
+          style={{ fontFamily: "var(--font-display)" }}
         >
           正在进入工作台
         </h1>
-        <p className="text-[14px] text-[var(--chat-text-soft)]">请稍候...</p>
-      </div>
+        <p className="text-[14px] text-[var(--chat-text-soft)]">
+          准备你的 AI 协作环境...
+        </p>
+      </motion.div>
     </div>
   );
 }

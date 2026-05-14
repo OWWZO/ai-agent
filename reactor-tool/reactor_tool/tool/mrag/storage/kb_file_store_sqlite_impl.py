@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import Column, Integer, String, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
@@ -129,16 +129,25 @@ class KBFileSQLite(KBFileStore):
 
             if file_to_update:
                 # Update fields
-                file_to_update.file_url = kb_file.file_url or file_to_update.file_url
-                file_to_update.title = kb_file.title or file_to_update.title
-                file_to_update.task_id = kb_file.task_id or file_to_update.task_id
-                file_to_update.file_ext = kb_file.file_ext or file_to_update.file_ext
-                file_to_update.source_type = kb_file.source_type or file_to_update.source_type
-                file_to_update.task_status = kb_file.task_status or file_to_update.task_status
-                file_to_update.file_status = kb_file.file_status or file_to_update.file_status
-                file_to_update.doc_count = kb_file.doc_count or file_to_update.doc_count
+                if kb_file.file_url is not None:
+                    file_to_update.file_url = kb_file.file_url
+                if kb_file.title is not None:
+                    file_to_update.title = kb_file.title
+                if kb_file.task_id is not None:
+                    file_to_update.task_id = kb_file.task_id
+                if kb_file.file_ext is not None:
+                    file_to_update.file_ext = kb_file.file_ext
+                if kb_file.source_type is not None:
+                    file_to_update.source_type = kb_file.source_type
+                if kb_file.task_status is not None:
+                    file_to_update.task_status = kb_file.task_status
+                if kb_file.file_status is not None:
+                    file_to_update.file_status = kb_file.file_status
+                if kb_file.doc_count is not None:
+                    file_to_update.doc_count = kb_file.doc_count
                 file_to_update.modify_time = datetime.now()
-                file_to_update.creator = kb_file.creator or file_to_update.creator
+                if kb_file.creator is not None:
+                    file_to_update.creator = kb_file.creator
 
                 session.commit()
                 return True
@@ -184,7 +193,7 @@ class KBFileSQLite(KBFileStore):
                 file.modify_time = datetime.now()
 
             session.commit()
-            return True
+            return len(files)
         except Exception as e:
             session.rollback()
             raise e
@@ -206,6 +215,40 @@ class KBFileSQLite(KBFileStore):
             # Convert SQLAlchemy models to Pydantic models
             return [file.to_pydantic() for file in files]
         except Exception as e:
+            raise e
+        finally:
+            session.close()
+
+    def get_file(self, kb_id: str, file_id: str) -> Optional[KBFilePydanticModel]:
+        session = self._get_session()
+        try:
+            file = session.query(KBFileSQLModel).filter(
+                KBFileSQLModel.kb_id == kb_id,
+                KBFileSQLModel.file_id == file_id,
+                KBFileSQLModel.deleted == 0
+            ).first()
+            return file.to_pydantic() if file else None
+        except Exception as e:
+            raise e
+        finally:
+            session.close()
+
+    def delete_by_kb_id(self, kb_id: str) -> int:
+        session = self._get_session()
+        try:
+            files = session.query(KBFileSQLModel).filter(
+                KBFileSQLModel.kb_id == kb_id,
+                KBFileSQLModel.deleted == 0
+            ).all()
+
+            for file in files:
+                file.deleted = 1
+                file.modify_time = datetime.now()
+
+            session.commit()
+            return len(files)
+        except Exception as e:
+            session.rollback()
             raise e
         finally:
             session.close()

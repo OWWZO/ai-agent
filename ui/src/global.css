@@ -44,18 +44,32 @@
   --radius-2xl: 1rem;
   --radius-full: 9999px;
 
-  /* Chat System Colors - oklch */
-  --chat-bg: oklch(0.985 0.002 90);
+  /* Chat System Colors - oklch with warm tint */
+  --chat-bg: oklch(0.985 0.003 80);
   --chat-panel: oklch(1 0 0 / 0.72);
   --chat-panel-strong: oklch(1 0 0 / 0.95);
-  --chat-surface: oklch(1 0 0);
-  --chat-surface-soft: oklch(0.96 0.005 90);
-  --chat-surface-muted: oklch(0.92 0.008 90);
+  --chat-surface: oklch(0.995 0.004 75);
+  --chat-surface-soft: oklch(0.96 0.006 80);
+  --chat-surface-muted: oklch(0.92 0.008 80);
   --chat-text: oklch(0.15 0.01 60);
   --chat-text-soft: oklch(0.5 0.015 60);
   --chat-text-muted: oklch(0.6 0.012 60);
-  --chat-border: oklch(0.88 0.008 90);
-  --chat-border-strong: oklch(0.8 0.01 90);
+  --chat-border: oklch(0.88 0.008 85);
+  --chat-border-strong: oklch(0.8 0.01 80);
+
+  /* Status Colors - semantic, theme-aware */
+  --status-success-bg: oklch(0.95 0.03 155);
+  --status-success-text: oklch(0.4 0.12 155);
+  --status-failed-bg: oklch(0.95 0.03 25);
+  --status-failed-text: oklch(0.5 0.15 25);
+  --status-running-bg: oklch(0.95 0.03 220);
+  --status-running-text: oklch(0.4 0.12 220);
+  --status-pending-bg: oklch(0.95 0.03 85);
+  --status-pending-text: oklch(0.5 0.12 85);
+  --status-info-bg: oklch(0.95 0.03 240);
+  --status-info-text: oklch(0.4 0.12 240);
+  --status-neutral-bg: oklch(0.94 0.005 80);
+  --status-neutral-text: oklch(0.5 0.015 80);
 
   /* JSON viewer — syntax palette (light) */
   --json-view-inner-bg: oklch(0.98 0.006 95);
@@ -131,16 +145,30 @@
   --input: oklch(0.18 0.01 90 / 0.85);
   --ring: oklch(0.65 0.15 260 / 0.3);
 
-  --chat-bg: oklch(0.08 0.005 90);
-  --chat-panel: oklch(0.12 0.01 90 / 0.65);
-  --chat-panel-strong: oklch(0.15 0.01 90 / 0.95);
-  --chat-surface: oklch(0.15 0.01 90);
-  --chat-surface-soft: oklch(0.2 0.01 90);
-  --chat-surface-muted: oklch(0.25 0.012 90);
-  --chat-text: oklch(0.95 0.005 90);
-  --chat-text-soft: oklch(0.65 0.01 90);
-  --chat-border: oklch(0.2 0.01 90 / 0.1);
-  --chat-border-strong: oklch(0.25 0.015 90 / 0.15);
+  --chat-bg: oklch(0.08 0.005 80);
+  --chat-panel: oklch(0.12 0.01 80 / 0.65);
+  --chat-panel-strong: oklch(0.15 0.01 80 / 0.95);
+  --chat-surface: oklch(0.15 0.012 75);
+  --chat-surface-soft: oklch(0.2 0.014 75);
+  --chat-surface-muted: oklch(0.25 0.016 75);
+  --chat-text: oklch(0.95 0.005 80);
+  --chat-text-soft: oklch(0.65 0.01 80);
+  --chat-border: oklch(0.2 0.01 80 / 0.1);
+  --chat-border-strong: oklch(0.25 0.015 80 / 0.15);
+
+  /* Status Colors - dark mode */
+  --status-success-bg: oklch(0.2 0.06 155);
+  --status-success-text: oklch(0.75 0.1 155);
+  --status-failed-bg: oklch(0.2 0.06 25);
+  --status-failed-text: oklch(0.8 0.1 25);
+  --status-running-bg: oklch(0.2 0.06 220);
+  --status-running-text: oklch(0.75 0.1 220);
+  --status-pending-bg: oklch(0.2 0.06 85);
+  --status-pending-text: oklch(0.8 0.1 85);
+  --status-info-bg: oklch(0.2 0.06 240);
+  --status-info-text: oklch(0.75 0.1 240);
+  --status-neutral-bg: oklch(0.2 0.015 80);
+  --status-neutral-text: oklch(0.6 0.02 80);
 
   /* JSON viewer — syntax palette (dark) */
   --json-view-inner-bg: oklch(0.14 0.02 275);
@@ -1037,6 +1065,36 @@ ol {
   border: 1px solid var(--chat-border);
   border-radius: 0.45rem;
   padding: 0.12rem 0.35rem;
+}
+
+/* 最终总结区域 markdown 标题缩小，避免在对话卡片中显得过大 */
+.conclusion-markdown.markdown-body h1 {
+  font-size: 1.35em;
+  margin-top: 0.75em;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.2em;
+}
+.conclusion-markdown.markdown-body h2 {
+  font-size: 1.2em;
+  margin-top: 0.6em;
+  margin-bottom: 0.4em;
+  padding-bottom: 0.2em;
+}
+.conclusion-markdown.markdown-body h3 {
+  font-size: 1.1em;
+  margin-top: 0.5em;
+  margin-bottom: 0.35em;
+}
+.conclusion-markdown.markdown-body h4 {
+  font-size: 1em;
+  margin-top: 0.5em;
+  margin-bottom: 0.3em;
+}
+.conclusion-markdown.markdown-body h5,
+.conclusion-markdown.markdown-body h6 {
+  font-size: 0.9em;
+  margin-top: 0.4em;
+  margin-bottom: 0.25em;
 }
 
 .ai-chat-markdown,

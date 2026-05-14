@@ -12,12 +12,13 @@ from pydantic import BaseModel, Field
 from reactor_tool.db.file_table_op import FileInfoOp, get_file_download_url, get_file_preview_url
 from reactor_tool.model.protocal import get_file_id
 
+from ...document import DocumentProcessor
 from ...enums.source_type_enums import SourceTypeEnum
 from ...enums.task_status_enums import TaskStatusEnum
 from ...storage import VectorStore
 from ...storage.models.kb_file_model import KBFileModel
 from ...storage.models.kb_model import KBModel
-from ...storage.store_factory import get_kb_store, get_kb_file_store
+from ...storage.store_factory import get_kb_doc_store, get_kb_store, get_kb_file_store
 from ...utils import download_utils
 from ...utils.logger_utils import logger
 from ...utils.oss_utils import upload_oss
@@ -45,6 +46,11 @@ SUPPORTED_FILE_TYPES = {
 
 # 最大文件大小 (50MB)
 MAX_FILE_SIZE = 50 * 1024 * 1024
+FULL_CONTENT_READY = "READY"
+FULL_CONTENT_PROCESSING = "PROCESSING"
+FULL_CONTENT_FAILED = "FAILED"
+FULL_CONTENT_UNAVAILABLE = "UNAVAILABLE"
+FULL_CONTENT_FORMAT_MARKDOWN = "markdown"
 
 
 def _get_supported_extensions() -> str:
@@ -96,6 +102,59 @@ async def _upload_to_local_file_storage(file: UploadFile, document_id: str, safe
     download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
     preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
     return download_url, preview_url, file_info.filename
+
+
+def _normalize_source_type(raw_source_type: Optional[str], title: Optional[str], file_url: Optional[str]) -> str:
+    """兼容历史脏数据，统一给前端返回稳定来源语义。"""
+    source_type = (raw_source_type or "").strip().lower()
+    normalized_title = (title or "").strip()
+    normalized_url = (file_url or "").strip().lower()
+
+    if source_type == SourceTypeEnum.URL.value:
+        return SourceTypeEnum.URL.value
+    if source_type == SourceTypeEnum.FILE.value:
+        if not normalized_title and normalized_url.startswith(("http://", "https://")):
+            return SourceTypeEnum.URL.value
+        return SourceTypeEnum.FILE.value
+    if not normalized_title and normalized_url.startswith(("http://", "https://")):
+        return SourceTypeEnum.URL.value
+    return SourceTypeEnum.FILE.value
+
+
+def _resolve_global_status(kb_file: KBFileModel) -> str:
+    task_status = kb_file.task_status or {}
+    status_value = task_status.get("global_status") or kb_file.file_status or ""
+    return str(status_value).upper()
+
+
+def _serialize_kb_file(kb_file: KBFileModel) -> dict:
+    payload = kb_file.model_dump(mode="json")
+    payload["source_type"] = _normalize_source_type(
+        kb_file.source_type,
+        kb_file.title,
+        kb_file.file_url,
+    )
+    return payload
+
+
+def _build_full_content_payload(
+    kb_file: KBFileModel,
+    content_status: str,
+    content: str = "",
+    error_message: str = "",
+) -> dict:
+    return {
+        "kb_id": kb_file.kb_id,
+        "file_id": kb_file.file_id,
+        "title": kb_file.title or "",
+        "file_url": kb_file.file_url or "",
+        "source_type": _normalize_source_type(kb_file.source_type, kb_file.title, kb_file.file_url),
+        "file_status": _resolve_global_status(kb_file),
+        "content_status": content_status,
+        "content_format": FULL_CONTENT_FORMAT_MARKDOWN,
+        "content": content,
+        "error_message": error_message,
+    }
 
 
 @router.post("/upload")
@@ -237,9 +296,9 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 class CreateKnowledgeBaseRequest(BaseModel):
-    kb_id: Optional[str]
-    kb_name: Optional[str]
-    kb_desc: Optional[str]
+    kb_id: Optional[str] = None
+    kb_name: Optional[str] = None
+    kb_desc: Optional[str] = None
     chunk_type: Optional[str] = Field("fixed_size", description="chunk_type")
     chunk_size: Optional[int] = Field(None, description="chunk_size")
     chunk_overlap_size: Optional[int] = Field(None, description="chunk_overlap_size")
@@ -279,9 +338,17 @@ class DeleteKnowledgeBaseRequest(BaseModel):
 @router.post("/delete_knowledge_base")
 async def delete_knowledge_base(request: DeleteKnowledgeBaseRequest):
     kb_store = get_kb_store()
+    kb_file_store = get_kb_file_store()
+    kb_doc_store = get_kb_doc_store()
+    if not request.kb_id:
+        raise HTTPException(status_code=400, detail="kb_id 不能为空")
     kb_model = KBModel(kb_id=request.kb_id)
-    kb_store.delete_kb(kb_model)
+    deleted = kb_store.delete_kb(kb_model)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="知识库不存在或已删除")
 
+    deleted_file_count = kb_file_store.delete_by_kb_id(request.kb_id)
+    kb_doc_store.delete_by_kb_id(request.kb_id)
     VectorStore().delete_text_by_kb_id(request.kb_id)
     VectorStore().delete_image_by_kb_id(request.kb_id)
     VectorStore().delete_page_by_kb_id(request.kb_id)
@@ -289,7 +356,10 @@ async def delete_knowledge_base(request: DeleteKnowledgeBaseRequest):
     return {
         "code": 200,
         "msg": "success",
-        "data": {}
+        "data": {
+            "kb_id": request.kb_id,
+            "deleted_file_count": deleted_file_count,
+        }
     }
 
 
@@ -353,7 +423,6 @@ def add_file(filename, file_url, kb_id):
         kb_file.task_status = {"global_status": TaskStatusEnum.RUNNING.value}
         kb_file_store.update_file(kb_file)
 
-        from ...document import DocumentProcessor
         processor = DocumentProcessor(kb_id, file_id, work_dir, local_file_path, file_url)
         processor.process()
 
@@ -411,7 +480,7 @@ def add_web_url(url, kb_id):
         file_url=url,
         title="",
         file_ext=".md",
-        source_type=SourceTypeEnum.FILE.value,
+        source_type=SourceTypeEnum.URL.value,
         task_status={"global_status": TaskStatusEnum.PENDING.value},
         file_status=TaskStatusEnum.PENDING.value,
         doc_count=0,
@@ -424,7 +493,6 @@ def add_web_url(url, kb_id):
 
     local_file_path = os.path.join(tempdir, file_id, f"{file_id}.md")
     try:
-        from ...document import DocumentProcessor
         from ...utils import crawl_utils
 
         markdown_content = crawl_utils.crawl(url)
@@ -495,6 +563,7 @@ async def delete_files(request: DeleteFileRequest):
 
     kb_file_store = get_kb_file_store()
     kb_file_store.delete_by_file_ids(kb_id, file_ids)
+    get_kb_doc_store().delete_by_file_ids(kb_id, file_ids)
 
     vector_store = VectorStore()
     vector_store.delete_by_file_ids(kb_id, file_ids)
@@ -525,8 +594,69 @@ async def list_kb_files(request: ListKBFilesRequest):
         "msg": "success",
         "data": {
             "total": total,
-            "records": records,
+            "records": [_serialize_kb_file(record) for record in records],
             "page_no": page_no,
             "page_size": page_size,
         }
+    }
+
+
+class GetFileFullContentRequest(BaseModel):
+    kb_id: str = Field(..., description="知识库id")
+    file_id: str = Field(..., description="文件id")
+
+
+@router.post("/get_file_full_content")
+async def get_file_full_content(request: GetFileFullContentRequest):
+    kb_file_store = get_kb_file_store()
+    kb_doc_store = get_kb_doc_store()
+    kb_file = kb_file_store.get_file(request.kb_id, request.file_id)
+    if not kb_file:
+        raise HTTPException(status_code=404, detail="文件不存在或已删除")
+
+    global_status = _resolve_global_status(kb_file)
+    if global_status in {TaskStatusEnum.PENDING.value, TaskStatusEnum.RUNNING.value}:
+        return {
+            "code": 200,
+            "msg": "success",
+            "data": _build_full_content_payload(
+                kb_file,
+                content_status=FULL_CONTENT_PROCESSING,
+                error_message="正文仍在生成中，请稍后重试。",
+            )
+        }
+
+    if global_status == TaskStatusEnum.FAILED.value:
+        task_status = kb_file.task_status or {}
+        error_message = str(task_status.get("error_message") or "文件处理失败，暂无可回显正文。")
+        return {
+            "code": 200,
+            "msg": "success",
+            "data": _build_full_content_payload(
+                kb_file,
+                content_status=FULL_CONTENT_FAILED,
+                error_message=error_message,
+            )
+        }
+
+    canonical_doc = kb_doc_store.get_canonical_doc(request.kb_id, request.file_id)
+    if not canonical_doc or not (canonical_doc.text or "").strip():
+        return {
+            "code": 200,
+            "msg": "success",
+            "data": _build_full_content_payload(
+                kb_file,
+                content_status=FULL_CONTENT_UNAVAILABLE,
+                error_message="当前文件暂无可回显正文。",
+            )
+        }
+
+    return {
+        "code": 200,
+        "msg": "success",
+        "data": _build_full_content_payload(
+            kb_file,
+            content_status=FULL_CONTENT_READY,
+            content=canonical_doc.text or "",
+        )
     }

@@ -1,3 +1,4 @@
+import '@ant-design/v5-patch-for-react-19';
 // import React, { StrictMode } from 'react'; // 暂时移除严格模式
 import { createRoot } from 'react-dom/client';
 import App from './App';

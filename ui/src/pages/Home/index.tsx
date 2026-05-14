@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { MessageSquarePlus } from "lucide-react";
 import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
@@ -107,9 +106,7 @@ const createConversation = (
 const createInitialState = (): InitialState => {
   const initialProduct =
     productList.find((item) => item.type === "html") ?? defaultProduct;
-  return {
-    productType: initialProduct.type,
-  };
+  return {productType: initialProduct.type,};
 };
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
@@ -158,9 +155,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const [currentConversation, setCurrentConversation] =
     useState<CHAT.ConversationHistory>(() =>
-      createConversation({
-        productType: initialRef.current.productType,
-      })
+      createConversation({productType: initialRef.current.productType,})
     );
 
   const currentConversationRole = useMemo(() => {
@@ -244,9 +239,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
         if (!initialSessionId) {
           setCurrentConversation(
-            createConversation({
-              productType: initialRef.current.productType,
-            })
+            createConversation({productType: initialRef.current.productType,})
           );
           return;
         }
@@ -265,9 +258,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               return;
             }
             setCurrentConversation(
-              createConversation({
-                productType: initialRef.current.productType,
-              })
+              createConversation({productType: initialRef.current.productType,})
             );
           });
       })
@@ -339,15 +330,24 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
       const nextSessionId = override?.sessionId || createSessionId();
+      const defaultStructuredProduct =
+        productList.find((item) => item.type === initialRef.current.productType) ??
+        defaultProduct;
+      const nextProductType =
+        override?.productType ||
+        (product.type === "chat" ? defaultStructuredProduct.type : product.type);
       setActiveView("chat");
       setCurrentConversation(
         createConversation({
           sessionId: nextSessionId,
-          productType: override?.productType || product.type,
-          deepThink: override?.deepThink ?? false,
+          productType: nextProductType,
+          deepThink:
+            nextProductType === "chat" || nextProductType === "dataAgent"
+              ? false
+              : override?.deepThink ?? false,
           role:
             override?.role ||
-            (product.type === "chat"
+            (nextProductType === "chat"
               ? toConversationRole(defaultFixRole)
               : null),
           ...override,
@@ -465,26 +465,32 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleRoleSelect = useCallback(
     (role: CHAT.FixRole) => {
-      const nextRole = toConversationRole(role);
+      void role;
+      const defaultStructuredProduct =
+        productList.find((item) => item.type === initialRef.current.productType) ??
+        defaultProduct;
 
       if (
         currentConversation.productType === "chat" &&
         hasConversationContent(currentConversation)
       ) {
         createNewChat({
-          productType: "chat",
+          productType: defaultStructuredProduct.type,
           deepThink: false,
-          role: nextRole,
+          role: null,
         });
         return;
       }
 
       updateCurrentConversationMeta({
-        productType: "chat",
+        productType: defaultStructuredProduct.type,
         deepThink: false,
-        role: nextRole,
+        role: null,
       });
-      setProduct(productList.find((item) => item.type === "chat") ?? defaultProduct);
+      setProduct(defaultStructuredProduct);
+      if (OUTPUT_TYPES.includes(defaultStructuredProduct.type)) {
+        setDisplayOutput(defaultStructuredProduct);
+      }
       setActiveView("chat");
     },
     [createNewChat, currentConversation, updateCurrentConversationMeta]
@@ -548,16 +554,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => createNewChat()}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--chat-text)] px-3 py-2 text-[13px] text-[var(--chat-surface)] transition-colors hover:bg-[var(--chat-text)]/90"
-                >
-                  <MessageSquarePlus className="h-4 w-4" />
-                  <span>新对话</span>
-                </button>
-              </div>
             </div>
           </div>
 

@@ -35,3 +35,18 @@ export function shouldPollKnowledgeBaseFiles(
     (file) => file.fileStatus === "PENDING" || file.fileStatus === "RUNNING"
   );
 }
+
+export function resolveKnowledgeBaseAfterDeletion(
+  knowledgeBases: Array<Pick<KnowledgeBase, "id">>,
+  currentKnowledgeBaseId: string,
+  deletedKnowledgeBaseId: string
+) {
+  const availableKnowledgeBases = knowledgeBases.filter(
+    (item) => item.id !== deletedKnowledgeBaseId
+  );
+
+  return resolveSelectedKnowledgeBaseId(
+    availableKnowledgeBases,
+    currentKnowledgeBaseId === deletedKnowledgeBaseId ? "" : currentKnowledgeBaseId
+  );
+}

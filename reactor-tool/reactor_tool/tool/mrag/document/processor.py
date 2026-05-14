@@ -18,6 +18,7 @@
 import os
 import time
 import uuid
+from datetime import datetime
 
 import requests
 import tqdm
@@ -30,6 +31,12 @@ from ..embedding.bm25_embedding import get_bm25_embedding_model
 from ..embedding.image_embedding import get_image_embedding_model
 from ..embedding.text_embedding import get_text_embedding_model
 from ..storage import VectorStore
+from ..storage.models.kb_doc_model import (
+    CANONICAL_FULL_TEXT_CHUNK_TYPE,
+    KBDocModel,
+    build_canonical_doc_id,
+)
+from ..storage.store_factory import get_kb_doc_store
 from ..utils import image_utils, oss_utils
 from ..utils.caption_utils import generate_caption
 from ..utils.ocr_utils import get_ocr_model
@@ -400,9 +407,36 @@ class DocumentProcessor:
             logger.error(f"LightRAG 请求失败: {e}")
             return
 
+    def _persist_canonical_full_text(self):
+        """将整篇解析正文持久化到稳定存储，供工作台后续直接回显。"""
+        text = self._parser.parsed_text()
+        if not text.strip():
+            logger.warning(f"Skip canonical full text persistence because markdown is empty, file_id={self._uid}")
+            return
+
+        current_time = datetime.now().isoformat()
+        kb_doc = KBDocModel(
+            kb_id=self._kb_id,
+            doc_id=build_canonical_doc_id(self._uid),
+            text=text,
+            chunk_type=CANONICAL_FULL_TEXT_CHUNK_TYPE,
+            file_id=self._uid,
+            title=self._filename,
+            file_url=self._file_url,
+            parent_id=self._uid,
+            deleted=0,
+            create_time=current_time,
+            modify_time=current_time,
+            creator=None,
+            modifier=None,
+        )
+        get_kb_doc_store().upsert_canonical_doc(kb_doc)
+        logger.info(f"Persisted canonical full text, file_id={self._uid}")
+
     def process(self):
         mrag_start_time = time.time()
         self._mrag_process()
+        self._persist_canonical_full_text()
         mrag_cost_time = time.time()
         logger.info(f"MRAG cost time: {mrag_cost_time - mrag_start_time}")
         light_rag_start_time = time.time()

@@ -28,22 +28,22 @@ describe("sessionBootstrap", () => {
     },
   ] as CHAT.ConversationSessionItem[];
 
-  it("优先复用当前 visitor 列表中仍存在的本地 sessionId", () => {
+  it("首屏进入时即使存在本地 sessionId 也不自动恢复历史会话", () => {
     expect(
       resolveInitialSessionId({
         recentSessions: sessions,
         storedSessionId: "session-001",
       })
-    ).toBe("session-001");
+    ).toBeNull();
   });
 
-  it("本地 sessionId 不在当前 visitor 列表里时回退到最近会话", () => {
+  it("首屏进入时即使存在最近会话也保持主界面空白态", () => {
     expect(
       resolveInitialSessionId({
         recentSessions: sessions,
         storedSessionId: "session-stale-001",
       })
-    ).toBe("session-002");
+    ).toBeNull();
   });
 
   it("当前 visitor 没有会话时返回空值", () => {

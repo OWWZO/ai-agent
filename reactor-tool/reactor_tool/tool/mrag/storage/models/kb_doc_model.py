@@ -2,6 +2,15 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+
+CANONICAL_FULL_TEXT_CHUNK_TYPE = "canonical_full_text"
+
+
+def build_canonical_doc_id(file_id: str) -> str:
+    """为整篇正文回显生成稳定 doc_id，避免前端耦合临时目录结构。"""
+    return f"{file_id}#canonical"
+
+
 class KBDocModel(BaseModel):
     kb_id: str
     doc_id: Optional[str]

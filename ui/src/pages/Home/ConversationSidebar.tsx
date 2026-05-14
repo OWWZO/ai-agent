@@ -2,7 +2,7 @@ import { memo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import classNames from "classnames";
 import {
-  MessageSquarePlus,
+  SquarePen,
   Search,
   MoreHorizontal,
   DatabaseZap,
@@ -57,7 +57,6 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
     recentSessions,
     recentSessionsLoading,
     selectedSessionId,
-    visitorUsername,
     onNewChat,
     onSelectSession,
     onChangeView,
@@ -110,9 +109,9 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center gap-2.5 rounded-xl bg-[var(--chat-text)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--chat-surface)] transition-colors hover:bg-[var(--chat-text)]/90"
+          className="flex w-full items-center gap-2.5 rounded-xl bg-[var(--chat-surface)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--chat-text)] shadow-[var(--shadow-sm)] transition-all duration-200 hover:bg-[var(--chat-surface-soft)] hover:shadow-[var(--shadow-md)]"
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <SquarePen className="h-4 w-4 text-[var(--chat-text-soft)]" />
           <span>新聊天</span>
         </button>
 
@@ -306,24 +305,6 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
         </div>
       </div>
 
-      {/* 底部用户信息 */}
-      {visitorUsername && (
-        <div className="shrink-0 border-t border-[var(--chat-border)] px-3 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 text-[13px] font-medium text-[var(--primary)]">
-              {visitorUsername[0]?.toUpperCase() || "U"}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-medium text-[var(--chat-text)]">
-                {visitorUsername}
-              </div>
-              <div className="text-[11px] text-[var(--chat-text-muted)]">
-                访客
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 });

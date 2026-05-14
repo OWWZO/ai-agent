@@ -4,17 +4,23 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
+import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ConversationHistoryDetail;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * 会话历史详情聚合服务。
@@ -36,6 +42,7 @@ public class ConversationHistoryReplayService {
         }
         List<DialogueRunView> runs = executionLedgerQueryService.querySessionRuns(sessionId);
         List<ConversationHistoryDetail.ConversationRunDetail> runDetails = new ArrayList<>();
+        HistoryModeSnapshot historyModeSnapshot = HistoryModeSnapshot.defaultChat();
         if (CollectionUtils.isNotEmpty(runs)) {
             for (DialogueRunView run : runs) {
                 if (run == null || StringUtils.isBlank(run.getRequestId())) {
@@ -53,6 +60,7 @@ public class ConversationHistoryReplayService {
                 List<GptProcessResult> replayFrames = replayProjector == null
                         ? List.of()
                         : replayProjector.projectHistoryFrames(bundle);
+                historyModeSnapshot = resolveHistoryModeSnapshot(run, runDetail, replayFrames);
                 runDetails.add(ConversationHistoryDetail.ConversationRunDetail.builder()
                         .requestId(run.getRequestId())
                         .status(run.getStatus())
@@ -71,8 +79,8 @@ public class ConversationHistoryReplayService {
                 .sessionId(session.getSessionId())
                 .title(session.getTitle())
                 .status(resolveSessionStatus(session, runs))
-                .outputStyle(resolveOutputStyle(session, runs))
-                .deepThink(resolveDeepThink(session, runs))
+                .outputStyle(historyModeSnapshot.getOutputStyle())
+                .deepThink(historyModeSnapshot.getDeepThink())
                 .role(resolveRole())
                 .runCount(session.getRunCount())
                 .finishedRunCount(session.getFinishedRunCount())
@@ -84,29 +92,147 @@ public class ConversationHistoryReplayService {
     }
 
     /**
-     * 当前账本没有稳定保存 outputStyle，先根据 entryAgent 兜底：
-     * react 视为结构化输出入口，plan_solve 视为深度研究；后续若补持久化字段，可只替换这里。
+     * 历史详情先用 entry_agent 判断“大模式”：
+     * react = 深度思考，plan_solve = 深度研究。
+     * 具体输出样式再尽量从最新 run 的真实事实中补回，
+     * 如果拿不到 html/ppt/table 等更细粒度信息，至少也要恢复成结构化 docs，
+     * 不能再错误回落成 chat，避免前端输入栏切回聊天态。
      */
-    private String resolveOutputStyle(DialogueSessionView session, List<DialogueRunView> runs) {
-        if (CollectionUtils.isEmpty(runs)) {
-            return "chat";
+    private HistoryModeSnapshot resolveHistoryModeSnapshot(DialogueRunView run,
+                                                          ExecutionRunDetail runDetail,
+                                                          List<GptProcessResult> replayFrames) {
+        if (run == null) {
+            return HistoryModeSnapshot.defaultChat();
         }
-        DialogueRunView latestRun = runs.get(runs.size() - 1);
-        if (latestRun == null) {
-            return "chat";
+
+        String entryAgent = StringUtils.trimToEmpty(run.getEntryAgent());
+        if (ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE.equals(entryAgent)) {
+            return new HistoryModeSnapshot(
+                    StringUtils.defaultIfBlank(resolveStructuredOutputStyle(runDetail, replayFrames), "docs"),
+                    Boolean.TRUE
+            );
         }
-        return "plan_solve".equals(latestRun.getEntryAgent()) ? "docs" : "chat";
+        if (ExecutionLedgerConstants.ENTRY_AGENT_REACT.equals(entryAgent)) {
+            return new HistoryModeSnapshot(
+                    StringUtils.defaultIfBlank(resolveStructuredOutputStyle(runDetail, replayFrames), "docs"),
+                    Boolean.FALSE
+            );
+        }
+        return HistoryModeSnapshot.defaultChat();
     }
 
     /**
-     * 当前没有独立 deepThink 真相源，按 plan_solve entryAgent 推断为 true，其余保持 false。
+     * 结构化输出样式优先级：
+     * 1. rich tool 强类型输出
+     * 2. 历史 replay frame 中的 messageType
+     * 3. 产物文件后缀
      */
-    private Boolean resolveDeepThink(DialogueSessionView session, List<DialogueRunView> runs) {
-        if (CollectionUtils.isEmpty(runs)) {
-            return Boolean.FALSE;
+    private String resolveStructuredOutputStyle(ExecutionRunDetail runDetail,
+                                                List<GptProcessResult> replayFrames) {
+        if (runDetail != null) {
+            String styleFromTool = resolveOutputStyleFromToolInvocations(runDetail.getToolInvocations());
+            if (StringUtils.isNotBlank(styleFromTool)) {
+                return styleFromTool;
+            }
         }
-        DialogueRunView latestRun = runs.get(runs.size() - 1);
-        return latestRun != null && "plan_solve".equals(latestRun.getEntryAgent());
+
+        String styleFromReplay = resolveOutputStyleFromReplayFrames(replayFrames);
+        if (StringUtils.isNotBlank(styleFromReplay)) {
+            return styleFromReplay;
+        }
+
+        if (runDetail != null) {
+            return resolveOutputStyleFromArtifacts(runDetail.getArtifacts());
+        }
+        return null;
+    }
+
+    private String resolveOutputStyleFromToolInvocations(List<ToolInvocationView> toolInvocations) {
+        if (CollectionUtils.isEmpty(toolInvocations)) {
+            return null;
+        }
+        for (int index = toolInvocations.size() - 1; index >= 0; index -= 1) {
+            ToolInvocationView invocation = toolInvocations.get(index);
+            if (invocation == null) {
+                continue;
+            }
+            ToolStructuredOutput structuredOutput = invocation.getStructuredOutput();
+            if (structuredOutput instanceof ReportToolOutput reportToolOutput) {
+                String style = normalizeOutputStyle(reportToolOutput.getFileType());
+                if (StringUtils.isNotBlank(style)) {
+                    return style;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String resolveOutputStyleFromReplayFrames(List<GptProcessResult> replayFrames) {
+        if (CollectionUtils.isEmpty(replayFrames)) {
+            return null;
+        }
+        for (int index = replayFrames.size() - 1; index >= 0; index -= 1) {
+            GptProcessResult replayFrame = replayFrames.get(index);
+            if (replayFrame == null || replayFrame.getResultMap() == null) {
+                continue;
+            }
+            Object eventDataObject = replayFrame.getResultMap().get("eventData");
+            if (!(eventDataObject instanceof Map<?, ?> eventDataMap)) {
+                continue;
+            }
+            Object resultMapObject = eventDataMap.get("resultMap");
+            if (!(resultMapObject instanceof Map<?, ?> nestedResultMap)) {
+                continue;
+            }
+            String style = normalizeOutputStyle(nestedResultMap.get("messageType"));
+            if (StringUtils.isNotBlank(style)) {
+                return style;
+            }
+        }
+        return null;
+    }
+
+    private String resolveOutputStyleFromArtifacts(List<ArtifactView> artifacts) {
+        if (CollectionUtils.isEmpty(artifacts)) {
+            return null;
+        }
+        for (int index = artifacts.size() - 1; index >= 0; index -= 1) {
+            ArtifactView artifact = artifacts.get(index);
+            if (artifact == null) {
+                continue;
+            }
+            String style = resolveOutputStyleFromFileName(artifact.getFileName());
+            if (StringUtils.isNotBlank(style)) {
+                return style;
+            }
+        }
+        return null;
+    }
+
+    private String resolveOutputStyleFromFileName(String fileName) {
+        if (StringUtils.isBlank(fileName) || !fileName.contains(".")) {
+            return null;
+        }
+        String extension = StringUtils.substringAfterLast(fileName, ".").toLowerCase(Locale.ROOT);
+        return switch (extension) {
+            case "html", "htm" -> "html";
+            case "md", "markdown", "doc", "docx", "txt" -> "docs";
+            case "ppt", "pptx" -> "ppt";
+            case "csv", "xls", "xlsx" -> "table";
+            default -> null;
+        };
+    }
+
+    private String normalizeOutputStyle(Object rawType) {
+        String normalized = StringUtils.trimToEmpty(rawType == null ? null : String.valueOf(rawType))
+                .toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "html" -> "html";
+            case "markdown", "docs" -> "docs";
+            case "ppt" -> "ppt";
+            case "table", "data_analysis" -> "table";
+            default -> null;
+        };
     }
 
     private ConversationRoleVO resolveRole() {
@@ -133,5 +259,28 @@ public class ConversationHistoryReplayService {
         return latestRun == null || latestRun.getStatus() == null
                 ? ExecutionLedgerConstants.STATUS_RUNNING
                 : latestRun.getStatus();
+    }
+
+    private static final class HistoryModeSnapshot {
+
+        private final String outputStyle;
+        private final Boolean deepThink;
+
+        private HistoryModeSnapshot(String outputStyle, Boolean deepThink) {
+            this.outputStyle = outputStyle;
+            this.deepThink = deepThink;
+        }
+
+        private static HistoryModeSnapshot defaultChat() {
+            return new HistoryModeSnapshot("chat", Boolean.FALSE);
+        }
+
+        private String getOutputStyle() {
+            return outputStyle;
+        }
+
+        private Boolean getDeepThink() {
+            return deepThink;
+        }
     }
 }

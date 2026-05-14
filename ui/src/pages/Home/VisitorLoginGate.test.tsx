@@ -9,9 +9,9 @@ describe("VisitorLoginGate", () => {
       <VisitorLoginGate loading={false} onSubmit={vi.fn()} />
     );
 
-    expect(html).toContain("登录");
-    expect(html).toContain("输入用户名后进入工作台");
-    expect(html).toContain("请输入用户名");
-    expect(html).toContain("进入对话");
+    expect(html).toContain("你好，探索者");
+    expect(html).toContain("输入一个名字，开启与 AI 的协作之旅");
+    expect(html).toContain("你的名字");
+    expect(html).toContain("进入工作台");
   });
 });

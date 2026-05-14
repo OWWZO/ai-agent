@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveKnowledgeBaseAfterDeletion,
   resolveSelectedKnowledgeBaseId,
   shouldBootstrapKnowledgeBases,
   shouldPollKnowledgeBaseFiles,
@@ -47,5 +48,23 @@ describe("knowledgeBaseState", () => {
         "http://127.0.0.1:1701"
       )
     ).toBe(true);
+  });
+
+  it("删除知识库后能收敛选中态和空态", () => {
+    expect(
+      resolveKnowledgeBaseAfterDeletion(
+        [{ id: "kb-1" }, { id: "kb-2" }],
+        "kb-1",
+        "kb-1"
+      )
+    ).toBe("kb-2");
+    expect(
+      resolveKnowledgeBaseAfterDeletion(
+        [{ id: "kb-2" }],
+        "kb-2",
+        "kb-1"
+      )
+    ).toBe("kb-2");
+    expect(resolveKnowledgeBaseAfterDeletion([], "", "kb-1")).toBe("");
   });
 });

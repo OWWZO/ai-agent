@@ -2,9 +2,12 @@ import { fetchEventSource } from "@microsoft/fetch-event-source";
 
 import type {
   KnowledgeBase,
+  KnowledgeBaseDeleteResult,
   KnowledgeBaseFile,
+  KnowledgeBaseFileFullContent,
   MRagChunkEnvelope,
   MRagFileStatus,
+  MRagFullContentStatus,
   MRagSourceType,
   UploadDocumentResult,
 } from "@/pages/WorkspaceMRag/types";
@@ -92,6 +95,30 @@ type AddWebUrlPayload = {
 type AddUploadedFilesPayload = {
   kbId: string;
   uploads: UploadDocumentResult[];
+};
+
+type DeleteKnowledgeBasePayload = {
+  kb_id?: string;
+  deleted_file_count?: number | null;
+};
+
+type RawKnowledgeBaseFileFullContent = {
+  kb_id?: string;
+  file_id?: string;
+  title?: string;
+  file_url?: string;
+  source_type?: string;
+  file_status?: string;
+  content_status?: string;
+  content_format?: string;
+  content?: string;
+  error_message?: string;
+  [key: string]: unknown;
+};
+
+type GetKnowledgeBaseFileFullContentPayload = {
+  kbId: string;
+  fileId: string;
 };
 
 type StreamMragQueryPayload = {
@@ -225,6 +252,19 @@ function normalizeStatus(status?: string | null): MRagFileStatus {
   return "UNKNOWN";
 }
 
+function normalizeFullContentStatus(status?: string | null): MRagFullContentStatus {
+  const normalized = String(status || "").toUpperCase();
+  if (
+    normalized === "READY" ||
+    normalized === "PROCESSING" ||
+    normalized === "FAILED" ||
+    normalized === "UNAVAILABLE"
+  ) {
+    return normalized;
+  }
+  return "IDLE";
+}
+
 function swapUrlSegment(url: string, fromSegment: string, toSegment: string): string {
   if (!url || !url.includes(`/${fromSegment}/`)) {
     return url;
@@ -327,6 +367,28 @@ export function normalizeKnowledgeBaseFile(rawFile: RawKnowledgeBaseFile): Knowl
   };
 }
 
+export function normalizeKnowledgeBaseFileFullContent(
+  rawContent: RawKnowledgeBaseFileFullContent
+): KnowledgeBaseFileFullContent {
+  return {
+    knowledgeBaseId: String(rawContent.kb_id || ""),
+    fileId: String(rawContent.file_id || ""),
+    title: String(rawContent.title || ""),
+    sourceType: inferSourceType({
+      source_type: rawContent.source_type,
+      title: rawContent.title,
+      file_url: rawContent.file_url,
+    }),
+    sourceUrl: String(rawContent.file_url || ""),
+    fileStatus: normalizeStatus(rawContent.file_status),
+    contentStatus: normalizeFullContentStatus(rawContent.content_status),
+    contentFormat: String(rawContent.content_format || ""),
+    content: String(rawContent.content || ""),
+    errorMessage: String(rawContent.error_message || ""),
+    raw: toRecord(rawContent),
+  };
+}
+
 export function hasProcessingFiles(files: KnowledgeBaseFile[]): boolean {
   return files.some(
     (file) => file.fileStatus === "PENDING" || file.fileStatus === "RUNNING"
@@ -399,6 +461,22 @@ export async function createKnowledgeBase(
   return normalizeKnowledgeBase(created);
 }
 
+export async function deleteKnowledgeBase(
+  toolBaseUrl: string,
+  kbId: string
+): Promise<KnowledgeBaseDeleteResult> {
+  const deleted = await requestWrappedData<DeleteKnowledgeBasePayload>(
+    toolBaseUrl,
+    "/v1/documents/delete_knowledge_base",
+    { kb_id: kbId }
+  );
+
+  return {
+    kbId: String(deleted.kb_id || kbId),
+    deletedFileCount: Number(deleted.deleted_file_count || 0),
+  };
+}
+
 export async function listKnowledgeBaseFiles(
   toolBaseUrl: string,
   kbId: string
@@ -414,6 +492,22 @@ export async function listKnowledgeBaseFiles(
   );
 
   return (payload.records || []).map(normalizeKnowledgeBaseFile);
+}
+
+export async function getKnowledgeBaseFileFullContent(
+  toolBaseUrl: string,
+  payload: GetKnowledgeBaseFileFullContentPayload
+): Promise<KnowledgeBaseFileFullContent> {
+  const fullContent = await requestWrappedData<RawKnowledgeBaseFileFullContent>(
+    toolBaseUrl,
+    "/v1/documents/get_file_full_content",
+    {
+      kb_id: payload.kbId,
+      file_id: payload.fileId,
+    }
+  );
+
+  return normalizeKnowledgeBaseFileFullContent(fullContent);
 }
 
 export async function deleteKnowledgeBaseFiles(

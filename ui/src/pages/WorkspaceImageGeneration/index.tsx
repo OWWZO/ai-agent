@@ -4,32 +4,27 @@ import classNames from "classnames";
 import {
   ArrowLeft,
   Brush,
-  Code2,
+  Clock,
   Download,
   Eraser,
   ImagePlus,
   RefreshCcw,
   SendHorizontal,
+  Settings,
   Sparkles,
   Trash2,
   UploadCloud,
   WandSparkles,
   X,
+  ZoomIn,
 } from "lucide-react";
 
 import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
 
-import type {
-  DecodeResult,
-  RequestMode,
-  WorkspaceTab,
-} from "./types";
+import type {RequestMode,} from "./types";
 import {
   checkerboardStyle,
-  downloadDataUrl,
-  formatBytes,
   formatHistoryTime,
-  normalizeToDataUrl,
   resolveDownloadUrl,
   resolvePreviewUrl,
   toPrettyJson,
@@ -37,22 +32,225 @@ import {
 import { useImageGenerationConfig } from "./useImageGenerationConfig";
 import { useImageGenerationHistory } from "./useImageGenerationHistory";
 import { useImageEditor } from "./useImageEditor";
-import {
-  type StatusTone,
-  useImageGenerationSession,
-} from "./useImageGenerationSession";
+import {useImageGenerationSession,} from "./useImageGenerationSession";
 
 interface WorkspaceImageGenerationProps {
   embedded?: boolean;
 }
 
-const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = ({ embedded }) => {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("generate");
+/* ─────────── 内部子组件 ─────────── */
+
+/** 空状态 */
+function EmptyCanvas({ mode }: { mode: RequestMode }) {
+  return (
+    <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-4 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--chat-surface-muted)] text-[var(--chat-text-muted)]">
+        <WandSparkles className="h-7 w-7" />
+      </div>
+      <div>
+        <p className="text-[15px] font-medium text-[var(--chat-text-soft)]">
+          {mode === "edits"
+            ? "上传参考图并输入描述，开始图生图"
+            : mode === "chat"
+              ? "输入 Prompt 测试对话接口"
+              : "输入 Prompt 开始生成图片"}
+        </p>
+        <p className="mt-1 text-[13px] text-[var(--chat-text-muted)]">
+          结果将在此处展示
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** 生成中状态 */
+function GeneratingPlaceholder() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl bg-[var(--chat-surface)] py-10">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary)]/10">
+        <Sparkles className="h-5 w-5 animate-pulse text-[var(--primary)]" />
+      </div>
+      <p className="text-sm font-medium text-[var(--chat-text-soft)]">
+        正在生成图像...
+      </p>
+    </div>
+  );
+}
+
+/** 单张结果图卡片 */
+function ResultImageCard({
+  url,
+  label,
+  downloadUrl,
+}: {
+  url: string;
+  label: string;
+  downloadUrl?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      className="group relative overflow-hidden rounded-xl bg-[var(--chat-surface)]"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* 棋盘格背景 */}
+      <div className="p-2" style={checkerboardStyle}>
+        <img
+          src={url}
+          alt={label}
+          className="mx-auto max-h-[320px] w-full rounded-lg object-contain transition-transform duration-300"
+          style={{transform: hovered ? "scale(1.02)" : "scale(1)",}}
+        />
+      </div>
+
+      {/* Hover 操作遮罩 */}
+      <div
+        className={classNames(
+          "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 transition-opacity duration-200",
+          hovered ? "opacity-100" : "opacity-0"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-sm transition hover:bg-white hover:scale-105"
+            title="查看原图"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </a>
+          {downloadUrl ? (
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-sm transition hover:bg-white hover:scale-105"
+              title="下载"
+            >
+              <Download className="h-4 w-4" />
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      {/* 底部标签 */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="truncate text-[12px] font-medium text-[var(--chat-text-soft)]">
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 画廊网格 */
+function ImageGallery({
+  messages,
+  statusText,
+}: {
+  messages: ReturnType<typeof useImageGenerationSession>["messages"];
+  statusText: string;
+}) {
+  const hasLoading = messages.some(
+    (m) => m.role === "assistant" && m.status === "loading"
+  );
+
+  const resultImages = messages.flatMap((msg) =>
+    msg.role === "assistant" && msg.status !== "loading"
+      ? msg.images.map((img) => ({
+        ...img,
+        messageId: msg.id
+      }))
+      : []
+  );
+
+  const errorMessages = messages.filter(
+    (m): m is Extract<typeof m, { role: "assistant" }> =>
+      m.role === "assistant" && m.status === "error"
+  );
+
+  if (!messages.length && !statusText) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 加载中 */}
+      {hasLoading && <GeneratingPlaceholder />}
+
+      {/* 错误提示 */}
+      {errorMessages.map((msg) => (
+        <div
+          key={msg.id}
+          className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600"
+        >
+          {msg.error || msg.summary}
+        </div>
+      ))}
+
+      {/* 图片网格 */}
+      {resultImages.length > 0 && (
+        <div
+          className={classNames(
+            "grid gap-3",
+            resultImages.length === 1
+              ? "grid-cols-1"
+              : "grid-cols-1 sm:grid-cols-2"
+          )}
+        >
+          {resultImages.map((img, index) => (
+            <ResultImageCard
+              key={`${img.messageId}-${img.url}-${index}`}
+              url={img.url}
+              label={img.label}
+              downloadUrl={img.downloadUrl}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* 状态文字（非错误且没有图片时） */}
+      {statusText && !hasLoading && resultImages.length === 0 && (
+        <div className="rounded-xl bg-[var(--chat-surface-muted)] px-4 py-6 text-center text-sm text-[var(--chat-text-muted)]">
+          {statusText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 图片预览弹窗 */
+function ImagePreviewModal({
+  src,
+  onClose,
+}: {
+  src: string | null;
+  onClose: () => void;
+}) {
+  if (!src) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <img
+        src={src}
+        alt="预览"
+        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+/* ─────────── 主组件 ─────────── */
+
+const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = ({embedded,}) => {
   const { config, updateConfig } = useImageGenerationConfig();
-  const [decodeInput, setDecodeInput] = useState("");
-  const [decodeResult, setDecodeResult] = useState<DecodeResult | null>(null);
-  const [decodeStatus, setDecodeStatus] = useState("");
-  const [decodeStatusTone, setDecodeStatusTone] = useState<StatusTone>("default");
   const {
     historyBatches,
     historyTotal,
@@ -97,51 +295,32 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
   });
 
   const chatRef = useRef<HTMLDivElement>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
-    if (!chatRef.current) {
-      return;
-    }
+    if (!chatRef.current) return;
     chatRef.current.scrollTo({
       top: chatRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, [messages]);
 
-  const setDecodeNotice = (text: string, tone: StatusTone = "default") => {
-    setDecodeStatus(text);
-    setDecodeStatusTone(tone);
-  };
-
-  const handleDecode = () => {
-    try {
-      const result = normalizeToDataUrl(decodeInput);
-      setDecodeResult(result);
-      setDecodeNotice("解析成功", "success");
-    } catch (error) {
-      setDecodeResult(null);
-      setDecodeNotice(
-        error instanceof Error ? error.message : "解析失败",
-        "error"
-      );
-    }
-  };
-
   return (
     <div className="flex h-full flex-col bg-[var(--page-gradient)] text-[var(--chat-text)]">
-      {/* Header */}
+      {/* ═══════ Header ═══════ */}
       <div className="shrink-0 border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-5 py-3 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1280px] flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {!embedded && (
               <Link
                 to="/"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--chat-border)] text-[var(--chat-text-muted)] transition hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--chat-border)] text-[var(--chat-text-muted)] transition hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             )}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
               <WandSparkles className="h-4.5 w-4.5" />
             </div>
             <div>
@@ -153,793 +332,597 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!embedded && <WorkspaceToolSwitcher />}
-            <div className="inline-flex rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-0.5">
-              {([
-                {
-                  key: "decode",
-                  label: "Base64 解析",
-                  icon: Code2
-                },
-                {
-                  key: "generate",
-                  label: "API 生成",
-                  icon: Sparkles
-                },
-              ] as const).map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setActiveTab(item.key)}
-                  className={classNames(
-                    "inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition sm:flex-none",
-                    activeTab === item.key
-                      ? "bg-[var(--chat-surface)] text-[var(--chat-text)] shadow-sm"
-                      : "text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+
+          {!embedded && <WorkspaceToolSwitcher />}
         </div>
       </div>
 
-      {activeTab === "decode" ? (
-        <section className="workspace-fade-enter mx-auto w-full max-w-[980px] p-4">
-          <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-8">
-            <div className="mb-6 flex flex-col gap-2">
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--primary)]/15 bg-[var(--primary)]/8 px-3 py-1 text-[12px] font-medium text-[var(--primary)]">
-                <Code2 className="h-3.5 w-3.5" />
-                <span>Base64 预览与下载</span>
-              </div>
-              <h2 className="text-[22px] font-semibold tracking-tight text-[var(--chat-text)]">
-                  粘贴 Base64 编码或 Data URL
-              </h2>
-              <p className="text-sm leading-6 text-[var(--chat-text-muted)]">
-                  会自动识别纯 Base64 和 `data:image/...;base64,...` 两种格式，方便快速校验图片内容。
-              </p>
+      {/* ═══════ 三栏主体 ═══════ */}
+      <section className="workspace-fade-enter mx-auto flex w-full max-w-[1400px] flex-1 gap-4 overflow-hidden p-4">
+        {/* ── 左栏：参数配置 ── */}
+        <aside className="flex w-[240px] shrink-0 flex-col gap-4 overflow-y-auto">
+          <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4">
+            <div className="mb-3 flex items-center gap-2 text-[var(--chat-text-muted)]">
+              <Settings className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-semibold tracking-wide">
+                生成参数
+              </span>
             </div>
 
-            <textarea
-              value={decodeInput}
-              onChange={(event) => setDecodeInput(event.target.value)}
-              placeholder="把 Base64 内容粘贴到这里..."
-              className="min-h-[240px] w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-4 font-mono text-[13px] leading-6 text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:bg-[var(--chat-surface)] focus:ring-2 focus:ring-[var(--primary)]/10"
-            />
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={handleDecode}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--primary)]/90"
-              >
-                <RefreshCcw className="h-4 w-4" />
-                <span>解析预览</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDecodeInput("");
-                  setDecodeResult(null);
-                  setDecodeNotice("", "default");
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-3 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>清空</span>
-              </button>
-            </div>
-
-            {decodeStatus ? (
-              <div
-                className={classNames(
-                  "mt-4 text-sm font-medium",
-                  decodeStatusTone === "success" && "text-emerald-600",
-                  decodeStatusTone === "error" && "text-rose-600",
-                  decodeStatusTone === "default" && "text-[var(--chat-text-muted)]"
-                )}
-              >
-                {decodeStatus}
-              </div>
-            ) : null}
-
-            {decodeResult ? (
-              <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                <div
-                  className="overflow-hidden rounded-xl border border-[var(--chat-border)] p-4"
-                  style={checkerboardStyle}
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                  模式
+                </span>
+                <select
+                  value={config.mode}
+                  onChange={(event) =>
+                    updateConfig("mode", event.target.value as RequestMode)
+                  }
+                  className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                 >
-                  <img
-                    src={decodeResult.dataUrl}
-                    alt="Base64 preview"
-                    className="mx-auto max-h-[420px] w-full rounded-lg object-contain"
+                  <option value="images">文生图</option>
+                  <option value="edits">图生图</option>
+                  <option value="chat">对话调试</option>
+                </select>
+              </label>
+
+              {config.mode === "chat" ? (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                      Base URL
+                    </span>
+                    <input
+                      value={config.baseUrl}
+                      onChange={(event) =>
+                        updateConfig("baseUrl", event.target.value)
+                      }
+                      placeholder="https://..."
+                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                      API Key
+                    </span>
+                    <input
+                      type="password"
+                      value={config.apiKey}
+                      onChange={(event) =>
+                        updateConfig("apiKey", event.target.value)
+                      }
+                      placeholder="sk-..."
+                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono tracking-wide text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                      Model
+                    </span>
+                    <input
+                      value={config.model}
+                      onChange={(event) =>
+                        updateConfig("model", event.target.value)
+                      }
+                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                    尺寸
+                  </span>
+                  <input
+                    value={config.size}
+                    onChange={(event) =>
+                      updateConfig("size", event.target.value)
+                    }
+                    className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                   />
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-5">
-                    <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--chat-text-muted)]">
-                        图片信息
-                    </div>
-                    <div className="space-y-3 text-sm text-[var(--chat-text-soft)]">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">Mime</div>
-                        <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{decodeResult.mimeType}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">体积估算</div>
-                        <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{formatBytes(decodeResult.byteLength)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">Base64 长度</div>
-                        <div className="mt-1 font-mono text-[13px] text-[var(--chat-text)]">{decodeResult.base64Length}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadDataUrl(
-                        decodeResult.dataUrl,
-                        `base64-preview.${decodeResult.fileExtension}`
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                    数量
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={config.n}
+                    onChange={(event) =>
+                      updateConfig(
+                        "n",
+                        Math.max(
+                          1,
+                          Math.min(10, Number(event.target.value) || 1)
+                        )
                       )
                     }
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-3 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span>下载图片</span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : (
-        <section className="workspace-fade-enter grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-6">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--chat-text-muted)]">
-                      Workspace Config
-                  </div>
-                  <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--chat-text)]">
-                      工作台参数
-                  </h2>
-                </div>
-                <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
-                  {config.mode === "chat" ? "Direct API" : "Java Backend"}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                      Endpoint 模式
-                  </span>
-                  <select
-                    value={config.mode}
-                    onChange={(event) => updateConfig("mode", event.target.value as RequestMode)}
-                    className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                  >
-                    <option value="images">文生图</option>
-                    <option value="edits">图生图</option>
-                    <option value="chat">对话调试</option>
-                  </select>
-                </label>
-
-                {config.mode === "chat" ? (
-                  <>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                          Base URL
-                      </span>
-                      <input
-                        value={config.baseUrl}
-                        onChange={(event) => updateConfig("baseUrl", event.target.value)}
-                        placeholder="https://..."
-                        className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                          API Key
-                      </span>
-                      <input
-                        type="password"
-                        value={config.apiKey}
-                        onChange={(event) => updateConfig("apiKey", event.target.value)}
-                        placeholder="sk-..."
-                        className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono tracking-wide text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                          Model
-                      </span>
-                      <input
-                        value={config.model}
-                        onChange={(event) => updateConfig("model", event.target.value)}
-                        className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                      />
-                    </label>
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3 text-sm leading-6 text-sky-700">
-                      文生图与图生图现在统一走 Java 后端，再由 Java 代理到 Python 生图服务。前端不再直连工具端。
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                        Size
-                    </span>
-                    <input
-                      value={config.size}
-                      onChange={(event) => updateConfig("size", event.target.value)}
-                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--chat-text-muted)]">
-                        N (张数)
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={config.n}
-                      onChange={(event) =>
-                        updateConfig("n", Math.max(1, Math.min(10, Number(event.target.value) || 1)))
-                      }
-                      className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2.5 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                    />
-                  </label>
-                </div>
-
-                {config.mode === "edits" ? (
-                  <label className="flex items-start gap-3 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-3 text-sm text-[var(--chat-text)]">
-                    <input
-                      type="checkbox"
-                      checked={config.batchMode}
-                      onChange={(event) => updateConfig("batchMode", event.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-[var(--chat-border)] text-[var(--primary)] focus:ring-[var(--primary)]/20"
-                    />
-                    <div>
-                      <div className="font-semibold text-[var(--chat-text)]">多图批处理</div>
-                      <div className="mt-1 text-[13px] leading-6 text-[var(--chat-text-muted)]">
-                          多张参考图时为每张图发起独立请求。这样更稳，也更容易定位是哪一张失败。
-                      </div>
-                    </div>
-                  </label>
-                ) : null}
-              </div>
-
-              {statusText ? (
-                <div
-                  className={classNames(
-                    "mt-4 text-sm font-medium",
-                    statusTone === "success" && "text-emerald-600",
-                    statusTone === "error" && "text-rose-600",
-                    statusTone === "default" && "text-[var(--chat-text-muted)]"
-                  )}
-                >
-                  {statusText}
-                </div>
-              ) : null}
-            </div>
-
-            {config.mode === "edits" ? (
-              <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-6">
-                <div className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-semibold tracking-tight text-[var(--chat-text)]">
-                        参考图像
-                    </h3>
-                    <p className="mt-1 text-sm leading-6 text-[var(--chat-text-muted)]">
-                        支持多张图片、拖拽上传和局部涂抹编辑。未编辑时会把整张图片作为参考图。
-                    </p>
-                  </div>
-                  <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
-                      多图 · 蒙版
-                  </div>
-                </div>
-
-                <label
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    if (event.dataTransfer?.files?.length) {
-                      void addFiles(event.dataTransfer.files);
-                    }
-                  }}
-                  className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-8 text-center transition hover:border-[var(--primary)]/30 hover:bg-[var(--primary)]/5"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--chat-surface-soft)] text-[var(--primary)] shadow-sm ring-1 ring-[var(--chat-border)]">
-                    <UploadCloud className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-[var(--chat-text)]">
-                        点击、拖拽或 `Ctrl + V` 粘贴图片
-                    </div>
-                    <div className="mt-1 text-xs text-[var(--chat-text-muted)]">
-                        支持 PNG / JPG / WEBP 等常见格式
-                    </div>
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => {
-                      if (event.target.files?.length) {
-                        void addFiles(event.target.files);
-                      }
-                      event.target.value = "";
-                    }}
+                    className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                   />
                 </label>
-
-                {images.length ? (
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {images.map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="group relative overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]"
-                      >
-                        <img
-                          src={item.objectUrl}
-                          alt={`参考图 ${index + 1}`}
-                          className="aspect-square w-full object-cover"
-                        />
-                        <div className="absolute left-2 top-2 rounded-full bg-[var(--chat-surface)]/90 px-2 py-0.5 text-[11px] font-semibold text-[var(--chat-text)] shadow-sm">
-                            #{index + 1}
-                        </div>
-                        {item.maskDataUrl ? (
-                          <div className="absolute right-2 top-2 rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                              已涂抹
-                          </div>
-                        ) : null}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 transition group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={() => openEditor(item.id)}
-                            className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-white shadow"
-                          >
-                            <ImagePlus className="h-3.5 w-3.5" />
-                            <span>{item.maskDataUrl ? "修改涂抹" : "编辑涂抹"}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeImage(item.id)}
-                            className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            <span>移除</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {editingImage ? (
-                  <div className="mt-4 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-[var(--chat-text)]">
-                          编辑第 {images.findIndex((item) => item.id === editingImage.id) + 1} 张（可选）
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={clearCurrentMask}
-                          className="inline-flex items-center gap-1 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[12px] font-semibold text-[var(--chat-text-soft)] transition hover:border-rose-200 hover:text-rose-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>清除涂抹</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={closeEditor}
-                          className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--primary)]/90"
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>完成</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-3">
-                      <div className="relative mx-auto w-fit">
-                        <img
-                          ref={editorImageRef}
-                          src={editingImage.objectUrl}
-                          alt="编辑中的参考图"
-                          draggable={false}
-                          onLoad={() => {
-                            // 图片重新布局后刷新编辑器快照，触发内部同步逻辑。
-                            refreshEditorLayout();
-                          }}
-                          className="block max-h-[360px] max-w-full select-none rounded-lg"
-                        />
-                        <canvas
-                          ref={maskCanvasRef}
-                          className="absolute inset-0 cursor-crosshair rounded-lg touch-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <div className="inline-flex rounded-full bg-[var(--chat-surface-muted)] p-1">
-                        <button
-                          type="button"
-                          onClick={() => setToolMode("brush")}
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition",
-                            toolMode === "brush"
-                              ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)] shadow-sm"
-                              : "text-[var(--chat-text-muted)]"
-                          )}
-                        >
-                          <Brush className="h-3.5 w-3.5" />
-                          <span>笔刷</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setToolMode("eraser")}
-                          className={classNames(
-                            "inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-semibold transition",
-                            toolMode === "eraser"
-                              ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)] shadow-sm"
-                              : "text-[var(--chat-text-muted)]"
-                          )}
-                        >
-                          <Eraser className="h-3.5 w-3.5" />
-                          <span>擦除</span>
-                        </button>
-                      </div>
-
-                      <div className="inline-flex items-center gap-3 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-2 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                        <span>笔刷大小</span>
-                        <input
-                          type="range"
-                          min={8}
-                          max={96}
-                          step={2}
-                          value={brushSize}
-                          onChange={(event) => setBrushSize(Number(event.target.value))}
-                        />
-                        <span className="font-mono text-[var(--chat-text)]">{brushSize}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-5 shadow-sm sm:p-6">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-semibold tracking-tight text-[var(--chat-text)]">
-                      历史图片
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-[var(--chat-text-muted)]">
-                      展示当前设备最近的生图批次，仅记录文生图与图生图成功结果。
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void loadHistory(1, true)}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1.5 text-[12px] font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-                >
-                  <RefreshCcw className={classNames("h-3.5 w-3.5", historyLoading && "animate-spin")} />
-                  <span>刷新</span>
-                </button>
               </div>
 
-              {historyLoading && !historyBatches.length ? (
-                <div className="rounded-xl border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/70 px-4 py-8 text-center text-sm text-[var(--chat-text-muted)]">
-                    正在加载历史图片...
-                </div>
-              ) : null}
-
-              {!historyLoading && !historyBatches.length && !historyError ? (
-                <div className="rounded-xl border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/70 px-4 py-8 text-center text-sm text-[var(--chat-text-muted)]">
-                    当前设备还没有生成历史
-                </div>
-              ) : null}
-
-              {historyError ? (
-                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-600">
-                  {historyError}
-                </div>
-              ) : null}
-
-              {historyBatches.length ? (
-                <div className="space-y-4">
-                  {historyBatches.map((batch) => (
-                    <div
-                      key={batch.requestId}
-                      className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--chat-text-muted)]">
-                            {formatHistoryTime(batch.createdAt)}
-                          </div>
-                          <div className="mt-1 text-sm font-semibold leading-6 text-[var(--chat-text)]">
-                            {batch.prompt}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-[11px] font-medium text-[var(--chat-text-muted)]">
-                          <span className="rounded-full bg-[var(--chat-surface-muted)] px-2.5 py-1">
-                            {batch.mode === "edits" ? "图生图" : "文生图"}
-                          </span>
-                          {batch.size ? (
-                            <span className="rounded-full bg-[var(--chat-surface-muted)] px-2.5 py-1">
-                              {batch.size}
-                            </span>
-                          ) : null}
-                          {typeof batch.batchCount === "number" ? (
-                            <span className="rounded-full bg-[var(--chat-surface-muted)] px-2.5 py-1">
-                              {batch.batchCount} 张
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {batch.images.length ? (
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          {batch.images.map((item, index) => {
-                            const previewUrl = resolvePreviewUrl(item);
-                            const downloadUrl = resolveDownloadUrl(item);
-                            return (
-                              <div
-                                key={`${batch.requestId}-${item.fileName || index}`}
-                                className="overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]"
-                              >
-                                <div className="p-2" style={checkerboardStyle}>
-                                  <img
-                                    src={previewUrl}
-                                    alt={item.fileName || `历史结果图 ${index + 1}`}
-                                    className="mx-auto h-28 w-full rounded-lg object-contain"
-                                  />
-                                </div>
-                                <div className="flex items-center justify-between gap-3 px-3 py-2 text-[12px] text-[var(--chat-text-muted)]">
-                                  <span className="truncate text-[var(--chat-text)]">
-                                    {item.fileName || `结果图 ${index + 1}`}
-                                  </span>
-                                  {downloadUrl ? (
-                                    <a
-                                      href={downloadUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 font-semibold text-[var(--primary)] transition hover:text-[var(--primary)]/80"
-                                    >
-                                      <Download className="h-3.5 w-3.5" />
-                                      <span>打开</span>
-                                    </a>
-                                  ) : null}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
+              {config.mode === "edits" && (
+                <label className="flex items-start gap-2.5 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2.5 text-sm text-[var(--chat-text)]">
+                  <input
+                    type="checkbox"
+                    checked={config.batchMode}
+                    onChange={(event) =>
+                      updateConfig("batchMode", event.target.checked)
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-[var(--chat-border)] text-[var(--primary)] focus:ring-[var(--primary)]/20"
+                  />
+                  <div>
+                    <div className="text-[13px] font-medium text-[var(--chat-text)]">
+                      多图批处理
                     </div>
-                  ))}
-
-                  {historyBatches.length < historyTotal ? (
-                    <button
-                      type="button"
-                      onClick={() => void loadHistory(historyPageNo + 1, false)}
-                      disabled={historyLoadingMore}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-3 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <RefreshCcw className={classNames("h-4 w-4", historyLoadingMore && "animate-spin")} />
-                      <span>{historyLoadingMore ? "加载中..." : "加载更多历史"}</span>
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+                    <div className="mt-0.5 text-[11px] leading-4 text-[var(--chat-text-muted)]">
+                      每张参考图独立请求，更稳定
+                    </div>
+                  </div>
+                </label>
+              )}
             </div>
+
+            {statusText && (
+              <div
+                className={classNames(
+                  "mt-3 rounded-lg px-3 py-2 text-[12px] font-medium",
+                  statusTone === "success" &&
+                    "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
+                  statusTone === "error" &&
+                    "bg-[var(--status-failed-bg)] text-[var(--status-failed-text)]",
+                  statusTone === "default" &&
+                    "bg-[var(--chat-surface-muted)] text-[var(--chat-text-muted)]"
+                )}
+              >
+                {statusText}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* ── 中栏：主画布 ── */}
+        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+          {/* 结果区域 */}
+          <div
+            ref={chatRef}
+            className="flex-1 overflow-y-auto rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4"
+          >
+            {messages.length === 0 ? (
+              <EmptyCanvas mode={config.mode} />
+            ) : (
+              <ImageGallery messages={messages} statusText={statusText} />
+            )}
           </div>
 
-          <div className="min-w-0">
-            <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] shadow-sm">
-              <div className="border-b border-[var(--chat-border)] px-5 py-4 sm:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--chat-text-muted)]">
-                        Result Stream
-                    </div>
-                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-[var(--chat-text)]">
-                        生成记录
-                    </h3>
-                  </div>
+          {/* 输入区 */}
+          <div className="shrink-0 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3">
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSend();
+                }
+              }}
+              placeholder={
+                config.mode === "edits"
+                  ? "描述如何修改这些图片，例如：把天空替换成晚霞..."
+                  : config.mode === "chat"
+                    ? "输入对话内容..."
+                    : "描述你要生成的画面内容..."
+              }
+              className="min-h-[80px] w-full resize-none rounded-lg border-none bg-transparent px-2 py-2 text-[15px] leading-6 text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
+            />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--chat-border)] pt-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
+                  {config.mode === "images"
+                    ? "文生图"
+                    : config.mode === "edits"
+                      ? "图生图"
+                      : "对话调试"}
+                </span>
+                {config.mode !== "chat" && (
+                  <span className="text-[11px] text-[var(--chat-text-muted)]">
+                    {config.size} · {config.n} 张
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {messages.length > 0 && (
                   <button
                     type="button"
                     onClick={clearMessages}
-                    className="inline-flex items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-2 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)]"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    <span>清空记录</span>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    清空
                   </button>
-                </div>
-              </div>
-
-              <div ref={chatRef} className="max-h-[620px] min-h-[360px] overflow-y-auto px-5 py-5 sm:px-6">
-                {messages.length ? (
-                  <div className="space-y-6">
-                    {messages.map((message) =>
-                      message.role === "user" ? (
-                        <div key={message.id} className="flex flex-col items-end gap-2">
-                          <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
-                              User
-                          </div>
-                          <div className="max-w-[92%] rounded-2xl rounded-br-md bg-[var(--primary)] px-4 py-3 text-sm leading-6 text-white shadow-sm">
-                            {message.mode === "edits" && message.images.length ? (
-                              <div className="mb-3 flex flex-wrap gap-2">
-                                {message.images.map((imageUrl, index) => (
-                                  <img
-                                    key={`${message.id}-${index}`}
-                                    src={imageUrl}
-                                    alt={`参考图 ${index + 1}`}
-                                    className="h-14 w-14 rounded-lg object-cover ring-1 ring-white/25"
-                                  />
-                                ))}
-                              </div>
-                            ) : null}
-                            <div>{message.prompt}</div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={message.id} className="flex flex-col items-start gap-2">
-                          <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--chat-text-muted)]">
-                              Assistant
-                          </div>
-                          <div className="max-w-[96%] rounded-2xl rounded-bl-md border border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-4 text-sm text-[var(--chat-text)] shadow-sm">
-                            {message.status === "loading" ? (
-                              <div className="inline-flex items-center gap-3 text-[var(--chat-text-muted)]">
-                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)]/10 text-[var(--primary)]">
-                                  <Sparkles className="h-4 w-4 animate-pulse" />
-                                </span>
-                                <span className="font-medium">正在生成图像...</span>
-                              </div>
-                            ) : null}
-
-                            {message.status !== "loading" ? (
-                              <>
-                                {message.images.length ? (
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    {message.images.map((item) => (
-                                      <div key={item.url} className="overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]">
-                                        <div className="p-2" style={checkerboardStyle}>
-                                          <img
-                                            src={item.url}
-                                            alt={item.label}
-                                            className="mx-auto max-h-[280px] w-full rounded-lg object-contain"
-                                          />
-                                        </div>
-                                        <div className="flex items-center justify-between gap-3 px-3 py-3 text-[12px] text-[var(--chat-text-muted)]">
-                                          <span className="truncate font-medium text-[var(--chat-text)]">{item.label}</span>
-                                          {item.downloadUrl ? (
-                                            <a
-                                              href={item.downloadUrl}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="inline-flex items-center gap-1 font-semibold text-[var(--primary)] transition hover:text-[var(--primary)]/80"
-                                            >
-                                              <Download className="h-3.5 w-3.5" />
-                                              <span>打开</span>
-                                            </a>
-                                          ) : null}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
-
-                                {message.summary ? (
-                                  <div className={classNames(message.images.length && "mt-3", "leading-6 text-[var(--chat-text)]")}>
-                                    {message.summary}
-                                  </div>
-                                ) : null}
-
-                                {message.text ? (
-                                  <pre className="mt-3 overflow-auto rounded-xl bg-[var(--chat-surface-muted)] px-4 py-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--chat-text-soft)]">
-                                    {message.text}
-                                  </pre>
-                                ) : null}
-
-                                {message.error ? (
-                                  <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
-                                    {message.error}
-                                  </div>
-                                ) : null}
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex h-full min-h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/70 px-8 py-12 text-center text-sm font-medium text-[var(--chat-text-muted)]">
-                      在下方输入 Prompt 发起生图请求
-                  </div>
                 )}
-              </div>
-
-              <div className="border-t border-[var(--chat-border)] px-5 py-4 sm:px-6">
-                <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3">
-                  <textarea
-                    value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSend();
-                      }
-                    }}
-                    placeholder={
-                      config.mode === "edits"
-                        ? "描述如何使用或修改这些图片，例如：把第一张图里的天空替换成晚霞，并保留建筑细节"
-                        : "描述你要生成的画面内容..."
-                    }
-                    className="min-h-[120px] w-full resize-none rounded-xl border-none bg-transparent px-3 py-3 text-[15px] leading-7 text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
-                  />
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="rounded-full bg-[var(--chat-surface-muted)] px-3 py-1.5 text-[12px] text-[var(--chat-text-muted)]">
-                        当前模式：{config.mode === "images" ? "文生图" : config.mode === "edits" ? "图生图" : "对话调试"}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPrompt("")}
-                        className="inline-flex items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-2 text-sm font-semibold text-[var(--chat-text-soft)] transition hover:border-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span>清空输入</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSend()}
-                        className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--primary)]/90"
-                      >
-                        <SendHorizontal className="h-4 w-4" />
-                        <span>发送</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <details className="mt-4 overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)]/80">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[var(--chat-text)]">
-                    <span className="inline-flex items-center gap-2">
-                      <Code2 className="h-4 w-4" />
-                      <span>原始响应调试面板</span>
-                    </span>
-                    <span className="text-xs font-medium text-[var(--chat-text-muted)]">展开查看</span>
-                  </summary>
-                  <pre className="max-h-[320px] overflow-auto border-t border-[var(--chat-border)] px-4 py-4 whitespace-pre-wrap font-mono text-[12px] leading-6 text-[var(--chat-text-soft)]">
-                    {toPrettyJson(debugPayload)}
-                  </pre>
-                </details>
+                <button
+                  type="button"
+                  onClick={() => setPrompt("")}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  清空输入
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-1.5 text-[13px] font-semibold text-[var(--primary-foreground)] transition hover:bg-[var(--primary)]/90"
+                >
+                  <SendHorizontal className="h-3.5 w-3.5" />
+                  发送
+                </button>
               </div>
             </div>
           </div>
-        </section>
+
+          {/* 调试面板 */}
+          {showDebug && (
+            <div className="shrink-0 overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)]">
+              <div className="flex items-center justify-between border-b border-[var(--chat-border)] px-4 py-2.5">
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-[var(--chat-text)]">
+                  <Settings className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
+                  原始响应调试
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDebug(false)}
+                  className="text-[12px] text-[var(--chat-text-muted)] transition hover:text-[var(--chat-text)]"
+                >
+                  收起
+                </button>
+              </div>
+              <pre className="max-h-[240px] overflow-auto px-4 py-3 whitespace-pre-wrap font-mono text-[11px] leading-5 text-[var(--chat-text-soft)]">
+                {toPrettyJson(debugPayload)}
+              </pre>
+            </div>
+          )}
+
+          {!showDebug && (
+            <button
+              type="button"
+              onClick={() => setShowDebug(true)}
+              className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--chat-text-muted)] transition hover:text-[var(--chat-text)]"
+            >
+              <Settings className="h-3 w-3" />
+              显示调试面板
+            </button>
+          )}
+        </main>
+
+        {/* ── 右栏：参考图 + 历史 ── */}
+        <aside className="flex w-[300px] shrink-0 flex-col gap-4 overflow-y-auto">
+          {/* 参考图（仅图生图模式） */}
+          {config.mode === "edits" && (
+            <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[var(--chat-text-muted)]">
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  <span className="text-[11px] font-semibold tracking-wide">
+                    参考图像
+                  </span>
+                </div>
+                <span className="rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[10px] font-medium text-[var(--chat-text-muted)]">
+                  {images.length} 张
+                </span>
+              </div>
+
+              <label
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (event.dataTransfer?.files?.length) {
+                    void addFiles(event.dataTransfer.files);
+                  }
+                }}
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-6 text-center transition hover:border-[var(--primary)]/30 hover:bg-[var(--primary)]/5"
+              >
+                <UploadCloud className="h-5 w-5 text-[var(--chat-text-muted)]" />
+                <div className="text-[12px] font-medium text-[var(--chat-text-soft)]">
+                  点击、拖拽或粘贴图片
+                </div>
+                <div className="text-[11px] text-[var(--chat-text-muted)]">
+                  PNG / JPG / WEBP
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files?.length) {
+                      void addFiles(event.target.files);
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+
+              {images.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {images.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]"
+                    >
+                      <img
+                        src={item.objectUrl}
+                        alt={`参考图 ${index + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute left-1 top-1 rounded bg-black/50 px-1 py-0.5 text-[10px] font-medium text-white">
+                        #{index + 1}
+                      </div>
+                      {item.maskDataUrl && (
+                        <div className="absolute right-1 top-1 rounded bg-rose-500 px-1 py-0.5 text-[10px] font-medium text-white">
+                          已涂抹
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/50 opacity-0 transition group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => openEditor(item.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-2.5 py-1 text-[11px] font-medium text-white"
+                        >
+                          <Brush className="h-3 w-3" />
+                          {item.maskDataUrl ? "修改" : "涂抹"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeImage(item.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-medium text-white"
+                        >
+                          <X className="h-3 w-3" />
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* 历史记录 */}
+          <div className="flex-1 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[var(--chat-text-muted)]">
+                <Clock className="h-3.5 w-3.5" />
+                <span className="text-[11px] font-semibold tracking-wide">
+                  历史记录
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadHistory(1, true)}
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)]"
+              >
+                <RefreshCcw
+                  className={classNames(
+                    "h-3 w-3",
+                    historyLoading && "animate-spin"
+                  )}
+                />
+                刷新
+              </button>
+            </div>
+
+            {historyLoading && !historyBatches.length && (
+              <div className="py-6 text-center text-[12px] text-[var(--chat-text-muted)]">
+                加载中...
+              </div>
+            )}
+
+            {!historyLoading &&
+              !historyBatches.length &&
+              !historyError && (
+              <div className="py-6 text-center text-[12px] text-[var(--chat-text-muted)]">
+                  暂无生成历史
+              </div>
+            )}
+
+            {historyError && (
+              <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+                {historyError}
+              </div>
+            )}
+
+            {historyBatches.length > 0 && (
+              <div className="space-y-3">
+                {historyBatches.map((batch) => (
+                  <div
+                    key={batch.requestId}
+                    className="rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-[var(--chat-text-muted)]">
+                          {formatHistoryTime(batch.createdAt)}
+                        </div>
+                        <div className="mt-0.5 truncate text-[12px] font-medium text-[var(--chat-text)]">
+                          {batch.prompt}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-1">
+                        <span className="rounded bg-[var(--chat-surface-muted)] px-1.5 py-0.5 text-[10px] text-[var(--chat-text-muted)]">
+                          {batch.mode === "edits" ? "图生图" : "文生图"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {batch.images.length > 0 && (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        {batch.images.slice(0, 4).map((item, index) => {
+                          const previewUrl = resolvePreviewUrl(item);
+                          const downloadUrl = resolveDownloadUrl(item);
+                          return (
+                            <div
+                              key={`${batch.requestId}-${index}`}
+                              className="relative aspect-square overflow-hidden rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface-muted)]"
+                            >
+                              <img
+                                src={previewUrl}
+                                alt={item.fileName || `图${index + 1}`}
+                                className="h-full w-full object-cover"
+                              />
+                              {downloadUrl && (
+                                <a
+                                  href={downloadUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="absolute inset-0 flex items-center justify-center bg-black/0 transition hover:bg-black/40"
+                                >
+                                  <Download className="h-4 w-4 text-white opacity-0 transition hover:opacity-100" />
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {historyBatches.length < historyTotal && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void loadHistory(historyPageNo + 1, false)
+                    }
+                    disabled={historyLoadingMore}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-[12px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)] disabled:opacity-60"
+                  >
+                    <RefreshCcw
+                      className={classNames(
+                        "h-3 w-3",
+                        historyLoadingMore && "animate-spin"
+                      )}
+                    />
+                    {historyLoadingMore ? "加载中..." : "加载更多"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
+      </section>
+
+      {/* 图片涂抹编辑器 Overlay */}
+      {editingImage && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-black/80">
+          {/* 顶部工具栏 */}
+          <div className="flex items-center justify-between gap-4 bg-black/40 px-6 py-3 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-[14px] font-medium text-white/90">
+                编辑 #{images.findIndex((i) => i.id === editingImage.id) + 1}
+              </span>
+              <span className="text-[12px] text-white/50">
+                {editingImage.naturalWidth}×{editingImage.naturalHeight}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearCurrentMask}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[13px] text-white/80 transition hover:bg-white/20"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                清除涂抹
+              </button>
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--primary)]/90"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                完成编辑
+              </button>
+            </div>
+          </div>
+
+          {/* 中央画布区域 */}
+          <div className="flex flex-1 items-center justify-center overflow-auto p-6">
+            <div className="relative inline-block">
+              <img
+                ref={editorImageRef}
+                src={editingImage.objectUrl}
+                alt="编辑中"
+                draggable={false}
+                onLoad={refreshEditorLayout}
+                className="block max-h-[70vh] max-w-full select-none rounded-lg shadow-2xl"
+              />
+              <canvas
+                ref={maskCanvasRef}
+                className="absolute inset-0 cursor-crosshair rounded-lg touch-none"
+              />
+            </div>
+          </div>
+
+          {/* 底部工具栏 */}
+          <div className="flex items-center justify-center gap-4 bg-black/40 px-6 py-3 backdrop-blur-sm">
+            <div className="inline-flex rounded-full bg-white/10 p-0.5">
+              <button
+                type="button"
+                onClick={() => setToolMode("brush")}
+                className={classNames(
+                  "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition",
+                  toolMode === "brush"
+                    ? "bg-white/20 text-white shadow-sm"
+                    : "text-white/60 hover:text-white/90"
+                )}
+              >
+                <Brush className="h-4 w-4" />
+                笔刷
+              </button>
+              <button
+                type="button"
+                onClick={() => setToolMode("eraser")}
+                className={classNames(
+                  "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition",
+                  toolMode === "eraser"
+                    ? "bg-white/20 text-white shadow-sm"
+                    : "text-white/60 hover:text-white/90"
+                )}
+              >
+                <Eraser className="h-4 w-4" />
+                擦除
+              </button>
+            </div>
+
+            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-[13px] text-white/70">
+              <span>笔刷大小</span>
+              <input
+                type="range"
+                min={8}
+                max={96}
+                step={2}
+                value={brushSize}
+                onChange={(event) => setBrushSize(Number(event.target.value))}
+                className="w-24 accent-white"
+              />
+              <span className="min-w-[2ch] font-mono text-white">{brushSize}</span>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* 图片预览弹窗 */}
+      <ImagePreviewModal
+        src={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
     </div>
   );
 };

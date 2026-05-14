@@ -1,12 +1,15 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 from reactor_tool.tool.mrag.storage.kb_doc_store import KBDocStore
-from reactor_tool.tool.mrag.storage.models.kb_doc_model import KBDocModel as KBDocPydanticModel
+from reactor_tool.tool.mrag.storage.models.kb_doc_model import (
+    CANONICAL_FULL_TEXT_CHUNK_TYPE,
+    KBDocModel as KBDocPydanticModel,
+)
 
 Base = declarative_base()
 
@@ -16,7 +19,7 @@ class KBDocSQLModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     kb_id = Column(String, nullable=False)
     doc_id = Column(String, nullable=False)
-    text = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
     chunk_type = Column(String, nullable=False)
     file_id = Column(String, nullable=False)
     title = Column(String, nullable=False)
@@ -106,7 +109,8 @@ class KBDocSQLite(KBDocStore):
             ).first()
             
             if doc_to_delete:
-                session.delete(doc_to_delete)
+                doc_to_delete.deleted = 1
+                doc_to_delete.modify_time = datetime.now()
                 session.commit()
                 return True
             return False
@@ -128,14 +132,21 @@ class KBDocSQLite(KBDocStore):
             
             if doc_to_update:
                 # Update fields
-                doc_to_update.text = kb_doc.text or doc_to_update.text
-                doc_to_update.chunk_type = kb_doc.chunk_type or doc_to_update.chunk_type
-                doc_to_update.file_id = kb_doc.file_id or doc_to_update.file_id
-                doc_to_update.title = kb_doc.title or doc_to_update.title
-                doc_to_update.file_url = kb_doc.file_url or doc_to_update.file_url
-                doc_to_update.parent_id = kb_doc.parent_id or doc_to_update.parent_id
+                if kb_doc.text is not None:
+                    doc_to_update.text = kb_doc.text
+                if kb_doc.chunk_type is not None:
+                    doc_to_update.chunk_type = kb_doc.chunk_type
+                if kb_doc.file_id is not None:
+                    doc_to_update.file_id = kb_doc.file_id
+                if kb_doc.title is not None:
+                    doc_to_update.title = kb_doc.title
+                if kb_doc.file_url is not None:
+                    doc_to_update.file_url = kb_doc.file_url
+                if kb_doc.parent_id is not None:
+                    doc_to_update.parent_id = kb_doc.parent_id
                 doc_to_update.modify_time = datetime.now()
-                doc_to_update.modifier = kb_doc.modifier or doc_to_update.modifier
+                if kb_doc.modifier is not None:
+                    doc_to_update.modifier = kb_doc.modifier
                 
                 session.commit()
                 return True
@@ -162,6 +173,92 @@ class KBDocSQLite(KBDocStore):
             # Convert SQLAlchemy models to Pydantic models
             return [doc.to_pydantic() for doc in docs]
         except Exception as e:
+            raise e
+        finally:
+            session.close()
+
+    def upsert_canonical_doc(self, kb_doc: KBDocPydanticModel) -> bool:
+        """按文件覆盖 canonical 正文记录，保证回显内容稳定且唯一。"""
+        session = self._get_session()
+        try:
+            existing_doc = session.query(KBDocSQLModel).filter(
+                KBDocSQLModel.kb_id == kb_doc.kb_id,
+                KBDocSQLModel.file_id == kb_doc.file_id,
+                KBDocSQLModel.chunk_type == CANONICAL_FULL_TEXT_CHUNK_TYPE,
+            ).order_by(KBDocSQLModel.id.desc()).first()
+
+            if existing_doc:
+                existing_doc.doc_id = kb_doc.doc_id or existing_doc.doc_id
+                existing_doc.text = kb_doc.text or ""
+                existing_doc.title = kb_doc.title or ""
+                existing_doc.file_url = kb_doc.file_url or ""
+                existing_doc.parent_id = kb_doc.parent_id or ""
+                existing_doc.deleted = 0
+                existing_doc.modify_time = datetime.now()
+                existing_doc.modifier = kb_doc.modifier
+            else:
+                session.add(KBDocSQLModel.from_pydantic(kb_doc))
+
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    def get_canonical_doc(self, kb_id: str, file_id: str) -> Optional[KBDocPydanticModel]:
+        session = self._get_session()
+        try:
+            doc = session.query(KBDocSQLModel).filter(
+                KBDocSQLModel.kb_id == kb_id,
+                KBDocSQLModel.file_id == file_id,
+                KBDocSQLModel.chunk_type == CANONICAL_FULL_TEXT_CHUNK_TYPE,
+                KBDocSQLModel.deleted == 0
+            ).order_by(KBDocSQLModel.modify_time.desc(), KBDocSQLModel.id.desc()).first()
+            return doc.to_pydantic() if doc else None
+        except Exception as e:
+            raise e
+        finally:
+            session.close()
+
+    def delete_by_file_ids(self, kb_id: str, file_ids: List[str]) -> int:
+        session = self._get_session()
+        try:
+            docs = session.query(KBDocSQLModel).filter(
+                KBDocSQLModel.kb_id == kb_id,
+                KBDocSQLModel.file_id.in_(file_ids),
+                KBDocSQLModel.deleted == 0,
+            ).all()
+
+            for doc in docs:
+                doc.deleted = 1
+                doc.modify_time = datetime.now()
+
+            session.commit()
+            return len(docs)
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    def delete_by_kb_id(self, kb_id: str) -> int:
+        session = self._get_session()
+        try:
+            docs = session.query(KBDocSQLModel).filter(
+                KBDocSQLModel.kb_id == kb_id,
+                KBDocSQLModel.deleted == 0,
+            ).all()
+
+            for doc in docs:
+                doc.deleted = 1
+                doc.modify_time = datetime.now()
+
+            session.commit()
+            return len(docs)
+        except Exception as e:
+            session.rollback()
             raise e
         finally:
             session.close()

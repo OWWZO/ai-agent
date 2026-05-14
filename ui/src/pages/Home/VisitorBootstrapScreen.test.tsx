@@ -8,7 +8,7 @@ describe("VisitorBootstrapScreen", () => {
     const html = renderToStaticMarkup(<VisitorBootstrapScreen />);
 
     expect(html).toContain("正在进入工作台");
-    expect(html).toContain("请稍候");
+    expect(html).toContain("准备你的 AI 协作环境");
     expect(html).not.toContain("识别当前浏览器");
   });
 });
