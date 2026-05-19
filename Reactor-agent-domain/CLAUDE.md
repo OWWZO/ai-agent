@@ -40,7 +40,6 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 ### 核心依赖
 - `spring-ai-starter-model-openai`: Spring AI OpenAI 支持
 - `spring-ai-starter-mcp-client-webflux`: MCP 客户端
-- `spring-ai-pgvector-store`: pgvector 向量存储
 - `mybatis-plus-spring-boot3-starter`: MyBatis-Plus
 - `xfg-wrench-starter-design-framework`: 扳手设计模式框架
 - `clickhouse-jdbc`: ClickHouse 支持

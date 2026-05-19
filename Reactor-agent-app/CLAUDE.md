@@ -42,7 +42,6 @@ java -jar target/ai-agent-station-study-app.jar
 - `spring-boot-starter-test`: 测试支持
 - `spring-ai-ollama`: Ollama 本地模型支持
 - `spring-ai-starter-model-openai`: OpenAI 模型支持
-- `spring-ai-starter-vector-store-pgvector`: pgvector 向量存储
 - `spring-ai-starter-mcp-client-webflux`: MCP 客户端
 - `spring-ai-tika-document-reader`: 文档解析
 - `mybatis-spring-boot-starter`: MyBatis 集成
@@ -89,10 +88,6 @@ spring:
       url: jdbc:mysql://127.0.0.1:3306/ai-agent-station
       username: root
       password: 123456
-    pgvector:
-      url: jdbc:postgresql://127.0.0.1:15432/ai-rag-knowledge
-      username: postgres
-      password: postgres
 ```
 
 #### Spring AI 配置
@@ -184,7 +179,7 @@ autobots:
 A: 在 `application-dev.yml` 中修改 `server.port`。
 
 **Q: 如何配置数据库？**
-A: 在 `application-dev.yml` 中配置 `spring.datasource.mysql` 和 `spring.datasource.pgvector`。
+A: 在 `application-dev.yml` 中配置 `spring.datasource.mysql`；如果启用问数或向量能力，再按当前实现补充对应 Qdrant / ES / query 数据源配置。
 
 **Q: 如何配置 AI 模型？**
 A: 在 `application-dev.yml` 中配置 `spring.ai.openai` 或 `spring.ai.ollama`。

@@ -74,6 +74,7 @@ Thumbs.db
 
 # 敏感配置与本地运行文件不纳入版本控制
 /mcp-server-csdn/
+/Reactor-agent-app/src/main/resources/
 /Reactor-agent-app/src/main/resources/application-dev.yml
 /Reactor-agent-app/src/main/resources/application-test.yml
 /mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
