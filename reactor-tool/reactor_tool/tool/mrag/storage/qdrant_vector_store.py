@@ -118,9 +118,8 @@ class QdrantVectorStore(BaseVectorStore):
                     "sparse_vector": models.SparseVectorParams(modifier=models.Modifier.IDF)
                 }
             elif enable_sparse:
-                logger.warning(
-                    f"Current qdrant-client does not support sparse collection config, "
-                    f"create dense-only collection for {collection_name}"
+                raise RuntimeError(
+                    f"Current qdrant-client does not support sparse collection config required for {collection_name}"
                 )
 
             self.client.create_collection(**create_collection_kwargs)
@@ -172,9 +171,12 @@ class QdrantVectorStore(BaseVectorStore):
             if ids is None:
                 ids = [uuid.uuid4().hex for _ in range(len(vectors))]
 
+            if sparse_vectors is not None and len(sparse_vectors) != len(vectors):
+                raise ValueError("Vectors and sparse_vectors length mismatch")
+
             # 构建点数据
             points = []
-            if sparse_vectors and _supports_sparse_collection_config():
+            if sparse_vectors is not None and _supports_sparse_collection_config():
                 for i, (vector, sparse_vector, payload) in enumerate(zip(vectors, sparse_vectors, payloads)):
                     point = models.PointStruct(
                         id=ids[i],
@@ -182,18 +184,10 @@ class QdrantVectorStore(BaseVectorStore):
                         payload=payload
                     )
                     points.append(point)
-            elif sparse_vectors:
-                logger.warning(
-                    f"Current qdrant-client does not support sparse vector upsert, "
-                    f"ignore sparse vectors for {collection_name}"
+            elif sparse_vectors is not None:
+                raise RuntimeError(
+                    f"Current qdrant-client does not support sparse vector upsert required for {collection_name}"
                 )
-                for i, (vector, payload) in enumerate(zip(vectors, payloads)):
-                    point = models.PointStruct(
-                        id=ids[i],
-                        vector={"vector": vector},
-                        payload=payload
-                    )
-                    points.append(point)
             else:
                 for i, (vector, payload) in enumerate(zip(vectors, payloads)):
                     point = models.PointStruct(
@@ -283,53 +277,53 @@ class QdrantVectorStore(BaseVectorStore):
                        score_threshold: float = 0.0,
                        filter_conditions: Optional[Dict] = None) -> List[List[Dict]]:
         """关键词搜索"""
-        try:
-            if not queries:
-                logger.info("Empty query provided")
-                return []
-
-            # 构建过滤器
-            query_filter = self._build_filter(filter_conditions)
-
-            logger.info(f"Qdrant keyword search: {sparse_vectors}")
-
-            named_sparse_vector_cls = getattr(models, "NamedSparseVector", None)
-            search_request_cls = getattr(models, "SearchRequest", None)
-            if named_sparse_vector_cls is None or search_request_cls is None:
-                logger.warning("Current qdrant-client does not expose sparse search models, skip sparse keyword search")
-                return [[] for _ in sparse_vectors]
-
-            query_requests = []
-            for sparse_vector in sparse_vectors:
-                query_requests.append(
-                    search_request_cls(
-                        vector=named_sparse_vector_cls(name="sparse_vector", vector=sparse_vector),
-                        limit=limit,
-                        filter=query_filter,
-                        score_threshold=score_threshold,
-                        with_payload=True,
-                        with_vector=False
-                    )
-                )
-
-            search_results = self.client.search_batch(
-                collection_name=collection_name,
-                requests=query_requests,
-            )
-            results = []
-            for search_result in search_results:
-                result = []
-                for point in search_result:
-                    result.append({
-                        'id': point.id,
-                        'score': point.score,
-                        'payload': point.payload
-                    })
-                results.append(result)
-            return results
-        except Exception as e:
-            logger.error(f"Failed to search vectors in {collection_name}: {e}")
+        if not queries:
+            logger.info("Empty query provided")
             return []
+
+        if sparse_vectors is None:
+            raise ValueError("Sparse vectors are required for BM25 keyword search")
+
+        # 构建过滤器
+        query_filter = self._build_filter(filter_conditions)
+
+        logger.info(f"Qdrant keyword search: {sparse_vectors}")
+
+        named_sparse_vector_cls = getattr(models, "NamedSparseVector", None)
+        search_request_cls = getattr(models, "SearchRequest", None)
+        if named_sparse_vector_cls is None or search_request_cls is None:
+            raise RuntimeError(
+                f"Current qdrant-client does not expose sparse search models required for {collection_name}"
+            )
+
+        query_requests = []
+        for sparse_vector in sparse_vectors:
+            query_requests.append(
+                search_request_cls(
+                    vector=named_sparse_vector_cls(name="sparse_vector", vector=sparse_vector),
+                    limit=limit,
+                    filter=query_filter,
+                    score_threshold=score_threshold,
+                    with_payload=True,
+                    with_vector=False
+                )
+            )
+
+        search_results = self.client.search_batch(
+            collection_name=collection_name,
+            requests=query_requests,
+        )
+        results = []
+        for search_result in search_results:
+            result = []
+            for point in search_result:
+                result.append({
+                    'id': point.id,
+                    'score': point.score,
+                    'payload': point.payload
+                })
+            results.append(result)
+        return results
 
     def delete_vectors(self,
                        collection_name: str,
@@ -549,18 +543,28 @@ class QdrantTextVectorStore(BaseCollectionVectorStore):
                 vectors.append(chunk_model.vector)
                 sparse_vectors.append(chunk_model.sparse_vector)
                 payloads.append(chunk_model.model_dump(exclude={'vector', 'sparse_vector'}))
-            return self.vector_store.add_vectors(
+
+            missing_sparse_indexes = [index for index, value in enumerate(sparse_vectors) if value is None]
+            if missing_sparse_indexes:
+                raise ValueError(
+                    f"Sparse vectors missing for chunks in {self.collection_name}: {missing_sparse_indexes}"
+                )
+
+            success = self.vector_store.add_vectors(
                 collection_name=self.collection_name,
                 vectors=vectors,
                 sparse_vectors=sparse_vectors,
                 payloads=payloads
             )
+            if not success:
+                raise RuntimeError(f"Failed to add text documents to {self.collection_name}")
+            return True
 
         except Exception as e:
             import traceback
             print(traceback.format_exc())
             logger.error(f"Failed to add text documents to {self.collection_name}: {e}")
-            return False
+            raise
 
     def search_vector(self,
                       query_vectors: List[List[float]],

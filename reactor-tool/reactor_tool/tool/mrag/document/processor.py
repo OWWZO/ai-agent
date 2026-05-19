@@ -368,6 +368,9 @@ class DocumentProcessor:
                     "created": time.time(),
                     "image_url": self._image_urls[base_name],
                 })
+        if not text_chunk_data:
+            logger.info(f"No page OCR/caption text generated for file_id={self._uid}, skip page text upsert")
+            return
         text_batch = [chunk['text'] for chunk in text_chunk_data]
         text_embeddings = self._text_embedding.encode_text_batch(text_batch)
         bm25_embeddings = self._bm25_embedding.encode_text_batch(text_batch)

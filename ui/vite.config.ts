@@ -55,8 +55,6 @@ export default defineConfig(({ command, mode }) => {
       outDir: 'dist',
       sourcemap: false,
       minify: 'terser' as const,
-      rollupOptions: {output: {inlineDynamicImports: true},},
-      cssCodeSplit: false,
     },
   }
 });

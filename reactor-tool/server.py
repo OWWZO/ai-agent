@@ -74,7 +74,7 @@ if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option("--host", dest="host", type="string", default="0.0.0.0")
     parser.add_option("--port", dest="port", type="int", default=1601)
-    parser.add_option("--workers", dest="workers", type="int", default=10)
+    parser.add_option("--workers", dest="workers", type="int", default=5)
     (options, args) = parser.parse_args()
 
     print(f"Start params: {options}")
@@ -98,6 +98,7 @@ if __name__ == "__main__":
             port=options.port,
             workers=options.workers,
             reload=reload_enabled,
+            timeout_worker_healthcheck=60,
             timeout_keep_alive=99999,
             ws_ping_interval=99999,
             ws_ping_timeout=99999,

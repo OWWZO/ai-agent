@@ -57,7 +57,6 @@ class TextRetriever:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
         query_vectors = self.bm25_embedding_model.encode_text_batch(queries)
-        print(query_vectors)
         return self.vector_store.keyword_search(
             queries=queries,
             sparse_vectors=query_vectors,

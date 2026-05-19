@@ -6,6 +6,14 @@ unset VIRTUAL_ENV
 # 激活当前项目虚拟环境
 . .venv/bin/activate
 
+# 优先加载项目 .env，避免后续默认值覆盖线上配置
+if [[ -f ".env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 export ENV="${ENV:-prod}"
 export PYTHONIOENCODING="utf-8"
 export SKILL_PYTHON_BIN="${SKILL_PYTHON_BIN:-$(pwd)/.venv/bin/python}"
@@ -26,4 +34,4 @@ fi
 mkdir -p "$FILE_SAVE_PATH"
 
 # 运行Python服务器
-python server.py --workers 1
+python server.py --workers "${REACTOR_TOOL_WORKERS:-5}"
