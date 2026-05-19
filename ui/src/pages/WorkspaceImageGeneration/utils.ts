@@ -3,6 +3,10 @@ import type {
   ExtractedImageHit,
   ToolFileInfo,
 } from "./types";
+import {
+  normalizeFileUrlForBrowser,
+  normalizeToolBaseUrlForBrowser,
+} from "@/utils/fileUrl";
 
 const DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/i;
@@ -29,10 +33,7 @@ export const checkerboardStyle = {
 } as const;
 
 export function buildDefaultToolBaseUrl(): string {
-  if (REACTOR_TOOL_BASE_URL) {
-    return trimTrailingSlash(REACTOR_TOOL_BASE_URL);
-  }
-  return `${window.location.protocol}//${window.location.hostname}:1601`;
+  return normalizeToolBaseUrlForBrowser(REACTOR_TOOL_BASE_URL);
 }
 
 export function trimTrailingSlash(url: string): string {
@@ -360,7 +361,7 @@ export async function buildMaskedComposite(options: {
 }
 
 export function resolvePreviewUrl(fileInfo: ToolFileInfo): string {
-  return (
+  return normalizeFileUrlForBrowser(
     fileInfo.previewUrl ||
     fileInfo.domainUrl ||
     fileInfo.downloadUrl ||
@@ -370,7 +371,7 @@ export function resolvePreviewUrl(fileInfo: ToolFileInfo): string {
 }
 
 export function resolveDownloadUrl(fileInfo: ToolFileInfo): string {
-  return (
+  return normalizeFileUrlForBrowser(
     fileInfo.downloadUrl ||
     fileInfo.ossUrl ||
     fileInfo.previewUrl ||

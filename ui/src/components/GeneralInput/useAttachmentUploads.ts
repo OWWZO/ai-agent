@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { agentFileApi, type UploadedConversationFile } from "@/services/agentFile";
+import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import {
   markUploadError,
   markUploadSuccess,
@@ -20,14 +21,17 @@ function resolveFileExtension(fileName?: string, mimeType?: string | null) {
 }
 
 export function normalizeUploadedFile(file: UploadedConversationFile): CHAT.TFile {
-  const previewUrl = file.previewUrl || file.url || file.downloadUrl || "";
+  const previewUrl = normalizeFileUrlForBrowser(
+    file.previewUrl || file.url || file.downloadUrl || ""
+  );
+  const downloadUrl = normalizeFileUrlForBrowser(file.downloadUrl || file.url || "");
   return {
     name: file.name,
     url: previewUrl,
     type: file.type || resolveFileExtension(file.name, file.mimeType),
     size: Number(file.size) || 0,
     previewUrl,
-    downloadUrl: file.downloadUrl,
+    downloadUrl,
     resourceKey: file.resourceKey,
     mimeType: file.mimeType ?? null,
     originFileName: file.originFileName,

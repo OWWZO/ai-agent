@@ -12,6 +12,10 @@ import type {
   UploadDocumentResult,
 } from "@/pages/WorkspaceMRag/types";
 import { trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
+import {
+  normalizeFileUrlForBrowser,
+  normalizeToolBaseUrlForBrowser,
+} from "@/utils/fileUrl";
 
 type WrappedResponse<T> = {
   code?: number | string;
@@ -145,7 +149,7 @@ export class MRagWorkspaceRequestError extends Error {
 }
 
 function normalizeToolBaseUrl(toolBaseUrl: string): string {
-  return trimTrailingSlash(toolBaseUrl || "");
+  return normalizeToolBaseUrlForBrowser(trimTrailingSlash(toolBaseUrl || ""));
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -317,28 +321,30 @@ export function normalizeKnowledgeBase(rawKnowledgeBase: RawKnowledgeBase): Know
 
 export function resolveUploadedFileUrl(upload: UploadDocumentResult): string {
   if (upload.storageType === "local" && upload.previewUrl) {
-    return upload.previewUrl;
+    return normalizeFileUrlForBrowser(upload.previewUrl);
   }
-  return upload.previewUrl || upload.permanentUrl || upload.presignedUrl || "";
+  return normalizeFileUrlForBrowser(
+    upload.previewUrl || upload.permanentUrl || upload.presignedUrl || ""
+  );
 }
 
 export function resolveWorkspacePreviewUrl(fileUrl: string): string {
   if (!fileUrl) {
     return "";
   }
-  return swapUrlSegment(fileUrl, "download", "preview");
+  return normalizeFileUrlForBrowser(swapUrlSegment(fileUrl, "download", "preview"));
 }
 
 export function resolveWorkspaceDownloadUrl(fileUrl: string): string {
   if (!fileUrl) {
     return "";
   }
-  return swapUrlSegment(fileUrl, "preview", "download");
+  return normalizeFileUrlForBrowser(swapUrlSegment(fileUrl, "preview", "download"));
 }
 
 export function normalizeKnowledgeBaseFile(rawFile: RawKnowledgeBaseFile): KnowledgeBaseFile {
   const sourceType = inferSourceType(rawFile);
-  const sourceUrl = String(rawFile.file_url || "");
+  const sourceUrl = normalizeFileUrlForBrowser(String(rawFile.file_url || ""));
   const taskStatus = toRecord(rawFile.task_status);
   const fileStatus = normalizeStatus(
     String(taskStatus.global_status || rawFile.file_status || "")
@@ -379,7 +385,7 @@ export function normalizeKnowledgeBaseFileFullContent(
       title: rawContent.title,
       file_url: rawContent.file_url,
     }),
-    sourceUrl: String(rawContent.file_url || ""),
+    sourceUrl: normalizeFileUrlForBrowser(String(rawContent.file_url || "")),
     fileStatus: normalizeStatus(rawContent.file_status),
     contentStatus: normalizeFullContentStatus(rawContent.content_status),
     contentFormat: String(rawContent.content_format || ""),

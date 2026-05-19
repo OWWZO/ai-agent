@@ -1,3 +1,5 @@
+import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
+
 export type AgentSessionFile = {
   fileName: string
   ossUrl?: string
@@ -21,10 +23,10 @@ type BuildAgentStreamRequestInput = {
 }
 
 const resolvePreviewUrl = (file: CHAT.TFile) =>
-  file.previewUrl || file.url || file.downloadUrl || ""
+  normalizeFileUrlForBrowser(file.previewUrl || file.url || file.downloadUrl || "")
 
 const resolveDownloadUrl = (file: CHAT.TFile) =>
-  file.downloadUrl || file.previewUrl || file.url || ""
+  normalizeFileUrlForBrowser(file.downloadUrl || file.previewUrl || file.url || "")
 
 /**
  * 把当前轮上传附件转换为后端可直接消费的 sessionFiles 结构。

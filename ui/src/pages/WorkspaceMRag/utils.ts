@@ -11,6 +11,7 @@ import {
   toPrettyJson,
   trimTrailingSlash,
 } from "@/pages/WorkspaceImageGeneration/utils";
+import { normalizeToolBaseUrlForBrowser } from "@/utils/fileUrl";
 
 export { formatBytes, toPrettyJson };
 
@@ -26,7 +27,7 @@ type FileStatusMeta = {
 export function createDefaultMRagWorkspaceStoredState(): MRagWorkspaceStoredState {
   if (typeof window === "undefined") {
     return {
-      toolBaseUrl: "http://127.0.0.1:1601",
+      toolBaseUrl: "/tool",
       selectedKnowledgeBaseId: "",
     };
   }
@@ -48,7 +49,9 @@ export function parseMRagWorkspaceStoredState(
   try {
     const parsed = JSON.parse(rawValue) as Partial<MRagWorkspaceStoredState>;
     return {
-      toolBaseUrl: trimTrailingSlash(parsed.toolBaseUrl || defaults.toolBaseUrl),
+      toolBaseUrl: normalizeToolBaseUrlForBrowser(
+        trimTrailingSlash(parsed.toolBaseUrl || defaults.toolBaseUrl)
+      ),
       selectedKnowledgeBaseId: parsed.selectedKnowledgeBaseId || "",
     };
   } catch {

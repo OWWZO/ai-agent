@@ -1,3 +1,5 @@
+import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
+
 const toText = (value: unknown) => {
   if (value == null) {
     return "";
@@ -60,20 +62,20 @@ export const normalizeTaskFile = (raw: any): CHAT.TFile | null => {
     return null;
   }
 
-  const previewUrl = firstText(
+  const previewUrl = normalizeFileUrlForBrowser(firstText(
     raw.previewUrl,
     raw.domainUrl,
     raw.url,
     raw.ossUrl,
     raw.downloadUrl
-  );
-  const downloadUrl = firstText(
+  ));
+  const downloadUrl = normalizeFileUrlForBrowser(firstText(
     raw.downloadUrl,
     raw.ossUrl,
     raw.domainUrl,
     raw.url,
     raw.previewUrl
-  );
+  ));
   const resourceKey = firstText(
     raw.resourceKey,
     raw.ossUrl,
@@ -162,14 +164,16 @@ const readResultMapFile = (resultMap?: Record<string, unknown>) => {
     return null;
   }
 
-  const previewUrl = firstText(resultMap.previewUrl, resultMap.domainUrl, resultMap.url);
-  const downloadUrl = firstText(
+  const previewUrl = normalizeFileUrlForBrowser(
+    firstText(resultMap.previewUrl, resultMap.domainUrl, resultMap.url)
+  );
+  const downloadUrl = normalizeFileUrlForBrowser(firstText(
     resultMap.downloadUrl,
     resultMap.ossUrl,
     resultMap.previewUrl,
     resultMap.domainUrl,
     resultMap.url
-  );
+  ));
   const primaryFileName = firstText(
     resultMap.primaryFileName,
     resultMap.fileName,
