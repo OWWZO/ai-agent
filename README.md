@@ -120,8 +120,6 @@ flowchart LR
 
 ## 执行链路图
 
-原图信息量过大且节点文案过长，GitHub README 会把整块 Mermaid 画布整体缩小。这里拆成 `ReAct` 与 `PlanSolve` 两张纵向链路图，优先保证首页可读性。
-
 ### ReAct 链路
 
 ```mermaid
