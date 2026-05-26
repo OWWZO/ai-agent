@@ -45,12 +45,21 @@ class _FileDB(object):
 FileDB = _FileDB()
 
 
+def normalize_stored_file_name(file_name: str) -> str:
+    """统一文件服务对外暴露的文件名，避免子路径污染 fileId 与预览 URL。"""
+    normalized = os.path.basename((file_name or "").strip())
+    if not normalized:
+        raise ValueError("file_name is empty")
+    return normalized
+
+
 class FileInfoOp(object):
 
     @classmethod
     @timer()
     async def add_by_content(cls, filename: str, content: str, file_id: str, description: str = None,
                              request_id: str = None) -> FileInfo:
+        filename = normalize_stored_file_name(filename)
         file_path = await FileDB.save(filename, content, scope=request_id)
         file_info = FileInfo(
             file_id=file_id,
@@ -66,6 +75,7 @@ class FileInfoOp(object):
     @staticmethod
     @timer()
     async def add_by_file(file: UploadFile, file_id: str, request_id: str = None) -> FileInfo:
+        file.filename = normalize_stored_file_name(file.filename)
         file_path = await FileDB.save_by_data(file)
         
         file_info = FileInfo(
@@ -119,8 +129,10 @@ class FileInfoOp(object):
             return result.scalars().all()
 
 def get_file_preview_url(file_id: str, file_name: str):
-    return f"{os.getenv('FILE_SERVER_URL')}/preview/{file_id}/{file_name}"
+    normalized_file_name = normalize_stored_file_name(file_name)
+    return f"{os.getenv('FILE_SERVER_URL')}/preview/{file_id}/{normalized_file_name}"
 
 
 def get_file_download_url(file_id: str, file_name: str):
-    return f"{os.getenv('FILE_SERVER_URL')}/download/{file_id}/{file_name}"
+    normalized_file_name = normalize_stored_file_name(file_name)
+    return f"{os.getenv('FILE_SERVER_URL')}/download/{file_id}/{normalized_file_name}"

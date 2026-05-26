@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * deep_search projector。
@@ -51,12 +52,13 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
             if (resultMap.isEmpty()) {
                 continue;
             }
+            List<Map<String, Object>> stageArtifactRefs = resolveStageArtifactRefs(stageType, artifacts);
             events.add(buildTaskEvent(
                     state,
                     invocation,
                     "deep_search",
                     buildStructuredToolResponse(invocation, "deep_search", resultMap),
-                    buildArtifactRefs(artifacts)
+                    stageArtifactRefs
             ));
         }
         return events;
@@ -118,5 +120,16 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
         resultMap.put("query", output.getQuery());
         resultMap.put("answer", StringUtils.defaultString(stage.getAnswer()));
         return resultMap;
+    }
+
+    private List<Map<String, Object>> resolveStageArtifactRefs(String stageType, List<ArtifactView> artifacts) {
+        if (!"report".equals(stageType) || artifacts == null || artifacts.isEmpty()) {
+            return List.of();
+        }
+        List<ArtifactView> finalArtifacts = artifacts.stream()
+                .filter(artifact -> artifact != null && StringUtils.isNotBlank(artifact.getFileName()))
+                .filter(artifact -> !StringUtils.endsWithIgnoreCase(artifact.getFileName(), "_search_result.txt"))
+                .collect(Collectors.toList());
+        return buildArtifactRefs(finalArtifacts);
     }
 }

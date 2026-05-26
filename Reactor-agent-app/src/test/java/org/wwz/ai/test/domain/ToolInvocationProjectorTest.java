@@ -103,6 +103,7 @@ public class ToolInvocationProjectorTest {
     @Test
     public void shouldProjectDeepSearchStagesFromNativeJson() {
         ToolInvocationView invocation = ToolInvocationView.builder()
+                .id(31L)
                 .toolCallId("tool-call-search-001")
                 .toolName("deep_search")
                 .inputJson("{\"query\":\"本周项目风险\"}")
@@ -119,14 +120,38 @@ public class ToolInvocationProjectorTest {
                         )
                 ))
                 .build();
+        ArtifactView searchArtifact = ArtifactView.builder()
+                .toolInvocationId(31L)
+                .toolCallId("tool-call-search-001")
+                .fileName("本周项目风险_search_result.txt")
+                .downloadUrl("https://file.example.com/download/search_result.txt")
+                .previewUrl("https://file.example.com/preview/search_result.txt")
+                .storageKey("artifact-search-result")
+                .build();
+        ArtifactView reportArtifact = ArtifactView.builder()
+                .toolInvocationId(31L)
+                .toolCallId("tool-call-search-001")
+                .fileName("本周项目风险的搜索结果.md")
+                .downloadUrl("https://file.example.com/download/report.md")
+                .previewUrl("https://file.example.com/preview/report.md")
+                .storageKey("artifact-report")
+                .build();
 
-        List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());
+        List<ProjectedReplayEvent> events = registry.project(
+                invocation,
+                List.of(searchArtifact, reportArtifact),
+                new EventResult()
+        );
 
         Assert.assertEquals(3, events.size());
         Assert.assertEquals("task", events.get(0).getMessageType());
         Assert.assertEquals("deep_search", resultMap(events.get(0)).get("messageType"));
         Assert.assertEquals("extend", nestedResultMap(events.get(0)).get("messageType"));
         Assert.assertEquals("report", nestedResultMap(events.get(2)).get("messageType"));
+        Assert.assertTrue(events.get(0).getArtifactRefs() == null || events.get(0).getArtifactRefs().isEmpty());
+        Assert.assertTrue(events.get(1).getArtifactRefs() == null || events.get(1).getArtifactRefs().isEmpty());
+        Assert.assertEquals(1, events.get(2).getArtifactRefs().size());
+        Assert.assertEquals("本周项目风险的搜索结果.md", events.get(2).getArtifactRefs().get(0).get("fileName"));
     }
 
     @Test

@@ -6,6 +6,7 @@
 # Date:   2025/7/7
 # =====================
 import hashlib
+import os
 
 
 from typing import Dict, Optional, Literal, List, Any
@@ -56,7 +57,13 @@ class FileRequest(BaseModel):
 
 
 def get_file_id(request_id: str, file_name: str) -> str:
-    return hashlib.md5((request_id + file_name).encode("utf-8")).hexdigest()
+    normalized_file_name = os.path.basename((file_name or "").strip())
+    return hashlib.md5((request_id + normalized_file_name).encode("utf-8")).hexdigest()
+
+
+def get_legacy_file_id(request_id: str, file_name: str) -> str:
+    """兼容历史 file_id 规则：直接使用原始 fileName 参与哈希。"""
+    return hashlib.md5((request_id + (file_name or "").strip()).encode("utf-8")).hexdigest()
 
 
 class FileListRequest(BaseModel):

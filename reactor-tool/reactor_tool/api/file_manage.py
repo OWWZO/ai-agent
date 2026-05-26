@@ -5,12 +5,28 @@ from urllib.parse import quote, unquote
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, Response, FileResponse
 
-from reactor_tool.model.protocal import FileRequest, FileListRequest, FileUploadRequest, get_file_id
+from reactor_tool.model.protocal import FileRequest, FileListRequest, FileUploadRequest, get_file_id, get_legacy_file_id
 from reactor_tool.util.middleware_util import RequestHandlerRoute
-from reactor_tool.db.file_table_op import FileInfoOp, get_file_preview_url, get_file_download_url
+from reactor_tool.db.file_table_op import (
+    FileInfoOp,
+    get_file_preview_url,
+    get_file_download_url,
+    normalize_stored_file_name,
+)
 
 
 router = APIRouter(route_class=RequestHandlerRoute)
+
+
+async def _get_file_info_by_request_and_name(request_id: str, raw_file_name: str):
+    """优先命中新的 basename 规则，同时兼容历史带子路径的 fileId。"""
+    normalized_file_name = normalize_stored_file_name(raw_file_name)
+    file_info = await FileInfoOp.get_by_file_id(file_id=get_file_id(request_id, normalized_file_name))
+    if file_info:
+        return file_info, normalized_file_name
+    legacy_file_id = get_legacy_file_id(request_id, raw_file_name)
+    file_info = await FileInfoOp.get_by_file_id(file_id=legacy_file_id)
+    return file_info, normalized_file_name
 
 
 @router.post("/get_file")
@@ -32,8 +48,10 @@ async def get_file(
 async def upload_file(
         body: FileUploadRequest
 ):
+    body.file_name = normalize_stored_file_name(body.file_name)
+    body.request_id = body.request_id
     file_info = await FileInfoOp.add_by_content(
-        filename=body.file_name, content=body.content, file_id=body.file_id, description=body.description,
+        filename=body.file_name, content=body.content, file_id=get_file_id(body.request_id, body.file_name), description=body.description,
         request_id=body.request_id)
     preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
     download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
@@ -42,6 +60,7 @@ async def upload_file(
 @router.post("/upload_file_data")
 async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(alias="requestId")):
     file.filename = unquote(file.filename)
+    file.filename = normalize_stored_file_name(file.filename)
     file_id = get_file_id(request_id, file.filename)
     file_info = await FileInfoOp.add_by_file(file=file, file_id=file_id, request_id=request_id)
     preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
@@ -70,21 +89,19 @@ async def get_file_list(body: FileListRequest):
     return JSONResponse(content={"results": results, "totalSize": total_size})
 
 
-@router.get("/download/{file_id}/{file_name}")
+@router.get("/download/{file_id}/{file_name:path}")
 async def download_file(file_id: str, file_name: str):
     # TODO 目前 file_id 实际上是 request_id，后续统一修改
-    file_id = get_file_id(file_id, file_name)
-    file_info = await FileInfoOp.get_by_file_id(file_id=file_id)
+    file_info, file_name = await _get_file_info_by_request_and_name(file_id, file_name)
     if not file_info or not os.path.exists(file_info.file_path):
         return Response(content="File not found", status_code=404)
     return FileResponse(file_info.file_path, filename=os.path.basename(file_name))
 
 
-@router.get("/preview/{file_id}/{file_name}")
+@router.get("/preview/{file_id}/{file_name:path}")
 async def preview_file(file_id: str, file_name: str):
     # TODO 目前 file_id 实际上是 request_id，后续统一修改
-    file_id = get_file_id(file_id, file_name)
-    file_info = await FileInfoOp.get_by_file_id(file_id=file_id)
+    file_info, file_name = await _get_file_info_by_request_and_name(file_id, file_name)
     if not file_info or not os.path.exists(file_info.file_path):
         return Response(content="File not found", status_code=404)
 

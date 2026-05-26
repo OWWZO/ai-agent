@@ -38,6 +38,7 @@ from reactor_tool.model.protocal import (
 )
 from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
 from reactor_tool.util.file_util import upload_file
+from reactor_tool.util.report_file_util import sanitize_report_html_content
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.middleware_util import RequestHandlerRoute
 load_dotenv()
@@ -249,15 +250,6 @@ async def post_report(
             if not f_name.startswith("/") and not f_name.startswith("http"):
                 body.file_names[idx] = f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
     
-    def _parser_html_content(content: str):
-        if content.startswith("```\nhtml"):
-            content = content[len("```\nhtml"): ]
-        if content.startswith("```html"):
-            content = content[len("```html"): ]
-        if content.endswith("```"):
-            content = content[: -3]
-        return content
-
     async def _stream():
         content = ""
         acc_content = ""
@@ -312,7 +304,7 @@ async def post_report(
                 data=json.dumps({"requestId": body.request_id, "data": acc_content, "isFinal": False},
                                 ensure_ascii=False))
         if body.file_type in ["ppt", "html"]:
-            content = _parser_html_content(content)
+            content = sanitize_report_html_content(content)
         file_info = [await upload_file(content=content, file_name=body.file_name, request_id=body.request_id,
                                  file_type="html" if body.file_type == "ppt" else body.file_type)]
         yield ServerSentEvent(data=json.dumps(
@@ -336,7 +328,7 @@ async def post_report(
         ):
             content += chunk
         if body.file_type in ["ppt", "html"]:
-            content = _parser_html_content(content)
+            content = sanitize_report_html_content(content)
         file_info = [await upload_file(content=content, file_name=body.file_name, request_id=body.request_id,
                                  file_type="html" if body.file_type == "ppt" else body.file_type)]
         return {"code": 200, "data": content, "fileInfo": file_info, "requestId": body.request_id}
