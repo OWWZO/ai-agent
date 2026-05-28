@@ -85,7 +85,12 @@ Thumbs.db
 /ui/.env
 /ui/.claude/
 /ui/.serena/
+/ui/docs/
+/ui/.playwright-mcp/
 
 # 自动执行旧目录仅保留本地，不再纳入版本控制
 /Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/auto/step/
 /Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/auto1/step/
+/.playwright-mcp/
+/.codegraph/
+/.codegraph/
