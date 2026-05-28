@@ -90,6 +90,35 @@ class DeepSearchRequest(BaseModel):
     stream_mode: Optional[StreamMode] = Field(default=StreamMode(), alias="streamMode", description="流式模式")
 
 
+class WebFetchRequest(BaseModel):
+    """单网页抓取请求。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", description="Request ID")
+    url: str = Field(description="需要抓取的网页 URL")
+    timeout_seconds: int = Field(default=30, alias="timeoutSeconds", ge=5, le=300, description="下载超时时间，单位秒")
+
+    @field_validator("request_id")
+    @classmethod
+    def validate_request_id(cls, value: str) -> str:
+        normalized = value.strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("requestId 不能为空")
+        return normalized
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip() if value is not None else ""
+        if not normalized:
+            raise ValueError("url 不能为空")
+        lowered = normalized.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("url 仅支持 http 或 https 协议")
+        return normalized
+
+
 
 class TableRAGRequest(BaseModel):
     request_id: str = Field(alias="requestId", description="Request ID")

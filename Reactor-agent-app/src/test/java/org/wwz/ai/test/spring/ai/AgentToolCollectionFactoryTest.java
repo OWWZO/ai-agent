@@ -69,6 +69,7 @@ public class AgentToolCollectionFactoryTest {
                         "code_interpreter",
                         "report_tool",
                         "deep_search",
+                        "web_fetch",
                         "multimodalagent_tool",
                         "skill_tool",
                         "read_tool",
@@ -266,7 +267,7 @@ public class AgentToolCollectionFactoryTest {
 
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report,multimodalagent\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,report,multimodalagent\"}");
         ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 2);
         return reactorConfig;
     }

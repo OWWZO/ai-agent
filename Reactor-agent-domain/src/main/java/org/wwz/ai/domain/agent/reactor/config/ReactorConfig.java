@@ -89,6 +89,9 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.deep_search_tool.desc:}")
     private String deepSearchToolDesc;
 
+    @Value("${autobots.autoagent.tool.web_fetch_tool.desc:}")
+    private String webFetchToolDesc;
+
     @Value("${autobots.autoagent.tool.multimodalagent_tool.desc:}")
     private String multiModalAgentDesc;
 
@@ -141,6 +144,15 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.deep_search.params:{}}")
     public void setDeepSearchToolParams(String jsonStr) {
         this.deepSearchToolParams = parseObjectMap(jsonStr);
+    }
+
+    /**
+     * WebFetchTool 配置
+     */
+    private Map<String, Object> webFetchToolParams = new HashMap<>();
+    @Value("${autobots.autoagent.tool.web_fetch.params:{}}")
+    public void setWebFetchToolParams(String jsonStr) {
+        this.webFetchToolParams = parseObjectMap(jsonStr);
     }
 
     /**
@@ -231,6 +243,9 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.deep_search_url:}")
     private String deepSearchUrl;
+
+    @Value("${autobots.autoagent.web_fetch_url:}")
+    private String webFetchUrl;
 
     @Value("${autobots.autoagent.multimodalagent_url:}")
     private String multiModalAgentUrl;

@@ -13,6 +13,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.ReportTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.GlobTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.GrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.ListDirectoryTool;
@@ -82,7 +83,7 @@ public class AgentToolCollectionFactory {
             toolCollection.addTool(fileTool);
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,code,report,multimodalagent")
+                            .getOrDefault("default", "search,web_fetch,code,report,multimodalagent")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -102,6 +103,11 @@ public class AgentToolCollectionFactory {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();
                 deepSearchTool.setAgentContext(agentContext);
                 toolCollection.addTool(deepSearchTool);
+            }
+            if (agentToolList.contains("web_fetch")) {
+                WebFetchTool webFetchTool = new WebFetchTool();
+                webFetchTool.setAgentContext(agentContext);
+                toolCollection.addTool(webFetchTool);
             }
             if (agentToolList.contains("multimodalagent")) {
                 MultiModalAgent multiModalAgent = new MultiModalAgent();

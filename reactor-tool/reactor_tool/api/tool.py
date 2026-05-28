@@ -35,7 +35,9 @@ from reactor_tool.model.protocal import (
     MultimodalRAGRequest,
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
+    WebFetchRequest,
 )
+from reactor_tool.tool.web_fetcher import WebFetcher
 from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.report_file_util import sanitize_report_html_content
@@ -442,6 +444,47 @@ async def post_deepsearch(
         yield ServerSentEvent(data="[DONE]")
 
     return EventSourceResponse(_stream(), ping_message_factory=lambda: ServerSentEvent(data="heartbeat"), ping=15)
+
+
+@router.post("/web_fetch")
+async def post_web_fetch(body: WebFetchRequest):
+    """单网页抓取端点，始终把完整正文沉淀为文件产物。"""
+    try:
+        result = await WebFetcher().fetch(body)
+        file_info = [
+            await upload_file(
+                content=result.full_content,
+                file_name=result.file_name,
+                request_id=body.request_id,
+                file_type="markdown",
+            )
+        ]
+        return {
+            "code": 200,
+            "data": result.to_response_data(),
+            "fileInfo": file_info,
+            "requestId": body.request_id,
+        }
+    except ValueError as exc:
+        logger.warning("web_fetch request failed: {}", exc)
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": 400,
+                "message": str(exc),
+                "requestId": body.request_id,
+            },
+        )
+    except Exception as exc:
+        logger.exception("web_fetch request failed unexpectedly")
+        return JSONResponse(
+            status_code=502,
+            content={
+                "code": 502,
+                "message": str(exc),
+                "requestId": body.request_id,
+            },
+        )
 
 
 @router.post("/embedding/text")

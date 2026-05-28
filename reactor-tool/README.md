@@ -70,3 +70,10 @@ cd reactor-tool
 - 页面正文优先通过 `Jina Reader` 抓取，失败时会自动回退到原始 HTTP 页面解析。
 - 可通过 `DDG_REGION`、`DDG_SAFESEARCH`、`JINA_API_KEY`、`JINA_READER_TIMEOUT` 调整抓取行为。
 - Java 侧 `deep_search` 调用、数据库持久化与前端历史回放展示无需额外改造。
+
+## Web Fetch 说明
+
+- `POST /v1/tool/web_fetch` 用于抓取单个 `http://` 或 `https://` URL，不负责搜索、批量抓取或浏览器渲染。
+- HTML 页面优先使用 `trafilatura` 输出 Markdown，提取失败时自动回退到 `BeautifulSoup.get_text()`；`raw.githubusercontent.com`、`r.jina.ai` 这类返回 Markdown/纯文本的地址会直接按文本内容落盘。
+- 每次成功抓取都会强制把完整正文保存为 Markdown 文件产物，并通过 `fileInfo` 返回；内联 `data.content` 仅用于摘要展示，过长时会被截断。
+- 文件名优先使用网页标题生成，标题缺失时回退到 URL slug，便于 Java 侧 artifact 落账和后续历史复用。
