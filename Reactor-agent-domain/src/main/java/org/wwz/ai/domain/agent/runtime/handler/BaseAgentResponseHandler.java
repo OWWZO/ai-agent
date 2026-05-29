@@ -234,8 +234,13 @@ public class BaseAgentResponseHandler {
                 break;
             case "result":
                 payload.put("result", agentResponse.getResult());
-                if (agentResponse.getResultMap() != null && agentResponse.getResultMap().containsKey("taskSummary")) {
-                    payload.put("taskSummary", agentResponse.getResultMap().get("taskSummary"));
+                if (agentResponse.getResultMap() != null) {
+                    if (agentResponse.getResultMap().containsKey("taskSummary")) {
+                        payload.put("taskSummary", agentResponse.getResultMap().get("taskSummary"));
+                    }
+                    if (agentResponse.getResultMap().containsKey("fileList")) {
+                        payload.put("fileList", agentResponse.getResultMap().get("fileList"));
+                    }
                 }
                 break;
             default:

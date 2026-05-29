@@ -93,6 +93,34 @@ public class AgentResponseHandlerReplayContractTest {
     }
 
     @Test
+    public void shouldKeepRealtimeSummaryFileListOnResultEvent() {
+        List<Map<String, Object>> fileList = List.of(Map.of(
+                "fileName", "summary.md",
+                "downloadUrl", "https://file.example.com/summary.md"
+        ));
+        GptProcessResult result = handler.build(
+                AgentRequest.builder().requestId("req-handler-003-file").build(),
+                new EventResult(),
+                AgentResponse.builder()
+                        .requestId("req-handler-003-file")
+                        .messageId("msg-result-file-1")
+                        .messageType("result")
+                        .messageTime("1714630002500")
+                        .result("最终结论")
+                        .isFinal(true)
+                        .finish(true)
+                        .resultMap(Map.of(
+                                "agentType", 5,
+                                "taskSummary", "最终结论",
+                                "fileList", fileList
+                        ))
+                        .build()
+        );
+
+        Assert.assertEquals(fileList, frameResultMap(result).get("fileList"));
+    }
+
+    @Test
     public void shouldReuseSamePlannerRoundIdForPlanThoughtAndTaskWrappedPlan() {
         EventResult eventResult = new EventResult();
         eventResult.getResultMap().put("plannerRoundId", "planner-round-002");
