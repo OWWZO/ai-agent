@@ -28,7 +28,7 @@
 - 复杂业务流程中的子智能体辅助执行
 
 
-## ✨ Showcase
+## ✨ Agent Showcase
 <p align="center">
   <img src="assets/readme/2e138de7-0974-401b-bf01-15e59cf55b47.png" alt="首页对话界面" width="48%" />
 
@@ -36,17 +36,19 @@
 </p>
 
 
-ReAct模式
+##### ReAct模式
 <p align="center">
   <img src="assets/readme/deepsearch展示.png" alt="Reactor 深度研究任务展示" width="48%" />
 </p>
 
-Plan Execute模式
+##### Plan Execute模式
 <p align="center">
   <img src="assets/readme/planexecute展示.png" alt="Reactor Plan Execute 任务展示" width="48%" />
 </p>
 
-基于 Deep Research + Multi-Agent 工作流生成结构化研究报告
+
+## ✨ 典型应用场景示例
+##### 1.基于 Deep Research Agent + Report Agent 生成结构化研究报告
 
 > HTML 报告更适合下载后本地打开，Markdown 报告可直接查看源码内容。
 
@@ -58,38 +60,61 @@ Plan Execute模式
 | 场景案例 | [洛克王国新手攻略搜索总结](assets/readme/洛克王国新手攻略搜索总结.html) | HTML | [打开文件](assets/readme/洛克王国新手攻略搜索总结.html) |
 | 框架研究 | [Spring AI 框架核心概念与架构演进报告](assets/readme/Spring_AI框架核心概念与架构演进报告.md) | Markdown | [打开文件](assets/readme/Spring_AI框架核心概念与架构演进报告.md) |
 
-多工具产物进行复用，结合 Skill 提升图片生成质量
-⚡ Workflow
+##### 报告结果预览
+<p align="center">
+  <img src="assets/readme/旅游规划.png" alt="原始图片输入示例" width="48%" />
+</p>
+<p align="center">
+  <img src="assets/readme/codegraph展示.png" alt="原始图片输入示例" width="48%" />
+</p>
+
+
+##### 2.多工具产物进行复用，结合 Skill 提升图片生成质量
+##### Workflow
+```text
+
 User Query
+
     │
+
     ▼
- Deep Research
+
+ Deep Research分析人物外部特征
+
     │
+
     ▼
- Multi-Agent Planning
-    │
-    ▼
+
  Skill Selection
+
     │
+
     ▼
+
  Tool Execution
+
     │
+
     ▼
+
  Structured Report / Image Output
+
+```
+
+
+##### 最终结果
 <p align="center">
   <img src="assets/readme/图片展示.png" alt="原始图片输入示例" width="48%" />
-  <img src="assets/readme/海报.png" alt="海报生成中间产物示例" width="48%" />
+
 </p>
 
 <p align="center">
-  <a href="https://github.com/OWWZO/ai-agent/raw/master/assets/readme/%E5%9B%BE%E7%89%87%E7%94%9F%E6%88%90%E7%BB%93%E6%9E%9C.png">
-    下载图片生成结果
-  </a>
-  <br />
-  <a href="assets/readme/KDA卡莎海报生成结果展示.html">
-    查看 KDA 卡莎海报生成结果
-  </a>
+  <img src="assets/readme/海报.png" alt="原始图片输入示例" width="48%" />
+
 </p>
+
+
+
 
 ## 技术栈
 
