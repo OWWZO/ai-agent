@@ -56,6 +56,7 @@ public class ImageGenerationExecutionKernelTest {
         Assert.assertEquals("生成海报", captured.get().getPrompt());
         Assert.assertEquals("1024x1024", captured.get().getSize());
         Assert.assertEquals("gpt-image-1", captured.get().getModel());
+        Assert.assertEquals(Integer.valueOf(900), captured.get().getTimeoutSeconds());
         Assert.assertEquals(Boolean.FALSE, captured.get().getStream());
         Assert.assertEquals(Integer.valueOf(2), result.getBatchCount());
         Assert.assertTrue(result.getUsedFallback());

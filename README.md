@@ -45,10 +45,38 @@ Plan Execute模式
   <img src="assets/readme/planexecute展示.png" alt="Reactor Plan Execute 任务展示" width="48%" />
 </p>
 
+报告文件展示
+<p align="center">
+<a href="assets/readme/CodeGraph开源项目看法与评估.html">
+  CodeGraph开源项目评估报告
+</a>
+<a href="assets/readme/Agent项目大模型性价比选型决策报告.html">
+  Agent项目大模型性价比选型决策报告
+</a>
+<a href="assets/readme/厦门情侣一日游完整规划网页版报告.html">
+  情侣一日游完整规划
+</a>
+<a href="assets/readme/洛克王国新手攻略搜索总结.html">
+  洛克王国新手攻略报告
+</a>
+<a href="assets/readme/Spring_AI框架核心概念与架构演进报告.md">
+  Spring_AI框架核心概念与架构演进报告
+</a>
+</p>
+
+多工具产物进行复用 结合skill提升图片生成质量
+<p align="center">
+  <img src="assets/readme/图片展示.png" alt="" width="48%" />
+  <img src="assets/readme/海报.png" alt="" width="48%" />
+  <img src="assets/readme/图片生成结果.png" alt="" width="48%" />
+  <a href="assets/readme/KDA卡莎海报生成结果展示.html">
+   KDA卡莎海报生成结果
+</a>
+</p>
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3、Spring AI、MyBatis 、OkHttp SSE、Elasticsearch
+- 后端：Java 17、Spring Boot 3、Spring AI、MyBatis 、OkHttp SSE
 - 数据层：MySQL、Qdrant
 - 多模态智能检索：RAG、**多路混合**召回、Rerank、多轮检索
 - 前端：React 19、TypeScript、Vite、Ant Design
@@ -315,5 +343,4 @@ Reactor-agent/
 - 更智能的多 Agent 协作策略与角色编排
 - 更完善的管理后台、配置中心与可观测性能力
 - 更丰富的工具组合
-- 跑数据飞轮，将每轮任务的计划步骤持续沉淀为 `SOP` 标准作业流程，逐步提升复杂任务的可复用性与执行稳定性
 - 构建长期记忆，记录用户偏好与使用习惯，形成稳定用户画像，让智能体在持续交互中更懂用户

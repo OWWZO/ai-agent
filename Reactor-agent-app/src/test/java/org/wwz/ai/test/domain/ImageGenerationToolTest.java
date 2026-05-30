@@ -92,10 +92,16 @@ public class ImageGenerationToolTest {
             Assert.assertTrue(structuredOutput.getUsedFallback());
             Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
             Assert.assertEquals(List.of("file"), printer.messageTypes());
+            Assert.assertTrue(printer.lastMessage() instanceof Map<?, ?>);
+            Map<?, ?> fileMessage = (Map<?, ?>) printer.lastMessage();
+            Assert.assertEquals("call-image-001", fileMessage.get("toolCallId"));
+            Assert.assertEquals("image_generation_tool", fileMessage.get("toolName"));
             Assert.assertEquals(1, context.getTaskProductFiles().size());
             Assert.assertEquals("poster.png", context.getTaskProductFiles().get(0).getFileName());
             Assert.assertEquals(Boolean.FALSE, handler.getLastRequest().getStream());
             Assert.assertEquals("gpt-image-1", handler.getLastRequest().getModel());
+            Assert.assertEquals("session-image-001", handler.getLastRequest().getRequestId());
+            Assert.assertEquals(Integer.valueOf(900), handler.getLastRequest().getTimeoutSeconds());
         } finally {
             server.stop(0);
         }
@@ -160,6 +166,68 @@ public class ImageGenerationToolTest {
 
             Assert.assertNotNull(handler.getLastRequest());
             Assert.assertEquals(Boolean.FALSE, handler.getLastRequest().getStream());
+            Assert.assertEquals(
+                    List.of("https://file.example.com/preview/source-image.png"),
+                    handler.getLastRequest().getFileNames()
+            );
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void shouldFallbackToFileNameWhenContextImageUrlMissing() throws Exception {
+        RecordingImageGenerationHandler handler = new RecordingImageGenerationHandler();
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/tool/image_generation", handler);
+        server.start();
+
+        try {
+            String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            ReactorConfig reactorConfig = buildConfig(baseUrl);
+            IImageGenerationExecutionKernel kernel = buildKernel(reactorConfig);
+
+            RecordingPrinter printer = new RecordingPrinter();
+            ToolCollection toolCollection = new ToolCollection();
+            AgentContext context = AgentContext.builder()
+                    .requestId("req-image-003")
+                    .sessionId("session-image-003")
+                    .query("沿用上一张图继续修改")
+                    .isStream(true)
+                    .printer(printer)
+                    .toolCollection(toolCollection)
+                    .productFiles(new ArrayList<>(List.of(
+                            File.builder()
+                                    .fileName("source-image.png")
+                                    .isInternalFile(Boolean.FALSE)
+                                    .build()
+                    )))
+                    .taskProductFiles(new ArrayList<>())
+                    .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
+                    .build();
+            toolCollection.setAgentContext(context);
+
+            ImageGenerationTool tool = new ImageGenerationTool();
+            tool.setAgentContext(context);
+            ToolArtifactSource artifactSource = ToolArtifactSource.builder()
+                    .sessionId(context.getSessionId())
+                    .requestId(context.getRequestId())
+                    .toolCallId("call-image-003")
+                    .toolName("image_generation_tool")
+                    .build();
+
+            context.bindCurrentToolArtifactSource(artifactSource);
+            try {
+                ToolResultPayload payload = (ToolResultPayload) tool.execute(JSONObject.parseObject("""
+                        {"prompt":"沿用上一张图继续修改"}
+                        """));
+                Assert.assertFalse(payload.getFailed());
+            } finally {
+                context.clearCurrentToolArtifactSource();
+            }
+
+            Assert.assertNotNull(handler.getLastRequest());
+            Assert.assertEquals(Boolean.FALSE, handler.getLastRequest().getStream());
             Assert.assertEquals(List.of("source-image.png"), handler.getLastRequest().getFileNames());
         } finally {
             server.stop(0);
@@ -203,40 +271,48 @@ public class ImageGenerationToolTest {
 
     private static class RecordingPrinter implements Printer {
         private final List<String> messageTypes = new ArrayList<>();
+        private final AtomicReference<Object> lastMessage = new AtomicReference<>();
 
         @Override
         public void send(String messageId, String messageType, Object message, String digitalEmployee, Boolean isFinal) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void send(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, String digitalEmployee, Boolean isFinal) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void send(String messageType, Object message) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void send(String messageType, Object message, String digitalEmployee) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void send(String messageId, String messageType, Object message, Boolean isFinal) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void sendWithResultMap(String messageId, String messageType, Object message, Map<String, Object> extraResultMap, Boolean isFinal) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
         public void sendWithResultMap(String messageType, Object message, Map<String, Object> extraResultMap) {
             messageTypes.add(messageType);
+            lastMessage.set(message);
         }
 
         @Override
@@ -249,6 +325,10 @@ public class ImageGenerationToolTest {
 
         private List<String> messageTypes() {
             return messageTypes;
+        }
+
+        private Object lastMessage() {
+            return lastMessage.get();
         }
     }
 }

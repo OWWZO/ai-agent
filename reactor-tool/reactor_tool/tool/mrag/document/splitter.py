@@ -114,6 +114,23 @@ def split_by_user_separators(text, separators, keep_separators):
     return chunks_list
 
 
+def enforce_chunk_hard_limit(text: str, hard_limit: int) -> list[str]:
+    """对超长单块做最终兜底切分，保证任何返回块都不超过硬上限。"""
+    if hard_limit <= 0:
+        return [text]
+    if len(text) <= hard_limit:
+        return [text]
+
+    chunks = []
+    start = 0
+    text_length = len(text)
+    while start < text_length:
+        end = min(start + hard_limit, text_length)
+        chunks.append(text[start:end])
+        start = end
+    return chunks
+
+
 # 文本切分chunks
 def text_split_to_chunks(
         request_id="",
@@ -124,6 +141,7 @@ def text_split_to_chunks(
         separators=None,
         keep_separators=True
 ) -> list[str]:
+    hard_limit = int(os.getenv("CHUNK_HARD_MAX_SIZE", 8000))
     if chunk_size is None:
         chunk_size = int(os.getenv("CHUNK_SIZE", 500))
         chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 100))
@@ -137,15 +155,18 @@ def text_split_to_chunks(
             return [name]
         if len(text) < chunk_size and (separators is None or len(separators) == 0):
             # logger.info(f"{requestId}  文档长度小于 {chunk_size}")
-            return [text]
+            return enforce_chunk_hard_limit(text, hard_limit)
         if separators is not None:
             logger.warning(f"{request_id} 直接按用户自定义分割符 {separators} 切分")
             chunks_list = split_by_user_separators(text, separators, keep_separators)
-            for index, chunk in enumerate(chunks_list):
+            normalized_chunks = []
+            for chunk in chunks_list:
+                normalized_chunk = chunk
                 if name is not None and name != "":
-                    chunks_list[index] = name + "\n" + chunk
+                    normalized_chunk = name + "\n" + normalized_chunk
+                normalized_chunks.extend(enforce_chunk_hard_limit(normalized_chunk, hard_limit))
             logger.info(f"{request_id} 共计生成{len(chunks_list)}个chunk")
-            return chunks_list
+            return normalized_chunks
         t0 = time.time()
         # 文本分割
         logger.info(f"{request_id} 正文总字数:{len(text)}")
@@ -219,9 +240,10 @@ def text_split_to_chunks(
             if not chunk:
                 continue
             if chunk.startswith(name):
-                chunks_list.append(chunk)
+                normalized_chunk = chunk
             else:
-                chunks_list.append(f"{name}-{chunk}")
+                normalized_chunk = f"{name}-{chunk}"
+            chunks_list.extend(enforce_chunk_hard_limit(normalized_chunk, hard_limit))
         t1 = time.time()
         logger.info(f"{request_id} 共计生成{len(chunks_list)}个chunks，用时{round(t1 - t0, 3)}秒")
         return chunks_list
@@ -259,6 +281,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self._chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 500))
         self._chunk_overlap = chunk_overlap or int(os.getenv("CHUNK_OVERLAP", 100))
+        self._hard_limit = int(os.getenv("CHUNK_HARD_MAX_SIZE", 8000))
 
     def split(self, text: str):
         headers = [('#', 'Header 1'),
@@ -333,7 +356,11 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
             })
 
         # 返回合并后的文本列表
-        return [build_context(chunk['content'], chunk['metadata']) for chunk in merged_chunks]
+        final_chunks = []
+        for chunk in merged_chunks:
+            normalized_chunk = build_context(chunk['content'], chunk['metadata'])
+            final_chunks.extend(enforce_chunk_hard_limit(normalized_chunk, self._hard_limit))
+        return final_chunks
 
 
 def get_text_splitter(chunk_type: str = None, chunk_size: int = None, chunk_overlap: int = None):

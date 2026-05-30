@@ -41,6 +41,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
     private static final String MODE_EDITS = "edits";
     private static final String DEFAULT_OUTPUT_NAME = "图片生成结果";
     private static final String DEFAULT_IMAGE_SIZE = "1024x1024";
+    private static final int DEFAULT_TIMEOUT_SECONDS = 900;
     private static final int DEFAULT_BATCH_SIZE = 10;
     private static final int MAX_BATCH_SIZE = 50;
 
@@ -79,7 +80,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
                 .model(StringUtils.trimToNull(command.getModel()))
                 .size(resolveSize(command.getSize()))
                 .n(normalizeBatchSize(command.getN()))
-                .timeoutSeconds(300)
+                .timeoutSeconds(DEFAULT_TIMEOUT_SECONDS)
                 .build());
         if (CollectionUtils.isEmpty(result.getFiles())) {
             throw new IllegalStateException("上游未返回可识别的图片结果");

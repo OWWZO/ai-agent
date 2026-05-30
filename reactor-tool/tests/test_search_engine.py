@@ -41,6 +41,19 @@ class SearchEngineIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
     @patch.object(SearchBase, "_fetch_content_with_direct_http", new_callable=AsyncMock)
     @patch.object(SearchBase, "_fetch_content_with_jina_reader", new_callable=AsyncMock)
+    async def test_should_skip_jina_reader_when_disabled(self, mock_jina, mock_direct):
+        mock_jina.return_value = "clean article body"
+        mock_direct.return_value = "fallback body"
+        docs = [Doc(doc_type="web_page", title="A", link="https://example.com/a", content="snippet")]
+
+        parsed = await SearchBase.parser(docs=docs, timeout=15, use_jina_reader=False)
+
+        self.assertEqual("fallback body", parsed[0].content)
+        mock_jina.assert_not_awaited()
+        mock_direct.assert_awaited_once()
+
+    @patch.object(SearchBase, "_fetch_content_with_direct_http", new_callable=AsyncMock)
+    @patch.object(SearchBase, "_fetch_content_with_jina_reader", new_callable=AsyncMock)
     async def test_should_fallback_to_direct_http_when_jina_reader_returns_empty(self, mock_jina, mock_direct):
         mock_jina.return_value = ""
         mock_direct.return_value = "fallback body"
@@ -85,6 +98,25 @@ class SearchEngineIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(1, len(docs))
         self.assertEqual("https://example.com/a", docs[0].link)
+
+    @patch.object(DDGSearch, "search_and_dedup", new_callable=AsyncMock)
+    async def test_mix_search_should_forward_jina_reader_flag_to_child_engines(self, mock_ddg):
+        mock_ddg.return_value = [
+            Doc(doc_type="web_page", title="A", link="https://example.com/a", content="body")
+        ]
+
+        await MixSearch().search(
+            query="AI Agent",
+            use_ddg=True,
+            use_bing=False,
+            use_jina=False,
+            use_sogou=False,
+            use_serp=False,
+            use_exa=False,
+            use_jina_reader=False,
+        )
+
+        self.assertFalse(mock_ddg.await_args.kwargs["use_jina_reader"])
 
 
 if __name__ == "__main__":

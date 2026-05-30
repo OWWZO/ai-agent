@@ -36,6 +36,7 @@ public class ImageGenerationToolInvocationProjector extends AbstractToolInvocati
             Map<String, Object> fileResult = new LinkedHashMap<>();
             fileResult.put("command", "生成图片");
             fileResult.put("fileInfo", mergedFileInfo);
+            putToolBindingIfPresent(fileResult, invocation);
             events.add(buildTaskEvent(
                     state,
                     invocation,
@@ -53,6 +54,9 @@ public class ImageGenerationToolInvocationProjector extends AbstractToolInvocati
         toolResult.put("toolName", invocation == null ? null : invocation.getToolName());
         toolResult.put("toolParam", invocation == null ? Map.of() : readMap(invocation.getInputJson()));
         toolResult.put("toolResult", summary);
+        if (invocation != null && StringUtils.isNotBlank(invocation.getToolCallId())) {
+            toolResult.put("toolCallId", invocation.getToolCallId());
+        }
         events.add(buildTaskEvent(
                 state,
                 invocation,

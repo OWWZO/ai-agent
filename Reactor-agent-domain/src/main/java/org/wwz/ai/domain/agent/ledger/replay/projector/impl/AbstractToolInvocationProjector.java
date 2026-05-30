@@ -162,6 +162,18 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         return response;
     }
 
+    protected void putToolBindingIfPresent(Map<String, Object> resultMap, ToolInvocationView invocation) {
+        if (resultMap == null || invocation == null) {
+            return;
+        }
+        if (StringUtils.isNotBlank(invocation.getToolCallId())) {
+            resultMap.put("toolCallId", invocation.getToolCallId());
+        }
+        if (StringUtils.isNotBlank(invocation.getToolName())) {
+            resultMap.put("toolName", invocation.getToolName());
+        }
+    }
+
     protected String resolveMessageId(ToolInvocationView invocation, String suffix) {
         String base = invocation == null ? null : invocation.getToolCallId();
         if (StringUtils.isBlank(base)) {

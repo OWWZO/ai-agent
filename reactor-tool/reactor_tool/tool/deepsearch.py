@@ -52,6 +52,7 @@ class DeepSearch:
             use_sogou=use_sogou,
             use_serp=use_serp,
             use_exa=use_exa,
+            use_jina_reader=False,
         )
         self.searched_queries = []
         self.current_docs = []

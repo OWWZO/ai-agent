@@ -181,7 +181,7 @@ function createToolCallEvent(options?: {
 function createFileEvent(options?: {
   messageId?: string;
   taskId?: string;
-  toolCallId?: string;
+  toolCallId?: string | null;
   command?: string;
   fileName?: string;
   isFinal?: boolean;
@@ -207,7 +207,9 @@ function createFileEvent(options?: {
       resultMap: {
         isFinal,
         command: options?.command || "读取文件",
-        toolCallId: options?.toolCallId || "tool-call-file-001",
+        ...(options?.toolCallId === null
+          ? {}
+          : { toolCallId: options?.toolCallId || "tool-call-file-001" }),
         fileInfo: [
           {
             fileName,
@@ -224,7 +226,7 @@ function createFileEvent(options?: {
 function createToolResultEvent(options?: {
   messageId?: string;
   taskId?: string;
-  toolCallId?: string;
+  toolCallId?: string | null;
   toolName?: string;
   query?: string;
 }): MESSAGE.EventData {
@@ -250,7 +252,9 @@ function createToolResultEvent(options?: {
         toolParam: {
           query: options?.query || "风险日报",
         },
-        toolCallId: options?.toolCallId || "tool-call-file-001",
+        ...(options?.toolCallId === null
+          ? {}
+          : { toolCallId: options?.toolCallId || "tool-call-file-001" }),
       },
     } as unknown as MESSAGE.Task,
   } as unknown as MESSAGE.EventData;
@@ -1005,5 +1009,59 @@ describe("chat file task title", () => {
     expect(taskList).toHaveLength(1);
     expect(taskList[0].messageType).toBe("tool_result");
     expect(taskList[0].toolResult?.toolCallId).toBe("tool-call-file-004");
+  });
+
+  it("image_generation 缺少 toolCallId 时不应错误合并到其他结果卡片", () => {
+    const currentChat = {
+      sessionId: "session-image-tool-1",
+      requestId: "req-image-tool-1",
+      query: "生成两张不同图片",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolResultEvent({
+      messageId: "image-tool-result-1",
+      taskId: "task-image-tool-1",
+      toolCallId: "tool-call-image-001",
+      toolName: "image_generation_tool",
+      query: "第一张图",
+    }), currentChat);
+    combineData(createFileEvent({
+      messageId: "image-file-1",
+      taskId: "task-image-tool-1",
+      toolCallId: "tool-call-image-001",
+      command: "生成图片",
+      fileName: "first-image.png",
+    }), currentChat);
+
+    combineData(createToolResultEvent({
+      messageId: "image-tool-result-2",
+      taskId: "task-image-tool-1",
+      toolCallId: "tool-call-image-002",
+      toolName: "image_generation_tool",
+      query: "第二张图",
+    }), currentChat);
+    combineData(createFileEvent({
+      messageId: "image-file-2",
+      taskId: "task-image-tool-1",
+      toolCallId: null,
+      command: "生成图片",
+      fileName: "second-image.png",
+    }), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(3);
+    expect(taskList[0].messageType).toBe("tool_result");
+    expect(getPrimaryTaskFile(taskList[0])?.name).toBe("first-image.png");
+    expect(taskList[1].messageType).toBe("tool_result");
+    expect(getPrimaryTaskFile(taskList[1])).toBeUndefined();
+    expect(taskList[2].messageType).toBe("file");
+    expect(getPrimaryTaskFile(taskList[2])?.name).toBe("second-image.png");
   });
 });

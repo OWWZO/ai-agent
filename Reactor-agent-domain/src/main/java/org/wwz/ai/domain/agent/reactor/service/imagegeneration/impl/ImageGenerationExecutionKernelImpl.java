@@ -26,7 +26,7 @@ import java.util.List;
 public class ImageGenerationExecutionKernelImpl implements IImageGenerationExecutionKernel {
 
     private static final String DEFAULT_IMAGE_SIZE = "1024x1024";
-    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
+    private static final int DEFAULT_TIMEOUT_SECONDS = 900;
     private static final int DEFAULT_BATCH_SIZE = 1;
 
     private final IReactorImageGenerationGateway imageGenerationGateway;

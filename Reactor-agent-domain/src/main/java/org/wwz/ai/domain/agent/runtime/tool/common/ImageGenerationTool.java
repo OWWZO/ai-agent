@@ -32,6 +32,7 @@ public class ImageGenerationTool implements BaseTool {
 
     private static final String MODE_IMAGES = "images";
     private static final String MODE_EDITS = "edits";
+    private static final int DEFAULT_TIMEOUT_SECONDS = 900;
 
     private AgentContext agentContext;
 
@@ -94,6 +95,7 @@ public class ImageGenerationTool implements BaseTool {
             List<String> maskFileNames = toStringList(params.get("maskFileNames"));
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             ImageGenerationExecutionResult result = requireKernel().execute(ImageGenerationExecuteCommand.builder()
+                    // 图片产物目录按 session 归档，和其他工具保持一致，便于会话内统一查看文件。
                     .requestId(agentContext.getSessionId())
                     .prompt(prompt)
                     .mode(StringUtils.isBlank(mode) ? null : mode)
@@ -104,10 +106,10 @@ public class ImageGenerationTool implements BaseTool {
                     .model(StringUtils.trimToNull(valueAsString(params.get("model"))))
                     .size(StringUtils.trimToNull(valueAsString(params.get("size"))))
                     .n(resolveInteger(params.get("n"), 1))
-                    .timeoutSeconds(300)
+                    .timeoutSeconds(DEFAULT_TIMEOUT_SECONDS)
                     .build());
             appendGeneratedArtifacts(result, artifactSource);
-            emitFileMessage(result);
+            emitFileMessage(result, artifactSource);
             return buildSuccessPayload(result);
         } catch (Exception e) {
             log.error("{} image_generation_tool error, input={}", agentContext.getRequestId(), input, e);
@@ -139,13 +141,17 @@ public class ImageGenerationTool implements BaseTool {
         }
     }
 
-    private void emitFileMessage(ImageGenerationExecutionResult result) {
+    private void emitFileMessage(ImageGenerationExecutionResult result, ToolArtifactSource artifactSource) {
         if (result == null || CollectionUtils.isEmpty(result.getFiles())) {
             return;
         }
         Map<String, Object> resultMap = new HashMap<>();
         resultMap.put("command", "生成图片");
         resultMap.put("fileInfo", result.getFiles());
+        if (artifactSource != null) {
+            resultMap.put("toolCallId", artifactSource.getToolCallId());
+            resultMap.put("toolName", artifactSource.getToolName());
+        }
         String messageId = StringUtil.getUUID();
         String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
         agentContext.getPrinter().send(messageId, "file", resultMap, digitalEmployee, true);
@@ -156,13 +162,19 @@ public class ImageGenerationTool implements BaseTool {
             return Collections.emptyList();
         }
         return agentContext.getProductFiles().stream()
-                .map(File::getFileName)
-                .filter(this::isImageFileName)
+                .filter(Objects::nonNull)
+                .filter(this::isImageFile)
+                .map(this::resolveImageReference)
+                .filter(StringUtils::isNotBlank)
                 .collect(Collectors.toList());
     }
 
     private boolean shouldReuseContextImages(String mode) {
         return StringUtils.isBlank(mode) || MODE_EDITS.equals(mode);
+    }
+
+    private boolean isImageFile(File file) {
+        return file != null && isImageFileName(file.getFileName());
     }
 
     private boolean isImageFileName(String fileName) {
@@ -171,6 +183,19 @@ public class ImageGenerationTool implements BaseTool {
         }
         String extension = StringUtils.substringAfterLast(fileName, ".").toLowerCase(Locale.ROOT);
         return Arrays.asList("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg").contains(extension);
+    }
+
+    /**
+     * 复用会话图片时优先使用可直接访问的 URL，避免下游按当前 requestId 重拼预览地址导致 404。
+     */
+    private String resolveImageReference(File file) {
+        if (StringUtils.isNotBlank(file.getDomainUrl())) {
+            return file.getDomainUrl();
+        }
+        if (StringUtils.isNotBlank(file.getOssUrl())) {
+            return file.getOssUrl();
+        }
+        return file.getFileName();
     }
 
     private String resolveOutputFileName(Object rawValue) {

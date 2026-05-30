@@ -692,9 +692,17 @@ function handleNonStreamingMessage(
       taskGroup,
       resolveTaskToolCallId(nextTask)
     );
+    const toolCallId = resolveTaskToolCallId(nextTask);
 
     if (isImageGenerationToolResultTask(nextTask)) {
-      const fileTaskIndex = findLastTaskIndex(taskGroup, isImageGenerationFileTask);
+      const fileTaskIndex = toolCallId
+        ? findLastTaskIndex(
+          taskGroup,
+          (task) =>
+            isImageGenerationFileTask(task) &&
+            resolveTaskToolCallId(task) === toolCallId
+        )
+        : -1;
       if (fileTaskIndex !== -1) {
         taskGroup[fileTaskIndex] = mergeImageGenerationToolTask(
           nextTask,
@@ -705,7 +713,14 @@ function handleNonStreamingMessage(
     }
 
     if (isImageGenerationFileTask(nextTask)) {
-      const toolTaskIndex = findLastTaskIndex(taskGroup, isImageGenerationToolResultTask);
+      const toolTaskIndex = toolCallId
+        ? findLastTaskIndex(
+          taskGroup,
+          (task) =>
+            isImageGenerationToolResultTask(task) &&
+            resolveTaskToolCallId(task) === toolCallId
+        )
+        : -1;
       if (toolTaskIndex !== -1) {
         taskGroup[toolTaskIndex] = mergeImageGenerationToolTask(
           taskGroup[toolTaskIndex],

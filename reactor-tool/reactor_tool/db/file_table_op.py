@@ -33,10 +33,14 @@ class _FileDB(object):
             f.write(content)
         return f"{save_path}/{file_name}"
     
-    async def save_by_data(self, file: UploadFile) -> str:
+    async def save_by_data(self, file: UploadFile, scope: str = None) -> str:
         file_name = file.filename
         file_data = file.file.read()
-        save_path = os.path.join(self._work_dir, file_name)
+        safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope)) if scope else ""
+        save_directory = self._work_dir if not safe_scope else os.path.join(self._work_dir, safe_scope)
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+        save_path = os.path.join(save_directory, file_name)
         with open(save_path, "wb") as f:
              f.write(file_data)
         return save_path
@@ -76,7 +80,7 @@ class FileInfoOp(object):
     @timer()
     async def add_by_file(file: UploadFile, file_id: str, request_id: str = None) -> FileInfo:
         file.filename = normalize_stored_file_name(file.filename)
-        file_path = await FileDB.save_by_data(file)
+        file_path = await FileDB.save_by_data(file, scope=request_id)
         
         file_info = FileInfo(
             file_id=file_id,

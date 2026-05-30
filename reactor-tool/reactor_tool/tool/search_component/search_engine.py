@@ -109,12 +109,15 @@ class SearchBase(ABC):
     @staticmethod
     @timer()
     async def parser(docs: List[Doc], timeout: int = 15, **kwargs) -> List[Doc]:
+        use_jina_reader = kwargs.get("use_jina_reader", True)
+
         async def _resolve_content(doc: Doc) -> str:
-            # 先走 Jina Reader，失败后再回退直连抓取，避免单点依赖。
-            jina_timeout = int(os.getenv("JINA_READER_TIMEOUT", timeout))
-            jina_content = await SearchBase._fetch_content_with_jina_reader(doc.link, jina_timeout)
-            if jina_content and jina_content.strip():
-                return jina_content.strip()
+            # 深度搜索默认改为直连抓取，只有显式开启时才尝试 Jina Reader。
+            if use_jina_reader:
+                jina_timeout = int(os.getenv("JINA_READER_TIMEOUT", timeout))
+                jina_content = await SearchBase._fetch_content_with_jina_reader(doc.link, jina_timeout)
+                if jina_content and jina_content.strip():
+                    return jina_content.strip()
             direct_content = await SearchBase._fetch_content_with_direct_http(doc.link, timeout)
             return direct_content.strip() if direct_content else ""
 
@@ -150,7 +153,11 @@ class SearchBase(ABC):
             # 兜底保护，保证某个搜索引擎失败时不会中断整个深度搜索流程。
             logger.exception(f"{self.__class__.__name__} skipped due to unexpected error: {e}")
             return []
-        docs = await self.parser(docs=docs, timeout=self._parser_timeout)
+        docs = await self.parser(
+            docs=docs,
+            timeout=self._parser_timeout,
+            use_jina_reader=kwargs.get("use_jina_reader", True),
+        )
 
         seen_docs = set()
         deduped_docs = []
@@ -424,6 +431,7 @@ class MixSearch(BingSearch):
             use_ddg: bool = True, use_bing: bool = False, use_jina: bool = False, use_sogou: bool = False,
             use_serp: bool = False, use_exa: bool = False, *args, **kwargs) -> List[Doc]:
         assert use_ddg or use_bing or use_jina or use_sogou or use_serp or use_exa
+        use_jina_reader = kwargs.get("use_jina_reader", True)
         engines = []
         if use_ddg:
             engines.append(self._ddg_engine)
@@ -438,6 +446,15 @@ class MixSearch(BingSearch):
         if use_exa:
             engines.append(self._exa_engine)
         async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(engine.search_and_dedup(query=query, request_id=request_id)) for engine in engines]
+            tasks = [
+                tg.create_task(
+                    engine.search_and_dedup(
+                        query=query,
+                        request_id=request_id,
+                        use_jina_reader=use_jina_reader,
+                    )
+                )
+                for engine in engines
+            ]
         results = [task.result() for task in tasks]
         return [doc for docs in results for doc in docs]

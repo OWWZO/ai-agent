@@ -30,12 +30,13 @@ import java.util.concurrent.TimeUnit;
 public class ReactorImageGenerationGateway implements IReactorImageGenerationGateway {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json");
+    private static final long DEFAULT_TIMEOUT_SECONDS = 1080L;
 
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(360, TimeUnit.SECONDS)
-            .writeTimeout(360, TimeUnit.SECONDS)
-            .callTimeout(360, TimeUnit.SECONDS)
+            .readTimeout(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build();
 
     @Resource

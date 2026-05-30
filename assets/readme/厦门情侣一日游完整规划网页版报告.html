@@ -1,0 +1,665 @@
+Html:
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>把海风与日落都留给彼此：厦门情侣一日游完整规划</title>
+  <link href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    :root{
+      --rose:#ff6b8a;
+      --rose-dark:#e94e72;
+      --ink:#233044;
+      --muted:#64748b;
+      --bg:#fff8fb;
+      --card:#ffffffcc;
+      --line:#f2d7e1;
+      --sea:#5fb7d4;
+      --sand:#f7d9a6;
+      --sun:#ffb86b;
+      --cite:#007bff;
+    }
+    html{scroll-behavior:smooth;}
+    body{
+      font-family: "PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255,182,193,.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(95,183,212,.14), transparent 26%),
+        linear-gradient(180deg, #fffafc 0%, #fff 36%, #fff8fb 100%);
+      color: var(--ink);
+    }
+    .glass{
+      background: rgba(255,255,255,.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: 0 10px 35px rgba(35,48,68,.08);
+    }
+    .hero-grad{
+      background: linear-gradient(135deg, rgba(255,107,138,.92), rgba(95,183,212,.88));
+    }
+    .section-title{
+      position: relative;
+      padding-left: 1rem;
+    }
+    .section-title:before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:.25rem;
+      width:6px;
+      height:1.5rem;
+      border-radius:999px;
+      background: linear-gradient(180deg,var(--rose),var(--sea));
+    }
+    .timeline:before{
+      content:"";
+      position:absolute;
+      left: 1rem;
+      top: .5rem;
+      bottom: .5rem;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(255,107,138,.35), rgba(95,183,212,.35));
+    }
+    .time-dot{
+      width: .9rem;
+      height: .9rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg,var(--rose),var(--sea));
+      box-shadow: 0 0 0 4px rgba(255,255,255,.9);
+    }
+    .badge-soft{
+      background: linear-gradient(135deg, rgba(255,107,138,.12), rgba(95,183,212,.14));
+      color: var(--ink);
+      border: 1px solid rgba(255,107,138,.12);
+    }
+    .quote{
+      border-left: 4px solid var(--rose);
+      background: linear-gradient(90deg, rgba(255,107,138,.07), rgba(255,255,255,.7));
+    }
+    .cite-link{
+      color: var(--cite);
+      text-decoration: none;
+      transition: all .2s ease;
+      font-weight: 500;
+    }
+    .cite-link:hover{
+      text-decoration: underline;
+    }
+    .nav-pill{
+      transition: all .2s ease;
+    }
+    .nav-pill:hover{
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(35,48,68,.08);
+    }
+    .mini-kpi{
+      background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,248,251,.95));
+      border: 1px solid rgba(242,215,225,.8);
+    }
+    .table-soft th, .table-soft td{
+      border-color:#f2e8ee;
+    }
+    footer{
+      border-top: 1px solid #f0dbe4;
+      background: rgba(255,255,255,.75);
+      backdrop-filter: blur(10px);
+    }
+  </style>
+</head>
+<body>
+  <header class="hero-grad text-white">
+    <div class="max-w-7xl mx-auto px-6 py-14 md:py-20">
+      <div class="grid lg:grid-cols-3 gap-8 items-center">
+        <div class="lg:col-span-2">
+          <div class="inline-flex items-center px-4 py-2 rounded-full bg-white bg-opacity-15 text-sm mb-5">
+            厦门情侣一日游完整规划 · 浪漫 / 轻松 / 可打卡 / 交通顺畅
+          </div>
+          <h1 class="text-3xl md:text-5xl font-extrabold leading-tight">
+            把海风、老街、日落与夜色
+            <span class="block">都安排进同一天</span>
+          </h1>
+          <p class="mt-5 text-white text-opacity-95 text-base md:text-lg leading-8 max-w-3xl">
+            本报告围绕“明确定位”的阶段成果整理成一份可直接交付阅读的一日游成品方案：以情侣出行为核心，强调浪漫氛围、轻松节奏、代表性场景和顺路衔接，采用“岛上半日 + 岛内沿海半日”的结构，让早中晚完整覆盖、体验不碎片化。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <span class="px-4 py-2 rounded-full bg-white bg-opacity-15 text-sm">早晨：海边或鼓浪屿慢走</span>
+            <span class="px-4 py-2 rounded-full bg-white bg-opacity-15 text-sm">中午：厦门特色餐食</span>
+            <span class="px-4 py-2 rounded-full bg-white bg-opacity-15 text-sm">傍晚：沿海看日落</span>
+            <span class="px-4 py-2 rounded-full bg-white bg-opacity-15 text-sm">晚间：夜景与散步收尾</span>
+          </div>
+        </div>
+        <div class="glass rounded-3xl p-6 text-gray-800">
+          <h2 class="text-lg font-bold mb-4">快速阅读导航</h2>
+          <nav class="grid grid-cols-1 gap-3 text-sm">
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#summary">A. 核心结论摘要</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#timeline">B. 完整时间轴路线</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#traffic">C. 交通衔接建议</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#food">D. 餐饮建议</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#photo">E. 拍照与氛围亮点</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#tips">F. 注意事项</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#backup">G. 备选方案</a>
+            <a class="nav-pill rounded-xl px-4 py-3 bg-white shadow-sm" href="#ending">H. 温柔总结</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-10">
+    <section class="grid md:grid-cols-4 gap-4 mb-10">
+      <div class="mini-kpi rounded-2xl p-5">
+        <div class="text-sm text-gray-500">规划核心</div>
+        <div class="text-xl font-bold mt-1">浪漫优先</div>
+        <p class="text-sm text-gray-600 mt-2 leading-6">优先海景、步行友好、适合拍照与看日落夜景的区域。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite></p>
+      </div>
+      <div class="mini-kpi rounded-2xl p-5">
+        <div class="text-sm text-gray-500">节奏要求</div>
+        <div class="text-xl font-bold mt-1">轻松不赶</div>
+        <p class="text-sm text-gray-600 mt-2 leading-6">避免景点过多和跨城折返，控制在3至4个核心片区串联。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite></p>
+      </div>
+      <div class="mini-kpi rounded-2xl p-5">
+        <div class="text-sm text-gray-500">体验结构</div>
+        <div class="text-xl font-bold mt-1">早中晚完整</div>
+        <p class="text-sm text-gray-600 mt-2 leading-6">早晨清新、中午轻松、傍晚看日落、夜间慢逛收尾。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite></p>
+      </div>
+      <div class="mini-kpi rounded-2xl p-5">
+        <div class="text-sm text-gray-500">推荐主线</div>
+        <div class="text-xl font-bold mt-1">岛上 + 岛内沿海</div>
+        <p class="text-sm text-gray-600 mt-2 leading-6">以鼓浪屿或海边晨间漫步开场，下午与傍晚切入环岛路、沙坡尾或中山路。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-4">[[4]]</a></cite></p>
+      </div>
+    </section>
+
+    <section id="summary" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">A. 一日游核心结论摘要</h2>
+      <div class="grid lg:grid-cols-2 gap-8">
+        <div>
+          <p class="leading-8 text-gray-700">
+            这份“厦门情侣一日游完整规划”的核心判断是：如果只安排一天，最合适的方式不是把景点堆满，而是把情侣最在意的几类体验集中到同一条顺路主线上——清新的海风、适合牵手散步的慢节奏空间、容易出片的城市地标与老街场景，以及能自然过渡到日落和夜景的晚间氛围。基于此前已明确的规划原则，整条路线应以“浪漫、轻松、可打卡、交通顺畅”为总方向，避免反复折返和频繁换乘。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+          </p>
+          <p class="leading-8 text-gray-700 mt-4">
+            从现有内容综合来看，最适合作为情侣一日游主线的，是“岛上半日 + 岛内沿海半日”的组合：上午以鼓浪屿或海边晨间漫步开启，利用安静、光线柔和、步行体验好的优势，完成当天最具浪漫感和纪念感的开场；中午到下午转入岛内，安排厦门特色餐食与休闲停留点；傍晚沿环岛路、黄厝海滩、白城沙滩、演武大桥观景平台、沙坡尾等区域承接日落与夜景；最后在中山路或沙坡尾一带慢逛收尾，形成完整的一天情绪曲线。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-4">[[4]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+          </p>
+        </div>
+        <div class="quote rounded-2xl p-6">
+          <h3 class="font-bold text-lg mb-4">一句话版本</h3>
+          <p class="text-gray-700 leading-8">
+            如果你们想要的是“一天之内既有海岛感、又有城市感，还能把日落和夜景都留住”的情侣路线，那么推荐的成品方案就是：
+            <span class="font-semibold text-pink-600">上午鼓浪屿慢逛 / 海边轻走 → 中午厦门特色餐食 → 下午沿海休闲与拍照 → 傍晚看日落 → 夜晚老街或港区散步收尾</span>。这条线既符合浪漫优先和轻松节奏，也最接近厦门情侣一日游的理想状态。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="timeline" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">B. 按时间轴展开的完整路线</h2>
+      <div class="mb-6">
+        <span class="badge-soft inline-flex px-4 py-2 rounded-full text-sm mr-2 mb-2">推荐结构：鼓浪屿晨间版</span>
+        <span class="badge-soft inline-flex px-4 py-2 rounded-full text-sm mr-2 mb-2">适合第一次来厦门的情侣</span>
+        <span class="badge-soft inline-flex px-4 py-2 rounded-full text-sm mb-2">若不想上岛，文末有海边替代版</span>
+      </div>
+
+      <div class="relative timeline pl-0">
+        <div class="relative pl-12 pb-10">
+          <div class="absolute left-2 top-2 time-dot"></div>
+          <div class="rounded-2xl border border-pink-100 bg-white p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <span class="text-sm font-semibold text-pink-600">早上 08:00 - 11:30</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-700">建议停留 3 - 3.5 小时</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3">第一段：鼓浪屿晨间慢逛，作为一天最浪漫的开场</h3>
+            <p class="text-gray-700 leading-8">
+              上午建议把最轻盈、最适合牵手散步的一段留给鼓浪屿。多份内容都把鼓浪屿视为厦门最具文艺与浪漫气质的核心片区，常见体验包括登岛后在老别墅、小巷、龙头路、菽庄花园、日光岩、港仔后沙滩等区域缓慢步行，感受海岛与建筑交织出的安静氛围。对情侣来说，清晨或上午较早时段上岛，人流相对更温和，拍照也更容易出效果。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-6">[[6]]</a></cite><cite><a class="cite-link" href="#ref-7">[[7]]</a></cite>
+            </p>
+            <p class="text-gray-700 leading-8 mt-3">
+              推荐顺序可按“上岛—小巷慢走—海边停留—简单逛吃”来安排，而不是一口气塞进所有收费点。原因很简单：情侣一日游更需要情绪流动，而不是景点打卡压力。若把上午重点放在安静散步、海风、建筑和合照上，整天的状态会比“赶景点”好很多。若你们想保留代表性打卡，可优先保留最美转角、岛上老建筑步行段、靠海区域短暂停留等体验。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-8">[[8]]</a></cite>
+            </p>
+            <div class="mt-4 grid md:grid-cols-3 gap-3">
+              <div class="rounded-xl bg-rose-50 p-4">
+                <div class="font-semibold mb-1">体验亮点</div>
+                <div class="text-sm text-gray-600 leading-6">岛上步行感强、建筑有氛围、适合情侣慢慢进入当天节奏。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite></div>
+              </div>
+              <div class="rounded-xl bg-blue-50 p-4">
+                <div class="font-semibold mb-1">拍照重点</div>
+                <div class="text-sm text-gray-600 leading-6">老别墅、小巷转角、海边步道、柔和晨光。<cite><a class="cite-link" href="#ref-7">[[7]]</a></cite><cite><a class="cite-link" href="#ref-8">[[8]]</a></cite></div>
+              </div>
+              <div class="rounded-xl bg-yellow-50 p-4">
+                <div class="font-semibold mb-1">节奏提醒</div>
+                <div class="text-sm text-gray-600 leading-6">上午不建议塞太多景点，保留“慢走 + 合照 + 轻食”即可。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative pl-12 pb-10">
+          <div class="absolute left-2 top-2 time-dot"></div>
+          <div class="rounded-2xl border border-pink-100 bg-white p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <span class="text-sm font-semibold text-pink-600">中午 11:30 - 13:00</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-700">建议停留 1 - 1.5 小时</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3">第二段：回到岛内吃一顿“有厦门感”的午餐</h3>
+            <p class="text-gray-700 leading-8">
+              午餐建议不要放在匆忙的景点切换中解决，而要作为中段休息点。现有资料里，多次出现的厦门代表性小吃和正餐场景主要集中在中山路、八市、龙头路及部分老城区街巷，包括沙茶面、海蛎煎、土笋冻、花生汤、烧肉粽、鱼丸汤等。对于情侣一日游，午餐更建议采取“两种风格二选一”：一种是正餐式坐下慢吃，补充体力；另一种是边走边尝几样经典小吃，但不要一次安排过多，避免下午太累。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-9">[[9]]</a></cite><cite><a class="cite-link" href="#ref-10">[[10]]</a></cite>
+            </p>
+            <p class="text-gray-700 leading-8 mt-3">
+              如果上午选择鼓浪屿，午餐回到岛内后接中山路或八市会更顺，因为这两个区域本身就是“逛吃 + 老城氛围”的典型片区，也能为下午从老城向沿海过渡提供缓冲。中山路更适合想保留骑楼夜景印象、顺便逛伴手礼与街区的情侣；八市则更偏本地烟火气和小吃聚集。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-9">[[9]]</a></cite><cite><a class="cite-link" href="#ref-11">[[11]]</a></cite>
+            </p>
+          </div>
+        </div>
+
+        <div class="relative pl-12 pb-10">
+          <div class="absolute left-2 top-2 time-dot"></div>
+          <div class="rounded-2xl border border-pink-100 bg-white p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <span class="text-sm font-semibold text-pink-600">下午 13:30 - 16:30</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-700">建议停留 2.5 - 3 小时</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3">第三段：转入岛内沿海休闲段，留给情侣互动与拍照</h3>
+            <p class="text-gray-700 leading-8">
+              下午的安排，不宜再转成高密度景点模式，更适合作为“轻松体验段”。现有内容里，适合情侣在午后接入的区域主要包括沙坡尾、白城沙滩、环岛路、曾厝垵、黄厝海滩、演武大桥观景平台附近等。这些地方共同的优点是：步行或骑行体验好、视野开阔、互动场景自然、既能拍照又不需要太强的体力投入。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-12">[[12]]</a></cite>
+            </p>
+            <p class="text-gray-700 leading-8 mt-3">
+              在实际执行上，下午建议采用“一个文艺片区 + 一段海边停留”的组合。例如，先在沙坡尾短暂停留，看看老渔港与艺术西区的氛围，再移动到白城沙滩或黄厝海滩附近，把接下来最舒服的一段时间留给吹海风、散步、喝咖啡、拍双人照。相比把曾厝垵、猫街、白城、沙坡尾全部塞进同一个下午，这种取舍更符合“轻松节奏”的原始定位。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-12">[[12]]</a></cite>
+            </p>
+            <div class="mt-4 rounded-2xl bg-gradient-to-r from-pink-50 to-blue-50 p-5">
+              <div class="font-semibold mb-2">下午推荐落点</div>
+              <ul class="list-disc pl-5 text-gray-700 leading-7">
+                <li>想要文艺氛围更强：优先沙坡尾 + 演武大桥观景平台附近。<cite><a class="cite-link" href="#ref-12">[[12]]</a></cite><cite><a class="cite-link" href="#ref-13">[[13]]</a></cite></li>
+                <li>想要海边感更强：优先白城沙滩 / 黄厝海滩 + 环岛路散步或骑行。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-14">[[14]]</a></cite></li>
+                <li>想要“城市地标 + 海景”同框：可把双子塔视角、演武大桥海边视角作为拍照补充。<cite><a class="cite-link" href="#ref-13">[[13]]</a></cite><cite><a class="cite-link" href="#ref-15">[[15]]</a></cite></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative pl-12 pb-10">
+          <div class="absolute left-2 top-2 time-dot"></div>
+          <div class="rounded-2xl border border-pink-100 bg-white p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <span class="text-sm font-semibold text-pink-600">傍晚 16:30 - 18:30</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-700">建议停留 1.5 - 2 小时</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3">第四段：把日落放进路线中心，而不是附属项</h3>
+            <p class="text-gray-700 leading-8">
+              对情侣一日游而言，傍晚并不是“顺便看一眼落日”，而应是全天的情绪高潮。已有多份内容反复提到环岛路、黄厝海滩、白城沙滩、演武大桥观景平台、曾厝垵海边、钟鼓索道等适合看日落的地点，其中沿海开放空间的优势在于停留自由、氛围轻盈，尤其适合两个人并肩看海。<cite><a class="cite-link" href="#ref-4">[[4]]</a></cite><cite><a class="cite-link" href="#ref-14">[[14]]</a></cite><cite><a class="cite-link" href="#ref-16">[[16]]</a></cite>
+            </p>
+            <p class="text-gray-700 leading-8 mt-3">
+              若当天执行的是“鼓浪屿上午版”，傍晚最推荐把时间留给环岛路沿线或黄厝、白城这样的海边点位；若你们更想要高处俯瞰山海城同框的效果，也可以把钟鼓索道作为傍晚方案，但需考虑排队、天气和风感因素。综合轻松度、自由度和情侣氛围，沿海步行看日落仍然是更稳妥的首选。<cite><a class="cite-link" href="#ref-4">[[4]]</a></cite><cite><a class="cite-link" href="#ref-17">[[17]]</a></cite><cite><a class="cite-link" href="#ref-18">[[18]]</a></cite>
+            </p>
+          </div>
+        </div>
+
+        <div class="relative pl-12">
+          <div class="absolute left-2 top-2 time-dot"></div>
+          <div class="rounded-2xl border border-pink-100 bg-white p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <span class="text-sm font-semibold text-pink-600">晚间 18:30 - 21:30</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-700">建议停留 2 - 3 小时</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3">第五段：晚餐 + 夜景慢逛收尾，让一天自然落下</h3>
+            <p class="text-gray-700 leading-8">
+              晚间建议把“吃”和“逛”结合起来，而不是继续高频转场。现有资料中，中山路步行街、沙坡尾、八市周边都适合作为夜间收尾片区。中山路的优势是骑楼夜景、老街烟火和集中小吃；沙坡尾更偏年轻化、港区氛围与文艺感；如果下午已经在沙坡尾停留较久，晚上回中山路会更有层次；如果下午都在海边，晚餐后去沙坡尾慢走，会更像一场轻松延长线。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-12">[[12]]</a></cite><cite><a class="cite-link" href="#ref-19">[[19]]</a></cite>
+            </p>
+            <p class="text-gray-700 leading-8 mt-3">
+              晚餐部分更建议选一顿坐得下来、能稍微休息的正餐，之后再安排轻量夜游。这样不仅能照顾体力，也会让当天结束得更温柔。对情侣来说，最理想的结尾并不是“再赶一个点”，而是在夜风里慢慢走、把白天拍的照片翻一遍、顺手再买一份花生汤或烧仙草，当作这趟一日游的最后一口记忆。<cite><a class="cite-link" href="#ref-5">[[5]]</a></cite><cite><a class="cite-link" href="#ref-9">[[9]]</a></cite>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid lg:grid-cols-5 gap-6 mb-10">
+      <div class="lg:col-span-3 glass rounded-3xl p-7">
+        <h2 class="section-title text-2xl font-bold mb-5">推荐成品路线（可直接执行）</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full table-soft text-sm">
+            <thead>
+              <tr class="bg-pink-50">
+                <th class="text-left px-4 py-3 font-semibold">时段</th>
+                <th class="text-left px-4 py-3 font-semibold">建议安排</th>
+                <th class="text-left px-4 py-3 font-semibold">停留时长</th>
+                <th class="text-left px-4 py-3 font-semibold">核心感受</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b">
+                <td class="px-4 py-3">08:00 - 11:30</td>
+                <td class="px-4 py-3">鼓浪屿晨间慢逛 / 轻度打卡</td>
+                <td class="px-4 py-3">3 - 3.5小时</td>
+                <td class="px-4 py-3">文艺、安静、适合合照</td>
+              </tr>
+              <tr class="border-b">
+                <td class="px-4 py-3">11:30 - 13:00</td>
+                <td class="px-4 py-3">回岛内午餐，中山路或八市附近</td>
+                <td class="px-4 py-3">1 - 1.5小时</td>
+                <td class="px-4 py-3">厦门味道、补充体力</td>
+              </tr>
+              <tr class="border-b">
+                <td class="px-4 py-3">13:30 - 16:30</td>
+                <td class="px-4 py-3">沙坡尾 / 白城 / 黄厝一线自由安排</td>
+                <td class="px-4 py-3">2.5 - 3小时</td>
+                <td class="px-4 py-3">海边散步、互动拍照</td>
+              </tr>
+              <tr class="border-b">
+                <td class="px-4 py-3">16:30 - 18:30</td>
+                <td class="px-4 py-3">环岛路或海滩看日落</td>
+                <td class="px-4 py-3">1.5 - 2小时</td>
+                <td class="px-4 py-3">当天高潮、浪漫氛围最强</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3">18:30 - 21:30</td>
+                <td class="px-4 py-3">晚餐 + 中山路或沙坡尾夜间慢逛</td>
+                <td class="px-4 py-3">2 - 3小时</td>
+                <td class="px-4 py-3">夜景、老街、温柔收尾</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-gray-700 leading-8 mt-5">
+          这条线的好处在于：情绪上从安静到热闹、从白天到夜晚、从岛屿到城市自然递进；体感上则避开了“一天里不断折返、不断打车、不断赶时间”的消耗。它不是景点最多的一条，但很可能是情侣满意度最高的一条。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+        </p>
+      </div>
+      <div class="lg:col-span-2 glass rounded-3xl p-7">
+        <h2 class="section-title text-2xl font-bold mb-5">路线情绪曲线</h2>
+        <div id="moodChart" style="height:320px;"></div>
+        <p class="text-sm text-gray-600 leading-7 mt-4">
+          图中仅用于展示本次规划中的体验节奏变化：上午偏安静与文艺，中午回归烟火气，下午进入互动与轻松，傍晚浪漫值达到峰值，夜间以舒缓收尾。该图反映的是路线设计逻辑，而非量化旅游评分。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+        </p>
+      </div>
+    </section>
+
+    <section id="traffic" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">C. 交通衔接建议：为什么推荐“岛上半日 + 岛内沿海半日”</h2>
+      <div class="grid lg:grid-cols-2 gap-8">
+        <div>
+          <p class="text-gray-700 leading-8">
+            从情侣一日游的需求看，“岛上半日 + 岛内沿海半日”的结构，比“纯岛内多点散射”或“单纯鼓浪屿到底”更均衡。原因主要有三点：第一，鼓浪屿天然适合做晨间和前半日体验，因为步行感强、视觉层次丰富、适合把当天最好看的照片提前拍完；第二，岛内沿海区域如沙坡尾、白城、环岛路、黄厝一线，天然适合承接午后和傍晚，因为这里最重要的价值在于看海、看日落、慢节奏停留；第三，这样的切分能把渡轮、城市老街、海边日落、夜景这几种厦门代表元素串起来，不浪费一整天的时间结构。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+          </p>
+          <p class="text-gray-700 leading-8 mt-4">
+            此外，已有内容中多次强调中山路—轮渡—沙坡尾—环岛路—曾厝垵等片区在实际旅行中常被串联使用，说明这类片区在地理和旅行体验上本就存在较强连接性。相比跨到集美或土楼方向，情侣一日游若坚持留在思明沿海一线，会明显更顺路，也更符合“不赶、不折返”的原则。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-20">[[20]]</a></cite>
+          </p>
+        </div>
+        <div>
+          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-pink-50 p-6 h-full">
+            <h3 class="font-bold text-lg mb-4">实际衔接思路</h3>
+            <ul class="space-y-4 text-gray-700 leading-7">
+              <li>
+                <span class="font-semibold">上半天：</span>
+                以登岛或海边晨间漫步完成当天最重要的“浪漫开场”。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </li>
+              <li>
+                <span class="font-semibold">中段：</span>
+                回到老城吃饭，让节奏从“看景”切换到“休息 + 烟火气”。<cite><a class="cite-link" href="#ref-9">[[9]]</a></cite>
+              </li>
+              <li>
+                <span class="font-semibold">下半天：</span>
+                沿思明南部海岸线展开，不再大跨度移动，减少频繁换乘。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-20">[[20]]</a></cite>
+              </li>
+              <li>
+                <span class="font-semibold">傍晚和夜晚：</span>
+                让日落与夜景成为完整收尾，而不是单独再赶一个区域。<cite><a class="cite-link" href="#ref-4">[[4]]</a></cite><cite><a class="cite-link" href="#ref-19">[[19]]</a></cite>
+              </li>
+            </ul>
+            <div class="mt-5 p-4 rounded-xl bg-white border border-pink-100 text-sm text-gray-600 leading-7">
+              简单说，这不是“景点最多”的路线，而是“切换成本最低、浪漫保留最多”的路线。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="food" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">D. 餐饮建议：正餐、小吃与咖啡休息场景如何分配</h2>
+      <div class="grid lg:grid-cols-3 gap-6">
+        <div class="rounded-2xl border border-pink-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">1. 正餐建议</h3>
+          <p class="text-gray-700 leading-8">
+            正餐最好放在中午或晚间二选一，作为一段完整休息。中午适合在中山路或八市附近解决，以沙茶面、海蛎煎、烧肉粽、鱼丸汤、花生汤等典型厦门风味为主；晚间则更适合选择坐得下来、氛围稍稳定的餐厅，用来为当天收尾。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-9">[[9]]</a></cite><cite><a class="cite-link" href="#ref-10">[[10]]</a></cite>
+          </p>
+        </div>
+        <div class="rounded-2xl border border-blue-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">2. 小吃建议</h3>
+          <p class="text-gray-700 leading-8">
+            小吃更适合作为穿插型体验，不建议在同一时间密集安排太多。可以把它们拆开：上午轻量补给、午餐补充一到两样、夜间再来一份甜品或汤品。这样既能保留厦门味道，也不至于吃得太累。<cite><a class="cite-link" href="#ref-9">[[9]]</a></cite><cite><a class="cite-link" href="#ref-11">[[11]]</a></cite>
+          </p>
+        </div>
+        <div class="rounded-2xl border border-yellow-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">3. 咖啡/休息建议</h3>
+          <p class="text-gray-700 leading-8">
+            咖啡馆或轻休息更适合放在下午沿海时段，比如沙坡尾、鼓浪屿岛上老洋房环境、海边附近休息点。对情侣而言，这种坐下来整理照片、看海、降温的停顿，本身就是一天体验的一部分。<cite><a class="cite-link" href="#ref-5">[[5]]</a></cite><cite><a class="cite-link" href="#ref-12">[[12]]</a></cite>
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-8 grid md:grid-cols-2 gap-6">
+        <div class="rounded-2xl bg-pink-50 p-6">
+          <h3 class="font-bold mb-3">适合做正餐的场景</h3>
+          <ul class="list-disc pl-5 text-gray-700 leading-7">
+            <li>中午从鼓浪屿回岛后，在中山路/八市附近认真吃一顿。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite></li>
+            <li>晚间看完日落后，找一间环境舒服的餐厅慢慢吃。<cite><a class="cite-link" href="#ref-5">[[5]]</a></cite></li>
+            <li>如果下午行程偏走路多，晚餐比午餐更应该坐下来。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite></li>
+          </ul>
+        </div>
+        <div class="rounded-2xl bg-blue-50 p-6">
+          <h3 class="font-bold mb-3">适合做小吃/咖啡的场景</h3>
+          <ul class="list-disc pl-5 text-gray-700 leading-7">
+            <li>鼓浪屿小巷中途轻食，不打断步行氛围。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite></li>
+            <li>沙坡尾或海边下午茶，作为情侣休息段。<cite><a class="cite-link" href="#ref-12">[[12]]</a></cite></li>
+            <li>夜间老街慢逛时加一份花生汤、烧仙草或小吃收尾。<cite><a class="cite-link" href="#ref-9">[[9]]</a></cite></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="photo" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">E. 情侣拍照与氛围亮点</h2>
+      <div class="grid lg:grid-cols-2 gap-8 items-start">
+        <div>
+          <p class="text-gray-700 leading-8">
+            情侣路线的拍照重点，不应只看“网红点”，更要看拍摄时的状态是否舒展。综合现有内容，厦门适合情侣的拍照与氛围亮点主要分成四类：第一类是鼓浪屿的老建筑与转角巷道，适合记录“散步感”和复古感；第二类是白城、黄厝、环岛路这类海边开放场景，适合拍牵手背影、看海侧脸和日落剪影；第三类是沙坡尾、演武大桥、双子塔视角一带，适合带一点城市感的氛围照；第四类则是中山路夜晚骑楼和灯光街景，适合把一天落在烟火与夜色里。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-12">[[12]]</a></cite><cite><a class="cite-link" href="#ref-19">[[19]]</a></cite>
+          </p>
+          <p class="text-gray-700 leading-8 mt-4">
+            另外，现有零散内容中也明确提到了“看海、看日落、看夜景”本身就是情侣出游的重要情绪节点，而不仅仅是景点名称。因此比起追求拍满所有地标，更建议保留几个“能一起待一会儿”的地方：例如鼓浪屿某段安静坡道、海边长椅、沙坡尾港边、黄厝海滩日落时段。这些地方更容易拍出自然状态，也更接近情侣旅行真正想保留的记忆。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite><cite><a class="cite-link" href="#ref-21">[[21]]</a></cite>
+          </p>
+        </div>
+        <div>
+          <div class="rounded-2xl bg-gradient-to-br from-pink-50 to-white p-6 mb-5">
+            <h3 class="font-bold mb-3">最稳妥的 5 类出片场景</h3>
+            <ol class="list-decimal pl-5 text-gray-700 leading-7">
+              <li>鼓浪屿老洋房与转角街巷。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-8">[[8]]</a></cite></li>
+              <li>黄厝、白城等海滩的并肩背影。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-14">[[14]]</a></cite></li>
+              <li>环岛路步行或骑行中的抓拍。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite></li>
+              <li>沙坡尾港区、艺术西区与城市轮廓。<cite><a class="cite-link" href="#ref-12">[[12]]</a></cite></li>
+              <li>中山路骑楼夜景下的慢逛瞬间。<cite><a class="cite-link" href="#ref-19">[[19]]</a></cite></li>
+            </ol>
+          </div>
+          <div class="rounded-2xl bg-blue-50 p-6">
+            <h3 class="font-bold mb-3">氛围关键词</h3>
+            <div class="flex flex-wrap gap-2">
+              <span class="px-3 py-2 rounded-full bg-white text-sm">海风感</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">老城烟火</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">慢节奏</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">日落剪影</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">夜景散步</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">文艺街区</span>
+              <span class="px-3 py-2 rounded-full bg-white text-sm">海岛小巷</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tips" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">F. 注意事项</h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="rounded-2xl border border-pink-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">1. 鼓浪屿相关提醒</h3>
+          <p class="text-gray-700 leading-8">
+            如果采用鼓浪屿晨间版路线，船票与登岛时间应提前关注，尤其节假日更要提早安排；岛上整体以步行为主，情侣一日游更适合轻装，不建议携带过多行李。多份资料也都提醒，不要依赖非官方渠道购票或临时起意上岛。<cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-6">[[6]]</a></cite><cite><a class="cite-link" href="#ref-20">[[20]]</a></cite>
+          </p>
+        </div>
+        <div class="rounded-2xl border border-blue-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">2. 不要过度赶路</h3>
+          <p class="text-gray-700 leading-8">
+            这次规划的底层逻辑就是“少一点点位，多一点完整体验”。因此即使看到很多热门场景，也不建议把集美、植物园、钟鼓索道、曾厝垵、鼓浪屿、中山路全部压在一天里。越想什么都要，越容易失去情侣出行应有的舒适度。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+          </p>
+        </div>
+        <div class="rounded-2xl border border-yellow-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">3. 天气与海边体验要留弹性</h3>
+          <p class="text-gray-700 leading-8">
+            多份内容都提到，海边、钟鼓索道、十里长堤等体验对天气较敏感。晴天时海边和日落的视觉回报很高；遇到阴天、雨天或风大时，体验会打折，尤其索道若为半开放式车厢，还需要额外注意风和雨。<cite><a class="cite-link" href="#ref-17">[[17]]</a></cite><cite><a class="cite-link" href="#ref-18">[[18]]</a></cite><cite><a class="cite-link" href="#ref-22">[[22]]</a></cite>
+          </p>
+        </div>
+        <div class="rounded-2xl border border-green-100 bg-white p-6">
+          <h3 class="font-bold text-lg mb-3">4. 体力安排比打卡更重要</h3>
+          <p class="text-gray-700 leading-8">
+            鼓浪屿、海边步行、老街夜逛都会累计步数，一日游中间一定要安排可坐下休息的环节。中午和下午至少保留一次完整坐下来的时间，才能保证傍晚看日落和晚间散步仍有好状态。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="backup" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">G. 备选方案</h2>
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-white p-6">
+          <h3 class="text-xl font-bold mb-4">方案一：遇到下雨怎么办</h3>
+          <p class="text-gray-700 leading-8">
+            如果遇到下雨，不建议硬冲海边或把钟鼓索道当主轴，因为现有内容明确提到阴雨天海边和索道体验都会明显下滑。更适合的替代方式，是把路线调整成“南普陀寺—植物园—沙坡尾/中山路—晚餐收尾”的室外轻雨版或半室内版。南普陀在雨天反而有氛围，植物园雨雾感也被多次提到有独特气质，而中山路适合作为晚间收尾。<cite><a class="cite-link" href="#ref-17">[[17]]</a></cite><cite><a class="cite-link" href="#ref-18">[[18]]</a></cite>
+          </p>
+          <div class="mt-4 rounded-xl bg-white p-4 border border-blue-100">
+            <div class="font-semibold mb-2">雨天替代路线</div>
+            <p class="text-gray-700 leading-7">
+              上午南普陀寺 → 中午附近用餐 → 下午植物园或沙坡尾轻逛 → 晚间中山路吃饭散步。<cite><a class="cite-link" href="#ref-17">[[17]]</a></cite><cite><a class="cite-link" href="#ref-22">[[22]]</a></cite>
+            </p>
+          </div>
+        </div>
+        <div class="rounded-2xl bg-gradient-to-br from-pink-50 to-white p-6">
+          <h3 class="text-xl font-bold mb-4">方案二：起床较晚怎么办</h3>
+          <p class="text-gray-700 leading-8">
+            如果起床较晚，不建议再强行塞入鼓浪屿，因为往返和步行都会压缩后半天节奏。此时更适合直接执行“纯岛内沿海版”：中午从中山路或八市附近开始吃饭，下午转沙坡尾或白城，傍晚去黄厝或环岛路看日落，晚间回到中山路或就近晚餐。这种方案虽然少了上岛体验，但保留了海边、日落、夜景和特色餐饮，同样符合情侣一日游的重点。<cite><a class="cite-link" href="#ref-3">[[3]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite><cite><a class="cite-link" href="#ref-19">[[19]]</a></cite>
+          </p>
+          <div class="mt-4 rounded-xl bg-white p-4 border border-pink-100">
+            <div class="font-semibold mb-2">晚起替代路线</div>
+            <p class="text-gray-700 leading-7">
+              中午中山路/八市午餐 → 下午沙坡尾 + 海边停留 → 傍晚环岛路或黄厝日落 → 晚上中山路夜景收尾。<cite><a class="cite-link" href="#ref-9">[[9]]</a></cite><cite><a class="cite-link" href="#ref-14">[[14]]</a></cite><cite><a class="cite-link" href="#ref-19">[[19]]</a></cite>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="ending" class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">H. 结尾：适合情侣出游的一句温柔总结</h2>
+      <div class="quote rounded-2xl p-6">
+        <p class="text-xl md:text-2xl leading-relaxed font-semibold text-gray-800">
+          在厦门，一天其实不长，但只要你们把海风、日落和并肩走过的路留给彼此，这座城市就会替你们把浪漫慢慢说完。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-5">[[5]]</a></cite>
+        </p>
+      </div>
+    </section>
+
+    <section class="glass rounded-3xl p-7 md:p-9 mb-10">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">补充说明：本页如何整合已提供文档内容</h2>
+      <p class="text-gray-700 leading-8">
+        用户要求在未提供核心文档时，以当前会话中的文档为主要信息来源，并确保文档内容完整呈现且语义准确。基于网页交付目标，本报告对文档中的旅游信息进行了筛选与整合：保留与“厦门情侣一日游完整规划”直接相关的定位原则、景点特征、片区串联、时段建议、美食与注意事项；同时过滤了明显的广告、导航、平台页眉页脚、无关城市内容、不可用页面提示以及与本任务主题无直接关系的噪音文本。整页结论均以文档中重复出现且相互印证的内容为基础，没有额外编造新的票价、交通时长或未被材料支持的细节。<cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-4">[[4]]</a></cite><cite><a class="cite-link" href="#ref-22">[[22]]</a></cite>
+      </p>
+    </section>
+
+    <section id="references" class="glass rounded-3xl p-7 md:p-9">
+      <h2 class="section-title text-2xl md:text-3xl font-bold mb-6">参考文献</h2>
+      <ol class="space-y-3 text-gray-700 leading-7">
+        <li id="ref-1">[[1]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">厦门情侣一日游核心定位.md</a></cite></li>
+        <li id="ref-2">[[2]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 中山路徒步区行程推荐| Trip Moments</a></cite></li>
+        <li id="ref-3">[[3]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">芳1話很多68 真的超推薦大家去廈門可以去這裡！ - Instagram</a></cite></li>
+        <li id="ref-4">[[4]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026鐘鼓索道| 廈門景點指南與旅客實拍| Trip Moments</a></cite></li>
+        <li id="ref-5">[[5]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門情侶約會攻略｜3 個最有感覺的浪漫時刻】 環島路日落</a></cite></li>
+        <li id="ref-6">[[6]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">鼓浪嶼必玩景點 - TikTok</a></cite></li>
+        <li id="ref-7">[[7]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">厦门2026旅游指南：您的终极攻略 - KKday</a></cite></li>
+        <li id="ref-8">[[8]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門天氣】2026廈門氣溫指南，最佳旅遊季節與穿衣搭配建議</a></cite></li>
+        <li id="ref-9">[[9]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 中山路徒步區行程推薦| Trip Moments（中山路/八市/小吃相关段落）</a></cite></li>
+        <li id="ref-10">[[10]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門天氣】2026廈門氣溫指南，最佳旅遊季節與穿衣搭配建議（美食与景点概览段落）</a></cite></li>
+        <li id="ref-11">[[11]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 中山路徒步區行程推薦| Trip Moments（八市与夜景相关段落）</a></cite></li>
+        <li id="ref-12">[[12]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026鐘鼓索道| 廈門景點指南與旅客實拍| Trip Moments（沙坡尾/植物园/沿海串联段落）</a></cite></li>
+        <li id="ref-13">[[13]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026鐘鼓索道詳細攻略推薦| Trip Moments（双子塔、城市海景、索道视角段落）</a></cite></li>
+        <li id="ref-14">[[14]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門天氣】2026廈門氣溫指南，最佳旅遊季節與穿衣搭配建議（黄厝/白城/环岛路日落段落）</a></cite></li>
+        <li id="ref-15">[[15]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026鐘鼓索道詳細攻略推薦| Trip Moments（鴻山寺/双子塔/海边同框相关段落）</a></cite></li>
+        <li id="ref-16">[[16]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026鐘鼓索道詳細攻略推薦| Trip Moments（钟鼓索道日落建议段落）</a></cite></li>
+        <li id="ref-17">[[17]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 鐘鼓索道詳細攻略推薦| Trip Moments（雨天避雷与索道体验段落）</a></cite></li>
+        <li id="ref-18">[[18]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 鐘鼓索道詳細攻略推薦| Trip Moments（半开放车厢、傍晚时段段落）</a></cite></li>
+        <li id="ref-19">[[19]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">2026 中山路徒步區行程推薦| Trip Moments（中山路夜景与夜逛段落）</a></cite></li>
+        <li id="ref-20">[[20]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">LoMAigAi jEnNy / SparkGlimmer / SiiriKoskinen 等厦门路线整合片段（均收录于提供文档中）</a></cite></li>
+        <li id="ref-21">[[21]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門情侶約會攻略｜3 個最有感覺的浪漫時刻】老洋房咖啡馆与鼓浪屿夜晚片段</a></cite></li>
+        <li id="ref-22">[[22]]、<cite><a class="cite-link" href="javascript:void(0)" target="_blank" rel="noopener noreferrer">【廈門天氣】2026廈門氣溫指南，最佳旅遊季節與穿衣搭配建議 / 雨天替代建议相关段落</a></cite></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="mt-12">
+    <div class="max-w-7xl mx-auto px-6 py-8 text-center text-gray-600 text-sm leading-7">
+      <div>Created by Autobots</div>
+      <div>页面内容均由 AI 生成，仅供参考</div>
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script>
+    const moodEl = document.getElementById('moodChart');
+    if (moodEl) {
+      const moodChart = echarts.init(moodEl);
+      const option = {
+        grid: { left: 36, right: 20, top: 30, bottom: 30 },
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: ['早上', '中午', '下午', '傍晚', '晚间'],
+          axisLine: { lineStyle: { color: '#d7c1cb' } },
+          axisLabel: { color: '#64748b' }
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          max: 10,
+          splitNumber: 5,
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: '#64748b' },
+          splitLine: { lineStyle: { color: '#f4e7ed' } }
+        },
+        series: [
+          {
+            name: '浪漫氛围',
+            type: 'line',
+            smooth: true,
+            data: [7, 6, 8, 10, 8],
+            symbol: 'circle',
+            symbolSize: 10,
+            lineStyle: { width: 4, color: '#ff6b8a' },
+            itemStyle: { color: '#ff6b8a' },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                { offset: 0, color: 'rgba(255,107,138,.28)' },
+                { offset: 1, color: 'rgba(255,107,138,.04)' }
+              ])
+            }
+          },
+          {
+            name: '轻松度',
+            type: 'line',
+            smooth: true,
+            data: [8, 7, 8, 7, 9],
+            symbol: 'circle',
+            symbolSize: 9,
+            lineStyle: { width: 3, color: '#5fb7d4' },
+            itemStyle: { color: '#5fb7d4' }
+          }
+        ]
+      };
+      moodChart.setOption(option);
+      window.addEventListener('resize', () => moodChart.resize());
+    }
+  </script>
+</body>
+</html>

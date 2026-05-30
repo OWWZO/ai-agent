@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K/DA 卡莎海报（参考图风格融合）</title>
+
+  <!-- Tailwind CSS CDN -->
+  <link href="https://unpkg.com/tailwindcss/dist/tailwind.min.css" rel="stylesheet"/>
+
+  <style>
+    :root{
+      --bg0:#070812;
+      --bg1:#0b0d1e;
+      --card: rgba(255,255,255,.06);
+      --card2: rgba(255,255,255,.08);
+      --line: rgba(255,255,255,.10);
+      --text:#e9ecff;
+      --muted: rgba(233,236,255,.72);
+      --brand:#a855f7; /* purple */
+      --brand2:#22d3ee; /* cyan */
+      --accent:#fb7185; /* rose */
+      --link:#007bff;
+      --shadow: 0 18px 60px rgba(0,0,0,.55);
+    }
+    body{
+      background:
+        radial-gradient(1200px 700px at 15% 10%, rgba(168,85,247,.22), transparent 55%),
+        radial-gradient(900px 600px at 80% 20%, rgba(34,211,238,.18), transparent 52%),
+        radial-gradient(900px 700px at 40% 90%, rgba(251,113,133,.14), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      color: var(--text);
+      letter-spacing: .2px;
+    }
+    .container-max{
+      max-width: 1120px;
+    }
+    .neon-border{
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.03));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .neon-border::before{
+      content:"";
+      position:absolute;
+      inset: -2px;
+      background: conic-gradient(from 180deg, rgba(168,85,247,.65), rgba(34,211,238,.55), rgba(251,113,133,.55), rgba(168,85,247,.65));
+      filter: blur(18px);
+      opacity: .22;
+      pointer-events:none;
+    }
+    .section{
+      position: relative;
+      padding: 20px;
+    }
+    .section + .section{
+      border-top: 1px solid var(--line);
+    }
+    .kda-title{
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: .6px;
+      text-shadow: 0 0 18px rgba(168,85,247,.28), 0 0 30px rgba(34,211,238,.18);
+    }
+    .subtle{
+      color: var(--muted);
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      color: rgba(233,236,255,.85);
+      font-size: 12px;
+      user-select:none;
+    }
+    .grid-2{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    @media (min-width: 1024px){
+      .grid-2{ grid-template-columns: 1.15fr .85fr; }
+    }
+    .card{
+      border: 1px solid rgba(255,255,255,.11);
+      border-radius: 16px;
+      background: rgba(255,255,255,.045);
+      box-shadow: 0 10px 36px rgba(0,0,0,.35);
+    }
+    .card-hd{
+      padding: 14px 16px 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .card-bd{
+      padding: 14px 16px 16px 16px;
+    }
+    .hlabel{
+      font-size: 13px;
+      color: rgba(233,236,255,.78);
+    }
+    .hvalue{
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .codeblock{
+      position: relative;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(8,10,24,.72), rgba(8,10,24,.45));
+      padding: 14px 14px 12px 14px;
+      overflow: hidden;
+    }
+    .codeblock::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(900px 240px at 20% 0%, rgba(168,85,247,.14), transparent 55%),
+        radial-gradient(700px 240px at 90% 10%, rgba(34,211,238,.12), transparent 52%);
+      pointer-events:none;
+      opacity:.9;
+    }
+    pre{
+      position: relative;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: rgba(233,236,255,.92);
+      font-size: 13px;
+      line-height: 1.55;
+      margin:0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    .copy-btn{
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.05);
+      color: rgba(233,236,255,.88);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform .08s ease, background .15s ease, border-color .15s ease;
+      user-select:none;
+    }
+    .copy-btn:hover{
+      background: rgba(255,255,255,.08);
+      border-color: rgba(34,211,238,.35);
+    }
+    .copy-btn:active{
+      transform: scale(.98);
+    }
+    .img-frame{
+      border-radius: 16px;
+      overflow:hidden;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.03);
+    }
+    .img-frame img{
+      display:block;
+      width: 100%;
+      height: auto;
+      cursor: zoom-in;
+    }
+    .hint{
+      font-size: 12px;
+      color: rgba(233,236,255,.70);
+    }
+
+    /* Modal */
+    .modal{
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.72);
+      backdrop-filter: blur(8px);
+      z-index: 50;
+      padding: 18px;
+    }
+    .modal[aria-hidden="false"]{
+      display:flex;
+    }
+    .modal-panel{
+      width: min(1100px, 96vw);
+      max-height: 90vh;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: linear-gradient(180deg, rgba(15,18,42,.88), rgba(9,10,26,.78));
+      box-shadow: 0 22px 80px rgba(0,0,0,.65);
+      overflow: hidden;
+    }
+    .modal-head{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .modal-title{
+      font-size: 13px;
+      color: rgba(233,236,255,.80);
+    }
+    .modal-close{
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: rgba(233,236,255,.9);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .modal-body{
+      padding: 12px;
+    }
+    .modal-body img{
+      width: 100%;
+      height: auto;
+      display:block;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      cursor: zoom-out;
+    }
+
+    a.cite{
+      color: var(--link);
+      text-decoration: none;
+    }
+    a.cite:hover{ text-decoration: underline; }
+
+    footer{
+      color: rgba(233,236,255,.65);
+    }
+  </style>
+</head>
+
+<body>
+  <header class="px-4 pt-10 pb-6">
+    <div class="mx-auto container-max">
+      <div class="neon-border">
+        <div class="section">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="pill">深色霓虹风</span>
+              <span class="pill">可点击放大</span>
+              <span class="pill">提示词可复制</span>
+              <span class="pill">日期：2026-05-30</span>
+            </div>
+
+            <div>
+              <h1 class="kda-title text-3xl md:text-5xl">
+                K/DA 卡莎海报（参考图风格融合）
+              </h1>
+              <p class="subtle mt-3 text-sm md:text-base">
+                页面用于呈现“基于参考图风格生成的 K/DA 卡莎海报”最终结果，并以结构化方式整理可复用提示词（Prompt / Negative Prompt / 推荐参数），方便二次创作与复现。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="px-4 pb-10">
+    <div class="mx-auto container-max space-y-6">
+      <!-- 海报展示区 -->
+      <section class="neon-border">
+        <div class="section">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-hd">
+                <div>
+                  <div class="hlabel">海报展示区</div>
+                  <div class="hvalue mt-1">生成结果预览（点击放大）</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="copy-btn" id="openInNewBtn" type="button" aria-label="在新窗口打开">
+                    新窗口打开
+                  </button>
+                </div>
+              </div>
+              <div class="card-bd">
+                <div class="img-frame">
+                  <img
+                    id="posterImg"
+                    src="图片生成结果.png"
+                    alt="K/DA 卡莎海报生成结果（图片生成结果.png）"
+                    loading="eager"
+                  />
+                </div>
+                <p class="hint mt-3">
+                  提示：点击图片可进入放大预览；在放大层中点击图片或按 ESC 可关闭。
+                </p>
+              </div>
+            </div>
+
+            <aside class="card">
+              <div class="card-hd">
+                <div>
+                  <div class="hlabel">本页包含内容</div>
+                  <div class="hvalue mt-1">复现与交付要点</div>
+                </div>
+              </div>
+              <div class="card-bd">
+                <ul class="text-sm leading-relaxed space-y-2" style="color: rgba(233,236,255,.86);">
+                  <li>
+                    1) 顶部标题：<span class="font-semibold">K/DA 卡莎海报（参考图风格融合）</span>
+                  </li>
+                  <li>
+                    2) 海报展示区：嵌入本地文件 <span class="font-semibold">“图片生成结果.png”</span> 并支持点击放大
+                  </li>
+                  <li>
+                    3) 提示词区：<span class="font-semibold">正向提示词 / 负向提示词 / 推荐参数</span>（可复制）
+                  </li>
+                  <li>
+                    4) 外观特征来源说明：仅复述已归纳要点，<span class="font-semibold">不做臆测扩展</span>
+                  </li>
+                  <li>
+                    5) 视觉风格：深色霓虹、卡片分区、代码块样式，阅读友好
+                  </li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- 提示词区 -->
+      <section class="neon-border">
+        <div class="section">
+          <div class="flex items-end justify-between flex-wrap gap-3">
+            <div>
+              <h2 class="text-2xl font-extrabold">提示词区（结构化展示）</h2>
+              <p class="subtle mt-2 text-sm">
+                下列文本为可直接复制的中文提示词模板：包含风格继承、构图、外观要点、舞台灯光背景、标题文字与质量约束；并提供负向避免项与通用推荐参数。
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Prompt -->
+            <div class="card">
+              <div class="card-hd">
+                <div>
+                  <div class="hlabel">正向提示词（Prompt）</div>
+                  <div class="hvalue mt-1">可复制中文高质量提示词</div>
+                </div>
+                <button class="copy-btn" type="button" data-copy-target="promptText">复制 Prompt</button>
+              </div>
+              <div class="card-bd">
+                <div class="codeblock" aria-label="Prompt 代码块">
+<pre id="promptText">请基于参考图的整体视觉语言进行风格继承与融合：深色霓虹舞台氛围、强对比灯光与高光边缘、质感细腻且时尚前卫的海报风格。画面构图为竖版海报，主体居中偏上，半身到大腿的演出定妆照姿态，镜头略微仰视或平视，突出人物气场与舞台表现力。角色为 K/DA KAI’SA（卡莎）风格舞台造型：高马尾（单马尾），妆容精致、面部比例自然；演出服具有光油与珠光质感的面料高光；下装为镭射质感长裤，呈现清晰的彩虹反射与折射高光；佩戴耳坠，金属/晶体质感清晰；背部带半透明的荚囊装置（透明渐变质感，边缘有霓虹光晕与结构细节）。背景为舞台灯光与烟雾氛围：多色聚光灯、霓虹光束、粒子光点、轻微薄雾与体积光，形成层次分明的舞台空间。画面加入可读的海报标题文字：“K/DA KAI’SA / ALL OUT”，字体清晰、排版高级、与画面霓虹风格一致。整体要求：超清、高细节、干净锐利、皮肤与材质真实可信、灯光层次明确、色彩控制高级、无多余元素干扰、海报完成度高。</pre>
+                </div>
+                <p class="hint mt-3">
+                  建议将“参考图风格继承”与“具体外观要点”同时写入，能更稳定地保留风格与关键特征。
+                </p>
+              </div>
+            </div>
+
+            <!-- Negative -->
+            <div class="card">
+              <div class="card-hd">
+                <div>
+                  <div class="hlabel">负向提示词（Negative Prompt）</div>
+                  <div class="hvalue mt-1">避免项（质量与结构）</div>
+                </div>
+                <button class="copy-btn" type="button" data-copy-target="negText">复制 Negative</button>
+              </div>
+              <div class="card-bd">
+                <div class="codeblock" aria-label="Negative Prompt 代码块">
+<pre id="negText">低清、低分辨率、模糊、噪点过多、过度锐化、涂抹感、细节糊成一团；手部畸形、手指数量错误、关节扭曲、肢体比例异常；面部崩坏、五官错位、眼睛不对称、皮肤塑料感；文字乱码、不可读文字、错别字、字体糊、标题被遮挡；水印、logo、签名、边框标记；过曝、死黑、色彩脏、严重偏色；裁切主体、头顶/手臂/腿部被切断、构图过度拥挤；背景杂乱、非舞台环境、无关道具；重复人物、双头、多余肢体。</pre>
+                </div>
+                <p class="hint mt-3">
+                  若出现“标题文字”不清晰，可加强负向中的“文字乱码/不可读文字”，并在正向中强调“可读、清晰、排版高级”。
+                </p>
+              </div>
+            </div>
+
+            <!-- Params -->
+            <div class="card lg:col-span-2">
+              <div class="card-hd">
+                <div>
+                  <div class="hlabel">推荐参数（通用表述）</div>
+                  <div class="hvalue mt-1">图生图 / Edits 复现建议</div>
+                </div>
+                <button class="copy-btn" type="button" data-copy-target="paramsText">复制参数</button>
+              </div>
+              <div class="card-bd">
+                <div class="codeblock" aria-label="推荐参数代码块">
+<pre id="paramsText">模式：图生图（img2img）/ Edits（基于参考图进行风格与构图跟随）
+尺寸：1024 × 1536（竖版海报比例）
+生成张数：建议 4–8 张用于挑选最优构图与文字可读性
+风格强度 / 遵循度：从“中等”开始（既保留参考图气质，也确保人物与服装细节可控），不稳定时可逐步上调
+CFG / 提示词强度：使用“中等偏高”的通用设置以保证标题文字与材质细节被充分遵循（避免过高导致过曝或僵硬）
+细节与修复（可选）：开启基础的人脸/手部细节修复（若工具支持），并优先保证文字清晰与主体不被裁切</pre>
+                </div>
+                <p class="hint mt-3">
+                  以上为通用建议表达，不包含任何特定模型或私有参数；可根据你所使用的工具界面名称对应调整。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 外观特征来源说明 -->
+      <section class="neon-border">
+        <div class="section">
+          <h2 class="text-2xl font-extrabold">外观特征来源说明</h2>
+          <div class="mt-3 card">
+            <div class="card-bd">
+              <p class="text-sm leading-relaxed" style="color: rgba(233,236,255,.86);">
+                本页提示词中关于外观的关键要点仅来自你已指定/先前归纳的特征项：单马尾（高马尾）、镭射质感长裤、耳坠、以及背部半透明（透明渐变）的荚囊装置等；用于确保生成结果稳定保留这些“已明确给出的外观标记”。同时，本说明强调不对未提供的信息进行臆测扩展（例如未额外虚构品牌、具体舞台地点、未指定的服装细节或模型私参），以避免误导与信息偏移。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 参考文献 -->
+      <section class="neon-border">
+        <div class="section">
+          <h2 class="text-2xl font-extrabold">参考文献</h2>
+          <p class="subtle mt-2 text-sm">
+            本页内容仅依据本次对话任务要求生成；未引用外部网页或图片资源，因此无外链参考条目。
+          </p>
+          <div class="mt-3 card">
+            <div class="card-bd">
+              <p class="text-sm" style="color: rgba(233,236,255,.86);">
+                （无）
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="pt-2 pb-10 text-center text-xs">
+        <div class="mx-auto container-max">
+          <div class="border-t" style="border-color: rgba(255,255,255,.10);"></div>
+          <p class="mt-4 whitespace-pre-line">Created by Autobots
+页面内容均由 AI 生成，仅供参考</p>
+        </div>
+      </footer>
+    </div>
+  </main>
+
+  <!-- Modal (not empty; contains content) -->
+  <div class="modal" id="imgModal" aria-hidden="true" role="dialog" aria-label="海报放大预览弹窗">
+    <div class="modal-panel">
+      <div class="modal-head">
+        <div class="modal-title">海报放大预览：图片生成结果.png</div>
+        <button class="modal-close" id="modalCloseBtn" type="button">关闭（ESC）</button>
+      </div>
+      <div class="modal-body">
+        <img id="modalImg" src="图片生成结果.png" alt="放大预览：图片生成结果.png" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const posterImg = document.getElementById('posterImg');
+      const imgModal = document.getElementById('imgModal');
+      const modalCloseBtn = document.getElementById('modalCloseBtn');
+      const modalImg = document.getElementById('modalImg');
+      const openInNewBtn = document.getElementById('openInNewBtn');
+
+      function openModal() {
+        imgModal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+      }
+      function closeModal() {
+        imgModal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+      }
+
+      posterImg.addEventListener('click', openModal);
+      modalImg.addEventListener('click', closeModal);
+      modalCloseBtn.addEventListener('click', closeModal);
+
+      imgModal.addEventListener('click', function (e) {
+        // 点击遮罩关闭（点击面板内部不关闭）
+        if (e.target === imgModal) closeModal();
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && imgModal.getAttribute('aria-hidden') === 'false') {
+          closeModal();
+        }
+      });
+
+      openInNewBtn.addEventListener('click', function () {
+        // 仅使用会话内文件名，不引用外网
+        window.open('图片生成结果.png', '_blank', 'noopener,noreferrer');
+      });
+
+      // Copy-to-clipboard
+      async function copyTextFromEl(el) {
+        const text = el.innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch (err) {
+          // fallback
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          return ok;
+        }
+      }
+
+      const copyButtons = Array.from(document.querySelectorAll('[data-copy-target]'));
+      copyButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-copy-target');
+          const el = document.getElementById(id);
+          if (!el) return;
+
+          const old = btn.textContent;
+          const ok = await copyTextFromEl(el);
+          btn.textContent = ok ? '已复制' : '复制失败';
+          setTimeout(() => (btn.textContent = old), 1200);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

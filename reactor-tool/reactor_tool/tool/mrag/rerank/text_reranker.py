@@ -42,13 +42,19 @@ class APITextReranker(TextReranker):
         }
         self.model = os.getenv("TEXT_RERANKER_MODEL_NAME")
         self.timeout = int(os.getenv("API_TIMEOUT", 300))
+        self.max_document_length = int(os.getenv("TEXT_RERANKER_MAX_DOCUMENT_LENGTH", 8000))
+
+    def _normalize_documents(self, texts: list[str]) -> list[str]:
+        """在请求前统一裁剪文档长度，避免上游 rerank 服务直接拒绝。"""
+        return [text[:self.max_document_length] for text in texts]
 
     def _prepare_request_data(self, question: str, texts: list[str]) -> Dict[str, Any]:
+        normalized_texts = self._normalize_documents(texts)
         return {
             "model": self.model,
             "input": {
                 "query": question,
-                "documents": texts,
+                "documents": normalized_texts,
             }
         }
 
