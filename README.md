@@ -36,19 +36,19 @@
 </p>
 
 
-##### ReAct模式
+#### ReAct模式
 <p align="center">
   <img src="assets/readme/deepsearch展示.png" alt="Reactor 深度研究任务展示" width="48%" />
 </p>
 
-##### Plan Execute模式
+#### Plan Execute模式
 <p align="center">
   <img src="assets/readme/planexecute展示.png" alt="Reactor Plan Execute 任务展示" width="48%" />
 </p>
 
 
 ## ✨ 典型应用场景示例
-##### 1.基于 Deep Research Agent + Report Agent 生成结构化研究报告
+#### 1.基于 Deep Research Agent + Report Agent 生成结构化研究报告
 
 > HTML 报告更适合下载后本地打开，Markdown 报告可直接查看源码内容。
 
@@ -60,7 +60,7 @@
 | 场景案例 | [洛克王国新手攻略搜索总结](assets/readme/洛克王国新手攻略搜索总结.html) | HTML | [打开文件](assets/readme/洛克王国新手攻略搜索总结.html) |
 | 框架研究 | [Spring AI 框架核心概念与架构演进报告](assets/readme/Spring_AI框架核心概念与架构演进报告.md) | Markdown | [打开文件](assets/readme/Spring_AI框架核心概念与架构演进报告.md) |
 
-##### 报告结果预览
+#### 报告结果预览
 <p align="center">
   <img src="assets/readme/旅游规划.png" alt="原始图片输入示例" width="48%" />
 </p>
@@ -69,8 +69,8 @@
 </p>
 
 
-##### 2.多工具产物进行复用，结合 Skill 提升图片生成质量
-##### Workflow
+#### 2.多工具产物进行复用，结合 Skill 提升图片生成质量
+#### Workflow
 ```text
 
 User Query
@@ -102,7 +102,7 @@ User Query
 ```
 
 
-##### 最终结果
+#### 最终结果
 <p align="center">
   <img src="assets/readme/图片展示.png" alt="原始图片输入示例" width="48%" />
 
