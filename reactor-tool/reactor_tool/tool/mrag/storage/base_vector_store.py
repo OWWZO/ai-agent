@@ -206,6 +206,15 @@ class BaseVectorStore(ABC):
         """
         pass
 
+    @abstractmethod
+    def scroll_vectors(self,
+                       collection_name: str,
+                       limit: int = 100,
+                       offset: Optional[str] = None,
+                       filter_conditions: Optional[Dict] = None):
+        """滚动读取集合中的 payload。"""
+        pass
+
 
 class BaseCollectionVectorStore(ABC):
     """
@@ -273,6 +282,13 @@ class BaseCollectionVectorStore(ABC):
 
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]) -> bool:
         """根据文件ID列表删除向量"""
+        pass
+
+    def scroll_payloads(self,
+                        kb_id: str,
+                        limit: int = 100,
+                        offset: Optional[str] = None):
+        """按知识库滚动读取 payload。"""
         pass
 
 

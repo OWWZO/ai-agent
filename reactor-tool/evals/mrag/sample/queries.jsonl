@@ -1,0 +1,2 @@
+{"query_id":"sample-q1","question":"总结知识库里的 MRAG 召回流程","requires_retrieval":true}
+{"query_id":"sample-q2","question":"今天是星期几","requires_retrieval":false}

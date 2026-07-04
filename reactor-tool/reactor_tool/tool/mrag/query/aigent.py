@@ -19,6 +19,13 @@ import concurrent.futures
 import uuid
 from typing import List, Dict, Tuple
 
+from ..eval.canonical_keys import build_canonical_key, build_runtime_key
+from ..eval.trace import (
+    RetrievalTrace,
+    RetrievalTraceHit,
+    RetrievalTraceRound,
+    RetrievalTraceStage,
+)
 from .query_processor import QueryProcessor
 from ..generation import PromptManager
 from ..generation.llm import LLMClient
@@ -157,6 +164,134 @@ class AgenticRAG:
         return results
 
     @staticmethod
+    def _build_trace_hit(stage: str, query: str, chunk: Dict) -> RetrievalTraceHit:
+        """将现有 chunk 结构转成评测 trace hit。"""
+
+        payload = chunk.get("payload", {})
+        return RetrievalTraceHit(
+            stage=stage,
+            query=query,
+            score=float(chunk.get("score", 0.0)),
+            runtime_key=build_runtime_key(payload),
+            canonical_key=build_canonical_key(payload),
+            payload=payload,
+        )
+
+    def collect_retrieval_trace(self, question: str, image_urls: List[str] = None) -> RetrievalTrace:
+        """采集 retrieval-backed query 的内部检索 trace。"""
+
+        loop = 1
+        answer_question = question
+        total_sub_questions = []
+        total_sub_summaries = []
+        total_chunks = []
+        trace_rounds: list[RetrievalTraceRound] = []
+
+        if image_urls:
+            image_descs = [QueryProcessor.extract_image_content(uuid.uuid4().hex, image_url) for image_url in image_urls]
+        else:
+            image_descs = []
+
+        while True:
+            logger.info(f"第{loop}轮查询")
+            if loop == 1 and image_urls:
+                sub_questions = QueryProcessor.expand_question_with_images(answer_question, image_descs)
+            else:
+                sub_questions = QueryProcessor.extend_questions(answer_question)
+
+            if loop == 1:
+                sub_questions.insert(0, question)
+
+            total_sub_questions.extend(sub_questions)
+
+            logger.info("开始多路检索阶段")
+            current_chunks = self.multi_retrieval(sub_questions)
+            round_hits = []
+            for sub_question, query_chunks in zip(sub_questions, current_chunks):
+                for chunk in query_chunks:
+                    total_chunks.append(chunk)
+                    round_hits.append(self._build_trace_hit(f"round{loop}_raw", sub_question, chunk))
+            trace_rounds.append(
+                RetrievalTraceRound(
+                    stage=f"round{loop}_raw",
+                    queries=list(sub_questions),
+                    hits=round_hits,
+                )
+            )
+
+            loop += 1
+            if loop > 3:
+                break
+
+            tasks = {}
+            summarized_infos = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                for sub_question, query_chunks in zip(sub_questions, current_chunks):
+                    task = executor.submit(QueryProcessor.summarize_subquery, sub_question, query_chunks)
+                    tasks[task] = sub_question
+
+                for future in concurrent.futures.as_completed(tasks):
+                    sub_question = tasks[future]
+                    try:
+                        result = future.result()
+                        logger.info(f"总结结果: {result}")
+                        summarized_infos[sub_question] = result
+                    except Exception as e:
+                        logger.error(f"Error occurred while summarizing {sub_question}: {e}")
+
+            for sub_question in sub_questions:
+                total_sub_summaries.append(summarized_infos[sub_question])
+
+            next_instruction = QueryProcessor.generate_next_instruction(
+                question,
+                total_sub_questions,
+                total_sub_summaries,
+            )
+            if next_instruction['is_answer']:
+                break
+            answer_question = next_instruction['rewrite_query']
+
+        text_chunks, image_chunks, page_chunks = self.merge_retrieval_results(total_chunks)
+        page_chunks = page_chunks[:1]
+        answer_image_urls = self.extract_answer_image_urls(page_chunks, image_chunks)
+
+        texts = [text_chunk['payload']['text'] for text_chunk in text_chunks]
+        scores = get_text_reranker().rerank(question, texts)
+        reranked_text_chunks = []
+        for text_chunk, score in zip(text_chunks, scores):
+            updated_chunk = {
+                "score": score,
+                "payload": text_chunk["payload"],
+            }
+            reranked_text_chunks.append(updated_chunk)
+        reranked_text_chunks = sorted(reranked_text_chunks, key=lambda k: k['score'], reverse=True)
+
+        merged_text_hits = [self._build_trace_hit("merged_text", question, chunk) for chunk in text_chunks]
+        merged_image_hits = [self._build_trace_hit("merged_image", question, chunk) for chunk in image_chunks]
+        merged_page_hits = [self._build_trace_hit("merged_page", question, chunk) for chunk in page_chunks]
+        merged_all_hits = merged_text_hits + merged_image_hits + merged_page_hits
+        rerank_hits = [self._build_trace_hit("rerank_text", question, chunk) for chunk in reranked_text_chunks]
+
+        return RetrievalTrace(
+            question=question,
+            rounds=trace_rounds,
+            round1_raw=RetrievalTraceStage(
+                stage="round1_raw",
+                hits=trace_rounds[0].hits if trace_rounds else [],
+            ),
+            all_rounds_raw=RetrievalTraceStage(
+                stage="all_rounds_raw",
+                hits=[hit for round_trace in trace_rounds for hit in round_trace.hits],
+            ),
+            merged_text=RetrievalTraceStage(stage="merged_text", hits=merged_text_hits),
+            merged_image=RetrievalTraceStage(stage="merged_image", hits=merged_image_hits),
+            merged_page=RetrievalTraceStage(stage="merged_page", hits=merged_page_hits),
+            merged_all=RetrievalTraceStage(stage="merged_all", hits=merged_all_hits),
+            rerank_text=RetrievalTraceStage(stage="rerank_text", hits=rerank_hits),
+            answer_image_urls=answer_image_urls,
+        )
+
+    @staticmethod
     def llm_answer(question: str):
         prompt = PromptManager.DEFAULT_PROMPT.format(question=question)
         messages = LLMClient.convert_messages(prompt)
@@ -197,90 +332,19 @@ class AgenticRAG:
             yield from self.vlm_answer(question, image_urls)
             return
 
-        loop = 1
-        # Agentic RAG
-        answer_question = question
-
-        total_sub_questions = []
-        total_sub_summaries = []
-
-        total_chunks = []
-
-        while True:
-            logger.info(f"第{loop}轮查询")
-            # 1. 生成子查询
-            if loop == 1 and image_urls:
-                sub_questions = QueryProcessor.expand_question_with_images(answer_question, image_descs)
-            else:
-                sub_questions = QueryProcessor.extend_questions(answer_question)
-
-            if loop == 1:
-                sub_questions.insert(0, question)
-
-            total_sub_questions.extend(sub_questions)
-
-            # 2. 执行检索阶段
-            logger.info("开始多路检索阶段")
-            current_chunks = self.multi_retrieval(sub_questions)
-
-            for query_chunks in current_chunks:
-                for chunk in query_chunks:
-                    # logger.info(f"检索结果: {chunk['payload']}")
-                    total_chunks.append(chunk)
-
-            loop += 1
-            if loop > 3:
-                break
-
-            # 总结多路召回的结果
-            tasks = {}
-            summarized_infos = {}
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-                for sub_question, query_chunks in zip(sub_questions, current_chunks):
-                    task = executor.submit(QueryProcessor.summarize_subquery, sub_question, query_chunks)
-                    tasks[task] = sub_question
-
-                for future in concurrent.futures.as_completed(tasks):
-                    sub_question = tasks[future]
-                    try:
-                        result = future.result()
-                        logger.info(f"总结结果: {result}")
-                        summarized_infos[sub_question] = result
-                    except Exception as e:
-                        logger.error(f"Error occurred while summarizing {sub_question}: {e}")
-
-            # 记录每个子查询的结果
-            for sub_question in sub_questions:
-                total_sub_summaries.append(summarized_infos[sub_question])
-
-            # 检查已经的检索信息是否充分
-            next_instruction = QueryProcessor.generate_next_instruction(question, total_sub_questions,
-                                                                        total_sub_summaries)
-
-            # 信息已经充分开始回答
-            if next_instruction['is_answer']:
-                break
-            else:
-                answer_question = next_instruction['rewrite_query']
-        # Ans
-        text_chunks, image_chunks, page_chunks = self.merge_retrieval_results(total_chunks)
+        trace = self.collect_retrieval_trace(question, image_urls)
+        text_chunks = [hit.to_chunk() for hit in trace.merged_text.hits]
+        image_chunks = [hit.to_chunk() for hit in trace.merged_image.hits]
+        page_chunks = [hit.to_chunk() for hit in trace.merged_page.hits]
 
         logger.info(
             f"Agentic search results: 文本: {len(text_chunks)}, 图片: {len(image_chunks)}, 页面: {len(page_chunks)}")
 
-        # page_chunks 过滤
-        page_chunks = page_chunks[:1]
-        answer_image_urls = self.extract_answer_image_urls(page_chunks, image_chunks)
+        answer_image_urls = list(trace.answer_image_urls)
 
         # 3. 文本重排
         logger.info("开始重排阶段")
-        texts = [text_chunk['payload']['text'] for text_chunk in text_chunks]
-        scores = get_text_reranker().rerank(question, texts)
-
-        for text_chunk, score in zip(text_chunks, scores):
-            text_chunk['score'] = score
-
-        text_chunks = sorted(text_chunks, key=lambda k: k['score'], reverse=True)
+        text_chunks = [hit.to_chunk() for hit in trace.rerank_text.hits]
         # 重排结果
         display_chunks(text_chunks)
 

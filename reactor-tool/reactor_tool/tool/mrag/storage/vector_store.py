@@ -485,3 +485,15 @@ class VectorStore:
         self.text_store.delete_by_file_ids(kb_id, file_ids)
         self.image_store.delete_by_file_ids(kb_id, file_ids)
         self.page_store.delete_by_file_ids(kb_id, file_ids)
+
+    def scroll_text_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
+        """滚动读取文本 payload。"""
+        return self.text_store.scroll_payloads(kb_id=kb_id, limit=limit, offset=offset)
+
+    def scroll_image_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
+        """滚动读取图片 payload。"""
+        return self.image_store.scroll_payloads(kb_id=kb_id, limit=limit, offset=offset)
+
+    def scroll_page_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
+        """滚动读取页面 payload。"""
+        return self.page_store.scroll_payloads(kb_id=kb_id, limit=limit, offset=offset)

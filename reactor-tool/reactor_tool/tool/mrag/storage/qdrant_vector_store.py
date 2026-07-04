@@ -644,6 +644,18 @@ class QdrantTextVectorStore(BaseCollectionVectorStore):
             filter_conditions={"kb_id": kb_id, "file_id": file_ids}
         )
 
+    def scroll_payloads(self,
+                        kb_id: str,
+                        limit: int = 100,
+                        offset: Optional[str] = None):
+        """按知识库滚动读取文本 payload。"""
+        return self.vector_store.scroll_vectors(
+            collection_name=self.collection_name,
+            limit=limit,
+            offset=offset,
+            filter_conditions={"kb_id": kb_id},
+        )
+
 
 class QdrantGenericVectorStore(BaseCollectionVectorStore):
     """
@@ -756,6 +768,18 @@ class QdrantGenericVectorStore(BaseCollectionVectorStore):
         return self.vector_store.delete_vectors(
             collection_name=self.collection_name,
             filter_conditions={key: values}
+        )
+
+    def scroll_payloads(self,
+                        kb_id: str,
+                        limit: int = 100,
+                        offset: Optional[str] = None):
+        """按知识库滚动读取图像/页面 payload。"""
+        return self.vector_store.scroll_vectors(
+            collection_name=self.collection_name,
+            limit=limit,
+            offset=offset,
+            filter_conditions={"kb_id": kb_id},
         )
 
 
