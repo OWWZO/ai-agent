@@ -331,8 +331,7 @@ async def code_interpreter_agent(
                 
                 elif isinstance(step, FinalAnswerStep):
                     file_list = []
-                    file_path = get_new_file_by_path(output_dir=output_dir)
-                    if file_path:
+                    for file_path in collect_output_files(output_dir=output_dir):
                         file_info = await upload_file_by_path(
                             file_path=file_path, request_id=request_id
                         )
@@ -368,20 +367,30 @@ async def code_interpreter_agent(
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def get_new_file_by_path(output_dir):
-    temp_file = ""
-    latest_time = 0
-    for item in os.listdir(output_dir):
-        if item.endswith(".xlsx") or item.endswith(".csv") or item.endswith(".xls"):
-            item_path = os.path.join(output_dir, item)
-            if os.path.isfile(item_path):
-                # 获取文件的最后修改时间
-                mod_time = os.path.getmtime(item_path)
-                # 如果当前文件比之前记录的更新，则更新最新文件和时间为当前文件
-                if mod_time > latest_time:
-                    latest_time = mod_time
-                    temp_file = item_path
-    return temp_file
+def collect_output_files(output_dir):
+    if not output_dir or not os.path.isdir(output_dir):
+        return []
+
+    collected_files = []
+    for root, dir_names, file_names in os.walk(output_dir):
+        # 只保留用户可见的产物目录，避免把缓存目录一并传回工作区。
+        dir_names[:] = [
+            dir_name
+            for dir_name in dir_names
+            if not dir_name.startswith(".") and dir_name != "__pycache__"
+        ]
+        for file_name in file_names:
+            if file_name.startswith("."):
+                continue
+            file_path = os.path.join(root, file_name)
+            if not os.path.isfile(file_path):
+                continue
+            collected_files.append(
+                (os.path.getmtime(file_path), os.path.relpath(file_path, output_dir).lower(), file_path)
+            )
+
+    collected_files.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in collected_files]
 
 
 def _ci_model_id_and_litellm_kwargs():
@@ -498,6 +507,7 @@ def create_ci_agent(
         output_dir=output_dir,
         before_execute=lambda code_action: validate_code_against_policy(code_action, permission_policy),
         runtime_variables=runtime_variables,
+        runtime_permission_policy=permission_policy,
     )
 
 

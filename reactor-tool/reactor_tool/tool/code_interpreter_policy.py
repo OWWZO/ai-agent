@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import ast
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 
 PermissionProfile = Literal["analysis", "workspace"]
+PathAccessMode = Literal["read", "write"]
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,25 @@ class CodeExecutionPermissionError(Exception):
         return payload
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_pre_execution_validation_enabled() -> bool:
+    return _env_bool("CODE_INTERPRETER_ENABLE_PRE_EXECUTION_VALIDATION", False)
+
+
+def is_path_sandbox_enabled() -> bool:
+    return _env_bool("CODE_INTERPRETER_ENABLE_PATH_SANDBOX", False)
+
+
+def is_runtime_double_check_enabled() -> bool:
+    return _env_bool("CODE_INTERPRETER_ENABLE_RUNTIME_DOUBLE_CHECK", False)
+
+
 _COMMON_AUTHORIZED_IMPORTS = (
     "altair",
     "csv",
@@ -86,6 +107,7 @@ _COMMON_AUTHORIZED_IMPORTS = (
     "numpy",
     "openpyxl",
     "pandas",
+    "pathlib",
     "plotly",
     "plotly.*",
     "scipy",
@@ -99,10 +121,6 @@ _COMMON_AUTHORIZED_IMPORTS = (
     "statsmodels.*",
     "tabulate",
     "yaml",
-)
-
-_WORKSPACE_EXTRA_AUTHORIZED_IMPORTS = (
-    "pathlib",
 )
 
 _BLOCKED_IMPORT_MODULES = {
@@ -121,6 +139,11 @@ _BLOCKED_CALL_NAMES = {
     "__import__",
     "globals",
     "locals",
+}
+
+_DESTRUCTIVE_CALL_NAMES = {
+    "rmdir",
+    "unlink",
 }
 
 _READ_CALLS = {
@@ -149,6 +172,29 @@ _WRITE_CALLS = {
     "write_text_file",
 }
 
+_PATH_HELPER_NAMES = frozenset(
+    {
+        "build_output_path",
+        "build_workspace_path",
+        "resolve_input_path",
+    }
+)
+
+_RESERVED_HELPER_NAMES = frozenset(
+    _PATH_HELPER_NAMES
+    | {
+        "read_text_file",
+        "write_text_file",
+    }
+)
+
+
+@dataclass(frozen=True)
+class HelperPathReference:
+    """标记由受控 helper 构造、运行时继续校验的路径引用。"""
+
+    helper_name: Literal["build_output_path", "build_workspace_path", "resolve_input_path"]
+
 
 def build_permission_policy(
     profile: str,
@@ -166,7 +212,7 @@ def build_permission_policy(
     if normalized_profile == "workspace":
         allowed_read_roots = (workspace_path,)
         allowed_write_roots = (workspace_path,)
-        authorized_imports = _COMMON_AUTHORIZED_IMPORTS + _WORKSPACE_EXTRA_AUTHORIZED_IMPORTS
+        authorized_imports = _COMMON_AUTHORIZED_IMPORTS
     else:
         allowed_read_roots = (output_path,)
         allowed_write_roots = (output_path,)
@@ -184,18 +230,55 @@ def build_permission_policy(
     )
 
 
+def validate_authorized_path(
+    file_path: str,
+    *,
+    policy: CodeInterpreterPermissionPolicy,
+    access_mode: PathAccessMode,
+) -> str:
+    """按当前权限档位校验并规范化路径。"""
+    normalized_path = _resolve_policy_path(file_path, policy=policy, access_mode=access_mode)
+    if not is_path_sandbox_enabled():
+        return normalized_path
+
+    if access_mode == "read":
+        if normalized_path in policy.allowed_read_paths:
+            return normalized_path
+        if _is_within_roots(normalized_path, policy.allowed_read_roots):
+            return normalized_path
+        raise CodeExecutionPermissionError(
+            "path_outside_allowed_roots",
+            f"文件访问超出授权范围：{normalized_path}",
+            detail=f"allowed read roots: {list(policy.allowed_read_roots)}",
+            policy=policy,
+        )
+
+    if normalized_path in policy.allowed_read_paths:
+        raise CodeExecutionPermissionError(
+            "input_file_read_only",
+            "输入文件路径仅允许读取，不能作为写入目标。",
+            detail=f"input path: {normalized_path}",
+            policy=policy,
+        )
+
+    if _is_within_roots(normalized_path, policy.allowed_write_roots):
+        return normalized_path
+
+    raise CodeExecutionPermissionError(
+        "path_outside_allowed_roots",
+        f"文件访问超出授权范围：{normalized_path}",
+        detail=f"allowed write roots: {list(policy.allowed_write_roots)}",
+        policy=policy,
+    )
+
+
 def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, Callable]:
     """构建注入解释器的受控 helper。"""
     input_name_mapping = dict(policy.input_file_paths)
 
     def build_output_path(file_name: str) -> str:
-        return _join_and_validate(
-            base_dir=policy.output_dir,
-            relative_path=file_name,
-            allowed_roots=policy.allowed_write_roots,
-            blocked_reason="path_outside_allowed_roots",
-            policy=policy,
-        )
+        target_path = Path(policy.output_dir).joinpath(file_name)
+        return validate_authorized_path(str(target_path), policy=policy, access_mode="write")
 
     def build_workspace_path(relative_path: str) -> str:
         if policy.profile != "workspace":
@@ -204,13 +287,8 @@ def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, 
                 "当前权限档位不允许构建工作区任意路径，请改用 build_output_path().",
                 policy=policy,
             )
-        return _join_and_validate(
-            base_dir=policy.workspace_root,
-            relative_path=relative_path,
-            allowed_roots=policy.allowed_write_roots,
-            blocked_reason="path_outside_allowed_roots",
-            policy=policy,
-        )
+        target_path = Path(policy.workspace_root).joinpath(relative_path)
+        return validate_authorized_path(str(target_path), policy=policy, access_mode="write")
 
     def resolve_input_path(file_name: str) -> str:
         normalized_name = (file_name or "").strip()
@@ -224,23 +302,11 @@ def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, 
         return input_name_mapping[normalized_name]
 
     def read_text_file(file_path: str, encoding: str = "utf-8") -> str:
-        normalized_path = _validate_existing_path(
-            file_path,
-            allowed_paths=policy.allowed_read_paths,
-            allowed_roots=policy.allowed_read_roots,
-            blocked_reason="path_outside_allowed_roots",
-            policy=policy,
-        )
+        normalized_path = validate_authorized_path(file_path, policy=policy, access_mode="read")
         return Path(normalized_path).read_text(encoding=encoding)
 
     def write_text_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
-        normalized_path = _validate_existing_path(
-            file_path,
-            allowed_paths=(),
-            allowed_roots=policy.allowed_write_roots,
-            blocked_reason="path_outside_allowed_roots",
-            policy=policy,
-        )
+        normalized_path = validate_authorized_path(file_path, policy=policy, access_mode="write")
         target = Path(normalized_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding=encoding)
@@ -259,12 +325,13 @@ def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, 
 
 def validate_code_against_policy(code: str, policy: CodeInterpreterPermissionPolicy) -> None:
     """在执行前做静态权限校验。"""
+    if not is_pre_execution_validation_enabled():
+        return
     try:
         tree = ast.parse(code)
     except SyntaxError:
         return
 
-    alias_mapping: dict[str, str] = {}
     resolved_names: dict[str, Any] = policy.to_runtime_variables()
     helper_functions = build_runtime_helpers(policy)
 
@@ -272,7 +339,6 @@ def validate_code_against_policy(code: str, policy: CodeInterpreterPermissionPol
         _validate_statement(
             statement=statement,
             policy=policy,
-            alias_mapping=alias_mapping,
             resolved_names=resolved_names,
             helper_functions=helper_functions,
         )
@@ -308,30 +374,60 @@ def _normalize_input_files(input_files: list[dict[str, str]] | None) -> dict[str
 def _validate_statement(
     statement: ast.AST,
     policy: CodeInterpreterPermissionPolicy,
-    alias_mapping: dict[str, str],
     resolved_names: dict[str, Any],
     helper_functions: dict[str, Callable],
 ) -> None:
+    _ensure_helper_names_not_overridden(statement, policy)
+
     if isinstance(statement, ast.Import):
         for alias in statement.names:
             _ensure_import_allowed(alias.name, policy)
-            alias_mapping[alias.asname or alias.name] = alias.name
     elif isinstance(statement, ast.ImportFrom):
-        module_name = statement.module or ""
-        _ensure_import_allowed(module_name, policy)
-        for alias in statement.names:
-            imported_name = f"{module_name}.{alias.name}" if module_name else alias.name
-            alias_mapping[alias.asname or alias.name] = imported_name
+        _ensure_import_allowed(statement.module or "", policy)
 
     for node in ast.walk(statement):
         if isinstance(node, ast.Call):
             _ensure_call_allowed(node, policy)
-            _validate_path_access(node, policy, alias_mapping, resolved_names, helper_functions)
+            _validate_path_call(
+                node=node,
+                policy=policy,
+                resolved_names=resolved_names,
+                helper_functions=helper_functions,
+            )
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 _ensure_import_allowed(alias.name, policy)
         elif isinstance(node, ast.ImportFrom):
             _ensure_import_allowed(node.module or "", policy)
+
+
+def _ensure_helper_names_not_overridden(
+    statement: ast.AST,
+    policy: CodeInterpreterPermissionPolicy,
+) -> None:
+    for node in ast.walk(statement):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            _raise_if_reserved_helper_name(node.name, policy)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            _raise_if_reserved_helper_name(node.id, policy)
+        elif isinstance(node, ast.alias):
+            imported_name = node.asname or node.name.split(".")[0]
+            _raise_if_reserved_helper_name(imported_name, policy)
+        elif isinstance(node, ast.arg):
+            _raise_if_reserved_helper_name(node.arg, policy)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            _raise_if_reserved_helper_name(node.name, policy)
+
+
+def _raise_if_reserved_helper_name(name: str | None, policy: CodeInterpreterPermissionPolicy) -> None:
+    if not name or name not in _RESERVED_HELPER_NAMES:
+        return
+    raise CodeExecutionPermissionError(
+        "helper_name_override",
+        f"禁止重定义受控 helper 名称：{name}",
+        detail=f"reserved helper names: {sorted(_RESERVED_HELPER_NAMES)}",
+        policy=policy,
+    )
 
 
 def _ensure_import_allowed(module_name: str, policy: CodeInterpreterPermissionPolicy) -> None:
@@ -367,6 +463,12 @@ def _is_authorized_import(module_name: str, authorized_imports: tuple[str, ...])
 
 def _ensure_call_allowed(node: ast.Call, policy: CodeInterpreterPermissionPolicy) -> None:
     function_name = _extract_call_name(node)
+    if function_name in _DESTRUCTIVE_CALL_NAMES:
+        raise CodeExecutionPermissionError(
+            "destructive_operation_denied",
+            f"禁止执行删除类文件操作：{function_name}()",
+            policy=policy,
+        )
     if function_name in _BLOCKED_CALL_NAMES:
         raise CodeExecutionPermissionError(
             "blocked_call",
@@ -375,21 +477,21 @@ def _ensure_call_allowed(node: ast.Call, policy: CodeInterpreterPermissionPolicy
         )
 
 
-def _validate_path_access(
+def _validate_path_call(
     node: ast.Call,
     policy: CodeInterpreterPermissionPolicy,
-    alias_mapping: dict[str, str],
     resolved_names: dict[str, Any],
     helper_functions: dict[str, Callable],
 ) -> None:
     function_name = _extract_call_name(node)
-    if function_name in {"build_output_path", "build_workspace_path", "resolve_input_path"}:
+    if function_name in _PATH_HELPER_NAMES:
         _resolve_path_expression(
             node=node,
             resolved_names=resolved_names,
             helper_functions=helper_functions,
         )
         return
+
     if function_name not in _READ_CALLS and function_name not in _WRITE_CALLS and function_name != "open":
         return
 
@@ -404,30 +506,33 @@ def _validate_path_access(
         helper_functions=helper_functions,
     )
     if resolved_path is None:
-        raise CodeExecutionPermissionError(
-            "unresolved_path",
-            "无法静态确认文件访问路径，请改用 build_output_path()/resolve_input_path()/build_workspace_path()。",
-            detail=f"call: {ast.unparse(node)}",
-            policy=policy,
-        )
+        return
 
-    if access_mode == "read":
-        _validate_existing_path(
-            _normalize_resolved_path(resolved_path),
-            allowed_paths=policy.allowed_read_paths,
-            allowed_roots=policy.allowed_read_roots,
-            blocked_reason="path_outside_allowed_roots",
+    if isinstance(resolved_path, HelperPathReference):
+        _validate_helper_path_reference(
+            reference=resolved_path,
+            access_mode=access_mode,
             policy=policy,
         )
         return
 
-    _validate_existing_path(
-        _normalize_resolved_path(resolved_path),
-        allowed_paths=(),
-        allowed_roots=policy.allowed_write_roots,
-        blocked_reason="path_outside_allowed_roots",
-        policy=policy,
-    )
+    validate_authorized_path(resolved_path, policy=policy, access_mode=access_mode)
+
+
+def _validate_helper_path_reference(
+    reference: HelperPathReference,
+    access_mode: PathAccessMode,
+    policy: CodeInterpreterPermissionPolicy,
+) -> None:
+    if not is_path_sandbox_enabled():
+        return
+    if access_mode == "write" and reference.helper_name == "resolve_input_path":
+        raise CodeExecutionPermissionError(
+            "input_file_read_only",
+            "输入文件路径仅允许读取，不能作为写入目标。",
+            detail=f"helper: {reference.helper_name}",
+            policy=policy,
+        )
 
 
 def _capture_simple_assignments(
@@ -456,7 +561,7 @@ def _extract_call_name(node: ast.Call) -> str:
     return ""
 
 
-def _infer_access_mode(node: ast.Call, function_name: str) -> Literal["read", "write"]:
+def _infer_access_mode(node: ast.Call, function_name: str) -> PathAccessMode:
     if function_name == "open":
         mode_value = "r"
         if len(node.args) >= 2:
@@ -491,7 +596,7 @@ def _extract_path_node(node: ast.Call, function_name: str) -> ast.AST | None:
         "write_text_file": ("file_path", "path"),
     }
 
-    if function_name in {"build_output_path", "build_workspace_path", "resolve_input_path"}:
+    if function_name in _PATH_HELPER_NAMES:
         return node.args[0] if node.args else None
 
     if node.args:
@@ -508,12 +613,14 @@ def _resolve_path_expression(
     node: ast.AST,
     resolved_names: dict[str, Any],
     helper_functions: dict[str, Callable],
-) -> str | None:
+) -> str | HelperPathReference | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+
     if isinstance(node, ast.Name):
         value = resolved_names.get(node.id)
-        return value if isinstance(value, str) else None
+        return value if isinstance(value, (str, HelperPathReference)) else None
+
     if isinstance(node, ast.JoinedStr):
         parts: list[str] = []
         for value in node.values:
@@ -522,44 +629,57 @@ def _resolve_path_expression(
                 continue
             if isinstance(value, ast.FormattedValue):
                 resolved_part = _resolve_path_expression(value.value, resolved_names, helper_functions)
-                if resolved_part is None:
+                if not isinstance(resolved_part, str):
                     return None
                 parts.append(resolved_part)
                 continue
             return None
         return "".join(parts)
+
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         left = _resolve_path_expression(node.left, resolved_names, helper_functions)
         right = _resolve_path_expression(node.right, resolved_names, helper_functions)
-        if left is None or right is None:
+        if not isinstance(left, str) or not isinstance(right, str):
             return None
         return left + right
+
     if isinstance(node, ast.Call):
         helper_name = _extract_call_name(node)
-        if helper_name == "Path":
+        if helper_name in {"Path", "str"}:
             return _resolve_path_expression(node.args[0], resolved_names, helper_functions) if node.args else None
-        helper = helper_functions.get(helper_name)
-        if helper is None:
-            return None
-        arguments = []
-        for arg in node.args:
-            resolved_arg = _resolve_helper_argument(arg, resolved_names, helper_functions)
-            if resolved_arg is None:
+        if helper_name in _PATH_HELPER_NAMES:
+            helper = helper_functions.get(helper_name)
+            if helper is None:
                 return None
-            arguments.append(resolved_arg)
-        try:
-            result = helper(*arguments)
-        except CodeExecutionPermissionError:
-            raise
-        except Exception:
-            return None
-        return result if isinstance(result, str) else None
+            positional_arguments: list[str] = []
+            keyword_arguments: dict[str, str] = {}
+            for arg in node.args:
+                resolved_arg = _resolve_helper_argument(arg, resolved_names, helper_functions)
+                if resolved_arg is None:
+                    return HelperPathReference(helper_name=helper_name)
+                positional_arguments.append(resolved_arg)
+            for keyword in node.keywords:
+                if keyword.arg is None:
+                    return HelperPathReference(helper_name=helper_name)
+                resolved_arg = _resolve_helper_argument(keyword.value, resolved_names, helper_functions)
+                if resolved_arg is None:
+                    return HelperPathReference(helper_name=helper_name)
+                keyword_arguments[keyword.arg] = resolved_arg
+            try:
+                result = helper(*positional_arguments, **keyword_arguments)
+            except CodeExecutionPermissionError:
+                raise
+            except Exception:
+                return None
+            return result if isinstance(result, str) else None
+
     if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
         container = resolved_names.get(node.value.id)
         subscript_key = _extract_subscript_key(node.slice)
         if isinstance(container, dict) and subscript_key in container:
             raw_value = container[subscript_key]
             return raw_value if isinstance(raw_value, str) else None
+
     return None
 
 
@@ -570,7 +690,8 @@ def _resolve_helper_argument(
 ) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
-    return _resolve_path_expression(node, resolved_names, helper_functions)
+    resolved_value = _resolve_path_expression(node, resolved_names, helper_functions)
+    return resolved_value if isinstance(resolved_value, str) else None
 
 
 def _extract_subscript_key(node: ast.AST) -> str | None:
@@ -587,47 +708,47 @@ def _extract_constant_string(node: ast.AST) -> str | None:
     return None
 
 
-def _normalize_resolved_path(file_path: str) -> str:
-    return str(Path(file_path).resolve())
-
-
-def _validate_existing_path(
+def _resolve_policy_path(
     file_path: str,
     *,
-    allowed_paths: tuple[str, ...],
-    allowed_roots: tuple[str, ...],
-    blocked_reason: str,
     policy: CodeInterpreterPermissionPolicy,
+    access_mode: PathAccessMode,
 ) -> str:
-    normalized_path = str(Path(file_path).resolve())
-    if normalized_path in allowed_paths:
-        return normalized_path
+    raw_path = str(file_path or "").strip()
+    if not raw_path:
+        raise CodeExecutionPermissionError(
+            "empty_path",
+            "文件路径不能为空。",
+            policy=policy,
+        )
+
+    candidate_path = Path(raw_path)
+    if candidate_path.is_absolute():
+        return str(candidate_path.resolve())
+
+    if access_mode == "read":
+        mapped_input_path = _resolve_input_file_name(raw_path, policy)
+        if mapped_input_path is not None:
+            return mapped_input_path
+
+    base_dir = policy.workspace_root if policy.profile == "workspace" else policy.output_dir
+    return str(Path(base_dir).joinpath(candidate_path).resolve())
+
+
+def _resolve_input_file_name(
+    raw_path: str,
+    policy: CodeInterpreterPermissionPolicy,
+) -> str | None:
+    candidate_path = Path(raw_path)
+    if len(candidate_path.parts) != 1:
+        return None
+    return policy.input_file_paths.get(candidate_path.name)
+
+
+def _is_within_roots(file_path: str, allowed_roots: tuple[str, ...]) -> bool:
+    candidate_path = Path(file_path).resolve()
     for root in allowed_roots:
         root_path = Path(root).resolve()
-        candidate_path = Path(normalized_path)
         if candidate_path == root_path or root_path in candidate_path.parents:
-            return normalized_path
-    raise CodeExecutionPermissionError(
-        blocked_reason,
-        f"文件访问超出授权范围：{normalized_path}",
-        detail=f"allowed roots: {list(allowed_roots)}",
-        policy=policy,
-    )
-
-
-def _join_and_validate(
-    *,
-    base_dir: str,
-    relative_path: str,
-    allowed_roots: tuple[str, ...],
-    blocked_reason: str,
-    policy: CodeInterpreterPermissionPolicy,
-) -> str:
-    target_path = Path(base_dir).joinpath(relative_path)
-    return _validate_existing_path(
-        str(target_path),
-        allowed_paths=(),
-        allowed_roots=allowed_roots,
-        blocked_reason=blocked_reason,
-        policy=policy,
-    )
+            return True
+    return False

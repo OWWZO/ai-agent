@@ -4,7 +4,7 @@ import os
 import re
 import time
 from collections.abc import Callable, Generator
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 import uuid
 from smolagents import (
     CodeAgent,
@@ -37,6 +37,14 @@ from rich.markdown import Markdown
 import json_repair
 
 from reactor_tool.model.code import CodeOuput
+from reactor_tool.tool.code_interpreter_policy import (
+    CodeExecutionPermissionError,
+    CodeInterpreterPermissionPolicy,
+)
+from reactor_tool.tool.code_interpreter_runtime_guard import (
+    activate_runtime_io_guard,
+    extract_runtime_permission_error,
+)
 from reactor_tool.tool.final_answer_check import FinalAnswerCheck
 from reactor_tool.util.file_util import generate_data_id
 from reactor_tool.util.log_util import timer
@@ -106,6 +114,74 @@ def _scan_unsafe_code(code: str) -> list[str]:
     return sorted(set(issues))
 
 
+def _format_permission_error_for_agent(error: CodeExecutionPermissionError) -> str:
+    """把权限拒绝错误整理成便于 agent 下一步自修的 observation。"""
+    lines = [
+        f"代码执行权限校验失败：{error}",
+        f"blocked_reason={error.blocked_reason}",
+    ]
+    if error.detail and error.detail != str(error):
+        lines.append(f"detail={error.detail}")
+    if error.policy is not None:
+        lines.append(f"permission_profile={error.policy.profile}")
+        if error.policy.input_file_paths:
+            lines.append(f"allowed_input_files={sorted(error.policy.input_file_paths)}")
+        lines.append(
+            "修正建议：优先使用 resolve_input_path('文件名') 读取输入文件，"
+            "优先使用 build_output_path('中文文件名.xlsx') 输出文件；"
+            "如果继续使用 pathlib/pandas/savefig 的直接路径写法，最终路径也必须落在授权目录内。"
+        )
+    else:
+        lines.append(
+            "修正建议：优先使用 resolve_input_path('文件名') 读取输入文件，"
+            "优先使用 build_output_path('中文文件名.xlsx') 输出文件；"
+            "如果继续使用 pathlib/pandas/savefig 的直接路径写法，最终路径也必须落在授权目录内。"
+        )
+    lines.append("请改写相关文件 I/O 代码后再执行，不要继续使用越权路径。")
+    return "\n".join(lines)
+
+
+def _should_use_live_stream_render(console) -> bool:
+    """
+    仅在真正可交互终端里启用 Rich Live。
+    否则 Live.update() 会在日志/非 TTY 环境中把每次刷新都落成整段文本快照，导致 Task/Thought 重复刷屏。
+    """
+    return bool(getattr(console, "is_terminal", False) and getattr(console, "is_interactive", False))
+
+
+def _extract_incremental_stream_text(rendered_text: str, chunk_text: str) -> tuple[str, str]:
+    """
+    兼容两类上游流：
+    1. 真正的增量 token，如 "你好" -> "，世界"
+    2. 累计快照，如 "Task..." -> "Task...Thought..." -> "Task...Thought...Code..."
+
+    返回值:
+    - 第一个元素：本次真正需要打印的新增文本
+    - 第二个元素：更新后的已渲染全文
+    """
+    if not chunk_text:
+        return "", rendered_text
+
+    if not rendered_text:
+        return chunk_text, chunk_text
+
+    if chunk_text == rendered_text:
+        return "", rendered_text
+
+    # 上游直接返回“截至当前的完整内容”，只打印新增后缀。
+    if chunk_text.startswith(rendered_text):
+        return chunk_text[len(rendered_text):], chunk_text
+
+    # 常规增量流或存在边界重叠时，按“已渲染后缀”和“当前块前缀”做最大重叠匹配。
+    max_overlap = min(len(rendered_text), len(chunk_text))
+    for overlap in range(max_overlap, 0, -1):
+        if rendered_text.endswith(chunk_text[:overlap]):
+            incremental = chunk_text[overlap:]
+            return incremental, rendered_text + incremental
+
+    return chunk_text, rendered_text + chunk_text
+
+
 class CIAgent(CodeAgent):
     def __init__(
         self,
@@ -120,12 +196,14 @@ class CIAgent(CodeAgent):
         output_dir: Optional[str] = None,
         before_execute: Optional[Callable[[str], None]] = None,
         runtime_variables: Optional[dict[str, Any]] = None,
+        runtime_permission_policy: CodeInterpreterPermissionPolicy | None = None,
         *args,
         **kwargs,
     ):
         self.output_dir = output_dir
         self.before_execute = before_execute
         self.runtime_variables = runtime_variables or {}
+        self.runtime_permission_policy = runtime_permission_policy
         super().__init__(
             tools=tools,
             model=model,
@@ -156,6 +234,7 @@ class CIAgent(CodeAgent):
 
         # Add new step in logs
         memory_step.model_input_messages = memory_messages.copy()
+        stream_rendered = False
         try:
             input_messages = memory_messages.copy()
 
@@ -166,21 +245,46 @@ class CIAgent(CodeAgent):
                     extra_headers={"x-ms-client-request-id": model_request_id},
                 )
             chat_message_stream_deltas: list[ChatMessageStreamDelta] = []
-            with Live("", console=self.logger.console, vertical_overflow="visible") as live:
+            # 终端内实时渲染 Thought/Code，是否继续向外透传由上层路由决定。
+            if _should_use_live_stream_render(self.logger.console):
+                with Live("", console=self.logger.console, vertical_overflow="visible") as live:
+                    for event in output_stream:
+                        chat_message_stream_deltas.append(event)
+                        live.update(
+                            Markdown(
+                                agglomerate_stream_deltas(
+                                    chat_message_stream_deltas
+                                ).render_as_markdown()
+                            )
+                        )
+                        stream_rendered = True
+                        yield event
+                if stream_rendered:
+                    self.logger.console.print()
+            else:
+                rendered_stream_text = ""
                 for event in output_stream:
                     chat_message_stream_deltas.append(event)
-                    live.update(
-                        Markdown(agglomerate_stream_deltas(chat_message_stream_deltas).render_as_markdown())
+                    delta_content = getattr(event, "content", "")
+                    incremental_content, rendered_stream_text = _extract_incremental_stream_text(
+                        rendered_stream_text,
+                        delta_content,
                     )
+                    if incremental_content:
+                        self.logger.console.print(
+                            incremental_content,
+                            end="",
+                            markup=False,
+                            highlight=False,
+                            soft_wrap=True,
+                        )
+                        stream_rendered = True
                     yield event
+                if stream_rendered:
+                    self.logger.console.print()
             chat_message = agglomerate_stream_deltas(chat_message_stream_deltas)
             memory_step.model_output_message = chat_message
             output_text = chat_message.content
-            self.logger.log_markdown(
-                content=output_text,
-                title="Output message of the LLM:",
-                level=LogLevel.DEBUG,
-            )
             memory_step.model_output_message = chat_message
             output_text = chat_message.content
 
@@ -198,11 +302,12 @@ class CIAgent(CodeAgent):
                 f"Error in generating model output:\n{e}", self.logger
             ) from e
 
-        self.logger.log_markdown(
-            content=output_text,
-            title="Output message of the LLM:",
-            level=LogLevel.DEBUG,
-        )
+        if not stream_rendered:
+            self.logger.log_markdown(
+                content=output_text,
+                title="Output message of the LLM:",
+                level=LogLevel.DEBUG,
+            )
 
         # Parse
         try:
@@ -228,8 +333,13 @@ class CIAgent(CodeAgent):
             title="Executing parsed code:", content=code_action, level=LogLevel.INFO
         )
 
-        if self.before_execute is not None:
-            self.before_execute(code_action)
+        try:
+            if self.before_execute is not None:
+                self.before_execute(code_action)
+        except CodeExecutionPermissionError as exc:
+            observation = _format_permission_error_for_agent(exc)
+            memory_step.observations = observation
+            raise AgentExecutionError(observation, self.logger) from exc
 
         unsafe_issues = _scan_unsafe_code(code_action)
         if unsafe_issues:
@@ -241,7 +351,11 @@ class CIAgent(CodeAgent):
             )
 
         try:
-            _, execution_logs, _ = self.python_executor(code_action)
+            if self.runtime_permission_policy is not None:
+                with activate_runtime_io_guard(self.runtime_permission_policy):
+                    _, execution_logs, _ = self.python_executor(code_action)
+            else:
+                _, execution_logs, _ = self.python_executor(code_action)
 
             # This put call was missing await
             execution_outputs_console = []
@@ -258,6 +372,11 @@ class CIAgent(CodeAgent):
                 file_name = f'{generate_data_id("index")}.py'
             yield CodeOuput(code=code_action,file_name=file_name)
         except Exception as e:
+            permission_error = extract_runtime_permission_error(str(e))
+            if permission_error is not None:
+                observation = _format_permission_error_for_agent(permission_error)
+                memory_step.observations = observation
+                raise AgentExecutionError(observation, self.logger) from e
             if (
                 hasattr(self.python_executor, "state")
                 and "_print_outputs" in self.python_executor.state

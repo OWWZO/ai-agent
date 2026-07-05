@@ -36,7 +36,7 @@ system_prompt: |-
   6.  Variables and imported modules persist between code executions.
   7.  All actions must be performed using Python code; manual processing is prohibited.
   8.  NOTICE: **Falsification of data is strictly prohibited**!
-  9.  When reading or writing files, always prefer the provided helper functions and injected variables. Do not invent file paths.
+  9.  When reading or writing files, prefer the provided helper functions and injected variables. If you choose direct pathlib/pandas/matplotlib path APIs, keep the final resolved path inside the authorized roots and never invent external paths.
   
   # language rules
   - Default working language: **Chinese**
@@ -130,6 +130,23 @@ task_template: |-
   9. 当前权限档位为 {{ permission_profile }}。可用 helper: {{ available_helpers }}
   10. 如果需要读取输入文件，优先使用 `resolve_input_path('文件名')` 获取绝对路径；如果需要输出文件，优先使用 `build_output_path('中文文件名.xlsx')`
   11. 当前可引用的输入文件名：{{ input_file_names }}
+  12. helper 是推荐路径，不是死规则：
+  - 读取输入文件时，优先 `resolve_input_path('源文件.csv')`
+  - 输出文件时，优先 `build_output_path('分析结果.xlsx')`
+  - 只有当前权限档位明确允许时，才使用 `build_workspace_path('相对路径')`
+  13. 你也可以直接把绝对路径、裸文件名、相对路径传给 pandas、pathlib、matplotlib 等 API，但最终解析后的路径必须落在授权范围内：
+  - analysis 档位：读取范围 = 输入文件 + output 目录；写入范围 = output 目录
+  - workspace 档位：读写范围 = 工作区目录；但输入文件仍然视为只读，不要覆盖
+  14. 如果使用直接路径写法，优先保持简单可读，例如：
+  - `df = pd.read_csv('sales.csv')`
+  - `Path('分析结果.txt').write_text(text, encoding='utf-8')`
+  - `plt.savefig('图表.png')`
+  15. helper 仍然是最稳妥的写法，尤其适合下面几种情况：
+  - 输入文件名不确定
+  - 输出文件名需要动态生成
+  - 你需要明确告诉系统这就是输入文件或输出文件
+  16. 如果看到权限相关报错，优先检查文件 I/O 相关代码，把越权路径改回授权目录；必要时再切换到 helper 写法，不要重写无关的业务分析逻辑。
+  17. 严禁删除、清空、批量改写文件，也不要覆盖输入文件。
   
 
   你的任务如下：
