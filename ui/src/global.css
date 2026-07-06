@@ -56,6 +56,12 @@
   --chat-text-muted: oklch(0.6 0.012 60);
   --chat-border: oklch(0.88 0.008 85);
   --chat-border-strong: oklch(0.8 0.01 80);
+  --chat-divider: oklch(0.9 0.006 85);
+  --chat-accent: oklch(0.56 0.14 258);
+  --chat-accent-soft: oklch(0.94 0.03 258);
+  --chat-accent-muted: oklch(0.64 0.08 258);
+  --chat-interactive-hover: oklch(0.94 0.006 80);
+  --chat-interactive-active: oklch(0.9 0.01 80);
 
   /* Status Colors - semantic, theme-aware */
   --status-success-bg: oklch(0.95 0.03 155);
@@ -99,7 +105,11 @@
     "Instrument Sans Variable",
     -apple-system,
     BlinkMacSystemFont,
-    "SF Pro Display",
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    "Noto Sans CJK SC",
+    system-ui,
     sans-serif;
   --font-display:
     "Instrument Serif",
@@ -153,8 +163,15 @@
   --chat-surface-muted: oklch(0.25 0.016 75);
   --chat-text: oklch(0.95 0.005 80);
   --chat-text-soft: oklch(0.65 0.01 80);
+  --chat-text-muted: oklch(0.55 0.012 80);
   --chat-border: oklch(0.2 0.01 80 / 0.1);
   --chat-border-strong: oklch(0.25 0.015 80 / 0.15);
+  --chat-divider: oklch(0.27 0.012 80 / 0.35);
+  --chat-accent: oklch(0.7 0.12 258);
+  --chat-accent-soft: oklch(0.24 0.045 258);
+  --chat-accent-muted: oklch(0.62 0.08 258);
+  --chat-interactive-hover: oklch(0.22 0.014 75);
+  --chat-interactive-active: oklch(0.27 0.016 75);
 
   /* Status Colors - dark mode */
   --status-success-bg: oklch(0.2 0.06 155);
@@ -248,10 +265,10 @@
 
   /* Editorial Typography Scale */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
     font-weight: 400;
     line-height: 1.2;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
   }
 
   h1 { font-size: 2.5rem; }
@@ -367,6 +384,82 @@ ol {
 .chat-fade-bottom {
   mask-image: none;
   -webkit-mask-image: none;
+}
+
+/* 对话区排版：收敛为产品工具气质，避免正文像营销页或文档页。 */
+.chat-dialogue {
+  color: var(--chat-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.75;
+  letter-spacing: 0;
+}
+
+.chat-dialogue .chat-markdown {
+  color: var(--chat-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.78;
+  max-width: 74ch;
+}
+
+.chat-dialogue .chat-markdown h1,
+.chat-dialogue .chat-markdown h2,
+.chat-dialogue .chat-markdown h3,
+.chat-dialogue .chat-markdown h4 {
+  margin-top: 1.35em;
+  margin-bottom: 0.55em;
+  color: var(--chat-text);
+  font-family: var(--font-sans);
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.35;
+  border-bottom: 0;
+}
+
+.chat-dialogue .chat-markdown h1 { font-size: 1.15rem; }
+.chat-dialogue .chat-markdown h2 { font-size: 1.08rem; }
+.chat-dialogue .chat-markdown h3 { font-size: 1rem; }
+.chat-dialogue .chat-markdown h4 { font-size: 0.95rem; }
+
+.chat-dialogue .chat-markdown p,
+.chat-dialogue .chat-markdown ul,
+.chat-dialogue .chat-markdown ol,
+.chat-dialogue .chat-markdown blockquote,
+.chat-dialogue .chat-markdown table {
+  margin-top: 0.65em;
+  margin-bottom: 0.65em;
+}
+
+.chat-dialogue .chat-markdown ul,
+.chat-dialogue .chat-markdown ol {
+  padding-left: 1.25em;
+}
+
+.chat-dialogue .chat-markdown li + li {
+  margin-top: 0.28em;
+}
+
+.chat-dialogue .chat-markdown code:not(pre code) {
+  border: 1px solid var(--chat-border);
+  border-radius: 0.35rem;
+  background: var(--chat-surface-soft);
+  color: var(--chat-text);
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+}
+
+.chat-dialogue .chat-markdown pre {
+  border: 1px solid var(--chat-border);
+  border-radius: 0.75rem;
+  background: var(--json-view-inner-bg);
+}
+
+.chat-dialogue .chat-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-color: var(--chat-border);
 }
 
 .ai-stream-cursor {

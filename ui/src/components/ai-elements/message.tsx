@@ -48,10 +48,10 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-[15px] leading-8",
-      // User bubble: only background + radius (no border/shadow).
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[18px] group-[.is-user]:border-0 group-[.is-user]:bg-[#f7f7f8] group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-[#111827] group-[.is-user]:shadow-none",
-      "group-[.is-assistant]:w-full group-[.is-assistant]:rounded-none group-[.is-assistant]:border-0 group-[.is-assistant]:bg-transparent group-[.is-assistant]:px-0 group-[.is-assistant]:py-0 group-[.is-assistant]:text-foreground group-[.is-assistant]:shadow-none",
+      "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-[15px] leading-[1.75]",
+      // 用户气泡只保留轻背景和圆角，避免抢 AI 正文的阅读重心。
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[18px] group-[.is-user]:border group-[.is-user]:border-[var(--chat-border)]/60 group-[.is-user]:bg-[var(--chat-surface-soft)]/72 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-[var(--chat-text)] group-[.is-user]:shadow-none",
+      "group-[.is-assistant]:w-full group-[.is-assistant]:rounded-none group-[.is-assistant]:border-0 group-[.is-assistant]:bg-transparent group-[.is-assistant]:px-0 group-[.is-assistant]:py-0 group-[.is-assistant]:text-[var(--chat-text)] group-[.is-assistant]:shadow-none",
       className
     )}
     {...props}
@@ -225,10 +225,11 @@ export type MessageBranchSelectorProps = HTMLAttributes<HTMLDivElement> & {
 
 export const MessageBranchSelector = ({
   className,
-  from,
+  from: _from,
   ...props
 }: MessageBranchSelectorProps) => {
   const { totalBranches } = useMessageBranch();
+  void _from;
 
   // Don't render if there's only one branch
   if (totalBranches <= 1) {
@@ -237,7 +238,10 @@ export const MessageBranchSelector = ({
 
   return (
     <ButtonGroup
-      className="[&>*:not(:first-child)]:rounded-l-md [&>*:not(:last-child)]:rounded-r-md"
+      className={cn(
+        "[&>*:not(:first-child)]:rounded-l-md [&>*:not(:last-child)]:rounded-r-md",
+        className
+      )}
       orientation="horizontal"
       {...props}
     />
@@ -279,6 +283,7 @@ export const MessageBranchNext = ({
   return (
     <Button
       aria-label="Next branch"
+      className={className}
       disabled={totalBranches <= 1}
       onClick={goToNext}
       size="icon-sm"
@@ -426,7 +431,10 @@ const useNearBottomAutoScroll = (enabled: boolean, trigger: string) => {
 // 流式光标组件
 const StreamingCursor = memo(() => {
   const opacity = useMotionValue(1);
-  const smoothOpacity = useSpring(opacity, { stiffness: 300, damping: 30 });
+  const smoothOpacity = useSpring(opacity, {
+    stiffness: 300,
+    damping: 30,
+  });
 
   useEffect(() => {
     const interval = setInterval(() => {

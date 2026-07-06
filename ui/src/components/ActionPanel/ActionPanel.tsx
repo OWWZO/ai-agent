@@ -26,9 +26,18 @@ interface ActionPanelProps {
 // 内容包装动画组件
 const ContentWrapper = ({ children }: { children: React.ReactNode }) => (
   <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -6 }}
+    initial={{
+      opacity: 0,
+      y: 10,
+    }}
+    animate={{
+      opacity: 1,
+      y: 0,
+    }}
+    exit={{
+      opacity: 0,
+      y: -6,
+    }}
     transition={{
       duration: 0.22,
       ease: [0.25, 0.46, 0.45, 0.94],
@@ -40,42 +49,41 @@ const ContentWrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 // Markdown 流式内容动画包装
-const StreamingMarkdownWrapper = memo(({
-  content,
-  isStreaming,
-}: {
-  content: string;
-  isStreaming: boolean;
-}) => {
-  return (
-    <div
-      className="flex min-h-full flex-col"
-    >
-      <MarkdownRenderer
-        markDownContent={content}
-        isStreaming={isStreaming}
-        normalizationScope="default"
-      />
-      <div
-        aria-hidden
-        className="shrink-0 transition-[height] duration-300 ease-out"
-        style={{
-          height: isStreaming ? "clamp(180px, 34vh, 320px)" : "24px",
-        }}
-      />
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.content === nextProps.content &&
-    prevProps.isStreaming === nextProps.isStreaming
-  );
-});
+const StreamingMarkdownWrapper = memo(
+  ({
+    content,
+    isStreaming,
+  }: {
+    content: string;
+    isStreaming: boolean;
+  }) => {
+    return (
+      <div className="flex min-h-full flex-col">
+        <MarkdownRenderer
+          markDownContent={content}
+          isStreaming={isStreaming}
+          normalizationScope="default"
+        />
+        <div
+          aria-hidden
+          className="shrink-0 transition-[height] duration-300 ease-out"
+          style={{ height: isStreaming ? "clamp(180px, 34vh, 320px)" : "24px" }}
+        />
+      </div>
+    );
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.content === nextProps.content &&
+      prevProps.isStreaming === nextProps.isStreaming
+    );
+  }
+);
 
 StreamingMarkdownWrapper.displayName = "StreamingMarkdownWrapper";
 
 const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
-  const { taskItem, className, allowShowToolBar } = props;
+  const { taskItem, className, allowShowToolBar, noPadding } = props;
 
   const msgTypes = useMsgTypes(taskItem);
   const { markDownContent } = useContent(taskItem);
@@ -193,6 +201,9 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         return null;
     }
   }, [panelView]);
+
+  const isImmersivePreview =
+    panelView.type === "html" || panelView.type === "inline-html";
 
   const ref = useRef<HTMLDivElement>(null);
   const shouldAutoFollowRef = useRef(true);
@@ -337,7 +348,12 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       scrollToBottom,
     }}>
       <div
-        className={classNames('w-full px-16 overflow-auto', className)}
+        className={classNames(
+          "w-full",
+          isImmersivePreview ? "overflow-hidden px-1 sm:px-2" : "overflow-auto px-16",
+          noPadding && "px-0",
+          className
+        )}
         ref={ref}
       >
         {panelNode}

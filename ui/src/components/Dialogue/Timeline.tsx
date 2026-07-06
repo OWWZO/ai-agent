@@ -43,6 +43,18 @@ type ToolItemProps = {
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
 };
 
+const taskRowClass =
+  "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 transition-colors duration-200 hover:border-[var(--chat-border)]/70 hover:bg-[var(--chat-interactive-hover)]";
+
+const taskIconClass =
+  "flex size-7 shrink-0 items-center justify-center text-[var(--chat-accent)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
+
+const taskTitleClass =
+  "shrink-0 text-[14px] font-medium text-[var(--chat-text)]";
+
+const taskMetaClass =
+  "truncate text-[13px] text-[var(--chat-text-soft)]";
+
 const ToolItem: FC<ToolItemProps> = memo(({
   tool,
   chat,
@@ -57,15 +69,15 @@ const ToolItem: FC<ToolItemProps> = memo(({
       const completedIndex = tool.plan?.stepStatus.lastIndexOf("completed") || 0;
       return (
         <div
-          className="mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
+          className={taskRowClass}
           onClick={() => changePlan?.()}
         >
-          <div className="flex size-7 shrink-0 items-center justify-center text-[#0071e3] [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
+          <div className={taskIconClass}>
             <i className={`font_family ${getIcon(tool.messageType)} text-[17px] leading-none [text-shadow:none]`}></i>
           </div>
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="shrink-0 text-[14px] font-medium text-foreground">已完成</span>
-            <span className="truncate text-[13px] text-muted-foreground">
+            <span className={taskTitleClass}>已完成</span>
+            <span className={taskMetaClass}>
               {tool.plan?.steps[completedIndex]}
             </span>
           </div>
@@ -133,11 +145,11 @@ const ToolItem: FC<ToolItemProps> = memo(({
 
       return (
         <div
-          className="mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl px-1 py-2 transition-all duration-200 hover:bg-muted/35"
+          className={taskRowClass}
           onClick={() => changeActiveChat(tool, chat)}
         >
           {isDeepSearchInline ? (
-            <div className="flex size-7 shrink-0 items-center justify-center text-primary [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
+            <div className={taskIconClass}>
               {loading ? (
                 <LoaderCircleIcon className="size-4 animate-spin" />
               ) : isSearching ? (
@@ -147,13 +159,15 @@ const ToolItem: FC<ToolItemProps> = memo(({
               )}
             </div>
           ) : loading ? (
-            <div className="flex size-7 shrink-0 items-center justify-center text-primary [&_svg]:drop-shadow-none [&_svg]:[filter:none]">
+            <div className={taskIconClass}>
               <LoaderCircleIcon className="size-4 animate-spin" />
             </div>
           ) : (
             <div
-              className="flex size-7 shrink-0 items-center justify-center [&_svg]:drop-shadow-none [&_svg]:[filter:none]"
-              style={{ color: tool.messageType === "code" ? "#111827" : "#0071e3" }}
+              className={[
+                "flex size-7 shrink-0 items-center justify-center [&_svg]:drop-shadow-none [&_svg]:[filter:none]",
+                tool.messageType === "code" ? "text-[var(--chat-text)]" : "text-[var(--chat-accent)]",
+              ].join(" ")}
             >
               <i
                 className={`font_family ${getIcon(
@@ -166,10 +180,10 @@ const ToolItem: FC<ToolItemProps> = memo(({
             </div>
           )}
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="shrink-0 text-[14px] font-medium text-foreground">
+            <span className={taskTitleClass}>
               {actionInfo.action}
             </span>
-            <span className="truncate text-[13px] text-muted-foreground">
+            <span className={taskMetaClass}>
               {actionInfo.name}
             </span>
           </div>
@@ -299,7 +313,7 @@ const TimelineContent: FC<{
                     {taskCompleted && (
                       <>
                         <span className="text-[var(--chat-border)]">|</span>
-                        <CheckIcon className="h-3.5 w-3.5 text-green-500" />
+                        <CheckIcon className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
                       </>
                     )}
                   </div>
@@ -374,7 +388,7 @@ export const Timeline: FC<TimelineProps> = ({
               ) : showCompletedIcon ? (
                 <i
                   aria-label="timeline-completed"
-                  className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[#0071e3]"
+                  className="font_family icon-yiwanchengtianchong absolute left-0 top-0 text-[16px] text-[var(--chat-accent)]"
                 ></i>
               ) : null}
             </div>

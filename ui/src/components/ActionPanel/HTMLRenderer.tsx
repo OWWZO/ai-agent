@@ -81,7 +81,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
     if (htmlUrl) {
       return (
         <iframe
-          className="block h-[min(60vh,520px)] w-full rounded-lg bg-[var(--chat-surface)]"
+          className="block h-full min-h-0 w-full rounded-lg bg-[var(--chat-surface)]"
           src={htmlUrl}
           title="HTML preview"
           onLoad={stopLoading}
@@ -108,7 +108,7 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
   if (htmlUrl) {
     return (
       <ViewerPanelShell
-        bodyClassName="p-2 sm:p-3"
+        bodyClassName="flex min-h-0 flex-1 p-1 sm:p-2"
         className={classNames(className, "relative flex min-h-0 flex-1 flex-col")}
         headerRight={headerActions}
         label="HTML"

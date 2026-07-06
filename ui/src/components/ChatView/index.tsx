@@ -67,6 +67,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     isFocusMode,
     containerRef,
     handleDragStart,
+    handleDragMove,
+    handleDragEnd,
     setIsRightCollapsed,
     setIsFocusMode,
     toggleLeftPanel,
@@ -522,120 +524,131 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       );
     }
 
-    // 38/62 双面板布局；专注模式隐藏对话区，把工作区拉满
+    // 双面板布局；专注模式隐藏对话区，把工作区拉满
     return (
       <div
         ref={containerRef}
-        className="flex h-full w-full gap-0.5 p-2"
+        className={classNames(
+          "flex h-full w-full gap-0.5 p-2",
+          isDragging && "cursor-col-resize select-none"
+        )}
       >
         {/* Left Panel - Chat Area */}
         {!isFocusMode && (
-        <div
-          className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90 transition-all duration-300",
-            isLeftCollapsed && "w-14 min-w-14",
-            !isLeftCollapsed && "flex-1"
-          )}
-          style={!isLeftCollapsed ? { flex: `0 0 ${leftPanelWidth}%` } : undefined}
-        >
-          {isLeftCollapsed ? (
+          <div
+            className={classNames(
+              "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90",
+              isDragging ? "transition-none" : "transition-all duration-300",
+              isLeftCollapsed && "w-14 min-w-14",
+              !isLeftCollapsed && "shrink-0"
+            )}
+            style={!isLeftCollapsed ? { width: `${leftPanelWidth}%` } : undefined}
+          >
+            {isLeftCollapsed ? (
             // 折叠状态
-            <div className="flex h-full flex-col items-center py-4">
-              <button
-                onClick={toggleLeftPanel}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
-                title="展开聊天区"
-              >
-                <PanelRightClose className="h-5 w-5" />
-              </button>
-            </div>
-          ) : (
-            // 展开状态
-            <>
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <h2 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
-                    {headerTitle}
-                  </h2>
-                  {conversation.deepThink && (
-                    <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#1d1d1f] px-3 py-1 text-[12px] font-medium text-white">
-                      <i className="font_family icon-shendusikao text-[11px]"></i>
-                      <span>深度研究</span>
-                    </div>
-                  )}
-                </div>
+              <div className="flex h-full flex-col items-center py-4">
                 <button
                   onClick={toggleLeftPanel}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
-                  title="收起聊天区"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                  title="展开聊天区"
                 >
-                  <PanelLeftClose className="h-4 w-4" />
+                  <PanelRightClose className="h-5 w-5" />
                 </button>
               </div>
-
-              {/* Messages */}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden px-5 pt-5">
-                  <ConversationContent>
-                    {renderChatDialogues()}
-                  </ConversationContent>
-                  <ConversationScrollButton />
-                </Conversation>
-
-                {/* Input */}
-                <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
-                  <GeneralInput
-                    key={`input-${conversation.sessionId}-left`}
-                    sessionId={conversation.sessionId}
-                    placeholder={
-                      conversation.role?.available === false
-                        ? "当前角色已失效，请新建对话后重新选择角色"
-                        : loading
-                          ? "任务进行中..."
-                          : "希望 Reactor 为你做哪些任务呢？"
-                    }
-                    showBtn={false}
-                    size="medium"
-                    disabled={loading || conversation.role?.available === false}
-                    product={currentProduct}
-                    deepThink={conversation.deepThink}
-                    displayOutput={currentProduct}
-                    chatRole={conversation.role}
-                    chatRoles={chatRoles}
-                    showRoleSelector={false}
-                    onRoleSelect={onRoleSelect}
-                    send={(info) =>
-                      sendMessage({
-                        ...info,
-                        outputStyle: conversation.productType,
-                        deepThink: conversation.deepThink,
-                        aiAgentId: conversation.role?.agentId,
-                      })
-                    }
-                  />
+            ) : (
+            // 展开状态
+              <>
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <h2 className="truncate text-[16px] font-semibold text-[var(--chat-text)]">
+                      {headerTitle}
+                    </h2>
+                    {conversation.deepThink && (
+                      <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+                        <i className="font_family icon-shendusikao text-[11px]"></i>
+                        <span>深度研究</span>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={toggleLeftPanel}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                    title="收起聊天区"
+                  >
+                    <PanelLeftClose className="h-4 w-4" />
+                  </button>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
+
+                {/* Messages */}
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden px-5 pt-5">
+                    <ConversationContent>
+                      {renderChatDialogues()}
+                    </ConversationContent>
+                    <ConversationScrollButton />
+                  </Conversation>
+
+                  {/* Input */}
+                  <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
+                    <GeneralInput
+                      key={`input-${conversation.sessionId}-left`}
+                      sessionId={conversation.sessionId}
+                      placeholder={
+                        conversation.role?.available === false
+                          ? "当前角色已失效，请新建对话后重新选择角色"
+                          : loading
+                            ? "任务进行中..."
+                            : "希望 Reactor 为你做哪些任务呢？"
+                      }
+                      showBtn={false}
+                      size="medium"
+                      disabled={loading || conversation.role?.available === false}
+                      product={currentProduct}
+                      deepThink={conversation.deepThink}
+                      displayOutput={currentProduct}
+                      chatRole={conversation.role}
+                      chatRoles={chatRoles}
+                      showRoleSelector={false}
+                      onRoleSelect={onRoleSelect}
+                      send={(info) =>
+                        sendMessage({
+                          ...info,
+                          outputStyle: conversation.productType,
+                          deepThink: conversation.deepThink,
+                          aiAgentId: conversation.role?.agentId,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* Drag Handle */}
         {!isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
           <div
-            onMouseDown={handleDragStart}
+            aria-label="调整对话区和工作区宽度"
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
             className={classNames(
-              "group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center transition-colors",
-              "hover:bg-[#0071e3]/8",
-              isDragging && "bg-[#0071e3]/16"
+              "group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
+              "hover:bg-[#0071e3]/10",
+              isDragging && "bg-[#0071e3]/15"
             )}
             title="拖拽调整左右区域宽度"
           >
-            {/* Wider hit area with slim visual indicator */}
+            {/* 宽命中区保障可拖动，内部细线保持界面克制。 */}
+            <div className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-[#e5e5ea] transition-colors group-hover:bg-[#b9b9c0]" />
             <div
               className={classNames(
-                "h-10 w-0.5 rounded-full transition-all duration-200",
+                "relative h-14 w-1 rounded-full transition-all duration-200",
                 isDragging
                   ? "bg-[#0071e3]"
                   : "bg-[#d2d2d7] group-hover:bg-[#86868b]"
@@ -647,18 +660,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90 transition-all duration-300",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90",
+            isDragging ? "transition-none" : "transition-all duration-300",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
-          style={!isRightCollapsed && !isFocusMode ? { flex: `0 0 ${100 - leftPanelWidth - (isLeftCollapsed ? 0 : 0)}%` } : undefined}
         >
           {isRightCollapsed ? (
             // 折叠状态
             <div className="flex h-full flex-col items-center py-4">
               <button
                 onClick={toggleRightPanel}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
                 title="展开智能体工作区"
               >
                 <PanelLeftClose className="h-5 w-5" />

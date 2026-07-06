@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const DEFAULT_LEFT_WIDTH = 38;
-const MIN_LEFT_WIDTH = 28;
-const MAX_LEFT_WIDTH = 60;
+const DEFAULT_LEFT_WIDTH = 50;
+const MIN_LEFT_WIDTH = 24;
+const MAX_LEFT_WIDTH = 56;
 
 /**
  * 统一收口聊天区 / 工作区的布局状态，避免主组件继续堆叠拖拽与折叠细节。
- * 默认对话区 38%、工作区 62%，让产物预览拿到更多展示空间；
+ * 默认对话区 / 工作区各占 50%，首次进入时分割线处于中间位置；
  * 同时支持专注模式（隐藏对话区，工作区全屏接管）。
  */
 export function useWorkspacePanels() {
@@ -19,8 +19,14 @@ export function useWorkspacePanels() {
   const dragStartWidthRef = useRef(DEFAULT_LEFT_WIDTH);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = useCallback((event: React.MouseEvent) => {
+  const resetDragCursor = useCallback(() => {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  const handleDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
     setIsDragging(true);
     dragStartXRef.current = event.clientX;
     dragStartWidthRef.current = leftPanelWidth;
@@ -28,42 +34,35 @@ export function useWorkspacePanels() {
     document.body.style.userSelect = "none";
   }, [leftPanelWidth]);
 
-  useEffect(() => {
-    const handleDragMove = (event: MouseEvent) => {
-      if (!isDragging || !containerRef.current) {
-        return;
-      }
-
-      const containerWidth = containerRef.current.offsetWidth;
-      const deltaPixels = event.clientX - dragStartXRef.current;
-      const deltaPercent = (deltaPixels / containerWidth) * 100;
-      const nextWidth = Math.max(
-        MIN_LEFT_WIDTH,
-        Math.min(MAX_LEFT_WIDTH, dragStartWidthRef.current + deltaPercent)
-      );
-      setLeftPanelWidth(nextWidth);
-    };
-
-    const handleDragEnd = () => {
-      if (!isDragging) {
-        return;
-      }
-
-      setIsDragging(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    if (isDragging) {
-      document.addEventListener("mousemove", handleDragMove);
-      document.addEventListener("mouseup", handleDragEnd);
+  const handleDragMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging || !containerRef.current) {
+      return;
     }
 
-    return () => {
-      document.removeEventListener("mousemove", handleDragMove);
-      document.removeEventListener("mouseup", handleDragEnd);
-    };
+    event.preventDefault();
+    const containerWidth = containerRef.current.offsetWidth;
+    const deltaPixels = event.clientX - dragStartXRef.current;
+    const deltaPercent = (deltaPixels / containerWidth) * 100;
+    const nextWidth = Math.max(
+      MIN_LEFT_WIDTH,
+      Math.min(MAX_LEFT_WIDTH, dragStartWidthRef.current + deltaPercent)
+    );
+    setLeftPanelWidth(nextWidth);
   }, [isDragging]);
+
+  const handleDragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsDragging(false);
+    resetDragCursor();
+  }, [resetDragCursor]);
+
+  useEffect(() => {
+    return () => {
+      resetDragCursor();
+    };
+  }, [resetDragCursor]);
 
   const toggleLeftPanel = useCallback(() => {
     setIsLeftCollapsed((previous) => {
@@ -91,6 +90,8 @@ export function useWorkspacePanels() {
     isFocusMode,
     containerRef,
     handleDragStart,
+    handleDragMove,
+    handleDragEnd,
     setIsLeftCollapsed,
     setIsRightCollapsed,
     setIsFocusMode,

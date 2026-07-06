@@ -12,11 +12,7 @@ import {
   ReasoningContent,
 } from "@/components/ai-elements/reasoning";
 import ThinkingMessage from "./ThinkingMessage";
-import {
-} from "lucide-react";
-import {
-  type MarkdownNormalizationScope,
-} from "@/utils/markdown";
+import { type MarkdownNormalizationScope } from "@/utils/markdown";
 import RunStatus from "@/components/ActionView/RunStatus";
 import {
   isPlanSolveConversation,
@@ -70,13 +66,16 @@ const ConclusionSection: FC<{
     [chat.conclusion]
   );
   return (
-    <div className="mb-[8px]">
-      <div className="mb-[8px] rounded-2xl bg-white/72 px-1 py-1">
+    <div className="mt-7">
+      <div className="mb-3 rounded-2xl border border-[var(--chat-border)]/70 bg-[var(--chat-surface)]/72 px-4 py-3">
+        <div className="mb-2 text-[12px] font-medium text-[var(--chat-text-soft)]">
+          结果
+        </div>
         <MarkdownRenderer
           markDownContent={summary}
           isStreaming={summaryStreaming}
           normalizationScope={normalizationScope}
-          className="conclusion-markdown text-[15px] leading-8"
+          className="chat-markdown conclusion-markdown"
         />
       </div>
       <AttachmentList
@@ -89,7 +88,15 @@ const ConclusionSection: FC<{
 };
 
 const DialogueComponent: FC<Props> = (props) => {
-  const { chat, streamingThought, deepThink, changeTask, changeFile, changePlan, onRegenerate } = props;
+  const {
+    chat,
+    streamingThought,
+    deepThink,
+    changeTask,
+    changeFile,
+    changePlan,
+    onRegenerate,
+  } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
   const plannerRounds = useMemo(
@@ -144,18 +151,18 @@ const DialogueComponent: FC<Props> = (props) => {
   }, [changeTask]);
 
   return (
-    <div className="flex h-full flex-col text-[15px] font-normal text-[#111827]">
+    <div className="chat-dialogue flex h-full flex-col font-normal">
       {/* 附件 */}
       {(chat.files || []).length ? (
-        <div className="mt-6 flex w-full justify-end">
+        <div className="mt-5 flex w-full justify-end">
           <AttachmentList files={chat.files} preview={false} />
         </div>
       ) : null}
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="mt-6 flex w-full justify-end">
-          <Message from="user" className="max-w-[82%]">
+        <div className="mt-5 flex w-full justify-end">
+          <Message from="user" className="max-w-[78%]">
             <MessageContent>
               {chat.query}
             </MessageContent>
@@ -165,12 +172,12 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 提示 */}
       {chat.tip ? (
-        <div className="mt-5 w-full text-[15px] text-muted-foreground">
+        <div className="mt-4 w-full text-[14px] leading-7 text-[var(--chat-text-soft)]">
           {chat.tip}
         </div>
       ) : null}
 
-      <div className="mt-5 w-full">
+      <div className="mt-4 w-full">
         <RunStatus
           status={chat.metrics?.status}
           finishedAt={chat.finishedAt}
@@ -179,13 +186,14 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* AI 回复（Markdown） */}
       {showStandaloneResponse ? (
-        <div className="mt-6 flex w-full justify-start">
+        <div className="mt-7 flex w-full justify-start">
           <Message from="assistant" className="w-full max-w-full">
             <MessageContent>
               <MarkdownRenderer
                 markDownContent={chat.response}
                 isStreaming={chat.loading}
                 normalizationScope="default"
+                className="chat-markdown"
               />
             </MessageContent>
             {!chat.loading ? (
@@ -203,7 +211,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (
-        <div className="mt-6 w-full overflow-hidden rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/40 p-3 shadow-[var(--shadow-sm)] ring-0">
+        <div className="mt-7 w-full overflow-hidden rounded-2xl border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/36 p-3 shadow-[var(--shadow-sm)] ring-0">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="text-[12px] font-medium text-[var(--chat-text-muted)]">
               Planner Thought
@@ -243,7 +251,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 任务计划 */}
       {!isReactType && displayedPlan ? (
-        <div className="mt-6 w-full">
+        <div className="mt-7 w-full">
           <PlanSection
             plan={displayedPlan}
             versionLabel={planVersionLabel}
@@ -258,7 +266,7 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 任务时间线 */}
       {chat.tasks.length ? (
-        <div className="mt-6 w-full">
+        <div className="mt-7 w-full">
           <Timeline
             chat={chat}
             isPlanSolveMessage={isPlanSolveMessage}

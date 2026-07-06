@@ -28,7 +28,12 @@ import {
   hydrateConversationFromReplayFrames,
   isHistoryDetailEmpty,
 } from "@/utils/conversationHistory";
-import { deriveConversationMetaFromInput } from "./homeState";
+import {
+  deriveConversationMetaFromInput,
+  mergeLocalRecentConversations,
+  mergeRecentSessions,
+  toRecentSessionItem,
+} from "./homeState";
 import { resolveInitialSessionId } from "./sessionBootstrap";
 import { useRecentSessions } from "./useRecentSessions";
 import {
@@ -53,10 +58,6 @@ const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
   deepThink: false,
-};
-
-const getModeName = (type: string) => {
-  return productList.find((item) => item.type === type)?.name || type;
 };
 
 const toConversationRole = (
@@ -118,6 +119,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     recentSessionsLoading,
     refreshRecentSessions,
   } = useRecentSessions();
+  const [localRecentConversations, setLocalRecentConversations] = useState<
+    CHAT.ConversationHistory[]
+  >([]);
   const [activeView, setActiveView] = useState<SidebarView>("chat");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(
@@ -165,10 +169,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     return currentConversation.role || toConversationRole(defaultFixRole);
   }, [currentConversation.productType, currentConversation.role, defaultFixRole]);
 
-  const currentHeaderTitle =
-    currentConversation.chatTitle || currentConversation.title;
-
-  const currentModeName = getModeName(currentConversation.productType);
+  const displayedRecentSessions = useMemo(
+    () =>
+      mergeRecentSessions(
+        recentSessions,
+        localRecentConversations
+          .map(toRecentSessionItem)
+          .filter((item): item is ConversationSessionItem => Boolean(item))
+      ),
+    [localRecentConversations, recentSessions]
+  );
 
   const canRenderChatView =
     activeView === "chat" &&
@@ -317,14 +327,29 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     setInputInfo({ ...EMPTY_INPUT });
   }, []);
 
-  const updateConversation = useCallback(
-    (_conversationId: string, nextConversation: CHAT.ConversationHistory) => {
-      setCurrentConversation({
-        ...nextConversation,
-        updatedAt: Date.now(),
-      });
+  const upsertLocalRecentSession = useCallback(
+    (conversation: CHAT.ConversationHistory) => {
+      if (!conversation.sessionId) {
+        return;
+      }
+
+      setLocalRecentConversations((prev) =>
+        mergeLocalRecentConversations(prev, conversation)
+      );
     },
     []
+  );
+
+  const updateConversation = useCallback(
+    (_conversationId: string, nextConversation: CHAT.ConversationHistory) => {
+      const nextState = {
+        ...nextConversation,
+        updatedAt: Date.now(),
+      };
+      setCurrentConversation(nextState);
+      upsertLocalRecentSession(nextState);
+    },
+    [upsertLocalRecentSession]
   );
 
   const createNewChat = useCallback(
@@ -337,25 +362,25 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         override?.productType ||
         (product.type === "chat" ? defaultStructuredProduct.type : product.type);
       setActiveView("chat");
-      setCurrentConversation(
-        createConversation({
-          sessionId: nextSessionId,
-          productType: nextProductType,
-          deepThink:
-            nextProductType === "chat" || nextProductType === "dataAgent"
-              ? false
-              : override?.deepThink ?? false,
-          role:
-            override?.role ||
-            (nextProductType === "chat"
-              ? toConversationRole(defaultFixRole)
-              : null),
-          ...override,
-        })
-      );
+      const nextConversation = createConversation({
+        sessionId: nextSessionId,
+        productType: nextProductType,
+        deepThink:
+          nextProductType === "chat" || nextProductType === "dataAgent"
+            ? false
+            : override?.deepThink ?? false,
+        role:
+          override?.role ||
+          (nextProductType === "chat"
+            ? toConversationRole(defaultFixRole)
+            : null),
+        ...override,
+      });
+      setCurrentConversation(nextConversation);
+      upsertLocalRecentSession(nextConversation);
       resetInput();
     },
-    [defaultFixRole, product.type, resetInput]
+    [defaultFixRole, product.type, resetInput, upsertLocalRecentSession]
   );
 
   const updateCurrentConversationMeta = useCallback(
@@ -375,6 +400,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSelectRecentSession = useCallback(
     (session: ConversationSessionItem) => {
+      const localConversation = localRecentConversations.find(
+        (item) => item.sessionId === session.sessionId
+      );
+      if (localConversation) {
+        setCurrentConversation(localConversation);
+        setActiveView("chat");
+        resetInput();
+        return;
+      }
+
       conversationHistoryApi
         .getSessionDetail(session.sessionId)
         .then((detail) => {
@@ -389,7 +424,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           console.error("加载历史会话详情失败", error);
         });
     },
-    [resetInput]
+    [localRecentConversations, resetInput]
   );
 
   useEffect(() => {
@@ -529,7 +564,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       <div className="flex h-full w-full">
         <ConversationSidebar
           activeView={activeView}
-          recentSessions={recentSessions}
+          recentSessions={displayedRecentSessions}
           recentSessionsLoading={recentSessionsLoading}
           selectedSessionId={currentConversation.sessionId}
           visitorUsername={visitorBootstrap?.username}
@@ -539,24 +574,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="border-b border-[var(--chat-border)] bg-[var(--chat-surface)]/80 px-4 py-3 backdrop-blur-md sm:px-6">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <div className="truncate text-[16px] font-medium text-[var(--chat-text)]">
-                  {currentHeaderTitle}
-                </div>
-                <div className="mt-1 text-[12px] text-[var(--chat-text-soft)]">
-                  {activeView === "chat"
-                    ? `当前模式：${currentModeName}`
-                    : activeView === "mrag"
-                      ? "当前工作台：MRAG"
-                      : "当前工作台：绘图智能体"}
-                </div>
-              </div>
-
-            </div>
-          </div>
-
           <div className={contentContainerClassName}>
             {activeView === "mrag" ? (
               <WorkspaceMRag embedded />
