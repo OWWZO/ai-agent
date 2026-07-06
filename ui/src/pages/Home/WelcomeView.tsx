@@ -1,11 +1,14 @@
-import { motion } from "motion/react";
 import classNames from "classnames";
+import { motion } from "motion/react";
+import { Link } from "react-router-dom";
 
+import FeaturedConversationCard from "@/components/FeaturedConversationCard";
 import GeneralInput from "@/components/GeneralInput";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
+import { ROUTES } from "@/router/routes";
+import type { FeaturedConversationCard as FeaturedConversationCardModel } from "@/services/featuredConversation";
 import {
-  demoList,
   suggestedQuestionsByProductType,
   type SuggestedQuestion,
 } from "@/utils/constants";
@@ -20,100 +23,6 @@ const HERO_TYPEWRITER_TEXTS = [
   "Awaiting your instructions",
 ];
 
-const SHOW_FEATURED_CASES = false;
-
-const tagColorMap: Record<string, string> = {
-  专业研究: "bg-[var(--secondary)] text-[var(--secondary-foreground)]",
-  数据分析: "bg-[oklch(0.95_0.05_200)] text-[oklch(0.5_0.1_200)]",
-  竞品调研: "bg-[oklch(0.95_0.05_50)] text-[oklch(0.5_0.12_50)]",
-};
-
-type CaseCardProps = {
-  title: string;
-  description: string;
-  tag: string;
-  image: string;
-  url: string;
-  videoUrl: string;
-  videoModalOpen: string | undefined;
-  onOpenVideo: (url: string) => void;
-  onCloseVideo: () => void;
-  index: number;
-};
-
-function CaseCard(props: CaseCardProps) {
-  const {
-    title,
-    description,
-    tag,
-    image,
-    url,
-    videoUrl,
-    onOpenVideo,
-    index,
-  } = props;
-  const tagColor =
-    tagColorMap[tag] ?? "bg-[var(--muted)] text-[var(--muted-foreground)]";
-
-  return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 24,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-      transition={{
-        duration: 0.7,
-        delay: 0.8 + index * 0.1,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      className="group relative flex w-[280px] shrink-0 cursor-pointer flex-col overflow-hidden rounded-[24px] border border-transparent bg-[var(--card)] shadow-[var(--shadow-sm)] transition-all duration-500 ease-out hover:-translate-y-1 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-lg)]"
-    >
-      <div className="relative h-[170px] overflow-hidden">
-        <img
-          src={image}
-          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-          alt={title}
-        />
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-[var(--foreground)]/0 transition-all duration-300 group-hover:bg-[var(--foreground)]/15"
-          onClick={() => onOpenVideo(videoUrl)}
-        >
-          <div className="flex h-[48px] w-[48px] scale-75 items-center justify-center rounded-full bg-white/95 opacity-0 shadow-lg backdrop-blur-sm transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 hover:scale-105 hover:bg-white">
-            <i className="font_family icon-bofang ml-[2px] text-[18px] text-[var(--foreground)]"></i>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-1 text-[16px] font-medium leading-tight text-[var(--chat-text)] font-[var(--font-sans)]">
-            {title}
-          </h3>
-          <span
-            className={`inline-block shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${tagColor}`}
-          >
-            {tag}
-          </span>
-        </div>
-        <p className="line-clamp-2 text-[13px] leading-[1.6] text-[var(--chat-text-soft)]">
-          {description}
-        </p>
-        <div
-          className="flex cursor-pointer items-center gap-1.5 pt-1 text-[13px] font-medium text-[var(--primary)] transition-colors duration-200 hover:text-[var(--accent)]"
-          onClick={() => window.open(url)}
-        >
-          <span>查看报告</span>
-          <i className="font_family icon-xinjianjiantou text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
 export default function WelcomeView(props: {
   currentConversation: CHAT.ConversationHistory;
   product: CHAT.Product;
@@ -122,6 +31,7 @@ export default function WelcomeView(props: {
   fixRoles: CHAT.FixRole[];
   visitorUsername?: string;
   videoModalOpen?: string;
+  featuredCards: FeaturedConversationCardModel[];
   onSelectionChange: (selection: {
     product: CHAT.Product;
     deepThink: boolean;
@@ -135,10 +45,16 @@ export default function WelcomeView(props: {
   const suggestedQuestions =
     suggestedQuestionsByProductType[props.product.type] ?? [];
   const hasSuggestedQuestions = suggestedQuestions.length > 0;
+  const hasFeaturedCards = props.featuredCards.length > 0;
 
   return (
     <div className="h-full w-full overflow-y-auto px-6 md:px-12 lg:px-16">
-      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col items-center justify-center py-8 lg:py-10">
+      <div
+        className={classNames(
+          "mx-auto flex min-h-full w-full max-w-[1280px] flex-col items-center py-8 lg:py-10",
+          hasFeaturedCards ? "justify-start" : "justify-center"
+        )}
+      >
         <div className="mb-8 text-center lg:mb-10">
           <h1
             className="mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
@@ -179,9 +95,9 @@ export default function WelcomeView(props: {
                 className="flex max-w-full cursor-pointer items-center gap-2 rounded-[16px] bg-[oklch(0.955_0.002_90)] px-5 py-3 text-[14px] font-medium leading-none text-[var(--chat-text)] transition-colors duration-200 hover:bg-[oklch(0.925_0.003_90)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25 md:text-[15px]"
                 onClick={() => props.onSendQuestion(item)}
               >
-                {item.deepThink && (
+                {item.deepThink ? (
                   <i className="font_family icon-shendusikao text-[12px] text-[var(--chat-text)]" />
-                )}
+                ) : null}
                 {item.label}
               </button>
             ))}
@@ -227,52 +143,52 @@ export default function WelcomeView(props: {
           </AiChatSurface>
         </motion.div>
 
-        {SHOW_FEATURED_CASES && (
-          <div className="mx-auto mt-8 w-full max-w-[1000px] pb-24">
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 20,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              transition={{
-                duration: 0.7,
-                delay: 0.75,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className="mb-10 text-center"
-            >
-              <h2
-                className="mb-3 text-[28px] font-normal tracking-[-0.02em] text-[var(--chat-text)]"
-                style={{ fontFamily: "var(--font-display)" }}
+        {hasFeaturedCards ? (
+          <motion.section
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              duration: 0.55,
+              delay: 0.15,
+              ease: [0.16, 1, 0.3, 1],
+            }}
+            className="mx-auto mt-4 w-full max-w-[1180px] pb-20"
+          >
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-[24px] font-medium text-[var(--chat-text)]">
+                  精品对话
+                </h2>
+                <p className="mt-1 text-[13px] text-[var(--chat-text-soft)]">
+                  浏览管理员精选的公开案例，直接查看完整回放。
+                </p>
+              </div>
+              <Link
+                to={ROUTES.FEATURED_CONVERSATIONS}
+                className="inline-flex items-center gap-2 text-[13px] font-medium text-[var(--primary)] transition-colors hover:text-[var(--chat-text)]"
               >
-                精选案例
-              </h2>
-              <p
-                className="text-[15px] text-[var(--chat-text-soft)]"
-                style={{ fontFamily: "var(--font-sans)" }}
-              >
-                和 Reactor 一起，让效率飞起来
-              </p>
-            </motion.div>
+                <span>查看全部</span>
+                <i className="font_family icon-xinjianjiantou text-[10px]" />
+              </Link>
+            </div>
 
-            <div className="flex flex-wrap justify-center gap-6">
-              {demoList.map((demo, index) => (
-                <CaseCard
-                  key={index}
-                  {...demo}
-                  index={index}
-                  videoModalOpen={props.videoModalOpen}
-                  onOpenVideo={props.onOpenVideo}
-                  onCloseVideo={props.onCloseVideo}
+            {/* 精品对话始终走公共只读路由，避免和访客自己的会话状态耦合。 */}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {props.featuredCards.map((card) => (
+                <FeaturedConversationCard
+                  key={card.featuredId}
+                  card={card}
                 />
               ))}
             </div>
-          </div>
-        )}
+          </motion.section>
+        ) : null}
       </div>
     </div>
   );

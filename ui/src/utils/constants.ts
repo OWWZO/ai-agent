@@ -46,7 +46,6 @@ export type SuggestedQuestion = {
 const generalSuggestedQuestions: SuggestedQuestion[] = [
   {label: "列出近 3 个月大模型企业级落地的 3 个核心趋势",},
   {label: "输出一份 2026 年中国企业级 RAG 市场的行业研究报告",},
-  {label: "分析低代码开发平台近一年的行业变化，预测未来 2 年的增长方向与机会点",},
   {label: "按照市场环境-竞品拆解-用户需求-机会点 的分析框架，定制一份新能源汽车行业的调研任务",},
   {label: "资讯：Linux 内核新漏洞证明人工审计不可替代",},
   {label: "拆解 3 款主流多智能体协作平台的产品功能、定价策略与目标客户群体",},

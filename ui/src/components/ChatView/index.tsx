@@ -31,6 +31,7 @@ type Props = {
   product?: CHAT.Product;
   conversation: CHAT.ConversationHistory;
   chatRoles: CHAT.FixRole[];
+  readOnly?: boolean;
   onConversationChange: (
     conversationId: string,
     nextConversation: CHAT.ConversationHistory
@@ -53,6 +54,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     product,
     conversation,
     chatRoles,
+    readOnly = false,
     onConversationChange,
     onRoleSelect,
     onInputConsumed,
@@ -271,6 +273,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
     if (inputInfoProp.message?.length !== 0) {
       const targetOutput =
         inputInfoProp.outputStyle || conversationRef.current.productType;
@@ -281,7 +286,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       }
       onInputConsumed?.();
     }
-  }, [inputInfoProp, onInputConsumed, sendDataMessage, sendMessage]);
+  }, [inputInfoProp, onInputConsumed, readOnly, sendDataMessage, sendMessage]);
 
   const handleRegenerate = useMemoizedFn(() => {
     regenerateLastMessage();
@@ -354,7 +359,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               changeTask={changeTask}
               changeFile={changeFile}
               changePlan={changePlan}
-              onRegenerate={handleRegenerate}
+              onRegenerate={readOnly ? undefined : handleRegenerate}
             />
           ))}
         </motion.div>
@@ -390,7 +395,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               changeTask={changeTask}
               changeFile={changeFile}
               changePlan={changePlan}
-              onRegenerate={handleRegenerate}
+              onRegenerate={readOnly ? undefined : handleRegenerate}
             />
           </motion.div>
         ))}
@@ -486,39 +491,41 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               <ConversationScrollButton />
             </Conversation>
 
-            <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
-              <div className="mx-auto w-full max-w-[860px]">
-                <GeneralInput
-                  key={`input-${conversation.sessionId}-single`}
-                  sessionId={conversation.sessionId}
-                  placeholder={
-                    conversation.role?.available === false
-                      ? "当前角色已失效，请新建对话后重新选择角色"
-                      : loading
-                        ? "任务进行中..."
-                        : "希望 Reactor 为你做哪些任务呢？"
-                  }
-                  showBtn={false}
-                  size="medium"
-                  disabled={loading || conversation.role?.available === false}
-                  product={currentProduct}
-                  deepThink={conversation.deepThink}
-                  displayOutput={currentProduct}
-                  chatRole={conversation.role}
-                  chatRoles={chatRoles}
-                  showRoleSelector={false}
-                  onRoleSelect={onRoleSelect}
-                  send={(info) =>
-                    sendMessage({
-                      ...info,
-                      outputStyle: conversation.productType,
-                      deepThink: conversation.deepThink,
-                      aiAgentId: conversation.role?.agentId,
-                    })
-                  }
-                />
+            {!readOnly ? (
+              <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+                <div className="mx-auto w-full max-w-[860px]">
+                  <GeneralInput
+                    key={`input-${conversation.sessionId}-single`}
+                    sessionId={conversation.sessionId}
+                    placeholder={
+                      conversation.role?.available === false
+                        ? "当前角色已失效，请新建对话后重新选择角色"
+                        : loading
+                          ? "任务进行中..."
+                          : "希望 Reactor 为你做哪些任务呢？"
+                    }
+                    showBtn={false}
+                    size="medium"
+                    disabled={loading || conversation.role?.available === false}
+                    product={currentProduct}
+                    deepThink={conversation.deepThink}
+                    displayOutput={currentProduct}
+                    chatRole={conversation.role}
+                    chatRoles={chatRoles}
+                    showRoleSelector={false}
+                    onRoleSelect={onRoleSelect}
+                    send={(info) =>
+                      sendMessage({
+                        ...info,
+                        outputStyle: conversation.productType,
+                        deepThink: conversation.deepThink,
+                        aiAgentId: conversation.role?.agentId,
+                      })
+                    }
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       );
@@ -589,38 +596,39 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     <ConversationScrollButton />
                   </Conversation>
 
-                  {/* Input */}
-                  <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
-                    <GeneralInput
-                      key={`input-${conversation.sessionId}-left`}
-                      sessionId={conversation.sessionId}
-                      placeholder={
-                        conversation.role?.available === false
-                          ? "当前角色已失效，请新建对话后重新选择角色"
-                          : loading
-                            ? "任务进行中..."
-                            : "希望 Reactor 为你做哪些任务呢？"
-                      }
-                      showBtn={false}
-                      size="medium"
-                      disabled={loading || conversation.role?.available === false}
-                      product={currentProduct}
-                      deepThink={conversation.deepThink}
-                      displayOutput={currentProduct}
-                      chatRole={conversation.role}
-                      chatRoles={chatRoles}
-                      showRoleSelector={false}
-                      onRoleSelect={onRoleSelect}
-                      send={(info) =>
-                        sendMessage({
-                          ...info,
-                          outputStyle: conversation.productType,
-                          deepThink: conversation.deepThink,
-                          aiAgentId: conversation.role?.agentId,
-                        })
-                      }
-                    />
-                  </div>
+                  {!readOnly ? (
+                    <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
+                      <GeneralInput
+                        key={`input-${conversation.sessionId}-left`}
+                        sessionId={conversation.sessionId}
+                        placeholder={
+                          conversation.role?.available === false
+                            ? "当前角色已失效，请新建对话后重新选择角色"
+                            : loading
+                              ? "任务进行中..."
+                              : "希望 Reactor 为你做哪些任务呢？"
+                        }
+                        showBtn={false}
+                        size="medium"
+                        disabled={loading || conversation.role?.available === false}
+                        product={currentProduct}
+                        deepThink={conversation.deepThink}
+                        displayOutput={currentProduct}
+                        chatRole={conversation.role}
+                        chatRoles={chatRoles}
+                        showRoleSelector={false}
+                        onRoleSelect={onRoleSelect}
+                        send={(info) =>
+                          sendMessage({
+                            ...info,
+                            outputStyle: conversation.productType,
+                            deepThink: conversation.deepThink,
+                            aiAgentId: conversation.role?.agentId,
+                          })
+                        }
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </>
             )}
@@ -731,28 +739,30 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             <ConversationScrollButton />
           </Conversation>
 
-          <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
-            <div className="mx-auto w-full max-w-[860px]">
-              <GeneralInput
-                key={`input-${conversation.sessionId}-data`}
-                sessionId={conversation.sessionId}
-                placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
-                showBtn={false}
-                size="medium"
-                disabled={loading}
-                product={currentProduct}
-                deepThink={false}
-                displayOutput={currentProduct}
-                send={(info) =>
-                  sendDataMessage({
-                    ...info,
-                    outputStyle: "dataAgent",
-                    deepThink: false,
-                  })
-                }
-              />
+          {!readOnly ? (
+            <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+              <div className="mx-auto w-full max-w-[860px]">
+                <GeneralInput
+                  key={`input-${conversation.sessionId}-data`}
+                  sessionId={conversation.sessionId}
+                  placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
+                  showBtn={false}
+                  size="medium"
+                  disabled={loading}
+                  product={currentProduct}
+                  deepThink={false}
+                  displayOutput={currentProduct}
+                  send={(info) =>
+                    sendDataMessage({
+                      ...info,
+                      outputStyle: "dataAgent",
+                      deepThink: false,
+                    })
+                  }
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
     );

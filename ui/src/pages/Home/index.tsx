@@ -6,9 +6,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
+import { ROUTES } from "@/router/routes";
 import {
   defaultProduct,
   productList,
@@ -19,6 +21,7 @@ import {
   getUniqId,
   peekSessionId,
   setSessionId,
+  showMessage,
 } from "@/utils";
 import {
   conversationHistoryApi,
@@ -29,15 +32,25 @@ import {
   type FixRoleItem,
 } from "@/services/agentConversation";
 import {
+  featuredConversationApi,
+  type FeaturedConversationCard,
+} from "@/services/featuredConversation";
+import {
+  featuredConversationAdminApi,
+  type FeaturedConversationAdminRecord,
+} from "@/services/featuredConversationAdmin";
+import {
   hydrateConversationFromReplayFrames,
   isHistoryDetailEmpty,
 } from "@/utils/conversationHistory";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   deriveConversationMetaFromInput,
   mergeLocalRecentConversations,
   mergeRecentSessions,
   toRecentSessionItem,
 } from "./homeState";
+import FeaturedConversationAdminPanel from "./FeaturedConversationAdminPanel";
 import { resolveInitialSessionId } from "./sessionBootstrap";
 import { useRecentSessions } from "./useRecentSessions";
 import {
@@ -49,6 +62,13 @@ import VisitorBootstrapScreen from "./VisitorBootstrapScreen";
 import VisitorLoginGate from "./VisitorLoginGate";
 import WelcomeView from "./WelcomeView";
 import ConversationSidebar from "./ConversationSidebar";
+import {
+  buildFeaturedConversationFormState,
+  canFeatureConversationSession,
+  type FeaturedConversationFormState,
+  toFeaturedConversationUpsertPayload,
+  validateFeaturedConversationForm,
+} from "./featuredConversationAdminModel";
 
 type HomeProps = Record<string, never>;
 
@@ -62,6 +82,15 @@ const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
   deepThink: false,
+};
+const EMPTY_FEATURED_FORM: FeaturedConversationFormState = {
+  sessionId: "",
+  title: "",
+  summary: "",
+  coverUrl: "",
+  tagsText: "",
+  sortOrder: "100",
+  operator: "ui-featured-manager",
 };
 
 const toConversationRole = (
@@ -115,6 +144,7 @@ const createInitialState = (): InitialState => {
 };
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
+  const navigate = useNavigate();
   const initialRef = useRef<InitialState>(createInitialState());
   const initializedVisitorIdRef = useRef<string | null>(null);
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
@@ -138,6 +168,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     () => productList.find((item) => item.type === "html") ?? defaultProduct
   );
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
+  const [featuredCards, setFeaturedCards] = useState<FeaturedConversationCard[]>(
+    []
+  );
+  const [featuredAdminDialogOpen, setFeaturedAdminDialogOpen] = useState(false);
+  const [featuredAdminLoading, setFeaturedAdminLoading] = useState(false);
+  const [featuredAdminSubmitting, setFeaturedAdminSubmitting] = useState(false);
+  const [featuredAdminTargetSession, setFeaturedAdminTargetSession] =
+    useState<ConversationSessionItem | null>(null);
+  const [featuredAdminRecord, setFeaturedAdminRecord] =
+    useState<FeaturedConversationAdminRecord | null>(null);
+  const [featuredAdminForm, setFeaturedAdminForm] =
+    useState<FeaturedConversationFormState>(EMPTY_FEATURED_FORM);
   const [visitorBootstrap, setVisitorBootstrap] = useState<VisitorBootstrapInfo>();
   const [visitorBootstrapLoaded, setVisitorBootstrapLoaded] = useState(false);
   const [visitorBootstrapLoading, setVisitorBootstrapLoading] = useState(false);
@@ -203,6 +245,20 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         console.error("加载角色库失败", error);
       });
   }, []);
+
+  const loadFeaturedCards = useCallback(async () => {
+    try {
+      const cards = await featuredConversationApi.listHome(6);
+      setFeaturedCards(cards || []);
+    } catch (error) {
+      console.error("加载精品对话失败", error);
+      setFeaturedCards([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFeaturedCards();
+  }, [loadFeaturedCards]);
 
   useEffect(() => {
     if (!shouldBootstrapVisitor({
@@ -546,6 +602,189 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     [changeInputInfo, product.type]
   );
 
+  const syncFeaturedAdminRecord = useCallback(
+    async (session: ConversationSessionItem, operator?: string) => {
+      const page = await featuredConversationAdminApi.queryList({
+        sessionId: session.sessionId,
+        pageNo: 1,
+        pageSize: 1,
+      });
+      const record = page.list?.[0] || null;
+      setFeaturedAdminRecord(record);
+      setFeaturedAdminForm(
+        buildFeaturedConversationFormState({
+          session,
+          existingRecord: record,
+          operator,
+        })
+      );
+      return record;
+    },
+    []
+  );
+
+  const resetFeaturedAdminDialog = useCallback(() => {
+    setFeaturedAdminDialogOpen(false);
+    setFeaturedAdminLoading(false);
+    setFeaturedAdminSubmitting(false);
+    setFeaturedAdminTargetSession(null);
+    setFeaturedAdminRecord(null);
+    setFeaturedAdminForm((prev) => ({
+      ...EMPTY_FEATURED_FORM,
+      operator: prev.operator || EMPTY_FEATURED_FORM.operator,
+    }));
+  }, []);
+
+  const handleFeaturedAdminFormChange = useCallback(
+    (patch: Partial<FeaturedConversationFormState>) => {
+      setFeaturedAdminForm((prev) => ({
+        ...prev,
+        ...patch,
+      }));
+    },
+    []
+  );
+
+  const handleOpenFeaturedAdmin = useCallback(
+    (session: ConversationSessionItem) => {
+      if (!canFeatureConversationSession(session)) {
+        showMessage()?.error("请先让该会话至少产生一轮内容，再设为精品");
+        return;
+      }
+
+      const operator = visitorBootstrap?.username || featuredAdminForm.operator;
+      setFeaturedAdminDialogOpen(true);
+      setFeaturedAdminLoading(true);
+      setFeaturedAdminTargetSession(session);
+      setFeaturedAdminRecord(null);
+      setFeaturedAdminForm(
+        buildFeaturedConversationFormState({
+          session,
+          operator,
+        })
+      );
+
+      syncFeaturedAdminRecord(session, operator)
+        .catch((error) => {
+          console.error("加载精品对话配置失败", error);
+          showMessage()?.error("加载精品对话配置失败");
+        })
+        .finally(() => {
+          setFeaturedAdminLoading(false);
+        });
+    },
+    [featuredAdminForm.operator, syncFeaturedAdminRecord, visitorBootstrap?.username]
+  );
+
+  const handleSaveFeaturedDraft = useCallback(
+    async (publishAfterSave: boolean) => {
+      if (!featuredAdminTargetSession) {
+        return;
+      }
+
+      const validationError = validateFeaturedConversationForm(featuredAdminForm);
+      if (validationError) {
+        showMessage()?.error(validationError);
+        return;
+      }
+
+      setFeaturedAdminSubmitting(true);
+      try {
+        const payload = toFeaturedConversationUpsertPayload(
+          featuredAdminForm,
+          featuredAdminRecord
+        );
+
+        if (featuredAdminRecord) {
+          await featuredConversationAdminApi.update(payload);
+        } else {
+          await featuredConversationAdminApi.create(payload);
+        }
+
+        let latestRecord = await syncFeaturedAdminRecord(
+          featuredAdminTargetSession,
+          featuredAdminForm.operator
+        );
+
+        if (publishAfterSave) {
+          if (!latestRecord?.featuredId) {
+            throw new Error("未查询到新创建的精品记录");
+          }
+          if (latestRecord.status?.toUpperCase() !== "ONLINE") {
+            await featuredConversationAdminApi.online(
+              latestRecord.featuredId,
+              featuredAdminForm.operator.trim()
+            );
+            latestRecord = await syncFeaturedAdminRecord(
+              featuredAdminTargetSession,
+              featuredAdminForm.operator
+            );
+          }
+          showMessage()?.success("精品对话已上线");
+        } else {
+          showMessage()?.success(
+            featuredAdminRecord ? "精品对话已更新" : "精品草稿已创建"
+          );
+        }
+
+        await loadFeaturedCards();
+      } catch (error) {
+        console.error("保存精品对话失败", error);
+      } finally {
+        setFeaturedAdminSubmitting(false);
+      }
+    },
+    [
+      featuredAdminForm,
+      featuredAdminRecord,
+      featuredAdminTargetSession,
+      loadFeaturedCards,
+      syncFeaturedAdminRecord,
+    ]
+  );
+
+  const handleToggleFeaturedStatus = useCallback(async () => {
+    if (!featuredAdminTargetSession || !featuredAdminRecord?.featuredId) {
+      return;
+    }
+
+    const operator = featuredAdminForm.operator.trim();
+    if (!operator) {
+      showMessage()?.error("请填写操作人");
+      return;
+    }
+
+    setFeaturedAdminSubmitting(true);
+    try {
+      if (featuredAdminRecord.status?.toUpperCase() === "ONLINE") {
+        await featuredConversationAdminApi.offline(
+          featuredAdminRecord.featuredId,
+          operator
+        );
+        showMessage()?.success("精品对话已下线");
+      } else {
+        await featuredConversationAdminApi.online(
+          featuredAdminRecord.featuredId,
+          operator
+        );
+        showMessage()?.success("精品对话已上线");
+      }
+
+      await syncFeaturedAdminRecord(featuredAdminTargetSession, operator);
+      await loadFeaturedCards();
+    } catch (error) {
+      console.error("切换精品对话状态失败", error);
+    } finally {
+      setFeaturedAdminSubmitting(false);
+    }
+  }, [
+    featuredAdminForm.operator,
+    featuredAdminRecord,
+    featuredAdminTargetSession,
+    loadFeaturedCards,
+    syncFeaturedAdminRecord,
+  ]);
+
   if (visitorWorkspaceStage === "bootstrapping") {
     return <VisitorBootstrapScreen />;
   }
@@ -575,6 +814,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           onNewChat={createNewChat}
           onSelectSession={handleSelectRecentSession}
           onChangeView={setActiveView}
+          onOpenFeaturedConversations={() =>
+            navigate(ROUTES.FEATURED_CONVERSATIONS)
+          }
+          onManageFeaturedConversation={handleOpenFeaturedAdmin}
         />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -608,11 +851,49 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 onSendQuestion={toSendMessage}
                 onOpenVideo={setVideoModalOpen}
                 onCloseVideo={() => setVideoModalOpen(undefined)}
+                featuredCards={featuredCards}
               />
             )}
           </div>
         </div>
       </div>
+      <Dialog
+        open={featuredAdminDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetFeaturedAdminDialog();
+          } else {
+            setFeaturedAdminDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-[760px]"
+          showCloseButton={!featuredAdminSubmitting}
+        >
+          {featuredAdminTargetSession ? (
+            <FeaturedConversationAdminPanel
+              session={featuredAdminTargetSession}
+              form={featuredAdminForm}
+              record={featuredAdminRecord}
+              loading={featuredAdminLoading}
+              submitting={featuredAdminSubmitting}
+              onChange={handleFeaturedAdminFormChange}
+              onClose={resetFeaturedAdminDialog}
+              onSaveDraft={() => {
+                void handleSaveFeaturedDraft(false);
+              }}
+              onPublish={() => {
+                if (featuredAdminRecord) {
+                  void handleToggleFeaturedStatus();
+                } else {
+                  void handleSaveFeaturedDraft(true);
+                }
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });

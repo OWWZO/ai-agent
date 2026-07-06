@@ -6,6 +6,12 @@ import { ROUTES } from './routes';
 
 // 使用 React.lazy 懒加载组件
 const Home = React.lazy(() => import('@/pages/Home'));
+const FeaturedConversations = React.lazy(
+  () => import('@/pages/FeaturedConversations')
+);
+const FeaturedConversationDetail = React.lazy(
+  () => import('@/pages/FeaturedConversationDetail')
+);
 const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
 const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
@@ -21,6 +27,22 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading loading={true} className="h-full"/>}>
             <Home />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.FEATURED_CONVERSATIONS,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <FeaturedConversations />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.FEATURED_CONVERSATION_DETAIL,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <FeaturedConversationDetail />
           </Suspense>
         ),
       },

@@ -4,19 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import ChatView from "./index";
 
 vi.mock("motion/react", () => ({
-  motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-  },
+  motion: {div: ({ children, ...props }: any) => <div {...props}>{children}</div>,},
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }));
 
-vi.mock("@/utils/querySSE", () => ({
-  default: vi.fn(),
-}));
+vi.mock("@/utils/querySSE", () => ({default: vi.fn(),}));
 
-vi.mock("@/components/Dialogue", () => ({
-  default: ({ chat }: any) => <div data-chat-id={chat.requestId}>{chat.query}</div>,
-}));
+vi.mock("@/components/Dialogue", () => ({default: ({ chat }: any) => <div data-chat-id={chat.requestId}>{chat.query}</div>,}));
 
 const dataDialogueMock = vi.fn(({ chat }: any) => (
   <div data-data-chat={chat.query} data-loading={String(Boolean(chat.loading))}>
@@ -24,15 +18,18 @@ const dataDialogueMock = vi.fn(({ chat }: any) => (
   </div>
 ));
 
-vi.mock("@/components/Dialogue/DataDialogue", () => ({
-  default: (props: any) => dataDialogueMock(props),
-}));
+vi.mock("@/components/Dialogue/DataDialogue", () => ({default: (props: any) => dataDialogueMock(props),}));
 
-const generalInputMock = vi.fn((_props: any) => <div data-general-input="true">input</div>);
+const generalInputMock = vi.fn((props: any) => (
+  <div
+    data-general-input="true"
+    data-session-id={props?.sessionId || ""}
+  >
+    input
+  </div>
+));
 
-vi.mock("@/components/GeneralInput", () => ({
-  default: (props: any) => generalInputMock(props),
-}));
+vi.mock("@/components/GeneralInput", () => ({default: (props: any) => generalInputMock(props),}));
 
 vi.mock("@/components/ActionView", () => ({
   default: Object.assign(
@@ -85,15 +82,9 @@ vi.mock("@/utils/constants", () => {
   };
 });
 
-vi.mock("ahooks", () => ({
-  useMemoizedFn: (fn: unknown) => fn,
-}));
+vi.mock("ahooks", () => ({useMemoizedFn: (fn: unknown) => fn,}));
 
-vi.mock("antd", () => ({
-  Modal: {
-    useModal: () => [{ info: vi.fn() }, null],
-  },
-}));
+vi.mock("antd", () => ({Modal: {useModal: () => [{ info: vi.fn() }, null],},}));
 
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ className, children }: any) => (
@@ -134,11 +125,16 @@ vi.mock("./useWorkspacePanels", () => ({
     isDragging: false,
     isLeftCollapsed: false,
     isRightCollapsed: false,
+    isFocusMode: false,
     containerRef: { current: null },
     handleDragStart: vi.fn(),
+    handleDragMove: vi.fn(),
+    handleDragEnd: vi.fn(),
     setIsRightCollapsed: vi.fn(),
+    setIsFocusMode: vi.fn(),
     toggleLeftPanel: vi.fn(),
     toggleRightPanel: vi.fn(),
+    toggleFocusMode: vi.fn(),
   }),
 }));
 
@@ -235,7 +231,10 @@ describe("ChatView layout", () => {
 
     renderToStaticMarkup(
       <ChatView
-        inputInfo={{ message: "", deepThink: false }}
+        inputInfo={{
+          message: "",
+          deepThink: false
+        }}
         product={product}
         conversation={conversation}
         chatRoles={[]}
@@ -293,7 +292,10 @@ describe("ChatView layout", () => {
 
     renderToStaticMarkup(
       <ChatView
-        inputInfo={{ message: "", deepThink: false }}
+        inputInfo={{
+          message: "",
+          deepThink: false
+        }}
         product={product}
         conversation={conversation}
         chatRoles={[]}
@@ -351,7 +353,10 @@ describe("ChatView layout", () => {
 
     const html = renderToStaticMarkup(
       <ChatView
-        inputInfo={{ message: "", deepThink: false }}
+        inputInfo={{
+          message: "",
+          deepThink: false
+        }}
         product={product}
         conversation={conversation}
         chatRoles={[]}
@@ -366,7 +371,65 @@ describe("ChatView layout", () => {
     expect(html).toContain(
       'class="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4"'
     );
-    expect(html).toContain('<div data-general-input="true">input</div>');
+    expect(html).toContain('data-general-input="true"');
     expect(html).not.toContain("sticky bottom-0");
+  });
+
+  it("read-only chat view hides the input while keeping the transcript shell", () => {
+    generalInputMock.mockClear();
+
+    const product: CHAT.Product = {
+      type: "chat",
+      name: "聊天模式",
+      placeholder: "请输入问题",
+      img: "icon-chat",
+      color: "text-[#4040FF]",
+    };
+
+    const conversation = {
+      id: "conversation-readonly-1",
+      sessionId: "session-readonly-1",
+      title: "只读会话",
+      productType: "chat",
+      deepThink: false,
+      role: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      chatTitle: "",
+      chatList: [
+        {
+          sessionId: "session-readonly-1",
+          requestId: "req-readonly-1",
+          query: "展示历史消息",
+          files: [],
+          forceStop: false,
+          multiAgent: {},
+          loading: false,
+          tasks: [],
+          response: "这是历史回复",
+        },
+      ],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const html = renderToStaticMarkup(
+      <ChatView
+        inputInfo={{
+          message: "",
+          deepThink: false
+        }}
+        product={product}
+        conversation={conversation}
+        chatRoles={[]}
+        readOnly
+        onConversationChange={vi.fn()}
+        onRoleSelect={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('id="chat-view"');
+    expect(html).toContain("展示历史消息");
+    expect(html).not.toContain('<div data-general-input="true">input</div>');
+    expect(generalInputMock).not.toHaveBeenCalled();
   });
 });

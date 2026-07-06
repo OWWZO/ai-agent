@@ -7,12 +7,14 @@ import {
   MoreHorizontal,
   DatabaseZap,
   MessagesSquare,
+  Star,
   WandSparkles,
   X,
-  Pin,
-  Trash2,
 } from "lucide-react";
 import type { ConversationSessionItem } from "@/services/agentConversation";
+
+import ConversationSessionActionMenu from "./ConversationSessionActionMenu";
+import { canFeatureConversationSession } from "./featuredConversationAdminModel";
 
 type SidebarView = "chat" | "mrag" | "image-generation";
 
@@ -49,6 +51,8 @@ type ConversationSidebarProps = {
   onNewChat: () => void;
   onSelectSession: (session: ConversationSessionItem) => void;
   onChangeView: (view: SidebarView) => void;
+  onOpenFeaturedConversations: () => void;
+  onManageFeaturedConversation: (session: ConversationSessionItem) => void;
 };
 
 const ConversationSidebar = memo((props: ConversationSidebarProps) => {
@@ -60,6 +64,8 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
     onNewChat,
     onSelectSession,
     onChangeView,
+    onOpenFeaturedConversations,
+    onManageFeaturedConversation,
   } = props;
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -93,13 +99,20 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
     []
   );
 
-  const handleActionClick = useCallback(
-    (e: React.MouseEvent, action: string, session: ConversationSessionItem) => {
-      e.stopPropagation();
+  const handleConsoleAction = useCallback(
+    (action: string, session: ConversationSessionItem) => {
       setExpandedSessionId(null);
       console.log(`[ConversationSidebar] ${action}:`, session.sessionId);
     },
     []
+  );
+
+  const handleManageFeatured = useCallback(
+    (session: ConversationSessionItem) => {
+      setExpandedSessionId(null);
+      onManageFeaturedConversation(session);
+    },
+    [onManageFeaturedConversation]
   );
 
   return (
@@ -202,6 +215,14 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={onOpenFeaturedConversations}
+          className="mt-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)]/50 hover:text-[var(--chat-text)]"
+        >
+          <Star className="h-4 w-4" />
+          <span>精品对话</span>
+        </button>
       </div>
 
       {/* 分隔线 */}
@@ -274,28 +295,19 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
 
                     {/* 更多操作下拉 */}
                     {isExpanded && (
-                      <div className="absolute right-2 top-full z-10 mt-1 w-32 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] py-1 shadow-[var(--shadow-md)]">
-                        <button
-                          type="button"
-                          onClick={(e) =>
-                            handleActionClick(e, "pin", session)
-                          }
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                        >
-                          <Pin className="h-3.5 w-3.5" />
-                          <span>置顶</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) =>
-                            handleActionClick(e, "delete", session)
-                          }
-                          className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--destructive)]"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>删除</span>
-                        </button>
-                      </div>
+                      <ConversationSessionActionMenu
+                        session={session}
+                        canManageFeatured={canFeatureConversationSession(
+                          session
+                        )}
+                        onManageFeatured={handleManageFeatured}
+                        onPin={(targetSession) =>
+                          handleConsoleAction("pin", targetSession)
+                        }
+                        onDelete={(targetSession) =>
+                          handleConsoleAction("delete", targetSession)
+                        }
+                      />
                     )}
                   </div>
                 );
