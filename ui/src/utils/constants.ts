@@ -38,24 +38,36 @@ export const actionViewOptions = [
 
 export const defaultActiveActionView = actionViewOptions[0].value;
 
-export const chatQustions = [
-  {
-    label: "2024年各月销量变化趋势如何？",
-    type: 1,
-  },
-  {
-    label: "采购成本最高的前十名商品是什么？",
-    type: 1,
-  },
-  {
-    label: "对销售数据进行综合分析",
-    type: 2,
-  },
-  {
-    label: "分析产品的销售表现",
-    type: 2,
-  },
+export type SuggestedQuestion = {
+  label: string;
+  deepThink?: boolean;
+};
+
+const generalSuggestedQuestions: SuggestedQuestion[] = [
+  {label: "列出近 3 个月大模型企业级落地的 3 个核心趋势",},
+  {label: "输出一份 2026 年中国企业级 RAG 市场的行业研究报告",},
+  {label: "分析低代码开发平台近一年的行业变化，预测未来 2 年的增长方向与机会点",},
+  {label: "按照市场环境-竞品拆解-用户需求-机会点 的分析框架，定制一份新能源汽车行业的调研任务",},
+  {label: "资讯：Linux 内核新漏洞证明人工审计不可替代",},
+  {label: "拆解 3 款主流多智能体协作平台的产品功能、定价策略与目标客户群体",},
+  {label: "简要对比 Qdrant、Milvus、Pinecone 三款向量数据库的适用场景",},
+  {label: "对比 Codex 与 Claude Code 的产品定位、模型底座、核心优势与典型适用场景",},
+  {label: "资讯：多家互联网大厂正布局智能体支付业务",},
 ];
+
+export const suggestedQuestionsByProductType: Record<string, SuggestedQuestion[]> = {
+  chat: generalSuggestedQuestions,
+  dataAgent: [
+    {label: "2024年各月销量变化趋势如何？",},
+    {label: "采购成本最高的前十名商品是什么？",},
+    {label: "对销售数据进行综合分析",},
+    {label: "分析产品的销售表现",},
+  ],
+  html: generalSuggestedQuestions,
+  docs: generalSuggestedQuestions,
+  ppt: generalSuggestedQuestions,
+  table: generalSuggestedQuestions,
+};
 
 export const productList = [
   {

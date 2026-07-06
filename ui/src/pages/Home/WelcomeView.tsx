@@ -4,7 +4,11 @@ import classNames from "classnames";
 import GeneralInput from "@/components/GeneralInput";
 import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
-import { chatQustions, demoList } from "@/utils/constants";
+import {
+  demoList,
+  suggestedQuestionsByProductType,
+  type SuggestedQuestion,
+} from "@/utils/constants";
 
 const HERO_TYPEWRITER_TEXTS = [
   "Let's build",
@@ -124,16 +128,20 @@ export default function WelcomeView(props: {
   }) => void;
   onRoleSelect: (role: CHAT.FixRole) => void;
   onSend: (inputInfo: CHAT.TInputInfo) => void;
-  onSendQuestion: (query: { label: string; type: number }) => void;
+  onSendQuestion: (query: SuggestedQuestion) => void;
   onOpenVideo: (url: string) => void;
   onCloseVideo: () => void;
 }) {
+  const suggestedQuestions =
+    suggestedQuestionsByProductType[props.product.type] ?? [];
+  const hasSuggestedQuestions = suggestedQuestions.length > 0;
+
   return (
-    <div className="h-full w-full px-6 md:px-12 lg:px-16">
-      <div className="mx-auto flex h-full w-full max-w-[1000px] flex-col items-center justify-center py-12">
-        <div className="mb-10 text-center">
+    <div className="h-full w-full overflow-y-auto px-6 md:px-12 lg:px-16">
+      <div className="mx-auto flex min-h-full w-full max-w-[1280px] flex-col items-center justify-center py-8 lg:py-10">
+        <div className="mb-8 text-center lg:mb-10">
           <h1
-            className="mb-3 text-[34px] font-medium leading-[1.05] tracking-normal text-[var(--chat-text)] md:text-[46px] lg:text-[52px]"
+            className="mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
             style={{ fontFamily: "var(--font-sans)" }}
           >
             <KeyboardTypewriter
@@ -145,6 +153,40 @@ export default function WelcomeView(props: {
             />
           </h1>
         </div>
+
+        <motion.div
+          initial={false}
+          animate={{
+            opacity: hasSuggestedQuestions ? 1 : 0,
+            y: hasSuggestedQuestions ? 0 : -10,
+          }}
+          transition={{
+            duration: 0.3,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className={classNames(
+            "mx-auto w-full max-w-[1180px] overflow-visible",
+            hasSuggestedQuestions
+              ? "mb-8 pointer-events-auto lg:mb-10"
+              : "mb-0 max-h-0 pointer-events-none"
+          )}
+        >
+          <div className="flex flex-wrap justify-center gap-3">
+            {suggestedQuestions.map((item, index) => (
+              <button
+                key={index}
+                type="button"
+                className="flex max-w-full cursor-pointer items-center gap-2 rounded-[16px] bg-[oklch(0.955_0.002_90)] px-5 py-3 text-[14px] font-medium leading-none text-[var(--chat-text)] transition-colors duration-200 hover:bg-[oklch(0.925_0.003_90)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25 md:text-[15px]"
+                onClick={() => props.onSendQuestion(item)}
+              >
+                {item.deepThink && (
+                  <i className="font_family icon-shendusikao text-[12px] text-[var(--chat-text)]" />
+                )}
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </motion.div>
 
         <motion.div
           initial={{
@@ -162,7 +204,7 @@ export default function WelcomeView(props: {
             delay: 0.5,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mb-12 w-full max-w-[920px]"
+          className="mb-8 w-full max-w-[920px] lg:mb-10"
         >
           <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
             <GeneralInput
@@ -183,39 +225,6 @@ export default function WelcomeView(props: {
               onRoleSelect={props.onRoleSelect}
             />
           </AiChatSurface>
-        </motion.div>
-
-        <motion.div
-          initial={false}
-          animate={{
-            opacity: props.product.type === "dataAgent" ? 1 : 0,
-            y: props.product.type === "dataAgent" ? 0 : -10,
-          }}
-          transition={{
-            duration: 0.3,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className={classNames(
-            "mx-auto w-full max-w-[800px] overflow-hidden",
-            props.product.type === "dataAgent"
-              ? "mb-12 max-h-[100px] pointer-events-auto"
-              : "mb-0 max-h-0 pointer-events-none"
-          )}
-        >
-          <div className="flex flex-wrap justify-center gap-3">
-            {chatQustions.map((item, index) => (
-              <div
-                key={index}
-                className="flex cursor-pointer items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-2.5 text-[13px] text-[var(--chat-text-soft)] transition-all duration-300 hover:border-[var(--chat-border-strong)] hover:text-[var(--chat-text)] hover:shadow-[var(--shadow-sm)]"
-                onClick={() => props.onSendQuestion(item)}
-              >
-                {item.type === 2 && (
-                  <i className="font_family icon-shendusikao text-[12px] text-[var(--primary)]" />
-                )}
-                {item.label}
-              </div>
-            ))}
-          </div>
         </motion.div>
 
         {SHOW_FEATURED_CASES && (

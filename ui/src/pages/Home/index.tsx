@@ -9,7 +9,11 @@ import {
 import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
-import { defaultProduct, productList } from "@/utils/constants";
+import {
+  defaultProduct,
+  productList,
+  type SuggestedQuestion,
+} from "@/utils/constants";
 import {
   createSessionId,
   getUniqId,
@@ -532,14 +536,14 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   const toSendMessage = useCallback(
-    (query: { label: string; type: number }) => {
+    (query: SuggestedQuestion) => {
       changeInputInfo({
         message: query.label,
-        outputStyle: "dataAgent",
-        deepThink: query.type === 2,
+        outputStyle: product.type,
+        deepThink: Boolean(query.deepThink),
       });
     },
-    [changeInputInfo]
+    [changeInputInfo, product.type]
   );
 
   if (visitorWorkspaceStage === "bootstrapping") {
