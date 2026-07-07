@@ -39,6 +39,7 @@ from typing import Optional
 
 import requests
 
+from .mineru_client import MinerUClient
 from ..utils import oss_utils, download_utils
 from ..utils.logger_utils import logger
 
@@ -87,11 +88,24 @@ class DocumentParser:
 
     def parsed_images(self) -> list[str]:
         """列出所有图片的文件路径"""
-        return [os.path.abspath(os.path.join(self.images_dir, img)) for img in os.listdir(self.images_dir)]
+        return self._list_asset_files(self.images_dir)
 
     def parsed_pages(self):
         """列出所有页面的文件路径"""
-        return [os.path.abspath(os.path.join(self.pages_dir, page)) for page in os.listdir(self.pages_dir)]
+        return self._list_asset_files(self.pages_dir)
+
+    @staticmethod
+    def _list_asset_files(asset_dir: str) -> list[str]:
+        """递归列出目录下所有文件，自动跳过子目录本身。"""
+        if not os.path.exists(asset_dir):
+            return []
+
+        asset_paths = []
+        for root_dir, _, file_names in os.walk(asset_dir):
+            for file_name in file_names:
+                asset_paths.append(os.path.abspath(os.path.join(root_dir, file_name)))
+
+        return sorted(asset_paths)
 
 
 class DocxDocumentParser(DocumentParser):
@@ -982,9 +996,10 @@ class PdfParser(DocumentParser):
 
         self.headers = {
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + os.getenv("MINERU_API_KEY"),
+            "Authorization": "Bearer " + (os.getenv("MINERU_API_KEY") or "").strip(),
         }
         self.uid = uuid.uuid4().hex
+        self._mineru_client = MinerUClient()
 
     def _get_pdf_page_count(self) -> int:
         """获取PDF文件的总页数"""
@@ -1059,6 +1074,68 @@ class PdfParser(DocumentParser):
             if cost_time > 300:  # 5分钟超时
                 raise Exception(f"Mineru API timeout")
 
+    def _resolve_mineru_upload_mode(self) -> str:
+        """解析 MinerU 上传模式，默认使用官方托管上传，保留历史 external_url 兼容。"""
+        return (os.getenv("MINERU_UPLOAD_MODE") or "mineru_managed").strip().lower()
+
+    def _submit_pdf_to_mineru(self, pdf_path: str, request_key: str) -> Optional[str]:
+        """按配置选择 MinerU 托管上传或历史外部 URL 模式。"""
+        upload_mode = self._resolve_mineru_upload_mode()
+        if upload_mode == "mineru_managed":
+            file_name = os.path.basename(pdf_path)
+            data_id = f"{self.uid}_{request_key}"
+            upload_target = self._mineru_client.prepare_file_upload(
+                file_name=file_name,
+                data_id=data_id,
+                model_version="vlm",
+            )
+            self._mineru_client.upload_file(upload_target.upload_url, pdf_path)
+            return self._mineru_client.wait_batch_result(
+                batch_id=upload_target.batch_id,
+                file_name=file_name,
+                data_id=data_id,
+            )
+
+        storage_dir = f"mrag/{self.uid}" if request_key == "full" else f"mrag/{self.uid}/{request_key}"
+        _, _, file_url = oss_utils.upload_oss(pdf_path, dir_=storage_dir, is_delete=False)
+        task_id = self._call_mineru_api(file_url)
+        return self._wait_for_mineru_result(task_id)
+
+    def _resolve_poppler_path(self) -> Optional[str]:
+        """解析 pdf2image 依赖的 Poppler 目录。"""
+        configured_path = (os.getenv("POPPLER_PATH") or "").strip()
+        if configured_path:
+            if os.path.isdir(configured_path):
+                logger.info(f"使用配置的 POPPLER_PATH: {configured_path}")
+                return configured_path
+            logger.warning(f"配置的 POPPLER_PATH 不存在，将继续尝试自动探测: {configured_path}")
+
+        # 如果系统 PATH 已经能找到 pdftoppm，则无需额外透传目录。
+        if shutil.which("pdftoppm"):
+            return None
+
+        # Codex Windows 运行时通常会内置一份 Poppler，这里自动复用，避免机器明明有依赖却因为未进 PATH 而失效。
+        bundled_poppler_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".cache",
+            "codex-runtimes",
+            "codex-primary-runtime",
+            "dependencies",
+            "native",
+            "poppler",
+            "Library",
+            "bin",
+        )
+        bundled_binary = os.path.join(
+            bundled_poppler_dir,
+            "pdftoppm.exe" if os.name == "nt" else "pdftoppm",
+        )
+        if os.path.exists(bundled_binary):
+            logger.info(f"检测到内置 Poppler，使用目录: {bundled_poppler_dir}")
+            return bundled_poppler_dir
+
+        return None
+
     def _download_and_extract_mineru_result(self, full_zip_url: str, output_dir: str) -> Optional[str]:
         """下载并解压MinerU处理结果"""
         tmp_file_path = os.path.join(output_dir, f"{uuid.uuid4().hex}.zip")
@@ -1088,15 +1165,8 @@ class PdfParser(DocumentParser):
     def _process_single_pdf_chunk(self, pdf_path: str, chunk_index: int) -> Optional[str]:
         """处理单个PDF分块，直接返回处理后的markdown内容"""
         try:
-            # 上传到OSS
-            _, _, file_url = oss_utils.upload_oss(pdf_path, dir_=f"mrag/{self.uid}/chunk_{chunk_index}",
-                                                  is_delete=False)
-
-            # 调用MinerU API
-            task_id = self._call_mineru_api(file_url)
-
-            # 等待结果
-            full_zip_url = self._wait_for_mineru_result(task_id)
+            # 提交分块给 MinerU，返回统一的结果包地址
+            full_zip_url = self._submit_pdf_to_mineru(pdf_path, request_key=f"chunk_{chunk_index}")
             if not full_zip_url:
                 return None
 
@@ -1172,14 +1242,8 @@ class PdfParser(DocumentParser):
                 # 小PDF文件，直接处理
                 logger.info(f"PDF页数 {total_pages} 小于阈值 {SMALL_PDF_THRESHOLD}，直接处理整个文件")
 
-                # 上传整个文件
-                _, _, file_url = oss_utils.upload_oss(self._file_path, dir_=f"mrag/{self.uid}", is_delete=False)
-
-                # 调用MinerU API
-                task_id = self._call_mineru_api(file_url)
-
-                # 等待结果
-                full_zip_url = self._wait_for_mineru_result(task_id)
+                # 提交整份 PDF 给 MinerU，返回统一的结果包地址
+                full_zip_url = self._submit_pdf_to_mineru(self._file_path, request_key="full")
                 if full_zip_url:
                     # 创建临时目录
                     tmpdir = tempfile.gettempdir()
@@ -1358,7 +1422,11 @@ class PdfParser(DocumentParser):
             # 生成页面预览图片
             logger.info("开始生成PDF页面预览图片")
             import pdf2image
-            images = pdf2image.convert_from_path(self._file_path)
+            convert_kwargs = {}
+            poppler_path = self._resolve_poppler_path()
+            if poppler_path:
+                convert_kwargs["poppler_path"] = poppler_path
+            images = pdf2image.convert_from_path(self._file_path, **convert_kwargs)
 
             # 保存每一页
             for i, image in enumerate(images, start=1):

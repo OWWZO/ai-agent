@@ -32,7 +32,7 @@ class TextRetriever:
         self.vector_store = VectorStore()
         self.bm25_embedding_model = get_bm25_embedding_model()
 
-    def vector_search(self, kb_id: str, queries: list[str], limit: int = 10, score_threshold: float = 0.0,
+    def vector_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                       filter_conditions: Optional[Dict] = None
                       ) -> list[list[dict]]:
         """向量相似度召回 """
@@ -50,7 +50,7 @@ class TextRetriever:
             filter_conditions=filter_conditions
         )
 
-    def sparse_search(self, kb_id: str, queries: list[str], limit: int = 10, score_threshold: float = 0.0,
+    def sparse_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                       filter_conditions: Optional[Dict] = None):
         """稀疏向量召回"""
         if not filter_conditions:

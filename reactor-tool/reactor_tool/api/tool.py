@@ -683,11 +683,11 @@ def _build_mrag_chunk(content: str, finish_reason: str | None = None) -> dict:
     }
 
 
-def build_mrag_agent(kb_id: str):
+def build_mrag_agent(kb_scope: str | list[str]):
     """按需加载 MRAG 实现，避免在未安装检索依赖时阻塞服务启动。"""
     from reactor_tool.tool.mrag.query import AgenticRAG
 
-    return AgenticRAG(kb_id=kb_id, n_round=3)
+    return AgenticRAG(kb_id=kb_scope, n_round=3)
 
 
 def _normalize_mrag_chunk(chunk) -> dict | None:
@@ -728,11 +728,11 @@ def _normalize_mrag_chunk(chunk) -> dict | None:
 @router.post("/mragQuery")
 async def post_mrag_query(body: MultimodalRAGRequest):
     """MRAG 多模态知识检索端点。"""
-    kb_id = (body.kb_id or os.getenv("DEFAULT_KB_ID", "")).strip()
-    if not kb_id:
+    kb_scope = body.resolve_kb_scope(os.getenv("DEFAULT_KB_ID", ""))
+    if not kb_scope:
         raise HTTPException(status_code=500, detail="DEFAULT_KB_ID is not configured")
 
-    agent = build_mrag_agent(kb_id)
+    agent = build_mrag_agent(kb_scope)
 
     def generator():
         has_payload = False

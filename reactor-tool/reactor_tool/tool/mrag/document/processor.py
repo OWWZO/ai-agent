@@ -90,21 +90,21 @@ class DocumentProcessor:
         self._parser.parse()
         for image_path in self._parser.parsed_images():
             image_url = oss_utils.upload_local_storage(image_path, file_id=self._uid)
-            base_name = os.path.basename(image_path)
-            self._image_urls[base_name] = image_url
+            asset_key = self._build_asset_key(image_path, self._parser.images_dir)
+            self._image_urls[asset_key] = image_url
 
         for path_path in self._parser.parsed_pages():
             image_url = oss_utils.upload_local_storage(path_path, file_id=self._uid)
-            base_name = os.path.basename(path_path)
-            self._image_urls[base_name] = image_url
+            asset_key = self._build_asset_key(path_path, self._parser.pages_dir)
+            self._image_urls[asset_key] = image_url
 
         with open(self._parser.md_file_path, "r", encoding="utf-8") as f:
             text = f.read()
 
-        for image_path in self._image_urls:
+        for image_path, image_url in self._image_urls.items():
             # ![image_12.png](images/image_12.png)
             raw_md = f"![{os.path.basename(image_path)}](images/{image_path})"
-            target_md = f"![{os.path.basename(image_path)}]({self._image_urls[image_path]})"
+            target_md = f"![{os.path.basename(image_path)}]({image_url})"
             logger.info(f"Processing text: {raw_md}\n ====> {target_md}")
             text = text.replace(raw_md, target_md)
 
@@ -114,6 +114,16 @@ class DocumentProcessor:
         parser_cost_time = time.time()
 
         logger.info(f"Parser cost time: {parser_cost_time - parser_start_time}s")
+
+    @staticmethod
+    def _build_asset_key(file_path: str, root_dir: str) -> str:
+        """生成相对资源路径，统一转成正斜杠，避免分块子目录信息丢失。"""
+        return os.path.relpath(file_path, root_dir).replace("\\", "/")
+
+    def _get_uploaded_asset_url(self, file_path: str, root_dir: str) -> str:
+        """按相对资源路径查找已上传的图片 URL。"""
+        asset_key = self._build_asset_key(file_path, root_dir)
+        return self._image_urls[asset_key]
 
     def _process_text(self):
         text = self._parser.parsed_text()
@@ -214,7 +224,6 @@ class DocumentProcessor:
             chunk_data = []
 
             for j, (image_path, embedding) in enumerate(zip(image_paths_batch, image_embeddings)):
-                base_name = os.path.basename(image_path)
                 chunk_data.append({
                     "kb_id": self._kb_id,
                     "ref_id": self._uid,
@@ -231,7 +240,7 @@ class DocumentProcessor:
                     "file_url": self._file_url,
                     "filename": self._filename,
                     "created": time.time(),
-                    "image_url": self._image_urls[base_name],
+                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
                 })
             self._vector_store.add_image_chunks(chunk_data)
 
@@ -240,7 +249,6 @@ class DocumentProcessor:
             for j, image_path in enumerate(image_paths_batch):
                 ocr_text = self._ocr.ocr(image_path)
                 caption = generate_caption(image_path)
-                base_name = os.path.basename(image_path)
                 if ocr_text:
                     text_chunk_data.append({
                         "text": ocr_text,
@@ -257,7 +265,7 @@ class DocumentProcessor:
                         "image_path": image_path,
                         "filename": self._filename,
                         "created": time.time(),
-                        "image_url": self._image_urls[base_name],
+                        "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
                     })
                 if caption:
                     text_chunk_data.append({
@@ -276,7 +284,7 @@ class DocumentProcessor:
                         "image_path": image_path,
                         "filename": self._filename,
                         "created": time.time(),
-                        "image_url": self._image_urls[base_name],
+                        "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
                     })
             text_batch = [chunk['text'] for chunk in text_chunk_data]
             text_embeddings = self._text_embedding.encode_text_batch(text_batch)
@@ -304,7 +312,6 @@ class DocumentProcessor:
             chunk_data = []
 
             for j, (image_path, embedding) in enumerate(zip(page_paths_batch, image_embeddings)):
-                base_name = os.path.basename(image_path)
                 chunk_data.append({
                     "kb_id": self._kb_id,
                     "ref_id": self._uid,
@@ -321,7 +328,7 @@ class DocumentProcessor:
                     "page_path": image_path,
                     "filename": self._filename,
                     "created": time.time(),
-                    "image_url": self._image_urls[base_name],
+                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
                 })
             self._vector_store.add_page_chunks(chunk_data)
 
@@ -329,7 +336,6 @@ class DocumentProcessor:
         for j, image_path in enumerate(page_paths):
             ocr_text = self._ocr.ocr(image_path)
             caption = generate_caption(image_path)
-            base_name = os.path.basename(image_path)
             if ocr_text:
                 text_chunk_data.append({
                     "text": ocr_text,
@@ -347,7 +353,7 @@ class DocumentProcessor:
                     "page_path": image_path,
                     "filename": self._filename,
                     "created": time.time(),
-                    "image_url": self._image_urls[base_name],
+                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
                 })
             if caption:
                 text_chunk_data.append({
@@ -366,7 +372,7 @@ class DocumentProcessor:
                     "page_path": image_path,
                     "filename": self._filename,
                     "created": time.time(),
-                    "image_url": self._image_urls[base_name],
+                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
                 })
         if not text_chunk_data:
             logger.info(f"No page OCR/caption text generated for file_id={self._uid}, skip page text upsert")

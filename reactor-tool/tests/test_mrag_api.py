@@ -89,6 +89,90 @@ class MragApiTest(unittest.TestCase):
         self.assertIsNone(first_chunk["choices"][0]["finishReason"])
         self.assertEqual("stop", second_chunk["choices"][0]["finishReason"])
 
+    def test_should_prefer_kb_ids_over_legacy_kb_id(self):
+        with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-default"}, clear=False):
+            with patch.object(tool_module, "build_mrag_agent") as build_mrag_agent:
+                agent = build_mrag_agent.return_value
+                agent.run.return_value = iter([
+                    {
+                        "choices": [
+                            {
+                                "delta": {"content": "命中了多知识库结果。"},
+                                "finishReason": "stop",
+                                "index": 0,
+                            }
+                        ]
+                    }
+                ])
+
+                response = self.client.post(
+                    "/v1/tool/mragQuery",
+                    json={
+                        "question": "跨知识库检索",
+                        "image_urls": [],
+                        "kb_id": "kb-legacy",
+                        "kb_ids": ["kb-a", "kb-b"],
+                    },
+                )
+
+        self.assertEqual(200, response.status_code)
+        build_mrag_agent.assert_called_once_with(["kb-a", "kb-b"])
+
+    def test_should_keep_legacy_kb_id_when_kb_ids_absent(self):
+        with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-default"}, clear=False):
+            with patch.object(tool_module, "build_mrag_agent") as build_mrag_agent:
+                agent = build_mrag_agent.return_value
+                agent.run.return_value = iter([
+                    {
+                        "choices": [
+                            {
+                                "delta": {"content": "命中了兼容知识库结果。"},
+                                "finishReason": "stop",
+                                "index": 0,
+                            }
+                        ]
+                    }
+                ])
+
+                response = self.client.post(
+                    "/v1/tool/mragQuery",
+                    json={
+                        "question": "单知识库兼容检索",
+                        "image_urls": [],
+                        "kb_id": "kb-legacy",
+                    },
+                )
+
+        self.assertEqual(200, response.status_code)
+        build_mrag_agent.assert_called_once_with("kb-legacy")
+
+    def test_should_fallback_to_default_kb_id_when_no_kb_scope_provided(self):
+        with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-default"}, clear=False):
+            with patch.object(tool_module, "build_mrag_agent") as build_mrag_agent:
+                agent = build_mrag_agent.return_value
+                agent.run.return_value = iter([
+                    {
+                        "choices": [
+                            {
+                                "delta": {"content": "命中了默认知识库结果。"},
+                                "finishReason": "stop",
+                                "index": 0,
+                            }
+                        ]
+                    }
+                ])
+
+                response = self.client.post(
+                    "/v1/tool/mragQuery",
+                    json={
+                        "question": "默认知识库检索",
+                        "image_urls": [],
+                    },
+                )
+
+        self.assertEqual(200, response.status_code)
+        build_mrag_agent.assert_called_once_with("kb-default")
+
     def test_should_allow_agent_to_append_image_markdown_as_plain_string_chunk(self):
         with patch.dict(os.environ, {"DEFAULT_KB_ID": "kb-test"}, clear=False):
             with patch.object(tool_module, "build_mrag_agent") as build_mrag_agent:

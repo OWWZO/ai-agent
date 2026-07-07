@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "antd";
 
 import WorkspaceMRagView from "./view";
@@ -7,7 +7,6 @@ import {
   persistMRagWorkspaceStoredState,
 } from "./utils";
 import { showMessage } from "@/utils";
-import { trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
 import {
   resolveKnowledgeBaseAfterDeletion,
   resolveSelectedKnowledgeBaseId,
@@ -23,21 +22,18 @@ interface WorkspaceMRagProps {
 
 const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
   const initialWorkspaceState = useMemo(() => loadMRagWorkspaceStoredState(), []);
-  const [workspaceState, setWorkspaceState] = useState(initialWorkspaceState);
-  const [toolBaseUrlDraft, setToolBaseUrlDraft] = useState(
-    initialWorkspaceState.toolBaseUrl
-  );
+  const toolBaseUrl = initialWorkspaceState.toolBaseUrl;
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(
     initialWorkspaceState.selectedKnowledgeBaseId
   );
   const bootstrappedToolBaseUrlRef = useRef<string | null>(null);
-  const catalog = useKnowledgeBaseCatalog(workspaceState.toolBaseUrl);
+  const catalog = useKnowledgeBaseCatalog(toolBaseUrl);
   const filesState = useKnowledgeBaseFiles(
-    workspaceState.toolBaseUrl,
+    toolBaseUrl,
     selectedKnowledgeBaseId
   );
   const queryState = useMragQuery(
-    workspaceState.toolBaseUrl,
+    toolBaseUrl,
     selectedKnowledgeBaseId
   );
 
@@ -50,41 +46,22 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
 
   useEffect(() => {
     persistMRagWorkspaceStoredState({
-      toolBaseUrl: workspaceState.toolBaseUrl,
+      toolBaseUrl,
       selectedKnowledgeBaseId,
     });
-  }, [selectedKnowledgeBaseId, workspaceState.toolBaseUrl]);
-
-  const applyToolBaseUrl = useCallback(() => {
-    const normalized = trimTrailingSlash(toolBaseUrlDraft);
-    if (!normalized) {
-      showMessage()?.error("请先填写可访问的 Tool Base URL");
-      return;
-    }
-
-    setToolBaseUrlDraft(normalized);
-    setWorkspaceState((previous) => ({
-      ...previous,
-      toolBaseUrl: normalized,
-    }));
-
-    if (normalized === workspaceState.toolBaseUrl) {
-      void catalog.refreshKnowledgeBases();
-      return;
-    }
-  }, [catalog, toolBaseUrlDraft, workspaceState.toolBaseUrl]);
+  }, [selectedKnowledgeBaseId, toolBaseUrl]);
 
   useEffect(() => {
     if (
       !shouldBootstrapKnowledgeBases(
         bootstrappedToolBaseUrlRef.current,
-        workspaceState.toolBaseUrl
+        toolBaseUrl
       )
     ) {
       return;
     }
 
-    bootstrappedToolBaseUrlRef.current = workspaceState.toolBaseUrl;
+    bootstrappedToolBaseUrlRef.current = toolBaseUrl;
     void catalog.refreshKnowledgeBases().then((nextKnowledgeBases) => {
       setSelectedKnowledgeBaseId((previous) =>
         resolveSelectedKnowledgeBaseId(
@@ -98,7 +75,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
     catalog,
     catalog.refreshKnowledgeBases,
     initialWorkspaceState.selectedKnowledgeBaseId,
-    workspaceState.toolBaseUrl,
+    toolBaseUrl,
   ]);
 
   return (
@@ -114,10 +91,6 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
       />
       <WorkspaceMRagView
         embedded={embedded}
-        toolBaseUrlDraft={toolBaseUrlDraft}
-        activeToolBaseUrl={workspaceState.toolBaseUrl}
-        onToolBaseUrlChange={setToolBaseUrlDraft}
-        onApplyToolBaseUrl={applyToolBaseUrl}
         knowledgeBases={catalog.knowledgeBases}
         knowledgeBasesLoading={catalog.knowledgeBasesLoading}
         knowledgeBasesError={catalog.knowledgeBasesError}

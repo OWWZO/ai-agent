@@ -11,7 +11,6 @@ import {
   toPrettyJson,
   trimTrailingSlash,
 } from "@/pages/WorkspaceImageGeneration/utils";
-import { normalizeToolBaseUrlForBrowser } from "@/utils/fileUrl";
 
 export { formatBytes, toPrettyJson };
 
@@ -49,9 +48,8 @@ export function parseMRagWorkspaceStoredState(
   try {
     const parsed = JSON.parse(rawValue) as Partial<MRagWorkspaceStoredState>;
     return {
-      toolBaseUrl: normalizeToolBaseUrlForBrowser(
-        trimTrailingSlash(parsed.toolBaseUrl || defaults.toolBaseUrl)
-      ),
+      // MRAG 前端不再开放 Tool Base URL 手动配置，统一固定默认工具服务地址。
+      toolBaseUrl: defaults.toolBaseUrl,
       selectedKnowledgeBaseId: parsed.selectedKnowledgeBaseId || "",
     };
   } catch {

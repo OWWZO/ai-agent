@@ -9,7 +9,6 @@ import {
   LoaderCircle,
   RefreshCcw,
   Search,
-  Settings,
   Square,
   Trash2,
   UploadCloud,
@@ -42,10 +41,6 @@ import {
 
 export type WorkspaceMRagViewProps = {
   embedded?: boolean;
-  toolBaseUrlDraft: string;
-  activeToolBaseUrl: string;
-  onToolBaseUrlChange: (value: string) => void;
-  onApplyToolBaseUrl: () => void;
   knowledgeBases: KnowledgeBase[];
   knowledgeBasesLoading: boolean;
   knowledgeBasesError: string;
@@ -171,6 +166,9 @@ function KnowledgeBaseItem(props: {
             </div>
             <div className="mt-0.5 text-[12px] text-[var(--chat-text-muted)]">
               {knowledgeBase.description || "暂无描述"}
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-[var(--chat-text-muted)]">
+              ID: {knowledgeBase.id}
             </div>
           </div>
           <span
@@ -445,10 +443,6 @@ function FullContentPanel(props: {
 export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
   const {
     embedded,
-    toolBaseUrlDraft,
-    activeToolBaseUrl,
-    onToolBaseUrlChange,
-    onApplyToolBaseUrl,
     knowledgeBases,
     knowledgeBasesLoading,
     knowledgeBasesError,
@@ -497,7 +491,6 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
 
   const selectedKnowledgeBaseName = selectedKnowledgeBase?.name || "尚未选择";
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
-  const [isToolUrlOpen, setIsToolUrlOpen] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(true);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(true);
@@ -538,7 +531,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
             </div>
           </div>
 
-          {/* Right: Tool URL */}
+          {/* Right: Workspace Actions */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -566,62 +559,6 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               <BookOpenText className="h-3.5 w-3.5" />
               证据
             </button>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsToolUrlOpen((v) => !v)}
-                className={classNames(
-                  "flex h-8 w-8 items-center justify-center rounded-lg border transition-all",
-                  isToolUrlOpen
-                    ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--primary)]"
-                    : "border-[var(--chat-border)] text-[var(--chat-text-muted)] hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                )}
-                title="配置 Tool URL"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-
-              {isToolUrlOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsToolUrlOpen(false)}
-                  />
-                  <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3 shadow-[var(--shadow-md)]">
-                    <div className="text-[12px] font-semibold text-[var(--chat-text-soft)]">
-                      Tool Base URL
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        value={toolBaseUrlDraft}
-                        onChange={(e) => onToolBaseUrlChange(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            onApplyToolBaseUrl();
-                            setIsToolUrlOpen(false);
-                          }
-                        }}
-                        placeholder="http://127.0.0.1:1601"
-                        className="min-w-0 flex-1 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none transition placeholder:text-[var(--chat-text-muted)] focus:border-[var(--primary)]/30"
-                      />
-                      <ActionButton
-                        label="连接"
-                        icon={<Link2 className="h-3.5 w-3.5" />}
-                        onClick={() => {
-                          onApplyToolBaseUrl();
-                          setIsToolUrlOpen(false);
-                        }}
-                        variant="primary"
-                      />
-                    </div>
-                    <div className="mt-2 text-[11px] text-[var(--chat-text-muted)]">
-                      当前：{activeToolBaseUrl || "未配置"}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
             {!embedded && <WorkspaceToolSwitcher />}
           </div>
         </div>
@@ -769,6 +706,11 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                   <h2 className="mt-3 truncate text-[24px] font-semibold tracking-tight text-[var(--chat-text)]">
                     {selectedKnowledgeBase ? selectedKnowledgeBaseName : "选择资料库后开始问答"}
                   </h2>
+                  {selectedKnowledgeBase ? (
+                    <div className="mt-2 font-mono text-[12px] text-[var(--chat-text-muted)]">
+                      知识库 ID：{selectedKnowledgeBase.id}
+                    </div>
+                  ) : null}
                   <p className="mt-1 max-w-[72ch] text-[13px] leading-6 text-[var(--chat-text-muted)]">
                     {selectedKnowledgeBase
                       ? `当前资料库有 ${files.length} 个资料源，${readyFileCount} 个已完成切片。`
@@ -776,9 +718,6 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-[var(--chat-border)] px-3 py-1.5 text-[12px] text-[var(--chat-text-muted)]">
-                    Tool: {activeToolBaseUrl || "未配置"}
-                  </span>
                   {(queryAnswer || queryError || queryRawChunks.length > 0) && (
                     <ActionButton
                       label="清空回答"

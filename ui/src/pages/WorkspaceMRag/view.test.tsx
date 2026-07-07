@@ -9,10 +9,6 @@ describe("WorkspaceMRagView", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/workspace/mrag"]}>
         <WorkspaceMRagView
-          toolBaseUrlDraft="http://127.0.0.1:1601"
-          activeToolBaseUrl="http://127.0.0.1:1601"
-          onToolBaseUrlChange={() => {}}
-          onApplyToolBaseUrl={() => {}}
           knowledgeBases={[
             {
               id: "kb-1",
@@ -122,6 +118,9 @@ describe("WorkspaceMRagView", () => {
 
     expect(html).toContain("MRAG 文件工作台");
     expect(html).toContain("产品资料库");
+    expect(html).toContain("kb-1");
+    expect(html).not.toContain("Tool Base URL");
+    expect(html).not.toContain("当前：");
     expect(html).toContain("上传文件");
     expect(html).toContain("预览");
     expect(html).toContain("下载");
@@ -138,10 +137,6 @@ describe("WorkspaceMRagView", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/workspace/mrag"]}>
         <WorkspaceMRagView
-          toolBaseUrlDraft="http://127.0.0.1:1601"
-          activeToolBaseUrl="http://127.0.0.1:1601"
-          onToolBaseUrlChange={() => {}}
-          onApplyToolBaseUrl={() => {}}
           knowledgeBases={[]}
           knowledgeBasesLoading={false}
           knowledgeBasesError=""

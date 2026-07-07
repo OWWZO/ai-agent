@@ -31,7 +31,7 @@ class BaseRetriever:
         self._image_retriever = ImageRetriever()
         self._text_retriever = TextRetriever()
 
-    def retrieval_by_texts(self, kb_id: str, queries: list[str]):
+    def retrieval_by_texts(self, kb_id: str | list[str], queries: list[str]):
 
         tasks = []
         res = [[] for _ in range(len(queries))]
@@ -59,7 +59,7 @@ class BaseRetriever:
     def retrieval_image(self, image_path: str):
         pass
 
-    def retrieval_lightrag(self, kb_id: str, queries: list[str]):
+    def retrieval_lightrag(self, kb_id: str | list[str], queries: list[str]):
         url = f"{os.getenv('LIGHTRAG_SERVER_BASE_URL')}/query/data"
 
         data = {

@@ -31,7 +31,7 @@ class ImageRetriever:
         self.embedding_model = get_image_embedding_model()
         self.vector_store = VectorStore()
 
-    def text2image_search(self, kb_id: str, queries: list[str], limit: int = 10, score_threshold: float = 0.0,
+    def text2image_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
         """文本到图像检索"""
         if not filter_conditions:
@@ -53,7 +53,7 @@ class ImageRetriever:
             return [[] for _ in queries]
 
     def image2image_search(self,
-                           kb_id: str, image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
+                           kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
                            filter_conditions: Optional[Dict] = None):
         """图像检索"""
         if not filter_conditions:
@@ -67,7 +67,7 @@ class ImageRetriever:
             filter_conditions=filter_conditions
         )[0]
 
-    def text2page_search(self, kb_id: str, queries: list[str], limit: int = 10, score_threshold: float = 0.0,
+    def text2page_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                          filter_conditions: Optional[Dict] = None):
         """文本到页面检索"""
         if not filter_conditions:
@@ -89,7 +89,7 @@ class ImageRetriever:
             return [[] for _ in queries]
 
     def image2page_search(self,
-                          kb_id: str, image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
+                          kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
         """图像到页面检索"""
         if not filter_conditions:

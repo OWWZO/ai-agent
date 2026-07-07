@@ -60,7 +60,7 @@ def display_chunks(chunks: List[Dict]):
 class AgenticRAG:
     """智能RAG系统类"""
 
-    def __init__(self, kb_id: str, n_round: int = 5):
+    def __init__(self, kb_id: str | list[str], n_round: int = 5):
         self._n_round = n_round
         self._retriever = BaseRetriever()
         self._kb_id = kb_id

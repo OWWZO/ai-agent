@@ -7,6 +7,7 @@ from abc import abstractmethod, ABC
 import dotenv
 
 from .logger_utils import logger
+from .paddle_ocr_client import PaddleOCRClient
 from ..generation.vlm import VLLMClient
 
 dotenv.load_dotenv()
@@ -54,11 +55,27 @@ class VLMOCR(OCRBase):
             return ""
 
 
+class PaddleOCRVLOCR(OCRBase):
+
+    def __init__(self):
+        self._client = PaddleOCRClient()
+
+    def ocr(self, image_path: str) -> str:
+        try:
+            return self._client.extract_text(image_path)
+        except Exception as e:
+            import traceback
+            logger.error(traceback.format_exc())
+            return ""
+
+
 def get_ocr_model() -> OCRBase:
-    ocr_type = os.getenv("OCR_TYPE")
-    if ocr_type.lower() == "deepseek-ocr":
+    ocr_type = (os.getenv("OCR_TYPE") or "").strip().lower()
+    if ocr_type == "deepseek-ocr":
         return DeepSeekOCR()
-    elif ocr_type.lower() == "vlm-ocr":
+    elif ocr_type == "vlm-ocr":
         return VLMOCR()
+    elif ocr_type == "paddleocr-vl":
+        return PaddleOCRVLOCR()
     else:
         raise ValueError(f"不支持的OCR模型: {ocr_type}")
