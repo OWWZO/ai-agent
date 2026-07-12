@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
+#
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
@@ -98,7 +98,6 @@ if __name__ == "__main__":
             port=options.port,
             workers=options.workers,
             reload=reload_enabled,
-            timeout_worker_healthcheck=60,
             timeout_keep_alive=99999,
             ws_ping_interval=99999,
             ws_ping_timeout=99999,

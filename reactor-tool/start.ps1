@@ -65,7 +65,7 @@ try {
         throw "Port $port is already in use by PID $($listener.OwningProcess): $commandLine"
     }
 
-    & $pythonExe "server.py" "--workers" "1"
+    & $pythonExe "server.py" "--workers" "10"
 }
 finally {
     Pop-Location
