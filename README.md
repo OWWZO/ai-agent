@@ -66,23 +66,11 @@
 
 ## ✨ Agent Showcase
 ## 运行视频
-<video 
-    src="https://owwzo.top.owwzo.cloud/%E6%99%BA%E8%83%BD%E4%BD%93%E6%94%AF%E4%BB%98%E4%B8%9A%E5%8A%A1.mp4"
-    controls
-    width="800">
-</video>
+https://owwzo.top.owwzo.cloud/%E6%99%BA%E8%83%BD%E4%BD%93%E6%94%AF%E4%BB%98%E4%B8%9A%E5%8A%A1.mp4
 
-<video 
-    src="https://owwzo.top.owwzo.cloud/%E6%8B%86%E8%A7%A3%E4%B8%89%E6%AC%BE%E4%B8%BB%E6%B5%81agent.mp4"
-    controls
-    width="800">
-</video>
+https://owwzo.top.owwzo.cloud/%E6%8B%86%E8%A7%A3%E4%B8%89%E6%AC%BE%E4%B8%BB%E6%B5%81agent.mp4
 
-<video 
-    src="https://owwzo.top.owwzo.cloud/%E6%96%B0%E8%83%BD%E6%BA%90%E6%B1%BD%E8%BD%A6%E8%B0%83%E7%A0%94.mp4"
-    controls
-    width="800">
-</video>
+https://owwzo.top.owwzo.cloud/%E6%96%B0%E8%83%BD%E6%BA%90%E6%B1%BD%E8%BD%A6%E8%B0%83%E7%A0%94.mp4
 
 ## 运行截图
 <p align="center">
