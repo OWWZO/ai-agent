@@ -2,30 +2,66 @@
 
 ## 项目简介
 
-`Reactor-agent` 是一个面向复杂任务自动化与AI应用工程化落地的 **多智能体协作应用平台**。  
-它不是只做“单轮对话 + 单次工具调用”的 Demo，而是能把复杂任务拆解、多 Agent 协作、MCP/本地集成工具编排、RAG 检索增强、会话记忆、执行事实持久化与历史回放串成一条可运行、可追踪、可复用的完整执行链路。
+传统 AI 对话系统擅长回答问题，却在面对需要拆解、协作、多步执行的复杂任务时力不从心——`Reactor-agent`正是为此而生。`Reactor-agent` 是一个面向复杂任务自动化与AI应用工程化落地的 **多智能体协作应用平台**。  
+它不是只做“单轮对话 + 多次工具调用”的 Demo，而是能把复杂任务拆解、历史任务经验复用、多Agent协作、MCP/本地集成工具编排、RAG 检索增强、会话记忆、执行事实持久化与对话历史回放串成一条可运行、可追踪、可复用的完整执行链路。
+
 
 ## 解决的痛点
 
 - 传统单 Agent / 单轮对话难以承接复杂任务，缺少任务拆解、**分工协作**与**结果汇总**能力
 - 工具调用往往是一次性动作，搜索、分析、报告等中间结果文件难沉淀、难复用
 - **多步骤**、**长时效**的任务流程过度依赖 Prompt 临场发挥，容易跑偏、漏步骤，执行稳定性不足
+- 每个会话相互隔离，任务经验无法复用和参考
 - 执行过程缺少结构化记录，出现问题后难审计、难回放、难定位
-- Agent能力难以拓展，新增能力成本过高
+- Agent能力难以拓展，新增需要修改项目代码，拓展成本过高
 
 ## 目标用户
 
 - 想构建 **Multi-Agent** 平台、复杂工作流或 AI 自动化系统的后端工程师
 - 需要把检索、分析、报告、脚本执行等工具能力串成闭环的业务技术团队
-- 想要学习 **Multi-Agent** 协作的学者/学生
+- 想要学习 **Multi-Agent** 协作思路的学者/学生
+- 
 
 ## 典型应用场景
 
-- 竞品分析/日常调研
-- **多步骤**任务编排与结果汇总
-- 知识检索与**图文混合**问答
-- 数据分析与报告生成
-- 复杂业务流程中的子智能体辅助执行
+### 🔬 研究与决策类
+
+| 场景 | 怎么跑的 | 用到什么能力 |
+|------|---------|-------------|
+| **技术选型决策报告** | 深度搜索多源信息 → 数据分析对比 → 生成结构化报告 | DeepSearch + Report + SOP 约束步骤 |
+| **竞品分析** | 搜索竞品公开信息 → 提取关键指标 → 表格对比 → 可视化图表 | Search + CodeInterpreter + Chart Skill |
+| **投资/行业研究** | 多轮检索补充证据 → 子问题拆解 → 交叉验证 → 输出研报 | Plan-Execute 拆子任务 + MRAG 多轮检索 + Report |
+
+### 📊 数据分析与可视化类
+
+| 场景 | 怎么跑的 | 用到什么能力 |
+|------|---------|-------------|
+| **运营日报/周报自动生成** |  拉取数据 → 分析趋势 → 生成图文报告 | CodeInterpreter + Report + 图表 Skill |
+| **财务报表解读** | 上传财报 PDF → 多模态检索关键页 → 数据提取 → 结构化摘要 | MRAG 图文混合检索 + CodeInterpreter + Report |
+
+### 🎨 内容生产类
+
+| 场景 | 怎么跑的 | 用到什么能力 |
+|------|---------|-------------|
+| **营销海报生成** | 搜索人物/产品特征 → 风格参考检索 → 图像生成 → 排版 | DeepSearch + GPT-Image Style Skill + ImageGeneration |
+| **PPT 自动生成** | 输入主题 → 搜索素材 → 生成大纲 → 生成 PPT 文件 | Search + PPT Skill + SOP 约束流程 |
+| **技术博客发布** | 研究主题 → 生成文章 → 排版 → 自动发布到 CSDN | DeepSearch + Report + CSDN MCP |
+| **前端页面生成** | 描述需求 → 生成 HTML/CSS → 部署预览 | Frontend Design Skill + Vercel Deploy Skill |
+
+### 🔍 知识问答与检索类
+
+| 场景 | 怎么跑的 | 用到什么能力 |
+|------|---------|-------------|
+| **企业知识库问答** | 员工提问 → 混合检索文档/图片/表格 → 重排序 → 结构化回答 | MRAG 语义+BM25+跨模态检索 + Rerank |
+| **产品手册/法规查询** | 精确检索条款 → 引用原文 → 关联上下文解释 | MRAG 多轮检索 |
+| **学术文献综述** | 搜索多篇论文 → 提取关键发现 → 对比分析 → 生成综述 | Plan-Execute 多步拆解 + Search + Report |
+
+### 🛠 流程自动化类
+
+| 场景 | 怎么跑的 | 用到什么能力 |
+|------|---------|-------------|
+| **GitHub 项目评估** | 拉取仓库信息 → 分析 Star/Issue/PR → 生成评估报告 | GitHub Api Deep Research + Report |
+| **代码审查辅助** | 读取代码 → 分析逻辑 → 检索相关文档 → 生成审查意见 | CodeInterpreter + Search + MRAG |
 
 
 ## ✨ Agent Showcase
@@ -38,7 +74,7 @@
 
 #### ReAct模式
 <p align="center">
-  <img src="assets/readme/deepsearch展示.png" alt="Reactor 深度研究任务展示" width="48%" />
+  <img src="assets/readme/ReAct链路.png" alt="Reactor 深度研究任务展示" width="48%" />
 </p>
 
 #### Plan Execute模式
@@ -48,62 +84,27 @@
 
 
 ## ✨ 典型应用场景示例
-#### 1.竞品分析场景与产品/日常调研场景：基于 Deep Research Agent + Report Agent 生成结构化研究报告
+#### 1.竞品分析场景与产品/日常调研场景：
 
-> 支持PPT HTML Markdown CSV表格等多种形式来展示。
-> HTML 报告更适合下载后本地打开，Markdown 报告可直接查看源码内容。
 
-| 分类 | 报告名称 | 格式 | 入口 |
-| --- | --- | --- | --- |
-| 技术评估 | [CodeGraph 开源项目评估报告](assets/readme/CodeGraph开源项目看法与评估.html) | HTML | [打开文件](assets/readme/CodeGraph开源项目看法与评估.html) |
-| 模型选型 | [Agent 项目大模型性价比选型决策报告](assets/readme/Agent项目大模型性价比选型决策报告.html) | HTML | [打开文件](assets/readme/Agent项目大模型性价比选型决策报告.html) |
-| 场景案例 | [厦门情侣一日游完整规划](assets/readme/厦门情侣一日游完整规划网页版报告.html) | HTML | [打开文件](assets/readme/厦门情侣一日游完整规划网页版报告.html) |
-| 场景案例 | [洛克王国新手攻略搜索总结](assets/readme/洛克王国新手攻略搜索总结.html) | HTML | [打开文件](assets/readme/洛克王国新手攻略搜索总结.html) |
-| 框架研究 | [Spring AI 框架核心概念与架构演进报告](assets/readme/Spring_AI框架核心概念与架构演进报告.md) | Markdown | [打开文件](assets/readme/Spring_AI框架核心概念与架构演进报告.md) |
+竞品分析：codex与claude code
+<p align="center">
+  <img src="assets/readme/codex与claudecode对比.png" alt="原始图片输入示例" width="48%" />
+</p>
 
-#### 报告结果预览
+日常调研:厦门一日游完整规划
 <p align="center">
   <img src="assets/readme/旅游规划.png" alt="原始图片输入示例" width="48%" />
 </p>
+
+产品调研：CodeGraph 开源项目调查报告
 <p align="center">
   <img src="assets/readme/codegraph展示.png" alt="原始图片输入示例" width="48%" />
 </p>
 
 
-#### 2.多工具产物进行复用，结合 Skill 提升图片生成质量
-#### Workflow
-```text
+#### 2.内容生产类：人物海报生成
 
-User Query
-
-    │
-
-    ▼
-
- Deep Research分析人物外部特征
-
-    │
-
-    ▼
-
- Skill Selection
-
-    │
-
-    ▼
-
- Tool Execution
-
-    │
-
-    ▼
-
- Structured Report / Image Output
-
-```
-
-
-#### 最终结果
 <p align="center">
   <img src="assets/readme/图片展示.png" alt="原始图片输入示例" width="48%" />
 
@@ -114,6 +115,55 @@ User Query
 
 </p>
 
+
+#### 3.数据分析与可视化
+
+<p align="center">
+  <img src="assets/readme/数据分析.png" alt="原始图片输入示例" width="48%" />
+
+</p>
+
+<p align="center">
+  <img src="assets/readme/销售报表.png" alt="原始图片输入示例" width="48%" />
+
+</p>
+
+#### 4.行业研究类
+RAG市场分析
+<p align="center">
+  <img src="assets/readme/RAG市场研究.png" alt="原始图片输入示例" width="48%" />
+
+</p>
+
+主流Agent产品商业化研究
+<p align="center">
+  <img src="assets/readme/agent产品适配场景ppt图片.png" alt="原始图片输入示例" width="48%" />
+
+</p>
+
+<p align="center">
+  <img src="assets/readme/agent产品功能对比ppt图片.png" alt="原始图片输入示例" width="48%" />
+
+</p>
+
+### 产物文件下载预览
+> 支持PPT HTML Markdown CSV表格等多种形式来展示。
+> HTML 报告更适合下载后本地打开，Markdown 报告可直接查看源码内容。
+
+| 分类 | 报告名称 | 格式 | 入口 |
+| --- | --- | --- | --- |
+| 技术评估 | [CodeGraph 开源项目调查报告](assets/readme/CodeGraph开源项目看法与评估.html) | HTML | [打开文件](assets/readme/CodeGraph开源项目看法与评估.html) |
+| 模型选型 | [Agent 项目大模型性价比选型决策报告](assets/readme/Agent项目大模型性价比选型决策报告.html) | HTML | [打开文件](assets/readme/Agent项目大模型性价比选型决策报告.html) |
+| 旅游决策 | [厦门情侣一日游完整规划](assets/readme/厦门情侣一日游完整规划网页版报告.html) | HTML | [打开文件](assets/readme/厦门情侣一日游完整规划网页版报告.html) |
+| 场景案例 | [洛克王国新手攻略搜索总结](assets/readme/洛克王国新手攻略搜索总结.html) | HTML | [打开文件](assets/readme/洛克王国新手攻略搜索总结.html) |
+| 技术框架研究 | [Spring AI 框架核心概念与架构演进报告](assets/readme/Spring_AI框架核心概念与架构演进报告.md) | Markdown | [打开文件](assets/readme/Spring_AI框架核心概念与架构演进报告.md) |
+| 数据分析 | [客户类型贡献度分析与 TOP 热销产品统计](assets/readme/客户类型贡献度分析与热销产品报告.html) | HTML | [打开文件](assets/readme/客户类型贡献度分析与热销产品报告.html) |
+| 数据分析 | [客户类型贡献度分析与 TOP 热销产品统计](assets/readme/综合销售分析网页版报告.html) | HTML | [打开文件](assets/readme/综合销售分析网页版报告.html) |
+| 竞品对比 | [Codex与ClaudeCode竞品分析报告](assets/readme/Codex与ClaudeCode竞品分析报告.html) | HTML | [打开文件](assets/readme/Codex与ClaudeCode竞品分析报告.html) |
+| 竞品对比 | [主流笔记软件竞品分析报告](assets/readme/主流笔记软件竞品分析报告.html) | HTML | [打开文件](assets/readme/主流笔记软件竞品分析报告.html) |
+| 竞品对比 | [三款主流多智能体协作平台对比拆解报告](assets/readme/三款主流多智能体协作平台对比拆解报告.ppt.html) | PPT | [打开文件](assets/readme/三款主流多智能体协作平台对比拆解报告.ppt.html) |
+| 资讯收集 | [Linux内核新漏洞证明人工审计不可替代资讯报告](assets/readme/Linux内核新漏洞证明人工审计不可替代资讯报告.html) | HTML | [打开文件](assets/readme/Linux内核新漏洞证明人工审计不可替代资讯报告.html) |
+| 行业信息收集 | [当前AI发展主要瓶颈分析报告 ](assets/readme/当前AI发展主要瓶颈分析报告.html) | HTML | [打开文件](assets/readme/当前AI发展主要瓶颈分析报告.html) |
 
 
 
@@ -148,6 +198,44 @@ flowchart LR
     MCP --> EXT[外部工具 / 外部系统]
 ```
 
+## 核心特色
+
+### 1.子智能体远程挂载
+将子智能体从进程内调用升级为 HTTP远程调用。每个子智能体是独立部署、独立扩缩容的服务，Java 编排中枢通过 HTTP SSE 流式协议调度执行。
+这意味着：
+横向扩展：哪个子智能体负载高，就单独扩哪个服务，无需整体扩容。比如：深度搜索请求堆积就加 Python 实例，MRAG 慢了加检索节点，互不影响。
+
+对接外部工具/外部项目只需实现少量代码：接入新子智能体/工具 = 暴露一个 HTTP 端点 + 在主服务注册一个 Tool，无需改编排逻辑，能通过HTTP自由对接外部python/其他语言的项目，一定程度上接住了python的比较丰富的ai生态。
+
+故障隔离与容错：子智能体崩溃不影响主服务和其他子智能体，超时有兜底，单个工具挂了也能让其他同类工具顶上
+
+### 2. 会话级工作区
+智能体产物自动落盘，支持文本、图片、HTML在线预览与下载。
+- 工具产物登记与可见性机制，将搜索结果、分析文件、报告、图片、多模态检索结果统一沉淀到会话级工作区
+- 支持跨工具传递、上下文续用与任务级结果串联，形成 `搜索 -> 分析 -> 报告 -> 汇总` 的**多工具组合闭环**
+- 让前序工具生成的文件与中间结果可以被后续工具直接复用，避免链路割裂和重复处理
+
+### 3.丰富的工具生态和深度集成
+DeepSearch 多引擎深度搜索，支持多轮检索+推理+总结
+Plantool	计划生命周期管理：创建→更新→标记步骤→完成
+CodeInterpreter	代码解释器，执行 Python 并返回结果
+Report	多格式报告生成（Markdown/HTML/PPT）
+WebFetch	单网页抓取，正文提取并落盘为 Markdown
+ImageGeneration	文生图 + 图生图，支持风格参考
+MultiModalAgent	跨模态检索，访问用户专属图文知识库
+FileTool	文件上传/解析/管理
+SkillTool系列工具 技能阅读/脚本执行
+
+### 4.数字员工角色定位
+数字员工 = 给 Agent 绑定一个"数字员工人设"，让同一个agent在不同任务背景下变成不同的角色。
+如 file_tool → 市场洞察专员、DeepSearch Agent → 数据收集师
+
+### 5.全链路流式输出
+Agent回复、工具输出、报告生成等等都是流式输出，提高应用可交互性，用户可感知到任务执行情况，避免长时间无响应
+
+### 6.产物有丰富的展示形式(ppt、html、csv、markdown)
+report子智能体实现了多种信息展现形式，用户可按偏好选择。内置多种提示词模板(可自由配置成脑图、闪卡，也可继续基于已有信息展现形式做定制化，比如markdown形式分为简报文档、博客文章、学习指南)
+
 ## 核心能力
 
 ### 1. 多智能体协同与混合模式执行
@@ -156,21 +244,15 @@ flowchart LR
 - 支持将复杂任务拆解为多个**可并发**子任务，提升复杂场景下的可拆解性、执行效率与协同能力
 - 支持**多策略** Agent 动态调度，按业务场景组织不同角色、不同能力的智能体协作完成目标
 
-### 2. 共享工作区与工具组合执行
-
-- 搭建工具产物登记与可见性机制，将搜索结果、分析文件、报告、图片、多模态检索结果统一沉淀到会话级工作区
-- 支持跨工具传递、上下文续用与任务级结果串联，形成 `搜索 -> 分析 -> 报告 -> 汇总` 的**多工具组合闭环**
-- 让前序工具生成的文件与中间结果可以被后续工具直接复用，避免链路割裂和重复处理
-
-### 3. 基于 CompletableFuture实现多工具并发执行
+### 2. 基于CompletableFuture的多工具并发执行
 
 - 在单个 Agent 的工具执行层支持对同一轮多个 `tool call` 并发调度，统一完成工具调用、事件推送、artifact 记录、账本落库与结果回写，避免“并发执行了，但状态各写各的”的工程失控
 
-### 4. Skill + SOP 标准作业体系
+### 3. Skill能力库+SOP语义召回体系
 
-- 构建 Agent 的 `Skill + SOP` 任务编排机制，将专家能力与执行流程模块化沉淀为可复用能力
-- 通过显式流程约束和标准作业步骤，增强复杂任务的执行确定性
+任务规划之前先语义召回类似任务的SOP，参考召回的内容进行计划的生成
 - 降低模型自由发挥导致的任务跑偏、步骤遗漏和结果不一致问题，提升多步骤任务的完成度与交付一致性
+- 跨会话经验复用，用户可根据业务场景设置自定义SOP，自动指导agent工作
 
 ### 5. RAG 与混合检索增强
 
@@ -183,7 +265,7 @@ flowchart LR
 - 在运行时构建 `McpRegistry + McpToolExecutor` 统一管理 MCP 服务，启动后可对全局启用或指定客户端绑定的 MCP 做预热、工具发现与缓存，减少每次请求都重新建连和重复 `listTools` 的开销
 - 支持三种MCP传输协议 `SSE`、`STDIO` 与 `Streamable HTTP` 
 
-### 7. 执行事实持久化与历史回放
+### 7. 完善的执行事实记录与执行历史回放
 
 - 统一记录对话过程产生的执行事实，覆盖对话运行、LLM 调用、工具调用、工具输出、文件产物等关键节点
 - 支持复杂任务链路的审计、问题定位与历史回放，提升 Agent 系统的可观测性与可维护性
@@ -249,8 +331,6 @@ G -->|是| O --> P
 两套模式共享的公共底座是 `AgentContext`、`ToolCollection`、`ToolArtifactRegistry` 与 `SessionContextMemoryService`；外围的 Trigger 接入、SSE 推流、执行账本、artifact 持久化与历史回放，作为横切能力统一承接这两条执行链路。
 
 ## 项目结构
-
-以下仅列出当前已纳入 Git 版本控制的核心目录与文件：
 
 ```text
 Reactor-agent/
@@ -371,8 +451,6 @@ Reactor-agent/
 
 ## 架构说明
 
-项目整体遵循 DDD 分层设计，并在 Agent 主链路中逐步收敛为以下职责边界：
-
 - `trigger`：负责 HTTP / SSE / Job 等外部入口协议适配
 - `case`：负责多智能体编排、任务调度、执行组织与能力协调
 - `domain`：负责 Agent runtime、执行账本、记忆、RAG、角色能力等核心领域语义
@@ -382,8 +460,8 @@ Reactor-agent/
 
 ## 后续演进方向
 
-- 更灵活的智能体角色配置
 - 更智能的多 Agent 协作策略与角色编排
 - 更完善的管理后台、配置中心与可观测性能力
 - 更丰富的工具组合
 - 构建长期记忆，记录用户偏好与使用习惯，形成稳定用户画像，让智能体在持续交互中更懂用户
+- 多知识源接入 支持 Dify、Notion、飞书（规划中）等外部知识源接入，统一检索与引用

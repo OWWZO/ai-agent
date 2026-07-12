@@ -27,7 +27,6 @@ import {
   formatHistoryTime,
   resolveDownloadUrl,
   resolvePreviewUrl,
-  toPrettyJson,
 } from "./utils";
 import { useImageGenerationConfig } from "./useImageGenerationConfig";
 import { useImageGenerationHistory } from "./useImageGenerationHistory";
@@ -36,6 +35,39 @@ import {useImageGenerationSession,} from "./useImageGenerationSession";
 
 interface WorkspaceImageGenerationProps {
   embedded?: boolean;
+}
+
+const MODE_OPTIONS: Array<{
+  value: RequestMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "images",
+    label: "文生图",
+    hint: "直接描述画面内容，发送后生成结果。",
+  },
+  {
+    value: "edits",
+    label: "图生图",
+    hint: "上传参考图后描述修改目标，再发起生成。",
+  },
+  {
+    value: "chat",
+    label: "对话调试",
+    hint: "保留接口调试能力，直接发送对话请求。",
+  },
+];
+
+function resolveModeLabel(mode: string) {
+  switch (mode) {
+    case "edits":
+      return "图生图";
+    case "chat":
+      return "对话调试";
+    default:
+      return "文生图";
+  }
 }
 
 /* ─────────── 内部子组件 ─────────── */
@@ -286,7 +318,6 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
     handleSend,
     statusText,
     statusTone,
-    debugPayload,
   } = useImageGenerationSession({
     config,
     collectEffectiveImages,
@@ -296,7 +327,9 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
 
   const chatRef = useRef<HTMLDivElement>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const selectedModeOption =
+    MODE_OPTIONS.find((option) => option.value === config.mode) ?? MODE_OPTIONS[0];
+  const showChatConfigPanel = config.mode === "chat";
 
   useEffect(() => {
     if (!chatRef.current) return;
@@ -339,153 +372,61 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
 
       {/* ═══════ 三栏主体 ═══════ */}
       <section className="workspace-fade-enter mx-auto flex w-full max-w-[1400px] flex-1 gap-4 overflow-hidden p-4">
-        {/* ── 左栏：参数配置 ── */}
-        <aside className="flex w-[240px] shrink-0 flex-col gap-4 overflow-y-auto">
-          <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4">
-            <div className="mb-3 flex items-center gap-2 text-[var(--chat-text-muted)]">
-              <Settings className="h-3.5 w-3.5" />
-              <span className="text-[11px] font-semibold tracking-wide">
-                生成参数
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                  模式
+        {/* ── 左栏：仅保留对话调试所需的接口配置 ── */}
+        {showChatConfigPanel && (
+          <aside className="flex w-[240px] shrink-0 flex-col gap-4 overflow-y-auto">
+            <div className="rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-4">
+              <div className="mb-3 flex items-center gap-2 text-[var(--chat-text-muted)]">
+                <Settings className="h-3.5 w-3.5" />
+                <span className="text-[11px] font-semibold tracking-wide">
+                  对话调试配置
                 </span>
-                <select
-                  value={config.mode}
-                  onChange={(event) =>
-                    updateConfig("mode", event.target.value as RequestMode)
-                  }
-                  className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                >
-                  <option value="images">文生图</option>
-                  <option value="edits">图生图</option>
-                  <option value="chat">对话调试</option>
-                </select>
-              </label>
+              </div>
 
-              {config.mode === "chat" ? (
-                <>
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                      Base URL
-                    </span>
-                    <input
-                      value={config.baseUrl}
-                      onChange={(event) =>
-                        updateConfig("baseUrl", event.target.value)
-                      }
-                      placeholder="https://..."
-                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                      API Key
-                    </span>
-                    <input
-                      type="password"
-                      value={config.apiKey}
-                      onChange={(event) =>
-                        updateConfig("apiKey", event.target.value)
-                      }
-                      placeholder="sk-..."
-                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono tracking-wide text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                      Model
-                    </span>
-                    <input
-                      value={config.model}
-                      onChange={(event) =>
-                        updateConfig("model", event.target.value)
-                      }
-                      className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
-                    />
-                  </label>
-                </>
-              ) : null}
-
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-3">
                 <label className="block">
                   <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                    尺寸
+                    Base URL
                   </span>
                   <input
-                    value={config.size}
+                    value={config.baseUrl}
                     onChange={(event) =>
-                      updateConfig("size", event.target.value)
+                      updateConfig("baseUrl", event.target.value)
                     }
-                    className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
+                    placeholder="https://..."
+                    className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                   />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
-                    数量
+                    API Key
                   </span>
                   <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={config.n}
+                    type="password"
+                    value={config.apiKey}
                     onChange={(event) =>
-                      updateConfig(
-                        "n",
-                        Math.max(
-                          1,
-                          Math.min(10, Number(event.target.value) || 1)
-                        )
-                      )
+                      updateConfig("apiKey", event.target.value)
+                    }
+                    placeholder="sk-..."
+                    className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono tracking-wide text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-[var(--chat-text-muted)]">
+                    Model
+                  </span>
+                  <input
+                    value={config.model}
+                    onChange={(event) =>
+                      updateConfig("model", event.target.value)
                     }
                     className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-sm font-mono text-[var(--chat-text)] outline-none transition focus:border-[var(--primary)]/40 focus:ring-2 focus:ring-[var(--primary)]/10"
                   />
                 </label>
               </div>
-
-              {config.mode === "edits" && (
-                <label className="flex items-start gap-2.5 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2.5 text-sm text-[var(--chat-text)]">
-                  <input
-                    type="checkbox"
-                    checked={config.batchMode}
-                    onChange={(event) =>
-                      updateConfig("batchMode", event.target.checked)
-                    }
-                    className="mt-0.5 h-4 w-4 rounded border-[var(--chat-border)] text-[var(--primary)] focus:ring-[var(--primary)]/20"
-                  />
-                  <div>
-                    <div className="text-[13px] font-medium text-[var(--chat-text)]">
-                      多图批处理
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-4 text-[var(--chat-text-muted)]">
-                      每张参考图独立请求，更稳定
-                    </div>
-                  </div>
-                </label>
-              )}
             </div>
-
-            {statusText && (
-              <div
-                className={classNames(
-                  "mt-3 rounded-lg px-3 py-2 text-[12px] font-medium",
-                  statusTone === "success" &&
-                    "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
-                  statusTone === "error" &&
-                    "bg-[var(--status-failed-bg)] text-[var(--status-failed-text)]",
-                  statusTone === "default" &&
-                    "bg-[var(--chat-surface-muted)] text-[var(--chat-text-muted)]"
-                )}
-              >
-                {statusText}
-              </div>
-            )}
-          </div>
-        </aside>
+          </aside>
+        )}
 
         {/* ── 中栏：主画布 ── */}
         <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -503,6 +444,45 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
 
           {/* 输入区 */}
           <div className="shrink-0 rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--chat-border)] pb-3">
+              <div className="inline-flex flex-wrap rounded-full bg-[var(--chat-surface-muted)] p-1">
+                {MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => updateConfig("mode", option.value)}
+                    className={classNames(
+                      "rounded-full px-3 py-1.5 text-[12px] font-medium transition",
+                      config.mode === option.value
+                        ? "bg-[var(--chat-surface)] text-[var(--chat-text)] shadow-sm"
+                        : "text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-[var(--chat-text-muted)]">
+                {selectedModeOption.hint}
+              </span>
+            </div>
+
+            {statusText && (
+              <div
+                className={classNames(
+                  "mb-3 rounded-lg px-3 py-2 text-[12px] font-medium",
+                  statusTone === "success" &&
+                    "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
+                  statusTone === "error" &&
+                    "bg-[var(--status-failed-bg)] text-[var(--status-failed-text)]",
+                  statusTone === "default" &&
+                    "bg-[var(--chat-surface-muted)] text-[var(--chat-text-muted)]"
+                )}
+              >
+                {statusText}
+              </div>
+            )}
+
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
@@ -521,21 +501,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
               }
               className="min-h-[80px] w-full resize-none rounded-lg border-none bg-transparent px-2 py-2 text-[15px] leading-6 text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
             />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--chat-border)] pt-2">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-muted)]">
-                  {config.mode === "images"
-                    ? "文生图"
-                    : config.mode === "edits"
-                      ? "图生图"
-                      : "对话调试"}
-                </span>
-                {config.mode !== "chat" && (
-                  <span className="text-[11px] text-[var(--chat-text-muted)]">
-                    {config.size} · {config.n} 张
-                  </span>
-                )}
-              </div>
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--chat-border)] pt-2">
               <div className="flex items-center gap-2">
                 {messages.length > 0 && (
                   <button
@@ -566,39 +532,6 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
               </div>
             </div>
           </div>
-
-          {/* 调试面板 */}
-          {showDebug && (
-            <div className="shrink-0 overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)]">
-              <div className="flex items-center justify-between border-b border-[var(--chat-border)] px-4 py-2.5">
-                <span className="inline-flex items-center gap-2 text-sm font-medium text-[var(--chat-text)]">
-                  <Settings className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
-                  原始响应调试
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowDebug(false)}
-                  className="text-[12px] text-[var(--chat-text-muted)] transition hover:text-[var(--chat-text)]"
-                >
-                  收起
-                </button>
-              </div>
-              <pre className="max-h-[240px] overflow-auto px-4 py-3 whitespace-pre-wrap font-mono text-[11px] leading-5 text-[var(--chat-text-soft)]">
-                {toPrettyJson(debugPayload)}
-              </pre>
-            </div>
-          )}
-
-          {!showDebug && (
-            <button
-              type="button"
-              onClick={() => setShowDebug(true)}
-              className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1.5 text-[11px] font-medium text-[var(--chat-text-muted)] transition hover:text-[var(--chat-text)]"
-            >
-              <Settings className="h-3 w-3" />
-              显示调试面板
-            </button>
-          )}
         </main>
 
         {/* ── 右栏：参考图 + 历史 ── */}
@@ -647,6 +580,25 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
                     event.target.value = "";
                   }}
                 />
+              </label>
+
+              <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2.5 text-sm text-[var(--chat-text)]">
+                <input
+                  type="checkbox"
+                  checked={config.batchMode}
+                  onChange={(event) =>
+                    updateConfig("batchMode", event.target.checked)
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-[var(--chat-border)] text-[var(--primary)] focus:ring-[var(--primary)]/20"
+                />
+                <div>
+                  <div className="text-[13px] font-medium text-[var(--chat-text)]">
+                    多图批处理
+                  </div>
+                  <div className="mt-0.5 text-[11px] leading-4 text-[var(--chat-text-muted)]">
+                    每张参考图独立请求，更稳定。
+                  </div>
+                </div>
               </label>
 
               {images.length > 0 && (
@@ -757,7 +709,7 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-1">
                         <span className="rounded bg-[var(--chat-surface-muted)] px-1.5 py-0.5 text-[10px] text-[var(--chat-text-muted)]">
-                          {batch.mode === "edits" ? "图生图" : "文生图"}
+                          {resolveModeLabel(batch.mode)}
                         </span>
                       </div>
                     </div>

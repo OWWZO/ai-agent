@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Linux内核新漏洞证明人工审计不可替代：从 Copy Fail 到 2026 漏洞高压态势</title>
+  <link href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    :root{
+      --primary:#2563eb;
+      --primary-dark:#1d4ed8;
+      --ink:#0f172a;
+      --muted:#475569;
+      --line:#e2e8f0;
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --warn:#fff7ed;
+      --warn-border:#fdba74;
+      --danger:#fef2f2;
+      --danger-border:#fca5a5;
+      --success:#ecfdf5;
+      --success-border:#86efac;
+    }
+    html{scroll-behavior:smooth;}
+    body{
+      font-family: "Inter","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+      background: linear-gradient(180deg,#f8fbff 0%,#f8fafc 100%);
+      color: var(--ink);
+    }
+    .glass{
+      background: rgba(255,255,255,.82);
+      backdrop-filter: blur(12px);
+    }
+    .hero-bg{
+      background:
+        radial-gradient(circle at top right, rgba(37,99,235,.16), transparent 30%),
+        radial-gradient(circle at left center, rgba(14,165,233,.12), transparent 28%),
+        linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #0b5bd3 100%);
+    }
+    .section-title{
+      position: relative;
+      padding-left: 1rem;
+    }
+    .section-title:before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:.3rem;
+      width:.3rem;
+      height:1.25rem;
+      border-radius:999px;
+      background:linear-gradient(180deg,#2563eb,#38bdf8);
+    }
+    .card{
+      background:var(--card);
+      border:1px solid rgba(226,232,240,.9);
+      border-radius:1rem;
+      box-shadow:0 10px 30px rgba(15,23,42,.06);
+    }
+    .metric-card{
+      background: linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+      border:1px solid #dbeafe;
+      border-radius:1rem;
+      box-shadow:0 8px 24px rgba(37,99,235,.08);
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:.35rem;
+      border-radius:999px;
+      padding:.28rem .7rem;
+      font-size:.78rem;
+      font-weight:600;
+    }
+    .badge-blue{background:#dbeafe;color:#1d4ed8;}
+    .badge-red{background:#fee2e2;color:#b91c1c;}
+    .badge-amber{background:#fef3c7;color:#b45309;}
+    .badge-green{background:#dcfce7;color:#15803d;}
+    .warn-box{
+      background:var(--warn);
+      border:1px solid var(--warn-border);
+    }
+    .danger-box{
+      background:var(--danger);
+      border:1px solid var(--danger-border);
+    }
+    .success-box{
+      background:var(--success);
+      border:1px solid var(--success-border);
+    }
+    .prose-p p{
+      line-height:1.95;
+      color:#1e293b;
+      margin-bottom:1rem;
+    }
+    .prose-p li{
+      line-height:1.9;
+      margin-bottom:.55rem;
+      color:#1e293b;
+    }
+    table{
+      border-collapse:separate;
+      border-spacing:0;
+    }
+    th,td{
+      border-bottom:1px solid #e2e8f0;
+      vertical-align:top;
+    }
+    thead th{
+      position:sticky;
+      top:0;
+      background:#f8fafc;
+      z-index:1;
+    }
+    .quote{
+      border-left:4px solid #60a5fa;
+      background:#eff6ff;
+    }
+    .timeline-dot{
+      width:.75rem;height:.75rem;border-radius:999px;background:#2563eb;flex:none;margin-top:.4rem;
+      box-shadow:0 0 0 6px rgba(37,99,235,.12);
+    }
+    .cite a{
+      color:#007bff;
+      text-decoration:none;
+    }
+    .cite a:hover{
+      text-decoration:underline;
+    }
+    .small-note{font-size:.86rem;color:#64748b;}
+  </style>
+</head>
+<body>
+  <header class="hero-bg text-white">
+    <div class="max-w-7xl mx-auto px-6 py-12 lg:py-16">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
+        <div class="max-w-4xl">
+          <div class="mb-4 flex flex-wrap gap-2">
+            <span class="badge badge-blue">2026年7月观察</span>
+            <span class="badge badge-amber">Linux内核安全</span>
+            <span class="badge badge-red">人工审计价值凸显</span>
+          </div>
+          <h1 class="text-3xl lg:text-5xl font-extrabold leading-tight">
+            Linux内核新漏洞证明人工审计不可替代
+          </h1>
+          <p class="mt-5 text-lg lg:text-xl text-blue-100 leading-relaxed">
+            从 Copy Fail 的“人设方向、AI扩搜索、人工再验证”协同闭环，到 Dirty Frag 的厂商级紧急修复通告，2026年的Linux内核安全态势正在反复说明：真正不可替代的，不是机械式逐行阅读，而是人工对攻击面的识别、问题的设定、语义的聚焦以及结果的验证。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite><cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+          </p>
+        </div>
+        <div class="glass rounded-2xl p-5 text-slate-900 w-full lg:w-96 border border-white border-opacity-30">
+          <div class="text-sm font-semibold text-blue-700 mb-2">一句话导语</div>
+          <p class="text-sm leading-7">
+            2026年的代表性内核漏洞案例并未证明“AI将取代人工审计”，相反，它们更清楚地显示：当漏洞成因跨越子系统、历史提交与语义边界时，人工洞察恰恰是决定扫描方向与验证质量的关键。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-10">
+    <section class="mb-10">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div class="metric-card p-5">
+          <div class="text-sm text-slate-500">2026年迄今Linux内核CVE</div>
+          <div class="text-3xl font-extrabold text-slate-900 mt-2">2,613</div>
+          <p class="text-sm text-slate-600 mt-2">LinuxCVETracker截至2026年7月的年度统计值。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></p>
+        </div>
+        <div class="metric-card p-5">
+          <div class="text-sm text-slate-500">Copy Fail</div>
+          <div class="text-3xl font-extrabold text-slate-900 mt-2">CVSS 7.8</div>
+          <p class="text-sm text-slate-600 mt-2">高危、本地权限提升、逻辑缺陷型漏洞。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">[[6]]</a></cite></p>
+        </div>
+        <div class="metric-card p-5">
+          <div class="text-sm text-slate-500">Dirty Frag通告时间</div>
+          <div class="text-3xl font-extrabold text-slate-900 mt-2">05-12</div>
+          <p class="text-sm text-slate-600 mt-2">Red Hat于2026-05-12发布RHSA-2026:16206。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></p>
+        </div>
+        <div class="metric-card p-5">
+          <div class="text-sm text-slate-500">2026年7月当前记录</div>
+          <div class="text-3xl font-extrabold text-slate-900 mt-2">38</div>
+          <p class="text-sm text-slate-600 mt-2">当月仍为部分统计，披露强度未见明显放缓。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <div class="card p-6 lg:p-8 danger-box rounded-2xl">
+        <h2 class="text-2xl font-bold mb-4">核心结论 / 资讯摘要</h2>
+        <div class="prose-p">
+          <p>
+            本报告的核心判断是：2026年Linux内核代表性新漏洞并没有削弱人工审计的重要性，反而进一步证明了人工审计中“问题设定与攻击面建模”的不可替代性。Copy Fail（CVE-2026-31431）的发现流程显示，漏洞不是由AI独立自动找到，也不是单靠传统逐行人工审计完成，而是由研究员先识别出AF_ALG与splice()组合形成的高价值攻击面，再由AI平台执行大规模跨文件语义扫描，最后由人工完成结果验证和利用收敛，形成“方向设定—规模执行—结果验证”的闭环。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+          </p>
+          <p>
+            作为最新动态补充，Dirty Frag（CVE-2026-43284）已经被Red Hat于2026年5月12日通过RHSA-2026:16206正式通告，Red Hat将其评定为Important，并明确其为Linux内核新的通用本地权限提升漏洞。当前公开、可验证信息主要来自厂商通告本身：至少影响RHEL 9，官方处置方式是安装内核更新并重启系统。对于该案例，现有资料不足以支持进一步展开技术机理与利用链细节，因此应当严格以厂商公告为边界。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite>
+          </p>
+          <p>
+            放在更大的背景中看，截至2026年7月，LinuxCVETracker统计显示当年迄今已有2,613个Linux内核CVE，其中112个为Critical、926个为High、265个仍Awaiting NVD，7月当前已记录38个条目。另有研究指出，Linux内核漏洞引入提交通常比修复提交更大、更复杂、跨更多文件类型，而维护者的squash合并又会降低后续取证和精确追溯能力，这使得人工/代码审计既更困难，也更有价值。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite><cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">关键漏洞对比表</h2>
+      <div class="card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-700">
+                <th class="px-5 py-4 font-semibold">项目</th>
+                <th class="px-5 py-4 font-semibold">Copy Fail（CVE-2026-31431）</th>
+                <th class="px-5 py-4 font-semibold">Dirty Frag（CVE-2026-43284）</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white">
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">定位</td>
+                <td class="px-5 py-4">2026年最能说明“人工审计不可替代”的代表性案例。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></td>
+                <td class="px-5 py-4">2026年最新动态补充案例，当前以厂商通告信息为主。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">漏洞类型</td>
+                <td class="px-5 py-4">本地权限提升，逻辑缺陷型漏洞。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite></td>
+                <td class="px-5 py-4">新的通用本地权限提升漏洞。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">公开时间线</td>
+                <td class="px-5 py-4">2026-03-23提交给Linux内核安全团队，2026-04-29公开披露。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></td>
+                <td class="px-5 py-4">2026-05-12由Red Hat发布RHSA-2026:16206。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">严重性</td>
+                <td class="px-5 py-4">CVSS 7.8，高危。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></td>
+                <td class="px-5 py-4">Red Hat评级为Important。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">核心事实</td>
+                <td class="px-5 py-4">位于crypto子系统authencesn模板；普通本地用户可借助732字节Python脚本实现稳定提权；根因与2011年authencesn实现、2015年splice零拷贝支持、2017年AEAD in-place优化组合有关，潜伏超过8年。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">[[6]]</a></cite></td>
+                <td class="px-5 py-4">至少影响RHEL 9；官方修复要求安装内核更新并重启。现阶段公开可验证信息主要来自厂商通告。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 font-semibold text-slate-700">为什么重要</td>
+                <td class="px-5 py-4">直接说明人工在攻击面识别、问题设定、语义聚焦、结果验证中的关键作用。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite></td>
+                <td class="px-5 py-4">说明厂商修复链条已启动，企业需要遵循公告完成更新与重启。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">为什么这个新漏洞证明人工审计不可替代</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="card p-6">
+          <div class="w-11 h-11 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold mb-4">1</div>
+          <h3 class="text-lg font-bold mb-3">人工先决定“往哪里看”</h3>
+          <p class="text-slate-700 leading-8">
+            Copy Fail的关键不在于AI自己“偶然发现”问题，而在于研究员先识别出AF_ALG与splice()这一具有高价值的攻击面组合。换句话说，真正稀缺的不是扫描能力，而是把扫描资源准确投向最有可能出问题的交互边界。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+          </p>
+        </div>
+        <div class="card p-6">
+          <div class="w-11 h-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center text-xl font-bold mb-4">2</div>
+          <h3 class="text-lg font-bold mb-3">AI负责“规模化执行”而非战略判断</h3>
+          <p class="text-slate-700 leading-8">
+            资料明确指出，AI在该案例中承担的是跨文件语义扫描与海量关系遍历的角色，其优势在于速度与覆盖面，而不是先验攻击思维本身。因此，AI提升了漏洞发现效率，但并没有独立替代人工的方向判断能力。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+          </p>
+        </div>
+        <div class="card p-6">
+          <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-bold mb-4">3</div>
+          <h3 class="text-lg font-bold mb-3">最终仍需人工验证与收敛</h3>
+          <p class="text-slate-700 leading-8">
+            从候选异常到可确认漏洞，中间还需要人工完成技术解释、利用链理解与影响确认。Copy Fail不是单一函数中的简单错误，而是跨子系统、跨年份设计叠加形成的逻辑失配，因此“最后一公里”的确认依然高度依赖人工。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite>
+          </p>
+        </div>
+      </div>
+
+      <div class="card p-6 mt-6 quote">
+        <p class="text-slate-800 leading-8">
+          更准确地说，2026年案例证明的不是“人工逐行扫描本身不可替代”，而是人工在<strong>攻击面识别、问题设定、语义聚焦、结果验证</strong>上的核心作用不可替代。纯人工穷举与纯自动化扫描都不足以单独覆盖这类涌现型内核漏洞。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite>
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">代表性案例：Copy Fail详解</h2>
+      <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div class="xl:col-span-3 card p-6 lg:p-8">
+          <div class="prose-p">
+            <p>
+              Copy Fail（CVE-2026-31431）是当前资料中最能直接支持“人工审计不可替代”这一命题的Linux内核新漏洞。公开材料显示，该漏洞于2026年3月23日提交给Linux内核安全团队，并于2026年4月29日公开披露，CVSS为7.8，属于高危、本地权限提升漏洞。其所在位置为Linux内核crypto子系统中的authencesn模板，并被描述为逻辑缺陷型漏洞，而非传统的典型内存破坏漏洞。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">[[6]]</a></cite>
+            </p>
+            <p>
+              资料进一步指出，普通本地用户可借助732字节Python脚本实现稳定提权，这使Copy Fail在风险形态上兼具“低门槛本地利用”与“高稳定性”两个特点。需要强调的是，这里仅引用已给出的事实，不延展未提供的PoC细节。该漏洞之所以格外值得关注，不只是因为它可以提权，更因为其发现流程清晰呈现了研究员与AI协同的完整逻辑：先由研究员提出高价值攻击面假设，再由AI平台执行大规模跨文件语义扫描，最后由人工对结果进行验证和收敛。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+            </p>
+            <p>
+              从根因演进看，现有材料将其归结为三个历史阶段的组合：2011年的authencesn实现、2015年的splice零拷贝支持、2017年的AEAD in-place优化。每一步单独看都具有自身合理性，但在跨子系统叠加后，最终形成了可被利用的逻辑链条。这也是其潜伏超过8年的原因之一：问题并不是单点代码错误，而是多个设计在时间维度上叠加后产生的“涌现型漏洞”。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite>
+            </p>
+            <p>
+              在影响范围方面，已有资料提到Ubuntu 24.04 LTS、RHEL 8/9/10、Amazon Linux 2023、SUSE 16等示例。这些信息说明该漏洞并非局限于某一条狭窄分支，而是对主流Linux发行版生态具有现实影响。这里仍以资料中明确出现的发行版示例为限，不进一步扩展到未给出的厂商范围。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">[[6]]</a></cite>
+            </p>
+          </div>
+        </div>
+        <div class="xl:col-span-2 space-y-5">
+          <div class="card p-6">
+            <h3 class="font-bold text-lg mb-4">Copy Fail时间线</h3>
+            <div class="space-y-4">
+              <div class="flex gap-3">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="font-semibold">2011年</div>
+                  <div class="text-sm text-slate-600 leading-7">authencesn实现进入背景链条。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite></div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="font-semibold">2015年</div>
+                  <div class="text-sm text-slate-600 leading-7">splice零拷贝支持成为后续组合因素之一。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite></div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="font-semibold">2017年</div>
+                  <div class="text-sm text-slate-600 leading-7">AEAD in-place优化成为关键叠加因素。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="font-semibold">2026-03-23</div>
+                  <div class="text-sm text-slate-600 leading-7">提交给Linux内核安全团队。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="font-semibold">2026-04-29</div>
+                  <div class="text-sm text-slate-600 leading-7">公开披露。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card p-6 success-box">
+            <h3 class="font-bold text-lg mb-3">结论卡片：Copy Fail证明了什么</h3>
+            <ul class="list-disc pl-5 text-slate-800 leading-8">
+              <li>不是AI独立发现。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite></li>
+              <li>也不是传统逐行人工审计单独完成。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite></li>
+              <li>而是“人工设方向 + AI扩搜索 + 人工做验证”。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite></li>
+              <li>人工最不可替代的价值在于洞察与收敛。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">最新动态补充：Dirty Frag通告要点</h2>
+      <div class="card p-6 lg:p-8">
+        <div class="prose-p">
+          <p>
+            作为2026年Linux内核漏洞新闻流中的另一个重要案例，Dirty Frag（CVE-2026-43284）当前最明确、最可验证的信息来自Red Hat于2026年5月12日发布的安全通告RHSA-2026:16206。通告将其描述为Linux内核中的新型通用本地权限提升漏洞，并把该更新的安全影响评级定为Important。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite>
+          </p>
+          <p>
+            已有资料能够确认的重点包括：漏洞编号为CVE-2026-43284，名称为Dirty Frag；至少影响Red Hat Enterprise Linux 9相关产品线；官方处置方式是安装对应的kernel更新，并且系统必须重启后补丁才会生效。对于企业运维而言，这意味着检查“是否安装了更新包”还不够，必须进一步确认系统已经重启并运行在更新后的内核上。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite>
+          </p>
+          <p>
+            同时需要严格说明信息边界：现有公开材料中，关于Dirty Frag的可验证技术细节主要来自厂商公告本身。资料并未完整提供其具体成因、利用条件、PoC、攻击链细节以及更广泛发行版影响矩阵。因此，本报告不对该漏洞做超出已知通告内容的技术延伸，只把它作为“2026年最新动态补充”和“厂商修复链条已经启动”的佐证案例。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite>
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="warn-box rounded-xl p-5">
+            <div class="font-bold text-slate-900 mb-2">通告编号</div>
+            <div class="text-slate-700">RHSA-2026:16206<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></div>
+          </div>
+          <div class="warn-box rounded-xl p-5">
+            <div class="font-bold text-slate-900 mb-2">厂商评级</div>
+            <div class="text-slate-700">Important<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></div>
+          </div>
+          <div class="warn-box rounded-xl p-5">
+            <div class="font-bold text-slate-900 mb-2">处置重点</div>
+            <div class="text-slate-700">安装内核更新并重启<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">2026年Linux内核漏洞态势与审计压力</h2>
+      <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div class="xl:col-span-3 card p-6 lg:p-8">
+          <div class="prose-p">
+            <p>
+              截至2026年7月，LinuxCVETracker页面显示，2026年迄今Linux内核CVE已达到2,613个，其中Critical为112个、High为926个、Awaiting NVD为265个；7月当前已记录38个条目，且页面明确说明当月数据仍为部分统计。这意味着，尽管月份尚未结束，Linux内核的漏洞披露密度依旧处在高位。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+            </p>
+            <p>
+              如果只看数量，容易得出“自动化应当足以处理一切”的直觉；但2026年的相关研究恰恰揭示了另一面：Linux内核漏洞引入提交通常比修复提交更大、更复杂、跨更多文件类型。研究者还对23个大型CVE相关提交进行了人工抽样审查，发现许多漏洞并不是来自草率编码，而是来自大型功能引入、子系统重构以及复杂工程整合。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+            </p>
+            <p>
+              这类研究结论对于理解“人工审计不可替代”非常关键。漏洞修复往往是小而集中的，而漏洞引入却可能发生在大体量、跨文件、跨层级的提交之中。再加上维护者的squash合并会压缩历史颗粒度，后续取证和精确追溯会更困难。于是，安全团队面对的并不是简单的“代码更多了”，而是“风险引入过程更分散，事后证据链更容易模糊”。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+            </p>
+          </div>
+        </div>
+        <div class="xl:col-span-2 card p-6">
+          <h3 class="font-bold text-lg mb-4">2026年漏洞态势指标表</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left">
+                  <th class="py-3 pr-3 font-semibold">指标</th>
+                  <th class="py-3 font-semibold">数值</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="py-3 pr-3">总CVE数</td>
+                  <td class="py-3">2,613<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+                <tr>
+                  <td class="py-3 pr-3">Critical</td>
+                  <td class="py-3">112<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+                <tr>
+                  <td class="py-3 pr-3">High</td>
+                  <td class="py-3">926<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+                <tr>
+                  <td class="py-3 pr-3">Awaiting NVD</td>
+                  <td class="py-3">265<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+                <tr>
+                  <td class="py-3 pr-3">7月当前记录</td>
+                  <td class="py-3">38<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+                <tr>
+                  <td class="py-3 pr-3">已确认进入CISA KEV</td>
+                  <td class="py-3">1<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small-note mt-4">
+            注：以上为统计页面所示时点数据，7月仍为部分月份数据。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
+        <div class="card p-6">
+          <h3 class="font-bold text-lg mb-4">漏洞严重性分布图</h3>
+          <div id="severityChart" class="w-full" style="height: 380px;"></div>
+          <p class="small-note mt-3">
+            图表仅依据已提供的2026年度统计数据绘制，不扩展未给出的分类。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+          </p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold text-lg mb-4">人工审计压力的结构性来源</h3>
+          <ul class="list-disc pl-5 text-slate-800 leading-8">
+            <li>漏洞引入提交通常比修复提交更大、更复杂。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite></li>
+            <li>跨文件、跨类型变更提升了代码审计的语义成本。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite></li>
+            <li>squash合并会削弱事后取证与精确回溯能力。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite></li>
+            <li>大量新披露条目仍处于Awaiting NVD，披露与评分存在时滞。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite></li>
+            <li>涌现型逻辑缺陷往往跨越历史设计与多个子系统，不易被单一工具孤立捕获。以Copy Fail为例，问题叠加链跨越2011、2015、2017三个阶段。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">[[5]]</a></cite></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">对安全团队 / 内核开发者 / 企业运维的启示</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="card p-6">
+          <h3 class="font-bold text-lg mb-3">对安全团队</h3>
+          <p class="text-slate-700 leading-8">
+            2026年的案例提醒安全团队，不应把AI视作“自动找洞终局”，而应把它定位为围绕高价值假设展开的加速器。最需要建设的能力，是从业务与系统结构中发现真正值得深挖的攻击面，然后让自动化工具围绕这些方向做规模化扩展。Copy Fail恰恰说明，人工洞察决定了搜索空间的质量。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+          </p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold text-lg mb-3">对内核开发者</h3>
+          <p class="text-slate-700 leading-8">
+            对开发者而言，真正需要提高警惕的不仅是“危险函数”，还包括大型功能引入、重构、接口边界变化和跨子系统联动。研究表明，漏洞引入提交往往比修复提交复杂得多，squash历史也会让未来的安全回溯更加困难。这意味着代码正确性、变更可追踪性和审计友好性，已经成为安全治理的一部分。<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+          </p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold text-lg mb-3">对企业运维</h3>
+          <p class="text-slate-700 leading-8">
+            对企业运维侧而言，Dirty Frag通告表明“安装补丁并重启”仍是最直接且不可跳过的动作。面对2026年持续高位的Linux内核漏洞披露量，企业不能仅以“是否已下载更新包”作为关闭风险的依据，而要核实运行内核版本、重启状态以及资产是否处在受影响产品矩阵之内。对于公开信息仍有限的漏洞，更应坚持公告边界和供应商修复节奏。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite><cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">信息边界与说明</h2>
+      <div class="card p-6 lg:p-8">
+        <div class="prose-p">
+          <p>
+            本报告严格依据当前已提供资料撰写。关于Copy Fail，报告纳入了已知的时间线、CVSS、漏洞定位、提权性质、协同发现模式、历史根因组合与示例受影响发行版，但不补写未提供的PoC细节、补丁代码细节或额外厂商影响范围。<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">[[6]]</a></cite>
+          </p>
+          <p>
+            关于Dirty Frag，本报告只使用Red Hat RHSA-2026:16206中已经明确给出的信息：漏洞编号、漏洞名称、本地权限提升性质、Important评级、至少影响RHEL 9、修复方式为安装内核更新并重启。由于当前公开可验证信息主要来自厂商通告，因此没有展开未被资料支持的技术推测。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite>
+          </p>
+          <p>
+            关于2026年总体态势，本报告引用LinuxCVETracker的统计页面与相关研究材料，目的在于说明披露规模、审计压力和代码取证难度，而非对全年趋势做超范围预测。页面中的7月数据为部分月份统计，应按“截至当前日期可见值”理解。<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite><cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+          </p>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="warn-box rounded-xl p-5">
+            <h3 class="font-bold mb-2">风险提示</h3>
+            <p class="text-slate-800 leading-8">
+              不要把“AI辅助发现漏洞”误读为“人工审计不再重要”。Copy Fail的公开材料所展示的，恰恰是人工角色上移后价值更集中、更关键。<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[2]]</a></cite>
+            </p>
+          </div>
+          <div class="success-box rounded-xl p-5">
+            <h3 class="font-bold mb-2">实践提示</h3>
+            <p class="text-slate-800 leading-8">
+              对企业而言，公告驱动的补丁治理、运行内核版本核验、重启确认与高风险攻击面盘点，仍是2026年最现实的内核安全动作。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite><cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="section-title text-2xl font-bold mb-6">关键信息来源</h2>
+      <div class="card p-6 lg:p-8">
+        <div class="prose-p">
+          <p>
+            本页主要依据三类来源：第一类是厂商安全通告，重点用于确认Dirty Frag的官方编号、评级、影响产品与修复要求；第二类是围绕Copy Fail发现过程的研究分析与技术解读，用于说明“人工设方向、AI做扩展、人工再验证”的协同范式；第三类是LinuxCVETracker与相关研究论文，用于刻画2026年Linux内核漏洞披露规模、Awaiting NVD现象以及大体量引入提交对人工/代码审计造成的结构性压力。<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">[[7]]</a></cite><cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">[[1]]</a></cite><cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">[[3]]</a></cite><cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">[[4]]</a></cite>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-16">
+      <h2 class="section-title text-2xl font-bold mb-6">参考文献</h2>
+      <div class="card p-6 lg:p-8">
+        <ol class="list-decimal pl-5 space-y-3 text-slate-800 leading-8">
+          <li>[[1]]、<cite class="cite"><a href="https://antiy.cn/research/notice&report/research_report/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">人与AI协同的漏洞分析新范式——Copy Fail发现过程解析</a></cite></li>
+          <li>[[2]]、<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_Analysis.html" target="_blank" rel="noopener noreferrer">人与AI协同的漏洞分析新范式——Copy Fail发现过程解析</a></cite></li>
+          <li>[[3]]、<cite class="cite"><a href="https://linuxcvetracker.com/cve-statistics/2026/" target="_blank" rel="noopener noreferrer">2,612 Linux Kernel CVEs in 2026 So Far | LinuxCVETracker</a></cite></li>
+          <li>[[4]]、<cite class="cite"><a href="https://arxiv.org/html/2601.22196" target="_blank" rel="noopener noreferrer">Linux Kernel Recency Matters, CVE Severity Doesn’t, and History Fades</a></cite></li>
+          <li>[[5]]、<cite class="cite"><a href="https://www.antiy.com/response/Copy_Fail_FAQ_02.html" target="_blank" rel="noopener noreferrer">CVE-2026-31431（Copy Fail）漏洞FAQ（下）——漏洞技术机理、历史坐标与战略启示篇</a></cite></li>
+          <li>[[6]]、<cite class="cite"><a href="https://reinject.vercel.app/posts/linux-security/copy-fail-cve-2026-31431/" target="_blank" rel="noopener noreferrer">Copy Fail 深度研究：Linux 页缓存漏洞的根因、利用与检测</a></cite></li>
+          <li>[[7]]、<cite class="cite"><a href="https://access.redhat.com/errata/RHSA-2026:16206" target="_blank" rel="noopener noreferrer">RHSA-2026:16206 - Security Advisory</a></cite></li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-200 bg-white">
+    <div class="max-w-7xl mx-auto px-6 py-8 text-center text-sm text-slate-500 leading-7">
+      <div>Created by Autobots</div>
+      <div>页面内容均由 AI 生成，仅供参考</div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var chartEl = document.getElementById('severityChart');
+      if (!chartEl || typeof echarts === 'undefined') return;
+      var chart = echarts.init(chartEl);
+      var option = {
+        tooltip: {
+          trigger: 'item'
+        },
+        legend: {
+          bottom: 0,
+          left: 'center',
+          itemWidth: 14,
+          textStyle: {
+            color: '#334155',
+            fontSize: 12
+          }
+        },
+        series: [{
+          name: '2026年Linux内核CVE分布',
+          type: 'pie',
+          radius: ['40%', '68%'],
+          center: ['50%', '45%'],
+          avoidLabelOverlap: true,
+          minAngle: 3,
+          itemStyle: {
+            borderColor: '#fff',
+            borderWidth: 3
+          },
+          label: {
+            color: '#0f172a',
+            formatter: '{b}\n{c}',
+            fontSize: 12
+          },
+          labelLine: {
+            length: 12,
+            length2: 10
+          },
+          data: [
+            { value: 112, name: 'Critical', itemStyle:{color:'#dc2626'} },
+            { value: 926, name: 'High', itemStyle:{color:'#f97316'} },
+            { value: 1307, name: 'Medium', itemStyle:{color:'#eab308'} },
+            { value: 3, name: 'Low', itemStyle:{color:'#22c55e'} },
+            { value: 265, name: 'Awaiting NVD', itemStyle:{color:'#3b82f6'} }
+          ]
+        }]
+      };
+      chart.setOption(option);
+      window.addEventListener('resize', function(){ chart.resize(); });
+    })();
+  </script>
+</body>
+</html>

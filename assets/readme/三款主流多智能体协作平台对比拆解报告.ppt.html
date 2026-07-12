@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>三款主流多智能体协作平台对比拆解</title>
+  <script src="https://unpkg.com/echarts/dist/echarts.min.js"></script>
+  <style>
+    :root{
+      --bg:#0f1722;
+      --panel:#182230;
+      --panel-2:#1e2b3b;
+      --line:#2d3a4d;
+      --text:#e8edf5;
+      --muted:#9fb0c3;
+      --crew:#4f8cff;
+      --lang:#6fd3a7;
+      --ms:#ffb454;
+      --accent:#c678dd;
+      --danger:#ff7b72;
+      --ok:#7ee787;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      width:100%;
+      height:100%;
+      background:#0b1119;
+      color:var(--text);
+      font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+      overflow:hidden;
+    }
+    .ppt-container{
+      width:100%;
+      height:100%;
+      position:relative;
+      background:var(--bg);
+    }
+    .slide{
+      width:100%;
+      height:100%;
+      display:none;
+      padding:2.2vh 2.4vw 8vh 2.4vw;
+      position:relative;
+      background:var(--bg);
+    }
+    .slide.active{display:block}
+    .slide::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), rgba(255,255,255,0.02) calc(100% - 1px)),
+        linear-gradient(transparent 0, transparent calc(100% - 1px), rgba(255,255,255,0.02) calc(100% - 1px));
+      background-size: 40px 40px, 40px 40px;
+      opacity:.18;
+    }
+    .header{
+      height:14%;
+      display:grid;
+      grid-template-columns:1fr auto;
+      align-items:center;
+      border:1px solid var(--line);
+      background:var(--panel);
+      padding:1.1rem 1.4rem;
+      border-radius:20px;
+      margin-bottom:1.5vh;
+    }
+    .title{
+      font-size:2rem;
+      font-weight:700;
+      letter-spacing:.04em;
+    }
+    .page-tag{
+      font-size:.9rem;
+      color:var(--muted);
+      border:1px solid var(--line);
+      padding:.35rem .7rem;
+      border-radius:999px;
+      background:rgba(255,255,255,.02);
+    }
+    .content{
+      height:82%;
+      display:grid;
+      gap:1.2rem;
+    }
+    .cover .content,
+    .section .content,
+    .end .content{
+      place-items:center;
+    }
+    .hero{
+      width:100%;
+      height:100%;
+      display:grid;
+      place-items:center;
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:28px;
+      text-align:center;
+      padding:3rem;
+    }
+    .hero h1{
+      margin:0 0 1rem 0;
+      font-size:3rem;
+      line-height:1.2;
+      letter-spacing:.04em;
+    }
+    .hero h2{
+      margin:0 0 2rem 0;
+      color:var(--muted);
+      font-weight:500;
+      font-size:1.35rem;
+    }
+    .hero .meta{
+      display:flex;
+      gap:1rem;
+      flex-wrap:wrap;
+      justify-content:center;
+      color:var(--text);
+    }
+    .meta span{
+      border:1px solid var(--line);
+      background:var(--panel-2);
+      padding:.55rem .95rem;
+      border-radius:999px;
+      font-size:1rem;
+    }
+
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;height:100%}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;height:100%}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;height:100%}
+    .rows-2{display:grid;grid-template-rows:1fr 1fr;gap:1rem;height:100%}
+    .rows-auto{display:grid;grid-template-rows:auto 1fr;gap:1rem;height:100%}
+
+    .block{
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:20px;
+      padding:1rem 1.1rem;
+      min-width:0;
+      overflow:hidden;
+    }
+    .block h3{
+      margin:.1rem 0 .7rem 0;
+      font-size:1.05rem;
+      color:var(--text);
+      letter-spacing:.03em;
+    }
+    .sub{
+      color:var(--muted);
+      font-size:.86rem;
+      margin-top:-.2rem;
+      margin-bottom:.6rem;
+    }
+    ul.clean{
+      margin:.3rem 0 0 1rem;
+      padding:0;
+      line-height:1.5;
+      font-size:.95rem;
+    }
+    ul.clean li{margin:.35rem 0}
+    .kpi{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:1rem;
+      height:100%;
+    }
+    .kpi .item{
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:var(--panel);
+      padding:1rem;
+      display:grid;
+      align-content:center;
+      gap:.45rem;
+    }
+    .kpi .num{
+      font-size:2rem;
+      font-weight:800;
+    }
+    .kpi .label{
+      font-size:1rem;
+      color:var(--muted);
+    }
+    .kpi .desc{
+      font-size:.92rem;
+      line-height:1.45;
+    }
+    .crew{color:var(--crew)}
+    .lang{color:var(--lang)}
+    .ms{color:var(--ms)}
+    .accent{color:var(--accent)}
+    .muted{color:var(--muted)}
+    .note{
+      font-size:.82rem;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    table.matrix{
+      width:100%;
+      border-collapse:collapse;
+      table-layout:fixed;
+      font-size:.86rem;
+    }
+    .matrix th,.matrix td{
+      border:1px solid var(--line);
+      padding:.58rem .52rem;
+      text-align:left;
+      vertical-align:top;
+      word-break:break-word;
+    }
+    .matrix th{
+      background:var(--panel-2);
+      color:var(--text);
+      font-weight:700;
+    }
+    .matrix td{
+      background:rgba(255,255,255,.01);
+      line-height:1.35;
+    }
+    .chip{
+      display:inline-block;
+      padding:.18rem .5rem;
+      border-radius:999px;
+      font-size:.76rem;
+      border:1px solid var(--line);
+      white-space:nowrap;
+    }
+    .chip.crew{background:rgba(79,140,255,.12)}
+    .chip.lang{background:rgba(111,211,167,.12)}
+    .chip.ms{background:rgba(255,180,84,.12)}
+    .chip.gray{background:rgba(255,255,255,.04); color:var(--muted)}
+    .badge-yes{color:var(--ok); font-weight:700}
+    .badge-mid{color:var(--ms); font-weight:700}
+    .badge-no{color:var(--danger); font-weight:700}
+
+    .chart{
+      width:100%;
+      height:100%;
+      min-width:40%;
+    }
+    .callout{
+      border-left:4px solid var(--accent);
+      padding:.8rem 1rem;
+      background:rgba(198,120,221,.08);
+      border-radius:12px;
+      line-height:1.5;
+      font-size:.94rem;
+    }
+    .timeline{
+      display:grid;
+      grid-template-columns:repeat(5,1fr);
+      gap:.8rem;
+      height:100%;
+    }
+    .timeline .t{
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:18px;
+      padding:.8rem;
+      display:grid;
+      grid-template-rows:auto auto 1fr;
+      gap:.45rem;
+    }
+    .timeline .year{
+      color:var(--accent);
+      font-weight:800;
+      font-size:1rem;
+    }
+    .timeline .event{
+      font-size:.95rem;
+      font-weight:700;
+    }
+    .timeline .detail{
+      font-size:.82rem;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .controls{
+      position:absolute;
+      right:20px;
+      bottom:14px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      z-index:20;
+      background:rgba(24,34,48,.88);
+      border:1px solid var(--line);
+      padding:8px 10px;
+      border-radius:999px;
+      backdrop-filter: blur(8px);
+    }
+    .btn{
+      width:34px;height:34px;border-radius:50%;
+      border:1px solid var(--line);
+      background:var(--panel-2);
+      color:var(--text);
+      cursor:pointer;
+      font-size:14px;
+    }
+    .btn:hover{filter:brightness(1.08)}
+    .progress-wrap{
+      width:180px;height:8px;border-radius:999px;
+      background:#243243; overflow:hidden;
+      border:1px solid var(--line);
+    }
+    .progress-bar{
+      height:100%; width:0%;
+      background:var(--accent);
+    }
+    .progress-text{
+      font-size:.8rem;color:var(--muted);min-width:44px;text-align:center;
+    }
+    .footer-note{
+      position:absolute;
+      left:2.6vw;
+      bottom:1.5vh;
+      color:var(--muted);
+      font-size:.75rem;
+      letter-spacing:.02em;
+    }
+  </style>
+</head>
+<body>
+<div class="ppt-container">
+
+  <section class="slide cover active">
+    <div class="content">
+      <div class="hero">
+        <div>
+          <h1>三款主流多智能体协作平台对比拆解</h1>
+          <h2>功能、定价策略、目标客户群体</h2>
+          <div class="meta">
+            <span>时间：2026年7月</span>
+            <span>作者：Reactor</span>
+            <span>用途：管理层 / 产品负责人快速决策参考</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">仅基于当前会话已获取并读取的官方资料整理</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">执行摘要</div>
+      <div class="page-tag">01 / 11</div>
+    </div>
+    <div class="content rows-2">
+      <div class="kpi">
+        <div class="item">
+          <div class="num crew">CrewAI</div>
+          <div class="label">偏企业代理工作流平台</div>
+          <div class="desc">公开展示 Free 与 Enterprise Custom 两层；同时覆盖 SaaS 与自托管，强调治理、支持与规模化运行。</div>
+        </div>
+        <div class="item">
+          <div class="num lang">LangGraph / LangSmith</div>
+          <div class="label">偏生产部署基础设施</div>
+          <div class="desc">核心价值在 durable execution、状态管理、长任务运行与多代理生产部署，价格金额未公开，但计划门槛清晰。</div>
+        </div>
+        <div class="item">
+          <div class="num ms">AutoGen Studio</div>
+          <div class="label">偏低代码开发工具 / 研究生态入口</div>
+          <div class="desc">独立商业化信息有限；微软更成熟的企业化与商业化能力主要体现在 Agent Framework 与 Copilot Studio。</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="block">
+          <h3>最重要发现</h3>
+          <ul class="clean">
+            <li><span class="crew">CrewAI</span> 是三者中公开定价结构最直观者：<b>Free 免费</b>，企业版为 <b>Custom 定制定价</b>。</li>
+            <li><span class="lang">LangGraph Platform</span> 在 2025 年后官方名称已转为 <b>LangSmith Deployment</b>，应视为同一条产品演进线。</li>
+            <li><span class="ms">AutoGen Studio</span> 未检索到独立官方价格与客户名单，不能用 Copilot Studio 价格替代其价格。</li>
+            <li>三者都面向 Agent 场景，但主抓层次不同：<b>工作流平台</b>、<b>部署运行时</b>、<b>低代码构建入口</b>。</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3>管理层判断</h3>
+          <ul class="clean">
+            <li>若优先考虑 <b>企业治理 + 私有化 + 交付支持</b>，CrewAI 信息最完整。</li>
+            <li>若重点在 <b>长任务、有状态、生产运行时基础设施</b>，LangSmith Deployment 更贴近平台底座。</li>
+            <li>若当前处于 <b>研究、原型、低代码试验</b> 阶段，AutoGen Studio 更像前端入口；进入正式采购常要看微软企业产品线。</li>
+          </ul>
+          <div class="callout" style="margin-top:.8rem;">
+            结论不是“谁最好”，而是“谁更适合所处阶段与治理要求”。
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">结论严格基于已检索到的官方材料，不补充未确认信息</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">研究范围与说明</div>
+      <div class="page-tag">02 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="block">
+        <h3>本次资料边界</h3>
+        <ul class="clean">
+          <li>仅基于当前会话中已读取的 <b>官方页面、官方文档、官方博客、官方产品说明</b>。</li>
+          <li>不使用第三方评测、不补充猜测性报价、不延展未验证客户案例。</li>
+          <li>“定价策略”包括：<b>公开价格、套餐门槛、定制定价、采购方式、免费入口</b>，不等于完整成交报价。</li>
+        </ul>
+      </div>
+      <div class="block">
+        <h3>特别说明</h3>
+        <ul class="clean">
+          <li><span class="lang">LangGraph Platform</span> 在 2025 年 10 月后更名为 <b>LangSmith Deployment</b>；PPT同时保留历史名，便于管理层识别。</li>
+          <li><span class="ms">AutoGen Studio</span> <b>未检索到独立官方定价与官方客户名单</b>。</li>
+          <li>微软部分商业化信息主要来自 <b>Agent Framework / Copilot Studio / Microsoft 365 Copilot</b> 官方资料，需与 AutoGen Studio 做边界区分。</li>
+        </ul>
+      </div>
+      <div class="block">
+        <h3>本次对比维度</h3>
+        <ul class="clean">
+          <li>产品定位与价值主张</li>
+          <li>核心功能与能力边界</li>
+          <li>部署形态与企业治理</li>
+          <li>定价公开程度与采购路径</li>
+          <li>适配客户与典型使用阶段</li>
+        </ul>
+      </div>
+      <div class="block">
+        <h3>使用提示</h3>
+        <div class="callout">
+          对于所有“企业版金额”“客户名单”“年合同额”等信息，如官方资料未公开，本报告统一标注为：<b>官方未公开具体金额 / 未检索到官方名单</b>。
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">目标：帮助快速完成平台初筛，而非替代正式采购尽调</div>
+  </section>
+
+  <section class="slide section">
+    <div class="header">
+      <div class="title">三者定位总览对比</div>
+      <div class="page-tag">03 / 11</div>
+    </div>
+    <div class="content">
+      <div class="block">
+        <table class="matrix">
+          <colgroup>
+            <col style="width:12%">
+            <col style="width:18%">
+            <col style="width:18%">
+            <col style="width:16%">
+            <col style="width:16%">
+            <col style="width:20%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>官方定位</th>
+              <th>核心价值</th>
+              <th>部署形态</th>
+              <th>商业化成熟度</th>
+              <th>更适合阶段</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="chip crew">CrewAI</span></td>
+              <td>企业代理工作流平台；AMP 负责部署/监控/扩展，Factory 支持自托管</td>
+              <td>从构建到生产治理一体化，兼顾工作流、观测、支持服务与私有化</td>
+              <td>SaaS + Self-hosted</td>
+              <td><b>较高</b>：Free / Enterprise Custom 清晰</td>
+              <td>从试点到组织级规模化落地</td>
+            </tr>
+            <tr>
+              <td><span class="chip lang">LangGraph Platform / LangSmith Deployment</span></td>
+              <td>面向生产环境的 Agent 部署与运行基础设施</td>
+              <td>durable execution、状态与任务管理、多代理运行时、版本治理</td>
+              <td>Cloud / Self-hosted / Standalone；历史上含 Hybrid</td>
+              <td><b>中高</b>：计划门槛清晰，金额未公开</td>
+              <td>工程化程度高、关注生产运行时的团队</td>
+            </tr>
+            <tr>
+              <td><span class="chip ms">Microsoft AutoGen Studio</span></td>
+              <td>AutoGen 生态中的低代码多智能体开发工具</td>
+              <td>拖放构建、可视化、组件复用、原型开发入口</td>
+              <td>资料重点不在部署形态；企业能力多外延到微软其他产品</td>
+              <td><b>相对有限</b>：独立商业化信息不足</td>
+              <td>研究、开发试验、快速原型</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="footer-note">一句话：CrewAI 更像平台成品，LangSmith 更像生产底座，AutoGen Studio 更像构建入口</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">CrewAI 拆解：平台能力、部署与定价策略</div>
+      <div class="page-tag">04 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="crew">产品功能</span></h3>
+          <ul class="clean">
+            <li>AMP 官方定位：<b>Deploy / Monitor / Scale</b> agent workflows</li>
+            <li>可视化编辑器、AI copilot、GitHub 集成</li>
+            <li>Tracing、Logs、OpenTelemetry、使用仪表盘、性能指标</li>
+            <li>Guardrails、LLM testing、AI agent training、Hallucination scores</li>
+            <li>Human-in-the-loop、Workflow chat UI、Slack/Teams 接入</li>
+            <li>SSO、RBAC、Deployment history、Automatic scaling</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3><span class="crew">部署形态</span></h3>
+          <ul class="clean">
+            <li><b>AMP（SaaS）</b>：零安装、托管基础设施、自动更新维护、无代码/低代码构建</li>
+            <li><b>Factory（Self-hosted）</b>：部署到客户基础设施、Kubernetes、VPC、云数据库、对象存储</li>
+            <li>支持多种 ingress、密钥管理、TLS、SSO、HA、外部数据库与对象存储</li>
+          </ul>
+          <div class="note">治理导向较强，适合对数据边界和网络控制敏感的组织。</div>
+        </div>
+      </div>
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="crew">定价策略</span></h3>
+          <ul class="clean">
+            <li><b>Basic Free</b>：免费</li>
+            <li>Free 明确包含：Visual editor、AI copilot、GitHub integration、<b>每月 50 次 workflow executions</b></li>
+            <li><b>Enterprise Custom</b>：<b>官方未公开具体金额</b></li>
+            <li>企业版包含：私有基础设施、现场支持与培训、<b>每月 50 小时开发支持</b>、执行能力按工作流匹配、弹性 overage</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3><span class="crew">目标客户</span></h3>
+          <ul class="clean">
+            <li>从试点走向规模化的企业团队</li>
+            <li>重视私有部署、权限治理、组织支持服务的客户</li>
+            <li>需要将 agent workflow 纳入生产运营、监控与合规体系的组织</li>
+          </ul>
+          <div class="callout" style="margin-top:.8rem;">
+            CrewAI 在已知资料中最像“可直接采购的企业平台套餐”，而不只是开发框架。
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">客户覆盖的公开表述仅见“Used by 63% of the Fortune 500”，未见更细客户名单</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">LangGraph Platform / LangSmith Deployment 拆解</div>
+      <div class="page-tag">05 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="lang">名称演进与定位</span></h3>
+          <ul class="clean">
+            <li><b>LangGraph Platform</b> 已于 2025 年 10 月更名为 <b>LangSmith Deployment</b></li>
+            <li>原部署、API、工作流、定价和合同保持不变</li>
+            <li>定位：面向生产环境的 AI Agent 部署与运行基础设施</li>
+            <li>与 LangGraph 关系：<b>LangGraph 负责构建；LangSmith Deployment 负责生产部署与管理</b></li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3><span class="lang">核心功能</span></h3>
+          <ul class="clean">
+            <li>durable execution、state/task management</li>
+            <li>human-in-the-loop、background tasks、memory、threading</li>
+            <li>multi-agent coordination、fault tolerance、horizontal scaling</li>
+            <li>registry、versioning、instant rollback</li>
+            <li><b>约 30+ API endpoints</b>、协议端点、Studio 调试</li>
+          </ul>
+        </div>
+      </div>
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="lang">部署与定价策略</span></h3>
+          <ul class="clean">
+            <li>2026 文档：<b>Cloud / Self-hosted / Standalone server</b></li>
+            <li>历史资料：Cloud SaaS / Hybrid(BYOC) / Fully Self-Hosted / Self-Hosted Lite</li>
+            <li><b>未检索到公开价格金额</b></li>
+            <li>Cloud：要求 <b>Plus plan 或以上</b></li>
+            <li>Self-hosted / Hybrid：面向 <b>Enterprise plan</b></li>
+            <li>早期 Self-Hosted Lite：曾给出 <b>免费节点额度</b></li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3><span class="lang">目标客户</span></h3>
+          <ul class="clean">
+            <li>需要在生产环境运行长任务、有状态 agent 的工程团队</li>
+            <li>关注任务持久化、并发、扩缩容、审计与版本回滚的企业</li>
+            <li>已有开发能力，希望把“运行时基础设施”做厚的组织</li>
+          </ul>
+          <div class="callout" style="margin-top:.8rem;">
+            相比 CrewAI，LangSmith Deployment 更强调“生产运行底座”，而非完整业务工作流平台包装。
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">可确认计划门槛，但无法从已知资料给出价格金额或典型合同规模</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">Microsoft AutoGen Studio 拆解：能力入口与企业化边界</div>
+      <div class="page-tag">06 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="ms">AutoGen Studio 产品功能</span></h3>
+          <ul class="clean">
+            <li>官方定位：<b>低代码多智能体开发工具</b></li>
+            <li>拖放式多智能体构建器</li>
+            <li>实时更新与执行过程反馈</li>
+            <li>流程可视化</li>
+            <li>执行控制</li>
+            <li>组件画廊 / 组件复用</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h3><span class="ms">企业化延伸说明</span></h3>
+          <ul class="clean">
+            <li>微软 2026 年更强的企业能力主要体现在 <b>Agent Framework</b> 与 <b>Copilot Studio</b></li>
+            <li>包括：状态管理、工作流、中间件、可观测性、检查点恢复</li>
+            <li>以及：A2A、MCP、治理、分析、代理标识、异步响应、合规中心能力</li>
+          </ul>
+          <div class="note">即：AutoGen Studio 更像生态入口；企业级运行与治理更多依托微软其他产品线。</div>
+        </div>
+      </div>
+      <div class="rows-2">
+        <div class="block">
+          <h3><span class="ms">定价策略</span></h3>
+          <ul class="clean">
+            <li><b>未检索到 AutoGen Studio 独立官方价格</b></li>
+            <li>可确认的商业化信息来自 <b>Copilot Studio / Microsoft 365 Copilot</b></li>
+            <li>M365 Copilot：<b>232元 / 用户 / 月（按年付费）</b></li>
+            <li>Copilot Studio：支持容量包、Copilot 积分与按量模式</li>
+          </ul>
+          <div class="callout" style="margin-top:.8rem;">
+            不能将 Copilot Studio 或 M365 Copilot 的价格直接等同为 AutoGen Studio 价格。
+          </div>
+        </div>
+        <div class="block">
+          <h3><span class="ms">目标客户</span></h3>
+          <ul class="clean">
+            <li>开发者、研究团队、需要快速构建多智能体原型的组织</li>
+            <li>适合探索、试验、交互式搭建</li>
+            <li>若进入企业级治理、正式采购与渠道发布，多半转向 Agent Framework / Copilot Studio 路径</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">官方资料未给出 AutoGen Studio 客户名单与独立 SKU</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">功能能力横向对比</div>
+      <div class="page-tag">07 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="block">
+        <table class="matrix">
+          <colgroup>
+            <col style="width:24%">
+            <col style="width:25%">
+            <col style="width:25%">
+            <col style="width:26%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>能力维度</th>
+              <th>CrewAI</th>
+              <th>LangSmith Deployment</th>
+              <th>AutoGen Studio / 微软企业化延伸</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>可视化构建</td>
+              <td><span class="badge-yes">强</span>：Visual editor、AI copilot</td>
+              <td><span class="badge-mid">中</span>：Studio 偏调试与工作流开发</td>
+              <td><span class="badge-yes">强</span>：拖放式 builder、可视化流程</td>
+            </tr>
+            <tr>
+              <td>生产部署</td>
+              <td><span class="badge-yes">强</span>：AMP + Factory</td>
+              <td><span class="badge-yes">强</span>：核心就是部署基础设施</td>
+              <td><span class="badge-mid">中</span>：需借助 Agent Framework / Copilot Studio</td>
+            </tr>
+            <tr>
+              <td>状态持久化 / 长任务</td>
+              <td><span class="badge-mid">中强</span>：企业运行能力突出</td>
+              <td><span class="badge-yes">强</span>：durable execution、state/task 管理</td>
+              <td><span class="badge-mid">中</span>：更多在微软其他企业产品体现</td>
+            </tr>
+            <tr>
+              <td>可观测性</td>
+              <td><span class="badge-yes">强</span>：Tracing、OTel、metrics</td>
+              <td><span class="badge-yes">强</span>：Studio、运行时 API、可调试性</td>
+              <td><span class="badge-mid">中强</span>：Agent Framework / Copilot Studio 具备</td>
+            </tr>
+            <tr>
+              <td>HITL</td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-mid">中强</span>：官方企业产品已覆盖</td>
+            </tr>
+            <tr>
+              <td>多代理协作</td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-yes">强</span>：AutoGen 生态本身即多代理导向</td>
+            </tr>
+            <tr>
+              <td>权限治理</td>
+              <td><span class="badge-yes">强</span>：SSO、RBAC</td>
+              <td><span class="badge-mid">中强</span>：Enterprise tier 提到 RBAC、workspaces</td>
+              <td><span class="badge-mid">中强</span>：更多体现在 Copilot Studio 治理体系</td>
+            </tr>
+            <tr>
+              <td>私有化部署</td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-yes">强</span></td>
+              <td><span class="badge-mid">中</span>：需看微软企业产品路径</td>
+            </tr>
+            <tr>
+              <td>API 集成</td>
+              <td><span class="badge-yes">强</span>：REST API、连接器、工具仓库</td>
+              <td><span class="badge-yes">强</span>：30+ API endpoints</td>
+              <td><span class="badge-mid">中强</span>：Agent Framework / Copilot Studio 更丰富</td>
+            </tr>
+            <tr>
+              <td>企业支持服务</td>
+              <td><span class="badge-yes">强</span>：培训、现场支持、开发支持</td>
+              <td><span class="badge-mid">中</span>：资料强调计划层级，支持细节较少</td>
+              <td><span class="badge-mid">中</span>：商业支持重点在微软企业平台</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="block rows-auto">
+        <div>
+          <h3>能力判断</h3>
+          <div class="sub">谁更强于开发体验，谁更强于生产部署，谁更强于企业治理</div>
+        </div>
+        <div id="chart-capability" class="chart"></div>
+      </div>
+    </div>
+    <div class="footer-note">图表为基于已公开能力密度的定性评分，仅表达结构差异，不代表第三方测评结论</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">定价策略横向对比</div>
+      <div class="page-tag">08 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="block">
+        <table class="matrix">
+          <colgroup>
+            <col style="width:22%">
+            <col style="width:26%">
+            <col style="width:26%">
+            <col style="width:26%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>CrewAI</th>
+              <th>LangSmith Deployment</th>
+              <th>AutoGen Studio / 微软商业化边界</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>公开价格透明度</td>
+              <td>中：Free 清晰，企业金额未公开</td>
+              <td>低中：仅见计划门槛，未见金额</td>
+              <td>低：AutoGen Studio 独立价格未公开</td>
+            </tr>
+            <tr>
+              <td>免费入口</td>
+              <td>有：Free 方案</td>
+              <td>有：历史上 Self-Hosted Lite 免费额度</td>
+              <td>未见 Studio 独立免费商业方案说明</td>
+            </tr>
+            <tr>
+              <td>企业版销售方式</td>
+              <td>Enterprise Custom 定制定价</td>
+              <td>Cloud/Enterprise 计划门槛式</td>
+              <td>更多转向 Copilot Studio / M365 Copilot 正式许可</td>
+            </tr>
+            <tr>
+              <td>扩容 / 超额机制</td>
+              <td>Enterprise 支持 flexible overage</td>
+              <td>资料未见明确 overage 金额</td>
+              <td>Copilot Studio 支持容量包与按量</td>
+            </tr>
+            <tr>
+              <td>采购路径</td>
+              <td>Request trial / Request Info / Meet with us</td>
+              <td>按 Plus / Enterprise 计划进入，支持云市场采购线索</td>
+              <td>微软许可、容量包、即用即付、M365 套餐入口</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="block rows-auto">
+        <div>
+          <h3>价格公开程度与销售路径</h3>
+          <div class="sub">越靠上代表管理层越容易在公开资料中看清商业化入口</div>
+        </div>
+        <div id="chart-pricing" class="chart"></div>
+      </div>
+    </div>
+    <div class="footer-note">关键判断：CrewAI 的分层最直接；LangSmith 有门槛无金额；AutoGen Studio 需与微软其他产品区分</div>
+  </section>
+
+  <section class="slide">
+    <div class="header">
+      <div class="title">目标客户与适配场景横向对比</div>
+      <div class="page-tag">09 / 11</div>
+    </div>
+    <div class="content grid-2">
+      <div class="block">
+        <table class="matrix">
+          <colgroup>
+            <col style="width:24%">
+            <col style="width:25%">
+            <col style="width:25%">
+            <col style="width:26%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>场景 / 客群</th>
+              <th>CrewAI</th>
+              <th>LangSmith Deployment</th>
+              <th>AutoGen Studio / 微软路径</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>个人开发者 / 小团队</td>
+              <td>可从 Free 进入</td>
+              <td>更适合已有平台需求者</td>
+              <td>适合原型与研究试验</td>
+            </tr>
+            <tr>
+              <td>AI 平台团队</td>
+              <td>适合，希望平台化管理工作流</td>
+              <td>很适合，强调运行时与部署底座</td>
+              <td>需结合 Agent Framework / Copilot Studio</td>
+            </tr>
+            <tr>
+              <td>强合规企业</td>
+              <td>适合，私有化与治理信息较明确</td>
+              <td>适合，Self-hosted / Enterprise 路径清晰</td>
+              <td>适合但主要依赖微软企业产品而非 Studio 本身</td>
+            </tr>
+            <tr>
+              <td>原型验证</td>
+              <td>适合</td>
+              <td>适合工程团队验证运行时</td>
+              <td>很适合</td>
+            </tr>
+            <tr>
+              <td>生产级多代理</td>
+              <td>适合</td>
+              <td>非常适合</td>
+              <td>需转向微软企业化产品栈</td>
+            </tr>
+            <tr>
+              <td>组织治理</td>
+              <td>强</td>
+              <td>中强</td>
+              <td>强，但主要在 Copilot Studio 治理层</td>
+            </tr>
+            <tr>
+              <td>私有部署</td>
+              <td>强</td>
+              <td>强</td>
+              <td>可行，但不应仅看 AutoGen Studio</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="block rows-auto">
+        <div>
+          <h3>适配判断</h3>
+          <div class="sub">保持谨慎：这是“更适合”而非绝对排他</div>
+        </div>
+        <div id="chart-fit" class="chart"></div>
+      </div>
+    </div>
+    <div class="footer-note">若组织已经进入生产运营阶段，平台治理与运行时能力通常比低代码入口更关键</div>
+  </section>
+
+  <section class="slide section">
+    <div class="header">
+      <div class="title">选型建议</div>
+      <div class="page-tag">10 / 11</div>
+    </div>
+    <div class="content grid-3">
+      <div class="block">
+        <h3>1. 想快速做业务工作流并兼顾治理的企业</h3>
+        <div class="sub"><span class="chip crew">优先看 CrewAI</span></div>
+        <ul class="clean">
+          <li>已有明确 Free→Enterprise 进阶路径</li>
+          <li>工作流、可视化、治理、支持服务相对一体化</li>
+          <li>同时支持 SaaS 与自托管，便于按合规要求选路</li>
+        </ul>
+      </div>
+      <div class="block">
+        <h3>2. 已有较强工程能力，关注生产运行时与状态编排</h3>
+        <div class="sub"><span class="chip lang">优先看 LangSmith Deployment</span></div>
+        <ul class="clean">
+          <li>核心优势在 durable execution、state/task management</li>
+          <li>适合将 agent 当成生产系统来运营</li>
+          <li>尤其适合长任务、多线程、多代理与版本治理场景</li>
+        </ul>
+      </div>
+      <div class="block">
+        <h3>3. 先做研究和原型，后续再转企业平台的团队</h3>
+        <div class="sub"><span class="chip ms">优先看 AutoGen Studio</span></div>
+        <ul class="clean">
+          <li>适合低代码原型、多智能体实验与交互探索</li>
+          <li>若进入大规模治理与正式采购，需同步评估 Agent Framework / Copilot Studio</li>
+          <li>避免把原型工具直接等同于企业商业平台</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-note">推荐的本质：按组织成熟度、工程能力、治理要求选择，而不是按“热度”选择</div>
+  </section>
+
+  <section class="slide end">
+    <div class="header">
+      <div class="title">结论</div>
+      <div class="page-tag">11 / 11</div>
+    </div>
+    <div class="content">
+      <div class="hero">
+        <div style="max-width:980px;">
+          <h1 style="font-size:2.2rem;">最终判断</h1>
+          <ul class="clean" style="font-size:1.08rem; line-height:1.7; text-align:left; display:inline-block;">
+            <li><span class="crew">CrewAI</span> 更像可直接落地的企业代理工作流平台，公开商业层级最清晰。</li>
+            <li><span class="lang">LangGraph Platform / LangSmith Deployment</span> 更偏生产运行时与部署基础设施，适合工程化要求高的团队。</li>
+            <li><span class="ms">AutoGen Studio</span> 更偏低代码开发入口；微软正式企业能力与商业化重心更多在 Agent Framework / Copilot Studio。</li>
+            <li>公开资料对 <b>企业报价金额、合同规模、客户名单</b> 普遍有限，管理层应将本报告视为 <b>初筛工具</b>。</li>
+            <li>正式采购前，仍需与厂商确认：<b>价格、部署边界、SLA、合规能力、支持服务与迁移成本</b>。</li>
+          </ul>
+          <div class="meta" style="margin-top:1.6rem;">
+            <span>建议下一步：发起厂商沟通</span>
+            <span>建议下一步：以真实场景做 PoC</span>
+            <span>建议下一步：按治理要求补充尽调清单</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">谢谢观看</div>
+  </section>
+
+  <div class="controls">
+    <button class="btn" id="prevBtn">◀</button>
+    <button class="btn" id="playBtn">▶</button>
+    <button class="btn" id="nextBtn">▶</button>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-text" id="progressText">1 / 11</div>
+  </div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let current = 0;
+  let playing = false;
+  let timer = null;
+  const total = slides.length;
+
+  const charts = [];
+
+  function initCharts(){
+    const cap = echarts.init(document.getElementById('chart-capability'));
+    cap.setOption({
+      backgroundColor:'transparent',
+      radar:{
+        radius:'66%',
+        center:['50%','56%'],
+        indicator:[
+          {name:'开发体验', max:5},
+          {name:'生产部署', max:5},
+          {name:'状态/长任务', max:5},
+          {name:'治理能力', max:5},
+          {name:'可观测性', max:5},
+          {name:'私有化', max:5}
+        ],
+        axisName:{color:'#d7e0ea', fontSize:12},
+        splitArea:{areaStyle:{color:['rgba(255,255,255,0.02)','rgba(255,255,255,0.04)']}},
+        splitLine:{lineStyle:{color:'#314156'}},
+        axisLine:{lineStyle:{color:'#314156'}}
+      },
+      legend:{
+        bottom:0, textStyle:{color:'#c7d2df', fontSize:12}
+      },
+      series:[{
+        type:'radar',
+        data:[
+          {value:[4.5,4.5,4,5,4.5,5], name:'CrewAI', areaStyle:{color:'rgba(79,140,255,.18)'}, lineStyle:{color:'#4f8cff'}, itemStyle:{color:'#4f8cff'}},
+          {value:[3.8,5,5,4,4.5,4.5], name:'LangSmith', areaStyle:{color:'rgba(111,211,167,.16)'}, lineStyle:{color:'#6fd3a7'}, itemStyle:{color:'#6fd3a7'}},
+          {value:[4.8,2.8,3,3.5,3.8,2.8], name:'AutoGen路径', areaStyle:{color:'rgba(255,180,84,.16)'}, lineStyle:{color:'#ffb454'}, itemStyle:{color:'#ffb454'}}
+        ]
+      }]
+    });
+    charts.push(cap);
+
+    const pricing = echarts.init(document.getElementById('chart-pricing'));
+    pricing.setOption({
+      backgroundColor:'transparent',
+      grid:{left:70,right:20,top:30,bottom:40},
+      xAxis:{
+        type:'value', max:5,
+        axisLabel:{color:'#c7d2df'},
+        splitLine:{lineStyle:{color:'#2d3a4d'}},
+        axisLine:{lineStyle:{color:'#42556c'}}
+      },
+      yAxis:{
+        type:'category',
+        data:['AutoGen Studio','LangSmith','CrewAI'],
+        axisLabel:{color:'#d7e0ea'},
+        axisLine:{lineStyle:{color:'#42556c'}}
+      },
+      series:[{
+        type:'bar',
+        data:[
+          {value:1.5, itemStyle:{color:'#ffb454'}},
+          {value:2.8, itemStyle:{color:'#6fd3a7'}},
+          {value:4.2, itemStyle:{color:'#4f8cff'}}
+        ],
+        label:{show:true, position:'right', color:'#e8edf5'},
+        barWidth:24
+      }],
+      tooltip:{trigger:'axis', axisPointer:{type:'shadow'}}
+    });
+    charts.push(pricing);
+
+    const fit = echarts.init(document.getElementById('chart-fit'));
+    fit.setOption({
+      backgroundColor:'transparent',
+      legend:{top:0, textStyle:{color:'#c7d2df', fontSize:12}},
+      grid:{left:44,right:20,top:40,bottom:44},
+      xAxis:{
+        type:'category',
+        data:['原型验证','生产多代理','治理/合规','私有部署'],
+        axisLabel:{color:'#d7e0ea', interval:0},
+        axisLine:{lineStyle:{color:'#42556c'}}
+      },
+      yAxis:{
+        type:'value', max:5,
+        axisLabel:{color:'#c7d2df'},
+        splitLine:{lineStyle:{color:'#2d3a4d'}},
+        axisLine:{lineStyle:{color:'#42556c'}}
+      },
+      series:[
+        {
+          name:'CrewAI',
+          type:'line',
+          smooth:true,
+          data:[4,4.5,5,5],
+          symbolSize:8,
+          lineStyle:{color:'#4f8cff', width:3},
+          itemStyle:{color:'#4f8cff'}
+        },
+        {
+          name:'LangSmith',
+          type:'line',
+          smooth:true,
+          data:[3.5,5,4,4.5],
+          symbolSize:8,
+          lineStyle:{color:'#6fd3a7', width:3},
+          itemStyle:{color:'#6fd3a7'}
+        },
+        {
+          name:'AutoGen路径',
+          type:'line',
+          smooth:true,
+          data:[4.5,3,3.5,2.8],
+          symbolSize:8,
+          lineStyle:{color:'#ffb454', width:3},
+          itemStyle:{color:'#ffb454'}
+        }
+      ]
+    });
+    charts.push(fit);
+  }
+
+  function resizeEcharts(){
+    charts.forEach(c=>c && c.resize());
+  }
+
+  function updateProgress(){
+    const bar = document.getElementById('progressBar');
+    const text = document.getElementById('progressText');
+    const percent = ((current+1)/total)*100;
+    bar.style.width = percent + '%';
+    text.textContent = `${current+1} / ${total}`;
+  }
+
+  function showSlide(idx){
+    if(idx < 0) idx = 0;
+    if(idx > total - 1) idx = total - 1;
+    slides.forEach((s,i)=>s.classList.toggle('active', i===idx));
+    current = idx;
+    updateProgress();
+    setTimeout(resizeEcharts, 500);
+    if(current === total - 1 && playing){
+      stopAutoPlay();
+    }
+  }
+
+  function nextSlide(){
+    if(current < total - 1) showSlide(current + 1);
+    else stopAutoPlay();
+  }
+
+  function prevSlide(){
+    if(current > 0) showSlide(current - 1);
+  }
+
+  function startAutoPlay(){
+    if(playing) return;
+    playing = true;
+    document.getElementById('playBtn').textContent = '❚❚';
+    timer = setInterval(()=>{
+      if(current < total - 1) nextSlide();
+      else stopAutoPlay();
+    }, 4500);
+  }
+
+  function stopAutoPlay(){
+    playing = false;
+    document.getElementById('playBtn').textContent = '▶';
+    clearInterval(timer);
+  }
+
+  document.getElementById('nextBtn').addEventListener('click', nextSlide);
+  document.getElementById('prevBtn').addEventListener('click', prevSlide);
+  document.getElementById('playBtn').addEventListener('click', ()=>{
+    playing ? stopAutoPlay() : startAutoPlay();
+  });
+
+  window.addEventListener('resize', resizeEcharts);
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'ArrowRight' || e.key === 'PageDown') nextSlide();
+    if(e.key === 'ArrowLeft' || e.key === 'PageUp') prevSlide();
+    if(e.key === ' ') { e.preventDefault(); playing ? stopAutoPlay() : startAutoPlay(); }
+  });
+
+  initCharts();
+  showSlide(0);
+</script>
+</body>
+</html>

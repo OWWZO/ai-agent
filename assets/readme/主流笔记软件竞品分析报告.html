@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2026年主流笔记软件竞品分析：从 All in One 到 Local-first 的选型判断</title>
+  <link href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body {
+      background: linear-gradient(180deg, #f7fafc 0%, #f3f6fb 100%);
+      color: #1f2937;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    .report-shell { max-width: 1440px; }
+    .glass {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226,232,240,0.9);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+    .hero-bg {
+      background:
+        radial-gradient(circle at top right, rgba(59,130,246,0.14), transparent 28%),
+        radial-gradient(circle at left center, rgba(16,185,129,0.10), transparent 26%),
+        linear-gradient(135deg, #ffffff 0%, #f8fbff 45%, #eef5ff 100%);
+    }
+    .section-title::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 22px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #3b82f6, #06b6d4);
+      margin-right: 10px;
+      vertical-align: -4px;
+    }
+    .nav-link {
+      transition: all .2s ease;
+      border-left: 2px solid transparent;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: #2563eb;
+      background: #eff6ff;
+      border-left-color: #2563eb;
+    }
+    .cite-link {
+      color: #007bff;
+      text-decoration: none;
+      font-size: 0.95em;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .cite-link:hover { text-decoration: underline; }
+    .metric-card:hover, .product-card:hover, .summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+    .transition-soft { transition: all .25s ease; }
+    .table-wrap::-webkit-scrollbar { height: 10px; }
+    .table-wrap::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0.18rem 0.65rem;
+      font-size: 0.75rem;
+      line-height: 1.2;
+      font-weight: 600;
+    }
+    .badge-blue { background: #dbeafe; color: #1d4ed8; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-yellow { background: #fef3c7; color: #b45309; }
+    .badge-red { background: #fee2e2; color: #b91c1c; }
+    .badge-gray { background: #e5e7eb; color: #374151; }
+    .tag {
+      display: inline-block;
+      margin: 0.15rem 0.25rem 0.15rem 0;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      background: #f1f5f9;
+      color: #334155;
+    }
+    .risk-box {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+    }
+    .info-box {
+      border-left: 4px solid #3b82f6;
+      background: #eff6ff;
+    }
+    .success-box {
+      border-left: 4px solid #10b981;
+      background: #ecfdf5;
+    }
+    .sticky-toc {
+      top: 20px;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+    }
+    .product-anchor { scroll-margin-top: 90px; }
+    .chart-box { height: 380px; }
+    .mini-chart-box { height: 320px; }
+    .kpi-number {
+      letter-spacing: -0.02em;
+      font-feature-settings: "tnum";
+    }
+    .table-cell-tight { min-width: 150px; }
+    .table-cell-wide { min-width: 220px; }
+  </style>
+</head>
+<body>
+  <div class="report-shell mx-auto px-4 lg:px-6 py-6">
+    <header class="hero-bg glass rounded-3xl p-8 md:p-10 mb-6">
+      <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+        <div class="max-w-4xl">
+          <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-semibold mb-4">
+            竞品研究 · 知识管理工具 · 2026选型视角
+          </div>
+          <h1 class="text-3xl md:text-5xl font-extrabold leading-tight text-gray-900">
+            2026年主流笔记软件竞品分析
+          </h1>
+          <p class="text-lg md:text-xl text-gray-600 mt-4">
+            从 All in One、结构化知识库到 Local-first：九款主流产品的能力边界、适配场景与选型风险
+            <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+          </p>
+          <div class="mt-5 flex flex-wrap gap-3 text-sm">
+            <span class="badge badge-blue">报告日期：2026年7月3日</span>
+            <span class="badge badge-green">基于当前会话已有资料整理</span>
+            <span class="badge badge-yellow">严格避免补充资料外参数</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4 min-w-full xl:min-w-0 xl:w-96">
+          <div class="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div class="text-sm text-gray-500">覆盖产品</div>
+            <div class="text-3xl font-bold kpi-number text-gray-900 mt-1">9</div>
+            <div class="text-xs text-gray-500 mt-2">Evernote / Notion / OneNote / Obsidian / 飞书文档 / 语雀 / 有道云笔记 / Wolai / AFFiNE</div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div class="text-sm text-gray-500">核心维度</div>
+            <div class="text-3xl font-bold kpi-number text-gray-900 mt-1">10</div>
+            <div class="text-xs text-gray-500 mt-2">功能、定价、AI、同步、离线、协作、导出迁移、中国适配等</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <aside class="xl:col-span-3">
+        <div class="glass rounded-2xl p-5 sticky-toc">
+          <h2 class="text-lg font-bold text-gray-900 mb-4">目录导航</h2>
+          <nav class="space-y-1 text-sm">
+            <a href="#summary" class="nav-link block rounded-lg px-3 py-2 text-gray-700">执行摘要</a>
+            <a href="#compare" class="nav-link block rounded-lg px-3 py-2 text-gray-700">竞品全景对比表</a>
+            <a href="#products" class="nav-link block rounded-lg px-3 py-2 text-gray-700">分产品详细分析</a>
+            <a href="#topic-ai" class="nav-link block rounded-lg px-3 py-2 text-gray-700">专题A：AI能力横向对比</a>
+            <a href="#topic-export" class="nav-link block rounded-lg px-3 py-2 text-gray-700">专题B：导出与迁移能力</a>
+            <a href="#topic-cn" class="nav-link block rounded-lg px-3 py-2 text-gray-700">专题C：中国市场适配度</a>
+            <a href="#advice" class="nav-link block rounded-lg px-3 py-2 text-gray-700">选型建议</a>
+            <a href="#risk" class="nav-link block rounded-lg px-3 py-2 text-gray-700">风险与局限</a>
+            <a href="#sources" class="nav-link block rounded-lg px-3 py-2 text-gray-700">资料来源说明</a>
+            <a href="#refs" class="nav-link block rounded-lg px-3 py-2 text-gray-700">参考文献</a>
+          </nav>
+
+          <div class="mt-6 info-box rounded-xl p-4 text-sm text-gray-700">
+            <div class="font-semibold text-gray-900 mb-2">阅读提示</div>
+            <p>
+              本页面严格依据当前已读资料整合，不对未在资料中明确出现的价格、份额、功能细节进行补充推断；对于信息不足处，统一明确标注“资料不足”或“知识库未见明确资料”。
+              <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <main class="xl:col-span-9 space-y-6">
+        <section id="summary" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">执行摘要</h2>
+          <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-blue mb-3">路线判断</div>
+              <p class="text-gray-700 leading-7">
+                Notion 代表 All in One + Database 路线，其资料中最突出的竞争力在于数据库与 AI 结合，但中国大陆访问稳定性与较强在线依赖构成主要短板。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-green mb-3">本地优先</div>
+              <p class="text-gray-700 leading-7">
+                Obsidian 代表本地 Markdown / Local-first 路线，优势集中在本地文件、标签搜索、插件生态以及备份迁移便利，适合强调可控性与长期沉淀的个人知识管理。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-yellow mb-3">办公生态</div>
+              <p class="text-gray-700 leading-7">
+                OneNote 的优势仍然在免费使用、Office 生态以及自由排版；其短板则集中在同步体验、网页剪藏和 Markdown 支持不足。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-blue mb-3">结构化协同</div>
+              <p class="text-gray-700 leading-7">
+                语雀偏结构化知识库与团队文档协同，目录组织、权限与版本历史能力较强；但在块编辑器与数据库灵活性上弱于 Notion/Wolai，且流量与分享策略存在争议。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-green mb-3">企业协同</div>
+              <p class="text-gray-700 leading-7">
+                飞书文档偏企业协作与办公整合，在实时协作、与 IM / 会议 / 日历集成方面优势明显；但个性化知识网络与双链灵活性弱于 Notion/Wolai，且部分判断来自中国市场对比材料，需注意来源口径差异。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100">
+              <div class="badge badge-yellow mb-3">本土工具观察</div>
+              <p class="text-gray-700 leading-7">
+                有道云笔记现有资料强调多端同步、OCR、语音速记、模板和分享权限，但创新感与导出迁移友好度评价偏弱；印象笔记则保有历史用户基础，但资料中对其编辑体验、广告、同步争议与导出加密格式的负面反馈较多。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+            </div>
+            <div class="summary-card transition-soft bg-white rounded-2xl p-5 border border-gray-100 md:col-span-2 xl:col-span-2">
+              <div class="badge badge-blue mb-3">国产 Notion-like 与新路线</div>
+              <p class="text-gray-700 leading-7">
+                Wolai 是国产 Notion-like 路线，中文优化、本地网络体验、双向链接、知识图谱、协作与导出能力较突出，但不同资料对免费版和配额口径存在差异，需要单列信息差异说明；AFFiNE 则代表 AI + Local-first 工作空间路线，AI、白板、演示、多平台与自托管信息较完整，且资料中明确提到 AI 价格为 8.9 美元/月（年付）。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid md:grid-cols-3 gap-4">
+          <div class="metric-card transition-soft glass rounded-2xl p-5">
+            <div class="text-sm text-gray-500">AI资料明确度较高</div>
+            <div class="text-3xl font-bold text-gray-900 mt-2">Notion / AFFiNE</div>
+            <p class="text-sm text-gray-600 mt-3">
+              现有资料中，这两款产品关于 AI 能力与路径描述最完整，其他多数产品存在“资料不足”或仅零散提及的情况。
+              <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+          </div>
+          <div class="metric-card transition-soft glass rounded-2xl p-5">
+            <div class="text-sm text-gray-500">本地优先代表</div>
+            <div class="text-3xl font-bold text-gray-900 mt-2">Obsidian / AFFiNE</div>
+            <p class="text-sm text-gray-600 mt-3">
+              Obsidian 的本地文件与插件生态优势明确，AFFiNE 资料则明确覆盖 local-first 与自托管路径。
+              <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+          </div>
+          <div class="metric-card transition-soft glass rounded-2xl p-5">
+            <div class="text-sm text-gray-500">中国市场协作代表</div>
+            <div class="text-3xl font-bold text-gray-900 mt-2">飞书文档 / 语雀 / Wolai</div>
+            <p class="text-sm text-gray-600 mt-3">
+              现有资料显示，这三者在本土网络环境、中文使用习惯或团队文档协作方面更具针对性，但定位并不相同。
+              <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+          </div>
+        </section>
+
+        <section id="compare" class="glass rounded-3xl p-6 md:p-8">
+          <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+            <div>
+              <h2 class="section-title text-2xl font-bold text-gray-900">竞品全景对比表</h2>
+              <p class="text-gray-600 mt-3">
+                下表仅使用当前资料中可确认的内容进行结构化比对；“资料不足”表示当前会话已读材料未给出足够细节，不代表产品本身一定缺失该能力。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+          </div>
+
+          <div class="table-wrap overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-50 text-gray-700">
+                <tr>
+                  <th class="px-4 py-4 text-left font-semibold">产品</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">定位</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-wide">核心能力</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">AI</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">同步</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">离线</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">协作</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">导出迁移</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-tight">中国市场适配</th>
+                  <th class="px-4 py-4 text-left font-semibold table-cell-wide">主要短板</th>
+                  <th class="px-4 py-4 text-left font-semibold">信息完整度</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 text-gray-700">
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">Notion</td>
+                  <td class="px-4 py-4">All in One + Database</td>
+                  <td class="px-4 py-4">块编辑、数据库、页面组织、AI 结合能力突出</td>
+                  <td class="px-4 py-4"><span class="badge badge-green">明确较强</span></td>
+                  <td class="px-4 py-4">多端在线同步</td>
+                  <td class="px-4 py-4">在线依赖明显</td>
+                  <td class="px-4 py-4">团队协作能力强</td>
+                  <td class="px-4 py-4">导出开放性较好</td>
+                  <td class="px-4 py-4">大陆访问稳定性为短板</td>
+                  <td class="px-4 py-4">网络环境敏感、离线能力弱于本地优先产品</td>
+                  <td class="px-4 py-4"><span class="badge badge-green">较完整</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">Obsidian</td>
+                  <td class="px-4 py-4">本地 Markdown / Local-first</td>
+                  <td class="px-4 py-4">本地文件、双链、标签搜索、插件生态、迁移备份便利</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">资料有限</span></td>
+                  <td class="px-4 py-4">可同步，资料重点不在官方云细节</td>
+                  <td class="px-4 py-4">本地离线优势明显</td>
+                  <td class="px-4 py-4">协作不是其最强项</td>
+                  <td class="px-4 py-4">开放文件形态，迁移便利</td>
+                  <td class="px-4 py-4">较适合关注可控性的用户</td>
+                  <td class="px-4 py-4">团队协同与开箱即用程度弱于协作型平台</td>
+                  <td class="px-4 py-4"><span class="badge badge-green">较完整</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">OneNote</td>
+                  <td class="px-4 py-4">Office 生态笔记</td>
+                  <td class="px-4 py-4">免费、自由排版、与 Office 体系协同</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">支持多端，体验争议较多</td>
+                  <td class="px-4 py-4">具备一定离线使用能力</td>
+                  <td class="px-4 py-4">可协作</td>
+                  <td class="px-4 py-4">资料未突出迁移优势</td>
+                  <td class="px-4 py-4">国内可用性高于海外 SaaS 受限产品</td>
+                  <td class="px-4 py-4">同步体验、剪藏、Markdown 支持偏弱</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">语雀</td>
+                  <td class="px-4 py-4">结构化知识库 / 团队文档</td>
+                  <td class="px-4 py-4">目录组织、权限、版本历史、团队知识库</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">多端协作导向</td>
+                  <td class="px-4 py-4">知识库场景可用，离线细节资料有限</td>
+                  <td class="px-4 py-4">协作能力强</td>
+                  <td class="px-4 py-4">资料未显示开放性优于 Notion</td>
+                  <td class="px-4 py-4">本土化明显</td>
+                  <td class="px-4 py-4">块编辑器/数据库灵活性弱于 Notion/Wolai；流量/分享策略有争议</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">飞书文档</td>
+                  <td class="px-4 py-4">企业协作与办公整合</td>
+                  <td class="px-4 py-4">实时协作，与 IM / 会议 / 日历集成</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">多端实时同步</td>
+                  <td class="px-4 py-4">离线资料不足</td>
+                  <td class="px-4 py-4">企业协作突出</td>
+                  <td class="px-4 py-4">迁移开放性资料不足</td>
+                  <td class="px-4 py-4">中国企业环境适配高</td>
+                  <td class="px-4 py-4">知识网络与双链灵活性弱于 Notion/Wolai；部分判断依赖中国市场对比材料</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等偏低</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">有道云笔记</td>
+                  <td class="px-4 py-4">本土综合型云笔记</td>
+                  <td class="px-4 py-4">多端同步、OCR、语音速记、模板、分享权限</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">多端同步是重点优势</td>
+                  <td class="px-4 py-4">资料未显示离线是突出卖点</td>
+                  <td class="px-4 py-4">具备分享与权限能力</td>
+                  <td class="px-4 py-4">导出迁移评价偏弱</td>
+                  <td class="px-4 py-4">本土适配较好</td>
+                  <td class="px-4 py-4">创新感偏弱，导出迁移友好度评价不高</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">印象笔记 Evernote</td>
+                  <td class="px-4 py-4">老牌云笔记</td>
+                  <td class="px-4 py-4">历史用户基础与传统笔记积累</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">同步相关争议较多</td>
+                  <td class="px-4 py-4">资料未显示离线为核心优势</td>
+                  <td class="px-4 py-4">协作资料不足</td>
+                  <td class="px-4 py-4">导出加密格式反馈较负面</td>
+                  <td class="px-4 py-4">有历史用户基础，但体验口碑承压</td>
+                  <td class="px-4 py-4">编辑体验、广告、同步争议、导出格式问题</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">Wolai</td>
+                  <td class="px-4 py-4">国产 Notion-like</td>
+                  <td class="px-4 py-4">中文优化、双向链接、知识图谱、协作、导出能力</td>
+                  <td class="px-4 py-4"><span class="badge badge-gray">资料不足</span></td>
+                  <td class="px-4 py-4">本地网络体验较好</td>
+                  <td class="px-4 py-4">离线细节资料不完全明确</td>
+                  <td class="px-4 py-4">协作能力较突出</td>
+                  <td class="px-4 py-4">有导出能力，但口径不完全一致</td>
+                  <td class="px-4 py-4">中国市场适配度较高</td>
+                  <td class="px-4 py-4">免费版和配额信息存在资料差异</td>
+                  <td class="px-4 py-4"><span class="badge badge-yellow">中等</span></td>
+                </tr>
+                <tr class="hover:bg-blue-50">
+                  <td class="px-4 py-4 font-semibold">AFFiNE</td>
+                  <td class="px-4 py-4">AI + Local-first 工作空间</td>
+                  <td class="px-4 py-4">AI、白板、演示、多平台、自托管</td>
+                  <td class="px-4 py-4"><span class="badge badge-green">明确较强</span></td>
+                  <td class="px-4 py-4">多平台资料明确</td>
+                  <td class="px-4 py-4">Local-first 路线明确</td>
+                  <td class="px-4 py-4">协作能力有资料，但未见极细参数</td>
+                  <td class="px-4 py-4">迁移资料有一定信息，自托管增强可控性</td>
+                  <td class="px-4 py-4">中国市场适配需结合具体部署与使用环境理解</td>
+                  <td class="px-4 py-4">整体资料相对新，但市场反馈维度不如老牌产品充分</td>
+                  <td class="px-4 py-4"><span class="badge badge-green">较完整</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="glass rounded-3xl p-6">
+            <h2 class="section-title text-2xl font-bold text-gray-900 mb-4">路线格局观察</h2>
+            <p class="text-gray-700 leading-7 mb-4">
+              从现有资料看，主流笔记软件已明显分化为几条路线：以 Notion 为代表的 All in One + Database 路线、以 Obsidian 为代表的 Local-first / Markdown 路线、以飞书文档和语雀为代表的协作文档与知识库路线，以及以 AFFiNE 为代表的 AI + Local-first 新工作空间路线。不同路线并非简单优劣，而是围绕“在线协作、知识结构、数据控制、AI 整合”的侧重点不同。
+              <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+            <div class="flex flex-wrap">
+              <span class="tag">All in One</span>
+              <span class="tag">Database</span>
+              <span class="tag">Local-first</span>
+              <span class="tag">团队知识库</span>
+              <span class="tag">企业协同</span>
+              <span class="tag">AI工作流</span>
+            </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <h2 class="section-title text-2xl font-bold text-gray-900 mb-4">信息完整度提醒</h2>
+            <p class="text-gray-700 leading-7 mb-4">
+              第三份资料已明确提示“2026 最新资讯直接资料不足”，因此本报告不能视为各产品 2026 年官方完整参数总表，而更适合作为“基于历史评测、经验文章、官网功能页与中国市场对比材料的综合判断”。其中，飞书文档、Wolai、语雀等产品在部分维度上存在资料口径差异或细节不足，阅读时应结合这一前提。
+              <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </p>
+            <div class="risk-box rounded-xl p-4 text-sm text-gray-700">
+              “资料不足”不等于产品能力不足；它只表示在当前会话已读取资料中，没有找到可直接支撑更细结论的明确信息。
+              <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </div>
+          </div>
+        </section>
+
+        <section id="products" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">分产品详细分析</h2>
+          <div class="space-y-5">
+
+            <article id="p-notion" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Notion</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-blue">All in One</span>
+                  <span class="badge badge-green">AI资料较明确</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合希望把文档、数据库、项目视图和 AI 辅助整合在同一空间中的个人进阶用户、小团队与内容型组织；尤其适合把“知识记录”与“信息结构化管理”合并处理的场景。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>现有资料中，Notion 最突出的特点是 All in One + Database 路线，以及 AI 与数据库能力的结合，这使其在项目管理、知识库、内容生产工作流中具有较强的整合性。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>中国大陆访问稳定性与较强在线依赖是现有资料反复强调的问题；因此在网络受限、对离线连续性要求高的场景中，使用体验可能明显受影响。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>关于其产品路线、AI 优势、数据库能力及中国大陆访问短板，资料支持度较高；但本报告不补充未在资料中明确出现的具体价格数字。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-obsidian" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Obsidian</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-green">Local-first</span>
+                  <span class="badge badge-blue">Markdown</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合重视本地文件控制、知识长期沉淀、可迁移性与个性化扩展的个人知识管理用户，尤其是习惯 Markdown、愿意配置插件生态的使用者。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>资料中明确强调其本地文件、标签搜索、插件生态以及备份迁移便利；这使其在数据自主权、长期可持续性与知识网络构建方面具备代表性优势。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>与在线协作文档平台相比，Obsidian 的团队协作与开箱即用属性并不是资料中的核心亮点；其优势更偏向个人或小范围高自主性的知识体系。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>资料中还提到 Obsidian 教育/非营利附加服务有 40% 折扣，但未给出更完整价格体系，因此仅保留该口径，不做延展推算。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-onenote" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">OneNote</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-blue">Office生态</span>
+                  <span class="badge badge-green">免费使用</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>适合已经深度使用 Microsoft Office 生态、希望低门槛开始数字笔记，并偏好自由排版而非严格块结构的用户。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>资料中比较明确的优势包括免费使用、Office 生态衔接与自由排版；此外，大文件存储可能需要 OneDrive 会员，这一说法也在资料中出现。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>现有资料对其同步体验、剪藏能力及 Markdown 支持评价较弱，因此虽然是稳健的生态型工具，但在现代知识管理工作流的某些环节并不领先。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>AI 能力在当前资料中未见明确、系统性的描述，故此处标记为“资料不足”。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-obsidian-evernote" class="hidden"></article>
+
+            <article id="p-evernote" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">印象笔记 Evernote</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-yellow">历史用户基础</span>
+                  <span class="badge badge-red">口碑分化</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合已有历史使用基础、已有内容沉淀且暂未完成迁移的用户；对于新用户而言，资料中并未显示其在关键维度上形成明显领先。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>现有资料主要承认其历史用户基础与老牌云笔记地位，但并未给出足够多的新近正向能力细节。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>资料中对其编辑体验、广告、同步争议以及导出加密格式的负面反馈较多，说明其在现代笔记产品竞争中正面临较大口碑压力。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>关于 AI、协作与更完整价格信息，当前资料未见足够明确内容，因此不能进一步展开。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-feishu" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">飞书文档</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-green">企业协同</span>
+                  <span class="badge badge-blue">办公整合</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合企业办公协同、跨部门实时协作、以及需要与 IM、会议、日历形成流程联动的组织型用户。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>现有资料中，飞书文档最明确的优势是企业实时协作，以及与 IM / 会议 / 日历集成带来的流程闭环能力，这使其更像“办公系统的一部分”，而非单纯笔记工具。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>在个性化知识网络与双链灵活性方面，其资料表现弱于 Notion/Wolai；换言之，它更偏企业流程协作，而不是个人知识图谱构建。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>需特别注意，一部分结论来自中国市场对比文件，而另一些细节资料不足，因此本节应理解为“来源口径有差异的综合判断”，而非单一官方口径。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-yuque" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">语雀</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-blue">结构化知识库</span>
+                  <span class="badge badge-green">团队协同</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合有知识库建设需求、强调目录组织、权限管理与版本追踪的团队，尤其适用于文档规范化程度较高的组织。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>资料明确强调其在目录组织、权限与版本历史上的优势，因此其竞争力更偏“团队知识库秩序感”，而非“自由拼装型工作台”。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>块编辑器与数据库灵活性弱于 Notion/Wolai，且流量/分享策略存在争议，这意味着它在开放传播和复杂工作流搭建方面可能不如更灵活的平台。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>资料中提到语雀存在“50元99G”与“学生免费一年”的口径，但本报告仅作“资料中提及”展示，不外推成统一官方长期定价。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-youdao" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">有道云笔记</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-blue">本土云笔记</span>
+                  <span class="badge badge-yellow">功能稳健型</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合需要稳定多端同步、OCR、语音速记、模板与基础分享权限的用户，尤其适用于偏资料收集与日常记录的本土使用场景。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>现有资料突出其多端同步、OCR、语音速记、模板和分享权限，说明其在“通用型云笔记工具”定位上较为清晰。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>创新感与导出迁移友好度评价偏弱，这意味着其在现代知识平台竞争中更偏实用保守，而非领先探索型。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>AI 能力在当前资料中未见清晰、可对比的系统描述，因此标注为资料不足。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-wolai" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">Wolai</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-green">国产 Notion-like</span>
+                  <span class="badge badge-blue">中文优化</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合希望获得类似 Notion 的块编辑与知识组织体验，同时又看重中文优化、本地网络体验和国产服务适配的用户与团队。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>资料中明确强调其中文优化、本地网络体验、双向链接、知识图谱、协作和导出能力较突出，因此它在“国产替代 Notion”这一判断中具备较高代表性。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>目前最需要谨慎处理的不是单一功能短板，而是不同资料对免费版与配额存在口径差异，因此用户在做预算和权限规划时应以最新官方页面为准。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <div class="info-box rounded-xl p-4 mt-4 text-sm text-gray-700">
+                <div class="font-semibold text-gray-900 mb-1">信息差异说明</div>
+                Wolai 的免费版和配额信息在不同资料中的口径并不完全一致，因此本报告不输出统一数值，只保留“存在资料差异”的结论。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </div>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>关于 AI 与离线细节，当前会话资料未见足够清晰的统一说明。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+            <article id="p-affine" class="product-anchor product-card transition-soft bg-white rounded-2xl p-6 border border-gray-100">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-xl font-bold text-gray-900">AFFiNE</h3>
+                <div class="flex flex-wrap gap-2">
+                  <span class="badge badge-green">AI + Local-first</span>
+                  <span class="badge badge-blue">白板/演示/自托管</span>
+                </div>
+              </div>
+              <p class="text-gray-700 leading-7">
+                <strong>适合谁：</strong>更适合希望同时获得 AI 辅助、Local-first 数据掌控、多形态工作空间以及自托管可能性的用户和团队，尤其适合对新型生产力平台感兴趣的人群。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>核心优势：</strong>资料对其 AI、白板、演示、多平台与自托管信息描述较完整，使 AFFiNE 成为现有材料中少数“AI 路线与本地优先路线同时清晰”的产品。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>主要短板：</strong>相较于 Notion、OneNote、印象笔记等成熟老牌工具，现有资料在其市场口碑广度方面并不如前者充分，因此对“长期市场接受度”的判断仍需保留谨慎。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <p class="text-gray-700 leading-7 mt-3">
+                <strong>资料确定性/资料不足说明：</strong>资料中明确提及 AFFiNE AI 价格为 8.9 美元/月（年付）；本报告仅保留这一已出现口径，不延伸出更多未证实价格细节。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </article>
+
+          </div>
+        </section>
+
+        <section id="topic-ai" class="glass rounded-3xl p-6 md:p-8">
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-6">
+            <div class="lg:max-w-3xl">
+              <h2 class="section-title text-2xl font-bold text-gray-900">专题A：AI能力横向对比</h2>
+              <p class="text-gray-700 leading-7 mt-3">
+                当前资料中，Notion 与 AFFiNE 的 AI 能力描述最为明确：前者强调 AI 与数据库、内容工作流的结合，后者则强调 AI 与 Local-first 工作空间、白板、演示等多形态协同。相比之下，其余多数产品在 AI 维度要么仅零散出现，要么知识库未见明确资料，因此本报告不能将其与前两者做同等级详细比较。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="success-box rounded-xl p-4 text-sm text-gray-700 lg:w-80">
+              <div class="font-semibold text-gray-900 mb-2">核心判断</div>
+              AI 对比不宜“默认都有”，只能依据资料可确认范围判断：Notion 与 AFFiNE 最明确，其余多数资料不足。
+              <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+            </div>
+          </div>
+          <div id="aiChart" class="chart-box bg-white rounded-2xl border border-gray-100"></div>
+          <div class="grid md:grid-cols-2 gap-4 mt-6">
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">AI能力解读</h3>
+              <p class="text-gray-700 leading-7">
+                基于现有资料可见，Notion 的 AI 更像“嵌入式能力增强”，目标是提升数据库驱动的内容整理与工作流效率；AFFiNE 的 AI 则更强调与本地优先工作空间的协同，形成更综合的创作空间想象。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">AI资料不足说明</h3>
+              <p class="text-gray-700 leading-7">
+                对 OneNote、飞书文档、语雀、有道云笔记、印象笔记、Wolai、Obsidian 等产品，当前会话资料无法支持更细的 AI 价格、模型范围、调用额度或典型流程说明，因此统一保守处理。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="topic-export" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">专题B：导出与迁移能力对比</h2>
+          <div class="grid lg:grid-cols-2 gap-6">
+            <div>
+              <p class="text-gray-700 leading-7 mb-4">
+                导出与迁移能力是知识工具选型中最容易被忽视、却与长期锁定风险直接相关的维度。当前资料的总体判断是：Notion 的导出开放性较好；Obsidian 由于本地 Markdown / 文件化路径，天然具备较好的备份与迁移便利；Wolai 有导出能力，但资料口径不完全一致；印象笔记与有道云笔记在迁移友好度相关反馈上偏弱。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <div class="bg-white rounded-2xl p-5 border border-gray-100">
+                <h3 class="font-bold text-gray-900 mb-3">迁移风险排序的理解方式</h3>
+                <p class="text-gray-700 leading-7">
+                  这里的判断不是技术测评结论，而是依据资料中“开放文件 / 导出便利 / 加密格式争议 / 口径不一致”等信号做出的相对比较。换句话说，开放性越强、文件越标准化，长期迁移风险通常越低。
+                  <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite>
+                </p>
+              </div>
+            </div>
+            <div id="exportChart" class="mini-chart-box bg-white rounded-2xl border border-gray-100"></div>
+          </div>
+        </section>
+
+        <section id="topic-cn" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">专题C：中国市场适配度对比</h2>
+          <div class="grid lg:grid-cols-2 gap-6">
+            <div id="cnChart" class="mini-chart-box bg-white rounded-2xl border border-gray-100"></div>
+            <div>
+              <p class="text-gray-700 leading-7 mb-4">
+                中国市场适配度不是单一概念，而是至少包含四个层面：本土语言与中文体验、网络访问稳定性、企业办公环境整合、本地优先与数据可控性。基于现有资料，飞书文档、语雀、Wolai、有道云笔记在本土使用环境中更具直接适配性；Notion 的短板集中在大陆访问稳定性；Obsidian 与 AFFiNE 则更多从本地优先和可控性角度体现适配价值。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+              <div class="info-box rounded-xl p-4 text-sm text-gray-700">
+                <div class="font-semibold text-gray-900 mb-2">口径说明</div>
+                飞书文档部分结论更多来自中国市场对比材料，AFFiNE 与 Obsidian 的“适配”则更偏本地优先与可控性维度，二者不能与“企业本土协同适配”完全等同理解。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="advice" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">选型建议</h2>
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">1. 个人知识管理</h3>
+              <p class="text-gray-700 leading-7">
+                基于现有资料可推断，若优先考虑知识沉淀、可迁移性与本地文件控制，Obsidian 更值得优先关注；若希望文档、数据库、任务与内容管理整合在一起，则 Notion 更具吸引力，但需同时接受其在线依赖与中国大陆访问不稳定风险。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">2. 团队协作知识库</h3>
+              <p class="text-gray-700 leading-7">
+                若强调结构化目录、权限和版本历史，语雀更适合规范化团队知识库；若希望获得更接近 Notion 的灵活块编辑和中文网络体验，Wolai 更值得关注，但需留意免费版与配额信息差异。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">3. 企业办公协同</h3>
+              <p class="text-gray-700 leading-7">
+                基于现有资料可推断，飞书文档在企业实时协作以及与 IM、会议、日历的整合方面更具优势，因此更适合把文档协作视为办公流程一部分的组织。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite>
+              </p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-gray-100">
+              <h3 class="font-bold text-gray-900 mb-3">4. 本地优先 / 隐私敏感</h3>
+              <p class="text-gray-700 leading-7">
+                若对数据掌控、离线连续性、长期备份与迁移最敏感，Obsidian 是当前资料中最清晰的本地 Markdown 代表；若希望在本地优先之外进一步考虑 AI、白板、演示和自托管，则 AFFiNE 值得重点关注。
+                <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-gray-100 md:col-span-2">
+              <h3 class="font-bold text-gray-900 mb-3">5. AI辅助创作工作流</h3>
+              <p class="text-gray-700 leading-7">
+                在当前资料范围内，Notion 与 AFFiNE 是最能明确纳入“AI 辅助创作工作流”候选的两款产品：Notion 更偏数据库与内容流程整合，AFFiNE 更偏 AI + Local-first 新型工作空间。其他产品并非一定没有相关能力，但在现有资料中不足以支持同等强度结论。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="risk" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">风险与局限</h2>
+          <div class="space-y-4">
+            <div class="risk-box rounded-2xl p-5">
+              <p class="text-gray-700 leading-7">
+                本报告严格依据当前已读资料整理，不代表 2026 年所有产品官方最新完整参数，也不构成对各产品未来版本演进的预测。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="risk-box rounded-2xl p-5">
+              <p class="text-gray-700 leading-7">
+                第三份资料已明确指出“2026 最新资讯直接资料不足”，因此当前资料主要由历史评测、经验文章、官网功能页和中国市场对比材料构成；这意味着某些价格、配额、功能边界或市场反馈可能存在时间差。
+                <cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+            <div class="risk-box rounded-2xl p-5">
+              <p class="text-gray-700 leading-7">
+                飞书文档、Wolai、语雀等产品在部分维度上存在资料口径差异，尤其是配额、分享策略、免费版边界等内容，因此若用于正式采购或组织级部署，建议以最新官方页面、试用与合同条款进行二次核验。
+                <cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="sources" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">资料来源说明</h2>
+          <p class="text-gray-700 leading-7">
+            本报告未直接复写原始资料全文，而是基于当前会话已有内容进行去重整合。资料类型主要包括：云笔记横评文章、个人使用经验整理、中国市场对比材料、产品官网 AI 页、教育优惠导航类资料等。由于第三份资料明确说明“2026 最新资讯直接资料不足”，因此本页所有结论均应理解为“基于当前资料的谨慎综合判断”。
+            <cite><a class="cite-link" href="#ref-1">[[1]]</a></cite><cite><a class="cite-link" href="#ref-2">[[2]]</a></cite><cite><a class="cite-link" href="#ref-3">[[3]]</a></cite>
+          </p>
+        </section>
+
+        <section id="refs" class="glass rounded-3xl p-6 md:p-8">
+          <h2 class="section-title text-2xl font-bold text-gray-900 mb-6">参考文献</h2>
+          <ol class="space-y-3 text-gray-700 leading-7">
+            <li id="ref-1">
+              [[1]]、<cite><a class="cite-link" href="https://example.com/source-1" target="_blank" rel="noopener noreferrer">云笔记横评文章与个人使用经验整理</a></cite>
+            </li>
+            <li id="ref-2">
+              [[2]]、<cite><a class="cite-link" href="https://example.com/source-2" target="_blank" rel="noopener noreferrer">中国市场对比材料与协作文档对照资料</a></cite>
+            </li>
+            <li id="ref-3">
+              [[3]]、<cite><a class="cite-link" href="https://example.com/source-3" target="_blank" rel="noopener noreferrer">产品官网功能页、AI页面与“2026最新资讯直接资料不足”说明材料</a></cite>
+            </li>
+          </ol>
+        </section>
+      </main>
+    </div>
+
+    <footer class="mt-8 glass rounded-2xl p-6 text-center text-sm text-gray-600">
+      <div>Created by Autobots</div>
+      <div class="mt-1">页面内容均由 AI 生成，仅供参考</div>
+    </footer>
+  </div>
+
+  <script>
+    const aiChart = echarts.init(document.getElementById('aiChart'));
+    aiChart.setOption({
+      animation: true,
+      grid: { left: 30, right: 30, top: 60, bottom: 30, containLabel: true },
+      tooltip: {
+        trigger: 'item',
+        formatter: function(params) {
+          return params.name + '：' + params.valueLabel;
+        }
+      },
+      xAxis: {
+        type: 'category',
+        data: ['Notion', 'AFFiNE', 'Obsidian', 'OneNote', '飞书文档', '语雀', '有道云笔记', '印象笔记', 'Wolai'],
+        axisLabel: { interval: 0, rotate: 25, color: '#475569' },
+        axisLine: { lineStyle: { color: '#cbd5e1' } }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 3,
+        interval: 1,
+        axisLabel: {
+          color: '#475569',
+          formatter: function(v) {
+            return ['资料不足','资料有限','较明确','最明确'][v] || '';
+          }
+        },
+        splitLine: { lineStyle: { color: '#e2e8f0' } }
+      },
+      series: [{
+        type: 'bar',
+        barWidth: 28,
+        data: [
+          { value: 3, valueLabel: '最明确', itemStyle: { color: '#3b82f6' } },
+          { value: 3, valueLabel: '最明确', itemStyle: { color: '#10b981' } },
+          { value: 1, valueLabel: '资料有限', itemStyle: { color: '#94a3b8' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } },
+          { value: 0, valueLabel: '资料不足', itemStyle: { color: '#cbd5e1' } }
+        ],
+        label: {
+          show: true,
+          position: 'top',
+          formatter: function(params) { return params.data.valueLabel; },
+          color: '#334155',
+          fontSize: 12
+        },
+        itemStyle: { borderRadius: [8,8,0,0] }
+      }],
+      title: {
+        text: 'AI资料明确度对比',
+        left: 'center',
+        top: 16,
+        textStyle: { fontSize: 16, fontWeight: 700, color: '#111827' }
+      }
+    });
+
+    const exportChart = echarts.init(document.getElementById('exportChart'));
+    exportChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' }
+      },
+      grid: { left: 24, right: 24, top: 54, bottom: 24, containLabel: true },
+      xAxis: {
+        type: 'value',
+        min: 0,
+        max: 3,
+        interval: 1,
+        axisLabel: {
+          color: '#475569',
+          formatter: function(v) {
+            return ['偏弱','一般','较好','突出'][v] || '';
+          }
+        },
+        splitLine: { lineStyle: { color: '#e2e8f0' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: ['Notion', 'Obsidian', 'Wolai', 'OneNote', '语雀', 'AFFiNE', '有道云笔记', '印象笔记'],
+        axisLabel: { color: '#475569' },
+        axisLine: { lineStyle: { color: '#cbd5e1' } }
+      },
+      series: [{
+        type: 'bar',
+        data: [
+          { value: 2, itemStyle: { color: '#3b82f6' } },
+          { value: 3, itemStyle: { color: '#10b981' } },
+          { value: 2, itemStyle: { color: '#06b6d4' } },
+          { value: 1, itemStyle: { color: '#94a3b8' } },
+          { value: 1, itemStyle: { color: '#94a3b8' } },
+          { value: 1, itemStyle: { color: '#8b5cf6' } },
+          { value: 0, itemStyle: { color: '#f59e0b' } },
+          { value: 0, itemStyle: { color: '#ef4444' } }
+        ],
+        label: {
+          show: true,
+          position: 'right',
+          color: '#334155',
+          formatter: function(params) {
+            const map = ['偏弱','一般','较好','突出'];
+            return map[params.value];
+          }
+        },
+        barWidth: 18,
+        itemStyle: { borderRadius: [0,8,8,0] }
+      }],
+      title: {
+        text: '导出与迁移友好度（基于现有资料的相对判断）',
+        left: 'center',
+        top: 14,
+        textStyle: { fontSize: 15, fontWeight: 700, color: '#111827' }
+      }
+    });
+
+    const cnChart = echarts.init(document.getElementById('cnChart'));
+    cnChart.setOption({
+      tooltip: {
+        trigger: 'item',
+        formatter: '{b}<br/>{c}'
+      },
+      radar: {
+        radius: '62%',
+        splitNumber: 4,
+        axisName: { color: '#334155', fontSize: 12 },
+        splitLine: { lineStyle: { color: ['#e2e8f0'] } },
+        splitArea: { areaStyle: { color: ['#ffffff','#f8fafc'] } },
+        indicator: [
+          { name: '本土语言/中文体验', max: 5 },
+          { name: '访问稳定性', max: 5 },
+          { name: '企业协作整合', max: 5 },
+          { name: '本地可控性', max: 5 },
+          { name: '知识网络灵活性', max: 5 }
+        ]
+      },
+      legend: {
+        bottom: 8,
+        textStyle: { color: '#475569' },
+        data: ['Notion', '飞书文档', 'Wolai', 'Obsidian', 'AFFiNE']
+      },
+      series: [{
+        type: 'radar',
+        data: [
+          { value: [3, 1, 4, 1, 5], name: 'Notion', areaStyle: { color: 'rgba(59,130,246,0.15)' }, lineStyle: { color: '#3b82f6' } },
+          { value: [5, 5, 5, 2, 2], name: '飞书文档', areaStyle: { color: 'rgba(16,185,129,0.15)' }, lineStyle: { color: '#10b981' } },
+          { value: [5, 5, 4, 2, 4], name: 'Wolai', areaStyle: { color: 'rgba(6,182,212,0.15)' }, lineStyle: { color: '#06b6d4' } },
+          { value: [3, 5, 2, 5, 5], name: 'Obsidian', areaStyle: { color: 'rgba(245,158,11,0.12)' }, lineStyle: { color: '#f59e0b' } },
+          { value: [3, 3, 3, 5, 4], name: 'AFFiNE', areaStyle: { color: 'rgba(139,92,246,0.12)' }, lineStyle: { color: '#8b5cf6' } }
+        ]
+      }],
+      title: {
+        text: '中国市场适配度维度示意（资料导向的相对比较）',
+        left: 'center',
+        top: 14,
+        textStyle: { fontSize: 15, fontWeight: 700, color: '#111827' }
+      }
+    });
+
+    window.addEventListener('resize', function () {
+      aiChart.resize();
+      exportChart.resize();
+      cnChart.resize();
+    });
+
+    const navLinks = document.querySelectorAll('.nav-link');
+    const sections = [...navLinks].map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+
+    window.addEventListener('scroll', () => {
+      let currentId = '';
+      sections.forEach(section => {
+        const top = section.getBoundingClientRect().top;
+        if (top <= 140) currentId = '#' + section.id;
+      });
+      navLinks.forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === currentId);
+      });
+    });
+  </script>
+</body>
+</html>

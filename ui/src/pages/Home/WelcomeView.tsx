@@ -55,93 +55,101 @@ export default function WelcomeView(props: {
           hasFeaturedCards ? "justify-start" : "justify-center"
         )}
       >
-        <div className="mb-8 text-center lg:mb-10">
-          <h1
-            className="mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
-            style={{ fontFamily: "var(--font-sans)" }}
-          >
-            <KeyboardTypewriter
-              texts={HERO_TYPEWRITER_TEXTS}
-              speed={80}
-              eraseSpeed={45}
-              holdMs={10000}
-              pauseMs={550}
-            />
-          </h1>
-        </div>
-
-        <motion.div
-          initial={false}
-          animate={{
-            opacity: hasSuggestedQuestions ? 1 : 0,
-            y: hasSuggestedQuestions ? 0 : -10,
-          }}
-          transition={{
-            duration: 0.3,
-            ease: [0.16, 1, 0.3, 1],
-          }}
+        <div
           className={classNames(
-            "mx-auto w-full max-w-[1180px] overflow-visible",
-            hasSuggestedQuestions
-              ? "mb-8 pointer-events-auto lg:mb-10"
-              : "mb-0 max-h-0 pointer-events-none"
+            "flex w-full flex-col items-center",
+            // 欢迎态主视觉整体下移，避免标题和输入区过于贴近顶部。
+            hasFeaturedCards ? "pt-10 md:pt-12 lg:pt-16" : "pt-12 md:pt-16 lg:pt-20"
           )}
         >
-          <div className="flex flex-wrap justify-center gap-3">
-            {suggestedQuestions.map((item, index) => (
-              <button
-                key={index}
-                type="button"
-                className="flex max-w-full cursor-pointer items-center gap-2 rounded-[16px] bg-[oklch(0.955_0.002_90)] px-5 py-3 text-[14px] font-medium leading-none text-[var(--chat-text)] transition-colors duration-200 hover:bg-[oklch(0.925_0.003_90)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25 md:text-[15px]"
-                onClick={() => props.onSendQuestion(item)}
-              >
-                {item.deepThink ? (
-                  <i className="font_family icon-shendusikao text-[12px] text-[var(--chat-text)]" />
-                ) : null}
-                {item.label}
-              </button>
-            ))}
+          <div className="mb-8 text-center lg:mb-10">
+            <h1
+              className="mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
+              style={{ fontFamily: "var(--font-sans)" }}
+            >
+              <KeyboardTypewriter
+                texts={HERO_TYPEWRITER_TEXTS}
+                speed={80}
+                eraseSpeed={45}
+                holdMs={10000}
+                pauseMs={550}
+              />
+            </h1>
           </div>
-        </motion.div>
 
-        <motion.div
-          initial={{
-            opacity: 0,
-            y: 24,
-            scale: 0.98,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.8,
-            delay: 0.5,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="mb-8 w-full max-w-[920px] lg:mb-10"
-        >
-          <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
-            <GeneralInput
-              key={`welcome-input-${props.currentConversation.sessionId}`}
-              sessionId={props.currentConversation.sessionId}
-              placeholder={props.product.placeholder}
-              showBtn={true}
-              size="big"
-              disabled={false}
-              product={props.product}
-              deepThink={props.currentConversation.deepThink}
-              displayOutput={props.displayOutput}
-              chatRole={props.currentConversationRole}
-              chatRoles={props.fixRoles}
-              showRoleSelector={props.product.type === "chat"}
-              send={props.onSend}
-              onSelectionChange={props.onSelectionChange}
-              onRoleSelect={props.onRoleSelect}
-            />
-          </AiChatSurface>
-        </motion.div>
+          <motion.div
+            initial={false}
+            animate={{
+              opacity: hasSuggestedQuestions ? 1 : 0,
+              y: hasSuggestedQuestions ? 0 : -10,
+            }}
+            transition={{
+              duration: 0.3,
+              ease: [0.16, 1, 0.3, 1],
+            }}
+            className={classNames(
+              "mx-auto w-full max-w-[1180px] overflow-visible",
+              hasSuggestedQuestions
+                ? "mb-8 pointer-events-auto lg:mb-10"
+                : "mb-0 max-h-0 pointer-events-none"
+            )}
+          >
+            <div className="flex flex-wrap justify-center gap-3">
+              {suggestedQuestions.map((item, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  className="flex max-w-full cursor-pointer items-center gap-2 rounded-[16px] bg-[oklch(0.955_0.002_90)] px-5 py-3 text-[14px] font-medium leading-none text-[var(--chat-text)] transition-colors duration-200 hover:bg-[oklch(0.925_0.003_90)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chat-accent)]/25 md:text-[15px]"
+                  onClick={() => props.onSendQuestion(item)}
+                >
+                  {item.deepThink ? (
+                    <i className="font_family icon-shendusikao text-[12px] text-[var(--chat-text)]" />
+                  ) : null}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 24,
+              scale: 0.98,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1,
+            }}
+            transition={{
+              duration: 0.8,
+              delay: 0.5,
+              ease: [0.16, 1, 0.3, 1],
+            }}
+            className="mb-8 w-full max-w-[920px] lg:mb-10"
+          >
+            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
+              <GeneralInput
+                key={`welcome-input-${props.currentConversation.sessionId}`}
+                sessionId={props.currentConversation.sessionId}
+                placeholder={props.product.placeholder}
+                showBtn={true}
+                size="big"
+                disabled={false}
+                product={props.product}
+                deepThink={props.currentConversation.deepThink}
+                displayOutput={props.displayOutput}
+                chatRole={props.currentConversationRole}
+                chatRoles={props.fixRoles}
+                showRoleSelector={props.product.type === "chat"}
+                send={props.onSend}
+                onSelectionChange={props.onSelectionChange}
+                onRoleSelect={props.onRoleSelect}
+              />
+            </AiChatSurface>
+          </motion.div>
+        </div>
 
         {hasFeaturedCards ? (
           <motion.section
