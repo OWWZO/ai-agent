@@ -2,6 +2,7 @@ import classNames from "classnames";
 import {
   ArrowLeft,
   BookOpenText,
+  History,
   Copy,
   DatabaseZap,
   ExternalLink,
@@ -37,6 +38,8 @@ import type {
   KnowledgeBase,
   KnowledgeBaseFile,
   MRagFullContentStatus,
+  MRagSessionSummary,
+  MRagTurn,
 } from "./types";
 import {
   formatFileDocCount,
@@ -82,6 +85,13 @@ export type WorkspaceMRagViewProps = {
   onOpenFullContent: (fileId: string) => void;
   onCloseFullContent: () => void;
   onDeleteFile: (fileId: string) => void;
+  sessions: MRagSessionSummary[];
+  sessionsLoading: boolean;
+  sessionsError: string;
+  activeSessionId: string;
+  sessionTurns: MRagTurn[];
+  onCreateSession: () => void;
+  onSelectSession: (sessionId: string) => void;
   question: string;
   onQuestionChange: (value: string) => void;
   querying: boolean;
@@ -552,6 +562,13 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
     onOpenFullContent,
     onCloseFullContent,
     onDeleteFile,
+    sessions,
+    sessionsLoading,
+    sessionsError,
+    activeSessionId,
+    sessionTurns,
+    onCreateSession,
+    onSelectSession,
     question,
     onQuestionChange,
     querying,
@@ -565,12 +582,14 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
 
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const activeFullContentFile =
     files.find((file) => file.id === activeFullContentFileId) || null;
   const hasQueryResult = Boolean(queryAnswer || queryError || queryRawChunks.length > 0);
+  const hasSessionTurns = sessionTurns.length > 0;
   const pageTitle = selectedKnowledgeBase?.name || "MRAG 智能问答工作台";
   const workspaceLabel = "MRAG 智能问答工作台";
 
@@ -624,6 +643,22 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsHistoryOpen(true)}
+              className={classNames(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition",
+                isHistoryOpen
+                  ? "border-[var(--chat-accent)]/30 bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]"
+                  : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
+              )}
+            >
+              <History className="h-3.5 w-3.5" />
+              历史
+              <span className="rounded-full bg-[var(--chat-surface-soft)] px-1.5 text-[11px] tabular-nums">
+                {sessions.length}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => setIsLibraryOpen(true)}
@@ -776,6 +811,35 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                 </motion.div>
               ) : null}
             </motion.div>
+          ) : hasSessionTurns ? (
+            <div className="space-y-6">
+              {sessionTurns.map((turn, index) => (
+                <article
+                  key={turn.turnId || `${turn.createdAt}-${index}`}
+                  className="rounded-3xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-5 py-4 shadow-[var(--shadow-xs)]"
+                >
+                  <div className="mb-3 text-[11px] uppercase tracking-wider text-[var(--chat-text-muted)]">
+                    第 {index + 1} 轮
+                  </div>
+                  <div className="rounded-2xl bg-[var(--chat-surface-soft)] px-4 py-3 text-[14px] leading-7 text-[var(--chat-text)]">
+                    {turn.question}
+                  </div>
+                  {turn.errorMessage ? (
+                    <div className="mt-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
+                      {turn.errorMessage}
+                    </div>
+                  ) : (
+                    <div className="mt-4">
+                      <MarkdownRenderer
+                        markDownContent={turn.answerMarkdown}
+                        isStreaming={false}
+                        className="mrag-document-body text-[15px] leading-8"
+                      />
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
           ) : files.length ? (
             <div className="flex min-h-[48vh] flex-col items-center justify-center text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--chat-surface-soft)] text-[var(--chat-text-muted)]">
@@ -877,6 +941,60 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
       </div>
 
       {/* ── Knowledge source drawer ── */}
+      <SideDrawer
+        open={isHistoryOpen}
+        side="left"
+        title="对话历史"
+        subtitle="继续上一轮 MRAG 问答"
+        onClose={() => setIsHistoryOpen(false)}
+        headerExtra={
+          <ActionButton
+            label="新对话"
+            icon={<History className="h-3.5 w-3.5" />}
+            onClick={onCreateSession}
+            variant="ghost"
+          />
+        }
+      >
+        {sessionsError ? (
+          <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
+            {sessionsError}
+          </div>
+        ) : null}
+        {sessionsLoading ? (
+          <div className="py-6 text-center text-[12px] text-[var(--chat-text-muted)]">
+            加载中...
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="py-6 text-center text-[12px] text-[var(--chat-text-muted)]">
+            暂无历史对话
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map((session) => (
+              <button
+                key={session.sessionId}
+                type="button"
+                onClick={() => onSelectSession(session.sessionId)}
+                className={classNames(
+                  "w-full rounded-2xl border px-3 py-3 text-left transition",
+                  session.sessionId === activeSessionId
+                    ? "border-[var(--chat-accent)]/30 bg-[var(--chat-accent-soft)]"
+                    : "border-[var(--chat-border)] bg-[var(--chat-surface)] hover:bg-[var(--chat-surface-soft)]"
+                )}
+              >
+                <div className="truncate text-[13px] font-semibold text-[var(--chat-text)]">
+                  {session.title}
+                </div>
+                <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--chat-text-muted)]">
+                  {session.latestQuestion || "暂无问题"}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </SideDrawer>
+
       <SideDrawer
         open={isLibraryOpen}
         side="left"

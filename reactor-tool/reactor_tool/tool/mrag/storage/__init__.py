@@ -6,8 +6,11 @@
 - 存储接口抽象
 """
 
-from .vector_store import VectorStore
+__all__ = ["VectorStore"]
 
-__all__ = [
-    'VectorStore',
-]
+
+def __getattr__(name):
+    if name == "VectorStore":
+        from .vector_store import VectorStore
+        return VectorStore
+    raise AttributeError(name)

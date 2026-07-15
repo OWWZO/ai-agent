@@ -12,6 +12,12 @@ type NormalizeMarkdownOptions = {
 const CODE_FENCE_SEGMENT_PATTERN = /(```[\s\S]*?```)/g;
 const CJK_SENTENCE_END_PATTERN =
   "[\\u3400-\\u9fff。！？：:；;，,、）】」』]";
+// 至少两段“完整表格行”被空格粘在同一行：`| a | b | | c | d |`
+const STICKY_TABLE_ROW_PATTERN =
+  /((?:\|[^|\n]*){2,}\|)[ \t]+(\|(?:[^|\n]*\|){2,})/g;
+const TABLE_SEPARATOR_LINE_PATTERN =
+  /^\s*\|(?:[\t ]*:?-{3,}:?[\t ]*\|)+\s*$/;
+const TABLE_ROW_LINE_PATTERN = /^\s*\|.*\|\s*$/;
 
 /**
  * 轻量修正模型输出里常见的 Markdown 断行问题，避免标题和列表被粘在上一段句尾，
@@ -55,28 +61,31 @@ function normalizeMarkdownSegment(
 }
 
 function normalizeStructuredSummarySegment(segment: string): string {
-  return segment
-    // 标题缺少空格时补齐，便于 `###1）` / `##你如果...` 正常识别。
-    .replace(/(^|\n)([ \t]*#{1,6})(?=\S)/g, "$1$2 ")
-    // 列表项缺少空格时补齐，避免 `-计划玩几天` 被当成普通文本。
-    .replace(/(^|\n)([ \t]*[-*])(?![-*])(?=\S)/g, "$1$2 ")
-    // 中英文句尾后若直接拼了列表项，也先补空格，后续再拆段。
-    .replace(
-      new RegExp(
-        `(${CJK_SENTENCE_END_PATTERN})([ \\t]*[-*])(?![-*])(?=\\S)`,
-        "g"
-      ),
-      "$1$2 "
-    )
-    // 常见中文序号列表如 `1）经典必去` 也补齐空格。
-    .replace(/(^|\n)([ \t]*\d+[.)）])(?=\S)/g, "$1$2 ")
-    .replace(
-      new RegExp(
-        `(${CJK_SENTENCE_END_PATTERN})([ \\t]*\\d+[.)）])(?=\\S)`,
-        "g"
-      ),
-      "$1$2 "
-    );
+  return normalizeStickyMarkdownTables(
+    segment
+      // 标题缺少空格时补齐。lookahead 排除 `#`，避免把合法 `### 标题` 拆成 `##` + `#`。
+      // 同时覆盖行首 `###1）`、行中 `。###核心结论`、`建议###交付文件`。
+      .replace(/(#{1,6})(?=[^\s#])/g, "$1 ")
+      // 列表项缺少空格时补齐，避免 `-计划玩几天` 被当成普通文本。
+      .replace(/(^|\n)([ \t]*[-*])(?![-*])(?=\S)/g, "$1$2 ")
+      // 中英文句尾后若直接拼了列表项，也先补空格，后续再拆段。
+      .replace(
+        new RegExp(
+          `(${CJK_SENTENCE_END_PATTERN})([ \\t]*[-*])(?![-*])(?=\\S)`,
+          "g"
+        ),
+        "$1$2 "
+      )
+      // 常见中文序号列表如 `1）经典必去` 也补齐空格。
+      .replace(/(^|\n)([ \t]*\d+[.)）])(?=\S)/g, "$1$2 ")
+      .replace(
+        new RegExp(
+          `(${CJK_SENTENCE_END_PATTERN})([ \\t]*\\d+[.)）])(?=\\S)`,
+          "g"
+        ),
+        "$1$2 "
+      )
+  );
 }
 
 function normalizeCommonMarkdownSegment(segment: string): string {
@@ -104,4 +113,62 @@ function normalizeCommonMarkdownSegment(segment: string): string {
       ),
       "$1\n$2"
     );
+}
+
+/**
+ * 修复模型把多行 GFM 表格粘成一行的情况，并在缺少表头时补空表头。
+ */
+function normalizeStickyMarkdownTables(segment: string): string {
+  const withSplitRows = splitStickyTableRows(segment);
+  return ensureTableHeaderRows(withSplitRows);
+}
+
+function splitStickyTableRows(segment: string): string {
+  let current = segment;
+  let previous = "";
+  while (current !== previous) {
+    previous = current;
+    current = current.replace(STICKY_TABLE_ROW_PATTERN, "$1\n$2");
+  }
+  return current;
+}
+
+function ensureTableHeaderRows(segment: string): string {
+  const lines = segment.split("\n");
+  const result: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const previousLine = result.length > 0 ? result[result.length - 1] : "";
+    const previousIsTableRow = TABLE_ROW_LINE_PATTERN.test(previousLine);
+    const currentIsSeparator = TABLE_SEPARATOR_LINE_PATTERN.test(line);
+
+    // GFM 要求分隔行前必须有表头；模型常直接从 `| --- |` 开始。
+    if (currentIsSeparator && !previousIsTableRow) {
+      const columnCount = countTableColumns(line);
+      if (columnCount > 0) {
+        result.push(buildEmptyTableHeader(columnCount));
+      }
+    }
+
+    result.push(line);
+  }
+
+  return result.join("\n");
+}
+
+function countTableColumns(separatorLine: string): number {
+  const cells = separatorLine
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => cell.length > 0);
+  return cells.length;
+}
+
+function buildEmptyTableHeader(columnCount: number): string {
+  const cells = Array.from({ length: columnCount }, () => " ");
+  return `|${cells.join("|")}|`;
 }

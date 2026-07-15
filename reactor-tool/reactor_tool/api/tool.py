@@ -12,6 +12,8 @@ import math
 import os
 import threading
 import time
+import uuid
+from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
@@ -36,6 +38,12 @@ from reactor_tool.model.protocal import (
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
     WebFetchRequest,
+)
+from reactor_tool.tool.mrag.storage.models.mrag_session_model import MRagSessionModel
+from reactor_tool.tool.mrag.storage.models.mrag_turn_model import MRagTurnModel
+from reactor_tool.tool.mrag.storage.store_factory import (
+    get_mrag_session_store,
+    get_mrag_turn_store,
 )
 from reactor_tool.tool.web_fetcher import WebFetcher
 from reactor_tool.tool.code_interpreter_policy import CodeExecutionPermissionError
@@ -690,6 +698,50 @@ def build_mrag_agent(kb_scope: str | list[str]):
     return AgenticRAG(kb_id=kb_scope, n_round=3)
 
 
+def _normalize_kb_scope_list(kb_scope: str | list[str]) -> list[str]:
+    if isinstance(kb_scope, list):
+        return [item for item in kb_scope if item]
+    return [kb_scope] if kb_scope else []
+
+
+def _build_session_title(question: str) -> str:
+    normalized = question.strip()
+    if len(normalized) <= 24:
+        return normalized
+    return f"{normalized[:24]}..."
+
+
+def _build_answer_preview(answer: str) -> str:
+    preview = " ".join(answer.strip().split())
+    if len(preview) <= 120:
+        return preview
+    return f"{preview[:120]}..."
+
+
+def _ensure_mrag_session(session_id: str, question: str, kb_scope: str | list[str]) -> MRagSessionModel:
+    session_store = get_mrag_session_store()
+    session = session_store.get_session(session_id)
+    if session:
+        return session
+
+    normalized_scope = _normalize_kb_scope_list(kb_scope)
+    now = datetime.now()
+    session = MRagSessionModel(
+        session_id=session_id,
+        title=_build_session_title(question) or "新对话",
+        kb_scope=normalized_scope,
+        cover_kb_id=normalized_scope[0] if normalized_scope else None,
+        latest_question=question,
+        latest_answer_preview="",
+        turn_count=0,
+        status="RUNNING",
+        create_time=now,
+        modify_time=now,
+    )
+    session_store.create_session(session)
+    return session
+
+
 def _normalize_mrag_chunk(chunk) -> dict | None:
     """兼容 OpenAI SDK chunk、字典和纯文本三种返回形态。"""
     if chunk is None:
@@ -733,25 +785,79 @@ async def post_mrag_query(body: MultimodalRAGRequest):
         raise HTTPException(status_code=500, detail="DEFAULT_KB_ID is not configured")
 
     agent = build_mrag_agent(kb_scope)
+    session_id = body.session_id.strip()
+    turn_store = get_mrag_turn_store() if session_id else None
+    turn = None
+    if session_id:
+        _ensure_mrag_session(session_id, body.question, kb_scope)
+        turn = MRagTurnModel(
+            turn_id=f"mrag_turn_{uuid.uuid4().hex}",
+            session_id=session_id,
+            question=body.question,
+            status="RUNNING",
+            request_kb_scope=_normalize_kb_scope_list(kb_scope),
+            request_image_urls=list(body.image_urls),
+            create_time=datetime.now(),
+            modify_time=datetime.now(),
+        )
+        turn_store.create_turn(turn)
 
     def generator():
         has_payload = False
+        answer_parts = []
+        raw_chunks = []
+        final_status = "SUCCESS"
+        error_message = ""
         try:
             for chunk in agent.run(body.question, body.image_urls):
                 payload = _normalize_mrag_chunk(chunk)
                 if not payload:
                     continue
                 has_payload = True
+                raw_chunks.append(payload)
+                delta = ((payload.get("choices") or [{}])[0].get("delta") or {}).get("content", "")
+                if delta:
+                    answer_parts.append(delta)
                 yield json.dumps(payload, ensure_ascii=False)
         except TimeoutError:
             logger.exception("mragQuery timeout")
-            yield json.dumps(_build_mrag_chunk("MRAG 检索超时，请稍后重试。", "stop"), ensure_ascii=False)
+            final_status = "FAILED"
+            error_message = "MRAG 检索超时，请稍后重试。"
+            yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         except Exception as e:
             logger.exception("mragQuery failed")
-            yield json.dumps(_build_mrag_chunk(f"MRAG 检索失败：{e}", "stop"), ensure_ascii=False)
+            final_status = "FAILED"
+            error_message = f"MRAG 检索失败：{e}"
+            yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         else:
             if not has_payload:
-                yield json.dumps(_build_mrag_chunk("MRAG 未返回有效内容。", "stop"), ensure_ascii=False)
+                final_status = "FAILED"
+                error_message = "MRAG 未返回有效内容。"
+                yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
+        finally:
+            if turn and turn_store:
+                answer_markdown = "".join(answer_parts)
+                turn.answer_markdown = answer_markdown
+                turn.status = final_status
+                turn.error_message = error_message
+                turn.raw_chunks = raw_chunks
+                turn.modify_time = datetime.now()
+                turn_store.update_turn(turn)
+
+                session_store = get_mrag_session_store()
+                session = session_store.get_session(session_id)
+                if session:
+                    normalized_scope = _normalize_kb_scope_list(kb_scope)
+                    if session.turn_count == 0:
+                        session.title = _build_session_title(body.question) or session.title
+                    session.kb_scope = normalized_scope
+                    session.cover_kb_id = normalized_scope[0] if normalized_scope else None
+                    session.latest_question = body.question
+                    session.latest_answer_preview = _build_answer_preview(answer_markdown or error_message)
+                    session.turn_count = len(turn_store.list_turns(session_id))
+                    session.status = final_status
+                    session.modify_time = datetime.now()
+                    session_store.update_session(session)
 
         yield "[DONE]"
 

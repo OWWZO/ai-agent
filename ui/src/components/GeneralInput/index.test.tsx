@@ -18,4 +18,22 @@ describe("GeneralInput", () => {
 
     expect(html).not.toMatch(/<button[^>]*>\s*<button/i);
   });
+
+  it("busy 时在发送按钮旁展示 Working shimmer", () => {
+    const html = renderToStaticMarkup(
+      <GeneralInput
+        sessionId="session-1"
+        placeholder="任务进行中..."
+        showBtn={false}
+        disabled
+        busy
+        size="default"
+        send={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Working");
+    expect(html).toContain("thinking-shimmer");
+    expect(html).toContain('aria-label="Working"');
+  });
 });

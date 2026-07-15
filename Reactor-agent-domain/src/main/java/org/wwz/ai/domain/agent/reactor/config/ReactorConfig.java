@@ -271,7 +271,7 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.summary.model_name:}")
     private String summaryModelName;
 
-    @Value("${autobots.autoagent.summary.temperature:0.7}")
+    @Value("${autobots.autoagent.summary.temperature:0.2}")
     private Double summaryTemperature;
 
     @Value("${autobots.autoagent.digital_employee_prompt:}")

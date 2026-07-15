@@ -5,7 +5,9 @@ import { showMessage } from "@/utils";
 
 export function useMragQuery(
   toolBaseUrl: string,
-  selectedKnowledgeBaseId: string
+  selectedKnowledgeBaseId: string,
+  sessionId: string,
+  onCompleted?: () => void
 ) {
   const queryAbortRef = useRef<AbortController | null>(null);
   const [question, setQuestion] = useState("");
@@ -14,7 +16,7 @@ export function useMragQuery(
   const [queryError, setQueryError] = useState("");
   const [queryRawChunks, setQueryRawChunks] = useState<unknown[]>([]);
 
-  const handleSubmitQuery = useCallback(async () => {
+  const handleSubmitQuery = useCallback(async (overrideSessionId?: string) => {
     const currentQuestion = question.trim();
     if (!selectedKnowledgeBaseId) {
       showMessage()?.error("请先选择知识库");
@@ -38,6 +40,7 @@ export function useMragQuery(
       await streamMragQuery({
         toolBaseUrl,
         kbId: selectedKnowledgeBaseId,
+        sessionId: overrideSessionId || sessionId,
         question: currentQuestion,
         signal: abortController.signal,
         onChunk(chunk) {
@@ -56,8 +59,11 @@ export function useMragQuery(
         queryAbortRef.current = null;
       }
       setQuerying(false);
+      if (!abortController.signal.aborted) {
+        onCompleted?.();
+      }
     }
-  }, [question, selectedKnowledgeBaseId, toolBaseUrl]);
+  }, [onCompleted, question, selectedKnowledgeBaseId, sessionId, toolBaseUrl]);
 
   const handleStopQuery = useCallback(() => {
     if (!queryAbortRef.current) {

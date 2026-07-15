@@ -14,6 +14,39 @@ export type MRagWorkspaceStoredState = {
   selectedKnowledgeBaseId: string;
 };
 
+export type MRagSessionSummary = {
+  sessionId: string;
+  title: string;
+  kbScope: string[];
+  coverKbId: string;
+  latestQuestion: string;
+  latestAnswerPreview: string;
+  turnCount: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MRagTurn = {
+  turnId: string;
+  sessionId: string;
+  question: string;
+  answerMarkdown: string;
+  status: string;
+  errorMessage: string;
+  requestKbScope: string[];
+  requestImageUrls: string[];
+  answerImageUrls: string[];
+  rawChunks: unknown[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MRagSessionDetail = {
+  session: MRagSessionSummary;
+  turns: MRagTurn[];
+};
+
 export type KnowledgeBase = {
   id: string;
   name: string;

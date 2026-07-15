@@ -9,6 +9,9 @@ import type {
   MRagFileStatus,
   MRagFullContentStatus,
   MRagSourceType,
+  MRagSessionDetail,
+  MRagSessionSummary,
+  MRagTurn,
   UploadDocumentResult,
 } from "@/pages/WorkspaceMRag/types";
 import { trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
@@ -128,10 +131,48 @@ type GetKnowledgeBaseFileFullContentPayload = {
 type StreamMragQueryPayload = {
   toolBaseUrl: string;
   kbId?: string;
+  sessionId?: string;
   question: string;
   imageUrls?: string[];
   signal?: AbortSignal;
   onChunk: (chunk: MRagChunkEnvelope) => void;
+};
+
+type RawMragSessionSummary = {
+  session_id?: string;
+  title?: string;
+  kb_scope?: string[];
+  cover_kb_id?: string;
+  latest_question?: string;
+  latest_answer_preview?: string;
+  turn_count?: number;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type RawMragTurn = {
+  turn_id?: string;
+  session_id?: string;
+  question?: string;
+  answer_markdown?: string;
+  status?: string;
+  error_message?: string;
+  request_kb_scope?: string[];
+  request_image_urls?: string[];
+  answer_image_urls?: string[];
+  raw_chunks?: unknown[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+type ListMragSessionsPayload = {
+  list?: RawMragSessionSummary[];
+};
+
+type SessionDetailPayload = {
+  session?: RawMragSessionSummary;
+  turns?: RawMragTurn[];
 };
 
 type JsonValue = Record<string, unknown> | string;
@@ -316,6 +357,46 @@ export function normalizeKnowledgeBase(rawKnowledgeBase: RawKnowledgeBase): Know
     createdAt: rawKnowledgeBase.create_time ?? null,
     updatedAt: rawKnowledgeBase.modify_time ?? null,
     raw: toRecord(rawKnowledgeBase),
+  };
+}
+
+function normalizeMragSessionSummary(rawSession: RawMragSessionSummary): MRagSessionSummary {
+  return {
+    sessionId: String(rawSession.session_id || ""),
+    title: String(rawSession.title || "新对话"),
+    kbScope: Array.isArray(rawSession.kb_scope)
+      ? rawSession.kb_scope.map((item) => String(item || "")).filter(Boolean)
+      : [],
+    coverKbId: String(rawSession.cover_kb_id || ""),
+    latestQuestion: String(rawSession.latest_question || ""),
+    latestAnswerPreview: String(rawSession.latest_answer_preview || ""),
+    turnCount: Number(rawSession.turn_count || 0),
+    status: String(rawSession.status || "IDLE"),
+    createdAt: String(rawSession.created_at || ""),
+    updatedAt: String(rawSession.updated_at || ""),
+  };
+}
+
+function normalizeMragTurn(rawTurn: RawMragTurn): MRagTurn {
+  return {
+    turnId: String(rawTurn.turn_id || ""),
+    sessionId: String(rawTurn.session_id || ""),
+    question: String(rawTurn.question || ""),
+    answerMarkdown: String(rawTurn.answer_markdown || ""),
+    status: String(rawTurn.status || "IDLE"),
+    errorMessage: String(rawTurn.error_message || ""),
+    requestKbScope: Array.isArray(rawTurn.request_kb_scope)
+      ? rawTurn.request_kb_scope.map((item) => String(item || "")).filter(Boolean)
+      : [],
+    requestImageUrls: Array.isArray(rawTurn.request_image_urls)
+      ? rawTurn.request_image_urls.map((item) => String(item || "")).filter(Boolean)
+      : [],
+    answerImageUrls: Array.isArray(rawTurn.answer_image_urls)
+      ? rawTurn.answer_image_urls.map((item) => String(item || "")).filter(Boolean)
+      : [],
+    rawChunks: Array.isArray(rawTurn.raw_chunks) ? rawTurn.raw_chunks : [],
+    createdAt: String(rawTurn.created_at || ""),
+    updatedAt: String(rawTurn.updated_at || ""),
   };
 }
 
@@ -640,6 +721,7 @@ export async function streamMragQuery(
       "Cache-Control": "no-cache",
     },
     body: JSON.stringify({
+      session_id: payload.sessionId || undefined,
       question: payload.question,
       image_urls: payload.imageUrls || [],
       kb_id: payload.kbId || undefined,
@@ -685,4 +767,50 @@ export async function streamMragQuery(
   if (!receivedDone && streamClosed && !payload.signal?.aborted) {
     throw new MRagWorkspaceRequestError("MRAG 连接在完成前意外关闭");
   }
+}
+
+export async function listMragSessions(toolBaseUrl: string): Promise<MRagSessionSummary[]> {
+  const payload = await requestWrappedData<ListMragSessionsPayload>(
+    toolBaseUrl,
+    "/v1/mrag/sessions/list",
+    {
+      page_no: 1,
+      page_size: 20,
+    }
+  );
+
+  return (payload.list || []).map(normalizeMragSessionSummary);
+}
+
+export async function createMragSession(toolBaseUrl: string, payload: {
+  kbId?: string;
+  kbIds?: string[];
+  title?: string;
+}): Promise<MRagSessionSummary> {
+  const created = await requestWrappedData<RawMragSessionSummary>(
+    toolBaseUrl,
+    "/v1/mrag/sessions/create",
+    {
+      kb_id: payload.kbId || "",
+      kb_ids: payload.kbIds || [],
+      title: payload.title || "新对话",
+    }
+  );
+  return normalizeMragSessionSummary(created);
+}
+
+export async function getMragSessionDetail(
+  toolBaseUrl: string,
+  sessionId: string
+): Promise<MRagSessionDetail> {
+  const payload = await requestWrappedData<SessionDetailPayload>(
+    toolBaseUrl,
+    "/v1/mrag/sessions/detail",
+    { session_id: sessionId }
+  );
+
+  return {
+    session: normalizeMragSessionSummary(payload.session || {}),
+    turns: (payload.turns || []).map(normalizeMragTurn),
+  };
 }

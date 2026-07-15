@@ -506,6 +506,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     }
                     showBtn={false}
                     size="medium"
+                    busy={loading}
                     disabled={loading || conversation.role?.available === false}
                     product={currentProduct}
                     deepThink={conversation.deepThink}
@@ -613,6 +614,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                         }
                         showBtn={false}
                         size="medium"
+                        busy={loading}
                         disabled={loading || conversation.role?.available === false}
                         product={currentProduct}
                         deepThink={conversation.deepThink}
@@ -752,6 +754,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
                   showBtn={false}
                   size="medium"
+                  busy={loading}
                   disabled={loading}
                   product={currentProduct}
                   deepThink={false}

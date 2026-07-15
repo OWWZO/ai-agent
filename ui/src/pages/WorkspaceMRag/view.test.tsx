@@ -103,6 +103,26 @@ describe("WorkspaceMRagView", () => {
           onOpenFullContent={() => {}}
           onCloseFullContent={() => {}}
           onDeleteFile={() => {}}
+          sessions={[
+            {
+              sessionId: "session-1",
+              title: "SDK 鉴权流程",
+              kbScope: ["kb-1"],
+              coverKbId: "kb-1",
+              latestQuestion: "资料里有哪些关键流程？",
+              latestAnswerPreview: "命中了产品接入流程说明",
+              turnCount: 1,
+              status: "SUCCESS",
+              createdAt: "2026-04-26T10:00:00",
+              updatedAt: "2026-04-26T10:00:00",
+            },
+          ]}
+          sessionsLoading={false}
+          sessionsError=""
+          activeSessionId="session-1"
+          sessionTurns={[]}
+          onCreateSession={() => {}}
+          onSelectSession={() => {}}
           question="资料里有哪些关键流程？"
           onQuestionChange={() => {}}
           querying={false}
@@ -176,6 +196,13 @@ describe("WorkspaceMRagView", () => {
           onOpenFullContent={() => {}}
           onCloseFullContent={() => {}}
           onDeleteFile={() => {}}
+          sessions={[]}
+          sessionsLoading={false}
+          sessionsError=""
+          activeSessionId=""
+          sessionTurns={[]}
+          onCreateSession={() => {}}
+          onSelectSession={() => {}}
           question=""
           onQuestionChange={() => {}}
           querying={false}

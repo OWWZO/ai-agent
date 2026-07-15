@@ -269,6 +269,7 @@ class MultimodalRAGRequest(BaseModel):
     image_urls: List[str] = Field(default_factory=list, description="图片 URL 列表")
     kb_id: Optional[str] = Field(default="", description="知识库 ID，缺省时回退默认知识库")
     kb_ids: List[str] = Field(default_factory=list, description="知识库 ID 列表，非空时优先于 kb_id")
+    session_id: Optional[str] = Field(default="", description="MRAG 会话 ID")
 
     @field_validator("question")
     @classmethod
@@ -295,6 +296,13 @@ class MultimodalRAGRequest(BaseModel):
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()]
         return []
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def normalize_session_id(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
 
     def resolve_kb_scope(self, default_kb_id: str) -> str | List[str]:
         """优先使用显式多选知识库，其次兼容旧单库字段。"""

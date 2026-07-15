@@ -44,6 +44,8 @@ type Props = {
   placeholder: string;
   showBtn: boolean;
   disabled: boolean;
+  /** Agent 任务进行中时，在发送按钮旁展示轻量运行指示 */
+  busy?: boolean;
   size: string;
   product?: CHAT.Product;
   deepThink?: boolean;
@@ -227,6 +229,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     placeholder,
     showBtn,
     disabled,
+    busy = false,
     size,
     product,
     deepThink = false,
@@ -599,7 +602,19 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               ) : null}
             </PromptInputTools>
 
-            <PromptInputTools className="shrink-0 gap-2 self-end">
+            <PromptInputTools className="shrink-0 items-center gap-2 self-end">
+              {busy ? (
+                <div
+                  className="mr-1 flex items-center text-[13px] font-medium text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                  aria-label="Working"
+                >
+                  <span className="thinking-shimmer text-[13px] font-medium tracking-[0.02em]">
+                    Working
+                  </span>
+                </div>
+              ) : null}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
@@ -611,7 +626,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   </PromptInputSubmit>
                 </TooltipTrigger>
                 <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                  发送
+                  {busy ? "任务进行中" : "发送"}
                 </TooltipContent>
               </Tooltip>
             </PromptInputTools>

@@ -14,6 +14,7 @@ import {
 } from "./knowledgeBaseState";
 import { useKnowledgeBaseCatalog } from "./useKnowledgeBaseCatalog";
 import { useKnowledgeBaseFiles } from "./useKnowledgeBaseFiles";
+import { useMragHistory } from "./useMragHistory";
 import { useMragQuery } from "./useMragQuery";
 
 interface WorkspaceMRagProps {
@@ -32,9 +33,17 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
     toolBaseUrl,
     selectedKnowledgeBaseId
   );
+  const historyState = useMragHistory(toolBaseUrl, selectedKnowledgeBaseId);
   const queryState = useMragQuery(
     toolBaseUrl,
-    selectedKnowledgeBaseId
+    selectedKnowledgeBaseId,
+    historyState.activeSessionId,
+    () => {
+      if (historyState.activeSessionId) {
+        void historyState.loadSessionDetail(historyState.activeSessionId);
+      }
+      void historyState.refreshSessions();
+    }
   );
 
   const selectedKnowledgeBase = useMemo(
@@ -183,6 +192,23 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         }}
         onCloseFullContent={filesState.handleCloseFullContent}
         onDeleteFile={filesState.handleDeleteFile}
+        sessions={historyState.sessions}
+        sessionsLoading={historyState.sessionsLoading}
+        sessionsError={historyState.sessionsError}
+        activeSessionId={historyState.activeSessionId}
+        sessionTurns={historyState.sessionDetail?.turns || []}
+        onCreateSession={() => {
+          queryState.handleClearQueryResult();
+          void historyState.createSession();
+        }}
+        onSelectSession={(sessionId) => {
+          queryState.handleClearQueryResult();
+          void historyState.loadSessionDetail(sessionId).then((detail) => {
+            if (detail?.session.coverKbId) {
+              setSelectedKnowledgeBaseId(detail.session.coverKbId);
+            }
+          });
+        }}
         question={queryState.question}
         onQuestionChange={queryState.setQuestion}
         querying={queryState.querying}
@@ -190,7 +216,9 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         queryError={queryState.queryError}
         queryRawChunks={queryState.queryRawChunks}
         onSubmitQuery={() => {
-          void queryState.handleSubmitQuery();
+          void historyState.ensureActiveSession().then((sessionId) => {
+            void queryState.handleSubmitQuery(sessionId);
+          });
         }}
         onStopQuery={queryState.handleStopQuery}
         onClearQueryResult={queryState.handleClearQueryResult}
