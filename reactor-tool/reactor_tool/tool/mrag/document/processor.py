@@ -30,6 +30,7 @@ from .splitter import get_text_splitter
 from ..embedding.bm25_embedding import get_bm25_embedding_model
 from ..embedding.image_embedding import get_image_embedding_model
 from ..embedding.text_embedding import get_text_embedding_model
+from ..runtime_mode import get_image_index_mode, is_multimodal_image_index_enabled
 from ..storage import VectorStore
 from ..storage.models.kb_doc_model import (
     CANONICAL_FULL_TEXT_CHUNK_TYPE,
@@ -78,7 +79,9 @@ class DocumentProcessor:
 
         self._bm25_embedding = get_bm25_embedding_model()
 
-        self._image_embedding = get_image_embedding_model()
+        self._image_index_mode = get_image_index_mode()
+        self._image_vector_enabled = is_multimodal_image_index_enabled()
+        self._image_embedding = get_image_embedding_model() if self._image_vector_enabled else None
 
         self._ocr = get_ocr_model()
         self._image_urls = {}
@@ -124,6 +127,77 @@ class DocumentProcessor:
         """按相对资源路径查找已上传的图片 URL。"""
         asset_key = self._build_asset_key(file_path, root_dir)
         return self._image_urls[asset_key]
+
+    def _build_visual_asset_id(self, index: int) -> str:
+        """统一图片/页面关联键生成规则，避免向量块和文本代理块编号漂移。"""
+        return f"{self._uid}-{index}"
+
+    def _build_visual_text_chunks(
+            self,
+            asset_paths: list[str],
+            *,
+            root_dir: str,
+            path_field: str,
+            id_field: str,
+            start_index: int = 0,
+    ) -> list[dict]:
+        """为图片/页面生成 OCR 与 caption 文本代理块，供 text_proxy 模式复用。"""
+        text_chunk_data = []
+        for offset, asset_path in enumerate(asset_paths):
+            visual_asset_id = self._build_visual_asset_id(start_index + offset)
+            common_payload = {
+                "kb_id": self._kb_id,
+                "ref_id": self._uid,
+                "file_id": self._uid,
+                "doc_id": self._uid,
+                "file_sorted": visual_asset_id,
+                "file_path": self._file_path,
+                "file_url": self._file_url,
+                "filename": self._filename,
+                "created": time.time(),
+                "image_url": self._get_uploaded_asset_url(asset_path, root_dir),
+                id_field: visual_asset_id,
+                path_field: asset_path,
+            }
+
+            ocr_text = self._ocr.ocr(asset_path)
+            if ocr_text:
+                text_chunk_data.append({
+                    **common_payload,
+                    "text": ocr_text,
+                    "chunk_type": "ocr_text",
+                    "chunk_id": uuid.uuid4().hex,
+                })
+
+            caption = generate_caption(asset_path)
+            if caption:
+                text_chunk_data.append({
+                    **common_payload,
+                    "text": caption,
+                    "chunk_type": "caption",
+                    "chunk_id": uuid.uuid4().hex,
+                })
+        return text_chunk_data
+
+    def _persist_visual_text_chunks(self, text_chunk_data: list[dict], desc: str) -> None:
+        """统一补齐 OCR/caption 文本向量，避免图片与页面逻辑重复。"""
+        if not text_chunk_data:
+            logger.info(f"No {desc} generated for file_id={self._uid}, skip text proxy upsert")
+            return
+
+        batch_size = 10
+        for i in tqdm.tqdm(range(0, len(text_chunk_data), batch_size), desc=desc,
+                           total=len(text_chunk_data) // batch_size + 1):
+            chunk_batch = text_chunk_data[i:i + batch_size]
+            text_batch = [chunk["text"] for chunk in chunk_batch]
+            text_embeddings = self._text_embedding.encode_text_batch(text_batch)
+            bm25_embeddings = self._bm25_embedding.encode_text_batch(text_batch)
+            for chunk, embedding, bm25_embedding in zip(chunk_batch, text_embeddings, bm25_embeddings):
+                chunk.update({
+                    "vector": embedding,
+                    "sparse_vector": bm25_embedding,
+                })
+            self._vector_store.add_text_chunks(chunk_batch)
 
     def _process_text(self):
         text = self._parser.parsed_text()
@@ -211,182 +285,97 @@ class DocumentProcessor:
 
     def _process_image(self):
         image_paths = self._parser.parsed_images()
+        if not image_paths:
+            return
 
-        batch_size = 5
-        for i in tqdm.tqdm(range(0, len(image_paths), batch_size), desc="Process image",
-                           total=len(image_paths) // batch_size + 1):
-            image_paths_batch = image_paths[i:i + batch_size]
-            images = [Image.open(image_path) for image_path in image_paths_batch]
-            images = [image_utils.resize_image(image) for image in images]
-            image_embeddings = self._image_embedding.encode_image_batch(images)
+        if self._image_vector_enabled:
+            batch_size = 5
+            for i in tqdm.tqdm(range(0, len(image_paths), batch_size), desc="Process image",
+                               total=len(image_paths) // batch_size + 1):
+                image_paths_batch = image_paths[i:i + batch_size]
+                images = [Image.open(image_path) for image_path in image_paths_batch]
+                images = [image_utils.resize_image(image) for image in images]
+                image_embeddings = self._image_embedding.encode_image_batch(images)
 
-            # 添加到图片向量库
-            chunk_data = []
-
-            for j, (image_path, embedding) in enumerate(zip(image_paths_batch, image_embeddings)):
-                chunk_data.append({
-                    "kb_id": self._kb_id,
-                    "ref_id": self._uid,
-                    "doc_id": self._uid,
-                    "file_id": self._uid,
-                    "image_id": f"{self._uid}-{i + j}",
-                    "file_sorted": f"{self._uid}-{i + j}",
-                    "chunk_id": uuid.uuid4().hex,
-
-                    "chunk_type": "image",
-                    "vector": embedding,
-                    "file_path": self._file_path,
-                    "image_path": image_path,
-                    "file_url": self._file_url,
-                    "filename": self._filename,
-                    "created": time.time(),
-                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
-                })
-            self._vector_store.add_image_chunks(chunk_data)
-
-            # 生成ocr 和 caption
-            text_chunk_data = []
-            for j, image_path in enumerate(image_paths_batch):
-                ocr_text = self._ocr.ocr(image_path)
-                caption = generate_caption(image_path)
-                if ocr_text:
-                    text_chunk_data.append({
-                        "text": ocr_text,
+                chunk_data = []
+                for j, (image_path, embedding) in enumerate(zip(image_paths_batch, image_embeddings)):
+                    visual_asset_id = self._build_visual_asset_id(i + j)
+                    chunk_data.append({
                         "kb_id": self._kb_id,
                         "ref_id": self._uid,
-                        "file_id": self._uid,
                         "doc_id": self._uid,
+                        "file_id": self._uid,
+                        "image_id": visual_asset_id,
+                        "file_sorted": visual_asset_id,
                         "chunk_id": uuid.uuid4().hex,
-                        "image_id": f"{self._uid}-{i + j}",
-                        "file_sorted": f"{self._uid}-{i + j}",
-                        "chunk_type": "ocr_text",
+                        "chunk_type": "image",
+                        "vector": embedding,
                         "file_path": self._file_path,
-                        "file_url": self._file_url,
                         "image_path": image_path,
+                        "file_url": self._file_url,
                         "filename": self._filename,
                         "created": time.time(),
                         "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
                     })
-                if caption:
-                    text_chunk_data.append({
-                        "text": caption,
-                        "kb_id": self._kb_id,
-                        "ref_id": self._uid,
-                        "file_id": self._uid,
-                        "doc_id": self._uid,
-                        "chunk_id": uuid.uuid4().hex,
+                self._vector_store.add_image_chunks(chunk_data)
+        else:
+            logger.info(f"MRAG 图片向量已关闭，当前以文本代理模式处理图片，file_id={self._uid}")
 
-                        "image_id": f"{self._uid}-{i + j}",
-                        "file_sorted": f"{self._uid}-{i + j}",
-                        "chunk_type": "caption",
-                        "file_path": self._file_path,
-                        "file_url": self._file_url,
-                        "image_path": image_path,
-                        "filename": self._filename,
-                        "created": time.time(),
-                        "image_url": self._get_uploaded_asset_url(image_path, self._parser.images_dir),
-                    })
-            text_batch = [chunk['text'] for chunk in text_chunk_data]
-            text_embeddings = self._text_embedding.encode_text_batch(text_batch)
-            bm25_embeddings = self._bm25_embedding.encode_text_batch(text_batch)
-            for j, (chunk, embedding, bm25_embedding) in enumerate(
-                    zip(text_chunk_data, text_embeddings, bm25_embeddings)):
-                chunk.update({
-                    "vector": embedding,
-                    "sparse_vector": bm25_embedding,
-                })
-            self._vector_store.add_text_chunks(text_chunk_data)
+        text_chunk_data = self._build_visual_text_chunks(
+            image_paths,
+            root_dir=self._parser.images_dir,
+            path_field="image_path",
+            id_field="image_id",
+        )
+        self._persist_visual_text_chunks(text_chunk_data, "Process image text proxy")
 
     def _process_page(self):
         page_paths = self._parser.parsed_pages()
-
-        batch_size = 5
-        for i in tqdm.tqdm(range(0, len(page_paths), batch_size), desc="Process page",
-                           total=len(page_paths) // batch_size + 1):
-            page_paths_batch = page_paths[i:i + batch_size]
-            pages = [Image.open(page_path) for page_path in page_paths_batch]
-            pages = [image_utils.resize_image(page) for page in pages]
-            image_embeddings = self._image_embedding.encode_image_batch(pages)
-
-            # 添加到图片向量库
-            chunk_data = []
-
-            for j, (image_path, embedding) in enumerate(zip(page_paths_batch, image_embeddings)):
-                chunk_data.append({
-                    "kb_id": self._kb_id,
-                    "ref_id": self._uid,
-                    "doc_id": self._uid,
-                    "file_id": self._uid,
-                    "chunk_id": uuid.uuid4().hex,
-
-                    "page_id": f"{self._uid}-{i + j}",
-                    "file_sorted": f"{self._uid}-{i + j}",
-                    "chunk_type": "page",
-                    "vector": embedding,
-                    "file_path": self._file_path,
-                    "file_url": self._file_url,
-                    "page_path": image_path,
-                    "filename": self._filename,
-                    "created": time.time(),
-                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
-                })
-            self._vector_store.add_page_chunks(chunk_data)
-
-        text_chunk_data = []
-        for j, image_path in enumerate(page_paths):
-            ocr_text = self._ocr.ocr(image_path)
-            caption = generate_caption(image_path)
-            if ocr_text:
-                text_chunk_data.append({
-                    "text": ocr_text,
-                    "kb_id": self._kb_id,
-                    "ref_id": self._uid,
-                    "file_id": self._uid,
-                    "doc_id": self._uid,
-                    "chunk_id": uuid.uuid4().hex,
-
-                    "page_id": f"{self._uid}-{j}",
-                    "file_sorted": f"{self._uid}-{j}",
-                    "chunk_type": "ocr_text",
-                    "file_path": self._file_path,
-                    "file_url": self._file_url,
-                    "page_path": image_path,
-                    "filename": self._filename,
-                    "created": time.time(),
-                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
-                })
-            if caption:
-                text_chunk_data.append({
-                    "text": caption,
-                    "kb_id": self._kb_id,
-                    "ref_id": self._uid,
-                    "file_id": self._uid,
-                    "doc_id": self._uid,
-                    "chunk_id": uuid.uuid4().hex,
-
-                    "page_id": f"{self._uid}-{j}",
-                    "file_sorted": f"{self._uid}-{j}",
-                    "chunk_type": "caption",
-                    "file_path": self._file_path,
-                    "file_url": self._file_url,
-                    "page_path": image_path,
-                    "filename": self._filename,
-                    "created": time.time(),
-                    "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
-                })
-        if not text_chunk_data:
-            logger.info(f"No page OCR/caption text generated for file_id={self._uid}, skip page text upsert")
+        if not page_paths:
             return
-        text_batch = [chunk['text'] for chunk in text_chunk_data]
-        text_embeddings = self._text_embedding.encode_text_batch(text_batch)
-        bm25_embeddings = self._bm25_embedding.encode_text_batch(text_batch)
-        for j, (chunk, embedding, bm25_embedding) in enumerate(
-                zip(text_chunk_data, text_embeddings, bm25_embeddings)):
-            chunk.update({
-                "vector": embedding,
-                "sparse_vector": bm25_embedding,
-            })
-        self._vector_store.add_text_chunks(text_chunk_data)
+
+        if self._image_vector_enabled:
+            batch_size = 5
+            for i in tqdm.tqdm(range(0, len(page_paths), batch_size), desc="Process page",
+                               total=len(page_paths) // batch_size + 1):
+                page_paths_batch = page_paths[i:i + batch_size]
+                pages = [Image.open(page_path) for page_path in page_paths_batch]
+                pages = [image_utils.resize_image(page) for page in pages]
+                image_embeddings = self._image_embedding.encode_image_batch(pages)
+
+                chunk_data = []
+                for j, (image_path, embedding) in enumerate(zip(page_paths_batch, image_embeddings)):
+                    visual_asset_id = self._build_visual_asset_id(i + j)
+                    chunk_data.append({
+                        "kb_id": self._kb_id,
+                        "ref_id": self._uid,
+                        "doc_id": self._uid,
+                        "file_id": self._uid,
+                        "chunk_id": uuid.uuid4().hex,
+                        "page_id": visual_asset_id,
+                        "file_sorted": visual_asset_id,
+                        "chunk_type": "page",
+                        "vector": embedding,
+                        "file_path": self._file_path,
+                        "file_url": self._file_url,
+                        "page_path": image_path,
+                        "filename": self._filename,
+                        "created": time.time(),
+                        "image_url": self._get_uploaded_asset_url(image_path, self._parser.pages_dir),
+                    })
+                self._vector_store.add_page_chunks(chunk_data)
+        else:
+            # text_proxy 模式下，页面截图只作为预览/回链资源保留，不再重复做整页 OCR/caption。
+            logger.info(f"MRAG 页面向量已关闭，跳过 page OCR/caption 文本代理，file_id={self._uid}")
+            return
+
+        text_chunk_data = self._build_visual_text_chunks(
+            page_paths,
+            root_dir=self._parser.pages_dir,
+            path_field="page_path",
+            id_field="page_id",
+        )
+        self._persist_visual_text_chunks(text_chunk_data, "Process page text proxy")
 
     def _mrag_process(self):
         self._process_text()

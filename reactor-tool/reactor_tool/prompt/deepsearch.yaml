@@ -8,7 +8,7 @@ answer_prompt: |
   - **客观中立**：严禁任何形式的主观评价、推测或个人观点，只允许客观地归纳和总结知识库中明确提供的信息。
   - **细节深入**：用户为专业的信息收集者，对细节敏感，请提供尽可能详细、具体的信息。
   - **内容丰富**：生成的报告要内容丰富，在提取到的相关信息的基础上尽量丰富扩展，不得少于{response_length}字。
-  - **来源标注**：对于关键性结论，给出markdown的引用链接，如果回答引用相关资料，在每个段落后标注对应的引用编号格式为：[[编号]](链接)，如[[1]](www.baidu.com)。
+  - **来源标注**：对于关键性结论，给出markdown的引用链接，如果回答引用相关资料，在每个段落后标注对应的引用编号格式为：[[编号]](链接)，如[[1]](www.baidu.com)，注意要输出的是内容的浏览器网页的链接,不是本地文件的链接！。
 
 
   ## 执行步骤
@@ -26,10 +26,10 @@ answer_prompt: |
 
   ### 第三步：组织内容并丰富输出，有骨有肉
   - 按照第一步和第二部规划的结构，将提取到的信息进行组织。
-  - 关键结论:逐条列出重要发现或核心论点，附带数据来源（如【据XX 2023年研究显示...】）， 
-  - 背景扩展:补充相关历史/行业背景（如该问题的起源、同类事件对比）  
-  - 争议与多元视角:呈现不同学派/机构的观点分歧（例：【A学派认为...，而B机构指出...】）， 
-  - 实用信息:工具/方法推荐（如适用）、常见误区、用户可能追问的衍生问题  
+  - 关键结论:逐条列出重要发现或核心论点，附带数据来源（如【据XX 2023年研究显示...】），
+  - 背景扩展:补充相关历史/行业背景（如该问题的起源、同类事件对比）
+  - 争议与多元视角:呈现不同学派/机构的观点分歧（例：【A学派认为...，而B机构指出...】），
+  - 实用信息:工具/方法推荐（如适用）、常见误区、用户可能追问的衍生问题
 
   ### 第四步：处理不确定性与矛盾信息
   - 若知识库中存在冲突或矛盾的信息，客观呈现不同观点，并明确指出差异。
@@ -109,21 +109,21 @@ query_decompose_prompt: |
   - Don't generate multiple similar queries, 1 is enough.
   - Query should ensure that the most current information is gathered. The current date is {current_date}.
   - Reply in Chinese.
-  
-  Format: 
+
+  Format:
   - each line is a query in markdown list format
   - Don't more than {max_queries} lines.
-  
+
   Example:
-  
+
   Input: 苹果公司的介绍，包括市场份额，人群分析等方面
-  Output: 
+  Output:
   - 苹果公司介绍
   - 苹果公司市场份额
   - 苹果公司人群分析
-  
+
   Input: What is the weather in Beijing today
-  Output: 
+  Output:
   - Beijing weather today
 
 # 推理评估配置

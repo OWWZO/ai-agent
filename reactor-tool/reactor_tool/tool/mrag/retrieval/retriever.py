@@ -21,6 +21,7 @@ import requests
 
 from .image_retriever import ImageRetriever
 from .text_retriever import TextRetriever
+from ..runtime_mode import is_multimodal_image_index_enabled
 from ..utils.logger_utils import logger
 
 
@@ -28,6 +29,7 @@ class BaseRetriever:
     """基础检索器抽象类"""
 
     def __init__(self):
+        self._image_vector_enabled = is_multimodal_image_index_enabled()
         self._image_retriever = ImageRetriever()
         self._text_retriever = TextRetriever()
 
@@ -41,12 +43,13 @@ class BaseRetriever:
             tasks.append(task)
             task = executor.submit(self._text_retriever.sparse_search, kb_id, queries)
             tasks.append(task)
-            task = executor.submit(self._image_retriever.text2image_search, kb_id, queries,
-                                   score_threshold=float(os.getenv("RETRIEVAL_IMAGE_THRESHOLD")))
-            tasks.append(task)
-            task = executor.submit(self._image_retriever.text2page_search, kb_id, queries,
-                                   score_threshold=float(os.getenv("RETRIEVAL_PAGE_THRESHOLD")))
-            tasks.append(task)
+            if self._image_vector_enabled:
+                task = executor.submit(self._image_retriever.text2image_search, kb_id, queries,
+                                       score_threshold=float(os.getenv("RETRIEVAL_IMAGE_THRESHOLD")))
+                tasks.append(task)
+                task = executor.submit(self._image_retriever.text2page_search, kb_id, queries,
+                                       score_threshold=float(os.getenv("RETRIEVAL_PAGE_THRESHOLD")))
+                tasks.append(task)
 
             for task in concurrent.futures.as_completed(tasks):
                 current_res = task.result()

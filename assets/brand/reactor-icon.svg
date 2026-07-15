@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Reactor-agent 产品图标</title>
+  <desc id="desc">以反应堆核心、多智能体节点和可追踪执行链路构成的开源项目图标。</desc>
+  <defs>
+    <linearGradient id="tile" x1="154" y1="122" x2="870" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16242d"/>
+      <stop offset="0.44" stop-color="#102f35"/>
+      <stop offset="1" stop-color="#0f1d24"/>
+    </linearGradient>
+    <linearGradient id="core" x1="324" y1="283" x2="725" y2="739" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7ff7d4"/>
+      <stop offset="0.48" stop-color="#33c7d5"/>
+      <stop offset="1" stop-color="#f0b94e"/>
+    </linearGradient>
+    <linearGradient id="link" x1="215" y1="285" x2="828" y2="710" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ef0cf"/>
+      <stop offset="0.5" stop-color="#48b9d7"/>
+      <stop offset="1" stop-color="#f4c05b"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#061015" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="226" fill="url(#tile)"/>
+  <path d="M174 708C289 850 548 906 748 774C905 671 904 459 793 326C672 181 411 141 230 280C96 383 69 578 174 708Z" fill="#173740" opacity="0.54"/>
+  <path d="M183 336C352 212 615 211 791 340" fill="none" stroke="#294f58" stroke-width="28" stroke-linecap="round" opacity="0.44"/>
+  <path d="M201 688C374 816 647 815 817 672" fill="none" stroke="#294f58" stroke-width="28" stroke-linecap="round" opacity="0.36"/>
+
+  <g filter="url(#soft-shadow)">
+    <path d="M512 260L730 386V638L512 764L294 638V386L512 260Z" fill="#112a32" stroke="url(#core)" stroke-width="32" stroke-linejoin="round"/>
+    <path d="M512 342L659 427V597L512 682L365 597V427L512 342Z" fill="#14343b" stroke="#d8fff3" stroke-width="14" stroke-linejoin="round" opacity="0.92"/>
+  </g>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M379 462C446 385 570 372 650 440" stroke="url(#link)" stroke-width="34"/>
+    <path d="M365 590H537C585 590 624 551 624 503C624 455 585 416 537 416H420" stroke="#e8fff8" stroke-width="44"/>
+    <path d="M421 416V666" stroke="#e8fff8" stroke-width="44"/>
+    <path d="M537 590L640 684" stroke="#e8fff8" stroke-width="44"/>
+    <path d="M448 504H538" stroke="#16242d" stroke-width="34"/>
+  </g>
+
+  <g fill="none" stroke="url(#link)" stroke-width="24" stroke-linecap="round">
+    <path d="M272 383C177 487 185 623 291 723"/>
+    <path d="M752 303C867 410 873 587 761 704"/>
+    <path d="M340 794C456 855 600 849 716 779"/>
+  </g>
+
+  <g>
+    <circle cx="270" cy="382" r="48" fill="#7ff7d4"/>
+    <circle cx="270" cy="382" r="22" fill="#10252c"/>
+    <circle cx="754" cy="303" r="48" fill="#48c7df"/>
+    <circle cx="754" cy="303" r="22" fill="#10252c"/>
+    <circle cx="762" cy="704" r="48" fill="#f0b94e"/>
+    <circle cx="762" cy="704" r="22" fill="#10252c"/>
+    <circle cx="340" cy="794" r="40" fill="#b3f0d6"/>
+    <circle cx="340" cy="794" r="18" fill="#10252c"/>
+  </g>
+
+  <path d="M698 156H790C833 156 868 191 868 234V326" fill="none" stroke="#8ef0cf" stroke-width="24" stroke-linecap="round" opacity="0.64"/>
+  <path d="M326 868H234C191 868 156 833 156 790V698" fill="none" stroke="#f4c05b" stroke-width="24" stroke-linecap="round" opacity="0.56"/>
+</svg>

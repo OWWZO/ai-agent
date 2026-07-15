@@ -11,6 +11,7 @@ from reactor_tool.tool.image_generation import (
     _resolve_api_key,
     _resolve_base_url,
     _resolve_model_name,
+    _resolve_provider,
     extract_generated_images,
     generate_images,
     resolve_generation_mode,
@@ -99,6 +100,16 @@ class ImageGenerationToolTest(unittest.TestCase):
             self.assertEqual("", _resolve_api_key())
             self.assertEqual(DEFAULT_IMAGE_MODEL, _resolve_model_name())
 
+    def test_should_resolve_xai_provider_from_dedicated_env(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "IMAGE_GENERATION_PROVIDER": "xai",
+            },
+            clear=True,
+        ):
+            self.assertEqual("xai", _resolve_provider())
+
     def test_should_raise_actionable_error_when_image_generation_env_missing(self):
         request = ImageGenerationRequest.model_validate(
             {
@@ -133,6 +144,7 @@ class ImageGenerationToolTest(unittest.TestCase):
                     mode="edits",
                     base_url="https://example.com/v1",
                     model_name="gpt-image-2",
+                    provider="openai",
                     client=client,
                 )
                 self.assertEqual("https://example.com/v1/images/edits", primary["url"])
@@ -162,11 +174,70 @@ class ImageGenerationToolTest(unittest.TestCase):
                     mode="edits",
                     base_url="https://example.com/v1",
                     model_name="gpt-image-2",
+                    provider="openai",
                     client=client,
                 )
                 self.assertEqual("https://example.com/v1/images/edits", primary["url"])
                 self.assertTrue(primary.get("multipart"))
                 self.assertEqual("https://example.com/v1/chat/completions", fallback["url"])
+
+        asyncio.run(_run())
+
+    def test_should_build_xai_generation_request_without_responses_fallback(self):
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-xai-001",
+                "prompt": "生成一张未来城市夜景",
+                "mode": "images",
+                "size": "1024x1024",
+                "n": 2,
+            }
+        )
+
+        async def _run():
+            async with httpx.AsyncClient() as client:
+                primary, fallback = await _build_generation_requests(
+                    request=request,
+                    mode="images",
+                    base_url="https://api.x.ai/v1",
+                    model_name="grok-imagine-image-quality",
+                    provider="xai",
+                    client=client,
+                )
+                self.assertEqual("https://api.x.ai/v1/images/generations", primary["url"])
+                self.assertEqual("grok-imagine-image-quality", primary["body"]["model"])
+                self.assertEqual("生成一张未来城市夜景", primary["body"]["prompt"])
+                self.assertEqual(2, primary["body"]["n"])
+                self.assertEqual("b64_json", primary["body"]["response_format"])
+                self.assertEqual("1:1", primary["body"]["aspect_ratio"])
+                self.assertEqual("1k", primary["body"]["resolution"])
+                self.assertIsNone(fallback)
+
+        asyncio.run(_run())
+
+    def test_should_reject_xai_mask_edit_requests(self):
+        data_url = f"data:image/png;base64,{TINY_PNG_BASE64}"
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-xai-edits-001",
+                "prompt": "只编辑红色标记区域",
+                "mode": "edits",
+                "fileNames": [data_url],
+                "maskFileNames": [data_url],
+            }
+        )
+
+        async def _run():
+            async with httpx.AsyncClient() as client:
+                with self.assertRaisesRegex(ValueError, "xAI provider 暂不支持 mask"):
+                    await _build_generation_requests(
+                        request=request,
+                        mode="edits",
+                        base_url="https://api.x.ai/v1",
+                        model_name="grok-imagine-image-quality",
+                        provider="xai",
+                        client=client,
+                    )
 
         asyncio.run(_run())
 

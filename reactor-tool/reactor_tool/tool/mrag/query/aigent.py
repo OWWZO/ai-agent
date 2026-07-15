@@ -70,6 +70,13 @@ class AgenticRAG:
         return text_resp
 
     @staticmethod
+    def _keep_best_chunk(chunk_map: Dict[str, Dict], key: str, chunk: Dict) -> None:
+        """同一关联键命中多次时，只保留分数更高的候选。"""
+        current = chunk_map.get(key)
+        if current is None or chunk["score"] > current["score"]:
+            chunk_map[key] = chunk
+
+    @staticmethod
     def merge_retrieval_results(resp: List[Dict]) -> Tuple[List[Dict], List[Dict], List[Dict]]:
         # 根据类型， 去重
         text_chunk_map = {}
@@ -77,21 +84,24 @@ class AgenticRAG:
         page_chunk_map = {}
         for ret in resp:
             chunk_type = ret['payload']['chunk_type']
-            if chunk_type == "text":
-                # print(ret)
-                key = ret['payload']['file_sorted']
-                text_chunk_map[key] = ret
-            elif chunk_type == "image" or chunk_type == "ocr_text" or chunk_type == "caption":
-                # print("image: ", ret)
+            if chunk_type in {"text", "ocr_text", "caption"}:
+                key = f"{chunk_type}:{ret['payload'].get('file_sorted') or ret['payload'].get('image_id') or ret['payload'].get('page_id')}"
+                AgenticRAG._keep_best_chunk(text_chunk_map, key, ret)
+
+            if chunk_type == "image":
                 if "image_id" in ret['payload']:
                     key = ret['payload']['image_id']
-                    image_chunk_map[key] = ret
+                    AgenticRAG._keep_best_chunk(image_chunk_map, key, ret)
+            elif chunk_type in {"ocr_text", "caption"}:
+                if "image_id" in ret['payload']:
+                    key = ret['payload']['image_id']
+                    AgenticRAG._keep_best_chunk(image_chunk_map, key, ret)
                 elif "page_id" in ret['payload']:
                     key = ret['payload']['page_id']
-                    page_chunk_map[key] = ret
+                    AgenticRAG._keep_best_chunk(page_chunk_map, key, ret)
             elif chunk_type == "page":
                 key = ret['payload']['page_path']
-                page_chunk_map[key] = ret
+                AgenticRAG._keep_best_chunk(page_chunk_map, key, ret)
 
         text_chunks = list(sorted(text_chunk_map.values(), key=lambda k: k['score'], reverse=True))
         image_chunks = list(sorted(image_chunk_map.values(), key=lambda k: k['score'], reverse=True))
@@ -126,8 +136,21 @@ class AgenticRAG:
     def build_ref_context(docs: List[Dict]):
         context = ""
         for i, doc in enumerate(docs):
-            if doc['payload'].get("text"):
-                context += f"\n[ref {i + 1} start]\n{doc['payload']['text']}\n[ref {i + 1} end]\n"
+            payload = doc.get("payload", {})
+            text = payload.get("text")
+            if not text:
+                continue
+
+            # 给模型补充稳定的引用链接，要求它直接输出 Markdown 可点击引用。
+            citation_url = payload.get("image_url") or payload.get("file_url") or ""
+            title = payload.get("filename") or payload.get("title") or f"参考资料{i + 1}"
+            context += (
+                f"\n[ref {i + 1} start]\n"
+                f"资料标题: {title}\n"
+                f"引用链接: {citation_url}\n"
+                f"资料正文:\n{text}\n"
+                f"[ref {i + 1} end]\n"
+            )
         return context
 
     @staticmethod

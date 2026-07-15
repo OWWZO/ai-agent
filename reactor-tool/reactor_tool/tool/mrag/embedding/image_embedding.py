@@ -6,6 +6,7 @@ import requests
 from PIL import Image
 
 from .embedding import ImageEmbedding
+from ..runtime_mode import is_multimodal_image_index_enabled
 from ..utils import image_utils
 from ..utils.logger_utils import logger
 
@@ -159,8 +160,25 @@ class QwenVLEmbedding(ImageEmbedding):
         body["parameters"] = {"dimension": self.dimension}
 
 
+class DisabledImageEmbedding(ImageEmbedding):
+    """text_proxy 模式下的占位实现，避免误走图片 embedding 链路。"""
+
+    def _encode_image_batch(self, images: List[Image.Image]) -> list[list[float]]:
+        if images:
+            logger.info("MRAG 图片向量已关闭，跳过图片 embedding 计算")
+        return [[] for _ in images]
+
+    def _encode_text_batch(self, texts: List[str]) -> list[list[float]]:
+        if texts:
+            logger.info("MRAG 图片向量已关闭，跳过文本到图片 embedding 计算")
+        return [[] for _ in texts]
+
+
 def get_image_embedding_model() -> ImageEmbedding:
     """获取图像embedding模型"""
+    if not is_multimodal_image_index_enabled():
+        return DisabledImageEmbedding()
+
     image_embedding_type = os.getenv("IMAGE_EMBEDDING_TYPE")
     if image_embedding_type == "dashscope":
         return QwenVLEmbedding()

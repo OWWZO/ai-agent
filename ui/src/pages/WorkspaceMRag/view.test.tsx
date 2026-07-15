@@ -116,9 +116,10 @@ describe("WorkspaceMRagView", () => {
       </MemoryRouter>
     );
 
-    expect(html).toContain("MRAG 文件工作台");
+    expect(html).toContain("MRAG 智能问答工作台");
     expect(html).toContain("产品资料库");
-    expect(html).toContain("kb-1");
+    expect(html).not.toContain("知识库 ID");
+    expect(html).not.toContain("当前资料库有");
     expect(html).not.toContain("Tool Base URL");
     expect(html).not.toContain("当前：");
     expect(html).toContain("上传文件");

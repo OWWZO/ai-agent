@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Reactor-agent Forge 图标方案</title>
+  <desc id="desc">强调平台核心、任务编排和稳定执行链路的产品图标。</desc>
+  <defs>
+    <linearGradient id="bg" x1="132" y1="96" x2="904" y2="932" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#132029"/>
+      <stop offset="0.54" stop-color="#12383c"/>
+      <stop offset="1" stop-color="#18252c"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="266" y1="210" x2="774" y2="818" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8df7ce"/>
+      <stop offset="0.52" stop-color="#39c5d6"/>
+      <stop offset="1" stop-color="#efbd55"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="309" y1="312" x2="718" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a5960"/>
+      <stop offset="1" stop-color="#10252d"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#061015" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <path d="M180 279H844M180 745H844" stroke="#294d55" stroke-width="24" stroke-linecap="round" opacity="0.36"/>
+  <path d="M236 207H381M643 817H788" stroke="#8df7ce" stroke-width="22" stroke-linecap="round" opacity="0.56"/>
+  <path d="M236 817H381M643 207H788" stroke="#efbd55" stroke-width="22" stroke-linecap="round" opacity="0.5"/>
+
+  <g filter="url(#shadow)">
+    <path d="M512 172L806 342V682L512 852L218 682V342L512 172Z" fill="#10242c" stroke="url(#edge)" stroke-width="34" stroke-linejoin="round"/>
+    <path d="M512 283L710 397V626L512 741L314 626V397L512 283Z" fill="url(#panel)" stroke="#dffff5" stroke-width="12" stroke-linejoin="round" opacity="0.95"/>
+  </g>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M389 445C427 405 468 385 512 385C595 385 663 449 663 528C663 606 598 670 519 670H388" stroke="#eafff8" stroke-width="54"/>
+    <path d="M388 385V678" stroke="#eafff8" stroke-width="54"/>
+    <path d="M520 670L647 780" stroke="#eafff8" stroke-width="54"/>
+    <path d="M416 528H543" stroke="#12252c" stroke-width="38"/>
+    <path d="M362 319L512 233L662 319" stroke="url(#edge)" stroke-width="24"/>
+    <path d="M321 682L512 793L703 682" stroke="url(#edge)" stroke-width="24"/>
+  </g>
+
+  <g fill="#10242c" stroke-width="24">
+    <circle cx="314" cy="398" r="42" fill="#8df7ce"/>
+    <circle cx="314" cy="398" r="17"/>
+    <circle cx="710" cy="397" r="42" fill="#39c5d6"/>
+    <circle cx="710" cy="397" r="17"/>
+    <circle cx="512" cy="741" r="42" fill="#efbd55"/>
+    <circle cx="512" cy="741" r="17"/>
+  </g>
+</svg>

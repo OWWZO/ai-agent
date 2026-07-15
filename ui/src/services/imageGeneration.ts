@@ -18,6 +18,7 @@ type ToolRequest = {
   requestId: string;
   prompt: string;
   mode: "images" | "edits";
+  model?: string;
   size: string;
   n: number;
   fileNames: string[];
@@ -44,6 +45,7 @@ export async function requestImageGenerationTool(
       requestId: payload.requestId,
       prompt: payload.prompt,
       mode: payload.mode,
+      model: payload.model,
       fileNames: payload.fileNames,
       maskFileNames: payload.maskFileNames,
       fileName: payload.fileName,

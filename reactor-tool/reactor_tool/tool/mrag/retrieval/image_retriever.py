@@ -20,6 +20,7 @@ from typing import Dict, Optional
 from PIL import Image
 
 from ..embedding.image_embedding import get_image_embedding_model
+from ..runtime_mode import is_multimodal_image_index_enabled
 from ..storage import VectorStore
 from ..utils.logger_utils import logger
 
@@ -28,12 +29,20 @@ class ImageRetriever:
     """图像检索器类"""
 
     def __init__(self):
+        self.image_vector_enabled = is_multimodal_image_index_enabled()
         self.embedding_model = get_image_embedding_model()
         self.vector_store = VectorStore()
+
+    @staticmethod
+    def _empty_results(size: int) -> list[list[dict]]:
+        return [[] for _ in range(size)]
 
     def text2image_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
         """文本到图像检索"""
+        if not self.image_vector_enabled:
+            logger.info("text2image_search skipped because MRAG image vector index is disabled")
+            return self._empty_results(len(queries))
         if not filter_conditions:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
@@ -56,6 +65,9 @@ class ImageRetriever:
                            kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
                            filter_conditions: Optional[Dict] = None):
         """图像检索"""
+        if not self.image_vector_enabled:
+            logger.info("image2image_search skipped because MRAG image vector index is disabled")
+            return []
         if not filter_conditions:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
@@ -70,6 +82,9 @@ class ImageRetriever:
     def text2page_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                          filter_conditions: Optional[Dict] = None):
         """文本到页面检索"""
+        if not self.image_vector_enabled:
+            logger.info("text2page_search skipped because MRAG image vector index is disabled")
+            return self._empty_results(len(queries))
         if not filter_conditions:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
@@ -92,6 +107,9 @@ class ImageRetriever:
                           kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
         """图像到页面检索"""
+        if not self.image_vector_enabled:
+            logger.info("image2page_search skipped because MRAG image vector index is disabled")
+            return [[]]
         if not filter_conditions:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})

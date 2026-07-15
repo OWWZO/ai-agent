@@ -7,6 +7,7 @@
 # =====================
 import base64
 import json
+import math
 import mimetypes
 import os
 import re
@@ -32,6 +33,7 @@ from reactor_tool.util.llm_util import (
 
 
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
+DEFAULT_IMAGE_PROVIDER = "openai"
 DEFAULT_IMAGE_SIZE = "1024x1024"
 RESPONSES_FALLBACK_STATUS = {404, 405, 501}
 DATA_URL_RE = re.compile(r"^data:(?P<mime>[^;,]+);base64,(?P<data>.+)$", re.IGNORECASE | re.DOTALL)
@@ -111,15 +113,16 @@ async def generate_images(request: ImageGenerationRequest) -> dict[str, Any]:
         raise ValueError("maskFileNames 数量不能超过 fileNames")
 
     # 图片模型统一走独立环境变量，避免请求侧透传敏感配置或和服务端配置产生漂移。
-    base_url = _resolve_base_url()
-    api_key = _resolve_api_key()
+    provider = _resolve_provider()
+    base_url = (request.base_url or "").strip() or _resolve_base_url()
+    api_key = (request.api_key or "").strip() or _resolve_api_key()
     if not base_url:
         raise ValueError("未配置图片生成 base url，请设置 IMAGE_GENERATION_BASE_URL")
     if not api_key:
         raise ValueError("未配置图片生成 api key，请设置 IMAGE_GENERATION_API_KEY")
 
     normalized_base_url = _normalize_openai_compat_api_base(base_url)
-    model_name = _resolve_model_name()
+    model_name = (request.model or "").strip() or _resolve_model_name()
     if not model_name:
         raise ValueError("未配置图片生成 model，请设置 IMAGE_GENERATION_MODEL")
     timeout = httpx.Timeout(timeout=float(request.timeout_seconds))
@@ -130,6 +133,7 @@ async def generate_images(request: ImageGenerationRequest) -> dict[str, Any]:
             mode=mode,
             base_url=normalized_base_url,
             model_name=model_name,
+            provider=provider,
             client=client,
         )
         payload, used_fallback = await _execute_generation_request(
@@ -172,9 +176,22 @@ async def _build_generation_requests(
     mode: str,
     base_url: str,
     model_name: str,
+    provider: str,
     client: httpx.AsyncClient,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """构建 primary / fallback 请求体，保持和原型一致的接口降级策略。"""
+    if provider == "xai":
+        return await _build_xai_generation_requests(
+            request=request,
+            mode=mode,
+            base_url=base_url,
+            model_name=model_name,
+            client=client,
+        )
+
+    if provider != "openai":
+        raise ValueError("不支持的图片生成 provider，请设置 IMAGE_GENERATION_PROVIDER=openai 或 xai")
+
     if mode == "images":
         tool = {"type": "image_generation"}
         if request.size:
@@ -270,6 +287,50 @@ async def _build_native_edit_request(
         "body": files,
         "multipart": True,
     }
+
+
+async def _build_xai_generation_requests(
+    request: ImageGenerationRequest,
+    mode: str,
+    base_url: str,
+    model_name: str,
+    client: httpx.AsyncClient,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """xAI 图片接口直接走 images 端点，避免误用 OpenAI Responses 协议。"""
+    if mode == "images":
+        body = {
+            "model": model_name,
+            "prompt": request.prompt,
+            "n": request.n,
+            "response_format": "b64_json",
+        }
+        body.update(_build_xai_size_options(request.size))
+        return {
+            "url": f"{base_url}/images/generations",
+            "body": body,
+        }, None
+
+    if any(mask_reference for mask_reference in request.mask_file_names):
+        raise ValueError("xAI provider 暂不支持 mask 编辑，请先移除 maskFileNames")
+
+    image_inputs: list[dict[str, str]] = []
+    for image_reference in request.file_names:
+        image_inputs.append({"url": await _reference_to_data_url(client, image_reference)})
+
+    body = {
+        "model": model_name,
+        "prompt": request.prompt,
+        "response_format": "b64_json",
+    }
+    if len(image_inputs) == 1:
+        body["image"] = image_inputs[0]
+    else:
+        body["images"] = image_inputs
+
+    return {
+        "url": f"{base_url}/images/edits",
+        "body": body,
+    }, None
 
 
 async def _build_edit_contents(
@@ -582,6 +643,41 @@ def _resolve_api_key() -> str:
 def _resolve_model_name() -> str:
     """优先读取专用环境变量，缺省时回退到绘画智能体默认模型。"""
     return os.getenv("IMAGE_GENERATION_MODEL", DEFAULT_IMAGE_MODEL).strip() or DEFAULT_IMAGE_MODEL
+
+
+def _resolve_provider() -> str:
+    """统一解析图片 provider，兼容用户按 Grok 习惯填写的别名。"""
+    provider = os.getenv("IMAGE_GENERATION_PROVIDER", DEFAULT_IMAGE_PROVIDER).strip().lower()
+    if not provider:
+        return DEFAULT_IMAGE_PROVIDER
+    if provider in {"xai", "grok"}:
+        return "xai"
+    if provider in {"openai", "openai_compat", "openai-compatible", "openai_compatible"}:
+        return "openai"
+    raise ValueError("不支持的图片生成 provider，请设置 IMAGE_GENERATION_PROVIDER=openai 或 xai")
+
+
+def _build_xai_size_options(raw_size: str | None) -> dict[str, str]:
+    """把现有 WxH 尺寸映射为 xAI 接口需要的宽高比与分辨率。"""
+    normalized = (raw_size or "").strip().lower()
+    if not normalized or "x" not in normalized:
+        return {}
+    width_text, height_text = normalized.split("x", 1)
+    if not width_text.isdigit() or not height_text.isdigit():
+        return {}
+
+    width = int(width_text)
+    height = int(height_text)
+    if width <= 0 or height <= 0:
+        return {}
+
+    divisor = math.gcd(width, height)
+    aspect_ratio = f"{width // divisor}:{height // divisor}"
+    resolution = "2k" if max(width, height) > 1024 else "1k"
+    return {
+        "aspect_ratio": aspect_ratio,
+        "resolution": resolution,
+    }
 
 
 def _build_generation_summary(

@@ -4,6 +4,17 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pythonExe = Join-Path $projectRoot ".venv\\Scripts\\python.exe"
 $port = 1601
+$workerCountText = if ([string]::IsNullOrWhiteSpace($env:REACTOR_TOOL_WORKERS)) { "1" } else { $env:REACTOR_TOOL_WORKERS.Trim() }
+$workerCount = 1
+$isWorkerCountParsed = [int]::TryParse($workerCountText, [ref]$workerCount)
+
+if (-not $isWorkerCountParsed) {
+    throw "Invalid REACTOR_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
+}
+
+if ($workerCount -lt 1) {
+    throw "Invalid REACTOR_TOOL_WORKERS value: $($workerCountText). Expected a positive integer."
+}
 
 function Get-ProcessInfo([int]$processId) {
     return Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
@@ -50,7 +61,7 @@ try {
         $commandLineLower = $commandLine.ToLowerInvariant()
         $isCurrentServer = $false
         if ($listenerProcess) {
-            $isCurrentServer = ($listenerProcess.Name -ieq "python.exe" -and $commandLineLower.Contains("server.py") -and $commandLineLower.Contains("--workers 1"))
+            $isCurrentServer = ($listenerProcess.Name -ieq "python.exe" -and $commandLineLower.Contains("server.py") -and $commandLineLower -match "(^|\s)--workers\s+$($workerCount)(\s|$)")
         }
 
         if ($isCurrentServer) {
@@ -65,7 +76,20 @@ try {
         throw "Port $port is already in use by PID $($listener.OwningProcess): $commandLine"
     }
 
-    & $pythonExe "server.py" "--workers" "10"
+    $nativeCommandPreferenceExisted = Test-Path Variable:PSNativeCommandUseErrorActionPreference
+    $previousNativeCommandPreference = $PSNativeCommandUseErrorActionPreference
+    try {
+        # Python/Uvicorn 会把常规日志写到 stderr，这里避免被 PowerShell 误判成脚本错误。
+        $PSNativeCommandUseErrorActionPreference = $false
+        & $pythonExe "server.py" "--workers" $workerCount
+    }
+    finally {
+        if ($nativeCommandPreferenceExisted) {
+            $PSNativeCommandUseErrorActionPreference = $previousNativeCommandPreference
+        } else {
+            Remove-Item Variable:PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+        }
+    }
 }
 finally {
     Pop-Location

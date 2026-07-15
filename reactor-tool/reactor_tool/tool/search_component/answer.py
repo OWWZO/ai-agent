@@ -20,7 +20,7 @@ async def answer_question(query: str, search_content: str):
 
     llm_config = resolve_openai_compat_env("DEEPSEARCH")
     model = os.getenv("SEARCH_ANSWER_MODEL", "gpt-4.1")
-    answer_length = os.getenv("SEARCH_ANSWER_LENGTH", "1000")
+    answer_length = os.getenv("SEARCH_ANSWER_LENGTH", "3000")
 
     prompt = prompt_template.format(
         query=query,

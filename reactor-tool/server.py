@@ -26,6 +26,11 @@ warnings.filterwarnings(
     message="pkg_resources is deprecated as an API.*",
     category=UserWarning,
 )
+warnings.filterwarnings(
+    "ignore",
+    message=r"urllib3 \(.+\) or chardet \(.+\)/charset_normalizer \(.+\) doesn't match a supported version!",
+    category=Warning,
+)
 
 
 def print_logo():
@@ -42,7 +47,7 @@ def log_setting():
 
 def create_app() -> FastAPI:
     _app = FastAPI(
-        on_startup=[log_setting, print_logo]
+        on_startup=[log_setting]
     )
 
     register_middleware(_app)
@@ -66,10 +71,6 @@ def register_router(app: FastAPI):
     from reactor_tool.api import api_router
     app.include_router(api_router)
 
-
-app = create_app()
-
-
 if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option("--host", dest="host", type="string", default="0.0.0.0")
@@ -78,13 +79,16 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     print(f"Start params: {options}")
+    # Logo 仅在主启动入口打印一次，避免多 worker 模式下每个子进程重复输出。
+    print_logo()
 
     reload_enabled = os.getenv("ENV", "local") == "local"
+    app_factory_path = "server:create_app"
 
-    # 单进程时直接传入 app 实例，避免复制环境后再被子进程/重载器放大解释器差异。
+    # 单进程直接构造 app；多 worker/reload 使用 factory，让子进程内再创建应用，避免启动期导入过重。
     if not reload_enabled and int(options.workers) <= 1:
         uvicorn.run(
-            app=app,
+            app=create_app(),
             host=options.host,
             port=options.port,
             timeout_keep_alive=99999,
@@ -93,7 +97,8 @@ if __name__ == "__main__":
         )
     else:
         uvicorn.run(
-            app="server:app",
+            app=app_factory_path,
+            factory=True,
             host=options.host,
             port=options.port,
             workers=options.workers,

@@ -80,6 +80,16 @@ class VectorStore:
         logger.debug(f"VectorStore initialized with type: {self.store_type}")
 
     @property
+    def image_vector_enabled(self) -> bool:
+        """统一暴露图片向量开关，避免业务层直接感知配置对象细节。"""
+        return self.config.image_vector_enabled
+
+    def _build_disabled_query_result(self, query_vectors: Optional[List[list[float]]]):
+        if not query_vectors:
+            return []
+        return [[] for _ in query_vectors]
+
+    @property
     def base_store(self):
         """基础向量数据库实例（懒加载）"""
         if self._base_store is None:
@@ -105,6 +115,8 @@ class VectorStore:
     @property
     def image_store(self):
         """图像向量存储实例（懒加载）"""
+        if not self.image_vector_enabled:
+            raise RuntimeError(f"MRAG 图片向量集合已关闭，当前模式: {self.config.image_index_mode}")
         if self._image_store is None:
             self._image_store = VectorStoreFactory.create_image_store(
                 collection_name=self.config.image_collection,
@@ -120,6 +132,8 @@ class VectorStore:
     @property
     def page_store(self):
         """页面向量存储实例（懒加载）"""
+        if not self.image_vector_enabled:
+            raise RuntimeError(f"MRAG 页面向量集合已关闭，当前模式: {self.config.image_index_mode}")
         if self._page_store is None:
             self._page_store = VectorStoreFactory.create_image_store(
                 collection_name=self.config.page_collection,
@@ -151,6 +165,10 @@ class VectorStore:
         except Exception as e:
             logger.error(f"文本向量集合创建失败: {e}")
 
+        if not self.image_vector_enabled:
+            logger.info("MRAG 图片向量集合已关闭，跳过 image/page collection 初始化")
+            return
+
         try:
             self.image_store.create_collection()
             logger.info("图像向量集合创建成功")
@@ -170,6 +188,10 @@ class VectorStore:
             logger.info("文本向量集合删除成功")
         except Exception as e:
             logger.error(f"文本向量集合删除失败: {e}")
+
+        if not self.image_vector_enabled:
+            logger.info("MRAG 图片向量集合已关闭，跳过 image/page collection 删除")
+            return
 
         try:
             self.image_store.drop_collection()
@@ -191,10 +213,14 @@ class VectorStore:
 
     def get_image_store(self):
         """获取图像向量存储实例"""
+        if not self.image_vector_enabled:
+            return None
         return self.image_store
 
     def get_page_store(self):
         """获取页面向量存储实例"""
+        if not self.image_vector_enabled:
+            return None
         return self.page_store
 
     # ==================== 添加向量 ====================
@@ -227,6 +253,9 @@ class VectorStore:
                 - image_id: 图像ID (str)
                 - vector: 向量数据 (List[float])
         """
+        if not self.image_vector_enabled:
+            logger.info("MRAG 图片向量集合已关闭，跳过 image chunk 入库")
+            return True
         return self.image_store.add_images(image_chunks)
 
     def add_page_chunks(self, page_chunks: List[Dict]):
@@ -241,6 +270,9 @@ class VectorStore:
                 - chunk_id: 块ID (str)
                 - vector: 向量数据 (List[float])
         """
+        if not self.image_vector_enabled:
+            logger.info("MRAG 页面向量集合已关闭，跳过 page chunk 入库")
+            return True
         return self.page_store.add_images(page_chunks)
 
     # ==================== 搜索向量 ====================
@@ -286,6 +318,9 @@ class VectorStore:
         Returns:
             List[Dict]: 搜索结果列表
         """
+        if not self.image_vector_enabled:
+            logger.info("MRAG 图片向量集合已关闭，跳过 image vector 检索")
+            return self._build_disabled_query_result(query_vectors)
         return self.image_store.search_vector(
             query_vectors=query_vectors,
             limit=limit,
@@ -337,6 +372,9 @@ class VectorStore:
         Returns:
             List[Dict]: 搜索结果列表
         """
+        if not self.image_vector_enabled:
+            logger.info("MRAG 页面向量集合已关闭，跳过 page vector 检索")
+            return self._build_disabled_query_result(query_vectors)
         return self.page_store.search_vector(
             query_vectors=query_vectors,
             limit=limit,
@@ -429,18 +467,26 @@ class VectorStore:
 
     def delete_image_by_kb_id(self, kb_id: str):
         """根据知识库ID删除图像向量"""
+        if not self.image_vector_enabled:
+            return True
         return self.image_store.delete_by_kb_id(kb_id)
 
     def delete_image_by_doc_ids(self, doc_ids: List[int]):
         """根据文档ID列表删除图像向量"""
+        if not self.image_vector_enabled:
+            return True
         return self.image_store.delete_by_doc_ids(doc_ids)
 
     def delete_page_by_kb_id(self, kb_id: str):
         """根据知识库ID删除页面向量"""
+        if not self.image_vector_enabled:
+            return True
         return self.page_store.delete_by_kb_id(kb_id)
 
     def delete_page_by_doc_ids(self, doc_ids: List[int]):
         """根据文档ID列表删除页面向量"""
+        if not self.image_vector_enabled:
+            return True
         return self.page_store.delete_by_doc_ids(doc_ids)
 
     # ==================== 集合信息 ====================
@@ -455,6 +501,8 @@ class VectorStore:
 
     def get_image_collection_info(self):
         """获取图像集合信息"""
+        if not self.image_vector_enabled:
+            return {'disabled': True, 'mode': self.config.image_index_mode}
         try:
             return self.base_store.get_collection_info(self.config.image_collection)
         except Exception as e:
@@ -463,6 +511,8 @@ class VectorStore:
 
     def get_page_collection_info(self):
         """获取页面集合信息"""
+        if not self.image_vector_enabled:
+            return {'disabled': True, 'mode': self.config.image_index_mode}
         try:
             return self.base_store.get_collection_info(self.config.page_collection)
         except Exception as e:
@@ -475,16 +525,21 @@ class VectorStore:
 
     def count_image_points(self, filter_conditions: Optional[Dict] = None):
         """统计图像向量点数量"""
+        if not self.image_vector_enabled:
+            return 0
         return self.base_store.count_vectors(self.config.image_collection, filter_conditions)
 
     def count_page_points(self, filter_conditions: Optional[Dict] = None):
         """统计页面向量点数量"""
+        if not self.image_vector_enabled:
+            return 0
         return self.base_store.count_vectors(self.config.page_collection, filter_conditions)
 
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]):
         self.text_store.delete_by_file_ids(kb_id, file_ids)
-        self.image_store.delete_by_file_ids(kb_id, file_ids)
-        self.page_store.delete_by_file_ids(kb_id, file_ids)
+        if self.image_vector_enabled:
+            self.image_store.delete_by_file_ids(kb_id, file_ids)
+            self.page_store.delete_by_file_ids(kb_id, file_ids)
 
     def scroll_text_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
         """滚动读取文本 payload。"""
@@ -492,8 +547,12 @@ class VectorStore:
 
     def scroll_image_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
         """滚动读取图片 payload。"""
+        if not self.image_vector_enabled:
+            return [], None
         return self.image_store.scroll_payloads(kb_id=kb_id, limit=limit, offset=offset)
 
     def scroll_page_payloads(self, kb_id: str, limit: int = 100, offset: Optional[str] = None):
         """滚动读取页面 payload。"""
+        if not self.image_vector_enabled:
+            return [], None
         return self.page_store.scroll_payloads(kb_id=kb_id, limit=limit, offset=offset)

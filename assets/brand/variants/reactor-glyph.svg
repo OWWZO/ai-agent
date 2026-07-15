@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Reactor-agent Glyph 图标方案</title>
+  <desc id="desc">强调小尺寸识别、开源项目头像和 favicon 使用的简洁图标。</desc>
+  <defs>
+    <linearGradient id="bg" x1="130" y1="118" x2="894" y2="904" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#121d24"/>
+      <stop offset="0.5" stop-color="#102f35"/>
+      <stop offset="1" stop-color="#171f25"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="282" y1="250" x2="754" y2="788" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ef7ce"/>
+      <stop offset="0.5" stop-color="#45c6da"/>
+      <stop offset="1" stop-color="#f2bc55"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#061015" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <path d="M206 514C206 350 340 216 504 216C671 216 806 349 806 514C806 681 672 808 504 808C379 808 270 733 225 625" fill="none" stroke="#274c54" stroke-width="54" stroke-linecap="round" opacity="0.5"/>
+  <path d="M250 382C309 286 405 236 512 236C677 236 790 353 790 514" fill="none" stroke="url(#mark)" stroke-width="46" stroke-linecap="round"/>
+  <path d="M774 642C722 741 626 793 512 793C388 793 279 723 229 620" fill="none" stroke="url(#mark)" stroke-width="46" stroke-linecap="round"/>
+
+  <g filter="url(#shadow)">
+    <path d="M512 281L714 398V631L512 748L310 631V398L512 281Z" fill="#10242c" stroke="url(#mark)" stroke-width="32" stroke-linejoin="round"/>
+    <path d="M415 413H534C616 413 678 472 678 548C678 624 616 683 534 683H415V413Z" fill="none" stroke="#eafff8" stroke-width="64" stroke-linejoin="round"/>
+    <path d="M405 413V713M535 683L656 792" stroke="#eafff8" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M443 548H550" stroke="#12252c" stroke-width="42" stroke-linecap="round"/>
+  </g>
+
+  <circle cx="250" cy="382" r="50" fill="#8ef7ce"/>
+  <circle cx="250" cy="382" r="19" fill="#10242c"/>
+  <circle cx="790" cy="514" r="50" fill="#45c6da"/>
+  <circle cx="790" cy="514" r="19" fill="#10242c"/>
+  <circle cx="229" cy="620" r="50" fill="#f2bc55"/>
+  <circle cx="229" cy="620" r="19" fill="#10242c"/>
+</svg>

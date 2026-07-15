@@ -315,6 +315,7 @@ export function useImageGenerationSession(
       ) {
         const batchResults = await runImageBatchRequests({
           prompt: currentPrompt,
+          model: config.model.trim(),
           size: config.size.trim(),
           n: config.n,
           plans: effectiveImages.map((item, index) => ({
@@ -359,6 +360,7 @@ export function useImageGenerationSession(
         requestId: createLocalId("image"),
         prompt: currentPrompt,
         mode: config.mode,
+        model: config.model.trim(),
         size: config.size.trim(),
         n: config.n,
         fileNames: config.mode === "edits" ? sourceImageDataUrls : [],

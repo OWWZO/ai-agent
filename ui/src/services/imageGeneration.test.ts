@@ -42,6 +42,35 @@ describe("imageGeneration service", () => {
     );
   });
 
+  it("生图请求会透传显式模型名，避免工作台配置被静默丢弃", async () => {
+    postMock.mockResolvedValueOnce({
+      data: "生成完成",
+      fileInfo: [],
+      requestId: "req-model",
+    });
+
+    const { requestImageGenerationTool } = await import("./imageGeneration");
+
+    await requestImageGenerationTool({
+      requestId: "req-model",
+      prompt: "生成一张赛博朋克海报",
+      mode: "images",
+      size: "1024x1024",
+      n: 1,
+      model: "grok-imagine-image-quality",
+      fileNames: [],
+      maskFileNames: [],
+    });
+
+    expect(postMock).toHaveBeenCalledWith(
+      "/api/agent/image-generation/generate",
+      expect.objectContaining({
+        model: "grok-imagine-image-quality",
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("历史查询继续复用默认请求配置", async () => {
     getMock.mockResolvedValueOnce({
       total: 0,

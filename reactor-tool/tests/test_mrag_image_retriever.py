@@ -5,6 +5,7 @@ from PIL import Image
 
 from reactor_tool.tool.mrag.embedding.image_embedding import QwenVLEmbedding
 from reactor_tool.tool.mrag.retrieval.image_retriever import ImageRetriever
+from reactor_tool.tool.mrag.retrieval.retriever import BaseRetriever
 
 
 class QwenVLEmbeddingConfigTest(unittest.TestCase):
@@ -123,6 +124,49 @@ class ImageRetrieverGuardTest(unittest.TestCase):
         result = retriever.text2page_search("kb-test", ["问题一"])
 
         self.assertEqual([[]], result)
+
+    def test_should_skip_image_vector_retrieval_when_mode_is_text_proxy(self):
+        with patch.dict(
+            "os.environ",
+            {"MRAG_IMAGE_INDEX_MODE": "text_proxy"},
+            clear=False,
+        ):
+            retriever = ImageRetriever()
+
+        retriever.embedding_model = unittest.mock.Mock()
+        retriever.vector_store = unittest.mock.Mock()
+
+        image_result = retriever.text2image_search("kb-test", ["问题一"])
+        page_result = retriever.text2page_search("kb-test", ["问题一"])
+
+        self.assertEqual([[]], image_result)
+        self.assertEqual([[]], page_result)
+        retriever.embedding_model.encode_text_batch.assert_not_called()
+        retriever.vector_store.search_image_vector.assert_not_called()
+        retriever.vector_store.search_page_vector.assert_not_called()
+
+
+class BaseRetrieverModeTest(unittest.TestCase):
+
+    def test_should_not_submit_image_retrieval_tasks_when_mode_is_text_proxy(self):
+        with patch.dict(
+            "os.environ",
+            {"MRAG_IMAGE_INDEX_MODE": "text_proxy"},
+            clear=False,
+        ):
+            retriever = BaseRetriever()
+
+        retriever._text_retriever = unittest.mock.Mock()
+        retriever._image_retriever = unittest.mock.Mock()
+        retriever._text_retriever.vector_search.return_value = [[{"id": "dense"}]]
+        retriever._text_retriever.sparse_search.return_value = [[{"id": "sparse"}]]
+
+        result = retriever.retrieval_by_texts("kb-test", ["问题一"])
+
+        self.assertEqual(1, len(result))
+        self.assertCountEqual(["dense", "sparse"], [item["id"] for item in result[0]])
+        retriever._image_retriever.text2image_search.assert_not_called()
+        retriever._image_retriever.text2page_search.assert_not_called()
 
 
 if __name__ == "__main__":

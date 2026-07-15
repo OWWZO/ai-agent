@@ -60,7 +60,8 @@ cd reactor-tool
 - `start.ps1` / `start.sh` 会主动清理外部 `VIRTUAL_ENV`，并强制使用当前项目自己的 `.venv`、单进程模式启动。
 - 启动脚本会把本地文件落盘目录设置为 `FILE_SAVE_PATH=skilloutput`，同时保留 `FILE_SERVER_URL=http://127.0.0.1:1601/v1/file_tool` 作为前端可访问的 HTTP 文件服务地址。
 - 不要把 `FILE_SERVER_URL` 配置成本地磁盘目录，否则前端拿到的 `domainUrl/downloadUrl` 会变成不可访问路径，文件组件点击后将无法预览。
-- 图片生成工具依赖 `IMAGE_GENERATION_BASE_URL`、`IMAGE_GENERATION_API_KEY`、`IMAGE_GENERATION_MODEL`；如果和通用 LLM 走同一个 OpenAI 兼容网关，可以在 `.env` 里直接映射到 `OPENAI_*`。
+- 图片生成工具依赖 `IMAGE_GENERATION_PROVIDER`、`IMAGE_GENERATION_BASE_URL`、`IMAGE_GENERATION_API_KEY`、`IMAGE_GENERATION_MODEL`；`IMAGE_GENERATION_PROVIDER=openai` 时沿用现有 OpenAI 兼容链路，`IMAGE_GENERATION_PROVIDER=xai` 时可接入 Grok 生图接口。如果和通用 LLM 走同一个 OpenAI 兼容网关，可以在 `.env` 里直接映射到 `OPENAI_*`。
+- `xai` provider 当前已打通文生图与无 mask 的图生图；mask 编辑仍建议继续使用 `openai` provider。
 
 ## DeepSearch 说明
 

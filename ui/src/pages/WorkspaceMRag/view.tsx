@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   RefreshCcw,
   Search,
+  SendHorizontal,
   Square,
   Trash2,
   UploadCloud,
@@ -489,19 +490,13 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
     onClearQueryResult,
   } = props;
 
-  const selectedKnowledgeBaseName = selectedKnowledgeBase?.name || "尚未选择";
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
-  const [isLibraryOpen, setIsLibraryOpen] = useState(true);
-  const [isEvidenceOpen, setIsEvidenceOpen] = useState(true);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(!selectedKnowledgeBase);
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(Boolean(selectedKnowledgeBase));
   const activeFullContentFile =
     files.find((file) => file.id === activeFullContentFileId) || null;
-  const readyFileCount = files.filter((file) => file.fileStatus === "SUCCESS").length;
-  const currentStep = !selectedKnowledgeBase
-    ? "先选择一个知识库"
-    : files.length === 0
-      ? "导入资料后开始提问"
-      : "可以直接向资料提问";
+  const hasQueryResult = queryAnswer || queryError || queryRawChunks.length > 0;
 
   return (
     <div className="flex h-full flex-col bg-[var(--page-gradient)] text-[var(--chat-text)]">
@@ -544,7 +539,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               )}
             >
               <DatabaseZap className="h-3.5 w-3.5" />
-              资料库
+              知识源
             </button>
             <button
               type="button"
@@ -567,7 +562,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
       {/* ── Body ── */}
       <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
         <div className="mx-auto grid h-full max-w-[1540px] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,320px)_minmax(520px,1fr)_minmax(0,360px)]">
-          {/* 左侧资料库面板，负责选择上下文，不抢占问答焦点。 */}
+          {/* 左侧知识源面板，负责选择上下文，不抢占问答焦点。 */}
           <motion.aside
             animate={{
               opacity: isLibraryOpen ? 1 : 0,
@@ -585,7 +580,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
             <div className="flex items-start justify-between gap-3 border-b border-[var(--chat-border)] px-4 py-4">
               <div>
                 <div className="text-[12px] font-semibold uppercase tracking-wider text-[var(--chat-text-muted)]">
-                  资料库
+                  知识源
                 </div>
                 <div className="mt-1 text-[13px] text-[var(--chat-text-soft)]">
                   选择问答的上下文范围
@@ -656,7 +651,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                   <input
                     value={createKnowledgeBaseName}
                     onChange={(e) => onCreateKnowledgeBaseNameChange(e.target.value)}
-                    placeholder="名称，如：产品资料库"
+                    placeholder="名称，如：产品知识源"
                     className="w-full rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none transition placeholder:text-[var(--chat-text-muted)] focus:border-[var(--primary)]/30"
                   />
                   <textarea
@@ -690,53 +685,48 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
           {/* 中间问答舞台，所有主要注意力都落在这里。 */}
           <main
             className={classNames(
-              "flex min-h-0 flex-col rounded-[32px] border border-[var(--chat-border)] bg-[var(--chat-surface)] shadow-[var(--shadow-md)]",
+              "flex min-h-0 flex-col overflow-hidden rounded-[30px] border border-[var(--chat-border)] bg-[var(--chat-surface)] shadow-[var(--shadow-md)]",
               !isLibraryOpen && !isEvidenceOpen && "lg:col-span-3",
               isLibraryOpen && !isEvidenceOpen && "lg:col-span-2",
               !isLibraryOpen && isEvidenceOpen && "lg:col-span-2"
             )}
           >
-            <div className="shrink-0 border-b border-[var(--chat-border)] px-5 py-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-[var(--chat-surface-soft)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
-                    {currentStep}
-                  </div>
-                  <h2 className="mt-3 truncate text-[24px] font-semibold tracking-tight text-[var(--chat-text)]">
-                    {selectedKnowledgeBase ? selectedKnowledgeBaseName : "选择资料库后开始问答"}
-                  </h2>
-                  {selectedKnowledgeBase ? (
-                    <div className="mt-2 font-mono text-[12px] text-[var(--chat-text-muted)]">
-                      知识库 ID：{selectedKnowledgeBase.id}
+            {(!selectedKnowledgeBase || hasQueryResult) ? (
+              <div className="shrink-0 border-b border-[var(--chat-border)] px-5 py-3">
+                <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                  {!selectedKnowledgeBase ? (
+                    <div className="min-w-0">
+                      <h2 className="truncate text-[20px] font-semibold tracking-tight text-[var(--chat-text)]">
+                        选择知识源后开始问答
+                      </h2>
+                      <p className="mt-1 max-w-[72ch] text-[13px] leading-6 text-[var(--chat-text-muted)]">
+                        左侧选择或创建知识源后，系统会把导入资料作为回答依据。
+                      </p>
                     </div>
-                  ) : null}
-                  <p className="mt-1 max-w-[72ch] text-[13px] leading-6 text-[var(--chat-text-muted)]">
-                    {selectedKnowledgeBase
-                      ? `当前资料库有 ${files.length} 个资料源，${readyFileCount} 个已完成切片。`
-                      : "左侧选择或创建知识库后，系统会把导入资料作为回答依据。"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {(queryAnswer || queryError || queryRawChunks.length > 0) && (
-                    <ActionButton
-                      label="清空回答"
-                      icon={<Trash2 className="h-3.5 w-3.5" />}
-                      onClick={onClearQueryResult}
-                      variant="ghost"
-                    />
+                  ) : (
+                    <div className="min-w-0" />
                   )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {hasQueryResult && (
+                      <ActionButton
+                        label="清空回答"
+                        icon={<Trash2 className="h-3.5 w-3.5" />}
+                        onClick={onClearQueryResult}
+                        variant="ghost"
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
               {!selectedKnowledgeBase ? (
                 <div className="flex min-h-full items-center justify-center">
                   <EmptyState
                     icon={DatabaseZap}
-                    title="先选一个资料库"
-                    description="资料库决定 MRAG 的检索范围，选中后再导入文件或网页链接。"
+                    title="先选一个知识源"
+                    description="知识源决定 MRAG 的检索范围，选中后再导入文件或网页链接。"
                   />
                 </div>
               ) : queryAnswer || queryError || querying ? (
@@ -753,30 +743,30 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                     duration: 0.35,
                     ease: [0.16, 1, 0.3, 1],
                   }}
-                  className="mx-auto max-w-[860px]"
+                  className="mx-auto max-w-[900px]"
                 >
-                  <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-[var(--chat-text-muted)]">
-                    <Search className="h-3.5 w-3.5" />
-                    MRAG 回答
-                  </div>
-                  <div className="rounded-[28px] border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-5 py-5 shadow-[var(--shadow-sm)]">
-                    {queryError ? (
-                      <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
-                        {queryError}
+                  {queryError ? (
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-600">
+                      {queryError}
+                    </div>
+                  ) : queryAnswer ? (
+                    <article className="rounded-[22px] border border-[var(--chat-border)] bg-[var(--chat-surface)] px-6 py-6 shadow-[var(--shadow-xs)]">
+                      <div className="mb-4 flex items-center gap-2 text-[12px] font-medium text-[var(--chat-text-muted)]">
+                        <Search className="h-3.5 w-3.5" />
+                        回答
                       </div>
-                    ) : queryAnswer ? (
                       <MarkdownRenderer
                         markDownContent={queryAnswer}
                         isStreaming={querying}
                         className="text-[15px] leading-8"
                       />
-                    ) : (
-                      <div className="flex items-center justify-center py-12 text-[13px] text-[var(--chat-text-muted)]">
-                        <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                        正在检索资料并组织回答...
-                      </div>
-                    )}
-                  </div>
+                    </article>
+                  ) : (
+                    <div className="flex items-center justify-center py-16 text-[13px] text-[var(--chat-text-muted)]">
+                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                      正在检索资料并组织回答...
+                    </div>
+                  )}
                 </motion.div>
               ) : files.length ? (
                 <div className="flex min-h-full items-center justify-center">
@@ -785,10 +775,10 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                       <Search className="h-6 w-6" />
                     </div>
                     <h2 className="mt-5 text-[22px] font-semibold tracking-tight text-[var(--chat-text)]">
-                      直接问资料里的问题
+                      输入问题，开始检索
                     </h2>
                     <p className="mt-3 text-[14px] leading-7 text-[var(--chat-text-muted)]">
-                      右侧证据面板保留原始文件和网页，回答会在这里集中展示，避免文件管理和问答内容互相抢注意力。
+                      回答会在这里集中展示，右侧保留可追溯的原文和证据。
                     </p>
                   </div>
                 </div>
@@ -803,18 +793,18 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
               )}
             </div>
 
-            <div className="shrink-0 border-t border-[var(--chat-border)] p-4">
-              <div className="rounded-[26px] border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] p-3">
+            <div className="shrink-0 border-t border-[var(--chat-border)] bg-[var(--chat-surface)]/92 px-4 py-3">
+              <div className="rounded-[22px] border border-[var(--chat-border)] bg-[var(--chat-surface-soft)]/80 p-2.5">
                 <textarea
                   value={question}
                   onChange={(e) => onQuestionChange(e.target.value)}
-                  rows={4}
+                  rows={3}
                   placeholder="问一个和资料有关的问题，例如：这份资料里对接流程的关键步骤是什么？"
                   className="w-full resize-none border-none bg-transparent px-2 py-2 text-[15px] leading-7 text-[var(--chat-text)] outline-none placeholder:text-[var(--chat-text-muted)]"
                 />
-                <div className="flex flex-col gap-3 border-t border-[var(--chat-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-[12px] text-[var(--chat-text-muted)]">
-                    检索范围：{selectedKnowledgeBaseName}
+                <div className="flex flex-col gap-3 border-t border-[var(--chat-border)] px-1 pt-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="min-w-0 truncate text-[12px] text-[var(--chat-text-muted)]">
+                    基于右侧证据回答
                   </span>
                   <div className="flex items-center gap-2">
                     {queryRawChunks.length > 0 && (
@@ -842,7 +832,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                     ) : (
                       <ActionButton
                         label="开始提问"
-                        icon={<Search className="h-3.5 w-3.5" />}
+                        icon={<SendHorizontal className="h-3.5 w-3.5" />}
                         onClick={onSubmitQuery}
                         disabled={!selectedKnowledgeBase || !question.trim()}
                         variant="primary"
@@ -907,7 +897,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                     证据与资料
                   </div>
                   <div className="mt-1 text-[13px] text-[var(--chat-text-soft)]">
-                    {selectedKnowledgeBase ? `${files.length} 个资料源` : "先选择资料库"}
+                    {selectedKnowledgeBase ? `${files.length} 个资料源` : "先选择知识源"}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -974,8 +964,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
                 <div className="flex h-full items-center justify-center">
                   <EmptyState
                     icon={ArrowLeft}
-                    title="等待资料库"
-                    description="选中资料库后，这里会显示可引用的文件和网页。"
+                    title="等待知识源"
+                    description="选中知识源后，这里会显示可引用的文件和网页。"
                   />
                 </div>
               ) : files.length ? (

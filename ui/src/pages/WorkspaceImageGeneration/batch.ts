@@ -17,6 +17,7 @@ export type ImageBatchRequestPayload = {
   requestId: string;
   prompt: string;
   mode: "edits";
+  model?: string;
   size: string;
   n: number;
   fileNames: string[];
@@ -62,6 +63,7 @@ export function buildImageBatchPlans(input: {
 
 export async function runImageBatchRequests(input: {
   prompt: string;
+  model?: string;
   size: string;
   n: number;
   plans: ImageBatchPlan[];
@@ -75,6 +77,7 @@ export async function runImageBatchRequests(input: {
           requestId: input.createRequestId(index),
           prompt: input.prompt,
           mode: "edits",
+          model: input.model,
           size: input.size,
           n: input.n,
           fileNames: plan.fileNames,

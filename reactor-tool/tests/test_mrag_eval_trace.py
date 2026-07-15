@@ -2,10 +2,84 @@
 import unittest
 from unittest.mock import patch
 
+from reactor_tool.tool.mrag.generation import PromptManager
 from reactor_tool.tool.mrag.query.aigent import AgenticRAG
 
 
 class AgenticRagEvalTraceTest(unittest.TestCase):
+
+    def test_should_expose_citation_url_in_ref_context_for_model(self):
+        context = AgenticRAG.build_ref_context(
+            [
+                {
+                    "score": 0.91,
+                    "payload": {
+                        "chunk_type": "text",
+                        "text": "行业基准数据经过采集、审核、规格化后发布。",
+                        "filename": "guide.pdf",
+                        "file_url": "http://127.0.0.1:1601/download/req/guide.pdf",
+                    },
+                },
+                {
+                    "score": 0.82,
+                    "payload": {
+                        "chunk_type": "caption",
+                        "text": "图 3.1 展示了行业基准数据处理流程。",
+                        "filename": "guide.pdf",
+                        "image_url": "http://127.0.0.1:1601/files/page_3.png",
+                    },
+                },
+            ]
+        )
+
+        self.assertIn("资料标题: guide.pdf", context)
+        self.assertIn("引用链接: http://127.0.0.1:1601/download/req/guide.pdf", context)
+        self.assertIn("引用链接: http://127.0.0.1:1601/files/page_3.png", context)
+        self.assertIn("资料正文:\n行业基准数据经过采集、审核、规格化后发布。", context)
+
+    def test_should_require_clickable_markdown_citations_in_prompts(self):
+        self.assertIn("[〔1〕](https://example.com/source-1)", PromptManager.TEXT_PROMPT)
+        self.assertIn("禁止输出不可点击的 `〔1〕〔2〕` 纯文本编号", PromptManager.TEXT_PROMPT)
+        self.assertIn("[〔1〕](https://example.com/source-1)", PromptManager.IMAGE_PROMPT)
+        self.assertIn("禁止输出不可点击的 `〔1〕〔2〕` 纯文本编号", PromptManager.IMAGE_PROMPT)
+
+    def test_should_keep_ocr_and_caption_as_text_context_while_preserving_visual_links(self):
+        text_chunks, image_chunks, page_chunks = AgenticRAG.merge_retrieval_results(
+            [
+                {
+                    "score": 0.91,
+                    "payload": {
+                        "chunk_type": "ocr_text",
+                        "text": "发票号码 12345",
+                        "filename": "demo.pdf",
+                        "file_sorted": "img-1",
+                        "image_id": "img-1",
+                        "image_path": "images/img_1.png",
+                        "image_url": "http://img",
+                    },
+                },
+                {
+                    "score": 0.82,
+                    "payload": {
+                        "chunk_type": "caption",
+                        "text": "第一页是审批流程图",
+                        "filename": "demo.pdf",
+                        "file_sorted": "page-1",
+                        "page_id": "page-1",
+                        "page_path": "pages/page_1.png",
+                        "image_url": "http://page",
+                    },
+                },
+            ]
+        )
+
+        self.assertEqual(["ocr_text", "caption"], [chunk["payload"]["chunk_type"] for chunk in text_chunks])
+        self.assertEqual(["img-1"], [chunk["payload"]["image_id"] for chunk in image_chunks])
+        self.assertEqual(["page-1"], [chunk["payload"]["page_id"] for chunk in page_chunks])
+        self.assertEqual(
+            ["http://page", "http://img"],
+            AgenticRAG.extract_answer_image_urls(page_chunks, image_chunks),
+        )
 
     def test_should_collect_trace_for_retrieval_backed_query(self):
         agent = AgenticRAG("kb-demo")

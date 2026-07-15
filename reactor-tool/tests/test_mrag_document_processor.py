@@ -127,6 +127,77 @@ class DocumentProcessorPersistenceTest(unittest.TestCase):
             ]
         )
 
+    def test_should_store_image_ocr_and_caption_as_text_proxy_when_image_vector_disabled(self):
+        with tempfile.TemporaryDirectory(prefix="mrag-processor-") as temp_dir:
+            images_dir = Path(temp_dir) / "images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            image_path = images_dir / "chart.png"
+            image_path.write_bytes(b"fake-image")
+
+            processor = DocumentProcessor.__new__(DocumentProcessor)
+            processor._kb_id = "kb-1"
+            processor._uid = "file-1"
+            processor._file_path = str(Path(temp_dir) / "demo.pdf")
+            processor._file_url = "http://127.0.0.1:1601/storage/demo.pdf"
+            processor._filename = "demo.pdf"
+            processor._image_vector_enabled = False
+            processor._vector_store = MagicMock()
+            processor._text_embedding = MagicMock()
+            processor._bm25_embedding = MagicMock()
+            processor._ocr = MagicMock()
+            processor._parser = SimpleNamespace(
+                parsed_images=lambda: [str(image_path)],
+                images_dir=str(images_dir),
+            )
+
+            processor._ocr.ocr.return_value = "图中包含销售额数据"
+            processor._text_embedding.encode_text_batch.return_value = [[0.1, 0.2], [0.3, 0.4]]
+            processor._bm25_embedding.encode_text_batch.return_value = [{"indices": [1], "values": [1.0]}, {"indices": [2], "values": [0.8]}]
+
+            with patch.object(
+                processor,
+                "_get_uploaded_asset_url",
+                return_value="http://127.0.0.1:1601/storage/chart.png",
+            ), patch(
+                "reactor_tool.tool.mrag.document.processor.generate_caption",
+                return_value="这是一张销售趋势图",
+            ):
+                processor._process_image()
+
+        processor._vector_store.add_image_chunks.assert_not_called()
+        processor._vector_store.add_text_chunks.assert_called_once()
+        chunk_batch = processor._vector_store.add_text_chunks.call_args.args[0]
+        self.assertEqual(["ocr_text", "caption"], [chunk["chunk_type"] for chunk in chunk_batch])
+        self.assertEqual(["file-1", "file-1"], [chunk["file_id"] for chunk in chunk_batch])
+        self.assertEqual(["file-1-0", "file-1-0"], [chunk["image_id"] for chunk in chunk_batch])
+        self.assertEqual(
+            ["http://127.0.0.1:1601/storage/chart.png", "http://127.0.0.1:1601/storage/chart.png"],
+            [chunk["image_url"] for chunk in chunk_batch],
+        )
+
+    def test_should_skip_page_ocr_and_caption_when_image_vector_disabled(self):
+        with tempfile.TemporaryDirectory(prefix="mrag-processor-") as temp_dir:
+            pages_dir = Path(temp_dir) / "pages"
+            pages_dir.mkdir(parents=True, exist_ok=True)
+            page_path = pages_dir / "page_1.png"
+            page_path.write_bytes(b"fake-page")
+
+            processor = DocumentProcessor.__new__(DocumentProcessor)
+            processor._uid = "file-1"
+            processor._image_vector_enabled = False
+            processor._vector_store = MagicMock()
+            processor._ocr = MagicMock()
+            processor._parser = SimpleNamespace(
+                parsed_pages=lambda: [str(page_path)],
+                pages_dir=str(pages_dir),
+            )
+
+            processor._process_page()
+
+        processor._ocr.ocr.assert_not_called()
+        processor._vector_store.add_page_chunks.assert_not_called()
+        processor._vector_store.add_text_chunks.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
