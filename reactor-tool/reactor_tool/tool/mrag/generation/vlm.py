@@ -9,6 +9,7 @@ from openai import OpenAI
 from .llm import _build_openai_compatible_headers, _normalize_openai_compatible_base_url
 from reactor_tool.tool.mrag.utils import download_utils
 from reactor_tool.tool.mrag.utils.logger_utils import logger
+from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
 
 class VLLMClient:
     """大模型客户端类"""
@@ -119,9 +120,17 @@ class VLLMClient:
         if extra_body:
             request_kwargs["extra_body"] = extra_body
 
-        completion = self.client.chat.completions.create(**request_kwargs)
+        label = f"mrag-vlm:{self.model_name or 'unknown'}"
         if stream:
-            return completion
+            return stream_with_retry(
+                lambda: self.client.chat.completions.create(**request_kwargs),
+                label=label,
+            )
+
+        completion = call_with_retry(
+            lambda: self.client.chat.completions.create(**request_kwargs),
+            label=label,
+        )
         return completion.choices[0].message.content
 
     def chat(self, prompt, image_url):

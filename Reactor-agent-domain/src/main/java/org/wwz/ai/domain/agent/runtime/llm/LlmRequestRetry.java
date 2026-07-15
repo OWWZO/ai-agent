@@ -1,0 +1,278 @@
+package org.wwz.ai.domain.agent.runtime.llm;
+
+import org.springframework.ai.chat.model.ChatResponse;
+import reactor.core.publisher.Flux;
+import reactor.util.retry.Retry;
+
+import java.io.IOException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.time.Duration;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ * Java 主链路 LLM 请求的统一瞬态错误重试。
+ * 默认最多额外重试 2 次；流式仅在尚未产出任何 chunk 前允许重开。
+ */
+public final class LlmRequestRetry {
+
+    private static final Logger LOG = Logger.getLogger(LlmRequestRetry.class.getName());
+
+    private static final int DEFAULT_MAX_RETRIES = 2;
+    private static final long DEFAULT_BASE_DELAY_MS = 500L;
+    private static final long DEFAULT_MAX_DELAY_MS = 4000L;
+
+    private static final Set<Integer> TRANSIENT_STATUS_CODES = Set.of(408, 409, 425, 429, 500, 502, 503, 504);
+    private static final String[] TRANSIENT_MARKERS = {
+            "upstream request failed",
+            "temporarily unavailable",
+            "service unavailable",
+            "gateway timeout",
+            "bad gateway",
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "connection error",
+            "remote end closed",
+            "broken pipe",
+            "too many requests",
+            "rate limit",
+            "overloaded",
+            "server error",
+            "internal server error",
+            "try again",
+            "temporar",
+            "eof",
+            "i/o error",
+            "read timed out",
+            "connect timed out",
+            "ssl",
+            "tls",
+            "handshake",
+            "unexpected_eof",
+            "connection closed",
+            "protocol error"
+    };
+
+    private static final String[] NON_TRANSIENT_MARKERS = {
+            "certificate_verify_failed",
+            "certificate verify failed",
+            "hostname mismatch",
+            "pkix path building failed",
+            "unable to find valid certification path",
+            "wrong version number",
+            "unsupported protocol",
+            "unknown ca",
+            "self signed certificate"
+    };
+
+    private LlmRequestRetry() {
+    }
+
+    public static int maxRetries() {
+        return DEFAULT_MAX_RETRIES;
+    }
+
+    public static long baseDelayMs() {
+        return DEFAULT_BASE_DELAY_MS;
+    }
+
+    public static long maxDelayMs() {
+        return DEFAULT_MAX_DELAY_MS;
+    }
+
+    public static boolean isTransient(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+            if (containsAny(lower, NON_TRANSIENT_MARKERS)) {
+                return false;
+            }
+
+            // SSL/TLS 握手中断通常属于可重试瞬态故障。
+            if (isSslException(current)) {
+                return true;
+            }
+
+            if (current instanceof SocketTimeoutException
+                    || current instanceof SocketException
+                    || current instanceof TimeoutException) {
+                return true;
+            }
+
+            // 普通 IOException 仍可重试；证书类错误已在上面排除。
+            if (current instanceof IOException) {
+                return true;
+            }
+
+            Integer statusCode = extractStatusCode(current);
+            if (statusCode != null && TRANSIENT_STATUS_CODES.contains(statusCode)) {
+                return true;
+            }
+
+            if (containsAny(lower, TRANSIENT_MARKERS)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isSslException(Throwable throwable) {
+        Class<?> type = throwable.getClass();
+        while (type != null) {
+            String name = type.getName();
+            if (name.startsWith("javax.net.ssl.")
+                    || name.startsWith("javax.security.cert.")
+                    || name.contains("SSLException")
+                    || name.contains("SSLHandshakeException")) {
+                return true;
+            }
+            type = type.getSuperclass();
+        }
+        return false;
+    }
+
+    private static boolean containsAny(String text, String[] markers) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        for (String marker : markers) {
+            if (text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static <T> T call(String label, Supplier<T> supplier) {
+        int retries = maxRetries();
+        RuntimeException lastError = null;
+        for (int attempt = 0; attempt <= retries; attempt++) {
+            try {
+                return supplier.get();
+            } catch (RuntimeException ex) {
+                lastError = ex;
+                if (attempt >= retries || !isTransient(ex)) {
+                    throw ex;
+                }
+                long sleepMs = computeDelayMs(attempt);
+                LOG.log(Level.WARNING, String.format(
+                        "[%s] transient failure (attempt %d/%d): %s; retry in %dms",
+                        label, attempt + 1, retries + 1, ex.getMessage(), sleepMs));
+                sleepQuietly(sleepMs);
+            } catch (Exception ex) {
+                RuntimeException wrapped = new RuntimeException(ex);
+                lastError = wrapped;
+                if (attempt >= retries || !isTransient(ex)) {
+                    throw wrapped;
+                }
+                long sleepMs = computeDelayMs(attempt);
+                LOG.log(Level.WARNING, String.format(
+                        "[%s] transient failure (attempt %d/%d): %s; retry in %dms",
+                        label, attempt + 1, retries + 1, ex.getMessage(), sleepMs));
+                sleepQuietly(sleepMs);
+            }
+        }
+        throw lastError != null ? lastError : new IllegalStateException("LLM retry exhausted without error");
+    }
+
+    public static Flux<ChatResponse> stream(String label, Supplier<Flux<ChatResponse>> openStream) {
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        int retries = maxRetries();
+        return Flux.defer(() -> {
+                    emitted.set(false);
+                    return openStream.get().doOnNext(ignored -> emitted.set(true));
+                })
+                .retryWhen(Retry.backoff(retries, Duration.ofMillis(baseDelayMs()))
+                        .maxBackoff(Duration.ofMillis(maxDelayMs()))
+                        .filter(error -> !emitted.get() && isTransient(error))
+                        .doBeforeRetry(signal -> LOG.log(Level.WARNING, String.format(
+                                "[%s] stream transient failure before first chunk (attempt %d/%d): %s",
+                                label,
+                                signal.totalRetries() + 1,
+                                retries + 1,
+                                signal.failure() == null ? "unknown" : signal.failure().getMessage()
+                        ))));
+    }
+
+    private static long computeDelayMs(int attempt) {
+        long delay = Math.min(maxDelayMs(), baseDelayMs() * (1L << attempt));
+        long jitter = (long) (Math.random() * Math.min(250L, Math.max(1L, delay / 5L)));
+        return delay + jitter;
+    }
+
+    private static void sleepQuietly(long sleepMs) {
+        if (sleepMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(sleepMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("LLM retry interrupted", interrupted);
+        }
+    }
+
+    private static Integer extractStatusCode(Throwable throwable) {
+        try {
+            var method = throwable.getClass().getMethod("getStatusCode");
+            Object value = method.invoke(throwable);
+            if (value instanceof Integer integer) {
+                return integer;
+            }
+            if (value != null) {
+                String text = String.valueOf(value);
+                if (text.matches("\\d+")) {
+                    return Integer.parseInt(text);
+                }
+                // Spring HttpStatusCode#value()
+                try {
+                    var valueMethod = value.getClass().getMethod("value");
+                    Object raw = valueMethod.invoke(value);
+                    if (raw instanceof Integer integer) {
+                        return integer;
+                    }
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
+        try {
+            var responseMethod = throwable.getClass().getMethod("getResponse");
+            Object response = responseMethod.invoke(throwable);
+            if (response != null) {
+                try {
+                    var statusMethod = response.getClass().getMethod("getStatusCode");
+                    Object status = statusMethod.invoke(response);
+                    if (status instanceof Integer integer) {
+                        return integer;
+                    }
+                    if (status != null) {
+                        var valueMethod = status.getClass().getMethod("value");
+                        Object raw = valueMethod.invoke(status);
+                        if (raw instanceof Integer integer) {
+                            return integer;
+                        }
+                    }
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return null;
+    }
+}

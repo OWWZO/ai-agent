@@ -345,10 +345,11 @@ public class LLM {
             log.info("{} call llm ask via Spring AI, model={}, stream={}",
                     context.getRequestId(), model, stream);
 
+            String retryLabel = "llm-ask:" + model;
             if (!stream) {
                 return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", () -> {
                     try {
-                        ChatResponse response = chatModel.call(prompt);
+                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
                         String content = responseMapper.toText(response);
                         finishLlmInvocation(
                                 context,
@@ -381,7 +382,13 @@ public class LLM {
                 });
             }
 
-            return streamResponseHandler.handleStringStream(context, chatModel.stream(prompt), null, false, pushToClient)
+            return streamResponseHandler.handleStringStream(
+                    context,
+                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
+                    null,
+                    false,
+                    pushToClient
+            )
                     .whenComplete((content, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(
@@ -474,13 +481,14 @@ public class LLM {
             log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=function_call",
                     context.getRequestId(), model, stream);
 
+            String retryLabel = "llm-askTool:" + model;
             if (!stream) {
                 CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.supplyAsync(
                         runtimeDependencies.requireLlmExecutor(),
                         "llmAskToolFunctionCall",
                         () -> {
                     try {
-                        ChatResponse response = chatModel.call(prompt);
+                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
                         return responseMapper.toToolCallResponse(response, startTime);
                     } catch (Exception e) {
                         throw new CompletionException(e);
@@ -501,7 +509,12 @@ public class LLM {
                 });
             }
 
-            return streamResponseHandler.handleToolCallStream(context, chatModel.stream(prompt), startTime, pushToClient)
+            return streamResponseHandler.handleToolCallStream(
+                    context,
+                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
+                    startTime,
+                    pushToClient
+            )
                     .whenComplete((response, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(context, invocationHandle, response, null);
@@ -541,10 +554,11 @@ public class LLM {
         log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=struct_parse",
                 context.getRequestId(), model, stream);
 
+        String retryLabel = "llm-askTool-struct:" + model;
         if (!stream) {
             return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAskToolStructParse", () -> {
                 try {
-                    ChatResponse response = chatModel.call(prompt);
+                    ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
                             context,
                             responseMapper.toText(response),
@@ -565,7 +579,7 @@ public class LLM {
 
         return streamResponseHandler.handleStringStream(
                         context,
-                        chatModel.stream(prompt),
+                        LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
                         STRUCT_PARSE_JSON_MARKER,
                         true
                 )

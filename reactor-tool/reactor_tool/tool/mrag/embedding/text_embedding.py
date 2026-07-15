@@ -6,6 +6,7 @@ from loguru import logger
 from openai import OpenAI
 
 from .embedding import TextEmbedding
+from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry
 
 dotenv.load_dotenv()
 
@@ -35,12 +36,17 @@ class OpenAITextEmbedding(TextEmbedding):
 
             batch_size = 10
             embeddings = []
+            model_name = os.getenv("TEXT_EMBEDDING_MODEL_NAME")
+            timeout = int(os.getenv("API_TIMEOUT", 300))
             for i in range(0, len(texts), batch_size):
                 batch_texts = texts[i:i + batch_size]
-                response = client.embeddings.create(
-                    model=os.getenv("TEXT_EMBEDDING_MODEL_NAME"),
-                    input=batch_texts,
-                    timeout=int(os.getenv("API_TIMEOUT", 300)),
+                response = call_with_retry(
+                    lambda batch=batch_texts: client.embeddings.create(
+                        model=model_name,
+                        input=batch,
+                        timeout=timeout,
+                    ),
+                    label=f"mrag-text-embedding:{model_name or 'unknown'}",
                 )
                 response_data = response.data
                 if not response_data:

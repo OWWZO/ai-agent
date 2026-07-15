@@ -2,6 +2,7 @@ import os
 
 import dotenv
 from openai import OpenAI
+from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
 from reactor_tool.util.log_util import logger
 dotenv.load_dotenv()
 
@@ -97,11 +98,17 @@ class LLMClient:
         if extra_body:
             request_kwargs["extra_body"] = extra_body
 
-        completion = self.client.chat.completions.create(
-            **request_kwargs
-        )
+        label = f"mrag-llm:{self.model_name or 'unknown'}"
         if stream:
-            return completion
+            return stream_with_retry(
+                lambda: self.client.chat.completions.create(**request_kwargs),
+                label=label,
+            )
+
+        completion = call_with_retry(
+            lambda: self.client.chat.completions.create(**request_kwargs),
+            label=label,
+        )
         return completion.choices[0].message.content
 
     def chat(self, prompt, image_url):

@@ -9,6 +9,7 @@ from .embedding import ImageEmbedding
 from ..runtime_mode import is_multimodal_image_index_enabled
 from ..utils import image_utils
 from ..utils.logger_utils import logger
+from ..utils.retry_utils import call_with_retry
 
 
 def _normalize_dashscope_multimodal_embedding_base_url(base_url: str | None) -> str:
@@ -67,17 +68,26 @@ class QwenVLEmbedding(ImageEmbedding):
         }
         self._apply_dimension(body)
 
-        resp = requests.post(
-            self.dashscope_base_url,
-            headers=headers,
-            json=body,
-            timeout=self.timeout
-        )
-        if resp.status_code == HTTPStatus.OK:
-            return resp.json()["output"]["embeddings"][0]['embedding']
-        else:
-            print(resp.text)
+        def _do_request():
+            resp = requests.post(
+                self.dashscope_base_url,
+                headers=headers,
+                json=body,
+                timeout=self.timeout
+            )
+            if resp.status_code == HTTPStatus.OK:
+                return resp.json()["output"]["embeddings"][0]["embedding"]
+            if resp.status_code in {408, 409, 425, 429, 500, 502, 503, 504}:
+                raise RuntimeError(
+                    f"image embedding upstream transient error: status={resp.status_code}, body={resp.text[:300]}"
+                )
+            logger.error(f"图片编码失败: status={resp.status_code}, body={resp.text}")
             return []
+
+        return call_with_retry(
+            _do_request,
+            label=f"mrag-image-embedding:{self.model_name or 'unknown'}",
+        )
 
     def _encode_image_batch(self, images: List[Image.Image]) -> list[list[float]]:
         """
@@ -114,21 +124,27 @@ class QwenVLEmbedding(ImageEmbedding):
             }
             self._apply_dimension(body)
 
-            resp = requests.post(
-                self.dashscope_base_url,
-                headers=headers,
-                json=body,
-                timeout=self.timeout
-            )
-            if resp.status_code == HTTPStatus.OK:
-
-                output_data = resp.json()
-                return output_data["output"]["embeddings"][0]["embedding"]
-
-            else:
+            def _do_request():
+                resp = requests.post(
+                    self.dashscope_base_url,
+                    headers=headers,
+                    json=body,
+                    timeout=self.timeout
+                )
+                if resp.status_code == HTTPStatus.OK:
+                    output_data = resp.json()
+                    return output_data["output"]["embeddings"][0]["embedding"]
+                if resp.status_code in {408, 409, 425, 429, 500, 502, 503, 504}:
+                    raise RuntimeError(
+                        f"text embedding upstream transient error: status={resp.status_code}, body={resp.text[:300]}"
+                    )
                 logger.error(f"文本编码失败: {resp}")
                 return []
 
+            return call_with_retry(
+                _do_request,
+                label=f"mrag-image-text-embedding:{self.model_name or 'unknown'}",
+            )
 
         except Exception as e:
             import traceback

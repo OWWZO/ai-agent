@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from .kb_doc_store import KBDocStore
 from .kb_file_store import KBFileStore
 from .kb_store import KBStore
+from .mrag_session_store import MRagSessionStore
+from .mrag_turn_store import MRagTurnStore
 
 _sqlite_engine = None
 
@@ -37,5 +39,23 @@ def get_kb_doc_store() -> KBDocStore:
     if store_type == "sqlite":
         from .kb_doc_store_sqlite_impl import KBDocSQLite
         return KBDocSQLite(_sqlite_engine)
+    else:
+        raise Exception("Unknown store type")
+
+
+def get_mrag_session_store() -> MRagSessionStore:
+    global _sqlite_engine, store_type
+    if store_type == "sqlite":
+        from .mrag_session_store_sqlite_impl import MRagSessionSQLite
+        return MRagSessionSQLite(_sqlite_engine)
+    else:
+        raise Exception("Unknown store type")
+
+
+def get_mrag_turn_store() -> MRagTurnStore:
+    global _sqlite_engine, store_type
+    if store_type == "sqlite":
+        from .mrag_turn_store_sqlite_impl import MRagTurnSQLite
+        return MRagTurnSQLite(_sqlite_engine)
     else:
         raise Exception("Unknown store type")
