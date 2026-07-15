@@ -11,8 +11,10 @@ import {
 } from "@/utils/conversationHistory";
 
 type FeaturedConversationDetailViewProps = {
+  embedded?: boolean;
   loading: boolean;
   detail: FeaturedConversationDetail | null;
+  onBack?: () => void;
 };
 
 function resolveUnavailableReason(detail: FeaturedConversationDetail) {
@@ -37,7 +39,7 @@ export function FeaturedConversationDetailView(
 
   if (props.loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center px-6">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--chat-bg)] px-6">
         <Spin size="large" />
       </div>
     );
@@ -45,33 +47,47 @@ export function FeaturedConversationDetailView(
 
   if (!props.detail) {
     return (
-      <div className="flex h-full w-full items-center justify-center px-6">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--chat-bg)] px-6">
         <Empty description="未找到对应的精品对话" />
       </div>
     );
   }
 
   const detail = props.detail;
+  const backClassName =
+    "inline-flex h-9 items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3.5 text-[13px] font-medium text-[var(--chat-text-soft)] shadow-[var(--shadow-sm)] transition hover:text-[var(--chat-text)]";
+
+  const backControl =
+    props.embedded && props.onBack ? (
+      <button type="button" onClick={props.onBack} className={backClassName}>
+        <ArrowLeft className="h-4 w-4" />
+        <span>返回</span>
+      </button>
+    ) : (
+      <Link to={ROUTES.FEATURED_CONVERSATIONS} className={backClassName}>
+        <ArrowLeft className="h-4 w-4" />
+        <span>返回</span>
+      </Link>
+    );
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden px-3 py-3 md:px-4 md:py-4">
-      <div className="mb-3 shrink-0">
-        <Link
-          to={ROUTES.FEATURED_CONVERSATIONS}
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-[var(--chat-text-soft)] transition-colors hover:text-[var(--chat-text)]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>返回精品列表</span>
-        </Link>
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--chat-bg)] text-[var(--chat-text)]">
+      <div className="pointer-events-none absolute left-4 top-4 z-20 sm:left-5 sm:top-5">
+        <div className="pointer-events-auto">{backControl}</div>
       </div>
 
       {!detail.contentAvailable || !hasRenderableContent ? (
-        <div className="min-h-0 flex-1 rounded-[24px] border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)]/72 p-6 md:p-8">
-          <div className="mx-auto max-w-[960px]">
-            <div className="text-[18px] font-medium text-[var(--chat-text)]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-16 sm:px-6">
+          <div className="mx-auto max-w-[720px] rounded-[28px] border border-dashed border-[var(--chat-border)] bg-[var(--chat-surface)] px-6 py-10 sm:px-8">
+            <div className="text-[18px] font-semibold tracking-tight text-[var(--chat-text)]">
               正文暂不可用
             </div>
-            <p className="mt-3 text-[14px] leading-7 text-[var(--chat-text-soft)]">
+            {detail.summary ? (
+              <p className="mt-3 text-[14px] leading-7 text-[var(--chat-text-soft)]">
+                {detail.summary}
+              </p>
+            ) : null}
+            <p className="mt-4 text-[13px] leading-6 text-[var(--chat-text-muted)]">
               {resolveUnavailableReason(detail)}
             </p>
           </div>

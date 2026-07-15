@@ -15,7 +15,6 @@ describe("ConversationSidebar", () => {
           onNewChat={() => {}}
           onSelectSession={() => {}}
           onChangeView={() => {}}
-          onOpenFeaturedConversations={() => {}}
           onManageFeaturedConversation={() => {}}
         />
       </MemoryRouter>

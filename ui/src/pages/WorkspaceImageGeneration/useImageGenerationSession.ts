@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 
 import {
   ImageGenerationRequestError,
-  requestDirectChat,
   requestImageGenerationTool,
 } from "@/services/imageGeneration";
 import {
@@ -16,6 +15,7 @@ import type {
   GenerationConfig,
   GenerationMessage,
   ImageGenerationHistoryBatch,
+  RequestMode,
   ResultImageItem,
   UserMessage,
 } from "./types";
@@ -24,7 +24,6 @@ import {
   fileToDataUrl,
   resolveDownloadUrl,
   resolvePreviewUrl,
-  trimTrailingSlash,
 } from "./utils";
 
 export type StatusTone = "default" | "success" | "error";
@@ -218,18 +217,17 @@ export function useImageGenerationSession(
     }
 
     const effectiveImages = collectEffectiveImages();
-    if (config.mode === "edits" && !effectiveImages.length) {
-      setStatus("请先上传至少一张参考图片", "error");
-      return;
-    }
+    // 有参考图自动走图生图，无参考图自动走文生图。
+    const requestMode: RequestMode =
+      effectiveImages.length > 0 ? "edits" : "images";
 
     const userMessage: UserMessage = {
       id: createLocalId("user"),
       role: "user",
       prompt: currentPrompt,
-      mode: config.mode,
+      mode: requestMode,
       images:
-        config.mode === "edits"
+        requestMode === "edits"
           ? effectiveImages.map((item) => item.objectUrl)
           : [],
       timestamp: Date.now(),
@@ -246,58 +244,6 @@ export function useImageGenerationSession(
     setDebugPayload("请求发送中...");
 
     try {
-      if (config.mode === "chat") {
-        const currentBaseUrl = trimTrailingSlash(config.baseUrl);
-        if (
-          !currentBaseUrl ||
-          !config.apiKey.trim() ||
-          !config.model.trim()
-        ) {
-          setStatus("请填写完整的对话调试配置与 Prompt", "error");
-          return;
-        }
-
-        const chatResult = await requestDirectChat({
-          baseUrl: currentBaseUrl,
-          apiKey: config.apiKey.trim(),
-          model: config.model.trim(),
-          prompt: currentPrompt,
-        });
-
-        setDebugPayload(chatResult.rawResponse);
-        const outputImages: ResultImageItem[] = [];
-        if (chatResult.image?.dataUrl) {
-          outputImages.push({
-            url: chatResult.image.dataUrl,
-            label: "对话返回图片",
-          });
-        } else if (chatResult.image?.url) {
-          outputImages.push({
-            url: chatResult.image.url,
-            label: "对话返回图片",
-            downloadUrl: chatResult.image.url,
-          });
-        }
-
-        updateAssistantMessage(assistantId, () => ({
-          id: assistantId,
-          role: "assistant",
-          status: outputImages.length || chatResult.text ? "done" : "error",
-          summary: outputImages.length
-            ? "对话接口返回了图片结果"
-            : chatResult.text || "响应中未识别到图片内容",
-          text: chatResult.text || undefined,
-          images: outputImages,
-          rawResponse: chatResult.rawResponse,
-          timestamp: Date.now(),
-        }));
-        setStatus(
-          outputImages.length ? "生成完成" : "未识别到图片内容",
-          outputImages.length ? "success" : "error"
-        );
-        return;
-      }
-
       const sourceImageDataUrls = await Promise.all(
         effectiveImages.map((item) => fileToDataUrl(item.file))
       );
@@ -308,7 +254,7 @@ export function useImageGenerationSession(
 
       if (
         shouldUseImageBatchMode({
-          mode: config.mode,
+          mode: requestMode,
           imageCount: effectiveImages.length,
           batchMode: config.batchMode,
         })
@@ -359,12 +305,12 @@ export function useImageGenerationSession(
       const toolResponse = await requestImageGenerationTool({
         requestId: createLocalId("image"),
         prompt: currentPrompt,
-        mode: config.mode,
+        mode: requestMode,
         model: config.model.trim(),
         size: config.size.trim(),
         n: config.n,
-        fileNames: config.mode === "edits" ? sourceImageDataUrls : [],
-        maskFileNames: config.mode === "edits" ? maskFileNames : [],
+        fileNames: requestMode === "edits" ? sourceImageDataUrls : [],
+        maskFileNames: requestMode === "edits" ? maskFileNames : [],
         fileName: buildOutputName(currentPrompt),
         fileDescription: currentPrompt.slice(0, 80),
       });

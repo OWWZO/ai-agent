@@ -1,7 +1,9 @@
 import { FC } from "react";
+import { User } from "lucide-react";
 import DataChat from "@/components/DataChat";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
+import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 
 type Props = {
@@ -14,8 +16,15 @@ const DataDialogue: FC<Props> = (props) => {
   return (
     <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
       {chat.query ? (
-        <div className="mt-6 flex w-full justify-end">
-          <Message from="user" className="max-w-[82%]">
+        <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[90%] flex-row-reverse items-end gap-2 md:max-w-[80%]">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
+            style={{ boxShadow: "var(--chat-soft-shadow)" }}
+            aria-hidden="true"
+          >
+            <User className="h-4 w-4 text-stone-800" />
+          </div>
+          <Message from="user" className="max-w-[calc(100%-2.5rem)]">
             <MessageContent>{chat.query}</MessageContent>
           </Message>
         </div>
@@ -35,8 +44,11 @@ const DataDialogue: FC<Props> = (props) => {
       ) : null}
 
       {chat.chartData ? (
-        <div className="mt-6 flex w-full justify-start">
-          <Message from="assistant" className="w-full max-w-full">
+        <div className="mt-6 flex w-full max-w-[90%] items-end gap-2 md:max-w-[80%]">
+          <div className="shrink-0 self-end" aria-hidden="true">
+            <AnimatedOrb size={32} />
+          </div>
+          <Message from="assistant" className="min-w-0 flex-1">
             <MessageContent>
               <MessageResponse isStreaming={chat.loading}>输出结果</MessageResponse>
               <div className="mt-3">

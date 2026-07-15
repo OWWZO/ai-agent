@@ -183,6 +183,36 @@ class ImageGenerationToolTest(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_should_prefer_images_generations_for_openai_text_to_image(self):
+        request = ImageGenerationRequest.model_validate(
+            {
+                "requestId": "req-openai-images-001",
+                "prompt": "生成一张现代风格产品海报",
+                "mode": "images",
+                "size": "1024x1024",
+                "n": 1,
+            }
+        )
+
+        async def _run():
+            async with httpx.AsyncClient() as client:
+                primary, fallback = await _build_generation_requests(
+                    request=request,
+                    mode="images",
+                    base_url="https://example.com/v1",
+                    model_name="gpt-image-2",
+                    provider="openai",
+                    client=client,
+                )
+                self.assertEqual("https://example.com/v1/images/generations", primary["url"])
+                self.assertEqual("gpt-image-2", primary["body"]["model"])
+                self.assertEqual("生成一张现代风格产品海报", primary["body"]["prompt"])
+                self.assertEqual("1024x1024", primary["body"]["size"])
+                self.assertEqual("https://example.com/v1/responses", fallback["url"])
+                self.assertEqual("gpt-image-2", fallback["body"]["model"])
+
+        asyncio.run(_run())
+
     def test_should_build_xai_generation_request_without_responses_fallback(self):
         request = ImageGenerationRequest.model_validate(
             {

@@ -193,26 +193,26 @@ async def _build_generation_requests(
         raise ValueError("不支持的图片生成 provider，请设置 IMAGE_GENERATION_PROVIDER=openai 或 xai")
 
     if mode == "images":
-        tool = {"type": "image_generation"}
-        if request.size:
-            tool["size"] = request.size
-        if request.n > 1:
-            tool["n"] = request.n
         primary_request = {
-            "url": f"{base_url}/responses",
-            "body": {
-                "model": model_name,
-                "input": request.prompt,
-                "tools": [tool],
-            },
-        }
-        fallback_request = {
             "url": f"{base_url}/images/generations",
             "body": {
                 "model": model_name,
                 "prompt": request.prompt,
                 "n": request.n,
                 "size": request.size or DEFAULT_IMAGE_SIZE,
+            },
+        }
+        tool = {"type": "image_generation"}
+        if request.size:
+            tool["size"] = request.size
+        if request.n > 1:
+            tool["n"] = request.n
+        fallback_request = {
+            "url": f"{base_url}/responses",
+            "body": {
+                "model": model_name,
+                "input": request.prompt,
+                "tools": [tool],
             },
         }
         return primary_request, fallback_request

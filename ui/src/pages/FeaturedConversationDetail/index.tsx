@@ -8,8 +8,17 @@ import {
 
 import { FeaturedConversationDetailView } from "./view";
 
-export default function FeaturedConversationDetailPage() {
-  const { featuredId = "" } = useParams();
+interface FeaturedConversationDetailPageProps {
+  embedded?: boolean;
+  featuredId?: string;
+  onBack?: () => void;
+}
+
+export default function FeaturedConversationDetailPage(
+  props: FeaturedConversationDetailPageProps
+) {
+  const params = useParams();
+  const featuredId = props.featuredId || params.featuredId || "";
   const [detail, setDetail] = useState<FeaturedConversationDetail | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,8 +59,10 @@ export default function FeaturedConversationDetailPage() {
 
   return (
     <FeaturedConversationDetailView
+      embedded={props.embedded}
       loading={loading}
       detail={detail}
+      onBack={props.onBack}
     />
   );
 }

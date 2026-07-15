@@ -465,7 +465,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction) {
       return (
-        <div className="flex h-full w-full justify-center overflow-hidden px-4 pt-4 md:px-6">
+        <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
           <div
             className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
             id="chat-view"
@@ -492,7 +492,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </Conversation>
 
             {!readOnly ? (
-              <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+              <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
                 <div className="mx-auto w-full max-w-[860px]">
                   <GeneralInput
                     key={`input-${conversation.sessionId}-single`}
@@ -536,7 +536,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <div
         ref={containerRef}
         className={classNames(
-          "flex h-full w-full gap-0.5 p-2",
+          "flex h-full w-full gap-0.5 bg-stone-50 p-2",
           isDragging && "cursor-col-resize select-none"
         )}
       >
@@ -544,12 +544,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {!isFocusMode && (
           <div
             className={classNames(
-              "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90",
+              "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
               isDragging ? "transition-none" : "transition-all duration-300",
               isLeftCollapsed && "w-14 min-w-14",
               !isLeftCollapsed && "shrink-0"
             )}
-            style={!isLeftCollapsed ? { width: `${leftPanelWidth}%` } : undefined}
+            style={{
+              ...(!isLeftCollapsed ? { width: `${leftPanelWidth}%` } : {}),
+              boxShadow: "var(--chat-soft-shadow)",
+            }}
           >
             {isLeftCollapsed ? (
             // 折叠状态
@@ -668,11 +671,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white/90",
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
             isDragging ? "transition-none" : "transition-all duration-300",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
+          style={{ boxShadow: "var(--chat-soft-shadow)" }}
         >
           {isRightCollapsed ? (
             // 折叠状态
@@ -715,7 +719,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="flex h-full w-full justify-center overflow-hidden px-4 pt-4 md:px-6">
+      <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
         <div
           className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
           id="chat-view"
@@ -740,7 +744,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           </Conversation>
 
           {!readOnly ? (
-            <div className="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4">
+            <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
               <div className="mx-auto w-full max-w-[860px]">
                 <GeneralInput
                   key={`input-${conversation.sessionId}-data`}

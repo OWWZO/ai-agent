@@ -49,8 +49,8 @@ export const MessageContent = ({
   <div
     className={cn(
       "is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-[15px] leading-[1.75]",
-      // 用户气泡只保留轻背景和圆角，避免抢 AI 正文的阅读重心。
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[18px] group-[.is-user]:border group-[.is-user]:border-[var(--chat-border)]/60 group-[.is-user]:bg-[var(--chat-surface-soft)]/72 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-[var(--chat-text)] group-[.is-user]:shadow-none",
+      // 用户气泡：白底 + soft layered shadow（参考 ai-chat-assistant）
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-md group-[.is-user]:border group-[.is-user]:border-stone-200 group-[.is-user]:bg-white group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-stone-800 group-[.is-user]:shadow-[var(--chat-soft-shadow)]",
       "group-[.is-assistant]:w-full group-[.is-assistant]:rounded-none group-[.is-assistant]:border-0 group-[.is-assistant]:bg-transparent group-[.is-assistant]:px-0 group-[.is-assistant]:py-0 group-[.is-assistant]:text-[var(--chat-text)] group-[.is-assistant]:shadow-none",
       className
     )}

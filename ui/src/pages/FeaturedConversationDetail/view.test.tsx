@@ -96,9 +96,9 @@ describe("FeaturedConversationDetailView", () => {
       </MemoryRouter>
     );
 
-    expect(html).not.toContain("发布时间");
     expect(html).not.toContain("内容最近更新");
-    expect(html).not.toContain("精品详情");
+    expect(html).not.toContain("只读回放");
+    expect(html).toContain("返回");
     expect(html).toContain('data-chat-view="true"');
     expect(html).toContain('data-read-only="true"');
     expect(html).toContain("请给我一个示例");

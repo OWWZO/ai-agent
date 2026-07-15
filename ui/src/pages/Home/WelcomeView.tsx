@@ -1,12 +1,10 @@
 import classNames from "classnames";
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
 
 import FeaturedConversationCard from "@/components/FeaturedConversationCard";
 import GeneralInput from "@/components/GeneralInput";
-import { AiChatSurface } from "@/components/ai-elements/ai-chat-surface";
+import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
-import { ROUTES } from "@/router/routes";
 import type { FeaturedConversationCard as FeaturedConversationCardModel } from "@/services/featuredConversation";
 import {
   suggestedQuestionsByProductType,
@@ -41,6 +39,8 @@ export default function WelcomeView(props: {
   onSendQuestion: (query: SuggestedQuestion) => void;
   onOpenVideo: (url: string) => void;
   onCloseVideo: () => void;
+  onOpenFeaturedConversations?: () => void;
+  onOpenFeaturedDetail?: (featuredId: string) => void;
 }) {
   const suggestedQuestions =
     suggestedQuestionsByProductType[props.product.type] ?? [];
@@ -63,8 +63,11 @@ export default function WelcomeView(props: {
           )}
         >
           <div className="mb-8 text-center lg:mb-10">
+            <div className="orb-intro mx-auto mb-5 flex justify-center">
+              <AnimatedOrb size={88} />
+            </div>
             <h1
-              className="mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
+              className="text-blur-intro mb-3 text-[32px] font-medium leading-[1.08] tracking-normal text-[var(--chat-text)] md:text-[42px] lg:text-[48px]"
               style={{ fontFamily: "var(--font-sans)" }}
             >
               <KeyboardTypewriter
@@ -129,7 +132,7 @@ export default function WelcomeView(props: {
             }}
             className="mb-8 w-full max-w-[920px] lg:mb-10"
           >
-            <AiChatSurface className="w-full rounded-[32px] bg-[var(--chat-surface)]/90 p-5 shadow-none">
+            <div className="w-full">
               <GeneralInput
                 key={`welcome-input-${props.currentConversation.sessionId}`}
                 sessionId={props.currentConversation.sessionId}
@@ -147,7 +150,7 @@ export default function WelcomeView(props: {
                 onSelectionChange={props.onSelectionChange}
                 onRoleSelect={props.onRoleSelect}
               />
-            </AiChatSurface>
+            </div>
           </motion.div>
         </div>
 
@@ -168,30 +171,33 @@ export default function WelcomeView(props: {
             }}
             className="mx-auto mt-4 w-full max-w-[1180px] pb-20"
           >
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="mb-5 flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-[24px] font-medium text-[var(--chat-text)]">
+                <h2 className="text-[22px] font-semibold tracking-tight text-[var(--chat-text)]">
                   精品对话
                 </h2>
-                <p className="mt-1 text-[13px] text-[var(--chat-text-soft)]">
-                  浏览管理员精选的公开案例，直接查看完整回放。
+                <p className="mt-1 text-[13px] text-[var(--chat-text-muted)]">
+                  精选公开案例，点击查看完整回放
                 </p>
               </div>
-              <Link
-                to={ROUTES.FEATURED_CONVERSATIONS}
-                className="inline-flex items-center gap-2 text-[13px] font-medium text-[var(--primary)] transition-colors hover:text-[var(--chat-text)]"
+              <button
+                type="button"
+                onClick={() => props.onOpenFeaturedConversations?.()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)]"
               >
                 <span>查看全部</span>
                 <i className="font_family icon-xinjianjiantou text-[10px]" />
-              </Link>
+              </button>
             </div>
 
             {/* 精品对话始终走公共只读路由，避免和访客自己的会话状态耦合。 */}
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {props.featuredCards.map((card) => (
                 <FeaturedConversationCard
                   key={card.featuredId}
                   card={card}
+                  variant="grid"
+                  onSelect={props.onOpenFeaturedDetail}
                 />
               ))}
             </div>

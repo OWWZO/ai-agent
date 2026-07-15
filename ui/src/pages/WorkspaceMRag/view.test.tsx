@@ -118,6 +118,8 @@ describe("WorkspaceMRagView", () => {
 
     expect(html).toContain("MRAG 智能问答工作台");
     expect(html).toContain("产品资料库");
+    expect(html).toContain("知识源");
+    expect(html).toContain("证据");
     expect(html).not.toContain("知识库 ID");
     expect(html).not.toContain("当前资料库有");
     expect(html).not.toContain("Tool Base URL");
@@ -131,6 +133,7 @@ describe("WorkspaceMRagView", () => {
     expect(html).toContain("整篇正文");
     expect(html).toContain("正文标题");
     expect(html).toContain("调试");
+    expect(html).toContain("输入你的问题");
     expect(html).toContain("命中了产品接入流程说明");
   });
 

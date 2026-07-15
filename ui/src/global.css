@@ -279,6 +279,7 @@
 @import './assets/styles/common.css';
 @import './assets/styles/RelayIcon.css';
 @import './assets/styles/github-markdown.css';
+@import './components/chat/chat-shell.css';
 
 
 @config '../tailwind.config.js';
@@ -666,16 +667,18 @@ ol {
   border-radius: 22px !important;
 }
 
-/* Flattened shell style for mode/input area */
+/* Composer shell — soft layered shadow from reference chat UI */
 .reactor-input-flat {
-  background: rgba(255, 255, 255, 0.94) !important;
-  border: 1px solid rgba(0, 0, 0, 0.09) !important;
-  box-shadow: 0 3px 10px -8px rgba(15, 23, 42, 0.12) !important;
+  background: #ffffff !important;
+  border: none !important;
+  box-shadow: var(--chat-composer-shadow) !important;
 }
 
 .reactor-input-flat:focus-within {
-  border-color: rgba(0, 0, 0, 0.14) !important;
-  box-shadow: 0 4px 12px -8px rgba(15, 23, 42, 0.14) !important;
+  border: none !important;
+  box-shadow:
+    var(--chat-composer-shadow),
+    0 0 0 2px rgba(231, 229, 228, 0.9) !important;
 }
 
 .reactor-input-flat [data-slot="input-group"] {

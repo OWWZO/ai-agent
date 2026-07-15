@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  EditorImageItem,
-  RequestMode,
-} from "./types";
+import type { EditorImageItem } from "./types";
 import {
   buildMaskedComposite,
   createLocalId,
@@ -11,10 +8,6 @@ import {
   loadImageElement,
   resolveImageNaturalSize,
 } from "./utils";
-
-type UseImageEditorOptions = {
-  mode: RequestMode;
-};
 
 export function revokeEditorImageObjectUrls(
   images: Array<Pick<EditorImageItem, "objectUrl">>
@@ -49,8 +42,7 @@ async function createEditorImageItem(file: File): Promise<EditorImageItem> {
 /**
  * 图片编辑器相关状态和画布副作用集中在这里，避免页面继续堆叠 DOM/Canvas 细节。
  */
-export function useImageEditor(options: UseImageEditorOptions) {
-  const { mode } = options;
+export function useImageEditor() {
   const [images, setImages] = useState<EditorImageItem[]>([]);
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [brushSize, setBrushSize] = useState(32);
@@ -88,10 +80,6 @@ export function useImageEditor(options: UseImageEditorOptions) {
   }, []);
 
   useEffect(() => {
-    if (mode !== "edits") {
-      return;
-    }
-
     const handlePaste = (event: ClipboardEvent) => {
       const clipboardItems = event.clipboardData?.items;
       if (!clipboardItems?.length) {
@@ -118,7 +106,7 @@ export function useImageEditor(options: UseImageEditorOptions) {
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [addFiles, mode]);
+  }, [addFiles]);
 
   useEffect(() => {
     if (!editingImage) {

@@ -16,7 +16,7 @@ import type { ConversationSessionItem } from "@/services/agentConversation";
 import ConversationSessionActionMenu from "./ConversationSessionActionMenu";
 import { canFeatureConversationSession } from "./featuredConversationAdminModel";
 
-type SidebarView = "chat" | "mrag" | "image-generation";
+type SidebarView = "chat" | "mrag" | "image-generation" | "featured";
 
 type NavItem = {
   key: SidebarView;
@@ -40,6 +40,11 @@ const navItems: NavItem[] = [
     label: "生图",
     icon: WandSparkles,
   },
+  {
+    key: "featured",
+    label: "精品对话",
+    icon: Star,
+  },
 ];
 
 type ConversationSidebarProps = {
@@ -51,11 +56,12 @@ type ConversationSidebarProps = {
   onNewChat: () => void;
   onSelectSession: (session: ConversationSessionItem) => void;
   onChangeView: (view: SidebarView) => void;
-  onOpenFeaturedConversations: () => void;
   onManageFeaturedConversation: (session: ConversationSessionItem) => void;
 };
 
-const ConversationSidebar = memo((props: ConversationSidebarProps) => {
+const ConversationSidebar = memo(function ConversationSidebar(
+  props: ConversationSidebarProps
+) {
   const {
     activeView,
     recentSessions,
@@ -64,7 +70,6 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
     onNewChat,
     onSelectSession,
     onChangeView,
-    onOpenFeaturedConversations,
     onManageFeaturedConversation,
   } = props;
 
@@ -215,14 +220,6 @@ const ConversationSidebar = memo((props: ConversationSidebarProps) => {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={onOpenFeaturedConversations}
-          className="mt-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)]/50 hover:text-[var(--chat-text)]"
-        >
-          <Star className="h-4 w-4" />
-          <span>精品对话</span>
-        </button>
       </div>
 
       {/* 分隔线 */}

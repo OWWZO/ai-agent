@@ -1,4 +1,5 @@
 import { FC, useState, useCallback, useMemo, memo, useEffect, useRef } from "react";
+import { User } from "lucide-react";
 import AttachmentList from "@/components/AttachmentList";
 import { getTaskFiles } from "@/utils/taskArtifacts";
 import {
@@ -11,6 +12,7 @@ import {
   ReasoningTrigger,
   ReasoningContent,
 } from "@/components/ai-elements/reasoning";
+import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 import { type MarkdownNormalizationScope } from "@/utils/markdown";
 import RunStatus from "@/components/ActionView/RunStatus";
@@ -161,8 +163,15 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="mt-5 flex w-full justify-end">
-          <Message from="user" className="max-w-[78%]">
+        <div className="user-message-enter mt-5 flex w-full max-w-[90%] flex-row-reverse items-end gap-2 ml-auto md:max-w-[80%]">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
+            style={{ boxShadow: "var(--chat-soft-shadow)" }}
+            aria-hidden="true"
+          >
+            <User className="h-4 w-4 text-stone-800" />
+          </div>
+          <Message from="user" className="max-w-[calc(100%-2.5rem)]">
             <MessageContent>
               {chat.query}
             </MessageContent>
@@ -186,8 +195,15 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* AI 回复（Markdown） */}
       {showStandaloneResponse ? (
-        <div className="mt-7 flex w-full justify-start">
-          <Message from="assistant" className="w-full max-w-full">
+        <div className="mt-7 flex w-full max-w-[90%] items-end gap-2 md:max-w-[80%]">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center self-end rounded-full"
+            style={{ boxShadow: "var(--chat-soft-shadow)" }}
+            aria-hidden="true"
+          >
+            <AnimatedOrb size={32} />
+          </div>
+          <Message from="assistant" className="min-w-0 flex-1">
             <MessageContent>
               <MarkdownRenderer
                 markDownContent={chat.response}

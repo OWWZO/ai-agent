@@ -6,11 +6,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
-import { ROUTES } from "@/router/routes";
+import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
   defaultProduct,
   productList,
@@ -72,7 +71,7 @@ import {
 
 type HomeProps = Record<string, never>;
 
-type SidebarView = "chat" | "mrag" | "image-generation";
+type SidebarView = "chat" | "mrag" | "image-generation" | "featured";
 
 type InitialState = {
   productType: string;
@@ -144,7 +143,6 @@ const createInitialState = (): InitialState => {
 };
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
-  const navigate = useNavigate();
   const initialRef = useRef<InitialState>(createInitialState());
   const initializedVisitorIdRef = useRef<string | null>(null);
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
@@ -157,6 +155,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     CHAT.ConversationHistory[]
   >([]);
   const [activeView, setActiveView] = useState<SidebarView>("chat");
+  const [featuredEntryId, setFeaturedEntryId] = useState("");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(
     () =>
@@ -233,7 +232,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const contentContainerClassName =
     activeView === "chat" && canRenderChatView
       ? "min-h-0 flex-1 overflow-hidden"
-      : "min-h-0 flex-1 overflow-auto";
+      : activeView === "mrag" ||
+          activeView === "image-generation" ||
+          activeView === "featured"
+        ? "min-h-0 flex-1 overflow-hidden"
+        : "min-h-0 flex-1 overflow-auto";
 
   useEffect(() => {
     roleLibraryApi
@@ -813,10 +816,12 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           visitorUsername={visitorBootstrap?.username}
           onNewChat={createNewChat}
           onSelectSession={handleSelectRecentSession}
-          onChangeView={setActiveView}
-          onOpenFeaturedConversations={() =>
-            navigate(ROUTES.FEATURED_CONVERSATIONS)
-          }
+          onChangeView={(view) => {
+            if (view === "featured") {
+              setFeaturedEntryId("");
+            }
+            setActiveView(view);
+          }}
           onManageFeaturedConversation={handleOpenFeaturedAdmin}
         />
 
@@ -826,6 +831,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               <WorkspaceMRag embedded />
             ) : activeView === "image-generation" ? (
               <WorkspaceImageGeneration embedded />
+            ) : activeView === "featured" ? (
+              <FeaturedConversations
+                embedded
+                initialFeaturedId={featuredEntryId}
+              />
             ) : canRenderChatView ? (
               <ChatView
                 inputInfo={inputInfo}
@@ -852,6 +862,14 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 onOpenVideo={setVideoModalOpen}
                 onCloseVideo={() => setVideoModalOpen(undefined)}
                 featuredCards={featuredCards}
+                onOpenFeaturedConversations={() => {
+                  setFeaturedEntryId("");
+                  setActiveView("featured");
+                }}
+                onOpenFeaturedDetail={(featuredId) => {
+                  setFeaturedEntryId(featuredId);
+                  setActiveView("featured");
+                }}
               />
             )}
           </div>

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUpIcon,
   BarChart3Icon,
   BrainCircuitIcon,
   CheckIcon,
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { AI_CHAT_FLOATING_CLASS } from "@/components/ai-elements/ai-chat-surface";
+import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -383,8 +383,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
           className={cn(
-            "reactor-input-flat w-full rounded-[24px] transition-all duration-300",
-            size === "big" ? "rounded-[28px]" : "rounded-[22px]"
+            "reactor-input-flat w-full rounded-3xl transition-all duration-300",
+            size === "big" ? "rounded-[28px]" : "rounded-3xl"
           )}
           convertBlobUrlsOnSubmit={false}
           multiple
@@ -441,9 +441,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   size="icon-sm"
                   variant="ghost"
                   disabled={disabled}
-                  className="rounded-full border-0 bg-white text-[#111827] shadow-none ring-0 transition-all duration-200 hover:bg-[#f9fafb] focus-visible:ring-0"
+                  className="h-9 w-9 rounded-full border-0 bg-zinc-100 text-stone-700 shadow-none ring-0 transition-all duration-200 hover:bg-zinc-200 focus-visible:ring-0"
                 >
-                  <PlusIcon className="size-5" />
+                  <PlusIcon className="size-4" />
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent className={cn("min-w-[180px]", menuContentClassName)}>
                   <PromptInputActionAddAttachments label="上传附件" />
@@ -534,7 +534,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="start"
-                        side="bottom"
+                        side="top"
                         avoidCollisions={false}
                         sideOffset={12}
                         className={cn("w-[186px]", menuContentClassName)}
@@ -603,11 +603,11 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputSubmit
-                    className="size-9 rounded-full bg-[var(--chat-text)] text-[var(--chat-surface)] shadow-md transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[var(--primary)]/15 disabled:bg-[var(--chat-surface-muted)] disabled:text-[var(--chat-text-muted)] disabled:shadow-none disabled:scale-100"
+                    className="relative size-9 rounded-full border-0 bg-transparent p-0 shadow-none transition-all duration-200 hover:scale-105 disabled:scale-100 disabled:opacity-50 disabled:hover:scale-100"
                     disabled={!canSend}
-                    variant="default"
+                    variant="ghost"
                   >
-                    <ArrowUpIcon className="size-5" />
+                    <AnimatedOrb size={36} />
                   </PromptInputSubmit>
                 </TooltipTrigger>
                 <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
