@@ -1,6 +1,5 @@
-"""
-获取图片OCR的文字结果
-"""
+# -*- coding: utf-8 -*-
+"""图片 OCR：DeepSeek / Paddle 等实现，统一 ocr(image_path) 接口。"""
 import os
 from abc import abstractmethod, ABC
 
@@ -14,13 +13,16 @@ dotenv.load_dotenv()
 
 
 class OCRBase(ABC):
+    """OCR 抽象基类。"""
 
     @abstractmethod
     def ocr(self, image: str) -> str:
+        """对图片路径做 OCR，返回纯文本。"""
         pass
 
 
 class DeepSeekOCR(OCRBase):
+    """DeepSeek OCR API 实现。"""
 
     def __init__(self):
         self.api_key = os.getenv("DEEPSEEK_OCR_API_KEY")

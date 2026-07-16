@@ -44,7 +44,7 @@ from ..utils.ocr_utils import get_ocr_model
 
 
 def get_file_type(file_path: str):
-    """获取文件的类型"""
+    """获取文件扩展名（含点），用于选择解析器。"""
 
     basename = os.path.basename(file_path)
     if "." in basename:
@@ -54,7 +54,7 @@ def get_file_type(file_path: str):
 
 
 class DocumentProcessor:
-    """文档处理器类"""
+    """离线文档处理：解析 → 切分 → embedding → 写入 Qdrant + SQLite。"""
 
     def __init__(self,
                  kb_id: str,
@@ -63,8 +63,8 @@ class DocumentProcessor:
                  file_path: str,
                  file_url: str
                  ):
-        self._kb_id = kb_id
-        self._work_dir = work_dir
+        self._kb_id = kb_id  # 目标知识库
+        self._work_dir = work_dir  # 解析工作目录
         self._file_path = file_path
         self._file_type = get_file_type(file_path)
         self._filename = os.path.basename(file_path)

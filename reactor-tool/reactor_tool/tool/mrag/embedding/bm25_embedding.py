@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""BM25 稀疏向量：配合 Qdrant sparse search 做关键词召回。"""
 from __future__ import annotations
 
 import os
@@ -14,6 +16,7 @@ DEFAULT_BM25_MODEL_PATH = Path("/opt/reactor/reactor-tool/model_cache/bm25")
 
 
 def _resolve_local_bm25_model_path() -> Optional[str]:
+    """优先读 MRAG_BM25_MODEL_PATH，校验本地模型目录完整性。"""
     configured_path = os.getenv("MRAG_BM25_MODEL_PATH", "").strip()
     candidate_path = Path(configured_path) if configured_path else DEFAULT_BM25_MODEL_PATH
 
@@ -36,6 +39,8 @@ def _resolve_local_bm25_model_path() -> Optional[str]:
 
 
 class BM25Embedding:
+    """fastembed SparseTextEmbedding 封装，支持本地路径或自动下载。"""
+
     def __init__(self):
         model_kwargs = {}
 

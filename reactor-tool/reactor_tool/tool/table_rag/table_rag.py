@@ -1,4 +1,9 @@
 # coding=utf-8
+"""表结构/列值 RAG 主 Agent。
+
+TableAgent: 基础 LLM 调用与 Retriever
+TableRAGAgent: 粗排召回 + 列过滤 + 精排选 schema，供 NL2SQL / 问数使用
+"""
 import json
 
 import copy
@@ -22,7 +27,10 @@ from reactor_tool.tool.table_rag.retriever import Retriever
 from reactor_tool.tool.table_rag.utils import read_json, is_numeric, desired_field_order, sort_dict_list_by_keys
 from reactor_tool.tool.table_rag.table_column_filter import ColumnFilterModule
 
+
 class TableAgent:
+    """表 RAG 基类：封装 Retriever 与非流式 LLM 调用。"""
+
     def __init__(
         self,
         request_id,
@@ -33,9 +41,9 @@ class TableAgent:
         self.temperature = 0
         self.top_p =  0.95
         self.retriever = Retriever(request_id)
-    
+
     async def ask_llm(self, prompt) -> str:
-        
+        """非流式调用 LLM，返回完整文本。"""
         messages = [
             {
                 "role": "system",
@@ -47,7 +55,7 @@ class TableAgent:
             }
         ]
         response_text = ""
-        
+
         async for chunk in ask_llm(messages=messages,
                                 model=self.model_name,
                                 stream=False,
@@ -56,9 +64,11 @@ class TableAgent:
                                 only_content=True):
             response_text += chunk
         return response_text
-    
+
 
 class TableRAGAgent(TableAgent):
+    """表/列召回与筛选：ES 关键词 + Qdrant 向量 + LLM 列过滤。"""
+
     def __init__(self,
                  request_id,
                  query="",
@@ -72,10 +82,10 @@ class TableRAGAgent(TableAgent):
         super(TableRAGAgent, self).__init__(request_id)
         self.request_id = request_id
 
-        self.jieba_query_map = {}
-        self.model_code_list = modelCodeList
+        self.jieba_query_map = {}  # 分词缓存
+        self.model_code_list = modelCodeList  # 候选表 ID
         self.query = query
-        
+
         self.model_code_topk = None
         self.schema_topk = None
         

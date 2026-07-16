@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-"""单网页抓取与正文提取能力。"""
+"""单网页抓取与正文提取能力。
 
+下载 HTML → trafilatura/BeautifulSoup 抽正文 → 内联截断 + 完整内容供落盘。
+"""
 import os
 import re
 from dataclasses import dataclass
@@ -15,7 +17,7 @@ from reactor_tool.model.protocal import WebFetchRequest
 
 
 DEFAULT_TIMEOUT_SECONDS = 30
-DEFAULT_INLINE_CONTENT_CHARS = 12000
+DEFAULT_INLINE_CONTENT_CHARS = 12000  # 返回给模型的内联正文上限
 DEFAULT_USER_AGENT = "ReactorToolWebFetch/1.0"
 TRUNCATED_SUFFIX = "\n\n[内容已截断，完整正文请查看附件文件。]"
 
@@ -46,8 +48,8 @@ class WebFetchResult:
 
     title: str
     final_url: str
-    full_content: str
-    inline_content: str
+    full_content: str  # 完整正文，用于上传 markdown 文件
+    inline_content: str  # 截断后给 LLM 的短正文
     content_format: str
     word_count: int
     truncated: bool

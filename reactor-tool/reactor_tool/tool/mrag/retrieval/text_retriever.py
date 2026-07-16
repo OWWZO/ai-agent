@@ -25,7 +25,7 @@ from ..utils.logger_utils import logger
 
 
 class TextRetriever:
-    """文本检索器类"""
+    """文本检索：稠密向量 + BM25 稀疏，过滤条件带 kb_id。"""
 
     def __init__(self):
         self.embedding_model = get_text_embedding_model()
@@ -35,14 +35,13 @@ class TextRetriever:
     def vector_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                       filter_conditions: Optional[Dict] = None
                       ) -> list[list[dict]]:
-        """向量相似度召回 """
+        """稠密向量相似度召回。"""
         logger.info(f"vector_search: {queries}, filter_conditions: {filter_conditions}")
         if not filter_conditions:
             filter_conditions = {}
         filter_conditions.update({"kb_id": kb_id})
         logger.info(f"filter_conditions: {filter_conditions}")
         query_vectors = self.embedding_model.encode_text_batch(queries)
-        # print(query_vectors)
         return self.vector_store.search_text_vector(
             query_vectors=query_vectors,
             limit=limit,

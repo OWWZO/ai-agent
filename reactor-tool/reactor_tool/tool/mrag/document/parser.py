@@ -51,7 +51,7 @@ def ensure_dir_exists(dir_path):
 
 
 class DocumentParser:
-    """文档解析器基类"""
+    """文档解析器基类：输出 md + images/ + pages/ 目录结构。"""
 
     def __init__(self, work_dir: str, file_path: str):
         self._work_dir = work_dir
@@ -990,6 +990,7 @@ class PlainTextDocumentParser(MarkdownDocumentParser):
 
 
 class PdfParser(DocumentParser):
+    """PDF 解析：走 MinerU API，输出 md + images + pages。"""
 
     def __init__(self, work_dir: str, file_path: str):
         super().__init__(work_dir, file_path)
@@ -1443,6 +1444,8 @@ class PdfParser(DocumentParser):
 
 
 class ImageParser(DocumentParser):
+    """图片解析：空 md + 原图拷入 pages/，后续靠 OCR/caption 向量化。"""
+
     def __init__(self, work_dir: str, file_path: str):
         super().__init__(work_dir, file_path)
 
@@ -1454,6 +1457,7 @@ class ImageParser(DocumentParser):
 
 
 def get_document_parser(file_extension: str):
+    """按扩展名返回解析器类（docx/md/txt/pdf/image）。"""
     if file_extension == ".docx":
         return DocxDocumentParser
     elif file_extension == ".md":

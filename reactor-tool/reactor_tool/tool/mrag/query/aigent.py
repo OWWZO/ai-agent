@@ -1,19 +1,13 @@
 """
-Agentic RAG模块
+Agentic RAG 模块（MRAG 查询主入口）。
 
-该模块实现智能化的RAG系统，具备推理和决策能力：
-- 智能查询规划
-- 多步推理
-- 工具调用
-- 自我反思和优化
+智能化 RAG：查询规划 → 多轮检索 → 重排 → 生成，支持图文混合与会话。
 
-主要功能：
+主要能力：
 1. 查询分解和规划
-2. 多步推理和验证
-3. 外部工具调用集成
-4. 结果评估和自我修正
-5. 对话记忆管理
-6. 个性化推荐策略
+2. 多步推理与证据补全
+3. 文本/图片检索与重排
+4. 结果评估与 SSE 流式输出
 """
 import concurrent.futures
 import uuid
@@ -37,6 +31,7 @@ from ..utils.time_utils import time_it
 
 
 def beautify_messages(messages: List):
+    """日志友好：截断消息内容便于打印。"""
     output_content = ""
     for message in messages:
         content = message["content"]
@@ -51,6 +46,7 @@ def beautify_messages(messages: List):
 
 
 def display_chunks(chunks: List[Dict]):
+    """调试打印检索 chunk 摘要。"""
     for i, chunk in enumerate(chunks):
         print(f"=======================Chunk {i}: ")
         print(f"score: {chunk['score']}")
@@ -58,14 +54,15 @@ def display_chunks(chunks: List[Dict]):
 
 
 class AgenticRAG:
-    """智能RAG系统类"""
+    """智能 RAG 系统：按知识库范围多轮检索并生成回答。"""
 
     def __init__(self, kb_id: str | list[str], n_round: int = 5):
-        self._n_round = n_round
+        self._n_round = n_round  # 最大检索-推理轮数
         self._retriever = BaseRetriever()
-        self._kb_id = kb_id
+        self._kb_id = kb_id  # 单库 ID 或多库列表
 
     def retrieval(self, questions: list[str]) -> List[List[Dict]]:
+        """对多个子问题批量文本检索。"""
         text_resp = self._retriever.retrieval_by_texts(self._kb_id, questions)
         return text_resp
 

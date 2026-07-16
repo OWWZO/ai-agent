@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""OpenAI 兼容文本 Embedding 实现（TEXT_EMBEDDING_* 环境变量）。"""
 import os
 from typing import List
 
@@ -12,16 +14,10 @@ dotenv.load_dotenv()
 
 
 class OpenAITextEmbedding(TextEmbedding):
+    """通过 OpenAI embeddings API 批量编码文本。"""
 
     def _encode_text_batch(self, texts: List[str]) -> list[list[float]]:
-        """
-        批量编码文本为向量
-
-        Args:
-            texts: 文本列表
-        Returns:
-            向量数组，形状为 (len(texts), embedding_dim)
-        """
+        """批量编码文本为向量；单条超长按 TEXT_EMBEDDING_MAX_TEXT_LENGTH 截断。"""
         if not texts:
             return []
 

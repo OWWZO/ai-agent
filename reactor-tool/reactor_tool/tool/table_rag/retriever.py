@@ -1,4 +1,5 @@
 # coding=utf-8
+"""表 RAG 检索器：ES 列值关键词召回 + Qdrant 向量召回。"""
 import json
 import os
 import time
@@ -17,6 +18,7 @@ load_dotenv()
 
 
 def _first_non_blank_env(*names, default=None):
+    """按顺序取第一个非空环境变量。"""
     for name in names:
         value = os.getenv(name)
         if value is not None and value.strip():
@@ -25,6 +27,7 @@ def _first_non_blank_env(*names, default=None):
 
 
 def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
+    """将召回 cell 按 table-column 聚合 fewShot 样例值。"""
     # key 去重，value 不会有重复的
     _map = {}
     for key, item in retrieved_cells_dict.items():
@@ -32,7 +35,7 @@ def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
         column_id = item["columnId"]
         table_id = item["modelCode"]
         key = f"{table_id}-{column_id}"
-        
+
         if key not in _map:
             few_shot_value = item["value"] if item["value"] else ""
             del item["value"]
@@ -40,9 +43,9 @@ def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
                 "value": few_shot_value,
                 "schema": item,
             }
-        
+
         else:
-            # 更新value
+            # 同一列多个值用分隔符拼接
             few_shot_value = _map[key]["value"]
             few_shot_value += _few_shot_seprator + item["value"] if item["value"] else ""
             _map[key]["value"] = few_shot_value
@@ -50,29 +53,32 @@ def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
 
 
 def retrieved_list2map_schema(retrieved_list):
+    """将 schema 列表转为 table-column → item 映射（去重）。"""
     _map = {}
     for item in retrieved_list:
         assert "columnId" in item and "modelCode" in item, item
         column_id = item["columnId"]
         table_id = item["modelCode"]
         key = f"{table_id}-{column_id}"
-        
+
         if key not in _map:
             _map[key] = item
-        
+
     return _map
 
 
 class Retriever:
+    """统一 ES + Qdrant 召回入口。"""
+
     def __init__(self, request_id):
         self.es_recall_top_k = os.getenv("TR_ES_RECALL_TOP_K")
 
         self.request_id = request_id
 
         self.es_client = self.get_es_client()
-        
+
     def get_es_client(self):
-        # 读取环境变量
+        """从环境变量构建 ES 客户端。"""
         config = {}
         config["host"] = _first_non_blank_env("DATA_AGENT_ES_HOST")
         config["port"] = os.getenv("port")

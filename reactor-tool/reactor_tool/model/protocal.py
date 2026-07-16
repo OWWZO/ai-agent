@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
+"""Java ↔ Python 工具服务请求/响应协议（Pydantic）。
+
+字段多用 alias 兼容 Java 侧 camelCase；file_id 由 requestId+fileName 派生。
+"""
 import hashlib
 import os
 
@@ -16,11 +19,12 @@ from pydantic import BaseModel, Field, computed_field, ConfigDict, field_validat
 
 
 class StreamMode(BaseModel):
-    """流式模式
+    """SSE 流式节流策略。
+
     args:
-        mode: 流式模式 general 普通流式 token 按token流式 time 按时间流式
-        token: 流式模式下，每多少个token输出一次
-        time: 流式模式下，每多少秒输出一次
+        mode: general 原样流 / token 按 token 数缓冲 / time 按秒缓冲
+        token: token 模式下每 N 个 token 刷一次
+        time: time 模式下每 N 秒刷一次
     """
     mode: Literal["general", "token", "time"] = Field(default="general")
     token: Optional[int] = Field(default=5, ge=1)
@@ -28,6 +32,7 @@ class StreamMode(BaseModel):
 
 
 class CIRequest(BaseModel):
+    """代码解释器 / 通用任务请求（report 等也继承此结构）。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     task: Optional[str] = Field(default=None, description="Task")
     file_names: Optional[List[str]] = Field(default=[], alias="fileNames", description="输入的文件列表")
@@ -44,19 +49,24 @@ class CIRequest(BaseModel):
 
 
 class ReportRequest(CIRequest):
+    """报告生成请求：在 CIRequest 上增加输出格式与模板类型。"""
     file_type: Literal["html", "markdown", "ppt"] = Field("html", alias="fileType", description="生成报告的文件类型")
     template_type: str = Field(default="html", alias="templateType", description="生成报告的模板样式类型")
 
+
 class FileRequest(BaseModel):
+    """单文件定位：requestId + fileName → file_id。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     file_name: str = Field(alias="fileName", description="文件名称")
 
     @computed_field
     def file_id(self) -> str:
+        """派生逻辑 file_id（MD5）。"""
         return get_file_id(self.request_id, self.file_name)
 
 
 def get_file_id(request_id: str, file_name: str) -> str:
+    """新规则：仅用 basename 参与哈希，避免路径污染。"""
     normalized_file_name = os.path.basename((file_name or "").strip())
     return hashlib.md5((request_id + normalized_file_name).encode("utf-8")).hexdigest()
 
@@ -67,23 +77,26 @@ def get_legacy_file_id(request_id: str, file_name: str) -> str:
 
 
 class FileListRequest(BaseModel):
+    """列文件请求：可按 requestId 全量，或 filters 精确过滤。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     filters: Optional[List[FileRequest]] = Field(default=None, description="过滤条件")
     page: int = 1
-    page_size: int = Field(default=10, alias="pageSize", description="Request ID")
+    page_size: int = Field(default=10, alias="pageSize", description="分页大小")
 
 
 class FileUploadRequest(FileRequest):
+    """JSON 文本上传：带 description 与 content 正文。"""
     description: str = Field(description="返回的生成的文件描述")
     content: str = Field(description="返回的生成的文件内容")
 
 
 class DeepSearchRequest(BaseModel):
+    """深度搜索请求：查询 + 引擎列表 + 最大循环轮次。"""
     request_id: str = Field(description="Request ID")
     query: str = Field(description="搜索查询")
     max_loop: Optional[int] = Field(default=1, alias="maxLoop", description="最大循环次数")
 
-    # ddg, bing, jina, sogou, serp, exa
+    # 可选引擎: ddg, bing, jina, sogou, serp, exa
     search_engines: List[str] = Field(default=[], description="使用哪些搜索引擎")
 
     stream: bool = Field(default=True, description="是否流式响应")
@@ -121,6 +134,7 @@ class WebFetchRequest(BaseModel):
 
 
 class TableRAGRequest(BaseModel):
+    """表结构/列值 RAG：结合 Qdrant 向量与 ES 关键词做 schema 召回。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     query: str = Field(description="用户问题")
     current_date_info: str = Field(alias="currentDateInfo", description="系统当前日期")
@@ -131,25 +145,27 @@ class TableRAGRequest(BaseModel):
     use_elastic: Optional[bool] = Field(default=False, alias="useElastic", description="使用es检索")
     recall_type: Optional[str] = Field(default="only_recall", alias="recallType", description="recallType 为only_recall 时仅进行粗排")
 
-    
 
 class CalEngineRequest(BaseModel):
+    """指标计算公式生成：基于已取数结果与用户 query。"""
     request_id: str = Field(description="Request ID")
     query: str = Field(description="用户取数查询")
     data: List[Dict] = Field(description="用户取数数据")
 
 
 class AutoAnalysisRequest(BaseModel):
+    """自动多步数据分析请求。"""
     request_id: str = Field(description="Request ID")
     task: str = Field(description="分析任务，请提供完整的分析任务，保持用户的原始语义，不要串改、引申")
     modelCodeList: List[str] = Field(description="数据模型 id，标识数据源")
     businessKnowledge: Optional[str] = Field(None, description="分析任务需要的业务知识，包括相关的分析维度、分析指标和指标计算公式、业务逻辑等")
-    
+
     max_steps: Optional[int] = Field(10, description="最大分析步骤数")
     stream: bool = Field(default=True, description="是否流式返回")
 
 
 class NL2SQLRequest(BaseModel):
+    """自然语言转 SQL 请求（含方言与 schema）。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     query: str = Field(description="用户问题")
     current_date_info: str = Field(alias="currentDateInfo", description="系统当前日期")
@@ -160,6 +176,7 @@ class NL2SQLRequest(BaseModel):
 
 
 class SopChooseRequest(BaseModel):
+    """从候选 SOP 列表中按 query 语义择优召回。"""
     request_id: str = Field(alias="requestId", description="Request ID")
     query: str = Field(description="用户问题")
     sop_list: Optional[List[Dict]] = Field(default=[],

@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""SQLAlchemy 版文件元数据模型（历史/兼容路径）。
+
+实际文件服务主路径使用 db/file_table.py 的 SQLModel FileInfo；
+本文件保留 ORM 基类与字段定义，供部分适配层复用。
+"""
 from datetime import datetime
 
-from sqlalchemy import String, VARBINARY, func
+from sqlalchemy import String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from typing import Annotated
 
-from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, declared_attr, mapped_column
+from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, declared_attr, mapped_column
 from sqlalchemy.ext.asyncio import AsyncAttrs
+
 
 class MappedBase(AsyncAttrs, DeclarativeBase):
     """
@@ -20,7 +26,9 @@ class MappedBase(AsyncAttrs, DeclarativeBase):
 
     @declared_attr.directive
     def __tablename__(cls) -> str:
+        # 默认表名 = 类名小写
         return cls.__name__.lower()
+
 
 class DataClassBase(MappedAsDataclass, MappedBase):
     """
@@ -31,7 +39,8 @@ class DataClassBase(MappedAsDataclass, MappedBase):
 
     __abstract__ = True
 
-# 通用 Mapped 类型主键, 需手动添加，参考以下使用方式
+
+# 通用 Mapped 类型主键, 需手动添加
 # MappedBase -> id: Mapped[id_key]
 # DataClassBase && Base -> id: Mapped[id_key] = mapped_column(init=False)
 id_key = Annotated[
@@ -40,7 +49,7 @@ id_key = Annotated[
 
 
 class FileInfo(DataClassBase):
-    """文档信息"""
+    """文档/产物文件元信息（ORM 映射）。"""
 
     __tablename__ = 'file_info'
 
@@ -48,11 +57,11 @@ class FileInfo(DataClassBase):
     filename: Mapped[str] = mapped_column(String(20), comment='文件名')
     request_id: Mapped[str] = mapped_column(String(255), comment='请求id')
     description: Mapped[str | None] = mapped_column(String(255), comment='描述')
-    file_path: Mapped[str] = mapped_column(String(50), comment='本地存储')
-    file_size: Mapped[int] = mapped_column(comment='文件大小')
+    file_path: Mapped[str] = mapped_column(String(50), comment='本地存储路径')
+    file_size: Mapped[int] = mapped_column(comment='文件大小(字节)')
     status: Mapped[int] = mapped_column(default=1, comment='文件状态(0删除 1正常)')
     create_time: Mapped[datetime] = mapped_column(
         init=False,
-        server_default=func.now(),  # 自动生成时间
+        server_default=func.now(),  # 数据库侧自动生成创建时间
         comment='创建时间'
     )

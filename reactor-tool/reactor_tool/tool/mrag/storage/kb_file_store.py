@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
+"""知识库文件元数据仓储接口。"""
 from abc import abstractmethod, ABC
 from typing import List, Optional
 
 from .models.kb_file_model import KBFileModel
 
+
 class KBFileStore(ABC):
+    """文件增删改查、按 ID 批量删除、分页列表。"""
 
     @abstractmethod
     def add_file(self, kb_file: KBFileModel) -> bool:

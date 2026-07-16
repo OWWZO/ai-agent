@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""SOP 语义召回与择优（PlanSOP）。
+
+根据用户 query 对候选 SOP 做向量/重排相似度筛选，输出模式与选中 SOP 文本，
+供 Java 侧 Plan 规划注入。
+"""
 import os
 import re
 import time
@@ -50,6 +56,7 @@ def safe_literal_eval(input_str):
 
 @dataclass
 class SOPDict:
+    """单条 SOP 的结构化表示（含相似度 score）。"""
     sop_id: int
     sop_name: str
     sop_type: str
@@ -61,18 +68,15 @@ class SOPDict:
     parameters: dict = None
 
     def __init__(self, **kwargs):
-        # 获取所有 dataclass 字段名
+        # 兼容未知扩展字段：合法字段进 dataclass，其余挂到实例上
         field_names = {f.name for f in fields(self.__class__)}
 
-        # 分离合法字段和额外字段
         dataclass_kwargs = {k: v for k, v in kwargs.items() if k in field_names}
         extra_kwargs = {k: v for k, v in kwargs.items() if k not in field_names}
 
-        # 初始化 dataclass 部分
         for key, value in dataclass_kwargs.items():
             setattr(self, key, value)
 
-        # 初始化额外字段
         for key, value in extra_kwargs.items():
             setattr(self, key, value)
 
@@ -105,6 +109,8 @@ def get_qd_server_recall(query, filters, collection_name, qdrant_url, limit=30,
     return data
 
 class PlanSOP(object):
+    """SOP 召回与择优：rerank 或 Qdrant 向量两条路径。"""
+
     def __init__(self, request_id):
         self.request_id = request_id
 
@@ -118,6 +124,7 @@ class PlanSOP(object):
         self.bge_rerank_url = os.getenv("SOP_BGE_RERANK_URL")
 
     def sop_dedup(self, sops):
+        """按 sop_id 去重，保留首次出现。"""
         visited_sop = set()
         dedup_sops = []
         for sop in sops:
@@ -133,7 +140,9 @@ class PlanSOP(object):
         return dedup_sops
 
     def sop_choose(self, query, sop_list=[]):
+        """按 query 从候选列表或向量库择优 SOP，返回 (mode, sop_string)。"""
         SOP_QDRANT_ENABLE = _env_flag("SOP_QDRANT_ENABLE", default=False)
+        # 未开 Qdrant 时，直接对传入 sop_list 做 name/steps 双路 rerank
         if not SOP_QDRANT_ENABLE and sop_list:
             name_scores = get_rerank(query=query, doc_list=[sop["sop_name"] for sop in sop_list], request_id=self.request_id, url=self.bge_rerank_url)
             step_scores = get_rerank(query=query, doc_list=[sop["sop_string"] for sop in sop_list],

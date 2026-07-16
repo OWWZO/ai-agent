@@ -1,4 +1,8 @@
+# -*- coding: utf-8 -*-
+"""报告生成：按 file_type 分发 markdown / html / ppt 流式生成。
 
+先下载引用文件 → 截断适配上下文 → 渲染 prompt → 流式调用 LLM。
+"""
 import os
 from datetime import datetime
 from typing import Optional, List, Literal, AsyncGenerator
@@ -24,6 +28,7 @@ async def report(
         file_type: Literal["markdown", "html", "ppt"] = "markdown",
         template_type: str = "html",
 ) -> AsyncGenerator:
+    """报告入口：按 file_type 分发到对应生成函数。"""
     report_factory = {
         "ppt": ppt_report,
         "markdown": markdown_report,
@@ -31,6 +36,7 @@ async def report(
     }
     model = os.getenv("REPORT_MODEL", "gpt-4.1")
     if file_type.lower() == "html":
+        # html 支持 template_type（如不同版式）
         async for chunk in html_report(task, file_names, model, template_type=template_type):
             yield chunk
     else:
@@ -46,14 +52,15 @@ async def ppt_report(
         temperature: float = None,
         top_p: float = 0.6,
 ) -> AsyncGenerator:
+    """生成 PPT 风格 HTML 报告（流式）。"""
     files = await download_all_files(file_names)
     flat_files = []
 
-    # 1. 首先解析 md html 文件，没有这部分文件则使用全部
+    # 优先用 md/html 素材；没有则回退全部文件
     filtered_files = [f for f in files if f["file_name"].split(".")[-1] in ["md", "html"]
                       and not f["file_name"].endswith("_搜索结果.md")] or files
     for f in filtered_files:
-        # 对于搜索文件有结构，需要重新解析
+        # 搜索结果文件需展开为多条文档
         if f["file_name"].endswith("_search_result.txt"):
             flat_files.extend(flatten_search_file(f))
         else:
@@ -76,6 +83,7 @@ async def markdown_report(
         temperature: float = 0,
         top_p: float = 0.9,
 ) -> AsyncGenerator:
+    """生成 Markdown 报告（流式）。"""
     files = await download_all_files(file_names)
     flat_files = []
     for f in files:
@@ -103,10 +111,11 @@ async def html_report(
         top_p: float = 0.9,
         template_type: str = "html",
 ) -> AsyncGenerator:
+    """生成 HTML 报告；template_type=fix 时用 fix_html_prompt 系统提示。"""
     files = await download_all_files(file_names)
-    key_files = []
+    key_files = []  # 关键产物（如代码输出）优先占上下文
     flat_files = []
-    # 对于搜索文件有结构，需要重新解析
+    # 搜索结果文件需展开；CI 输出单独归入 key_files
     for f in files:
         fpath = f["file_name"]
         fname = os.path.basename(fpath)

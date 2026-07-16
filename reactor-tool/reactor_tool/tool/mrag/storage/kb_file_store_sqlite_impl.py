@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""知识库文件元数据 SQLite 实现（表 t_kb_file）。
+
+实现 KBFileStore：增删改查、按 file_ids 批量删除、分页列表。
+"""
 from datetime import datetime
 from typing import List, Optional
 
@@ -12,26 +17,27 @@ Base = declarative_base()
 
 
 class KBFileSQLModel(Base):
+    """SQLAlchemy ORM：知识库文件行。"""
     __tablename__ = "t_kb_file"
     id = Column(Integer, primary_key=True, autoincrement=True)
     kb_id = Column(String, nullable=False)
     file_id = Column(String, nullable=False)
     file_url = Column(String, nullable=False)
     title = Column(String, nullable=False)
-    task_id = Column(String, nullable=True)
+    task_id = Column(String, nullable=True)  # 后台解析任务 ID
     file_ext = Column(String, nullable=False)
-    source_type = Column(String, nullable=False)
+    source_type = Column(String, nullable=False)  # file / url
     task_status = Column(JSON, nullable=True)
     file_status = Column(String, nullable=True)
 
     doc_count = Column(Integer, nullable=False)
     create_time = Column(DateTime, nullable=False)
     modify_time = Column(DateTime, nullable=False)
-    deleted = Column(Integer, nullable=False)
+    deleted = Column(Integer, nullable=False)  # 0 正常 1 删除
     creator = Column(String, nullable=True)
 
     def to_pydantic(self) -> KBFilePydanticModel:
-        """Convert SQLAlchemy model to Pydantic model"""
+        """ORM → Pydantic。"""
         return KBFilePydanticModel(
             kb_id=self.kb_id,
             file_id=self.file_id,
@@ -50,7 +56,7 @@ class KBFileSQLModel(Base):
 
     @staticmethod
     def from_pydantic(pydantic_model: KBFilePydanticModel) -> 'KBFileSQLModel':
-        """Convert Pydantic model to SQLAlchemy model"""
+        """Pydantic → ORM。"""
         return KBFileSQLModel(
             kb_id=pydantic_model.kb_id,
             file_id=pydantic_model.file_id or "",
@@ -70,12 +76,13 @@ class KBFileSQLModel(Base):
 
 
 class KBFileSQLite(KBFileStore):
+    """KBFileStore 的 SQLite 落地。"""
     __tablename__ = "t_kb_file"
 
     def __init__(self, engine):
         self._engine = engine
         self._session_factory = sessionmaker(bind=engine)
-
+        # 首次访问时建表（幂等）
         Base.metadata.create_all(self._engine)
 
     def _get_session(self) -> Session:

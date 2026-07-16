@@ -26,7 +26,7 @@ from ..utils.logger_utils import logger
 
 
 class BaseRetriever:
-    """基础检索器抽象类"""
+    """混合检索门面：文本向量 + BM25 +（可选）图/页跨模态，线程池并发。"""
 
     def __init__(self):
         self._image_vector_enabled = is_multimodal_image_index_enabled()
@@ -34,16 +34,19 @@ class BaseRetriever:
         self._text_retriever = TextRetriever()
 
     def retrieval_by_texts(self, kb_id: str | list[str], queries: list[str]):
-
+        """对多条 query 并发做文本/稀疏/图页检索，结果按 query 维度对齐。"""
         tasks = []
         res = [[] for _ in range(len(queries))]
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            # 稠密向量召回
             task = executor.submit(self._text_retriever.vector_search, kb_id, queries,
                                    score_threshold=float(os.getenv("RETRIEVAL_TEXT_THRESHOLD")))
             tasks.append(task)
+            # BM25 稀疏召回
             task = executor.submit(self._text_retriever.sparse_search, kb_id, queries)
             tasks.append(task)
             if self._image_vector_enabled:
+                # 文本→图片 / 文本→页面
                 task = executor.submit(self._image_retriever.text2image_search, kb_id, queries,
                                        score_threshold=float(os.getenv("RETRIEVAL_IMAGE_THRESHOLD")))
                 tasks.append(task)

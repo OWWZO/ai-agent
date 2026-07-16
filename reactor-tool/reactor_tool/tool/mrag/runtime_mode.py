@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
+"""MRAG 运行时模式开关：图片索引 multimodal / text_proxy。"""
 import os
 
 
-IMAGE_INDEX_MODE_MULTIMODAL = "multimodal"
-IMAGE_INDEX_MODE_TEXT_PROXY = "text_proxy"
+IMAGE_INDEX_MODE_MULTIMODAL = "multimodal"  # 真多模态图片向量
+IMAGE_INDEX_MODE_TEXT_PROXY = "text_proxy"  # 用文本 caption 代理图片
 SUPPORTED_IMAGE_INDEX_MODES = {
     IMAGE_INDEX_MODE_MULTIMODAL,
     IMAGE_INDEX_MODE_TEXT_PROXY,

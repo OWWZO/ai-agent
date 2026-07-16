@@ -44,7 +44,7 @@ tools = [
 
 
 class QueryProcessor:
-    """查询处理器类"""
+    """查询预处理：意图识别、改写、工具选择、JSON 稳健解析。"""
 
     @staticmethod
     def _parse_json_object(result_str: str) -> Dict:

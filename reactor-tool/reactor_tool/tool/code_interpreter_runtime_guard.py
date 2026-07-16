@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""代码解释器运行时 I/O 守卫。
+
+在执行用户代码时 patch open/pandas 读写等，按策略二次校验路径，
+防止静态分析漏网的路径逃逸。
+"""
 import contextlib
 import contextvars
 import json
@@ -16,6 +21,7 @@ from reactor_tool.tool.code_interpreter_policy import (
 )
 
 
+# 权限错误序列化标记，便于从解释器 stderr 反序列化
 _RUNTIME_PERMISSION_MARKER = "__CI_PERMISSION__"
 _ACTIVE_POLICY: contextvars.ContextVar[CodeInterpreterPermissionPolicy | None] = contextvars.ContextVar(
     "code_interpreter_runtime_policy",
@@ -25,7 +31,7 @@ _GUARD_BYPASS_DEPTH: contextvars.ContextVar[int] = contextvars.ContextVar(
     "code_interpreter_runtime_guard_bypass_depth",
     default=0,
 )
-_PATCHES_INSTALLED = False
+_PATCHES_INSTALLED = False  # 全局 patch 只安装一次
 
 
 @contextlib.contextmanager

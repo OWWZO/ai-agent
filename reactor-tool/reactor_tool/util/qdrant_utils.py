@@ -1,4 +1,8 @@
+# -*- coding: utf-8 -*-
+"""Qdrant 客户端配置、Embedding 代理与向量召回工具。
 
+供 table_rag / data_agent 等场景直连 Qdrant 或通过 HTTP embedding 服务取向量。
+"""
 import os
 import json
 import requests
@@ -111,6 +115,7 @@ def build_qdrant_client(
 
 
 def get_embedding(text):
+    """通过 OpenAI Embedding API 取单条向量（历史兼容路径）。"""
     response = openai.Embedding.create(
         input=text,
         model="text-embedding-ada-002"
@@ -119,10 +124,12 @@ def get_embedding(text):
 
 
 class EmbeddingClient:
+    """HTTP 批量 embedding 客户端，对接内部 / 共享向量服务。"""
+
     def __init__(self, embedding_url: str):
         self.embedding_url = embedding_url
         self.timeout = 300000
-    
+
     def get_vector_batch(self, texts: List[str]) -> Optional[List[List[float]]]:
         """
         批量获取文本向量
@@ -171,16 +178,17 @@ class EmbeddingClient:
 
 
 class QdrantRecall(object):
+    """通用 Qdrant 集合封装：建集、插入、按向量检索（SOP/表 RAG 等复用）。"""
+
     def __init__(self, host, port, api_key, collection_name, qdrant_limit=30, threshhold=-1, timeout=0.5 * 100000000):
         self.collection_name = collection_name
         self.qdrant_limit = qdrant_limit
         self.qd_threshhold = threshhold
-        
+
         self.distance = Distance.COSINE
         self.vector_size = 1024
         prefer_grpc = _env_bool("TR_QDRANT_PREFER_GRPC", True)
-        
-        # 初始化 Qdrant 客户端
+
         self.client = build_qdrant_client(
             url=None,
             host=host,
@@ -189,11 +197,12 @@ class QdrantRecall(object):
             prefer_grpc=prefer_grpc,
             api_key=api_key,
         )
-        
-        # 可选：检查集合是否存在，若不存在可创建（根据需求决定是否启用）
+
+        # 集合不存在则按固定维度创建
         self._ensure_collection()
-    
+
     def _ensure_collection(self):
+        """确保 collection 存在。"""
         try:
             self.client.get_collection(self.collection_name)
             print(f"✅ 集合 '{self.collection_name}' 已存在")
@@ -207,7 +216,7 @@ class QdrantRecall(object):
                 ),
             )
             print(f"✅ 成功创建集合 '{self.collection_name}'，维度={self.vector_size}，距离={self.distance.name}")
-    
+
     def insert(self, points):
         """
         插入向量数据，支持单条或批量插入。

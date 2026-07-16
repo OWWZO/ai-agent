@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 文本 LLM 客户端：OpenAI 兼容协议，支持流式与重试。"""
 import os
 
 import dotenv

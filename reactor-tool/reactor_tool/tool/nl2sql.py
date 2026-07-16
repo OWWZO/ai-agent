@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liuwen.92
 # Date:   2025/09/12
 # =====================
+"""NL2SQL Agent：自然语言 → SQL。
+
+流水线：query 改写 → 列过滤/schema 整理 → think 推理 → 生成 SQL。
+流式时通过 asyncio.Queue 推事件给 API 层。
+"""
 import json
 import os
 from jinja2 import Template
@@ -19,8 +23,10 @@ from reactor_tool.tool.table_rag.table_column_filter import ColumnFilterModule
 
 
 class NL2SQLAgent:
+    """自然语言转 SQL 的领域 Agent。"""
+
     def __init__(self, queue: asyncio.Queue=None):
-        # 用作流式
+        # 流式事件队列；非流式时可不消费
         self.queue = queue or asyncio.Queue()
         self.nl2sql_llm_name = os.getenv("NL2SQL_MODEL_NAME")
         self.rewrite_llm_name = os.getenv("REWRITE_MODEL_NAME")

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 会话 SQLite 实现（表 t_mrag_session）。"""
 from datetime import datetime
 from typing import Optional
 
@@ -12,12 +14,13 @@ Base = declarative_base()
 
 
 class MRagSessionSQLModel(Base):
+    """SQLAlchemy ORM：会话行。"""
     __tablename__ = "t_mrag_session"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, nullable=False, unique=True)
     title = Column(String, nullable=False)
-    kb_scope = Column(JSON, nullable=False)
+    kb_scope = Column(JSON, nullable=False)  # 多知识库 ID 列表
     cover_kb_id = Column(String, nullable=True)
     latest_question = Column(String, nullable=True)
     latest_answer_preview = Column(String, nullable=True)
@@ -28,6 +31,7 @@ class MRagSessionSQLModel(Base):
     modify_time = Column(DateTime, nullable=False)
 
     def to_pydantic(self) -> MRagSessionModel:
+        """ORM → Pydantic。"""
         return MRagSessionModel(
             session_id=self.session_id,
             title=self.title,
@@ -44,6 +48,7 @@ class MRagSessionSQLModel(Base):
 
 
 class MRagSessionSQLite(MRagSessionStore):
+    """MRagSessionStore 的 SQLite 落地。"""
 
     def __init__(self, engine):
         self._engine = engine
@@ -54,6 +59,7 @@ class MRagSessionSQLite(MRagSessionStore):
         return self._session_factory()
 
     def create_session(self, session: MRagSessionModel) -> bool:
+        """创建会话；session_id 已存在且未删除则返回 False。"""
         db = self._get_session()
         try:
             existing = db.query(MRagSessionSQLModel).filter(

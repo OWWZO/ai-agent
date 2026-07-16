@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: wanghanmin1
 # Date:   2025/7/8
 # =====================
+"""深度搜索（DeepSearch）主流程。
+
+链路：查询拆解 → 多引擎检索去重 → 推理是否继续搜 → 多轮循环 → 最终回答。
+依赖 search_component 子模块与 MixSearch 混合检索引擎。
+"""
 import asyncio
 import json
 import os
@@ -27,9 +31,10 @@ from reactor_tool.model.context import LLMModelInfoFactory
 
 
 class DeepSearch:
-    """深度搜索工具"""
+    """深度搜索工具：多引擎 + 多轮检索推理 + 总结回答。"""
 
     def __init__(self, engines: List[str] = []):
+        """初始化搜索引擎开关；未传 engines 时读 USE_SEARCH_ENGINE 环境变量。"""
         normalized_engines = [engine.strip().lower() for engine in engines if engine and engine.strip()]
         if not normalized_engines:
             env_value = os.getenv("USE_SEARCH_ENGINE", "ddg")
@@ -44,6 +49,7 @@ class DeepSearch:
         use_sogou = "sogou" in normalized_engines
         use_serp = "serp" in normalized_engines
         use_exa = "exa" in normalized_engines
+        # 绑定混合搜索：单 query 检索并去重
         self._search_single_query = partial(
             MixSearch().search_and_dedup,
             use_ddg=use_ddg,
@@ -54,10 +60,11 @@ class DeepSearch:
             use_exa=use_exa,
             use_jina_reader=False,
         )
-        self.searched_queries = []
-        self.current_docs = []
+        self.searched_queries = []  # 已搜过的子查询，避免重复
+        self.current_docs = []  # 累计检索到的文档
 
     def search_docs_str(self, model: str = None) -> str:
+        """将当前文档列表格式化为带编号的 HTML，供 LLM 引用；按模型上下文截断。"""
         current_docs_str = ""
         max_tokens = LLMModelInfoFactory.get_context_length(model)
         truncate_docs = truncate_files(self.current_docs, max_tokens=int(max_tokens * 0.8)) if model else self.current_docs
@@ -76,7 +83,7 @@ class DeepSearch:
             *args,
             **kwargs
     ) -> AsyncGenerator[str, None]:
-        """深度搜索回复（流式）"""
+        """深度搜索主循环（流式 yield SSE 数据片段）。"""
 
         # 默认超时时间提升到 20 分钟，避免深度搜索在多轮检索和总结时被过早中断。
         total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "1200"))

@@ -1,4 +1,5 @@
-
+# -*- coding: utf-8 -*-
+"""表/列 LLM 过滤模块：从候选 schema 中筛出与 query 相关的表和列。"""
 import re
 import os
 import asyncio
@@ -18,9 +19,10 @@ from reactor_tool.util.log_util import logger
 from reactor_tool.util.llm_util import ask_llm
 from reactor_tool.tool.table_rag.utils import read_json
 
+
 class ColumnFilterModule:
-    
-    # def __init__(self, request_body: dict[str, dict[str]]):
+    """分批调用 LLM 过滤表与列，控制上下文规模。"""
+
     def __init__(self,
                  request_id: str,
                  query: str,
@@ -28,16 +30,16 @@ class ColumnFilterModule:
                 table_id_list: List[str],
                 column_info: List[Dict],
                  ):
-        
+
         # 使用 DEFAULT_MODEL 或 qwen-turbo 作为兜底，避免 env 未加载时使用错误模型
         _default = os.getenv("DEFAULT_MODEL", "qwen-turbo")
         self.llm_model_name = os.getenv("TR_TABLE_FILTER_MODEL_NAME") or _default
         self.table_filter_model_name = os.getenv("TR_COLUMN_FILTER_MODEL_NAME") or _default
-        
+
         self._is_first_filter_table = os.getenv("TR_IS_FIRST_FILTER_TABLE", True)
         self.need_filter_table_min_length = int(os.getenv("TR_NEED_FILTER_TABLE_MIN_LENGTH", 3))
         self.table_filter_batch_size = int(os.getenv("TR_TABLE_FILTER_BATCH_SIZE", 5))
-        
+
         # self.body = request_body
         # self.user_info = request_body.get("user_info", "")
         self.user_info = ""

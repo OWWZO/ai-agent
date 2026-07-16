@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-skill 脚本执行入口。
+"""skill 脚本执行入口（API /script_runner 调用）。
+
+流程：校验路径 → 隔离工作区 → 执行脚本 → 收集产物并上传文件服务。
 """
 from loguru import logger
 
@@ -26,7 +27,9 @@ async def run_script_request(body: ScriptRunnerRequest) -> ScriptRunnerResponse:
     """执行 skill 脚本，并将生成产物上传到现有文件服务。"""
     prepared_workspace = None
     try:
+        # 防路径逃逸：脚本必须在 skill 根目录内
         resolve_script_path(body.skill_base_path, body.script_path)
+        # 复制 skill 到临时目录并写入 arguments.json
         prepared_workspace = prepare_workspace(body.skill_base_path, body.arguments)
         workspace_script_path = resolve_workspace_script(prepared_workspace, body.script_path)
 
@@ -40,6 +43,7 @@ async def run_script_request(body: ScriptRunnerRequest) -> ScriptRunnerResponse:
             timeout_seconds=body.timeout_seconds,
         )
 
+        # 相对基线快照，收集脚本新生成的文件并上传
         file_info = []
         upload_errors = []
         for generated_file in collect_generated_files(prepared_workspace):

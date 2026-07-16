@@ -94,6 +94,9 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 - chat-model 元数据通过 `IChatModelMetadataRepository` 端口访问持久化，`ChatModelInfoService`、`ChatModelSchemaService` 不再继承 `ServiceImpl`
 - `SessionContextMemoryService`、`IWorkspaceImageGenerationService` 仍在 `domain` 定义接口，但其基于 DAO 的技术实现已下沉到 `infrastructure`
 - tool-output 读写与 execution ledger 持久化协作统一依赖 `infrastructure.dao.reactor.*`
+- **执行事实主路径是 Execution Ledger**；跨轮 LLM 工作记忆默认 hydrate 自 `working_memory_*` 投影表（`SessionWorkingMemoryService`），与本轮 `Memory` 同构，服务 prompt cache
+- `SessionContextMemoryService.buildHistoryDialogue` 仅兼容/调试；history replay 仍只读 ledger
+- 不得再引入 `ai_agent_message*` 或 transcript block 四表作为运行主账本
 
 ### Agent DDD 最终边界（019）
 - `trigger` 只能依赖 `case` 暴露的 dispatch / role / rag / query / dataagent seam
@@ -157,7 +160,9 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 | `src/main/java/org/wwz/ai/domain/agent/runtime/enums/AgentState.java` | Agent 状态 |
 | `src/main/java/org/wwz/ai/domain/agent/runtime/enums/AgentType.java` | Agent 类型 |
 | `src/main/java/org/wwz/ai/domain/agent/ledger/ExecutionLedgerQueryService.java` | 执行账本查询 |
-| `src/main/java/org/wwz/ai/domain/agent/memory/SessionContextMemoryService.java` | 会话记忆服务 |
+| `src/main/java/org/wwz/ai/domain/agent/memory/SessionContextMemoryService.java` | 兼容 historyDialogue 文本（调试/legacy） |
+| `src/main/java/org/wwz/ai/domain/agent/memory/SessionWorkingMemoryService.java` | 跨轮工作记忆 hydrate/persist |
+| `src/main/java/org/wwz/ai/domain/agent/memory/WorkingMemoryProjector.java` | Memory ↔ 行表投影 |
 | `src/main/java/org/wwz/ai/domain/agent/role/IFixRoleService.java` | 角色库领域服务 |
 | `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentConversationService.java` | 会话服务接口 |
 | `src/main/java/org/wwz/ai/domain/agent/reactor/service/IAgentStreamPersistService.java` | 流式持久化接口 |

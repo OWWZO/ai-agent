@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""文档切分：中文分句 + Markdown 标题切分，供向量化入库。"""
 import os
 import re
 import time
@@ -17,20 +19,20 @@ url_match_pattern = "(https?://[A-Za-z0-9{}]+)".format(
 default_separators = ["。", "!", "！", "\n\n", "\r\n"]
 
 
-# 改进JIO分词
 class SplitSentence(object):
+    """中文粗粒度分句（保留引号配对，URL 不切断）。"""
+
     def __init__(self):
         self.separators = default_separators
         separators_all = "{}|##|###|(\n\n)|(\r\n)|{}".format(url_match_pattern, "|".join(
             ["(\{})".format(char) for char in self.separators]))
         self.puncs_coarse_ptn = re.compile(separators_all)
-        # self.separators = f"([。！!?？])|{url_match_pattern}|(\n\n)|(\r\n)"
-        # self.puncs_coarse_ptn = re.compile(self.separators)
         self.puncs_coarse = {"。", "!", "！", "\n\n", "\r\n", "\r", "\n"}
         self.front_quote_list = {"“", "‘", "[", "《", "(", "（", "{", "「", "【"}
         self.back_quote_list = {"”", "’", "]", "》", ")", "）", "}", "」", "】"}
 
     def __call__(self, text):
+        """将文本切成句子列表。"""
         final_sentences = []
         tmp_list = self.puncs_coarse_ptn.split(text)
         quote_flag = False
@@ -131,7 +133,6 @@ def enforce_chunk_hard_limit(text: str, hard_limit: int) -> list[str]:
     return chunks
 
 
-# 文本切分chunks
 def text_split_to_chunks(
         request_id="",
         chunk_size=None,
@@ -141,6 +142,7 @@ def text_split_to_chunks(
         separators=None,
         keep_separators=True
 ) -> list[str]:
+    """通用文本切 chunk：分句 → 按 size/overlap 合并 → 硬长度限制。"""
     hard_limit = int(os.getenv("CHUNK_HARD_MAX_SIZE", 8000))
     if chunk_size is None:
         chunk_size = int(os.getenv("CHUNK_SIZE", 500))
@@ -254,6 +256,7 @@ def text_split_to_chunks(
 
 
 class BaseDocumentSplitter(ABC):
+    """文档切分抽象。"""
 
     @abstractmethod
     def split(self, text: str) -> list[str]:
@@ -261,6 +264,8 @@ class BaseDocumentSplitter(ABC):
 
 
 class DefaultDocumentSplitter(BaseDocumentSplitter):
+    """默认按句/段切分，chunk_size + overlap。"""
+
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self._chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 500))
         self._chunk_overlap = chunk_overlap or int(os.getenv("CHUNK_OVERLAP", 100))
@@ -277,6 +282,7 @@ class DefaultDocumentSplitter(BaseDocumentSplitter):
 
 
 class MarkdownDocumentSplitter(BaseDocumentSplitter):
+    """按 Markdown 标题层级切分，再做硬长度限制。"""
 
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self._chunk_size = chunk_size or int(os.getenv("CHUNK_SIZE", 500))
@@ -364,6 +370,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
 
 
 def get_text_splitter(chunk_type: str = None, chunk_size: int = None, chunk_overlap: int = None):
+    """按 CHUNK_TYPE 返回 Default / Markdown 切分器。"""
     if chunk_type is None:
         chunk_type = os.getenv("CHUNK_TYPE")
     if chunk_type.lower() == "default":

@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""代码解释器 Agent（CIAgent）：基于 smolagents.CodeAgent 的定制执行循环。
+
+负责：代码解析、权限校验、运行时 I/O 守卫、最终答案判定、流式步骤产出。
+"""
 import ast
 import json
 import os
@@ -50,6 +55,7 @@ from reactor_tool.util.file_util import generate_data_id
 from reactor_tool.util.log_util import timer
 
 
+# 默认禁止导入的高风险模块
 BLOCKED_IMPORT_MODULES = {
     "ctypes",
     "os",
@@ -58,6 +64,7 @@ BLOCKED_IMPORT_MODULES = {
     "subprocess",
     "xlrd",
 }
+# 默认禁止的动态执行函数
 BLOCKED_FUNCTION_CALLS = {"eval", "exec"}
 
 
@@ -183,6 +190,8 @@ def _extract_incremental_stream_text(rendered_text: str, chunk_text: str) -> tup
 
 
 class CIAgent(CodeAgent):
+    """定制 CodeAgent：权限校验、运行时 I/O 守卫、最终答案判定、流式步骤。"""
+
     def __init__(
         self,
         tools: list[Tool],
@@ -200,9 +209,9 @@ class CIAgent(CodeAgent):
         *args,
         **kwargs,
     ):
-        self.output_dir = output_dir
-        self.before_execute = before_execute
-        self.runtime_variables = runtime_variables or {}
+        self.output_dir = output_dir  # 产物输出目录
+        self.before_execute = before_execute  # 执行前钩子（静态权限校验等）
+        self.runtime_variables = runtime_variables or {}  # 注入解释器的变量
         self.runtime_permission_policy = runtime_permission_policy
         super().__init__(
             tools=tools,
@@ -215,6 +224,7 @@ class CIAgent(CodeAgent):
             executor_kwargs=executor_kwargs,
             **kwargs,
         )
+        # 把权限上下文/helper 变量注入 Python 解释器状态
         if getattr(self, "python_executor", None) and self.runtime_variables:
             self.python_executor.send_variables(self.runtime_variables)
 

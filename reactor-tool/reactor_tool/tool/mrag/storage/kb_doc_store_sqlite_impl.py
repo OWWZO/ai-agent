@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""知识库文档/chunk 元数据 SQLite 实现（表 t_kb_doc）。
+
+含 canonical 全文 upsert/get，供前端整篇预览。
+"""
 from datetime import datetime
 from typing import List, Optional
 
@@ -15,6 +20,7 @@ Base = declarative_base()
 
 
 class KBDocSQLModel(Base):
+    """SQLAlchemy ORM：文档块 / 全文行。"""
     __tablename__ = "t_kb_doc"
     id = Column(Integer, primary_key=True, autoincrement=True)
     kb_id = Column(String, nullable=False)
@@ -34,7 +40,7 @@ class KBDocSQLModel(Base):
     modifier = Column(String, nullable=True)
 
     def to_pydantic(self) -> KBDocPydanticModel:
-        """Convert SQLAlchemy model to Pydantic model"""
+        """ORM → Pydantic（时间转 isoformat 字符串）。"""
         return KBDocPydanticModel(
             kb_id=self.kb_id,
             doc_id=self.doc_id,

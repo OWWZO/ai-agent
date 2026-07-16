@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""知识库本体元数据 SQLite 实现（表 t_knowledge_base）。"""
 from datetime import datetime
 from typing import List
 
@@ -13,6 +15,7 @@ Base = declarative_base()
 
 
 class KnowledgeBase(Base):
+    """SQLAlchemy ORM：知识库行。"""
     __tablename__ = "t_knowledge_base"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -29,12 +32,12 @@ class KnowledgeBase(Base):
 
 
 class KBStoreSQLite(KBStore):
+    """KBStore 的 SQLite 落地。"""
+
     def __init__(self, engine):
         super().__init__()
         self._engine = engine
         self._session_factory = sessionmaker(bind=engine)
-
-        # Create tables if they don't exist
         Base.metadata.create_all(self._engine)
 
     @property
@@ -42,11 +45,11 @@ class KBStoreSQLite(KBStore):
         return self._engine
 
     def _get_session(self) -> Session:
-        """Get a new database session"""
+        """新建数据库会话。"""
         return self._session_factory()
 
     def _kb_model_to_orm(self, kb_model: KBModel) -> KnowledgeBase:
-        """Convert KBModel to ORM entity"""
+        """Pydantic KBModel → ORM。"""
         return KnowledgeBase(
             kb_id=kb_model.kb_id,
             kb_name=kb_model.kb_name,
@@ -61,7 +64,7 @@ class KBStoreSQLite(KBStore):
         )
 
     def _orm_to_kb_model(self, kb_orm: KnowledgeBase) -> KBModel:
-        """Convert ORM entity to KBModel"""
+        """ORM → Pydantic KBModel。"""
         return KBModel(
             kb_id=kb_orm.kb_id,
             kb_name=kb_orm.kb_name,
@@ -77,7 +80,7 @@ class KBStoreSQLite(KBStore):
 
     @override
     def create_kb(self, kb_model: KBModel) -> bool:
-        """Create a new knowledge base"""
+        """创建知识库。"""
         session = self._get_session()
         try:
             # Check if knowledge base already exists

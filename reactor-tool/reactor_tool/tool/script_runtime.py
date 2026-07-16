@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-skill 脚本运行时支持。
-"""
+"""skill 脚本运行时：隔离工作区、路径校验、多 runtime 进程执行、产物收集。"""
 import asyncio
 import json
 import os
@@ -23,7 +21,7 @@ class PreparedWorkspace:
     temp_dir: Path
     skill_root: Path
     arguments_file: Path
-    baseline_files: Dict[str, tuple[int, int]]
+    baseline_files: Dict[str, tuple[int, int]]  # 相对路径 → (size, mtime) 基线
 
 
 @dataclass
@@ -44,6 +42,7 @@ def prepare_workspace(skill_base_path: str, arguments: Dict) -> PreparedWorkspac
     workspace_root = temp_dir / source_root.name
     shutil.copytree(source_root, workspace_root)
 
+    # 参数落盘供脚本读取（.skill/arguments.json）
     internal_dir = workspace_root / ".skill"
     internal_dir.mkdir(parents=True, exist_ok=True)
     arguments_file = internal_dir / "arguments.json"
@@ -52,6 +51,7 @@ def prepare_workspace(skill_base_path: str, arguments: Dict) -> PreparedWorkspac
         encoding="utf-8",
     )
 
+    # 记录执行前文件快照，用于后续 diff 出新产物
     baseline_files = snapshot_regular_files(workspace_root)
     return PreparedWorkspace(
         temp_dir=temp_dir,

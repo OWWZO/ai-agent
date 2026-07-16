@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""代码解释器最终答案判定。
+
+用 LLM 判断当前步骤是否已完成任务（is_final），避免 Agent 过早/过晚收口。
+"""
 from openai import AsyncOpenAI
 
 from smolagents import ChatMessage
@@ -9,6 +14,8 @@ from loguru import logger as lg
 
 
 class FinalAnswerCheck(object):
+    """基于 prompt 模板与执行日志，调用模型判定是否 final answer。"""
+
     def __init__(
         self,
         input_messages,
@@ -24,7 +31,7 @@ class FinalAnswerCheck(object):
         additional_args = {"grammar": grammar} if grammar is not None else {}
         self.additional_args = additional_args
         self.memory_step = memory_step
-        # copy
+        # 拷贝历史消息（后续会拼接 final_answer 模板）
         self.input_messages = input_messages
         self.prompt_templates = prompt_temps
         self.task = task
@@ -32,7 +39,8 @@ class FinalAnswerCheck(object):
         self.request_id = request_id
 
     def check_is_final_answer(self):
-        # 去掉 system
+        """返回 (is_final, logs_or_None)。"""
+        # 去掉 system 消息，只保留对话轨迹
         memory_lines = self.input_messages[2:]
         memory_lines.extend(self.memory_step.to_messages())
         final_answer = self.prompt_templates["final_answer"]

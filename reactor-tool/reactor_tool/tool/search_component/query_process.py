@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/7/9
 # =====================
+"""DeepSearch 查询拆解：先 think 再生成子查询列表。"""
 import os
 import re
 import time
@@ -23,12 +23,13 @@ async def query_decompose(
         query: str,
         **kwargs
 ):
+    """将复杂问题拆成多个可检索的子查询（流式 think + 结构化输出）。"""
     llm_config = resolve_openai_compat_env("DEEPSEARCH")
     model = os.getenv("QUERY_DECOMPOSE_MODEL", "gpt-4.1")
     think_model = os.getenv("QUERY_DECOMPOSE_THINK_MODEL", "gpt-4.1")
     current_date = time.strftime("%Y-%m-%d", time.localtime())
     decompose_prompt = get_prompt("deepsearch")
-    # think
+    # 第一步：think 模型做推理草稿
     think_content = ""
     async for chunk in ask_llm(
             messages=decompose_prompt["query_decompose_think_prompt"].format(task=query, retrieval_str=""),

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 文档/知识库管理 API：建库、上传、删文件、列文件、全文就绪状态。"""
 import os
 import tempfile
 import uuid

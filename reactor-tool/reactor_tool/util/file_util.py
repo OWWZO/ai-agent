@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
 #
-#
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
+"""文件读写与产物上传工具。
+
+支持本地路径 / HTTP 文件服务两种源；上传可走 HTTP 端点或本地存储根目录。
+"""
 import hashlib
 import secrets
 import string
@@ -24,6 +27,7 @@ from reactor_tool.model.document import Doc
 
 @timer()
 async def get_file_content(file_name: str) -> str:
+    """读取文件正文：本地路径直接读，否则按 URL 从文件服务下载。"""
     # local file
     if _is_local_file_reference(file_name):
         local_path = _normalize_local_path(file_name)
@@ -52,6 +56,7 @@ async def get_file_content(file_name: str) -> str:
 
 @timer()
 async def download_all_files(file_names: list[str]) -> List[Dict[str, Any]]:
+    """批量下载文件内容，单文件失败时写入占位文案，不中断整体。"""
     file_contents = []
     for file_name in file_names:
         try:
@@ -76,7 +81,7 @@ async def download_all_files(file_names: list[str]) -> List[Dict[str, Any]]:
 def truncate_files(
     files: List[Dict[str, Any]] | List[Doc], max_tokens: int
 ) -> List[Dict[str, Any]] | List[Doc]:
-    """近似计算 token 数"""
+    """按字符近似 token，截断文件列表以适配模型上下文窗口。"""
     truncated_files = []
     token_size = 0
     for f_a in files:
@@ -102,6 +107,7 @@ async def upload_file(
     file_type: str,
     request_id: str,
 ):
+    """上传文本产物：HTTP 调文件服务，或写入本地 FILE_STORAGE 根目录。"""
     if file_type == "markdown":
         file_type = "md"
     if not file_name.endswith(file_type):
@@ -148,6 +154,7 @@ async def upload_file_by_path(
     file_path: str,
     request_id: str,
 ):
+    """按本地路径上传二进制产物（multipart 或拷贝到本地存储根）。"""
     if not os.path.exists(file_path):
         return None
     file_name = os.path.basename(file_path)
@@ -196,12 +203,14 @@ def generate_data_id(prefix: str = ""):
 
 
 def generate_secure_random_string(length):
+    """密码学安全的字母数字随机串。"""
     characters = string.ascii_letters + string.digits
     secure_random = secrets.SystemRandom()
     return "".join(secure_random.choice(characters) for _ in range(length))
 
 
 def flatten_search_file(s_file: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """展开搜索结果文件 JSON 为扁平文档列表。"""
     flat_files = []
     try:
         contents = json.loads(s_file["content"])

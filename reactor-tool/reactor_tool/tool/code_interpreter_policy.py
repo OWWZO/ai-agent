@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""代码解释器权限策略：档位、路径沙箱、静态 AST 校验、受控 helper。
+
+档位：
+  analysis  — 仅能读输入文件、写输出目录
+  workspace — 额外允许工作区内路径读写
+"""
 import ast
 import os
 from dataclasses import dataclass
@@ -12,12 +18,12 @@ PathAccessMode = Literal["read", "write"]
 
 @dataclass(frozen=True)
 class CodeInterpreterPermissionPolicy:
-    """代码解释器权限策略。"""
+    """代码解释器权限策略快照（不可变）。"""
 
     profile: PermissionProfile
     workspace_root: str
     output_dir: str
-    input_file_paths: dict[str, str]
+    input_file_paths: dict[str, str]  # 逻辑名 → 本地绝对路径
     allowed_read_paths: tuple[str, ...]
     allowed_read_roots: tuple[str, ...]
     allowed_write_roots: tuple[str, ...]

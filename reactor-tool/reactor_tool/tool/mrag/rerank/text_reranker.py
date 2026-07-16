@@ -26,6 +26,7 @@ dotenv.load_dotenv()
 
 
 class TextReranker(ABC):
+    """文本重排抽象：输入 question + docs，返回相关性分数列表。"""
 
     @abstractmethod
     def rerank(self, question: str, texts: list[str]) -> list[float]:
@@ -33,7 +34,7 @@ class TextReranker(ABC):
 
 
 class APITextReranker(TextReranker):
-    """文本重排序器类"""
+    """HTTP API 文本重排（TEXT_RERANKER_* 环境变量）。"""
 
     def __init__(self):
         self.headers = {

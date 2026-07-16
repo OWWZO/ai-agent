@@ -97,6 +97,8 @@
 - Reactor ledger、tool-output、chat-model DAO / Mapper 统一位于 `src/main/java/org/wwz/ai/infrastructure/dao/reactor/`
 - `ExecutionLedgerReadRepository`、`ExecutionLedgerWriteRepository`、`ChatModelMetadataRepository` 负责把领域仓储端口映射到这些 DAO
 - `ToolOutputReaderImpl`、`ToolOutputWriterImpl`、`SessionContextMemoryServiceImpl`、`WorkspaceImageGenerationServiceImpl` 当前属于允许直接协作 DAO 的过渡态技术实现
+- **执行事实主路径是 Execution Ledger**；跨轮工作记忆投影由 `SessionWorkingMemoryRepository` + `working_memory_*` Mapper 落地，`SessionWorkingMemoryServiceImpl` 负责 load/persist
+- `SessionContextMemoryServiceImpl` 仍可从 ledger 组装兼容文本历史；禁止再落地 `ai_agent_message*` 或 transcript block 四表 Mapper/DAO
 - 后续阶段若继续收敛，会优先新增 repository seam，而不是把 DAO 或 MyBatis-Plus 细节重新带回 `domain`
 
 ### Agent DDD 最终边界（019）

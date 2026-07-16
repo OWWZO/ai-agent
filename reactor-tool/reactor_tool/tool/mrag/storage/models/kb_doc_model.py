@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""知识库文档/chunk 元数据（含整篇正文 canonical 回显）。"""
 from typing import Optional
 
 from pydantic import BaseModel
@@ -12,6 +14,7 @@ def build_canonical_doc_id(file_id: str) -> str:
 
 
 class KBDocModel(BaseModel):
+    """单条文档块或 canonical 全文记录。"""
     kb_id: str
     doc_id: Optional[str]
     text: Optional[str]

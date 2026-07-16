@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 会话历史 API：创建/列表/详情/删除会话与 turn。"""
 import uuid
 from datetime import datetime
 
@@ -11,6 +13,7 @@ router = APIRouter(prefix="/mrag/sessions", tags=["MRAG 对话历史"])
 
 
 def _session_to_payload(session: MRagSessionModel) -> dict:
+    """会话模型 → 前端 JSON。"""
     return {
         "session_id": session.session_id,
         "title": session.title,
@@ -26,6 +29,7 @@ def _session_to_payload(session: MRagSessionModel) -> dict:
 
 
 def _turn_to_payload(turn) -> dict:
+    """轮次模型 → 前端 JSON。"""
     return {
         "turn_id": turn.turn_id,
         "session_id": turn.session_id,
@@ -43,6 +47,7 @@ def _turn_to_payload(turn) -> dict:
 
 
 class CreateSessionRequest(BaseModel):
+    """创建会话请求：单库 kb_id 或多库 kb_ids。"""
     kb_id: str = Field(default="", description="主知识库 ID")
     kb_ids: list[str] = Field(default_factory=list, description="知识库范围")
     title: str = Field(default="新对话", description="会话标题")

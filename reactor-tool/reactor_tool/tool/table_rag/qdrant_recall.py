@@ -1,4 +1,5 @@
-
+# -*- coding: utf-8 -*-
+"""table_rag Qdrant 向量召回：直连客户端 + HTTP 代理服务两种路径。"""
 import os
 import time
 import requests
@@ -17,19 +18,21 @@ from reactor_tool.util.qdrant_utils import (
 )
 from reactor_tool.tool.mrag.embedding.text_embedding import get_text_embedding_model
 
-load_dotenv()  # 加载 .env 文件
+load_dotenv()
 
 
 class QdrantRecall(object):
+    """直连 Qdrant：按 modelCode 过滤做 schema/列向量检索。"""
+
     def __init__(self):
         qdrant_config = resolve_table_rag_qdrant_config()
-        
+
         self.collection_name = os.getenv("TR_QDRANT_COLLECTION_NAME")
         self.qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K'))
-        
+
         self.qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD'))
         self.qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT'))
-        
+
         client = build_qdrant_client(
             url=qdrant_config.get("url"),
             host=qdrant_config.get("host"),
@@ -39,8 +42,9 @@ class QdrantRecall(object):
             api_key=qdrant_config.get("api_key"),
         )
         self.client = client
-        
+
     def search(self, query_vector, model_code_list):
+        """向量检索，仅返回候选表 modelCode 范围内的 payload。"""
         query_filter = Filter(
             must=[
                 FieldCondition(
@@ -49,7 +53,7 @@ class QdrantRecall(object):
                 )
             ]
         )
-        
+
         results = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
@@ -62,17 +66,19 @@ class QdrantRecall(object):
             payload = res.payload
             payload.update({"score": res.score})
             payloads.append(payload)
-            
+
         return payloads
+
 
 @timer("table_rag")
 def get_qd_server_recall(query, model_code_list):
+    """经 HTTP 向量服务召回（TR_QDRANT_URL），服务端负责 embedding。"""
     qd_threshhold = float(os.getenv('TR_QD_THRESHHOLD'))
     collectionName = os.getenv('TR_QDRANT_COLLECTION_NAME', None)
     qdrant_url = os.getenv('TR_QDRANT_URL', None)
     qdrant_limit = int(os.getenv('TR_QD_RECALL_TOP_K'))
     qdrant_timeout = int(os.getenv('TR_QD_TIMEOUT'))
-    
+
     body = {
         "scoreThreshold": qd_threshhold,
         "query": query,
@@ -95,13 +101,14 @@ def get_qd_server_recall(query, model_code_list):
 
 @timer("table_rag")
 def get_qd_recall(query, model_code_list):
+    """本地 embedding + 直连 Qdrant 召回（TR_EMBEDDING_URL 或共享文本模型）。"""
     embedding_url = os.getenv("TR_EMBEDDING_URL")
     if embedding_url:
         emb_client = EmbeddingClient(embedding_url)
         query_vector = emb_client.get_vector(query)
     else:
         query_vector = get_text_embedding_model().encode_text_batch([query])[0]
-    
+
     qd_client = QdrantRecall()
     recall = qd_client.search(query_vector, model_code_list)
     return recall

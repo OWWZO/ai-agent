@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""MinerU 官方 PDF/文档解析托管 API 客户端（上传 + 轮询结果）。"""
 from __future__ import annotations
 
 import os

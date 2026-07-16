@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # =====================
 #
-#
 # Author: liumin.423
 # Date:   2025/7/9
 # =====================
+"""DeepSearch 最终回答：基于检索材料流式生成答案。"""
 import os
 import time
 
@@ -16,6 +16,7 @@ from reactor_tool.util.prompt_util import get_prompt
 
 @timer()
 async def answer_question(query: str, search_content: str):
+    """将 query + 检索材料拼入 answer_prompt，流式 yield 答案片段。"""
     prompt_template = get_prompt("deepsearch")["answer_prompt"]
 
     llm_config = resolve_openai_compat_env("DEEPSEARCH")

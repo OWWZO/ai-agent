@@ -1,5 +1,9 @@
+# -*- coding: utf-8 -*-
+"""MRAG 提示词常量集中管理（意图分类、上下文检查、生成回答等）。"""
+
+
 class PromptManager:
-    """提示词管理器类"""
+    """提示词管理器：类属性存放各阶段 system/user 模板。"""
 
     SIMPLE_QUERY_CHECK_PROMPT = """你是一个企业信息处理专家，你需要判断用户的问题是否需要知识库检索。
 

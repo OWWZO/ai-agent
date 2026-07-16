@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/7/9
 # =====================
+"""DeepSearch 检索后推理：判断是否需要继续搜、生成下一轮子查询。"""
 import json
 import os
 import time
@@ -20,6 +20,7 @@ from reactor_tool.util.log_util import timer
 async def search_reasoning(
         request_id: str, query: str, content: str, history_query_list: list = [],
 ):
+    """基于已检索内容推理：是否足够回答 / 还需搜什么。返回结构化 dict。"""
     if not request_id or not query or not content:
         return {}
 

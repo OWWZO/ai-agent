@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================
 #
-#
 # Author: liumin.423
 # Date:   2025/7/8
 # =====================
+"""LLM 调用封装：OpenAI 兼容协议 + litellm + 敏感词过滤。
+
+主入口 ask_llm / ask_llm_sync_iter，支持流式与非流式，自动适配
+DashScope / 官方 OpenAI / 自定义 api_base。
+"""
 import asyncio
 import json
 import os
@@ -21,7 +25,7 @@ from reactor_tool.model.context import LLMModelInfoFactory
 from reactor_tool.util.log_util import AsyncTimer, timer
 from reactor_tool.util.sensitive_detection import SensitiveWordsReplace
 
-# model aliases that should route to DashScope OpenAI-compatible endpoint
+# 走 DashScope OpenAI 兼容端点的模型别名
 _LITELLM_DASHSCOPE_MODELS = {
     "qwen-flash",
     "qwen-plus",
@@ -467,9 +471,15 @@ async def ask_llm(
     timeout: Optional[int] = None,
     **kwargs,
 ):
+    """统一 LLM 调用入口。
+
+    messages 可为纯字符串或 chat messages 列表；
+    stream=True 时异步 yield 片段，only_content 只返回文本。
+    """
     if isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
 
+    # 可选敏感词脱敏
     if os.getenv("SENSITIVE_WORD_REPLACE", "false") == "true":
         for message in messages:
             if isinstance(message.get("content"), str):
@@ -492,7 +502,7 @@ async def ask_llm(
             f"has_api_key={bool(params.get('api_key'))}, timeout={timeout}"
         )
 
-    # Align key request fields with Java-side behavior, while honoring existing python settings.
+    # 与 Java 侧请求字段对齐，同时保留 Python 既有配置
     # temperature: function arg > existing params > env > default(0.0)
     if temperature is not None:
         params["temperature"] = temperature

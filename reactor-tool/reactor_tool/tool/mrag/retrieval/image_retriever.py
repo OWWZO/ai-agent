@@ -26,7 +26,7 @@ from ..utils.logger_utils import logger
 
 
 class ImageRetriever:
-    """图像检索器类"""
+    """图像/页面检索：t2i、i2i、t2page；非 multimodal 模式直接返回空。"""
 
     def __init__(self):
         self.image_vector_enabled = is_multimodal_image_index_enabled()
@@ -35,11 +35,12 @@ class ImageRetriever:
 
     @staticmethod
     def _empty_results(size: int) -> list[list[dict]]:
+        """与 query 数量对齐的空结果占位。"""
         return [[] for _ in range(size)]
 
     def text2image_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
-        """文本到图像检索"""
+        """文本到图像检索（跨模态）。"""
         if not self.image_vector_enabled:
             logger.info("text2image_search skipped because MRAG image vector index is disabled")
             return self._empty_results(len(queries))

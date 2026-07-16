@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""文件服务 HTTP API。
+
+供 Java 主链路与前端调用：上传、列表、按 request 查文件、预览与下载。
+注意：路径参数 file_id 当前实际传的是 request_id（历史兼容）。
+"""
 import mimetypes
 import os
 from urllib.parse import quote, unquote
@@ -24,6 +30,7 @@ async def _get_file_info_by_request_and_name(request_id: str, raw_file_name: str
     file_info = await FileInfoOp.get_by_file_id(file_id=get_file_id(request_id, normalized_file_name))
     if file_info:
         return file_info, normalized_file_name
+    # 旧规则：fileName 含路径时直接参与 MD5
     legacy_file_id = get_legacy_file_id(request_id, raw_file_name)
     file_info = await FileInfoOp.get_by_file_id(file_id=legacy_file_id)
     return file_info, normalized_file_name
@@ -33,6 +40,7 @@ async def _get_file_info_by_request_and_name(request_id: str, raw_file_name: str
 async def get_file(
         body: FileRequest
 ):
+    """按 file_id 查询单个文件的预览/下载地址。"""
     file_info = await FileInfoOp.get_by_file_id(file_id=body.file_id)
     if file_info:
         preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
@@ -48,6 +56,7 @@ async def get_file(
 async def upload_file(
         body: FileUploadRequest
 ):
+    """JSON 方式上传文本内容并登记元数据。"""
     body.file_name = normalize_stored_file_name(body.file_name)
     body.request_id = body.request_id
     file_info = await FileInfoOp.add_by_content(
@@ -57,8 +66,10 @@ async def upload_file(
     download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
     return JSONResponse(content={"ossUrl": download_url, "downloadUrl": download_url, "domainUrl": preview_url, "fileSize": file_info.file_size})
 
+
 @router.post("/upload_file_data")
 async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(alias="requestId")):
+    """multipart 二进制上传（工具产物、用户附件等）。"""
     file.filename = unquote(file.filename)
     file.filename = normalize_stored_file_name(file.filename)
     file_id = get_file_id(request_id, file.filename)
@@ -70,6 +81,7 @@ async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(
 
 @router.post("/get_file_list")
 async def get_file_list(body: FileListRequest):
+    """列出会话下全部文件，或按 filters 中的 file_id 过滤。"""
     if not body.filters:
         file_infos = await FileInfoOp.get_by_request_id(body.request_id)
     else:
@@ -91,7 +103,7 @@ async def get_file_list(body: FileListRequest):
 
 @router.get("/download/{file_id}/{file_name:path}")
 async def download_file(file_id: str, file_name: str):
-    # TODO 目前 file_id 实际上是 request_id，后续统一修改
+    """下载文件。TODO：路径 file_id 实际是 request_id，后续统一改名。"""
     file_info, file_name = await _get_file_info_by_request_and_name(file_id, file_name)
     if not file_info or not os.path.exists(file_info.file_path):
         return Response(content="File not found", status_code=404)
@@ -100,6 +112,7 @@ async def download_file(file_id: str, file_name: str):
 
 @router.get("/preview/{file_id}/{file_name:path}")
 async def preview_file(file_id: str, file_name: str):
+    """浏览器内联预览；md 强制 text/markdown，未知类型走 attachment。"""
     # TODO 目前 file_id 实际上是 request_id，后续统一修改
     file_info, file_name = await _get_file_info_by_request_and_name(file_id, file_name)
     if not file_info or not os.path.exists(file_info.file_path):
@@ -127,4 +140,3 @@ async def preview_file(file_id: str, file_name: str):
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
         }
     )
-

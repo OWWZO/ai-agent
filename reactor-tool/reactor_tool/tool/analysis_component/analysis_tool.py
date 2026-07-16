@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/9/8
 # =====================
+"""自动分析用的 smolagents Tool 集合。
+
+GetDataTool / DataTransTool / InsightTool / SaveInsightTool / FinalAnswerTool
+"""
 import json
 import re
 from typing import  Any, Dict, List
@@ -26,6 +29,7 @@ pd.set_option("display.max_columns", None)
 
 
 class GetDataTool(Tool):
+    """取数工具：自然语言描述 → 调用 ANA 数据接口 → DataFrame。"""
     name = "get_data"
     description = "这是一个取数智能体。可以使用此工具获取需要的数据，非常聪明，能够准确理解你的取数需求，返回 pd.DataFrame 格式的数据"
     inputs = {

@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/9/8
 # =====================
+"""自动多步数据分析 Agent。
+
+基于 schema 取数工具 + 洞察工具 + CodeAgent，按 max_steps 迭代分析，
+最终汇总 insights 与 summary 输出 Markdown 报告。
+"""
 import asyncio
 from datetime import datetime
 import os
@@ -34,11 +38,12 @@ load_dotenv()
 
 pd.set_option("display.max_columns", None)
 
+# 分析 Agent 允许 import 的科学计算栈
 authorized_imports=[
-    "pandas", "numpy", 
-    "statsmodels", "statsmodels.*", 
-    "scipy", "scipy.*", 
-    "sklearn", "sklearn.*", 
+    "pandas", "numpy",
+    "statsmodels", "statsmodels.*",
+    "scipy", "scipy.*",
+    "sklearn", "sklearn.*",
 ]
 
 
@@ -66,15 +71,17 @@ _RESULT_TEMPLATE = """# {{ task }}
 
 
 class AutoAnalysisAgent(object):
-    
+    """自动数据分析：拉取 schema → 构建 AnalysisContext → CodeAgent 多步分析。"""
+
     def __init__(self, max_steps: int = 10, stream: bool = False, queue: asyncio.Queue = None):
-        # 用作流式
+        # 流式事件队列
         self.queue = queue or asyncio.Queue()
         self.max_steps = max_steps or 10
         self.stream = stream
 
     @timer(key="enter")
     async def run(self, task: str, modelCodeList: List[str], request_id: str, businessKnowledge: str = None, **kwargs) -> List[Dict]:
+        """执行完整分析任务；stream 模式下向 queue 推送步骤事件。"""
         try:
             schemas = get_schema(modelCodeList, query=task, request_id=request_id)["schemaInfo"]
             context = AnalysisContext(

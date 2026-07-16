@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""本地开发用：通过 HTTP 创建/删除知识库、灌文件等初始化脚本。"""
 import os
 
 import dotenv
@@ -12,9 +14,7 @@ base_url = "http://127.0.0.1:1601"
 
 
 def create_knowledge_base(kb_id: str):
-    """
-    创建知识库
-    """
+    """调用 /documents/create_knowledge_base 创建知识库。"""
     if not kb_id:
         raise ValueError("kb_id is required")
 
@@ -32,9 +32,7 @@ def create_knowledge_base(kb_id: str):
 
 
 def delete_knowledge_base(kb_id: str):
-    """
-    删除知识库
-    """
+    """删除知识库。"""
     body = {
         "kb_id": kb_id
     }

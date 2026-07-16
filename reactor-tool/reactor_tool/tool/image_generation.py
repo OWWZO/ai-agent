@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
 #
-#
 # Author: OpenAI Codex
 # Date:   2026/4/25
 # =====================
+"""图片生成：文生图 / 图生图，兼容 OpenAI Responses、Images API 与 xAI。
+
+生成后把图片固化上传到文件服务，返回 fileInfo 供 Java 账本登记。
+"""
 import base64
 import json
 import math
@@ -35,6 +38,7 @@ from reactor_tool.util.llm_util import (
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_IMAGE_PROVIDER = "openai"
 DEFAULT_IMAGE_SIZE = "1024x1024"
+# Responses API 不可用时回退到 legacy 的 HTTP 状态码
 RESPONSES_FALLBACK_STATUS = {404, 405, 501}
 DATA_URL_RE = re.compile(r"^data:(?P<mime>[^;,]+);base64,(?P<data>.+)$", re.IGNORECASE | re.DOTALL)
 BASE64_IMAGE_RE = re.compile(r"[A-Za-z0-9+/=\s]{200,}")

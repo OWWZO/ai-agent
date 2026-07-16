@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/7/9
 # =====================
+"""多搜索引擎实现与混合检索（MixSearch）。
+
+引擎：DDG / Bing / Jina / Sogou / Serper / Exa；
+MixSearch 并发调用并去重，供 DeepSearch 使用。
+"""
 import asyncio
 import json
 import os
@@ -24,7 +28,7 @@ from reactor_tool.util.log_util import timer
 
 
 def _search_url_ok(url) -> bool:
-    """Return True if url is set and valid for aiohttp (avoids InvalidUrlClientError)."""
+    """校验 URL 是否可被 aiohttp 请求（避免 InvalidUrlClientError）。"""
     if not url or not str(url).strip():
         return False
     s = str(url).strip()
@@ -32,7 +36,7 @@ def _search_url_ok(url) -> bool:
 
 
 class SearchBase(ABC):
-    """搜索基类"""
+    """搜索引擎基类：统一 count/timeout，子类实现 search。"""
 
     def __init__(self):
         self._count = int(os.getenv("SEARCH_COUNT", 10))
@@ -43,7 +47,7 @@ class SearchBase(ABC):
 
     @abstractmethod
     async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
-        """抽象搜索方法"""
+        """抽象搜索方法：返回 Doc 列表。"""
         raise NotImplementedError
 
     @staticmethod

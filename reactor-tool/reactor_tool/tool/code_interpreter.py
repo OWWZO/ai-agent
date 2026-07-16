@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
 #
-#
 # Author: liumin.423
 # Date:   2025/7/7
 # =====================
+"""代码解释器入口：组装权限策略、下载输入文件、驱动 CIAgent 流式执行。
+
+对外由 api/tool.py 的 /code_interpreter 调用 code_interpreter_agent。
+"""
 import asyncio
 import importlib
 import json
@@ -43,6 +46,7 @@ from reactor_tool.model.code import ActionOutput, CodeOuput
 
 
 def _normalize_openai_compat_api_base(api_base: str) -> str:
+    """去掉 chat/completions 等后缀，规范为 OpenAI 兼容 base（通常以 /v1 结尾）。"""
     if not api_base:
         return api_base
     normalized = api_base.strip().rstrip("/")
@@ -126,6 +130,7 @@ def _chat_message_to_dict(message: Any) -> dict:
 
 
 class RawOpenAICompatHTTPModel(OpenAIServerModel):
+    """直连 OpenAI 兼容 HTTP 的 smolagents 模型适配（绕过 litellm 部分限制）。"""
     """
     复用 llm_util 中统一的大模型请求逻辑，保持和其他工具一致。
     """
@@ -236,8 +241,10 @@ async def code_interpreter_agent(
     stream: bool = True,
     permission_profile: str = "analysis",
 ):
+    """代码解释器主入口：建工作区 → 下载输入 → 权限策略 → 驱动 CIAgent 流式产出。"""
     work_dir = ""
     try:
+        # 临时工作区：输入文件 + output/ 产物目录
         work_dir = tempfile.mkdtemp()
         workspace_root = str(Path(work_dir).resolve())
         output_dir = str(Path(workspace_root).joinpath("output").resolve())
@@ -464,6 +471,7 @@ def create_ci_agent(
     output_dir: str = "",
     permission_policy: CodeInterpreterPermissionPolicy | None = None,
 ) -> CIAgent:
+    """组装 CIAgent：优先 RawOpenAICompatHTTPModel，否则 LiteLLM。"""
     model_id, litellm_extra = _ci_model_id_and_litellm_kwargs()
     api_base = litellm_extra.get("api_base")
     api_key = litellm_extra.get("api_key")

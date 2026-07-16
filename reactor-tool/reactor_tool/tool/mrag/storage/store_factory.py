@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""元数据 Store 工厂：按 STORE_TYPE（默认 sqlite）返回各仓储实现。"""
 import os
 
 from sqlalchemy import create_engine
@@ -16,7 +18,9 @@ if store_type == "sqlite":
     local_path = os.getenv("SQLITE_PATH", "kb_file.db")
     _sqlite_engine = create_engine(f"sqlite:///{local_path}")
 
+
 def get_kb_file_store() -> KBFileStore:
+    """知识库文件元数据仓储。"""
     global _sqlite_engine, store_type
     if store_type == "sqlite":
         from .kb_file_store_sqlite_impl import KBFileSQLite
@@ -26,6 +30,7 @@ def get_kb_file_store() -> KBFileStore:
 
 
 def get_kb_store() -> KBStore:
+    """知识库本体仓储。"""
     global _sqlite_engine, store_type
     if store_type == "sqlite":
         from .kb_store_sqlite_impl import KBStoreSQLite
@@ -35,6 +40,7 @@ def get_kb_store() -> KBStore:
 
 
 def get_kb_doc_store() -> KBDocStore:
+    """文档/chunk 元数据仓储。"""
     global _sqlite_engine, store_type
     if store_type == "sqlite":
         from .kb_doc_store_sqlite_impl import KBDocSQLite
@@ -44,6 +50,7 @@ def get_kb_doc_store() -> KBDocStore:
 
 
 def get_mrag_session_store() -> MRagSessionStore:
+    """MRAG 对话会话仓储。"""
     global _sqlite_engine, store_type
     if store_type == "sqlite":
         from .mrag_session_store_sqlite_impl import MRagSessionSQLite
@@ -53,6 +60,7 @@ def get_mrag_session_store() -> MRagSessionStore:
 
 
 def get_mrag_turn_store() -> MRagTurnStore:
+    """MRAG 对话轮次仓储。"""
     global _sqlite_engine, store_type
     if store_type == "sqlite":
         from .mrag_turn_store_sqlite_impl import MRagTurnSQLite

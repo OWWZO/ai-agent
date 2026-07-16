@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-# =====================
-#
-#
-# Author: liumin.423
-# Date:   2025/7/7
-# =====================
+"""工具服务主路由：Java 侧通过 HTTP/SSE 调用的全部业务端点。
+
+端点一览：
+  /code_interpreter  /report  /image_generation  /deepsearch  /web_fetch
+  /embedding/text    /table_rag  /cal_engine  /auto_analysis  /nl2sql
+  /sopRecall         /script_runner  /mragQuery
+"""
 import asyncio
 import contextvars
 import json
@@ -54,7 +55,6 @@ from reactor_tool.util.middleware_util import RequestHandlerRoute
 load_dotenv()
 
 
-
 router = APIRouter(route_class=RequestHandlerRoute)
 
 
@@ -84,16 +84,18 @@ def _normalize_vector_batch(vectors: list[list[float]], normalize: bool) -> list
 async def post_code_interpreter(
     body: CIRequest,
 ):
+    """代码解释器：SSE 流式返回代码/动作/最终结果。"""
     # 按需导入重型依赖，避免仅使用轻量路由时被 smolagents 等可选依赖阻塞。
     from reactor_tool.tool.code_interpreter import code_interpreter_agent
 
-     # 处理文件路径
+    # 相对文件名补全为文件服务预览 URL
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
             if not f_name.startswith("/") and not f_name.startswith("http"):
                 body.file_names[idx] = f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
 
     async def _stream():
+        """将 Agent 产出映射为 SSE 事件（CodeOuput / ActionOutput / 文本）。"""
         acc_content = ""
         acc_token = 0
         acc_time = time.time()
@@ -106,8 +108,8 @@ async def post_code_interpreter(
                 permission_profile=body.permission_profile,
             ):
 
-
                 if isinstance(chunk, CodeOuput):
+                    # 代码块 + 产物文件
                     yield ServerSentEvent(
                         data=json.dumps(
                             {
@@ -120,6 +122,7 @@ async def post_code_interpreter(
                         )
                     )
                 elif isinstance(chunk, ActionOutput):
+                    # 动作 observation
                     yield ServerSentEvent(
                         data=json.dumps(
                             {
@@ -193,7 +196,7 @@ async def post_code_interpreter(
                 )
             )
             yield ServerSentEvent(data="[DONE]")
-            
+
 
     if body.stream:
         return EventSourceResponse(
@@ -252,14 +255,15 @@ async def post_code_interpreter(
 async def post_report(
     body: ReportRequest,
 ):
+    """报告生成：流式输出正文，结束后落盘 html/md/ppt 产物。"""
     from reactor_tool.tool.report import report
 
-    # 处理文件路径
+    # 相对文件名补全为文件服务预览 URL
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
             if not f_name.startswith("/") and not f_name.startswith("http"):
                 body.file_names[idx] = f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
-    
+
     async def _stream():
         content = ""
         acc_content = ""
@@ -523,6 +527,7 @@ async def post_text_embedding(body: EmbeddingProxyRequest):
 async def post_table_rag(
     body: TableRAGRequest,
 ):
+    """表结构/列值 RAG：only_recall 仅粗排，否则完整精排选 schema。"""
     from reactor_tool.tool.table_rag import TableRAGAgent
 
     request_id = body.request_id
@@ -533,7 +538,7 @@ async def post_table_rag(
     recall_type = body.recall_type
     use_vector = body.use_vector
     use_elastic = body.use_elastic
-    
+
     table_rag = TableRAGAgent(request_id=request_id,
                               query=query,
                               modelCodeList=modelCodeList,
@@ -542,11 +547,11 @@ async def post_table_rag(
                               user_info="",
                               use_vector=use_vector,
                               use_elastic=use_elastic,)
-    
+
+    # only_recall：只做向量/ES 粗排；否则走完整选表链路
     if recall_type == "only_recall":
         result = await table_rag.run_recall(query=query)
     else:
-        
         result = await table_rag.run(query=query)
     content = result.get("choosed_schema", {})
     return {"code": 200, "data": content, "requestId": body.request_id}
@@ -569,6 +574,7 @@ async def cal_engine(body: CalEngineRequest):
 
 @router.post("/auto_analysis")
 async def auto_analysis(body: AutoAnalysisRequest):
+    """自动多步数据分析；stream 时在独立线程跑 Agent，经 Queue 推 SSE。"""
     from reactor_tool.tool.auto_analysis import AutoAnalysisAgent
 
     if body.stream:
@@ -585,11 +591,11 @@ async def auto_analysis(body: AutoAnalysisRequest):
                     if not isinstance(data, str):
                         data = json.dumps(data, ensure_ascii=False)
                     yield ServerSentEvent(data=data)
-        
+
         def run_task(context, queue, body):
             if body.modelCodeList:
                 context.run(lambda : asyncio.run(AutoAnalysisAgent(queue=queue, max_steps=body.max_steps, stream=body.stream).run(**body.model_dump())))
-            
+
         thread = threading.Thread(target=run_task, args=(contextvars.copy_context(), queue, body), daemon=True)
         thread.start()
         return EventSourceResponse(
@@ -608,9 +614,7 @@ async def auto_analysis(body: AutoAnalysisRequest):
 
 @router.post("/nl2sql")
 async def post_nl2sql(body: NL2SQLRequest):
-    """
-    text_2_sql
-    """
+    """自然语言转 SQL（NL2SQL），支持 SSE 流式与一次性返回。"""
     from reactor_tool.tool.nl2sql import NL2SQLAgent
 
     nl2sql_queue = asyncio.Queue()
@@ -652,6 +656,7 @@ async def post_nl2sql(body: NL2SQLRequest):
 async def post_sop_recall(
     body: SopChooseRequest,
 ):
+    """从候选 SOP 列表中按 query 语义择优，供 Plan 规划参考。"""
     from reactor_tool.tool.plan_sop import PlanSOP
 
     request_id = body.request_id
@@ -659,7 +664,7 @@ async def post_sop_recall(
     sop_list = body.sop_list
     pl_sop = PlanSOP(request_id)
     sop_mode, choosed_sop_string = pl_sop.sop_choose(query=query, sop_list=sop_list)
-    
+
     return {"code": 200, "data": {"sop_mode": sop_mode, "choosed_sop_string": choosed_sop_string}, "requestId": body.request_id}
 
 
@@ -699,12 +704,14 @@ def build_mrag_agent(kb_scope: str | list[str]):
 
 
 def _normalize_kb_scope_list(kb_scope: str | list[str]) -> list[str]:
+    """将单库/多库参数统一为非空 list。"""
     if isinstance(kb_scope, list):
         return [item for item in kb_scope if item]
     return [kb_scope] if kb_scope else []
 
 
 def _build_session_title(question: str) -> str:
+    """会话标题：问题截断到 24 字。"""
     normalized = question.strip()
     if len(normalized) <= 24:
         return normalized
@@ -712,6 +719,7 @@ def _build_session_title(question: str) -> str:
 
 
 def _build_answer_preview(answer: str) -> str:
+    """答案预览：压空白后截断到 120 字。"""
     preview = " ".join(answer.strip().split())
     if len(preview) <= 120:
         return preview
@@ -719,6 +727,7 @@ def _build_answer_preview(answer: str) -> str:
 
 
 def _ensure_mrag_session(session_id: str, question: str, kb_scope: str | list[str]) -> MRagSessionModel:
+    """确保 MRAG 会话存在；不存在则按首轮问题创建。"""
     session_store = get_mrag_session_store()
     session = session_store.get_session(session_id)
     if session:

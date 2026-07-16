@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/9/8
 # =====================
-# 定义数据模型
+"""分析数据语义模型：列/指标/筛选/兄弟组，支撑洞察计算。"""
 from typing import Any, List, Literal, Optional
 import uuid
 import pandas as pd
@@ -17,6 +16,7 @@ from reactor_tool.util.log_util import timer
 
 
 class Column(BaseModel):
+    """数据列元信息：是否序列维度、是否数值。"""
     name: str = Field(description="列名")
     is_series: bool = Field(False, description="是否序列维度")
     is_number: bool = Field(False, description="是否数值类型")
@@ -29,6 +29,7 @@ class Column(BaseModel):
 
 
 class FilterColumn(BaseModel):
+    """维度筛选条件（当前仅 ==）。"""
     column: Column
     condition: Literal["=="] = Field("==", description="比较条件")
     value: Any = Field(description="维度的取值")

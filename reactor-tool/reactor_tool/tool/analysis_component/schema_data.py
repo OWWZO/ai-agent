@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/9/8
 # =====================
+"""分析数据源 HTTP 适配：拉 schema、按自然语言取数。
+
+对接 Java/外部 ANA_SCHEMA_URL / ANA_DATA_URL。
+"""
 import json
 import os
 import requests
@@ -19,6 +22,7 @@ load_dotenv()
 
 @timer()
 def get_schema(modelCodeList: List[str], timeout: float = 5, request_id: str = None, **kwargs) -> Dict[str, Any]:
+    """按模型 ID 列表拉取表结构元数据。"""
     response = requests.post(
         url=os.getenv("ANA_SCHEMA_URL"),
         data=json.dumps({"modelCodeList": modelCodeList, "traceId": request_id}),
@@ -32,6 +36,7 @@ def get_schema(modelCodeList: List[str], timeout: float = 5, request_id: str = N
 
 @timer()
 def get_data(query: str, modelCodeList: List[str], timeout: float = 90, request_id: str = None, **kwargs) -> List:
+    """按自然语言取数描述请求数据接口，返回结果列表。"""
     body = {
         "traceId": request_id,
         "content": query,

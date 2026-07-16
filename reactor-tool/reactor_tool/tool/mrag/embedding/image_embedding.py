@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""图片/多模态 Embedding：Qwen-VL 等；text_proxy 模式下可禁用。"""
 import os
 from http import HTTPStatus
 from typing import List
@@ -28,6 +30,8 @@ def _normalize_dashscope_multimodal_embedding_base_url(base_url: str | None) -> 
 
 
 class QwenVLEmbedding(ImageEmbedding):
+    """通义千问多模态向量：图/文统一编码进图片集合。"""
+
     def __init__(self):
         super().__init__()
         self.timeout = int(os.getenv("API_TIMEOUT", 300))

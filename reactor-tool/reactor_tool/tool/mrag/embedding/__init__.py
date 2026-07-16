@@ -1,9 +1,5 @@
 """
-Embedding模块
-
-该模块负责各种类型内容的向量化：
-- 文本embedding
-- 多模态embedding
+Embedding 模块：文本稠密向量、图片多模态向量、BM25 稀疏向量。
 """
 
 from .embedding import BaseEmbedding

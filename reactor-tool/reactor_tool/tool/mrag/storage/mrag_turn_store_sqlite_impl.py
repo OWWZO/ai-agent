@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 对话轮次 SQLite 实现（表 t_mrag_turn）。"""
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, JSON, String
@@ -11,6 +13,7 @@ Base = declarative_base()
 
 
 class MRagTurnSQLModel(Base):
+    """SQLAlchemy ORM：单轮问答行。"""
     __tablename__ = "t_mrag_turn"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -23,12 +26,13 @@ class MRagTurnSQLModel(Base):
     request_kb_scope = Column(JSON, nullable=False)
     request_image_urls = Column(JSON, nullable=False)
     answer_image_urls = Column(JSON, nullable=False)
-    raw_chunks = Column(JSON, nullable=False)
+    raw_chunks = Column(JSON, nullable=False)  # 检索命中原始结构
     deleted = Column(Integer, nullable=False, default=0)
     create_time = Column(DateTime, nullable=False)
     modify_time = Column(DateTime, nullable=False)
 
     def to_pydantic(self) -> MRagTurnModel:
+        """ORM → Pydantic。"""
         return MRagTurnModel(
             turn_id=self.turn_id,
             session_id=self.session_id,
@@ -47,6 +51,7 @@ class MRagTurnSQLModel(Base):
 
 
 class MRagTurnSQLite(MRagTurnStore):
+    """MRagTurnStore 的 SQLite 落地。"""
 
     def __init__(self, engine):
         self._engine = engine
@@ -57,6 +62,7 @@ class MRagTurnSQLite(MRagTurnStore):
         return self._session_factory()
 
     def create_turn(self, turn: MRagTurnModel) -> bool:
+        """插入一轮问答记录。"""
         db = self._get_session()
         try:
             now = datetime.now()

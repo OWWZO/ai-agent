@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/7/8
 # =====================
+"""耗时日志工具：同步/异步上下文管理器 + 装饰器。"""
 import asyncio
 import functools
 import inspect
@@ -16,6 +16,8 @@ from reactor_tool.model.context import RequestIdCtx
 
 
 class Timer(object):
+    """同步代码块计时，日志带 RequestIdCtx。"""
+
     def __init__(self, key: str):
         self.key = key
 
@@ -32,6 +34,8 @@ class Timer(object):
 
 
 class AsyncTimer(object):
+    """异步代码块计时。"""
+
     def __init__(self, key: str):
         self.key = key
 
@@ -48,6 +52,8 @@ class AsyncTimer(object):
 
 
 def timer(key: str = ""):
+    """装饰器：自动适配同步函数 / 协程 / 异步生成器，统一打耗时日志。"""
+
     def decorator(func):
         if asyncio.iscoroutinefunction(func):
             @functools.wraps(func)

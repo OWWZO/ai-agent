@@ -1,9 +1,5 @@
 """
-查询处理模块
-
-该模块负责用户查询的预处理和智能处理：
-- 查询预处理和理解
-- Agentic RAG智能查询
+查询处理模块：QueryProcessor（意图/改写）+ AgenticRAG（多轮检索生成）。
 """
 
 from .aigent import AgenticRAG

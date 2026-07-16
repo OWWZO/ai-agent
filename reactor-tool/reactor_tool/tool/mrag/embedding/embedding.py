@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""Embedding 抽象基类：文本 / 图片向量接口定义。"""
 from abc import ABC
 from typing import List
 
@@ -5,7 +7,7 @@ from PIL import Image
 
 
 class BaseEmbedding(ABC):
-    """Embedding基类"""
+    """Embedding 基类：子类实现 _initialize / _load_model。"""
 
     def __init__(self):
         super().__init__()

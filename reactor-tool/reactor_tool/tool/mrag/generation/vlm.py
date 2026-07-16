@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""视觉语言模型客户端：图片理解、caption、多模态问答。"""
 import base64
 import os
 import tempfile
@@ -11,13 +13,10 @@ from reactor_tool.tool.mrag.utils import download_utils
 from reactor_tool.tool.mrag.utils.logger_utils import logger
 from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
 
-class VLLMClient:
-    """大模型客户端类"""
 
-    # 配置环境变量
-    # API_KEY llm 大模型apikey
-    # LLM_MODEL_NAME 大模型名称
-    # LLM_MODEL_BASE_URL 大模型地址
+class VLLMClient:
+    """VLM 客户端（VLM_API_KEY / VLM_MODEL_NAME / VLM_MODEL_BASE_URL）。"""
+
     def __init__(self, base_url=None, model_name=None, api_key=None):
         self.api_key = api_key or os.getenv("VLM_API_KEY")
         self.model_name = model_name or os.getenv("VLM_MODEL_NAME")
@@ -32,6 +31,7 @@ class VLLMClient:
 
     @staticmethod
     def convert_messages(prompt, image_url):
+        """构造 OpenAI 多模态 messages（远程 image_url）。"""
         return [
             {
                 "role": "user",

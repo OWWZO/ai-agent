@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""MRAG 会话仓储接口。"""
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -5,6 +7,7 @@ from .models.mrag_session_model import MRagSessionModel
 
 
 class MRagSessionStore(ABC):
+    """会话创建/更新/查询/列表/删除。"""
 
     @abstractmethod
     def create_session(self, session: MRagSessionModel) -> bool:

@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""文件落盘与元数据 CRUD。
+
+- FileDB: 按 request_id(scope) 将内容写到本地目录
+- FileInfoOp: 元数据增查（同 file_id 覆盖更新）
+- get_file_*_url: 拼预览/下载 URL，供 Java 与前端消费
+"""
 import os
 from typing import List
 
@@ -10,20 +17,21 @@ from reactor_tool.util.log_util import timer
 
 
 class _FileDB(object):
+    """本地文件存储：按 scope 分子目录，避免不同会话文件互相覆盖。"""
+
     def __init__(self):
         self._work_dir = os.getenv("FILE_SAVE_PATH", "file_db_dir")
         if not os.path.exists(self._work_dir):
             os.makedirs(self._work_dir)
 
     async def save(self, file_name, content, scope) -> str:
+        """将文本内容写入 scope 目录，返回落盘路径。"""
         if "." in file_name:
             file_name = os.path.basename(file_name)
         else:
             file_name = f"{file_name}.txt"
 
-        # On Windows, characters like ":" are not allowed in directory names.
-        # `scope` can contain ":" (e.g. "reactorsession-...:..."), which causes
-        # `NotADirectoryError`. Normalize it into a filesystem-safe name.
+        # Windows 目录名不允许 ":" 等字符；request_id 常含冒号，需清洗
         safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope))
 
         save_path = os.path.join(self._work_dir, safe_scope)
@@ -32,8 +40,9 @@ class _FileDB(object):
         with open(f"{save_path}/{file_name}", "w", encoding='utf-8') as f:
             f.write(content)
         return f"{save_path}/{file_name}"
-    
+
     async def save_by_data(self, file: UploadFile, scope: str = None) -> str:
+        """将 UploadFile 二进制写入本地，返回落盘路径。"""
         file_name = file.filename
         file_data = file.file.read()
         safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope)) if scope else ""
@@ -58,11 +67,13 @@ def normalize_stored_file_name(file_name: str) -> str:
 
 
 class FileInfoOp(object):
+    """FileInfo 表操作：按内容/上传流写入，并维护 file_id 唯一索引。"""
 
     @classmethod
     @timer()
     async def add_by_content(cls, filename: str, content: str, file_id: str, description: str = None,
                              request_id: str = None) -> FileInfo:
+        """文本内容落盘 + 写元数据。"""
         filename = normalize_stored_file_name(filename)
         file_path = await FileDB.save(filename, content, scope=request_id)
         file_info = FileInfo(
@@ -75,13 +86,14 @@ class FileInfoOp(object):
             request_id=request_id
         )
         return await cls.add(file_info)
-    
+
     @staticmethod
     @timer()
     async def add_by_file(file: UploadFile, file_id: str, request_id: str = None) -> FileInfo:
+        """multipart 上传流落盘 + 写元数据。"""
         file.filename = normalize_stored_file_name(file.filename)
         file_path = await FileDB.save_by_data(file, scope=request_id)
-        
+
         file_info = FileInfo(
             file_id=file_id,
             filename=file.filename,
@@ -96,6 +108,7 @@ class FileInfoOp(object):
     @staticmethod
     @timer()
     async def add(file_info: FileInfo) -> FileInfo:
+        """插入或按 file_id 覆盖更新（同 ID 视为重新上传）。"""
         file_id = file_info.file_id
         f = await FileInfoOp.get_by_file_id(file_info.file_id)
         async with async_session_local() as session:
@@ -111,6 +124,7 @@ class FileInfoOp(object):
     @staticmethod
     @timer()
     async def get_by_file_id(file_id: str) -> FileInfo:
+        """按逻辑 file_id 查单条。"""
         async with async_session_local() as session:
             state = select(FileInfo).where(FileInfo.file_id == file_id)
             result = await session.execute(state)
@@ -119,6 +133,7 @@ class FileInfoOp(object):
     @staticmethod
     @timer()
     async def get_by_file_ids(file_ids: List[str]) -> List[FileInfo]:
+        """批量按 file_id 查询。"""
         async with async_session_local() as session:
             state = select(FileInfo).where(FileInfo.file_id.in_(file_ids))
             result = await session.execute(state)
@@ -127,16 +142,20 @@ class FileInfoOp(object):
     @staticmethod
     @timer()
     async def get_by_request_id(request_id: str) -> List[FileInfo]:
+        """按会话/请求 ID 列出全部产物文件。"""
         async with async_session_local() as session:
             state = select(FileInfo).where(FileInfo.request_id == request_id)
             result = await session.execute(state)
             return result.scalars().all()
 
+
 def get_file_preview_url(file_id: str, file_name: str):
+    """拼预览 URL：/preview/{request_id}/{file_name}。"""
     normalized_file_name = normalize_stored_file_name(file_name)
     return f"{os.getenv('FILE_SERVER_URL')}/preview/{file_id}/{normalized_file_name}"
 
 
 def get_file_download_url(file_id: str, file_name: str):
+    """拼下载 URL：/download/{request_id}/{file_name}。"""
     normalized_file_name = normalize_stored_file_name(file_name)
     return f"{os.getenv('FILE_SERVER_URL')}/download/{file_id}/{normalized_file_name}"

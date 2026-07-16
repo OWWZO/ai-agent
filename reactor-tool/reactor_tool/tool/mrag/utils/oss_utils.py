@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+"""对象存储/本地存储：S3 上传、本地镜像、预览下载路由。"""
 import hashlib
 import os
 import pathlib
@@ -15,10 +17,9 @@ router = APIRouter(prefix="/storage", tags=["OSS"])
 
 
 def get_file_extension(file_path):
-    # 普通后缀处理
+    """取扩展名；带 query 的 URL 先去掉参数。"""
     extension = pathlib.Path(file_path).suffix
 
-    # 加密链接处理
     if "?" in extension:
         extension = extension.split("?")[0]
 
@@ -26,7 +27,7 @@ def get_file_extension(file_path):
 
 
 def upload_oss(file_path, dir_, is_delete=True):
-    # bucket_name, access_key, secret_key, endpoint,
+    """上传到 S3 兼容存储；is_delete 控制上传后是否删本地。"""
     bucket = os.getenv("S3_BUCKET_NAME")
     access_key = os.getenv("S3_ACCESS_KEY")
     secret_key = os.getenv("S3_SECRET_KEY")

@@ -1,8 +1,10 @@
-
+# -*- coding: utf-8 -*-
+"""table_rag 通用工具：top-k、代码块解析、rerank、JSON 读写等。"""
 import re
 import json
 import numpy as np
 import requests
+
 
 def select_topk_by_scores(doc_list, scores, k):
     """
@@ -14,24 +16,17 @@ def select_topk_by_scores(doc_list, scores, k):
     topk_docs = [doc for doc, score in ranked_pairs[:k]]
     return topk_docs
 
+
 def parse_code_from_string(input_string):
-    """
-    Parse executable code from a string, handling various markdown-like code block formats.
+    """从 markdown 代码围栏或裸文本中提取可执行代码片段。"""
 
-    Parameters:
-    input_string (str): The input string.
-
-    Returns:
-    str: The parsed code.
-    """
-
-    # Pattern to match code blocks wrapped in triple backticks, with optional language specification
+    # 三反引号代码块（可选语言标记）
     triple_backtick_pattern = r"```(\w*\s*)?(.*?)```"
     match = re.search(triple_backtick_pattern, input_string, flags=re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(2).strip()
 
-    # Pattern to match code blocks wrapped in single backticks
+    # 单反引号行内代码
     single_backtick_pattern = r"`(.*?)`"
     match = re.search(single_backtick_pattern, input_string, flags=re.DOTALL)
     if match:
@@ -94,9 +89,12 @@ def sort_dict_list_by_keys(dict_list, desired_order, include_extra_keys=True):
     return result
 
 def softmax(x):
+    """分数归一化为概率分布。"""
     return np.exp(x) / np.sum(np.exp(x))
 
+
 def get_rerank(query, doc_list, request_id, url, timeout=0.5):
+    """调用 HTTP rerank 服务，返回 softmax 后的 scores。"""
     payload = json.dumps({
         "query": query,
         "doc_list": doc_list,

@@ -1,4 +1,8 @@
-import os
+# -*- coding: utf-8 -*-
+"""table_rag Elasticsearch 客户端：列值关键词召回。
+
+支持 api_key 或 basic auth；查询 analyzer 默认 ik_max_word。
+"""
 import os
 
 from dotenv import load_dotenv
@@ -8,11 +12,11 @@ from elasticsearch import Elasticsearch, helpers
 
 from reactor_tool.util.log_util import logger
 
-# 加载 .env 文件
 load_dotenv()
 
 
 def _trimmed(value):
+    """去空白；空串视为 None。"""
     if value is None:
         return None
     normalized = value.strip()
@@ -20,6 +24,7 @@ def _trimmed(value):
 
 
 def _resolve_es_url(host, scheme):
+    """host 可带 scheme，否则用 scheme://host 拼接。"""
     normalized_host = _trimmed(host)
     if not normalized_host:
         raise ValueError("Elasticsearch host is required (TR_ES_CONFIGS_HOST)")
@@ -30,6 +35,7 @@ def _resolve_es_url(host, scheme):
 
 
 def _resolve_auth_kwargs(config):
+    """优先 api_key，否则 user/password。"""
     api_key = _trimmed(config.get("api_key"))
     if api_key:
         return {"api_key": api_key}
@@ -42,6 +48,7 @@ def _resolve_auth_kwargs(config):
 
 
 def get_docs(func):
+    """装饰器：把 ES search 响应整理为 _source + score + _id 列表。"""
     def wrapper(*args, **kwargs):
         doc = func(*args, **kwargs)["hits"]["hits"]
         if doc:
@@ -59,13 +66,15 @@ def get_docs(func):
 
 
 class ElasticsearchClient:
+    """ES 检索封装：连接、查询 analyzer 降级、线程池 bulk。"""
+
     def __init__(self, config):
         host = config.get("host")
         scheme = config.get("scheme", "http")
         es_url = _resolve_es_url(host, scheme)
         auth_kwargs = _resolve_auth_kwargs(config)
         analyzer_env = os.getenv("TR_ES_QUERY_ANALYZER")
-        # 默认沿用 ik_max_word；如果用户显式配置为空串，则表示关闭自定义 analyzer，交给索引 mapping 处理。
+        # 默认 ik_max_word；显式空串表示关闭自定义 analyzer
         self._query_analyzer = "ik_max_word" if analyzer_env is None else _trimmed(analyzer_env)
         self._query_analyzer_available = self._query_analyzer is not None
 

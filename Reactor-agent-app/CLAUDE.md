@@ -133,13 +133,32 @@ autobots:
 | `db/schema.sql` | 数据库表结构 |
 | `db/data.sql` | 初始数据 |
 
-### 核心表
-- `ai_agent_conversation`: 会话表
-- `ai_agent_message`: 消息表
-- `ai_agent_message_event`: 消息事件表
+### 核心表（Execution Ledger 唯一主路径）
+
+对话写入、历史列表、历史回放、会话记忆均以 ledger 为真相源；完整 DDL 见 `db/schema.sql`。
+
+**Ledger / 会话：**
+- `ai_agent_dialogue_session`: 会话头表（标题、轮次统计、最近活跃）
+- `ai_agent_dialogue_run`: 单次请求/执行 run
+- `ai_agent_llm_invocation`: LLM 调用账本
+- `ai_agent_tool_invocation`: 工具调用账本
+- `ai_agent_artifact`: 输入/输出产物
+- `ai_agent_tool_output_*`: 分工具结构化输出表
+- `ai_agent_visitor_identity`: 匿名访客身份
+- `ai_agent_featured_conversation`: 精品会话发布
+
+**工作记忆投影（跨轮 hydrate，非 UI 回放源）：**
+- `ai_agent_working_memory_turn`: 会话内一轮工作记忆头
+- `ai_agent_working_memory_message`: 一行一条可 hydrate 的 Message（自包含）
+
+**问数 / 示例：**
 - `chat_model_info`: 模型信息表
 - `chat_model_schema`: 模型字段表
 - `sales_data`: 示例销售数据表
+
+**已废弃、禁止接回主路径：**
+- `ai_agent_conversation` / `ai_agent_message` / `ai_agent_message_event`（旧消息账本；与 `working_memory_*` 无关——后者是跨轮 LLM hydrate 投影）
+- `ai_agent_turn` / `ai_agent_transcript_block` / `ai_agent_display_event` / `ai_agent_session_memory`（012 设计未落地，不得再作为运行主账本）
 
 ---
 

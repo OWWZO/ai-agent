@@ -1,9 +1,12 @@
+# -*- coding: utf-8 -*-
+"""写入 Qdrant 图片/页面集合的 chunk payload 模型。"""
 from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
 
 class ImageChunkModel(BaseModel):
+    """图片/页 chunk：向量、caption、页码与来源关联。"""
     kb_id: str = Field(..., description="知识库的ID")
     page_id: Optional[str] = Field(None, description="来源文档的ID")
     doc_id: Optional[str] = Field(None, description="所属页的chunk_id")

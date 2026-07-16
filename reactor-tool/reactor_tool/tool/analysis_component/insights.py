@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # =====================
-# 
-# 
+#
 # Author: liumin.423
 # Date:   2025/9/8
 # =====================
-# Insight 定义
+"""统计洞察类型实现（参考 Microsoft Insight Types / tki）。
+
+含：极值、归因、均匀性、趋势、变点、相关性等；供 InsightTool 调用。
+"""
 from functools import total_ordering
 import math
 import os
@@ -27,6 +29,7 @@ from reactor_tool.util.log_util import timer
 
 
 def np_type_trans(val):
+    """numpy 标量转 Python 原生类型，便于 JSON 序列化。"""
     if isinstance(val, (int, float, complex, str, bool)):
         return val
     if isinstance(val, np.integer, np.int8, np.int16, np.int32, np.int64):
@@ -36,11 +39,11 @@ def np_type_trans(val):
     return str(val)
 
 
-"""参考 tki 实现"""
+# 分布拟合辅助函数（参考 tki）
 
 
 def power_dist(arr: np.ndarray, alpha: float, beta: float) -> np.ndarray:
-    """Power distribution"""
+    """幂律分布"""
     return alpha * np.power(arr, -beta)
 
 
@@ -68,13 +71,16 @@ def cubic_dist(arr: np.ndarray, alpha: float,
 
 @total_ordering
 class InsightType(BaseModel):
-    """https://www.microsoft.com/en-us/research/wp-content/uploads/2016/12/Insight-Types-Specification.pdf"""
+    """洞察基类：impact × significance 排序。
+
+    规格参考: https://www.microsoft.com/en-us/research/wp-content/uploads/2016/12/Insight-Types-Specification.pdf
+    """
     type: str
     insight: Dict = Field({}, description="洞察")
     impact: float = Field(0.0, description="影响度")
     significance: float = Field(0.0, description="显著度")
     data: Optional[List[Dict]] = None
-    
+
     @field_validator("significance", mode="before")
     @classmethod
     def validate_significance(cls, val):
