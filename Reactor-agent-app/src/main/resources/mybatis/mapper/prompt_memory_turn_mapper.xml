@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IPromptMemoryTurnDao">
+
+    <resultMap id="PromptMemoryTurnMap" type="org.wwz.ai.domain.agent.memory.entity.PromptMemoryTurn">
+        <id column="id" property="id"/>
+        <result column="stream_id" property="streamId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="run_id" property="runId"/>
+        <result column="turn_seq" property="turnSeq"/>
+        <result column="baseline_turn_seq" property="baselineTurnSeq"/>
+        <result column="status" property="status"/>
+        <result column="message_count" property="messageCount"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="finished_at" property="finishedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="queryByRequestId" resultMap="PromptMemoryTurnMap">
+        SELECT *
+        FROM ai_agent_prompt_memory_turn
+        WHERE request_id = #{requestId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <insert id="insertBuilding" parameterType="org.wwz.ai.domain.agent.memory.entity.PromptMemoryTurn"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_agent_prompt_memory_turn (
+            stream_id, request_id, run_id, turn_seq, baseline_turn_seq, status, message_count,
+            started_at, finished_at, create_time, update_time, deleted
+        ) VALUES (
+            #{streamId}, #{requestId}, #{runId}, #{turnSeq}, #{baselineTurnSeq}, #{status}, #{messageCount},
+            #{startedAt}, #{finishedAt}, NOW(), NOW(), 0
+        )
+    </insert>
+
+    <update id="markReady">
+        UPDATE ai_agent_prompt_memory_turn
+        SET status = 1,
+            finished_at = NOW(3),
+            update_time = NOW()
+        WHERE id = #{turnId}
+          AND status = 0
+          AND deleted = 0
+    </update>
+
+</mapper>

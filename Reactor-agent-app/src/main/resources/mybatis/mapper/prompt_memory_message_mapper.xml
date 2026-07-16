@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IPromptMemoryMessageDao">
+
+    <resultMap id="PromptMemoryMessageRowMap" type="org.wwz.ai.domain.agent.memory.entity.PromptMemoryMessageRow">
+        <id column="id" property="id"/>
+        <result column="turn_id" property="turnId"/>
+        <result column="seq_no" property="seqNo"/>
+        <result column="role" property="role" javaType="org.wwz.ai.domain.agent.runtime.enums.RoleType"/>
+        <result column="content" property="content"/>
+        <result column="base64_image" property="base64Image"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="tool_calls_json" property="toolCallsJson"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <insert id="batchInsert">
+        INSERT INTO ai_agent_prompt_memory_message (
+            turn_id, seq_no, role, content, base64_image, tool_call_id, tool_calls_json,
+            create_time, update_time, deleted
+        ) VALUES
+        <foreach collection="messages" item="message" separator=",">
+            (#{turnId}, #{message.seqNo}, #{message.role}, #{message.content}, #{message.base64Image},
+             #{message.toolCallId}, #{message.toolCallsJson}, NOW(), NOW(), 0)
+        </foreach>
+    </insert>
+
+    <select id="queryReadyByStreamId" resultMap="PromptMemoryMessageRowMap">
+        SELECT message.*
+        FROM ai_agent_prompt_memory_message message
+        INNER JOIN ai_agent_prompt_memory_turn turn_row ON turn_row.id = message.turn_id
+        WHERE turn_row.stream_id = #{streamId}
+          AND turn_row.status = 1
+          AND turn_row.deleted = 0
+          AND message.deleted = 0
+        ORDER BY turn_row.turn_seq ASC, message.seq_no ASC
+    </select>
+
+</mapper>
