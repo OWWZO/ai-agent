@@ -106,6 +106,16 @@ public class PromptMemoryProjectorTest {
                 Message.toolMessage("首次响应", "call-a", null),
                 Message.toolMessage("重复响应", "call-a", null)
         )));
+        assertIllegalArgument(() -> projector.project(List.of(
+                Message.toolMessage("孤立响应", "call-a", null)
+        ), 0));
+        assertIllegalArgument(() -> projector.validPrefix(List.of(
+                Message.fromToolCalls("重复声明", List.of(
+                        toolCall("call-a", "search", "{}"),
+                        toolCall("call-a", "search", "{}")
+                )),
+                Message.toolMessage("响应", "call-a", null)
+        )));
     }
 
     @Test
@@ -113,6 +123,11 @@ public class PromptMemoryProjectorTest {
         assertIllegalArgument(() -> projector.hydrate(Collections.singletonList(null)));
         assertIllegalArgument(() -> projector.hydrate(List.of(PromptMemoryMessage.builder()
                 .content("缺失角色")
+                .build())));
+        assertIllegalArgument(() -> projector.hydrate(List.of(PromptMemoryMessage.builder()
+                .role(org.wwz.ai.domain.agent.runtime.enums.RoleType.TOOL)
+                .content("孤立持久化响应")
+                .toolCallId("call-a")
                 .build())));
     }
 

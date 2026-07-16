@@ -45,6 +45,7 @@ public class PromptMemoryProjector {
                     .toolCalls(copyToolCalls(row.getToolCalls()))
                     .build());
         }
+        validateCompleteToolBlocks(messages);
         return messages;
     }
 
@@ -58,6 +59,9 @@ public class PromptMemoryProjector {
         for (int messageIndex = 0; messageIndex < messages.size(); messageIndex++) {
             Message message = messages.get(messageIndex);
             validateRuntimeMessage(message);
+            if (message.getRole() == RoleType.TOOL) {
+                throw new IllegalArgumentException("TOOL 消息必须紧随关联的 assistant 工具调用");
+            }
             if (!hasToolCalls(message)) {
                 continue;
             }
@@ -83,7 +87,9 @@ public class PromptMemoryProjector {
             if (toolCall == null || toolCall.getId() == null || toolCall.getId().isBlank()) {
                 return -1;
             }
-            pendingToolCallIds.add(toolCall.getId());
+            if (!pendingToolCallIds.add(toolCall.getId())) {
+                throw new IllegalArgumentException("assistant 消息包含重复 toolCallId: " + toolCall.getId());
+            }
         }
         for (int messageIndex = assistantIndex + 1; messageIndex < messages.size(); messageIndex++) {
             Message message = messages.get(messageIndex);
@@ -96,6 +102,27 @@ public class PromptMemoryProjector {
             }
         }
         return pendingToolCallIds.isEmpty() ? messages.size() - 1 : -1;
+    }
+
+    /**
+     * 持久化记录必须是完整的工具调用块，不能包含未关联的 TOOL 消息。
+     */
+    private void validateCompleteToolBlocks(List<Message> messages) {
+        for (int messageIndex = 0; messageIndex < messages.size(); messageIndex++) {
+            Message message = messages.get(messageIndex);
+            validateRuntimeMessage(message);
+            if (message.getRole() == RoleType.TOOL) {
+                throw new IllegalArgumentException("持久化 TOOL 消息缺少关联的 assistant 工具调用");
+            }
+            if (!hasToolCalls(message)) {
+                continue;
+            }
+            int responseBlockEnd = consumeToolResponseBlock(messages, messageIndex, message.getToolCalls());
+            if (responseBlockEnd < 0) {
+                throw new IllegalArgumentException("持久化 assistant 工具调用缺少完整 TOOL 响应块");
+            }
+            messageIndex = responseBlockEnd;
+        }
     }
 
     private void validateRuntimeMessage(Message message) {
