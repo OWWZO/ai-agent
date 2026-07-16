@@ -30,6 +30,7 @@ A stream is identified by `(session_id, memory_scope)`. Initial scopes are:
 - `react`
 - `plan`
 - `executor`
+- `summary`
 
 Scopes must not share messages because their system prompts, tool sets, and
 runtime protocols differ. A scope also carries a prompt-contract version and a
@@ -67,7 +68,7 @@ for `Memory.preload`.
    new runtime `Memory`.
 4. Capture `baselineMessageCount` immediately after hydration.
 5. Construct the agent with a static system prompt and the hydrated memory.
-6. Run the existing agent. Runtime code appends user, assistant, and tool
+6. Run the agent. Runtime code appends only real user, assistant, and tool
    messages using the normal `Memory` API.
 7. At completion, persist `messages[baselineMessageCount..end]` as the turn
    delta, then atomically mark the turn `READY` and release the execution lease.
@@ -87,6 +88,12 @@ The message prefix must be deterministic for a stable stream:
 5. Tool definitions have deterministic ordering and canonical JSON.
 6. Assistant tool-call payloads and matching tool responses round-trip without
    normalization that changes model-visible content.
+
+The runtime must not add a synthetic next-step user message after a tool
+response. The fixed system prompt instead contains the stable instruction to
+evaluate tool results and either continue with another tool call or return the
+final answer. A genuinely dynamic stage instruction is represented as a normal
+persisted user message only when it changes model-visible input.
 
 An agent's static system prompt and tool fingerprint are part of its stream
 identity. A configuration change can cause one intentional cache miss, but it
@@ -108,10 +115,17 @@ last valid model context and never replaces ledger facts.
 
 ## PlanSolve Ownership
 
-The planner and executor each hydrate and persist only their own scope. Child
-executor message copies remain local implementation details. Only messages
-merged into the parent executor `Memory` become part of the executor stream.
-The summary agent does not create a cross-turn memory stream in this phase.
+The planner, executor, and summary agents each hydrate and persist only their
+own scope. Child executor message copies remain local implementation details.
+Only messages merged into the parent executor `Memory` become part of the
+executor stream. Summary task history and the current query are user messages,
+not dynamic summary system-prompt content.
+
+## Deferred Advisor Scope
+
+RAG and ChatClient Advisor prompt rewriting are explicitly outside this change.
+This phase must not alter Advisor behavior. The cache contract applies to the
+Reactor runtime paths that assemble their model-visible messages from `Memory`.
 
 ## Compatibility and Migration
 
@@ -126,6 +140,7 @@ working-memory turns starts empty and builds its first delta from the new run.
 
 - Default React and PlanSolve requests do not place history, current query,
   date, or file context in a system prompt.
+- Tool-result continuation does not add a synthetic next-step `USER` message.
 - A second request hydrates the exact ordered USER, ASSISTANT, and TOOL prefix
   emitted by the first request, including tool call ids and arguments.
 - Persisted message row count grows by only the current request delta.
