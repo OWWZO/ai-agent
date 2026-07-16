@@ -36,9 +36,7 @@ public class PromptMemoryProjector {
             return messages;
         }
         for (PromptMemoryMessage row : rows) {
-            if (row == null) {
-                continue;
-            }
+            validatePersistedRow(row);
             messages.add(Message.builder()
                     .role(row.getRole())
                     .content(row.getContent())
@@ -57,20 +55,19 @@ public class PromptMemoryProjector {
         if (messages == null || messages.isEmpty()) {
             return new ArrayList<>();
         }
-        int incompleteSuffixStart = findIncompleteSuffixStart(messages);
-        int endIndex = incompleteSuffixStart < 0 ? messages.size() : incompleteSuffixStart;
-        return new ArrayList<>(messages.subList(0, endIndex));
-    }
-
-    private int findIncompleteSuffixStart(List<Message> messages) {
         for (int messageIndex = 0; messageIndex < messages.size(); messageIndex++) {
             Message message = messages.get(messageIndex);
-            if (!hasToolCalls(message) || allToolCallsCompleted(messages, messageIndex, message.getToolCalls())) {
+            validateRuntimeMessage(message);
+            if (!hasToolCalls(message)) {
                 continue;
             }
-            return messageIndex;
+            int responseBlockEnd = consumeToolResponseBlock(messages, messageIndex, message.getToolCalls());
+            if (responseBlockEnd < 0) {
+                return new ArrayList<>(messages.subList(0, messageIndex));
+            }
+            messageIndex = responseBlockEnd;
         }
-        return -1;
+        return new ArrayList<>(messages);
     }
 
     private boolean hasToolCalls(Message message) {
@@ -80,20 +77,45 @@ public class PromptMemoryProjector {
                 && !message.getToolCalls().isEmpty();
     }
 
-    private boolean allToolCallsCompleted(List<Message> messages, int assistantIndex, List<ToolCall> toolCalls) {
-        Set<String> completedToolCallIds = new HashSet<>();
+    private int consumeToolResponseBlock(List<Message> messages, int assistantIndex, List<ToolCall> toolCalls) {
+        Set<String> pendingToolCallIds = new HashSet<>();
+        for (ToolCall toolCall : toolCalls) {
+            if (toolCall == null || toolCall.getId() == null || toolCall.getId().isBlank()) {
+                return -1;
+            }
+            pendingToolCallIds.add(toolCall.getId());
+        }
         for (int messageIndex = assistantIndex + 1; messageIndex < messages.size(); messageIndex++) {
             Message message = messages.get(messageIndex);
-            if (message != null && message.getRole() == RoleType.TOOL && message.getToolCallId() != null) {
-                completedToolCallIds.add(message.getToolCallId());
+            validateRuntimeMessage(message);
+            if (message.getRole() != RoleType.TOOL) {
+                return pendingToolCallIds.isEmpty() ? messageIndex - 1 : -1;
+            }
+            if (!pendingToolCallIds.remove(message.getToolCallId())) {
+                throw new IllegalArgumentException("TOOL 响应未匹配当前 assistant 的待执行工具调用: " + message.getToolCallId());
             }
         }
-        for (ToolCall toolCall : toolCalls) {
-            if (toolCall == null || toolCall.getId() == null || !completedToolCallIds.contains(toolCall.getId())) {
-                return false;
-            }
+        return pendingToolCallIds.isEmpty() ? messages.size() - 1 : -1;
+    }
+
+    private void validateRuntimeMessage(Message message) {
+        if (message == null || message.getRole() == null) {
+            throw new IllegalArgumentException("提示词记忆消息及其角色不能为空");
         }
-        return true;
+        if (message.getRole() == RoleType.TOOL
+                && (message.getToolCallId() == null || message.getToolCallId().isBlank())) {
+            throw new IllegalArgumentException("TOOL 消息必须携带非空 toolCallId");
+        }
+    }
+
+    private void validatePersistedRow(PromptMemoryMessage row) {
+        if (row == null || row.getRole() == null) {
+            throw new IllegalArgumentException("持久化提示词记忆消息及其角色不能为空");
+        }
+        if (row.getRole() == RoleType.TOOL
+                && (row.getToolCallId() == null || row.getToolCallId().isBlank())) {
+            throw new IllegalArgumentException("持久化 TOOL 消息必须携带非空 toolCallId");
+        }
     }
 
     private PromptMemoryMessage toPromptMemoryMessage(Message message) {

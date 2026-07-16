@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Memory;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -75,6 +76,57 @@ public class PromptMemoryProjectorTest {
         assertMessageEquals(completedUser, hydrated.get(0));
     }
 
+    @Test
+    public void shouldTrimToolCallSuffixWhenNonToolMessageBreaksResponseBlock() {
+        Message completedUser = Message.userMessage("已完成的历史", null);
+        Message toolCalls = Message.fromToolCalls("调用工具", List.of(toolCall("call-a", "search", "{\"q\":\"a\"}")));
+        Message interveningUser = Message.userMessage("这是一条不应跨越的消息", null);
+        Message lateToolResponse = Message.toolMessage("过晚的响应", "call-a", null);
+
+        List<Message> valid = projector.validPrefix(List.of(completedUser, toolCalls, interveningUser, lateToolResponse));
+
+        Assert.assertEquals(1, valid.size());
+        assertMessageEquals(completedUser, valid.get(0));
+    }
+
+    @Test
+    public void shouldRejectMalformedOrUnexpectedToolResponses() {
+        Message toolCalls = Message.fromToolCalls("调用工具", List.of(toolCall("call-a", "search", "{}")));
+
+        assertIllegalArgument(() -> projector.validPrefix(List.of(
+                toolCalls,
+                Message.toolMessage("无效", " ", null)
+        )));
+        assertIllegalArgument(() -> projector.validPrefix(List.of(
+                toolCalls,
+                Message.toolMessage("未知", "call-b", null)
+        )));
+        assertIllegalArgument(() -> projector.validPrefix(List.of(
+                toolCalls,
+                Message.toolMessage("首次响应", "call-a", null),
+                Message.toolMessage("重复响应", "call-a", null)
+        )));
+    }
+
+    @Test
+    public void shouldRejectMalformedPersistedRows() {
+        assertIllegalArgument(() -> projector.hydrate(Collections.singletonList(null)));
+        assertIllegalArgument(() -> projector.hydrate(List.of(PromptMemoryMessage.builder()
+                .content("缺失角色")
+                .build())));
+    }
+
+    @Test
+    public void shouldCopyToolCallsWhenProjectingMessages() {
+        Message toolCalls = Message.fromToolCalls("调用工具", List.of(toolCall("call-a", "search", "{\"q\":\"original\"}")));
+        Message toolResponse = Message.toolMessage("已完成", "call-a", null);
+
+        List<PromptMemoryMessage> rows = projector.project(List.of(toolCalls, toolResponse), 0);
+        toolCalls.getToolCalls().get(0).getFunction().setArguments("{\"q\":\"mutated\"}");
+
+        Assert.assertEquals("{\"q\":\"original\"}", projector.hydrate(rows).get(0).getToolCalls().get(0).getFunction().getArguments());
+    }
+
     private ToolCall toolCall(String id, String name, String arguments) {
         return ToolCall.builder()
                 .id(id)
@@ -103,6 +155,15 @@ public class PromptMemoryProjectorTest {
             Assert.assertEquals(expectedToolCall.getType(), actualToolCall.getType());
             Assert.assertEquals(expectedToolCall.getFunction().getName(), actualToolCall.getFunction().getName());
             Assert.assertEquals(expectedToolCall.getFunction().getArguments(), actualToolCall.getFunction().getArguments());
+        }
+    }
+
+    private void assertIllegalArgument(Runnable action) {
+        try {
+            action.run();
+            Assert.fail("应拒绝无效的提示词记忆消息");
+        } catch (IllegalArgumentException ignored) {
+            // 预期的输入校验异常。
         }
     }
 }
