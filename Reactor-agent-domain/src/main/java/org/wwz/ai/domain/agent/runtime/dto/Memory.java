@@ -31,6 +31,13 @@ public class Memory {
     }
 
     /**
+     * 使用独立列表替换当前消息，避免调用方后续修改原列表影响运行时记忆。
+     */
+    public void replaceMessages(List<Message> newMessages) {
+        this.messages = newMessages == null ? new ArrayList<>() : new ArrayList<>(newMessages);
+    }
+
+    /**
      * 获取最后一条消息
      */
     public Message getLastMessage() {
