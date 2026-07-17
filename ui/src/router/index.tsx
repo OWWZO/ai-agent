@@ -14,6 +14,7 @@ const FeaturedConversationDetail = React.lazy(
 );
 const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
 const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
+const WorkspaceSop = React.lazy(() => import('@/pages/WorkspaceSop'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 
 // 创建路由配置
@@ -63,6 +64,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading loading={true} className="h-full"/>}>
             <WorkspaceImageGeneration />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.WORKSPACE_SOP,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <WorkspaceSop />
           </Suspense>
         ),
       },

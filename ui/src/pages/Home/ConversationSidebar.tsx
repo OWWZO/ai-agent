@@ -5,6 +5,7 @@ import {
   SquarePen,
   Search,
   MoreHorizontal,
+  ClipboardList,
   DatabaseZap,
   MessagesSquare,
   Star,
@@ -16,7 +17,7 @@ import type { ConversationSessionItem } from "@/services/agentConversation";
 import ConversationSessionActionMenu from "./ConversationSessionActionMenu";
 import { canFeatureConversationSession } from "./featuredConversationAdminModel";
 
-type SidebarView = "chat" | "mrag" | "image-generation" | "featured";
+type SidebarView = "chat" | "mrag" | "image-generation" | "sop" | "featured";
 
 type NavItem = {
   key: SidebarView;
@@ -39,6 +40,11 @@ const navItems: NavItem[] = [
     key: "image-generation",
     label: "生图",
     icon: WandSparkles,
+  },
+  {
+    key: "sop",
+    label: "SOP",
+    icon: ClipboardList,
   },
   {
     key: "featured",

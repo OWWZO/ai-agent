@@ -21,7 +21,12 @@ from dataclasses import dataclass, fields
 from reactor_tool.tool.table_rag.utils import get_rerank
 from reactor_tool.util.log_util import logger, timer
 from reactor_tool.util.prompt_util import get_prompt
-from reactor_tool.util.qdrant_utils import QdrantRecall, EmbeddingClient
+from reactor_tool.util.qdrant_utils import (
+    EmbeddingClient,
+    build_qdrant_client,
+    has_direct_qdrant_config,
+    resolve_shared_qdrant_config,
+)
 
 load_dotenv()
 # 工具数量大于此参数时触发工具过滤
@@ -40,7 +45,7 @@ HIGH_RECALL_SOP_NUMBER = 2
 def _env_flag(name: str, default: bool = False) -> bool:
     """统一解析环境变量布尔值，避免 'false' 被当成真值。"""
     value = os.getenv(name)
-    if value is None:
+    if value is None or not str(value).strip():
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -205,44 +210,89 @@ class PlanSOP(object):
             choosed_sop_string += "\n"
         return sop_mode, choosed_sop_string
 
+    def _resolve_query_vector(self, query: str):
+        """优先 EMBEDDING_URL / TR_EMBEDDING_URL，否则 TEXT_EMBEDDING_*。"""
+        embedding_url = (os.getenv("EMBEDDING_URL") or os.getenv("TR_EMBEDDING_URL") or "").strip()
+        if embedding_url:
+            return EmbeddingClient(embedding_url).get_vector(query)
+        from reactor_tool.tool.mrag.embedding.text_embedding import get_text_embedding_model
+        return get_text_embedding_model().encode_text_batch([query])[0]
+
+    def _search_qdrant_direct(self, query: str, vector_type: str, collection_name: str):
+        """与 SOP 工作台一致：QDRANT_URL 或 HOST/PORT 直连。"""
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        config = resolve_shared_qdrant_config()
+        if not has_direct_qdrant_config(config):
+            raise RuntimeError("缺少 QDRANT_URL 或 QDRANT_HOST/PORT")
+
+        timeout = float(os.getenv("QDRANT_TIMEOUT", "30") or 30)
+        client = build_qdrant_client(
+            url=config.get("url"),
+            host=config.get("host"),
+            port=int(config.get("port") or 6334),
+            api_key=config.get("api_key"),
+            prefer_grpc=bool(config.get("prefer_grpc")),
+            timeout=timeout,
+        )
+        query_vector = self._resolve_query_vector(query)
+        if not query_vector:
+            raise RuntimeError("query embedding 失败")
+
+        query_filter = Filter(
+            must=[FieldCondition(key="vector_type", match=MatchValue(value=vector_type))]
+        )
+        results = client.search(
+            collection_name=collection_name,
+            query_vector=query_vector,
+            query_filter=query_filter,
+            limit=self.max_recall_sop_number,
+            score_threshold=-1,
+        )
+        payloads = []
+        for res in results or []:
+            payload = dict(res.payload or {})
+            payload["score"] = res.score
+            payloads.append(payload)
+        return payloads
+
     @timer("sop_recall")
     def sop_recall(self, query, vector_type="name") -> str | None:
         filters = {
             "vector_type": vector_type
         }
-        qdrant_url = os.getenv('TR_QDRANT_URL', None)
-        collection_name = os.getenv('SOP_COLLECTION_NAME', None)
-        SOP_QDRANT_ENABLE = _env_flag("SOP_QDRANT_ENABLE", default=False)
-        if SOP_QDRANT_ENABLE:
+        tr_qdrant_url = (os.getenv("TR_QDRANT_URL") or "").strip() or None
+        collection_name = (os.getenv("SOP_COLLECTION_NAME") or "sop_plan").strip() or "sop_plan"
+        # 有共享 Qdrant 配置时默认走向量召回；仍可用 SOP_QDRANT_ENABLE=false 强制关闭
+        shared_cfg = resolve_shared_qdrant_config()
+        auto_enable = has_direct_qdrant_config(shared_cfg) or bool(tr_qdrant_url)
+        sop_qdrant_enable = _env_flag("SOP_QDRANT_ENABLE", default=auto_enable)
+
+        if sop_qdrant_enable:
             try:
-                if qdrant_url:
-                    _sops = get_qd_server_recall(query,
-                                                 filters,
-                                                 collection_name,
-                                                 qdrant_url=qdrant_url,
-                                                 limit=self.max_recall_sop_number,
-                                                 threshhold=-1,
-                                                 timeout=0.5 * 100000000) #毫秒
-                else:
-                    qdrant_recall_obj = QdrantRecall(
-                        host=os.getenv('QDRANT_HOST'),
-                        port=os.getenv("QDRANT_PORT", None),
-                        api_key=os.getenv("QDRANT_API_KEY", None),
-                        collection_name=collection_name,
-                        qdrant_limit=self.max_recall_sop_number,
+                if tr_qdrant_url:
+                    _sops = get_qd_server_recall(
+                        query,
+                        filters,
+                        collection_name,
+                        qdrant_url=tr_qdrant_url,
+                        limit=self.max_recall_sop_number,
                         threshhold=-1,
-                        timeout=0.5 * 100000000
+                        timeout=0.5 * 100000000,
                     )
-                    embedding_url = os.getenv("EMBEDDING_URL")
-                    emb_client = EmbeddingClient(embedding_url)
-                    query_vector = emb_client.get_vector(query)
-                    _sops = qdrant_recall_obj.search(query_vector, filters)
+                else:
+                    _sops = self._search_qdrant_direct(query, vector_type, collection_name)
             except Exception as error:
                 logger.warning(f"SOP qdrant 召回失败，降级到默认 SOP。error={error}")
                 _sops = self._build_default_sops()
         else:
             logger.info("SOP_QDRANT_ENABLE 未开启，使用默认 SOP。")
             _sops = self._build_default_sops()
+        # 管理台写入的 offline/draft 不参与规划；历史无 status 点默认 online
+        _sops = [
+            item for item in (_sops or [])
+            if str((item or {}).get("status") or "online").lower() == "online"
+        ]
         logger.info(f"sn: {self.request_id} recall res {_sops}")
         recall_sops = [SOPDict(**t) for t in _sops]
         return recall_sops

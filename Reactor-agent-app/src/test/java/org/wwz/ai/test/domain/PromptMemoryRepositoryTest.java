@@ -2,20 +2,7 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.wwz.ai.domain.agent.memory.PromptMemoryLease;
-import org.wwz.ai.domain.agent.memory.PromptMemoryMessage;
-import org.wwz.ai.domain.agent.memory.PromptMemoryPublishCommand;
-import org.wwz.ai.domain.agent.memory.PromptMemoryScope;
-import org.wwz.ai.domain.agent.memory.PromptMemoryStreamKey;
-import org.wwz.ai.domain.agent.memory.entity.PromptMemoryMessageRow;
-import org.wwz.ai.domain.agent.memory.entity.PromptMemoryStream;
-import org.wwz.ai.domain.agent.memory.entity.PromptMemoryTurn;
-import org.wwz.ai.domain.agent.memory.model.PromptMemoryTurnStatus;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
-import org.wwz.ai.infrastructure.adapter.repository.PromptMemoryRepository;
-import org.wwz.ai.infrastructure.dao.reactor.IPromptMemoryMessageDao;
-import org.wwz.ai.infrastructure.dao.reactor.IPromptMemoryStreamDao;
-import org.wwz.ai.infrastructure.dao.reactor.IPromptMemoryTurnDao;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -24,7 +11,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 提示词记忆持久化仓储回归。
