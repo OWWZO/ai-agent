@@ -225,12 +225,14 @@ public class PlanningAgentTest {
     }
 
     @Test
-    public void shouldInjectHistoryDialogueOnlyIntoSystemPrompt() {
+    public void shouldPutHistoryDialogueIntoMessagesNotSystem() {
         PlanningAgent agent = newPlanningAgent("0", new RecordingPrinter(), "历史上下文片段");
 
-        Assert.assertTrue(agent.getSystemPrompt().contains("历史上下文片段"));
-        Assert.assertFalse(agent.getNextStepPrompt().contains("历史上下文片段"));
-        Assert.assertFalse(agent.getNextStepPrompt().contains("<history_dialogue>"));
+        Assert.assertFalse(agent.getSystemPrompt().contains("历史上下文片段"));
+        Assert.assertFalse(agent.getSystemPrompt().contains("<history_dialogue>"));
+        Assert.assertNull(agent.getNextStepPrompt());
+        Assert.assertTrue(agent.getMemory().getMessages().stream()
+                .anyMatch(msg -> msg.getContent() != null && msg.getContent().contains("历史上下文片段")));
     }
 
     private PlanningAgent newPlanningAgent(String closeUpdate) {

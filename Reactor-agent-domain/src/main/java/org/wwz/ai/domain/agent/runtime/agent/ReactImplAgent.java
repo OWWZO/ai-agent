@@ -9,10 +9,8 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
-import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
-import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -46,19 +44,6 @@ public class ReactImplAgent extends ReActAgent {
      * 取值：由外部配置/业务逻辑设置，null表示不截断
      */
     private Integer maxObserve;
-
-    /**
-     * 系统提示词快照（初始值）
-     * 设计目的：系统提示词中包含{{files}}等动态占位符，快照保留初始化时的原始值，避免多次替换导致内容错乱
-     * 用途：每次think阶段从快照恢复原始提示词，再替换最新的文件内容占位符
-     */
-    private String systemPromptSnapshot;
-
-    /**
-     * 下一步提示词快照（初始值）
-     * 设计目的：同systemPromptSnapshot，保留下一步提示词的原始值，保证动态占位符替换的准确性
-     */
-    private String nextStepPromptSnapshot;
 
     // ===================== 父类继承字段（关键说明） =====================
     // - name: 智能体名称（固定为"react"）
@@ -101,8 +86,7 @@ public class ReactImplAgent extends ReActAgent {
                 null);
 
         // 步骤4：保存提示词快照（防止后续动态替换{{files}}导致原始提示词丢失）
-        setSystemPromptSnapshot(getSystemPrompt());
-        setNextStepPromptSnapshot(getNextStepPrompt());
+        // system 由 initializePrompts* 组装为稳定前缀；nextStep 已禁用
 
         // 步骤5：初始化输出器和核心配置
         setPrinter(context.printer); // 响应输出器（推送tool_thought/tool_result给客户端）
@@ -128,20 +112,13 @@ public class ReactImplAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
-        //将文件信息格式化成字符串
-        String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), true);
-
-        //然后拼进提示词
-        setSystemPrompt(getSystemPromptSnapshot().replace("{{files}}", filesStr));
-        setNextStepPrompt(getNextStepPromptSnapshot().replace("{{files}}", filesStr));
-
-        // 步骤2：补充用户消息（保证对话历史的最后一条是用户消息，符合大模型对话规范）
-        if (!getMemory().getLastMessage().getRole().equals(RoleType.USER)) {
-            // 构建用户消息：内容为下一步提示词，无图片（null）
-            Message userMsg = Message.userMessage(getNextStepPrompt(), null);
-            getMemory().addMessage(userMsg); // 添加到智能体记忆（对话历史）
+        // system 固定；productFiles/nextStep 不注入（prompt cache）
+        // 不再注入 nextStep user；仅记忆为空时用 query 垫底
+        Message lastMessage = getMemory().getLastMessage();
+        if (lastMessage == null) {
+            String seed = context.getQuery() == null ? "" : context.getQuery();
+            getMemory().addMessage(Message.userMessage(seed, null));
         }
-
         try {
             // 步骤3：设置流式响应类型（标记当前流式消息为"tool_thought"，供前端识别）
             context.setStreamMessageType("tool_thought");

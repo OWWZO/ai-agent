@@ -461,6 +461,13 @@ public class LLM {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
             }
 
+            Message effectiveSystem = systemMsgs;
+            if (isStructParseMode()) {
+                effectiveSystem = buildStructParseSystemMessage(systemMsgs, tools);
+            }
+            // 与正式发送一致的 system+messages+tools 快照（先观测再落账本 start）
+            LlmPromptObservability.logRequest(
+                    context, model, ExecutionLedgerConstants.CALL_KIND_ASK_TOOL, effectiveSystem, messages, tools);
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
                     ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
@@ -471,8 +478,7 @@ public class LLM {
                 return askToolWithStructParse(
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
-
-            Prompt prompt = buildPrompt(
+Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)
             );
@@ -568,6 +574,7 @@ public class LLM {
                     );
                     toolCallResponse.setPromptTokens(resolvePromptTokens(response.getMetadata()));
                     toolCallResponse.setCompletionTokens(resolveCompletionTokens(response.getMetadata()));
+                    toolCallResponse.setCachedPromptTokens(LlmPromptObservability.resolveCachedPromptTokens(response.getMetadata()));
                     finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
                     return toolCallResponse;
                 } catch (Exception e) {
@@ -920,6 +927,17 @@ public class LLM {
         }
         LocalDateTime startedAt = LocalDateTime.now();
         int invocationSeq = context.getAgentRunState().nextInvocationSeq();
+        LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
+        TokenCounter.PromptEstimate est = obs == null ? null : obs.getEstimate();
+        String initialObsJson = null;
+        if (obs != null) {
+            if (obs.getObsLogJson() != null) {
+                initialObsJson = obs.getObsLogJson();
+            } else if (obs.getObsLines() != null) {
+                initialObsJson = com.alibaba.fastjson.JSON.toJSONString(
+                        java.util.Map.of("lines", obs.getObsLines()));
+            }
+        }
         Long invocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
                 .requestId(context.getRequestId())
@@ -930,6 +948,19 @@ public class LLM {
                 .streaming(stream)
                 .modelName(model)
                 .startedAt(startedAt)
+                .promptPayloadJson(obs == null ? null : obs.getPromptPayloadJson())
+                .systemFingerprint(obs == null ? null : obs.getSystemFingerprint())
+                .estTotalTokens(est == null ? null : est.getEstimatedTotalTokens())
+                .estSystemTokens(est == null ? null : est.getSystemTokens())
+                .estMessageTokens(est == null ? null : est.getMessageTokens())
+                .estToolTokens(est == null ? null : est.getToolTokens())
+                .messageCount(est == null ? null : est.getMessageCount())
+                .toolCount(est == null ? null : est.getToolCount())
+                .toolNames(est == null || est.getToolNames() == null ? null : String.join(",", est.getToolNames()))
+                .roleSeq(obs == null ? null : obs.getRoleSeq())
+                .cacheStatus(obs == null ? null : obs.getCacheStatus())
+                .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
+                .obsLogJson(initialObsJson)
                 .build());
         context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
         return new LlmInvocationHandle(invocationId);
@@ -954,6 +985,17 @@ public class LLM {
             );
             return;
         }
+        long durationMs = response == null ? 0L : response.getDuration();
+        LlmPromptObservability.logResponse(
+                context,
+                model,
+                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
+                response == null ? null : response.getPromptTokens(),
+                response == null ? null : response.getCompletionTokens(),
+                response == null ? null : response.getTotalTokens(),
+                response == null ? null : response.getCachedPromptTokens(),
+                durationMs
+        );
         finishLlmInvocation(
                 context,
                 handle,
@@ -981,6 +1023,7 @@ public class LLM {
         if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
             return;
         }
+        LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
         context.getExecutionRecorder().finishLlmInvocation(LlmInvocationFinishRecord.builder()
                 .llmInvocationId(handle.invocationId())
                 .requestId(context.getRequestId())
@@ -990,10 +1033,15 @@ public class LLM {
                 .promptTokens(promptTokens)
                 .completionTokens(completionTokens)
                 .totalTokens(totalTokens)
+                .cachedPromptTokens(obs == null ? null : obs.getCachedPromptTokens())
+                .cacheStatus(obs == null ? null : obs.getCacheStatus())
+                .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
+                .obsLogJson(obs == null ? null : obs.getObsLogJson())
                 .finishReason(finishReason)
                 .errorMsg(errorMsg)
                 .finishedAt(LocalDateTime.now())
                 .build());
+        LlmPromptObservability.clear();
     }
 
     private <T> CompletableFuture<T> withFallback(CompletableFuture<T> primaryFuture,
@@ -1237,6 +1285,7 @@ public class LLM {
         private Integer promptTokens;
         private Integer completionTokens;
         private Integer totalTokens;
+        private Integer cachedPromptTokens;
         private long duration;
     }
 

@@ -86,6 +86,21 @@ public abstract class BaseAgent {
     public String run(String query) {
         setState(AgentState.IDLE);
 
+        // 多轮 cache 关键：有 working memory 时只 preload+append query，禁止重插 session_env 打乱前缀
+        // 首轮：seed env → query；结束时把 env+本轮轨迹一并 persist
+                boolean hasWorking = context != null
+                && context.getWorkingMemoryMessages() != null
+                && !context.getWorkingMemoryMessages().isEmpty();
+        if (hasWorking) {
+            // 跨轮：用历史整段替换 memory，再 append 本轮 query（严格前缀续写）
+            memory.replaceMessages(new ArrayList<>(context.getWorkingMemoryMessages()));
+        } else {
+            // 首轮：session_env + query
+            if (memory != null) {
+                memory.clear();
+            }
+            seedSessionContextMessages();
+        }
         if (query != null && !query.isEmpty()) {
             updateMemory(RoleType.USER, query, null);
         }
@@ -149,9 +164,11 @@ public abstract class BaseAgent {
         memory.addMessages(new ArrayList<>(messages));
     }
 
-    /**
-     * 注入会话历史摘要。
+        /**
+     * 注入会话历史摘要到 system 模板。
+     * @deprecated history 应进入 messages，不再拼入 system（破坏 prompt cache 前缀）。
      */
+    @Deprecated
     protected String injectHistoryDialogue(String promptTemplate, String historyDialogue) {
         String normalizedTemplate = promptTemplate == null ? "" : promptTemplate;
         String normalizedHistory = historyDialogue == null ? "" : historyDialogue;
@@ -167,21 +184,118 @@ public abstract class BaseAgent {
     }
 
     /**
+     * 组装 cache-friendly system：只保留静态/会话级占位，去掉 query/date/files/history。
+     */
+    protected String buildStableSystemPrompt(String template, String toolPrompt, String extraPlaceholder, String extraValue) {
+        String systemTemplate = template == null ? "" : template;
+        // tools 只走 API tools[]，不再写入 system 正文，避免与 schema 双轨且顺序漂移打爆 cache
+        systemTemplate = systemTemplate
+                .replace("{{tools}}", "")
+                .replace("{{basePrompt}}", context.getBasePrompt() == null ? "" : context.getBasePrompt())
+                .replace("{{sopPrompt}}", "")
+                .replace("{{executorSopPrompt}}", "")
+                .replace("{{query}}", "")
+                .replace("{{date}}", "")
+                .replace("{{files}}", "")
+                .replace("{{history_dialogue}}", "");
+        if (extraPlaceholder != null) {
+            systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue == null ? "" : extraValue);
+        }
+        // 去掉空 env 壳，减少无意义 system 尾巴
+        systemTemplate = stripEmptyEnvBlocks(systemTemplate);
+        String toolSig = org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider.buildToolSignature(
+                context == null ? null : context.getToolCollection());
+        String agentSlot = StringUtils.defaultIfBlank(getName(), "agent");
+        String sessionId = context == null ? null : context.getSessionId();
+        return org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze.freezeSystem(
+                sessionId, agentSlot, toolSig, systemTemplate);
+    }
+
+    /**
+     * 清掉被置空的 date/files/history 空标签块，避免 system 残留空壳。
+     */
+    protected String stripEmptyEnvBlocks(String system) {
+        if (system == null || system.isEmpty()) {
+            return system;
+        }
+        String s = system;
+        s = s.replaceAll("(?s)<date>\\s*</date>", "");
+        s = s.replaceAll("(?s)<files>\\s*</files>", "");
+        s = s.replaceAll("(?s)<file_desc>\\s*</file_desc>", "");
+        s = s.replaceAll("(?s)<history_dialogue>\\s*</history_dialogue>", "");
+        s = s.replaceAll("(?m)^## 当前日期\\s*$\\n*", "");
+        s = s.replaceAll("(?m)^## 可用文件及描述\\s*$\\n*", "");
+        s = s.replaceAll("(?m)^## 当前可用的文件名及描述\\s*$\\n*", "");
+        s = s.replaceAll("(?m)^## 用户历史对话信息\\s*$\\n*", "");
+        s = s.replaceAll("\\n{3,}", "\n\n");
+        return s.trim();
+    }
+
+
+    /**
+     * 会话级 env（date）预置到 memory 前缀；history 走 workingMemoryMessages preload，不再拼 historyDialogue 文本。
+     */
+    protected void seedSessionContextMessages() {
+        if (context == null || memory == null) {
+            return;
+        }
+        if (!memory.getMessages().isEmpty()) {
+            Message first = memory.getMessages().get(0);
+            if (first != null && first.getContent() != null
+                    && first.getContent().contains("<session_env>")) {
+                return;
+            }
+        }
+        String dateInfo = context.getDateInfo() == null ? "" : context.getDateInfo();
+        if (!dateInfo.isBlank()) {
+            memory.addMessage(Message.userMessage(
+                    "<session_env>\n当前日期：" + dateInfo + "\n</session_env>",
+                    null));
+        }
+    }
+
+    /**
+     * 预装跨轮工作记忆（ledger hydrate 的 Message 链）。幂等：已存在非 session_env 消息则跳过。
+     */
+    protected void preloadWorkingMemoryIfPresent() {
+        if (context == null || memory == null) {
+            return;
+        }
+        List<Message> working = context.getWorkingMemoryMessages();
+        if (working == null || working.isEmpty()) {
+            return;
+        }
+        // 已有非空 memory 且首条已是历史时跳过（防重复 preload）
+        if (!memory.getMessages().isEmpty()) {
+            return;
+        }
+        memory.addMessages(new ArrayList<>(working));
+    }
+
+
+
+
+
+    /**
      * 从工具集合构建工具提示词。
      */
     protected String buildToolPrompt(ToolCollection tools) {
         if (tools == null || tools.getToolMap() == null || tools.getToolMap().isEmpty()) {
             return "";
         }
+        // 与 toolCallbacks 一致：按 name 排序，避免 system 内 {{tools}} 文本顺序漂移打爆 cache
         StringBuilder toolPrompt = new StringBuilder();
-        for (BaseTool tool : tools.getToolMap().values()) {
-            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
-        }
+        tools.getToolMap().values().stream()
+                .filter(tool -> tool != null && tool.getName() != null)
+                .sorted(java.util.Comparator.comparing(BaseTool::getName, String.CASE_INSENSITIVE_ORDER))
+                .forEach(tool -> toolPrompt.append(String.format("工具名：%s 工具描述：%s\n",
+                        tool.getName(), tool.getDescription())));
         return toolPrompt.toString();
     }
 
-    /**
-     * 初始化系统提示词与下一步提示词。
+        /**
+     * 初始化系统提示词（cache-friendly）。
+     * query/date/history 不进入 system；nextStep 机制已禁用。
      */
     protected void initializePrompts(Map<String, String> systemPromptMap,
                                      Map<String, String> nextStepPromptMap,
@@ -191,32 +305,16 @@ public abstract class BaseAgent {
                                      String extraPlaceholder,
                                      String extraValue) {
         String promptKey = "default";
-        String nextPromptKey = "default";
-
-        String systemTemplate = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt)
-                .replace("{{tools}}", toolPrompt)
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt());
-        if (extraPlaceholder != null) {
-            systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue);
-        }
-        setSystemPrompt(injectHistoryDialogue(systemTemplate, context.getHistoryDialogue()));
-
-        String nextTemplate = nextStepPromptMap.getOrDefault(nextPromptKey, defaultNextStepPrompt)
-                .replace("{{tools}}", toolPrompt)
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt());
-        if (extraPlaceholder != null) {
-            nextTemplate = nextTemplate.replace(extraPlaceholder, extraValue);
-        }
-        setNextStepPrompt(injectHistoryDialogue(nextTemplate, context.getHistoryDialogue()));
+        String template = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt);
+        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
+        setNextStepPrompt(null);
     }
 
-    /**
-     * 初始化系统提示词与下一步提示词。
-     * 仅在 systemPrompt 中注入历史上下文，避免 nextStepPrompt 进入记忆后重复放大会话历史。
+
+
+        /**
+     * 初始化系统提示词（cache-friendly）。
+     * 历史上下文进入 memory messages，不再写入 system。
      */
     protected void initializePromptsWithHistoryOnlyInSystem(Map<String, String> systemPromptMap,
                                                             Map<String, String> nextStepPromptMap,
@@ -226,28 +324,12 @@ public abstract class BaseAgent {
                                                             String extraPlaceholder,
                                                             String extraValue) {
         String promptKey = "default";
-        String nextPromptKey = "default";
-
-        String systemTemplate = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt)
-                .replace("{{tools}}", toolPrompt)
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt());
-        if (extraPlaceholder != null) {
-            systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue);
-        }
-        setSystemPrompt(injectHistoryDialogue(systemTemplate, context.getHistoryDialogue()));
-
-        String nextTemplate = nextStepPromptMap.getOrDefault(nextPromptKey, defaultNextStepPrompt)
-                .replace("{{tools}}", toolPrompt)
-                .replace("{{query}}", context.getQuery())
-                .replace("{{date}}", context.getDateInfo())
-                .replace("{{basePrompt}}", context.getBasePrompt());
-        if (extraPlaceholder != null) {
-            nextTemplate = nextTemplate.replace(extraPlaceholder, extraValue);
-        }
-        setNextStepPrompt(nextTemplate);
+        String template = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt);
+        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
+        setNextStepPrompt(null);
     }
+
+
 
     /**
      * 为单次工具结果追加当前 toolCall 的文件摘要。
@@ -850,5 +932,30 @@ public abstract class BaseAgent {
                     .setErrorMsg(errorMsg);
         }
     }
+
+    /**
+     * 导出本轮应写入 working_memory 的消息（去掉 session_env 与跨轮 preload 前缀）。
+     */
+    public List<Message> exportWorkingMemoryDelta() {
+        List<Message> all = memory == null ? List.of() : memory.getMessages();
+        if (all == null || all.isEmpty()) {
+            return List.of();
+        }
+        // 多轮 prompt cache：持久化「本轮新增」= 去掉 preload 前缀后的后缀
+        // 首轮 preload 为空 → 整段（含 session_env + query + tool 轨迹）入库
+        // 次轮 → 仅入库本轮新增，历史由 load 拼回，保证 messages 只 append
+        int preloadSize = 0;
+        if (context != null && context.getWorkingMemoryMessages() != null) {
+            preloadSize = context.getWorkingMemoryMessages().size();
+        }
+        if (preloadSize <= 0) {
+            return new ArrayList<>(all);
+        }
+        if (preloadSize >= all.size()) {
+            return List.of();
+        }
+        return new ArrayList<>(all.subList(preloadSize, all.size()));
+    }
+
 
 }

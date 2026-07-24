@@ -20,6 +20,7 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import jakarta.annotation.Resource;
@@ -42,6 +43,9 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class Step2PlanExecuteNode extends AbstractExecuteSupport {
+
+    @Resource
+    private SessionWorkingMemoryService sessionWorkingMemoryService;
 
     private static final int DEFAULT_PLANNER_MAX_PARALLEL_TASKS = 2;
 
@@ -128,6 +132,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
     private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, ExecutorAgent executor, AgentRequest request) {
         TaskSummaryResult result = summary.summaryTaskResult(executor.getMemory().getMessages(), request.getQuery());
         sendSummaryResult(agentContext, result);
+        persistWorkingMemory(agentContext, executor, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
     }
 
     /**
@@ -153,6 +158,21 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                 result.getTaskSummary(),
                 null,
                 null
+        );
+    }
+
+
+    private void persistWorkingMemory(AgentContext agentContext, ExecutorAgent executor, String entryAgent) {
+        if (sessionWorkingMemoryService == null || agentContext == null || executor == null) {
+            return;
+        }
+        Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
+        sessionWorkingMemoryService.persistTurn(
+                agentContext.getSessionId(),
+                agentContext.getRequestId(),
+                runId,
+                entryAgent,
+                executor.exportWorkingMemoryDelta()
         );
     }
 

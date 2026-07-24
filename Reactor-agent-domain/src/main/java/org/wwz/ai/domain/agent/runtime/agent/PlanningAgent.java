@@ -23,7 +23,6 @@ import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanningPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.common.PlanningTool;
-import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -80,16 +79,6 @@ public class PlanningAgent extends ReActAgent {
     private Boolean isColseUpdate;
 
     /**
-     * 系统提示词快照：保存初始化后的原始系统提示词（避免动态替换{{files}}后丢失原始模板）
-     */
-    private String systemPromptSnapshot;
-
-    /**
-     * 下一步提示词快照：保存初始化后的原始下一步提示词（作用同systemPromptSnapshot）
-     */
-    private String nextStepPromptSnapshot;
-
-    /**
      * 计划唯一标识：用于关联当前智能体处理的计划ID（可用于追踪、缓存等）
      */
     private String planId;
@@ -129,12 +118,11 @@ public class PlanningAgent extends ReActAgent {
                 PlanningPrompt.SYSTEM_PROMPT,
                 PlanningPrompt.NEXT_STEP_PROMPT,
                 toolPrompt,
-                "{{sopPrompt}}",
-                context.getSopPrompt());
+                null,
+                null);
 
         // 4. 保存提示词快照：避免后续动态替换{{files}}后丢失原始模板
-        setSystemPromptSnapshot(getSystemPrompt());
-        setNextStepPromptSnapshot(getNextStepPrompt());
+        // system 由 initializePrompts* 组装为稳定前缀；nextStep 已禁用
 
         // 5. 设置智能体运行依赖
         setPrinter(context.printer); // 设置输出器：用于向用户/前端推送执行过程（如plan、task、plan_thought）
@@ -162,13 +150,7 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
-        // 1. 格式化产品文件信息：将上下文的产品文件转为字符串，填充到提示词中（false表示不展示文件完整路径）
-        String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), false);
-        // 更新系统提示词：替换{{files}}占位符（使用快照避免叠加替换）
-        setSystemPrompt(getSystemPromptSnapshot().replace("{{files}}", filesStr));
-        // 更新下一步提示词：同理替换{{files}}占位符
-        setNextStepPrompt(getNextStepPromptSnapshot().replace("{{files}}", filesStr));
-        log.info("{} planer fileStr {}", context.getRequestId(), filesStr); // 日志记录文件信息（用于问题排查）
+        // system 固定；productFiles/nextStep 不注入（prompt cache）
 
         // 2. 特殊场景：关闭计划动态更新时，直接执行计划下一步（不调用大模型思考）
         if (isColseUpdate) {
@@ -180,14 +162,13 @@ public class PlanningAgent extends ReActAgent {
 
         try {
             // 3. 构造大模型请求的用户消息：确保最后一条消息是用户角色（大模型交互规范）
+            // 不再注入 nextStep user；仅记忆为空时用 query 垫底
             Message lastMessage = getMemory().getLastMessage();
-            // 兼容测试夹具或冷启动场景下记忆尚未预热的情况，避免首次 think 直接空指针。
-            if (lastMessage == null || !RoleType.USER.equals(lastMessage.getRole())) {
-                Message userMsg = Message.userMessage(getNextStepPrompt(), null); // 构建用户消息（内容为下一步提示词）
-                getMemory().addMessage(userMsg); // 添加到智能体记忆（记忆用于多轮对话上下文）
+            if (lastMessage == null) {
+                String seed = context.getQuery() == null ? "" : context.getQuery();
+                getMemory().addMessage(Message.userMessage(seed, null));
             }
-
-            // 4. 设置流式消息类型：用于前端区分消息类型（plan_thought=计划思考过程）
+// 4. 设置流式消息类型：用于前端区分消息类型（plan_thought=计划思考过程）
             context.setStreamMessageType("plan_thought");
 
             // 5. 异步调用大模型获取工具调用响应：

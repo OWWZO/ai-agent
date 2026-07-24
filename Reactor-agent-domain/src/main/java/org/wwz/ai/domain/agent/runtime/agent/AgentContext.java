@@ -161,6 +161,11 @@ public class AgentContext {
     String historyDialogue;
 
     /**
+     * 跨轮工作记忆消息链（ledger hydrate 结果），run 前 preload 进 Memory。
+     */
+    List<Message> workingMemoryMessages;
+
+    /**
      * 智能体类型标识
      * 用途：
      * 1. 逻辑路由：区分不同类型的Agent（如1=规划型Agent、2=执行型Agent、3=客服型Agent）；
@@ -326,6 +331,7 @@ public class AgentContext {
                 .sopPrompt(sopPrompt)
                 .basePrompt(basePrompt)
                 .historyDialogue(historyDialogue)
+                .workingMemoryMessages(workingMemoryMessages)
                 .agentType(agentType)
                 .toolArtifactRegistry(toolArtifactRegistry)
                 .currentToolArtifactSourceHolder(new ThreadLocal<>())

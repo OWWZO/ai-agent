@@ -41,7 +41,11 @@ public class OpenAiChatOptionsFactory {
         OpenAiChatOptions.Builder builder = baseBuilder(settings, overrideTemperature);
         applyExtParams(builder, settings.getExtParams());
 
-        List<ToolCallback> callbacks = toolCallbackProvider.buildToolCallbacks(tools);
+        String sessionId = null;
+        if (tools != null && tools.getAgentContext() != null) {
+            sessionId = tools.getAgentContext().getSessionId();
+        }
+        List<ToolCallback> callbacks = toolCallbackProvider.buildToolCallbacks(tools, sessionId);
         if (!callbacks.isEmpty()) {
             builder.toolCallbacks(callbacks);
             if (toolChoice != null) {

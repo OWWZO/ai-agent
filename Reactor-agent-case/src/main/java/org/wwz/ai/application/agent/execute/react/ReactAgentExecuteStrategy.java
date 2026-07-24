@@ -13,6 +13,9 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
+import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import java.util.List;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.Map;
@@ -34,9 +37,12 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     @Resource
     private SessionContextMemoryService sessionContextMemoryService;
 
+    @Resource
+    private SessionWorkingMemoryService sessionWorkingMemoryService;
+
     @Override
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
-        enrichHistoryDialogue(request);
+        enrichWorkingMemory(request);
         applyOutputStyle(request);
         doExecute(request, stream);
     }
@@ -73,12 +79,19 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
-    private void enrichHistoryDialogue(AgentRequest request) {
+        private void enrichWorkingMemory(AgentRequest request) {
         if (request == null) {
             return;
         }
-        request.setHistoryDialogue(sessionContextMemoryService == null
-                ? ""
-                : sessionContextMemoryService.buildHistoryDialogue(request.getSessionId(), request.getRequestId()));
+        List<Message> working = List.of();
+        if (sessionWorkingMemoryService != null) {
+            working = sessionWorkingMemoryService.loadReadyMessages(request.getSessionId(), request.getRequestId());
+        }
+        // 冷启动/无投影时回退 ledger hydrate，保证首批会话仍有跨轮上下文
+        if ((working == null || working.isEmpty()) && sessionContextMemoryService != null) {
+            working = sessionContextMemoryService.hydrateWorkingMessages(request.getSessionId(), request.getRequestId());
+        }
+        request.setWorkingMemoryMessages(working == null ? List.of() : working);
+        request.setHistoryDialogue("");
     }
 }

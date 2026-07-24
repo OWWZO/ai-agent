@@ -24,8 +24,8 @@ import java.util.concurrent.Executor;
 
 /**
  * Reactor 运行时依赖装配。
- * app 负责把 Spring Bean 组装成 domain 可消费的 typed runtime bundle，
- * 不在此处承接执行编排或 controller 协议适配。
+ * app 负责把 Spring Bean 组装为 domain 可消费的 typed runtime bundle。
+ * 不在此处承接执行编排、controller 协议适配。
  */
 @Configuration
 public class ReactorRuntimeAutoConfiguration {

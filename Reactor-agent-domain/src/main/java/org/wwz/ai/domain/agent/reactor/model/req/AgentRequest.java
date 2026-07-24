@@ -34,9 +34,13 @@ public class AgentRequest {
     private String basePrompt;
     private String sopPrompt;
     /**
-     * 会话级历史摘要文本
+     * 会话级历史摘要文本（legacy/debug，默认不进 LLM）。
      */
     private String historyDialogue;
+    /**
+     * 跨轮工作记忆消息链（ledger hydrate），主路径进 Memory.preload。
+     */
+    private List<org.wwz.ai.domain.agent.runtime.dto.Message> workingMemoryMessages;
     private Boolean isStream;
     private List<Message> messages;
     /**

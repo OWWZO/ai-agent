@@ -54,6 +54,37 @@ public class LlmInvocation {
     /** total token */
     private Integer totalTokens;
 
+    /** 请求总体提示词快照 JSON */
+    private String promptPayloadJson;
+
+    private String systemFingerprint;
+
+    private Integer estTotalTokens;
+
+    private Integer estSystemTokens;
+
+    private Integer estMessageTokens;
+
+    private Integer estToolTokens;
+
+    private Integer messageCount;
+
+    private Integer toolCount;
+
+    private String toolNames;
+
+    private String roleSeq;
+
+    private Integer cachedPromptTokens;
+
+    /** OK / RISK / MISS / UNKNOWN */
+    private String cacheStatus;
+
+    private String cacheRiskFlags;
+
+    /** LLM-REQ/RESP/CACHE 观测聚合 */
+    private String obsLogJson;
+
     /** 完成原因 */
     private String finishReason;
 

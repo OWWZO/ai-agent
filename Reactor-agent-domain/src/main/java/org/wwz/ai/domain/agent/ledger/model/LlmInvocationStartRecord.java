@@ -33,4 +33,31 @@ public class LlmInvocationStartRecord {
     private String modelName;
 
     private LocalDateTime startedAt;
+
+    private String promptPayloadJson;
+
+    private String systemFingerprint;
+
+    private Integer estTotalTokens;
+
+    private Integer estSystemTokens;
+
+    private Integer estMessageTokens;
+
+    private Integer estToolTokens;
+
+    private Integer messageCount;
+
+    private Integer toolCount;
+
+    private String toolNames;
+
+    private String roleSeq;
+
+    private String cacheStatus;
+
+    private String cacheRiskFlags;
+
+    private String obsLogJson;
 }
+

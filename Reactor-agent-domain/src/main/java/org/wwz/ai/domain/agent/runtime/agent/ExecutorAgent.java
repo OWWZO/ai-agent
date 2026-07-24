@@ -9,11 +9,9 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
-import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
-import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -31,9 +29,6 @@ public class ExecutorAgent extends ReActAgent {
 
     private List<ToolCall> toolCalls;
     private Integer maxObserve;
-    private String systemPromptSnapshot;
-    private String nextStepPromptSnapshot;
-
     private Integer taskId;
 
     public ExecutorAgent(AgentContext context) {
@@ -48,33 +43,15 @@ public class ExecutorAgent extends ReActAgent {
         }
 
         String promptKey = "default";
-        String sopPromptKey = "default";
-        String nextPromptKey = "default";
-        setSystemPrompt(injectHistoryDialogue(
-                reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT)
-                        .replace("{{tools}}", toolPrompt.toString())
-                        .replace("{{query}}", context.getQuery())
-                        .replace("{{date}}", context.getDateInfo())
-                        .replace("{{sopPrompt}}", context.getSopPrompt())
-                        .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")),
-                context.getHistoryDialogue()));
-        setNextStepPrompt(
-                reactorConfig.getExecutorNextStepPromptMap().getOrDefault(nextPromptKey, ToolCallPrompt.NEXT_STEP_PROMPT)
-                        .replace("{{tools}}", toolPrompt.toString())
-                        .replace("{{query}}", context.getQuery())
-                        .replace("{{date}}", context.getDateInfo())
-                        .replace("{{sopPrompt}}", context.getSopPrompt())
-                        .replace("{{executorSopPrompt}}", reactorConfig.getExecutorSopPromptMap().getOrDefault(sopPromptKey, "")));
-
-        setSystemPromptSnapshot(getSystemPrompt());
-        setNextStepPromptSnapshot(getNextStepPrompt());
-
+        setContext(context);
+        String executorTemplate = reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT);
+        setSystemPrompt(buildStableSystemPrompt(executorTemplate, toolPrompt.toString(), null, null));
+        setNextStepPrompt(null);
         setPrinter(context.printer);
         setMaxSteps(reactorConfig.getPlannerMaxSteps());
         setLlm(new LLM(reactorConfig.getExecutorModelName(), "", runtimeDependencies));
 
-        setContext(context);
-        setMaxObserve(Integer.parseInt(reactorConfig.getMaxObserve()));
+                setMaxObserve(Integer.parseInt(reactorConfig.getMaxObserve()));
 
         // 初始化工具集合
         availableTools = context.getToolCollection();
@@ -85,16 +62,13 @@ public class ExecutorAgent extends ReActAgent {
 
     @Override
     public boolean think() {
-        // 获取文件内容
-        String filesStr = FileUtil.formatFileInfo(context.getProductFiles(), true);
-        setSystemPrompt(getSystemPromptSnapshot().replace("{{files}}", filesStr));
-        setNextStepPrompt(getNextStepPromptSnapshot().replace("{{files}}", filesStr));
-
-        if (!getMemory().getLastMessage().getRole().equals(RoleType.USER)) {
-            Message userMsg = Message.userMessage(getNextStepPrompt(), null);
-            getMemory().addMessage(userMsg);
+        // system 固定；productFiles/nextStep 不注入（prompt cache）
+        // 不再注入 nextStep user；仅记忆为空时用 query 垫底
+        Message lastMessage = getMemory().getLastMessage();
+        if (lastMessage == null) {
+            String seed = context.getQuery() == null ? "" : context.getQuery();
+            getMemory().addMessage(Message.userMessage(seed, null));
         }
-
         try {
             // 获取带工具选项的响应
             log.info("{} executor ask tool {}", context.getRequestId(), JSON.toJSONString(availableTools));

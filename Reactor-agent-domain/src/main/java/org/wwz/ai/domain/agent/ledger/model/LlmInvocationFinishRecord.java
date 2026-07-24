@@ -37,4 +37,13 @@ public class LlmInvocationFinishRecord {
     private String errorMsg;
 
     private LocalDateTime finishedAt;
+
+    private Integer cachedPromptTokens;
+
+    private String cacheStatus;
+
+    private String cacheRiskFlags;
+
+    private String obsLogJson;
 }
+

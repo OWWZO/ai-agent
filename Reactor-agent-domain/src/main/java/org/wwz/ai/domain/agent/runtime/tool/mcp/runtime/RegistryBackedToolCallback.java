@@ -8,7 +8,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
-import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
+import org.wwz.ai.domain.agent.runtime.llm.ToolDefinitionCache;
 
 /**
  * 基于 McpRegistry 的 ToolCallback 实现。
@@ -28,13 +28,24 @@ public class RegistryBackedToolCallback implements ToolCallback {
      */
     private final McpToolInfo toolInfo;
 
+    private volatile ToolDefinition cachedDefinition;
+
     @Override
     public ToolDefinition getToolDefinition() {
-        return DefaultToolDefinition.builder()
-                .name(toolInfo.getName())
-                .description(StringUtils.defaultString(toolInfo.getDesc()))
-                .inputSchema(ToolSchemaNormalizer.normalizeSchema(toolInfo.getParameters(), toolInfo.getName()))
-                .build();
+        ToolDefinition local = cachedDefinition;
+        if (local != null) {
+            return local;
+        }
+        synchronized (this) {
+            if (cachedDefinition == null) {
+                cachedDefinition = ToolDefinitionCache.getOrCreateFromRawSchemaString(
+                        toolInfo.getName(),
+                        StringUtils.defaultString(toolInfo.getDesc()),
+                        toolInfo.getParameters()
+                );
+            }
+            return cachedDefinition;
+        }
     }
 
     @Override

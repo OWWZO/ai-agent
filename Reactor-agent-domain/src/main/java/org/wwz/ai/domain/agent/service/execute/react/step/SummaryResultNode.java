@@ -3,14 +3,16 @@ package org.wwz.ai.domain.agent.service.execute.react.step;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
-import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.HashMap;
@@ -24,6 +26,9 @@ import java.util.Map;
 @Slf4j
 @Service
 public class SummaryResultNode extends AbstractExecuteSupport {
+
+    @Resource
+    private SessionWorkingMemoryService sessionWorkingMemoryService;
 
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -62,9 +67,27 @@ public class SummaryResultNode extends AbstractExecuteSupport {
                 null,
                 null
         );
+        persistWorkingMemory(agentContext, dynamicContext, ExecutionLedgerConstants.ENTRY_AGENT_REACT);
         dynamicContext.setStep(3);
 
         return "success";
+    }
+
+
+    private void persistWorkingMemory(AgentContext agentContext,
+                                      DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext,
+                                      String entryAgent) {
+        if (sessionWorkingMemoryService == null || agentContext == null || dynamicContext.getExecutor() == null) {
+            return;
+        }
+        Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
+        sessionWorkingMemoryService.persistTurn(
+                agentContext.getSessionId(),
+                agentContext.getRequestId(),
+                runId,
+                entryAgent,
+                dynamicContext.getExecutor().exportWorkingMemoryDelta()
+        );
     }
 
     @Override

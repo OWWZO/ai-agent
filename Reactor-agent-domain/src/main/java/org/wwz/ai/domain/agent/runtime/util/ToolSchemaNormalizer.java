@@ -26,7 +26,7 @@ public final class ToolSchemaNormalizer {
      */
     public static String normalizeSchema(String rawSchema, String toolName) {
         Map<String, Object> normalized = normalizeSchemaAsMap(rawSchema, toolName);
-        return JSON.toJSONString(normalized);
+        return toStableJson(normalized);
     }
 
     /**
@@ -141,7 +141,47 @@ public final class ToolSchemaNormalizer {
         return completedObjectSchema;
     }
 
+    
     /**
+     * 将任意 schema 规范后以<strong>稳定字节序</strong>输出（递归 key 排序），服务 prompt cache。
+     */
+    public static String normalizeSchemaStable(Map<String, Object> rawSchema, String toolName) {
+        return toStableJson(normalizeSchema(rawSchema, toolName));
+    }
+
+    /**
+     * 稳定 JSON：对象 key 字典序，数组保序。避免 tools schema 字节漂移导致 cache miss。
+     */
+    public static String toStableJson(Object value) {
+        return JSON.toJSONString(sortDeep(value));
+    }
+
+    /**
+     * 递归排序 Map key；List 保序但元素递归处理。
+     */
+    @SuppressWarnings("unchecked")
+    public static Object sortDeep(Object node) {
+        if (node instanceof Map<?, ?> mapNode) {
+            Map<String, Object> sorted = new java.util.TreeMap<>();
+            for (Map.Entry<?, ?> entry : mapNode.entrySet()) {
+                if (entry.getKey() == null) {
+                    continue;
+                }
+                sorted.put(String.valueOf(entry.getKey()), sortDeep(entry.getValue()));
+            }
+            return sorted;
+        }
+        if (node instanceof List<?> listNode) {
+            List<Object> sortedList = new ArrayList<>(listNode.size());
+            for (Object value : listNode) {
+                sortedList.add(sortDeep(value));
+            }
+            return sortedList;
+        }
+        return node;
+    }
+
+/**
      * 创建标准空对象 Schema。
      */
     private static Map<String, Object> createEmptyObjectSchema() {

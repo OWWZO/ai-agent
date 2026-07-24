@@ -15,6 +15,9 @@ import org.wwz.ai.domain.agent.memory.RunHistoryMemory;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionHistoryMemory;
 import org.wwz.ai.domain.agent.memory.ToolCallMemory;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.TokenCounter;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
 import org.wwz.ai.infrastructure.dao.reactor.ILlmInvocationLedgerDao;
@@ -81,6 +84,130 @@ public class SessionContextMemoryServiceImpl implements SessionContextMemoryServ
         return formatHistoryDialogueWithinTokenBudget(sessionHistoryMemory);
     }
 
+    @Override
+    public List<Message> hydrateWorkingMessages(String sessionId, String currentRequestId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return List.of();
+        }
+        SessionHistoryMemory sessionHistoryMemory = assembleSessionHistoryMemory(sessionId, currentRequestId);
+        return formatWorkingMessages(sessionHistoryMemory);
+    }
+
+    /**
+     * 将账本历史投影为模型可见 Message 链（append-only，不丢最旧 run，避免前缀重写导致 prompt cache miss）。
+     */
+    private List<Message> formatWorkingMessages(SessionHistoryMemory sessionHistoryMemory) {
+        if (sessionHistoryMemory == null || sessionHistoryMemory.getRuns() == null || sessionHistoryMemory.getRuns().isEmpty()) {
+            return List.of();
+        }
+        List<Message> all = new ArrayList<>();
+        for (RunHistoryMemory run : sessionHistoryMemory.getRuns()) {
+            List<Message> block = toWorkingMessages(run);
+            if (block != null && !block.isEmpty()) {
+                all.addAll(block);
+            }
+        }
+        return all;
+    }
+
+    private List<Message> toWorkingMessages(RunHistoryMemory run) {
+        if (run == null) {
+            return List.of();
+        }
+        List<Message> messages = new ArrayList<>();
+        // 1) 用户 query
+        if (StringUtils.isNotBlank(run.getQueryText())) {
+            messages.add(Message.userMessage(run.getQueryText(), null));
+        } else if (StringUtils.isNotBlank(run.getRequestId())) {
+            // query 缺失时仍给一个锚点，避免纯 tool 轨迹悬空
+            messages.add(Message.userMessage("[previous request] " + run.getRequestId(), null));
+        }
+
+        // 2) 每个 ReAct cycle → assistant (+ tool calls) + tool observations
+        if (run.getReactCycles() != null) {
+            int cycleIndex = 0;
+            for (ReactCycleMemory cycle : run.getReactCycles()) {
+                cycleIndex++;
+                if (cycle == null) {
+                    continue;
+                }
+                List<ToolCall> toolCalls = new ArrayList<>();
+                if (cycle.getToolCalls() != null) {
+                    int dispatch = 0;
+                    for (ToolCallMemory tool : cycle.getToolCalls()) {
+                        if (tool == null) {
+                            continue;
+                        }
+                        dispatch++;
+                        String callId = StringUtils.isNotBlank(tool.getToolCallId())
+                                ? tool.getToolCallId()
+                                : "hist-" + valueOrEmpty(run.getRunId()) + "-" + cycleIndex + "-" + dispatch;
+                        toolCalls.add(ToolCall.builder()
+                                .id(callId)
+                                .type("function")
+                                .function(ToolCall.Function.builder()
+                                        .name(StringUtils.defaultString(tool.getToolName(), "unknown_tool"))
+                                        .arguments(StringUtils.defaultString(tool.getInputJson(), "{}"))
+                                        .build())
+                                .build());
+                    }
+                }
+                String thought = StringUtils.defaultString(cycle.getThoughtContent());
+                if (!toolCalls.isEmpty()) {
+                    messages.add(Message.fromToolCalls(thought, toolCalls));
+                    // tool results in same order
+                    int dispatch = 0;
+                    for (ToolCallMemory tool : cycle.getToolCalls()) {
+                        if (tool == null) {
+                            continue;
+                        }
+                        dispatch++;
+                        String callId = StringUtils.isNotBlank(tool.getToolCallId())
+                                ? tool.getToolCallId()
+                                : "hist-" + valueOrEmpty(run.getRunId()) + "-" + cycleIndex + "-" + dispatch;
+                        String observation = StringUtils.defaultString(tool.getLlmObservation());
+                        if (tool.getFiles() != null && !tool.getFiles().isEmpty()) {
+                            StringBuilder fileHint = new StringBuilder();
+                            for (FileArtifactMemory file : tool.getFiles()) {
+                                if (file == null || StringUtils.isBlank(file.getFileName())) {
+                                    continue;
+                                }
+                                if (fileHint.length() > 0) {
+                                    fileHint.append(", ");
+                                }
+                                fileHint.append(file.getFileName());
+                            }
+                            if (fileHint.length() > 0) {
+                                observation = observation + (observation.isBlank() ? "" : "\n") + "产出文件: " + fileHint;
+                            }
+                        }
+                        messages.add(Message.toolMessage(observation, callId, null));
+                    }
+                } else if (StringUtils.isNotBlank(thought)) {
+                    messages.add(Message.assistantMessage(thought, null));
+                }
+            }
+        }
+
+        // 3) final summary 作为收尾 assistant（与最后 thought 不同才追加，减少重复）
+        if (StringUtils.isNotBlank(run.getFinalSummaryText())) {
+            String summary = run.getFinalSummaryText().trim();
+            boolean sameAsLastThought = false;
+            if (!messages.isEmpty()) {
+                Message last = messages.get(messages.size() - 1);
+                if (last != null && last.getContent() != null && summary.equals(last.getContent().trim())) {
+                    sameAsLastThought = true;
+                }
+            }
+            if (!sameAsLastThought) {
+                messages.add(Message.assistantMessage(summary, null));
+            }
+        }
+
+        return messages;
+    }
+
+
     private SessionHistoryMemory assembleSessionHistoryMemory(String sessionId, String currentRequestId) {
         List<DialogueRunView> orderedRuns = executionLedgerQueryService.querySessionRuns(sessionId).stream()
                 .filter(run -> run != null && run.getId() != null)
@@ -132,6 +259,8 @@ public class SessionContextMemoryServiceImpl implements SessionContextMemoryServ
                     .requestId(run.getRequestId())
                     .sessionId(run.getSessionId())
                     .entryAgent(run.getEntryAgent())
+                    .queryText(run.getQueryText())
+                    .finalSummaryText(run.getFinalSummaryText())
                     .sessionInputFiles(new ArrayList<>(inputFilesByRunId.getOrDefault(run.getId(), List.of())))
                     .reactCycles(new ArrayList<>())
                     .build();

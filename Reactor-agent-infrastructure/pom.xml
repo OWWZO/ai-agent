@@ -36,7 +36,7 @@
             <groupId>cn.bugstack.ai</groupId>
             <artifactId>Reactor-agent-domain</artifactId>
         </dependency>
-        <dependency>
+<dependency>
             <groupId>cn.bugstack.ai</groupId>
             <artifactId>Reactor-agent-api</artifactId>
         </dependency>

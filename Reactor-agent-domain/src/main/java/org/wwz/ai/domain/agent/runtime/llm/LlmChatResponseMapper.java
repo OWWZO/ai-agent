@@ -49,6 +49,7 @@ public class LlmChatResponseMapper {
                 .finishReason(generation.getMetadata() != null ? generation.getMetadata().getFinishReason() : null)
                 .promptTokens(resolvePromptTokens(response.getMetadata()))
                 .completionTokens(resolveCompletionTokens(response.getMetadata()))
+                .cachedPromptTokens(LlmPromptObservability.resolveCachedPromptTokens(response.getMetadata()))
                 .totalTokens(resolveTotalTokens(response.getMetadata()))
                 .duration(System.currentTimeMillis() - startTimeMs)
                 .build();
