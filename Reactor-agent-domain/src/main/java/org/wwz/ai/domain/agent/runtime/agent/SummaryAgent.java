@@ -6,23 +6,18 @@ import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactBinding;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
-import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Pattern;
 
 @Data
 @Slf4j
@@ -32,7 +27,6 @@ public class SummaryAgent extends BaseAgent {
     private Integer messageSizeLimit;
     private Double summaryTemperature;
     private static final String LOG_FLAG = "summaryTaskResult";
-    private static final Pattern ARTIFACT_SPLIT_PATTERN = Pattern.compile(ToolArtifactFormatter.ARTIFACT_KEY_SEPARATOR_REGEX);
 
     public SummaryAgent(AgentContext context) {
         ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
@@ -81,9 +75,7 @@ public class SummaryAgent extends BaseAgent {
                 .replace("{{taskHistory}}", taskHistory)
                 .replace("{{fileNameDesc}}", createFileInfo())
                 .replace("{{query}}", query)
-                + "\n\n如果需要返回最终文件，请在 " + ToolArtifactFormatter.ARTIFACT_DELIMITER + " 后仅输出 artifactKey 列表。"
-                + "artifactKey 格式必须为 toolCallId" + ToolArtifactFormatter.ARTIFACT_KEY_SEPARATOR + "fileName，多个使用、分隔，禁止只输出 fileName。"
-                + "如果没有需要返回的文件，则不要输出 " + ToolArtifactFormatter.ARTIFACT_DELIMITER + " 段落。";
+                + "\n\n" + TaskSummaryArtifactProtocol.protocolInstruction();
     }
 
     // 构建总结阶段的 system prompt。
@@ -114,72 +106,18 @@ public class SummaryAgent extends BaseAgent {
     }
 
     /**
-     * 解析LLM响应并处理文件关联
+     * 解析LLM响应并处理文件关联（与 React 直出共用 {@link TaskSummaryArtifactProtocol}）。
      */
     private TaskSummaryResult parseLlmResponse(String llmResponse) {
         if (StringUtils.isEmpty(llmResponse)) {
             log.error("requestId: {} pattern matcher failed for response is null", requestId);
             return TaskSummaryResult.builder().taskSummary("").build();
         }
-
-        String[] parts1 = llmResponse.split(Pattern.quote(ToolArtifactFormatter.ARTIFACT_DELIMITER), 2);
-        if (parts1.length < 2) {
-            return TaskSummaryResult.builder().taskSummary(parts1[0].trim()).build();
-        }
-
-        String summary = parts1[0].trim();
-        String artifactKeys = parts1[1].trim();
-
         List<ToolArtifactBinding> bindings = context.getVisibleArtifactBindings();
-        if (CollectionUtils.isEmpty(bindings)) {
+        if (CollectionUtils.isEmpty(bindings) && llmResponse.contains(ToolArtifactFormatter.ARTIFACT_DELIMITER)) {
             log.warn("requestId: {} no visible bindings found when parsing summary response", requestId);
-            return TaskSummaryResult.builder().taskSummary(summary).build();
         }
-
-        Map<String, ToolArtifactBinding> keyToBinding = buildArtifactKeyIndex(bindings);
-        Map<String, File> selectedFiles = new LinkedHashMap<>();
-        for (String item : splitArtifactItems(artifactKeys)) {
-            if (StringUtils.isBlank(item)) {
-                continue;
-            }
-            for (Map.Entry<String, ToolArtifactBinding> entry : keyToBinding.entrySet()) {
-                if (item.contains(entry.getKey())) {
-                    log.info("requestId: {} add artifact by key:{} file:{}", requestId, entry.getKey(), entry.getValue().getFile());
-                    selectedFiles.putIfAbsent(entry.getKey(), entry.getValue().getFile());
-                    break;
-                }
-            }
-        }
-        return TaskSummaryResult.builder()
-                .taskSummary(summary)
-                .files(new ArrayList<>(selectedFiles.values()))
-                .build();
-    }
-
-    private Map<String, ToolArtifactBinding> buildArtifactKeyIndex(List<ToolArtifactBinding> bindings) {
-        Map<String, ToolArtifactBinding> index = new LinkedHashMap<>();
-        for (ToolArtifactBinding binding : bindings) {
-            String key = ToolArtifactFormatter.buildArtifactKey(binding);
-            if (StringUtils.isNotBlank(key)) {
-                index.put(key, binding);
-            }
-        }
-        return index;
-    }
-
-    private List<String> splitArtifactItems(String artifactKeys) {
-        if (StringUtils.isBlank(artifactKeys)) {
-            return List.of();
-        }
-        String[] parts = ARTIFACT_SPLIT_PATTERN.split(artifactKeys);
-        List<String> result = new ArrayList<>(parts.length);
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (StringUtils.isNotBlank(trimmed)) {
-                result.add(trimmed);
-            }
-        }
-        return result;
+        return TaskSummaryArtifactProtocol.parse(llmResponse, bindings);
     }
 
 

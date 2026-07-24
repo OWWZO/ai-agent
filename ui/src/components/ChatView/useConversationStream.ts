@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useMemoizedFn } from "ahooks";
+import { isOutputProductType, toRequestOutputStyle } from "@/utils/constants";
 import { getUniqId } from "@/utils";
 import { buildAgentStreamRequest } from "@/utils/agentRequest";
 import {
@@ -387,7 +388,13 @@ export function useConversationStream(
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
     const { message, deepThink, outputStyle } = inputInfo;
-    const currentOutputStyle = outputStyle || baseConversation.productType;
+    const currentOutputStyle =
+      outputStyle ||
+      (baseConversation.productType === "chat" ||
+      baseConversation.productType === "dataAgent" ||
+      isOutputProductType(baseConversation.productType)
+        ? baseConversation.productType
+        : undefined);
     const isChatMode = currentOutputStyle === "chat";
     const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
     const requestId = getUniqId();
@@ -408,7 +415,7 @@ export function useConversationStream(
 
     const initialConversation = createDraftConversation(baseConversation, {
       chatTitle: message || "",
-      productType: currentOutputStyle,
+      productType: currentOutputStyle || baseConversation.productType,
       deepThink: normalizedDeepThink,
       chatList: [...baseConversation.chatList, { ...currentChat }],
     });
@@ -697,7 +704,7 @@ export function useConversationStream(
 
     sendMessage({
       message: last.query,
-      outputStyle: conversation.productType,
+      outputStyle: toRequestOutputStyle(conversation.productType),
       deepThink: conversation.deepThink,
       aiAgentId: conversation.role?.agentId,
     });

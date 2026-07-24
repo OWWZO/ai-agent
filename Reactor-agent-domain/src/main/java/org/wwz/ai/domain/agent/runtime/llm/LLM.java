@@ -19,8 +19,6 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -331,6 +329,15 @@ public class LLM {
             String callKind
     ) {
         try {
+            // ask 链路也要先产出 request 观测，否则 prompt/cache 快照不会进入 llm invocation 账本。
+            LlmPromptObservability.logRequest(
+                    context,
+                    model,
+                    callKind,
+                    LlmPromptRequestSnapshotSupport.collapseSystemMessages(systemMsgs),
+                    messages,
+                    null
+            );
             LlmInvocationHandle invocationHandle = startLlmInvocation(
                     context,
                     callKind,
@@ -351,15 +358,14 @@ public class LLM {
                     try {
                         ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
                         String content = responseMapper.toText(response);
+                        LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
                         finishLlmInvocation(
                                 context,
                                 invocationHandle,
                                 ExecutionLedgerConstants.STATUS_SUCCESS,
                                 content,
                                 0,
-                                resolvePromptTokens(response.getMetadata()),
-                                resolveCompletionTokens(response.getMetadata()),
-                                resolveTotalTokens(response.getMetadata()),
+                                usage,
                                 resolveFinishReason(response),
                                 null
                         );
@@ -373,8 +379,6 @@ public class LLM {
                                 0,
                                 null,
                                 null,
-                                null,
-                                null,
                                 e.getMessage()
                         );
                         throw new CompletionException(e);
@@ -382,24 +386,22 @@ public class LLM {
                 });
             }
 
-            return streamResponseHandler.handleStringStream(
+            return streamResponseHandler.handleStringStreamWithUsage(
                     context,
                     LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
                     null,
                     false,
                     pushToClient
             )
-                    .whenComplete((content, throwable) -> {
+                    .whenComplete((result, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(
                                     context,
                                     invocationHandle,
                                     ExecutionLedgerConstants.STATUS_SUCCESS,
-                                    content,
+                                    result == null ? null : result.getContent(),
                                     0,
-                                    null,
-                                    null,
-                                    null,
+                                    result == null ? null : result.getUsage(),
                                     null,
                                     null
                             );
@@ -414,11 +416,10 @@ public class LLM {
                                 0,
                                 null,
                                 null,
-                                null,
-                                null,
                                 cause.getMessage()
                         );
-                    });
+                    })
+                    .thenApply(result -> result == null ? null : result.getContent());
         } catch (Exception e) {
             log.error("{} Unexpected error in ask: {}", context.getRequestId(), e.getMessage(), e);
             return failedFuture(e);
@@ -565,16 +566,15 @@ Prompt prompt = buildPrompt(
             return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAskToolStructParse", () -> {
                 try {
                     ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                    LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
                             context,
                             responseMapper.toText(response),
                             resolveFinishReason(response),
-                            resolveTotalTokens(response.getMetadata()),
+                            usage.getTotalTokens(),
                             startTime
                     );
-                    toolCallResponse.setPromptTokens(resolvePromptTokens(response.getMetadata()));
-                    toolCallResponse.setCompletionTokens(resolveCompletionTokens(response.getMetadata()));
-                    toolCallResponse.setCachedPromptTokens(LlmPromptObservability.resolveCachedPromptTokens(response.getMetadata()));
+                    responseMapper.applyUsage(toolCallResponse, usage);
                     finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
                     return toolCallResponse;
                 } catch (Exception e) {
@@ -584,13 +584,24 @@ Prompt prompt = buildPrompt(
             }).orTimeout(timeout, TimeUnit.SECONDS);
         }
 
-        return streamResponseHandler.handleStringStream(
+        return streamResponseHandler.handleStringStreamWithUsage(
                         context,
                         LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
                         STRUCT_PARSE_JSON_MARKER,
+                        true,
                         true
                 )
-                .thenApply(content -> buildStructParseToolCallResponse(context, content, null, null, startTime))
+                .thenApply(result -> {
+                    ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
+                            context,
+                            result == null ? null : result.getContent(),
+                            null,
+                            result == null || result.getUsage() == null ? null : result.getUsage().getTotalTokens(),
+                            startTime
+                    );
+                    return responseMapper.applyUsage(toolCallResponse,
+                            result == null ? LlmUsageSnapshot.empty() : result.getUsage());
+                })
                 .whenComplete((response, throwable) -> {
                     if (throwable == null) {
                         finishLlmInvocation(context, invocationHandle, response, null);
@@ -666,17 +677,14 @@ Prompt prompt = buildPrompt(
             String finishReason = choices.get(0).has("finish_reason") && !choices.get(0).get("finish_reason").isNull()
                     ? choices.get(0).get("finish_reason").asText()
                     : null;
-            Integer totalTokens = jsonResponse.has("usage") && jsonResponse.get("usage").has("total_tokens")
-                    ? jsonResponse.get("usage").get("total_tokens").asInt()
-                    : null;
+            LlmUsageSnapshot usage = LlmUsageSnapshot.fromJsonNode(jsonResponse.get("usage"));
 
-            return ToolCallResponse.builder()
+            return responseMapper.applyUsage(ToolCallResponse.builder()
                     .content(content)
                     .toolCalls(toolCalls)
                     .finishReason(finishReason)
-                    .totalTokens(totalTokens)
                     .duration(System.currentTimeMillis() - startTime)
-                    .build();
+                    .build(), usage);
         } catch (Exception e) {
             throw new CompletionException(e);
         }
@@ -897,30 +905,6 @@ Prompt prompt = buildPrompt(
         return response.getResult().getMetadata().getFinishReason();
     }
 
-    private Integer resolveTotalTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getTotalTokens() : null;
-    }
-
-    private Integer resolvePromptTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getPromptTokens() : null;
-    }
-
-    private Integer resolveCompletionTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getCompletionTokens() : null;
-    }
-
     private LlmInvocationHandle startLlmInvocation(AgentContext context, String callKind, boolean stream) {
         if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
             return LlmInvocationHandle.disabled();
@@ -963,13 +947,14 @@ Prompt prompt = buildPrompt(
                 .obsLogJson(initialObsJson)
                 .build());
         context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
-        return new LlmInvocationHandle(invocationId);
+        return new LlmInvocationHandle(invocationId, obs);
     }
 
     private void finishLlmInvocation(AgentContext context,
                                      LlmInvocationHandle handle,
                                      ToolCallResponse response,
                                      Throwable throwable) {
+        restoreObservationBundle(handle);
         if (throwable != null) {
             finishLlmInvocation(
                     context,
@@ -979,21 +964,17 @@ Prompt prompt = buildPrompt(
                     0,
                     null,
                     null,
-                    null,
-                    null,
                     throwable.getMessage()
             );
             return;
         }
         long durationMs = response == null ? 0L : response.getDuration();
+        LlmUsageSnapshot usage = response == null ? LlmUsageSnapshot.empty() : response.toUsageSnapshot();
         LlmPromptObservability.logResponse(
                 context,
                 model,
                 ExecutionLedgerConstants.CALL_KIND_ASK_TOOL,
-                response == null ? null : response.getPromptTokens(),
-                response == null ? null : response.getCompletionTokens(),
-                response == null ? null : response.getTotalTokens(),
-                response == null ? null : response.getCachedPromptTokens(),
+                usage,
                 durationMs
         );
         finishLlmInvocation(
@@ -1002,9 +983,7 @@ Prompt prompt = buildPrompt(
                 ExecutionLedgerConstants.STATUS_SUCCESS,
                 response == null ? null : response.getContent(),
                 response == null || response.getToolCalls() == null ? 0 : response.getToolCalls().size(),
-                response == null ? null : response.getPromptTokens(),
-                response == null ? null : response.getCompletionTokens(),
-                response == null ? null : response.getTotalTokens(),
+                usage,
                 response == null ? null : response.getFinishReason(),
                 null
         );
@@ -1015,25 +994,37 @@ Prompt prompt = buildPrompt(
                                      Integer status,
                                      String responseText,
                                      Integer toolCallCount,
-                                     Integer promptTokens,
-                                     Integer completionTokens,
-                                     Integer totalTokens,
+                                     LlmUsageSnapshot usage,
                                      String finishReason,
                                      String errorMsg) {
         if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
             return;
         }
+        restoreObservationBundle(handle);
+        LlmUsageSnapshot snapshot = usage == null ? LlmUsageSnapshot.empty() : usage;
         LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
+        if (obs == null || obs.getUsage() == null || obs.getUsage().isEmpty()) {
+            if (!snapshot.isEmpty()) {
+                LlmPromptObservability.logResponse(context, model, "ask", snapshot, 0L);
+                obs = LlmPromptObservability.current();
+            }
+        }
         context.getExecutionRecorder().finishLlmInvocation(LlmInvocationFinishRecord.builder()
                 .llmInvocationId(handle.invocationId())
                 .requestId(context.getRequestId())
                 .status(status)
                 .responseText(responseText)
                 .toolCallCount(toolCallCount)
-                .promptTokens(promptTokens)
-                .completionTokens(completionTokens)
-                .totalTokens(totalTokens)
-                .cachedPromptTokens(obs == null ? null : obs.getCachedPromptTokens())
+                .promptTokens(snapshot.getPromptTokens())
+                .completionTokens(snapshot.getCompletionTokens())
+                .totalTokens(snapshot.getTotalTokens())
+                .cachedPromptTokens(snapshot.getCachedPromptTokens())
+                .promptTextTokens(snapshot.getPromptTextTokens())
+                .promptAudioTokens(snapshot.getPromptAudioTokens())
+                .promptImageTokens(snapshot.getPromptImageTokens())
+                .completionTextTokens(snapshot.getCompletionTextTokens())
+                .completionAudioTokens(snapshot.getCompletionAudioTokens())
+                .reasoningTokens(snapshot.getReasoningTokens())
                 .cacheStatus(obs == null ? null : obs.getCacheStatus())
                 .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
                 .obsLogJson(obs == null ? null : obs.getObsLogJson())
@@ -1042,6 +1033,15 @@ Prompt prompt = buildPrompt(
                 .finishedAt(LocalDateTime.now())
                 .build());
         LlmPromptObservability.clear();
+    }
+
+    private void restoreObservationBundle(LlmInvocationHandle handle) {
+        if (handle == null || handle.observationBundle() == null) {
+            return;
+        }
+        if (LlmPromptObservability.current() == null) {
+            LlmPromptObservability.restore(handle.observationBundle());
+        }
     }
 
     private <T> CompletableFuture<T> withFallback(CompletableFuture<T> primaryFuture,
@@ -1286,12 +1286,33 @@ Prompt prompt = buildPrompt(
         private Integer completionTokens;
         private Integer totalTokens;
         private Integer cachedPromptTokens;
+        private Integer promptTextTokens;
+        private Integer promptAudioTokens;
+        private Integer promptImageTokens;
+        private Integer completionTextTokens;
+        private Integer completionAudioTokens;
+        private Integer reasoningTokens;
         private long duration;
+
+        public LlmUsageSnapshot toUsageSnapshot() {
+            return LlmUsageSnapshot.builder()
+                    .promptTokens(promptTokens)
+                    .completionTokens(completionTokens)
+                    .totalTokens(totalTokens)
+                    .cachedPromptTokens(cachedPromptTokens)
+                    .promptTextTokens(promptTextTokens)
+                    .promptAudioTokens(promptAudioTokens)
+                    .promptImageTokens(promptImageTokens)
+                    .completionTextTokens(completionTextTokens)
+                    .completionAudioTokens(completionAudioTokens)
+                    .reasoningTokens(reasoningTokens)
+                    .build();
+        }
     }
 
-    private record LlmInvocationHandle(Long invocationId) {
+    private record LlmInvocationHandle(Long invocationId, LlmPromptObservability.ObservationBundle observationBundle) {
         private static LlmInvocationHandle disabled() {
-            return new LlmInvocationHandle(null);
+            return new LlmInvocationHandle(null, null);
         }
 
         private boolean enabled() {

@@ -7,7 +7,7 @@ import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
-import { productList, defaultProduct } from "@/utils/constants";
+import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import { Modal } from "antd";
@@ -38,10 +38,6 @@ type Props = {
   ) => void;
   onRoleSelect: (role: CHAT.FixRole) => void;
   onInputConsumed?: () => void;
-};
-
-const getProductByType = (type?: string) => {
-  return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
 const getTaskStableKey = (task?: CHAT.Task) => {
@@ -518,7 +514,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     send={(info) =>
                       sendMessage({
                         ...info,
-                        outputStyle: conversation.productType,
+                        outputStyle: toRequestOutputStyle(conversation.productType),
                         deepThink: conversation.deepThink,
                         aiAgentId: conversation.role?.agentId,
                       })
@@ -626,7 +622,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                         send={(info) =>
                           sendMessage({
                             ...info,
-                            outputStyle: conversation.productType,
+                            outputStyle: toRequestOutputStyle(conversation.productType),
                             deepThink: conversation.deepThink,
                             aiAgentId: conversation.role?.agentId,
                           })

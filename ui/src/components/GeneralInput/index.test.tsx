@@ -36,4 +36,27 @@ describe("GeneralInput", () => {
     expect(html).toContain("thinking-shimmer");
     expect(html).toContain('aria-label="Working"');
   });
+
+  it("未指定输出格式时展示中性文案", () => {
+    const html = renderToStaticMarkup(
+      <GeneralInput
+        sessionId="session-1"
+        placeholder="请输入问题"
+        showBtn
+        disabled={false}
+        size="default"
+        product={{
+          type: "task",
+          name: "通用任务",
+          placeholder: "请输入问题",
+          img: "icon-task",
+          color: "text-[#4040FF]",
+        } as CHAT.Product}
+        send={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("输出格式");
+    expect(html).not.toContain("网页模式");
+  });
 });

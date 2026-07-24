@@ -76,7 +76,7 @@ export interface ConversationHistoryDetail {
   sessionId: string;
   title: string;
   status: string;
-  outputStyle: string;
+  outputStyle?: string;
   deepThink: boolean;
   role: ConversationRole | null;
   runCount: number;

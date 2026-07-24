@@ -32,13 +32,25 @@ public class LlmInvocationFinishRecord {
 
     private Integer totalTokens;
 
+    private Integer cachedPromptTokens;
+
+    private Integer promptTextTokens;
+
+    private Integer promptAudioTokens;
+
+    private Integer promptImageTokens;
+
+    private Integer completionTextTokens;
+
+    private Integer completionAudioTokens;
+
+    private Integer reasoningTokens;
+
     private String finishReason;
 
     private String errorMsg;
 
     private LocalDateTime finishedAt;
-
-    private Integer cachedPromptTokens;
 
     private String cacheStatus;
 

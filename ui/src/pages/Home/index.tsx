@@ -12,8 +12,10 @@ import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import WorkspaceSop from "@/pages/WorkspaceSop";
 import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
-  defaultProduct,
-  productList,
+  GENERIC_TASK_PRODUCT,
+  getProductByType,
+  isOutputProductType,
+  toRequestOutputStyle,
   type SuggestedQuestion,
 } from "@/utils/constants";
 import {
@@ -78,7 +80,6 @@ type InitialState = {
   productType: string;
 };
 
-const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
 const EMPTY_INPUT: CHAT.TInputInfo = {
   message: "",
   deepThink: false,
@@ -126,7 +127,7 @@ const createConversation = (
     id: partial.id || `conversation-${getUniqId()}`,
     sessionId: partial.sessionId || createSessionId(),
     title: partial.title || "新对话",
-    productType: partial.productType || "chat",
+    productType: partial.productType || GENERIC_TASK_PRODUCT.type,
     deepThink: Boolean(partial.deepThink),
     role: partial.role || null,
     createdAt: partial.createdAt ?? now,
@@ -138,9 +139,7 @@ const createConversation = (
 };
 
 const createInitialState = (): InitialState => {
-  const initialProduct =
-    productList.find((item) => item.type === "html") ?? defaultProduct;
-  return {productType: initialProduct.type,};
+  return {productType: GENERIC_TASK_PRODUCT.type,};
 };
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
@@ -158,15 +157,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [activeView, setActiveView] = useState<SidebarView>("chat");
   const [featuredEntryId, setFeaturedEntryId] = useState("");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
-  const [product, setProduct] = useState(
-    () =>
-      productList.find(
-        (item) => item.type === initialRef.current.productType
-      ) ?? defaultProduct
-  );
-  const [displayOutput, setDisplayOutput] = useState(
-    () => productList.find((item) => item.type === "html") ?? defaultProduct
-  );
+  const [product, setProduct] = useState(() => getProductByType(initialRef.current.productType));
+  const [displayOutput, setDisplayOutput] = useState<CHAT.Product>();
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
   const [featuredCards, setFeaturedCards] = useState<FeaturedConversationCard[]>(
     []
@@ -373,18 +365,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   ]);
 
   useEffect(() => {
-    const matched = productList.find(
-      (item) => item.type === currentConversation.productType
-    );
-    if (!matched) {
-      return;
-    }
+    const matched = getProductByType(currentConversation.productType);
 
     setProduct((prev) => (prev.type === matched.type ? prev : matched));
-    if (OUTPUT_TYPES.includes(matched.type)) {
-      setDisplayOutput((prev) =>
-        prev.type === matched.type ? prev : matched
-      );
+    if (isOutputProductType(matched.type)) {
+      setDisplayOutput((prev) => (prev?.type === matched.type ? prev : matched));
     }
   }, [currentConversation.productType]);
 
@@ -420,9 +405,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
       const nextSessionId = override?.sessionId || createSessionId();
-      const defaultStructuredProduct =
-        productList.find((item) => item.type === initialRef.current.productType) ??
-        defaultProduct;
+      const defaultStructuredProduct = getProductByType(initialRef.current.productType);
       const nextProductType =
         override?.productType ||
         (product.type === "chat" ? defaultStructuredProduct.type : product.type);
@@ -525,7 +508,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
       setInputInfo({
         ...info,
-        outputStyle: nextMeta.productType,
+        outputStyle: info.outputStyle,
         deepThink: nextMeta.deepThink,
         aiAgentId: nextMeta.productType === "chat"
           ? currentConversationRole?.agentId
@@ -544,7 +527,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       deepThink: boolean;
     }) => {
       setProduct(nextProduct);
-      if (OUTPUT_TYPES.includes(nextProduct.type)) {
+      if (isOutputProductType(nextProduct.type)) {
         setDisplayOutput(nextProduct);
       }
 
@@ -566,9 +549,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const handleRoleSelect = useCallback(
     (role: CHAT.FixRole) => {
       void role;
-      const defaultStructuredProduct =
-        productList.find((item) => item.type === initialRef.current.productType) ??
-        defaultProduct;
+      const defaultStructuredProduct = getProductByType(initialRef.current.productType);
 
       if (
         currentConversation.productType === "chat" &&
@@ -588,7 +569,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         role: null,
       });
       setProduct(defaultStructuredProduct);
-      if (OUTPUT_TYPES.includes(defaultStructuredProduct.type)) {
+      if (isOutputProductType(defaultStructuredProduct.type)) {
         setDisplayOutput(defaultStructuredProduct);
       }
       setActiveView("chat");
@@ -600,7 +581,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     (query: SuggestedQuestion) => {
       changeInputInfo({
         message: query.label,
-        outputStyle: product.type,
+        outputStyle: toRequestOutputStyle(product.type),
         deepThink: Boolean(query.deepThink),
       });
     },

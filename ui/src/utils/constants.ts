@@ -62,10 +62,21 @@ export const suggestedQuestionsByProductType: Record<string, SuggestedQuestion[]
     {label: "对销售数据进行综合分析",},
     {label: "分析产品的销售表现",},
   ],
+  task: generalSuggestedQuestions,
   html: generalSuggestedQuestions,
   docs: generalSuggestedQuestions,
   ppt: generalSuggestedQuestions,
   table: generalSuggestedQuestions,
+};
+
+export const OUTPUT_PRODUCT_TYPES = ["html", "docs", "ppt", "table"] as const;
+
+export const GENERIC_TASK_PRODUCT: CHAT.Product = {
+  name: "通用任务",
+  img: "icon-aichat",
+  type: "task",
+  placeholder: "Reactor 会先完成你的任务，再根据内容给出合适的回答",
+  color: "text-[#4040FF]",
 };
 
 export const productList = [
@@ -114,6 +125,23 @@ export const productList = [
 ];
 
 export const defaultProduct = productList[0];
+
+export const isOutputProductType = (type?: string) =>
+  Boolean(type && OUTPUT_PRODUCT_TYPES.includes(type as (typeof OUTPUT_PRODUCT_TYPES)[number]));
+
+export const getProductByType = (type?: string): CHAT.Product => {
+  if (type === GENERIC_TASK_PRODUCT.type) {
+    return GENERIC_TASK_PRODUCT;
+  }
+  return productList.find((item) => item.type === type) ?? defaultProduct;
+};
+
+export const toRequestOutputStyle = (type?: string) => {
+  if (type === "chat" || type === "dataAgent" || isOutputProductType(type)) {
+    return type;
+  }
+  return undefined;
+};
 
 export const RESULT_TYPES = ["task_summary", "result"];
 

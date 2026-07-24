@@ -24,7 +24,7 @@ const HERO_TYPEWRITER_TEXTS = [
 export default function WelcomeView(props: {
   currentConversation: CHAT.ConversationHistory;
   product: CHAT.Product;
-  displayOutput: CHAT.Product;
+  displayOutput?: CHAT.Product;
   currentConversationRole: CHAT.ConversationRole | null;
   fixRoles: CHAT.FixRole[];
   visitorUsername?: string;

@@ -335,6 +335,24 @@ describe("conversationHistory hydrate", () => {
     expect(toConversationHistoryTitle(detail)).toBe("新对话");
   });
 
+  it("treats missing outputStyle history as generic task conversation", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-generic-001",
+      title: "通用任务历史",
+      status: "SUCCESS",
+      deepThink: false,
+      role: null,
+      runCount: 0,
+      finishedRunCount: 0,
+      failedRunCount: 0,
+      startedAt: "2026-05-02T11:00:00",
+      lastActiveAt: "2026-05-02T11:05:00",
+      runs: [],
+    } as ConversationHistoryDetail);
+
+    expect(history.productType).toBe("task");
+  });
+
   it("marks stopped history run as force stop and preserves missing artifact state", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-stop-001",

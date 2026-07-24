@@ -7,7 +7,6 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
@@ -133,10 +132,28 @@ public final class LlmPromptObservability {
                                    Integer totalTokens,
                                    Integer cachedPromptTokens,
                                    long durationMs) {
+        logResponse(context, model, callKind, LlmUsageSnapshot.builder()
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .cachedPromptTokens(cachedPromptTokens)
+                .build(), durationMs);
+    }
+
+    public static void logResponse(AgentContext context,
+                                   String model,
+                                   String callKind,
+                                   LlmUsageSnapshot usage,
+                                   long durationMs) {
+        LlmUsageSnapshot snapshot = usage == null ? LlmUsageSnapshot.empty() : usage;
         ObservationBundle bundle = LAST_BUNDLE.get();
         TokenCounter.PromptEstimate estimate = bundle == null ? null : bundle.getEstimate();
         String requestId = context == null ? "-" : StringUtils.defaultString(context.getRequestId(), "-");
         int est = estimate == null ? -1 : estimate.getEstimatedTotalTokens();
+        Integer promptTokens = snapshot.getPromptTokens();
+        Integer completionTokens = snapshot.getCompletionTokens();
+        Integer totalTokens = snapshot.getTotalTokens();
+        Integer cachedPromptTokens = snapshot.getCachedPromptTokens();
         Integer uncached = null;
         if (promptTokens != null && cachedPromptTokens != null) {
             uncached = Math.max(0, promptTokens - cachedPromptTokens);
@@ -153,6 +170,12 @@ public final class LlmPromptObservability {
                 + ",total=" + totalTokens
                 + ",cachedPrompt=" + cachedPromptTokens
                 + ",uncachedPrompt=" + uncached
+                + ",promptText=" + snapshot.getPromptTextTokens()
+                + ",promptAudio=" + snapshot.getPromptAudioTokens()
+                + ",promptImage=" + snapshot.getPromptImageTokens()
+                + ",completionText=" + snapshot.getCompletionTextTokens()
+                + ",completionAudio=" + snapshot.getCompletionAudioTokens()
+                + ",reasoning=" + snapshot.getReasoningTokens()
                 + ",cacheHitRatio=" + (cacheHitRatio < 0 ? "n/a" : String.format("%.2f", cacheHitRatio))
                 + ") estPromptTotal~" + est
                 + " estDelta=" + ((promptTokens == null || est < 0) ? "n/a" : (promptTokens - est));
@@ -185,12 +208,19 @@ public final class LlmPromptObservability {
             obs.put("completionTokens", completionTokens);
             obs.put("totalTokens", totalTokens);
             obs.put("cachedPromptTokens", cachedPromptTokens);
+            obs.put("promptTextTokens", snapshot.getPromptTextTokens());
+            obs.put("promptAudioTokens", snapshot.getPromptAudioTokens());
+            obs.put("promptImageTokens", snapshot.getPromptImageTokens());
+            obs.put("completionTextTokens", snapshot.getCompletionTextTokens());
+            obs.put("completionAudioTokens", snapshot.getCompletionAudioTokens());
+            obs.put("reasoningTokens", snapshot.getReasoningTokens());
             obs.put("uncachedPromptTokens", uncached);
             obs.put("cacheHitRatio", cacheHitRatio < 0 ? null : cacheHitRatio);
             obs.put("estTotalTokens", estimate == null ? null : estimate.getEstimatedTotalTokens());
             obs.put("durationMs", durationMs);
             bundle.setCacheStatus(cacheStatus);
             bundle.setCacheRiskFlags(cacheRiskFlags);
+            bundle.setUsage(snapshot);
             bundle.setCachedPromptTokens(cachedPromptTokens);
             bundle.setObsLogJson(JSON.toJSONString(obs, SerializerFeature.DisableCircularReferenceDetect));
             bundle.setObsLines(lines);
@@ -202,29 +232,23 @@ public final class LlmPromptObservability {
         return LAST_BUNDLE.get();
     }
 
+    public static void restore(ObservationBundle bundle) {
+        if (bundle == null) {
+            return;
+        }
+        LAST_BUNDLE.set(bundle);
+    }
+
     public static void clear() {
         LAST_BUNDLE.remove();
     }
 
+    public static LlmUsageSnapshot resolveUsage(ChatResponseMetadata metadata) {
+        return LlmUsageSnapshot.resolve(metadata);
+    }
+
     public static Integer resolveCachedPromptTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        if (usage != null) {
-            try {
-                Integer fromNative = extractFromObject(usage.getNativeUsage());
-                if (fromNative != null) {
-                    return fromNative;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        try {
-            return extractFromObject(metadata.get("usage"));
-        } catch (Exception ignored) {
-            return null;
-        }
+        return resolveUsage(metadata).getCachedPromptTokens();
     }
 
     private static String buildPromptPayloadJson(Message systemMessage,
@@ -383,29 +407,6 @@ public final class LlmPromptObservability {
         return text.substring(0, MAX_CONTENT_CHARS) + "...(truncated,total=" + text.length() + ")";
     }
 
-    @SuppressWarnings("unchecked")
-    private static Integer extractFromObject(Object nativeUsage) {
-        if (!(nativeUsage instanceof Map<?, ?> map)) {
-            return null;
-        }
-        Object details = map.get("prompt_tokens_details");
-        if (details instanceof Map<?, ?> d) {
-            Object cached = d.get("cached_tokens");
-            if (cached instanceof Number n) {
-                return n.intValue();
-            }
-        }
-        Object cached = map.get("cached_tokens");
-        if (cached instanceof Number n) {
-            return n.intValue();
-        }
-        Object cacheRead = map.get("cache_read_input_tokens");
-        if (cacheRead instanceof Number n) {
-            return n.intValue();
-        }
-        return null;
-    }
-
     private record PromptSnapshot(String systemFingerprint, String toolNamesKey, int messageCount, int systemChars) {
     }
 
@@ -418,6 +419,7 @@ public final class LlmPromptObservability {
         private String roleSeq;
         private String cacheStatus;
         private String cacheRiskFlags;
+        private LlmUsageSnapshot usage;
         private Integer cachedPromptTokens;
         private String obsLogJson;
         private List<String> obsLines;

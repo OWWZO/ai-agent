@@ -33,6 +33,24 @@ describe("homeState", () => {
     });
   });
 
+  it("未显式选择输出格式时应保留通用任务态", () => {
+    expect(
+      deriveConversationMetaFromInput(
+        {
+          deepThink: true,
+        },
+        {
+          productType: "task",
+          currentRole: null,
+        }
+      )
+    ).toMatchObject({
+      productType: "task",
+      deepThink: true,
+      role: null,
+    });
+  });
+
   it("仅在未 hydrate 且没有内容时才恢复历史", () => {
     expect(
       shouldHydrateConversationHistory({

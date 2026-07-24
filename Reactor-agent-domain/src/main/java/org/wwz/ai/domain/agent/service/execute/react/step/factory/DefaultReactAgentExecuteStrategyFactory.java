@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.react.step.RootNode;
 
@@ -41,10 +40,10 @@ public class DefaultReactAgentExecuteStrategyFactory {
         private Printer printer;
         /** 由 Step1 构建并放入，Step2 使用；AgentRequest 由 requestParameter 贯穿传递 */
         private AgentContext agentContext;
-        /** 由 Step2 放入，Step3 用于生成总结 */
+        /** 由 Step2 放入，Step3 发送 result / 持久化 working memory */
         private ReActAgent executor;
-        /** 由 Step2 放入，Step3 用于生成总结 */
-        private SummaryAgent summary;
+        /** 由 Step2 解析的 React 终答文本，Step3 作为 taskSummary 发出 */
+        private String finalAnswer;
 
         private int step;
     }

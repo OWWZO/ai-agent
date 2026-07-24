@@ -141,9 +141,13 @@ public class ReactImplAgent extends ReActAgent {
             // 步骤6：更新智能体状态：保存大模型决策的工具调用列表
             setToolCalls(response.getToolCalls());
 
-            // 步骤7：处理非流式响应（推送工具思考结果给客户端）
-            if (!context.getIsStream() && response.getContent() != null && !response.getContent().isEmpty()) {
-                printer.send("tool_thought", response.getContent()); // 输出工具思考内容（如"我需要调用deep_search工具查询xxx"）
+            // 步骤7：非流式且本轮有 tool_call 时才推过程思考；无 tool 的文本是终答，走 result 不推 tool_thought
+            if (!Boolean.TRUE.equals(context.getIsStream())
+                    && response.getContent() != null
+                    && !response.getContent().isEmpty()
+                    && response.getToolCalls() != null
+                    && !response.getToolCalls().isEmpty()) {
+                printer.send("tool_thought", response.getContent());
             }
 
             // 步骤8：构建助手消息，添加到智能体记忆（记录大模型的决策结果）
@@ -183,10 +187,12 @@ public class ReactImplAgent extends ReActAgent {
      */
     @Override
     public String act() {
-        // 步骤1：边界条件处理：无工具调用指令 → 标记智能体完成，返回最后一条消息内容
-        if (toolCalls.isEmpty()) {
+        // 无 tool_calls：本轮 assistant text 即面向用户的终答（cchaha 同款结束信号）
+        if (toolCalls == null || toolCalls.isEmpty()) {
             setState(AgentState.FINISHED);
-            return getMemory().getLastMessage().getContent();
+            Message last = getMemory().getLastMessage();
+            String finalText = last == null ? null : last.getContent();
+            return finalText == null ? "" : finalText;
         }
 
         // 步骤2：执行工具调用（核心：调用executeTools方法执行所有工具，返回工具ID→结果的映射）

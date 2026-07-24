@@ -3,21 +3,33 @@ package org.wwz.ai.domain.agent.service.execute.react.step;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
-import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.enums.AgentState;
+import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
- * React 逻辑树 - 步骤2：执行 ReAct 推理与工具调用
- * 初始化 ReActAgent、SummaryAgent，执行 executor.run，将结果供 Step3 总结
+ * React 逻辑树 - 步骤2：执行 ReAct 推理与工具调用。
+ * 终答仅取「无 tool_calls 的 assistant 文本」（用户向），不用中间 thought / tool observation。
  */
 @Slf4j
 @Service
 public class RunReactNode extends AbstractExecuteSupport {
+
+    private static final Pattern FINISH_BRACKET = Pattern.compile(
+            "(?is)^\\s*Finish\\s*\\[\\s*(.*?)\\s*]\\s*$");
+    private static final Pattern FINISH_INLINE = Pattern.compile(
+            "(?is)Finish\\s*\\[\\s*(.*?)\\s*]");
 
     @Resource
     private SummaryResultNode step3SummaryResultNode;
@@ -32,17 +44,99 @@ public class RunReactNode extends AbstractExecuteSupport {
         }
 
         ReActAgent executor = new ReactImplAgent(agentContext);
-        SummaryAgent summary = new SummaryAgent(agentContext);
-
-        summary.setSystemPrompt(summary.getSystemPrompt().replace("{{query}}", requestParameter.getQuery()));
-
-        executor.run(requestParameter.getQuery());
+        String runResult = executor.run(requestParameter.getQuery());
+        String finalAnswer = resolveFinalAnswer(executor, runResult);
 
         dynamicContext.setExecutor(executor);
-        dynamicContext.setSummary(summary);
+        dynamicContext.setFinalAnswer(finalAnswer);
         dynamicContext.setStep(2);
 
         return router(requestParameter, dynamicContext);
+    }
+
+    /**
+     * 仅接受「纯文本 assistant 轮」（无 tool_calls）作为用户终答。
+     * 不回退到带 tool_calls 的中间思考，也不把 tool observation 拼串当回复。
+     */
+    static String resolveFinalAnswer(ReActAgent executor, String runResult) {
+        String fromMemory = findLastUserFacingAssistantText(executor);
+        if (StringUtils.isNotBlank(fromMemory)) {
+            return sanitizeUserFacingText(fromMemory);
+        }
+
+        // 仅当 run 以 FINISHED 结束时，才信任 run() 返回值（通常即最后一轮无 tool 文本）
+        if (executor != null
+                && executor.getState() == AgentState.FINISHED
+                && isPlausibleUserFacingRunResult(runResult)) {
+            return sanitizeUserFacingText(runResult);
+        }
+
+        log.warn("React final answer missing user-facing assistant text, request may have stopped mid-tools");
+        return "任务已执行完成，但未能生成面向用户的最终说明。请补充问题后重试，或查看过程中的工具结果。";
+    }
+
+    private static String findLastUserFacingAssistantText(ReActAgent executor) {
+        if (executor == null || executor.getMemory() == null) {
+            return null;
+        }
+        List<Message> messages = executor.getMemory().getMessages();
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (message == null || message.getRole() != RoleType.ASSISTANT) {
+                continue;
+            }
+            // 带 tool_calls 的 content 是过程叙述，不是终答
+            if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+                continue;
+            }
+            if (StringUtils.isNotBlank(message.getContent())) {
+                return message.getContent().trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 过滤明显是工具聚合 / 内部终止文案，避免误当用户回复。
+     */
+    private static boolean isPlausibleUserFacingRunResult(String runResult) {
+        if (StringUtils.isBlank(runResult)) {
+            return false;
+        }
+        String text = runResult.trim();
+        if (text.startsWith("Terminated:")) {
+            return false;
+        }
+        if ("No steps executed".equals(text) || "Thinking complete - no action needed".equals(text)) {
+            return false;
+        }
+        // tool observation 常见形态：多段工具结果拼接
+        if (text.contains("工具执行结果为:") || text.contains("Tool execution")) {
+            return false;
+        }
+        return true;
+    }
+
+    static String sanitizeUserFacingText(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String text = raw.trim();
+        Matcher whole = FINISH_BRACKET.matcher(text);
+        if (whole.matches()) {
+            return whole.group(1).trim();
+        }
+        Matcher inline = FINISH_INLINE.matcher(text);
+        if (inline.find() && text.length() < 500) {
+            String inner = inline.group(1).trim();
+            if (StringUtils.isNotBlank(inner)) {
+                return inner;
+            }
+        }
+        return text;
     }
 
     @Override

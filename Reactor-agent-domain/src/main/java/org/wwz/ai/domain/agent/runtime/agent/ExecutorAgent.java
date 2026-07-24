@@ -11,7 +11,6 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
-import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -37,15 +36,17 @@ public class ExecutorAgent extends ReActAgent {
         ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
         ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
 
-        StringBuilder toolPrompt = new StringBuilder();
-        for (BaseTool tool : context.getToolCollection().getToolMap().values()) {
-            toolPrompt.append(String.format("工具名：%s 工具描述：%s\n", tool.getName(), tool.getDescription()));
-        }
-
-        String promptKey = "default";
         setContext(context);
-        String executorTemplate = reactorConfig.getExecutorSystemPromptMap().getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT);
-        setSystemPrompt(buildStableSystemPrompt(executorTemplate, toolPrompt.toString(), null, null));
+        // toolPrompt 仅兼容旧签名；system 不再注入 tools 正文（走 API tools[]）
+        String toolPrompt = buildToolPrompt(context.getToolCollection());
+        String promptKey = "default";
+        Map<String, String> executorMap = reactorConfig.getExecutorSystemPromptMap();
+        if (executorMap == null) {
+            executorMap = Map.of();
+        }
+        String executorTemplate = ToolCallPrompt.ensureUserFacingReplyContract(
+                executorMap.getOrDefault(promptKey, ToolCallPrompt.SYSTEM_PROMPT));
+        setSystemPrompt(buildStableSystemPrompt(executorTemplate, toolPrompt, null, null));
         setNextStepPrompt(null);
         setPrinter(context.printer);
         setMaxSteps(reactorConfig.getPlannerMaxSteps());

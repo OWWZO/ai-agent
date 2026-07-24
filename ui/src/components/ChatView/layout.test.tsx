@@ -75,10 +75,29 @@ vi.mock("@/utils/constants", () => {
     img: "icon-data",
     color: "text-[#4040FF]",
   };
+  const taskProduct = {
+    type: "task",
+    name: "通用任务",
+    placeholder: "请输入问题",
+    img: "icon-task",
+    color: "text-[#4040FF]",
+  };
 
   return {
     defaultProduct: chatProduct,
     productList: [chatProduct, dataAgentProduct, htmlProduct, docsProduct],
+    getProductByType: (type?: string) => {
+      if (type === "task") {
+        return taskProduct;
+      }
+      return [chatProduct, dataAgentProduct, htmlProduct, docsProduct].find(
+        (item) => item.type === type
+      ) ?? chatProduct;
+    },
+    toRequestOutputStyle: (type?: string) =>
+      type === "chat" || type === "dataAgent" || type === "html" || type === "docs"
+        ? type
+        : undefined,
   };
 });
 
@@ -369,7 +388,7 @@ describe("ChatView layout", () => {
       'class="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden" id="chat-view"'
     );
     expect(html).toContain(
-      'class="shrink-0 bg-gradient-to-t from-[var(--page-gradient)] via-[var(--page-gradient)]/95 to-transparent pb-5 pt-4"'
+      'class="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"'
     );
     expect(html).toContain('data-general-input="true"');
     expect(html).not.toContain("sticky bottom-0");

@@ -52,9 +52,50 @@ public class LlmChatResponseMapperTest {
         Assert.assertEquals("我需要调用工具", response.getContent());
         Assert.assertEquals("tool_calls", response.getFinishReason());
         Assert.assertEquals(Integer.valueOf(36), response.getTotalTokens());
+        Assert.assertEquals(Integer.valueOf(10), response.getPromptTokens());
+        Assert.assertEquals(Integer.valueOf(26), response.getCompletionTokens());
         Assert.assertEquals(1, response.getToolCalls().size());
         Assert.assertEquals("deep_search", response.getToolCalls().get(0).getFunction().getName());
         Assert.assertEquals("{\"query\":\"spring ai\"}", response.getToolCalls().get(0).getFunction().getArguments());
+    }
+
+    @Test
+    public void test_toToolCallResponseReadsNativeCachedAndDetails() {
+        LlmChatResponseMapper mapper = new LlmChatResponseMapper();
+        AssistantMessage assistantMessage = AssistantMessage.builder()
+                .content("ok")
+                .properties(java.util.Map.of())
+                .build();
+        java.util.Map<String, Object> promptDetails = new java.util.LinkedHashMap<>();
+        promptDetails.put("cached_tokens", 7);
+        promptDetails.put("text_tokens", 80);
+        java.util.Map<String, Object> completionDetails = new java.util.LinkedHashMap<>();
+        completionDetails.put("reasoning_tokens", 5);
+        java.util.Map<String, Object> nativeUsage = new java.util.LinkedHashMap<>();
+        nativeUsage.put("prompt_tokens", 80);
+        nativeUsage.put("completion_tokens", 20);
+        nativeUsage.put("total_tokens", 100);
+        nativeUsage.put("prompt_tokens_details", promptDetails);
+        nativeUsage.put("completion_tokens_details", completionDetails);
+
+        ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.builder()
+                .finishReason("stop")
+                .build();
+        ChatResponseMetadata responseMetadata = ChatResponseMetadata.builder()
+                .usage(new DefaultUsage(1, 2, 3, nativeUsage))
+                .build();
+        ChatResponse chatResponse = new ChatResponse(
+                List.of(new Generation(assistantMessage, generationMetadata)),
+                responseMetadata
+        );
+
+        LLM.ToolCallResponse response = mapper.toToolCallResponse(chatResponse, System.currentTimeMillis() - 1);
+        Assert.assertEquals(Integer.valueOf(80), response.getPromptTokens());
+        Assert.assertEquals(Integer.valueOf(20), response.getCompletionTokens());
+        Assert.assertEquals(Integer.valueOf(100), response.getTotalTokens());
+        Assert.assertEquals(Integer.valueOf(7), response.getCachedPromptTokens());
+        Assert.assertEquals(Integer.valueOf(80), response.getPromptTextTokens());
+        Assert.assertEquals(Integer.valueOf(5), response.getReasoningTokens());
     }
 
     @Test

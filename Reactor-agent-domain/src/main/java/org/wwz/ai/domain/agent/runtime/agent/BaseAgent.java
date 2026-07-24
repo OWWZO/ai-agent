@@ -15,6 +15,7 @@ import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -185,24 +186,31 @@ public abstract class BaseAgent {
 
     /**
      * 组装 cache-friendly system：只保留静态/会话级占位，去掉 query/date/files/history。
+     * <p>
+     * 纯函数规范化：同输入必得同字节，不依赖 SessionPromptFreeze 内存。
+     * tools 只走 API tools[]（忽略 toolPrompt 正文），避免 system 与 schema 双轨。
      */
     protected String buildStableSystemPrompt(String template, String toolPrompt, String extraPlaceholder, String extraValue) {
-        String systemTemplate = template == null ? "" : template;
-        // tools 只走 API tools[]，不再写入 system 正文，避免与 schema 双轨且顺序漂移打爆 cache
+        String systemTemplate = normalizeSystemSource(template);
+        String basePrompt = context == null || context.getBasePrompt() == null
+                ? ""
+                : context.getBasePrompt().trim();
+        // tools 只走 API tools[]，不再写入 system 正文
         systemTemplate = systemTemplate
                 .replace("{{tools}}", "")
-                .replace("{{basePrompt}}", context.getBasePrompt() == null ? "" : context.getBasePrompt())
+                .replace("{{basePrompt}}", basePrompt)
                 .replace("{{sopPrompt}}", "")
                 .replace("{{executorSopPrompt}}", "")
                 .replace("{{query}}", "")
                 .replace("{{date}}", "")
                 .replace("{{files}}", "")
                 .replace("{{history_dialogue}}", "");
-        if (extraPlaceholder != null) {
+        if (extraPlaceholder != null && !extraPlaceholder.isEmpty()) {
             systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue == null ? "" : extraValue);
         }
-        // 去掉空 env 壳，减少无意义 system 尾巴
         systemTemplate = stripEmptyEnvBlocks(systemTemplate);
+        systemTemplate = canonicalizeSystemText(systemTemplate);
+        // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
         String agentSlot = StringUtils.defaultIfBlank(getName(), "agent");
@@ -212,24 +220,90 @@ public abstract class BaseAgent {
     }
 
     /**
-     * 清掉被置空的 date/files/history 空标签块，避免 system 残留空壳。
+     * 入参归一：统一换行，去掉 BOM，避免多次构造时源串细微差异。
+     */
+    protected String normalizeSystemSource(String system) {
+        if (system == null || system.isEmpty()) {
+            return "";
+        }
+        String s = system;
+        if (!s.isEmpty() && s.charAt(0) == '\uFEFF') {
+            s = s.substring(1);
+        }
+        return s.replace("\r\n", "\n").replace('\r', '\n');
+    }
+
+    /**
+     * 清掉被置空的 date/files/history 空标签块与空标题，避免 system 残留空壳。
      */
     protected String stripEmptyEnvBlocks(String system) {
         if (system == null || system.isEmpty()) {
-            return system;
+            return "";
         }
         String s = system;
         s = s.replaceAll("(?s)<date>\\s*</date>", "");
         s = s.replaceAll("(?s)<files>\\s*</files>", "");
         s = s.replaceAll("(?s)<file_desc>\\s*</file_desc>", "");
         s = s.replaceAll("(?s)<history_dialogue>\\s*</history_dialogue>", "");
-        s = s.replaceAll("(?m)^## 当前日期\\s*$\\n*", "");
-        s = s.replaceAll("(?m)^## 可用文件及描述\\s*$\\n*", "");
-        s = s.replaceAll("(?m)^## 当前可用的文件名及描述\\s*$\\n*", "");
-        s = s.replaceAll("(?m)^## 用户历史对话信息\\s*$\\n*", "");
-        s = s.replaceAll("\\n{3,}", "\n\n");
-        return s.trim();
+        s = s.replaceAll("(?s)<session_env>\\s*</session_env>", "");
+        s = s.replaceAll("(?m)^## 当前日期\\s*$\\n?", "");
+        s = s.replaceAll("(?m)^## 可用文件及描述\\s*$\\n?", "");
+        s = s.replaceAll("(?m)^## 当前可用的文件名及描述\\s*$\\n?", "");
+        s = s.replaceAll("(?m)^## 用户历史对话信息\\s*$\\n?", "");
+        return s;
     }
+
+    /**
+     * 输出字节规范化：行尾空白、连续空行、统一结尾换行 —— 同逻辑内容必同字节。
+     */
+    protected String canonicalizeSystemText(String system) {
+        if (system == null || system.isEmpty()) {
+            return "";
+        }
+        String[] parts = system.split("\n", -1);
+        StringBuilder sb = new StringBuilder(system.length());
+        int blankRun = 0;
+        for (String line : parts) {
+            String trimmedRight = rtrimSpaces(line);
+            if (trimmedRight.isEmpty()) {
+                blankRun++;
+                if (blankRun > 1) {
+                    continue;
+                }
+                sb.append('\n');
+            } else {
+                blankRun = 0;
+                sb.append(trimmedRight).append('\n');
+            }
+        }
+        String out = trimNewlines(sb.toString());
+        return out.isEmpty() ? "" : out + "\n";
+    }
+
+    private static String rtrimSpaces(String line) {
+        int endIdx = line.length();
+        while (endIdx > 0) {
+            char c = line.charAt(endIdx - 1);
+            if (c != ' ' && c != '\t') {
+                break;
+            }
+            endIdx--;
+        }
+        return line.substring(0, endIdx);
+    }
+
+    private static String trimNewlines(String s) {
+        int startIdx = 0;
+        int endIdx = s.length();
+        while (startIdx < endIdx && s.charAt(startIdx) == '\n') {
+            startIdx++;
+        }
+        while (endIdx > startIdx && s.charAt(endIdx - 1) == '\n') {
+            endIdx--;
+        }
+        return s.substring(startIdx, endIdx);
+    }
+
 
 
     /**
@@ -305,7 +379,9 @@ public abstract class BaseAgent {
                                      String extraPlaceholder,
                                      String extraValue) {
         String promptKey = "default";
-        String template = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt);
+        Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
+        String template = ToolCallPrompt.ensureUserFacingReplyContract(
+                map.getOrDefault(promptKey, defaultSystemPrompt));
         setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
         setNextStepPrompt(null);
     }
@@ -324,7 +400,9 @@ public abstract class BaseAgent {
                                                             String extraPlaceholder,
                                                             String extraValue) {
         String promptKey = "default";
-        String template = systemPromptMap.getOrDefault(promptKey, defaultSystemPrompt);
+        Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
+        String template = ToolCallPrompt.ensureUserFacingReplyContract(
+                map.getOrDefault(promptKey, defaultSystemPrompt));
         setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
         setNextStepPrompt(null);
     }

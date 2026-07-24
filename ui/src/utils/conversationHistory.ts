@@ -3,6 +3,7 @@ import type {
   ConversationHistoryRunDetail,
   ConversationReplayFrame,
 } from "@/services/agentConversation";
+import { GENERIC_TASK_PRODUCT } from "@/utils/constants";
 
 import { buildConversationTaskData, buildTaskFromEventData, combineData } from "./chat";
 import { artifactRefsToFileInfo } from "./taskArtifacts";
@@ -41,7 +42,7 @@ export function hydrateConversationFromReplayFrames(
     id: `conversation-${detail.sessionId}`,
     sessionId: detail.sessionId,
     title,
-    productType: detail.outputStyle || "chat",
+    productType: detail.outputStyle || GENERIC_TASK_PRODUCT.type,
     deepThink: Boolean(detail.deepThink),
     role: detail.role || null,
     createdAt,

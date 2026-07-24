@@ -3,53 +3,72 @@ package org.wwz.ai.domain.agent.runtime.prompt;
 /**
  * 工具调用代理的提示词常量。
  * system 仅保留跨请求尽量稳定的规则；date/query/files/history 走 messages。
+ * 终答约定对齐 cchaha：同一 agent，无 tool 的 assistant text 即面向用户的最终回复。
+ * <p>
+ * {@link #USER_FACING_REPLY_CONTRACT} 会在组装 system 时强制合并，
+ * 即使配置覆盖了 {@code react.system_prompt} / executor system 也不会丢。
  */
 public class ToolCallPrompt {
+
+    /**
+     * 幂等标记：配置/默认正文中已含此串时不再二次追加。
+     */
+    public static final String USER_FACING_REPLY_CONTRACT_MARKER = "USER_FACING_REPLY_CONTRACT_V1";
+
+    /**
+     * 用户向终答硬约定（不可被业务 system 配置静默冲掉）。
+     */
+    public static final String USER_FACING_REPLY_CONTRACT = """
+            # 面向用户的终答约定 (%s)
+            - 用户通常看不到工具调用细节与内部推理，**只能看到你写给用户的文本**。
+            - 当你本轮**不调用任何工具**时，你的 assistant 文本就是**最终用户回复**，必须完整、可独立阅读、可直接展示。
+            - 不要把“思考过程”“下一步计划”“我准备调用 xxx”当成终答；终答应直接回答用户问题或交付结果。
+            - 先给结论/答案，再补必要说明；简洁、完整句子，避免日志式碎片。
+            - 中间轮若需要边做边说，只写极短状态（例如“正在检索相关资料。”），详细结论留给无工具的最后一轮。
+            - 任务完成、已能直接回答用户 → **本轮不要调用工具**，只输出面向用户的最终回复文本。
+            - 不要使用 Finish[...] 等特殊标记；直接写自然语言终答。
+            - 若有最终交付文件：先写用户可读正文，再单独起一段以 $$$ 开头，其后仅输出 artifactKey 列表。
+              artifactKey 必须为 toolCallId::fileName（见工具 observation 中的 artifactKey），多个用、分隔；禁止只写 fileName。
+              只勾选用户真正需要的最终交付物，不要把中间过程文件全部列出。若无交付文件，不要输出 $$$ 段落。
+            - 以上用户向文本规则**不适用于**代码或 tool call 参数。
+            """.formatted(USER_FACING_REPLY_CONTRACT_MARKER);
+
     public static final String SYSTEM_PROMPT = """
-            # 要求
-            - 仅当用户明确要求输出文件/报告/表格时才生成对应产物；不要默认强制 HTML/PPT/CSV/Markdown
-            - 需要外部信息时，优先使用搜索工具
+            # 角色
+            你是一个可调用工具的交互式助手。
 
-            # 解决问题的流程
-            请使用交替进行的“思考（Thought）、行动（Action）、观察（Observation）'三个步骤来系统地解决回答任务。
+            %s
+            # 工具使用
+            - 需要外部信息、文件、计算、检索等能力时，通过 function calling 调用工具。
+            - 有工具可调用且任务未完成时，应继续调用工具，不要空喊“我会去做”却不调用。
+            - 工具结果会以 observation 形式返回；基于结果继续推理或再调用，直到可以给出最终用户回复。
+            - 仅当用户明确要求输出文件/报告/表格时才生成对应产物；不要默认强制 HTML/PPT/CSV/Markdown。
+            - 需要外部信息时，优先使用搜索类工具。
 
-            思考：基于当前获得的信息进行推理和反思，明确下一步行动的目标。
+            # 语言
+            - 默认工作语言为**中文**；用户明确指定其他语言时从其要求。
+            - 思考与输出均使用当前工作语言。
 
-            行动：用于表示需要调用的工具，每一步行动必须是以下两种之一：
-            1、工具调用 [Function Calling]：根据任务需要，确定调用工具。
-            2、Finish[答案]：得出明确答案后使用此操作，返回答案并终止任务。
-
-            观察：记录前一步行动的结果。
-
-            你可以进行多轮推理和检索，但必须严格按照上述格式进行操作，尤其是每一步“行动”只能使用上述两种类型之一。
-
-            # 示例
-
-            问题：科罗拉多造山带东部区域延伸到的区域的海拔范围是多少?
-
-            思考：我需要搜索“科罗拉多造山带”，获取它的概况，特别是东部延伸区域的信息。
-            行动：搜索[科罗拉多造山带]
-            观察：科罗拉多造山带是科罗拉多及其周边地区造山运动的一段。
-
-            思考：这里没有提到东部延伸区域的具体信息，我需要继续查找“东部区域”。
-            行动：查找 [东部区域]
-            观察：（结果 1 / 1）东部区域延伸至高平原，称为中原造山带。
-
-            思考：我已经知道东部区域是高平原，我需要查找高平原的海拔范围。
-            行动：搜索  [高平原 海拔]
-            观察：高平原的海拔高度从 1800 到 7000 英尺。
-
-            思考：我已经得到了答案，可以结束任务。
-            行动：Finish[1800 到 7000 英尺]
-
-            # 语言设置
-            - 默认工作语言为**中文**，如用户明确指定其他语言，则按用户要求切换。
-            - 所有思考、推理与输出均应使用当前工作语言。
-
-            """;
+            """.formatted(USER_FACING_REPLY_CONTRACT);
 
     /**
      * 已废弃：nextStep 不再注入 messages，保留常量仅兼容配置反序列化/旧测试。
      */
     public static final String NEXT_STEP_PROMPT = "";
+
+    /**
+     * 保证 system 中始终包含用户向终答约定；自定义配置覆盖默认模板时也不会丢失。
+     * 入参换行统一，多次调用幂等。
+     */
+    public static String ensureUserFacingReplyContract(String systemPrompt) {
+        String base = systemPrompt == null ? "" : systemPrompt.replace("\r\n", "\n").replace('\r', '\n');
+        if (base.contains(USER_FACING_REPLY_CONTRACT_MARKER)) {
+            return base;
+        }
+        String contract = USER_FACING_REPLY_CONTRACT.trim();
+        if (base.isBlank()) {
+            return contract + "\n";
+        }
+        return base.trim() + "\n\n" + contract + "\n";
+    }
 }

@@ -34,7 +34,13 @@ import {
 } from "@/components/ui/tooltip";
 import ChatRoleSelector from "@/components/ChatRoleSelector";
 import { cn } from "@/lib/utils";
-import { defaultProduct, productList } from "@/utils/constants";
+import {
+  GENERIC_TASK_PRODUCT,
+  defaultProduct,
+  isOutputProductType,
+  OUTPUT_PRODUCT_TYPES,
+  productList,
+} from "@/utils/constants";
 import UploadAttachmentChip from "./UploadAttachmentChip";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
@@ -59,8 +65,9 @@ type Props = {
 };
 
 type InputModeKey = "quick" | "think" | "research";
-const OUTPUT_TYPES = ["html", "docs", "ppt", "table"];
-const OUTPUT_PRODUCTS = productList.filter((item) => OUTPUT_TYPES.includes(item.type)) as CHAT.Product[];
+const OUTPUT_PRODUCTS = productList.filter((item) =>
+  OUTPUT_PRODUCT_TYPES.includes(item.type as (typeof OUTPUT_PRODUCT_TYPES)[number])
+) as CHAT.Product[];
 const DATA_AGENT_PRODUCT =
   (productList.find((item) => item.type === "dataAgent") as CHAT.Product | undefined) ?? defaultProduct;
 const DEFAULT_OUTPUT_PRODUCT = (OUTPUT_PRODUCTS[0] ?? defaultProduct) as CHAT.Product;
@@ -101,10 +108,10 @@ const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
 };
 
 const getOutputProduct = (product?: CHAT.Product, displayOutput?: CHAT.Product) => {
-  if (product && OUTPUT_TYPES.includes(product.type)) {
+  if (product && isOutputProductType(product.type)) {
     return product;
   }
-  if (displayOutput && OUTPUT_TYPES.includes(displayOutput.type)) {
+  if (displayOutput && isOutputProductType(displayOutput.type)) {
     return displayOutput;
   }
   return DEFAULT_OUTPUT_PRODUCT;
@@ -257,6 +264,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
+  const hasSelectedOutputProduct = isOutputProductType(product?.type);
   const resolvedOutputProduct = useMemo(
     () => getOutputProduct(product, displayOutput),
     [displayOutput, product]
@@ -325,12 +333,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       setModeMenuOpen(false);
       return;
     }
-    handleSelectionChange(visibleOutputProduct, modeKey === "research");
+    handleSelectionChange(
+      isDataAgent ? visibleOutputProduct : product ?? visibleOutputProduct,
+      modeKey === "research"
+    );
     setModeMenuOpen(false);
   };
 
   const handleOutputSelect = (nextOutput: CHAT.Product) => {
     handleSelectionChange(nextOutput, visibleMode === "research");
+    setOutputMenuOpen(false);
+  };
+
+  const handleOutputClear = () => {
+    handleSelectionChange(GENERIC_TASK_PRODUCT, visibleMode === "research");
     setOutputMenuOpen(false);
   };
 
@@ -342,7 +358,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         question: text,
         visibleMode,
         isDataAgent,
-        visibleOutputProduct,
+        currentProductType: product?.type,
         uploadedFiles,
         chatRole: chatRole || null,
       })
@@ -522,14 +538,16 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          aria-pressed={!isDataAgent}
+                          aria-pressed={hasSelectedOutputProduct}
                           disabled={disabled || isDataAgent}
-                          className={chipButtonClassName(!isDataAgent, disabled || isDataAgent)}
+                          className={chipButtonClassName(hasSelectedOutputProduct, disabled || isDataAgent)}
                         >
-                          <span className={chipIconWrapClassName(visibleOutputTone, !isDataAgent)}>
+                          <span className={chipIconWrapClassName(visibleOutputTone, hasSelectedOutputProduct)}>
                             <i className={cn("font_family text-[14px]", visibleOutputProduct.img)} />
                           </span>
-                          <span className="truncate">{getProductLabel(visibleOutputProduct.name)}</span>
+                          <span className="truncate">
+                            {hasSelectedOutputProduct ? getProductLabel(visibleOutputProduct.name) : "输出格式"}
+                          </span>
                           <ChevronDownIcon
                             className={cn("size-4 shrink-0 text-[var(--chat-text-muted)] transition-transform", outputMenuOpen && "rotate-180")}
                           />
@@ -544,8 +562,34 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       >
                         <div className={menuTitleClassName}>输出格式</div>
                         <div className="space-y-1">
+                          <button
+                            type="button"
+                            className={menuItemClassName(!hasSelectedOutputProduct && !isDataAgent)}
+                            onClick={handleOutputClear}
+                          >
+                            <span
+                              className={menuIconWrapClassName(
+                                visibleOutputTone,
+                                !hasSelectedOutputProduct && !isDataAgent
+                              )}
+                            >
+                              <span className="text-[11px] font-semibold">Auto</span>
+                            </span>
+                            <span className="min-w-0 flex-1 pr-0.5">
+                              <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                                不指定
+                              </span>
+                              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
+                                由后端按任务内容自行判断
+                              </span>
+                            </span>
+                            {!hasSelectedOutputProduct && !isDataAgent ? (
+                              <CheckIcon className={cn("size-3 shrink-0", visibleOutputTone.check)} />
+                            ) : null}
+                          </button>
                           {OUTPUT_PRODUCTS.map((item) => {
-                            const isActive = item.type === visibleOutputProduct.type && !isDataAgent;
+                            const isActive =
+                              item.type === visibleOutputProduct.type && hasSelectedOutputProduct;
                             const tone = OUTPUT_TONES[item.type] ?? visibleOutputTone;
                             return (
                               <button

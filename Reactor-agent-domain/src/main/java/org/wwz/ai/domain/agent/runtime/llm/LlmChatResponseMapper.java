@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Component;
@@ -43,16 +41,30 @@ public class LlmChatResponseMapper {
         Generation generation = requireGeneration(response);
         AssistantMessage output = generation.getOutput();
         List<ToolCall> toolCalls = toToolCalls(output);
-        return LLM.ToolCallResponse.builder()
+        LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata());
+        return applyUsage(LLM.ToolCallResponse.builder()
                 .content(sanitizeContent(output.getText()))
                 .toolCalls(toolCalls)
                 .finishReason(generation.getMetadata() != null ? generation.getMetadata().getFinishReason() : null)
-                .promptTokens(resolvePromptTokens(response.getMetadata()))
-                .completionTokens(resolveCompletionTokens(response.getMetadata()))
-                .cachedPromptTokens(LlmPromptObservability.resolveCachedPromptTokens(response.getMetadata()))
-                .totalTokens(resolveTotalTokens(response.getMetadata()))
                 .duration(System.currentTimeMillis() - startTimeMs)
-                .build();
+                .build(), usage);
+    }
+
+    public LLM.ToolCallResponse applyUsage(LLM.ToolCallResponse response, LlmUsageSnapshot usage) {
+        if (response == null || usage == null) {
+            return response;
+        }
+        response.setPromptTokens(usage.getPromptTokens());
+        response.setCompletionTokens(usage.getCompletionTokens());
+        response.setTotalTokens(usage.getTotalTokens());
+        response.setCachedPromptTokens(usage.getCachedPromptTokens());
+        response.setPromptTextTokens(usage.getPromptTextTokens());
+        response.setPromptAudioTokens(usage.getPromptAudioTokens());
+        response.setPromptImageTokens(usage.getPromptImageTokens());
+        response.setCompletionTextTokens(usage.getCompletionTextTokens());
+        response.setCompletionAudioTokens(usage.getCompletionAudioTokens());
+        response.setReasoningTokens(usage.getReasoningTokens());
+        return response;
     }
 
     /**
@@ -119,30 +131,6 @@ public class LlmChatResponseMapper {
             throw new IllegalArgumentException("Empty or invalid response from LLM");
         }
         return response.getResult();
-    }
-
-    private Integer resolveTotalTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getTotalTokens() : null;
-    }
-
-    private Integer resolvePromptTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getPromptTokens() : null;
-    }
-
-    private Integer resolveCompletionTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getCompletionTokens() : null;
     }
 
     private String sanitizeContent(String content) {

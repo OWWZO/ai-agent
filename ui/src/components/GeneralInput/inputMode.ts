@@ -1,10 +1,12 @@
+import { toRequestOutputStyle } from "@/utils/constants";
+
 type InputModeKey = "quick" | "think" | "research";
 
 export function buildSubmitPayload(params: {
   question: string;
   visibleMode: InputModeKey;
   isDataAgent: boolean;
-  visibleOutputProduct: CHAT.Product;
+  currentProductType?: string;
   uploadedFiles: CHAT.TFile[];
   chatRole: CHAT.ConversationRole | null;
 }) {
@@ -12,11 +14,11 @@ export function buildSubmitPayload(params: {
     ? "dataAgent"
     : params.visibleMode === "quick"
       ? "chat"
-      : params.visibleOutputProduct.type;
+      : toRequestOutputStyle(params.currentProductType);
 
   return {
     message: params.question.trim(),
-    outputStyle,
+    ...(outputStyle ? { outputStyle } : {}),
     deepThink:
       outputStyle !== "chat" && outputStyle !== "dataAgent"
         ? params.visibleMode === "research"

@@ -54,6 +54,27 @@ public class LlmInvocation {
     /** total token */
     private Integer totalTokens;
 
+    /** prompt_tokens_details.cached_tokens */
+    private Integer cachedPromptTokens;
+
+    /** prompt_tokens_details.text_tokens */
+    private Integer promptTextTokens;
+
+    /** prompt_tokens_details.audio_tokens */
+    private Integer promptAudioTokens;
+
+    /** prompt_tokens_details.image_tokens */
+    private Integer promptImageTokens;
+
+    /** completion_tokens_details.text_tokens */
+    private Integer completionTextTokens;
+
+    /** completion_tokens_details.audio_tokens */
+    private Integer completionAudioTokens;
+
+    /** completion_tokens_details.reasoning_tokens */
+    private Integer reasoningTokens;
+
     /** 请求总体提示词快照 JSON */
     private String promptPayloadJson;
 
@@ -74,8 +95,6 @@ public class LlmInvocation {
     private String toolNames;
 
     private String roleSeq;
-
-    private Integer cachedPromptTokens;
 
     /** OK / RISK / MISS / UNKNOWN */
     private String cacheStatus;

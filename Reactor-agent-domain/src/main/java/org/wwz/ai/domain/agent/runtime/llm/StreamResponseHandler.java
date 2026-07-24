@@ -1,10 +1,10 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Component;
@@ -58,16 +58,31 @@ public class StreamResponseHandler {
                                                         String hiddenStartMarker,
                                                         boolean emitFinalSnapshot,
                                                         boolean pushToClient) {
-        CompletableFuture<String> future = new CompletableFuture<>();
+        return handleStringStreamWithUsage(context, flux, hiddenStartMarker, emitFinalSnapshot, pushToClient)
+                .thenApply(result -> result == null ? null : result.getContent());
+    }
+
+    /**
+     * 处理纯文本流式响应，同时返回接口 usage。
+     */
+    public CompletableFuture<StringStreamResult> handleStringStreamWithUsage(AgentContext context,
+                                                                             Flux<ChatResponse> flux,
+                                                                             String hiddenStartMarker,
+                                                                             boolean emitFinalSnapshot,
+                                                                             boolean pushToClient) {
+        CompletableFuture<StringStreamResult> future = new CompletableFuture<>();
         StringBuilder allContent = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
         String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();
         int[] tokenIndex = new int[]{1};
         int[] emittedLength = new int[]{0};
+        LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
 
         flux.subscribe(response -> {
             try {
+                usageHolder[0] = usageHolder[0].mergeLatest(
+                        LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata()));
                 String chunkContent = extractText(response);
                 if (StringUtils.isBlank(chunkContent)) {
                     return;
@@ -103,7 +118,7 @@ public class StreamResponseHandler {
                 if (finalContent.isEmpty()) {
                     future.completeExceptionally(new IllegalArgumentException("Empty response from streaming LLM"));
                 } else {
-                    future.complete(finalContent);
+                    future.complete(new StringStreamResult(finalContent, usageHolder[0]));
                 }
             } catch (Exception e) {
                 future.completeExceptionally(e);
@@ -140,13 +155,15 @@ public class StreamResponseHandler {
         String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();   // 推送间隔配置
         int[] tokenIndex = new int[]{1};        // token计数器
+        // 无 tool_call 的文本是用户终答，不推 tool_thought；出现 tool_call 后再放行过程文本
+        boolean[] thoughtPushArmed = new boolean[]{false};
 
         // 工具调用收集器 (按id合并多chunk)
         Map<String, ToolCallAccumulator> toolCallAccumulators = new LinkedHashMap<>();
 
         // 元数据
         String[] finishReason = new String[1];   // 结束原因
-        Integer[] totalTokens = new Integer[1];  // 总token数
+        LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
 
         // 订阅数据流
         flux.subscribe(
@@ -158,26 +175,35 @@ public class StreamResponseHandler {
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
                     String chunkContent = output != null ? output.getText() : null;
 
+                    // 收集工具调用片段（先于推送，以便 arm 过程文本推送）
+                    if (output != null && output.getToolCalls() != null) {
+                        mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
+                    }
+                    if (!thoughtPushArmed[0] && !toolCallAccumulators.isEmpty()) {
+                        thoughtPushArmed[0] = true;
+                        // 此前缓存的过程文本一次性放出
+                        if (pushToClient && messageId != null && streamBuffer.length() > 0
+                                && context.getPrinter() != null) {
+                            context.getPrinter().send(messageId, context.getStreamMessageType(),
+                                    streamBuffer.toString(), false);
+                            streamBuffer.setLength(0);
+                        }
+                    }
+
                     // 累积文本内容
                     if (StringUtils.isNotBlank(chunkContent)) {
                         allContent.append(chunkContent);
 
-                        // 流式推送：缓冲+按条件刷新
+                        // 仅在已确认有 tool_call 后，才把过程文本流式推前端
                         if (pushToClient && messageId != null) {
                             streamBuffer.append(chunkContent);
-                            if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
-                                // 发送缓冲区内容(非结束)
+                            if (thoughtPushArmed[0] && shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
                                 context.getPrinter().send(messageId, context.getStreamMessageType(),
                                     streamBuffer.toString(), false);
-                                streamBuffer.setLength(0);  // 清空缓冲
+                                streamBuffer.setLength(0);
                             }
                             tokenIndex[0]++;
                         }
-                    }
-
-                    // 收集工具调用片段
-                    if (output != null && output.getToolCalls() != null) {
-                        mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
                     }
 
                     // 提取结束原因
@@ -186,11 +212,9 @@ public class StreamResponseHandler {
                         finishReason[0] = generation.getMetadata().getFinishReason();
                     }
 
-                    // 提取token用量
-                    Integer usage = resolveTotalTokens(response != null ? response.getMetadata() : null);
-                    if (usage != null) {
-                        totalTokens[0] = usage;
-                    }
+                    // 优先取接口返回 usage
+                    usageHolder[0] = usageHolder[0].mergeLatest(
+                            LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata()));
 
                 } catch (Exception e) {
                     future.completeExceptionally(e);  // 异常结束
@@ -203,38 +227,39 @@ public class StreamResponseHandler {
             // === 流完成 ===
             () -> {
                 try {
-                    // 发送剩余缓冲内容
-                    if (pushToClient && messageId != null && streamBuffer.length() > 0) {
-                        context.getPrinter().send(messageId, context.getStreamMessageType(),
-                            streamBuffer.toString(), false);
-                    }
-
                     // 构建最终工具调用列表
                     List<ToolCall> toolCalls = buildToolCalls(toolCallAccumulators);
                     String content = allContent.toString();
+                    boolean hasToolCalls = toolCalls != null && !toolCalls.isEmpty();
 
-                    // 发送结束标记(带完整内容)
-                    if (pushToClient && messageId != null && StringUtils.isNotBlank(content)) {
-                        context.getPrinter().send(messageId, context.getStreamMessageType(),
-                            content, true);  // true=结束
+                    // 仅有 tool_call 时推过程文本；纯终答轮不推 tool_thought（由 result 交付）
+                    if (pushToClient && messageId != null && hasToolCalls && context.getPrinter() != null) {
+                        if (streamBuffer.length() > 0) {
+                            context.getPrinter().send(messageId, context.getStreamMessageType(),
+                                    streamBuffer.toString(), false);
+                            streamBuffer.setLength(0);
+                        }
+                        if (StringUtils.isNotBlank(content)) {
+                            context.getPrinter().send(messageId, context.getStreamMessageType(),
+                                    content, true);
+                        }
                     }
 
                     // 空响应校验
-                    if (StringUtils.isBlank(content) && toolCalls.isEmpty()) {
+                    if (StringUtils.isBlank(content) && !hasToolCalls) {
                         future.completeExceptionally(
                             new IllegalArgumentException("Empty response from streaming LLM"));
                         return;
                     }
 
                     // 组装并返回最终结果
-                    future.complete(LLM.ToolCallResponse.builder()
+                    future.complete(chatResponseMapper.applyUsage(LLM.ToolCallResponse.builder()
                         .content(StringUtils.isBlank(content) ? null : content)
                         .toolCalls(toolCalls)
                         .streamMessageId(messageId)
                         .finishReason(finishReason[0])
-                        .totalTokens(totalTokens[0])
                         .duration(System.currentTimeMillis() - startTimeMs)
-                        .build());
+                        .build(), usageHolder[0]));
 
                 } catch (Exception e) {
                     future.completeExceptionally(e);
@@ -283,14 +308,6 @@ public class StreamResponseHandler {
             return null;
         }
         return response.getResult().getOutput().getText();
-    }
-
-    private Integer resolveTotalTokens(ChatResponseMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Usage usage = metadata.getUsage();
-        return usage != null ? usage.getTotalTokens() : null;
     }
 
     private String extractVisibleContent(String allContent, String hiddenStartMarker) {
@@ -374,5 +391,12 @@ public class StreamResponseHandler {
                             .build())
                     .build();
         }
+    }
+
+    @Data
+    @AllArgsConstructor
+    public static class StringStreamResult {
+        private String content;
+        private LlmUsageSnapshot usage;
     }
 }
