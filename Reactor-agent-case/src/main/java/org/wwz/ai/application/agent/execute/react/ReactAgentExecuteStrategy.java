@@ -12,10 +12,12 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import java.util.List;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 import java.util.Map;
@@ -40,6 +42,12 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     @Resource
     private SessionWorkingMemoryService sessionWorkingMemoryService;
 
+    @Resource
+    private SessionContextCompactionService sessionContextCompactionService;
+
+    @Resource
+    private ActiveAgentRunRegistry activeAgentRunRegistry;
+
     @Override
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
         enrichWorkingMemory(request);
@@ -56,18 +64,41 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
                         .printer(new AgentSessionPrinter(stream, request, request.getAgentType()))
                         .build();
 
+        activeAgentRunRegistry.begin(request.getRequestId(), request.getSessionId());
+        activeAgentRunRegistry.bindStream(request.getRequestId(), stream);
         try {
             String result = executeHandler.apply(request, dynamicContext);
             log.info("ReactAgent execute result: {}", result);
+            if (dynamicContext.getAgentContext() != null
+                    && dynamicContext.getAgentContext().isRunCancelled()) {
+                ExecutionLedgerRunSupport.finishRun(
+                        dynamicContext.getAgentContext(),
+                        ExecutionLedgerConstants.STATUS_STOPPED,
+                        null,
+                        "USER_STOP",
+                        "用户停止本轮对话");
+            }
         } catch (Exception e) {
-            ExecutionLedgerRunSupport.finishRun(
-                    dynamicContext.getAgentContext(),
-                    ExecutionLedgerConstants.STATUS_FAILED,
-                    null,
-                    "REACT_EXECUTE_ERROR",
-                    e == null ? null : e.getMessage()
-            );
+            if (dynamicContext.getAgentContext() != null
+                    && dynamicContext.getAgentContext().isRunCancelled()) {
+                ExecutionLedgerRunSupport.finishRun(
+                        dynamicContext.getAgentContext(),
+                        ExecutionLedgerConstants.STATUS_STOPPED,
+                        null,
+                        "USER_STOP",
+                        e == null ? "用户停止本轮对话" : e.getMessage());
+            } else {
+                ExecutionLedgerRunSupport.finishRun(
+                        dynamicContext.getAgentContext(),
+                        ExecutionLedgerConstants.STATUS_FAILED,
+                        null,
+                        "REACT_EXECUTE_ERROR",
+                        e == null ? null : e.getMessage()
+                );
+            }
             throw e;
+        } finally {
+            activeAgentRunRegistry.end(request.getRequestId());
         }
     }
 
@@ -79,7 +110,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
-        private void enrichWorkingMemory(AgentRequest request) {
+    private void enrichWorkingMemory(AgentRequest request) {
         if (request == null) {
             return;
         }
@@ -90,6 +121,10 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         // 冷启动/无投影时回退 ledger hydrate，保证首批会话仍有跨轮上下文
         if ((working == null || working.isEmpty()) && sessionContextMemoryService != null) {
             working = sessionContextMemoryService.hydrateWorkingMessages(request.getSessionId(), request.getRequestId());
+        }
+        if (working != null && !working.isEmpty() && sessionContextCompactionService != null) {
+            working = sessionContextCompactionService.applyIfNeeded(
+                    request.getSessionId(), request.getRequestId(), working);
         }
         request.setWorkingMemoryMessages(working == null ? List.of() : working);
         request.setHistoryDialogue("");

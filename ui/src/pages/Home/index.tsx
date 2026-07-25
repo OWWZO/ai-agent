@@ -50,6 +50,7 @@ import {
   deriveConversationMetaFromInput,
   mergeLocalRecentConversations,
   mergeRecentSessions,
+  shouldApplyConversationToView,
   toRecentSessionItem,
 } from "./homeState";
 import FeaturedConversationAdminPanel from "./FeaturedConversationAdminPanel";
@@ -391,13 +392,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   const updateConversation = useCallback(
-    (_conversationId: string, nextConversation: CHAT.ConversationHistory) => {
+    (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
       const nextState = {
         ...nextConversation,
         updatedAt: Date.now(),
       };
-      setCurrentConversation(nextState);
+      // 后台流式更新只刷新本地缓存；仅当前展示的会话才写入主视图，避免其它会话活跃时界面被切走。
       upsertLocalRecentSession(nextState);
+      setCurrentConversation((prev) =>
+        shouldApplyConversationToView(prev.id, conversationId)
+          ? nextState
+          : prev
+      );
     },
     [upsertLocalRecentSession]
   );

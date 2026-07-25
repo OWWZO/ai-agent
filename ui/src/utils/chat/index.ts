@@ -49,3 +49,15 @@ export {
   cloneTaskSnapshot,
   processTaskForRender,
 } from "./renderTasks";
+
+export {
+  AGENT_DISPATCH_TOOL_NAME,
+  buildSubAgentAction,
+  buildSubAgentMarkdown,
+  formatSubAgentDuration,
+  isAgentDispatchTask,
+  parseAgentObservation,
+  resolveParentToolUseId,
+  resolveSubAgentDisplay,
+  type SubAgentDisplay,
+} from "./subagent";

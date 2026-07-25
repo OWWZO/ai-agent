@@ -9,13 +9,20 @@ import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
+import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListStore;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 智能体（Agent）上下文类
@@ -120,6 +127,19 @@ public class AgentContext {
     List<File> productFiles;
 
     /**
+     * 会话工作区根目录（cwd 模式，供 workspace_* 工具使用）。
+     */
+    String workspaceRoot;
+
+    /**
+     * 本轮会话 workspace_read 状态（对齐 cchaha readFileState：path + range + mtime）。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    Map<String, WorkspaceFileReadState> workspaceReadStateByPath = new ConcurrentHashMap<>();
+
+    /**
      * 是否流式响应
      * 用途：
      * 1. 响应模式控制：true=流式输出（逐字返回结果，提升用户体验），false=一次性返回结果；
@@ -210,6 +230,37 @@ public class AgentContext {
     AgentRunState agentRunState = AgentRunState.builder().build();
 
     /**
+     * 会话 Todo 任务列表（TaskCreate/TaskGet，对标 cc-haha tasks）。
+     * 主/子 Agent 共享同一引用；懒创建。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    SessionTaskListStore sessionTaskList;
+
+    /**
+     * 后台运行任务注册表（TaskStop，对标 cc-haha AppState.tasks）。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    RuntimeBackgroundTaskRegistry backgroundTasks = new RuntimeBackgroundTaskRegistry();
+
+    /**
+     * Plan Mode 状态（EnterPlanMode / ExitPlanMode）。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    PlanModeState planModeState = PlanModeState.builder().build();
+
+    /**
+     * 本轮协作式取消（用户停止 / SSE 断开）。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    RunCancellation runCancellation;
+
+    /**
      * 当前任务专属的产品文件列表（任务级）
      * 用途：
      * 1. 粒度细化：仅关联当前task的产品文件，避免全局文件过多导致LLM上下文过载；
@@ -226,6 +277,39 @@ public class AgentContext {
      * 枚举值示例："default"、"ecommerce"、"customer_service"、"market_analysis"
      */
     String templateType;
+
+    /**
+     * 获取或创建会话 Todo 列表（listId 优先 sessionId）。
+     */
+    public synchronized SessionTaskListStore requireSessionTaskList() {
+        if (sessionTaskList == null) {
+            String listId = sessionId != null && !sessionId.isBlank() ? sessionId : requestId;
+            sessionTaskList = new SessionTaskListStore(listId == null ? "default" : listId);
+        }
+        return sessionTaskList;
+    }
+
+    public RuntimeBackgroundTaskRegistry requireBackgroundTasks() {
+        if (backgroundTasks == null) {
+            backgroundTasks = new RuntimeBackgroundTaskRegistry();
+        }
+        return backgroundTasks;
+    }
+
+    public PlanModeState requirePlanModeState() {
+        if (planModeState == null) {
+            planModeState = PlanModeState.builder().build();
+        }
+        return planModeState;
+    }
+
+    public boolean isRunCancelled() {
+        return runCancellation != null && runCancellation.isCancelled();
+    }
+
+    public String getRunCancelReason() {
+        return runCancellation == null ? null : runCancellation.getReason();
+    }
 
     public void bindCurrentToolArtifactSource(ToolArtifactSource toolArtifactSource) {
         currentToolArtifactSourceHolder.set(toolArtifactSource);
@@ -250,6 +334,36 @@ public class AgentContext {
     public ToolArtifactSource getCurrentToolArtifactSource() {
         return currentToolArtifactSourceHolder.get();
     }
+
+
+    public void markWorkspaceFileRead(WorkspaceFileReadState state) {
+        if (state == null || state.getAbsolutePath() == null || state.getAbsolutePath().isBlank()) {
+            return;
+        }
+        if (workspaceReadStateByPath == null) {
+            workspaceReadStateByPath = new ConcurrentHashMap<>();
+        }
+        workspaceReadStateByPath.put(state.getAbsolutePath(), state);
+    }
+
+    public WorkspaceFileReadState getWorkspaceFileReadState(String absolutePath) {
+        if (absolutePath == null || absolutePath.isBlank() || workspaceReadStateByPath == null) {
+            return null;
+        }
+        return workspaceReadStateByPath.get(absolutePath);
+    }
+
+    public boolean hasWorkspaceFileBeenRead(String absolutePath) {
+        return getWorkspaceFileReadState(absolutePath) != null;
+    }
+
+    public Map<String, WorkspaceFileReadState> snapshotWorkspaceReadState() {
+        if (workspaceReadStateByPath == null || workspaceReadStateByPath.isEmpty()) {
+            return Map.of();
+        }
+        return Map.copyOf(workspaceReadStateByPath);
+    }
+
 
     public ToolArtifactBinding registerGeneratedArtifact(ToolArtifactSource source, File file) {
         return toolArtifactRegistry.registerGeneratedFile(
@@ -326,6 +440,8 @@ public class AgentContext {
                 .runtimeDependencies(runtimeDependencies)
                 .dateInfo(dateInfo)
                 .productFiles(copyFiles(productFiles))
+                .workspaceRoot(workspaceRoot)
+                .workspaceReadStateByPath(copyWorkspaceReadState())
                 .isStream(isStream)
                 .streamMessageType(streamMessageType)
                 .sopPrompt(sopPrompt)
@@ -361,6 +477,14 @@ public class AgentContext {
             agentRunState = AgentRunState.builder().build();
         }
         return agentRunState;
+    }
+
+    private Map<String, WorkspaceFileReadState> copyWorkspaceReadState() {
+        Map<String, WorkspaceFileReadState> copy = new ConcurrentHashMap<>();
+        if (workspaceReadStateByPath != null) {
+            copy.putAll(workspaceReadStateByPath);
+        }
+        return copy;
     }
 
     private List<File> copyFiles(List<File> sourceFiles) {

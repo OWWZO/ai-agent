@@ -11,6 +11,9 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMaterializer;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -36,6 +39,15 @@ public class RootNode extends AbstractExecuteSupport {
     private AgentToolCollectionFactory agentToolCollectionFactory;
 
     @Resource
+    private WorkspaceService workspaceService;
+
+    @Resource
+    private WorkspaceSessionFileMaterializer workspaceSessionFileMaterializer;
+
+    @Resource
+    private WorkspaceReadStateStore workspaceReadStateStore;
+
+    @Resource
     private RunReactNode step2RunReactNode;
 
     @Resource
@@ -43,6 +55,9 @@ public class RootNode extends AbstractExecuteSupport {
 
     @Resource
     private ReactorRuntimeDependencies reactorRuntimeDependencies;
+
+    @Resource
+    private org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry activeAgentRunRegistry;
 
     @Override
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -59,6 +74,7 @@ public class RootNode extends AbstractExecuteSupport {
                 .task("")
                 .dateInfo(DateUtil.CurrentDateInfo())
                 .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
+                .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
                 .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
@@ -71,6 +87,9 @@ public class RootNode extends AbstractExecuteSupport {
                 .runtimeDependencies(reactorRuntimeDependencies)
                 .build();
 
+        materializeSessionFiles(agentContext, request.getSessionFiles());
+        hydrateWorkspaceReadState(agentContext);
+
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,
@@ -78,14 +97,59 @@ public class RootNode extends AbstractExecuteSupport {
                 ExecutionLedgerConstants.ENTRY_AGENT_REACT
         );
         agentContext.setToolCollection(buildToolCollection(agentContext, request));
+        bindActiveRunIfPresent(agentContext);
         dynamicContext.setAgentContext(agentContext);
         dynamicContext.setStep(1);
 
         return router(request, dynamicContext);
     }
 
+    private void bindActiveRunIfPresent(AgentContext agentContext) {
+        if (activeAgentRunRegistry == null || agentContext == null) {
+            return;
+        }
+        activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
+    }
+
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
         return agentToolCollectionFactory.buildForReact(agentContext, request);
+    }
+
+
+
+
+    private void hydrateWorkspaceReadState(AgentContext agentContext) {
+        if (workspaceReadStateStore == null || agentContext == null) {
+            return;
+        }
+        try {
+            workspaceReadStateStore.hydrate(agentContext);
+        } catch (Exception e) {
+            log.warn("hydrate workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
+        }
+    }
+
+    private void materializeSessionFiles(AgentContext agentContext, java.util.List<FileInformation> sessionFiles) {
+        if (workspaceSessionFileMaterializer == null) {
+            return;
+        }
+        try {
+            workspaceSessionFileMaterializer.materialize(agentContext, sessionFiles);
+        } catch (Exception e) {
+            log.warn("materialize session files failed, requestId={}", agentContext == null ? null : agentContext.getRequestId(), e);
+        }
+    }
+
+    private String resolveWorkspaceRoot(String sessionId) {
+        if (workspaceService == null || !workspaceService.isEnabled()) {
+            return null;
+        }
+        try {
+            return workspaceService.resolveAndEnsureRoot(sessionId).toString();
+        } catch (Exception e) {
+            log.warn("resolve workspace root failed, sessionId={}", sessionId, e);
+            return null;
+        }
     }
 
     private List<File> convertFiles(List<FileInformation> sessionFiles) {

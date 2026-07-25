@@ -199,6 +199,11 @@ declare global {
       errorMsg?: string
       input?: Record<string, unknown>
       toolParam?: Record<string, unknown>
+      /** 子 Agent 工具事件挂到父 Agent tool_use 下（cc-haha 嵌套） */
+      parentToolUseId?: string
+      subAgentId?: string
+      subAgentType?: string
+      subAgentDescription?: string
       artifactRefs?: ArtifactReference[]
       plannerRoundId?: string
       refList?: {

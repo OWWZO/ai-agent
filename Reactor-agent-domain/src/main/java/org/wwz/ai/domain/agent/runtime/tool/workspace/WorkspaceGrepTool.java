@@ -1,8 +1,4 @@
-package org.wwz.ai.domain.agent.runtime.tool.common.skill;
-
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoadException;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -14,36 +10,36 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 在 skill 目录内做文本搜索。
+ * 工作区文本搜索（对齐 cchaha Grep）。
  */
-public class GrepTool extends AbstractSkillPathTool {
+public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
 
-    public GrepTool(SkillRegistry skillRegistry, SkillRuntimeOptions skillRuntimeOptions) {
-        super(skillRegistry, skillRuntimeOptions);
+    public WorkspaceGrepTool(WorkspaceService workspaceService, WorkspaceRuntimeOptions workspaceRuntimeOptions) {
+        super(workspaceService, workspaceRuntimeOptions);
     }
 
     @Override
     public String getName() {
-        return "grep_tool";
+        return "workspace_grep";
     }
 
     @Override
     public String getDescription() {
-        return "这是一个文本搜索工具，用于在已注册 skill 目录内搜索关键字或正则。";
+        return withWorkspaceHint("在会话工作区内搜索关键字或正则。path 可为文件或目录，缺省为工作区根。不要用 shell grep/rg 代替本工具。");
     }
 
     @Override
     public Map<String, Object> toParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("path", Map.of("type", "string", "description", "搜索起点的绝对路径，可以是文件或目录"));
+        properties.put("path", Map.of("type", "string", "description", "搜索起点（文件或目录）；缺省为工作区根"));
         properties.put("pattern", Map.of("type", "string", "description", "关键字或正则表达式"));
-        properties.put("regex", Map.of("type", "boolean", "description", "是否按正则表达式匹配"));
-        properties.put("case_sensitive", Map.of("type", "boolean", "description", "是否区分大小写"));
+        properties.put("regex", Map.of("type", "boolean", "description", "是否按正则匹配，默认 false"));
+        properties.put("case_sensitive", Map.of("type", "boolean", "description", "是否区分大小写，默认 false"));
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", properties);
-        parameters.put("required", List.of("path", "pattern"));
+        parameters.put("required", List.of("pattern"));
         return parameters;
     }
 
@@ -51,7 +47,13 @@ public class GrepTool extends AbstractSkillPathTool {
     public Object execute(Object input) {
         try {
             Map<String, Object> params = requireInputMap(input);
-            Path basePath = requireAllowedPath(params);
+            Path basePath;
+            Object pathValue = params.get("path");
+            if (pathValue == null || String.valueOf(pathValue).isBlank()) {
+                basePath = requireWorkspaceRoot();
+            } else {
+                basePath = requireAllowedPath(params);
+            }
             Object patternValue = params.get("pattern");
             if (patternValue == null || String.valueOf(patternValue).isBlank()) {
                 return "pattern is required";
@@ -70,48 +72,55 @@ public class GrepTool extends AbstractSkillPathTool {
                     candidateFiles = pathStream.filter(Files::isRegularFile).toList();
                 }
             } else {
-                return "grep_tool 需要文件或目录路径";
+                return "workspace_grep 需要文件或目录路径: " + basePath;
             }
 
             StringBuilder result = new StringBuilder();
-            result.append("路径：").append(basePath).append("\n");
-            result.append("匹配：").append(searchPattern).append("\n");
-            result.append("结果：\n");
+            result.append("路径: ").append(basePath).append('\n');
+            result.append("匹配: ").append(searchPattern).append('\n');
+            result.append("结果:\n");
 
             int matchCount = 0;
             for (Path filePath : candidateFiles) {
-                List<String> lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
+                List<String> lines;
+                try {
+                    lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
+                } catch (IOException ignore) {
+                    continue;
+                }
                 for (int i = 0; i < lines.size(); i++) {
                     if (pattern.matcher(lines.get(i)).find()) {
                         Path displayBasePath = Files.isDirectory(basePath) ? basePath : basePath.getParent();
                         String relativePath = displayBasePath == null
                                 ? filePath.getFileName().toString()
-                                : displayBasePath.relativize(filePath).toString().replace("\\", "/");
+                                : toRelativePath(displayBasePath, filePath);
                         result.append("- ")
                                 .append(relativePath)
-                                .append(":")
+                                .append(':')
                                 .append(i + 1)
                                 .append(": ")
                                 .append(lines.get(i))
-                                .append("\n");
+                                .append('\n');
                         matchCount++;
-                        if (matchCount >= skillRuntimeOptions.getMaxGrepMatches()) {
-                            result.append("[已截断，超过最大匹配数 ").append(skillRuntimeOptions.getMaxGrepMatches()).append("]\n");
+                        if (matchCount >= workspaceRuntimeOptions.getMaxGrepMatches()) {
+                            result.append("[已截断，超过最大匹配数 ")
+                                    .append(workspaceRuntimeOptions.getMaxGrepMatches())
+                                    .append("]\n");
                             return result.toString();
                         }
                     }
                 }
             }
             return result.toString();
-        } catch (SkillLoadException e) {
-            log.warn("{} grep_tool failed, input={}", requestId(), input, e);
+        } catch (WorkspaceAccessException e) {
+            log.warn("{} workspace_grep failed, input={}", requestId(), input, e);
             return e.getMessage();
         } catch (IOException e) {
-            log.error("{} grep_tool io error, input={}", requestId(), input, e);
-            return "grep_tool execute failed";
+            log.error("{} workspace_grep io error, input={}", requestId(), input, e);
+            return "workspace_grep execute failed";
         } catch (Exception e) {
-            log.error("{} grep_tool error, input={}", requestId(), input, e);
-            return "grep_tool execute failed";
+            log.error("{} workspace_grep error, input={}", requestId(), input, e);
+            return "workspace_grep execute failed";
         }
     }
 

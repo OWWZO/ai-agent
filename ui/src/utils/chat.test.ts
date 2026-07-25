@@ -150,6 +150,7 @@ function createToolCallEvent(options?: {
   summary?: string;
   input?: Record<string, unknown>;
   isFinal?: boolean;
+  parentToolUseId?: string;
 }): MESSAGE.EventData {
   return {
     messageType: "task",
@@ -173,6 +174,9 @@ function createToolCallEvent(options?: {
         toolInvocationId: options?.toolInvocationId || "1001",
         summary: options?.summary || "正在调用 file_tool",
         input: options?.input || { command: "get", fileName: "风险日报.md" },
+        ...(options?.parentToolUseId
+          ? { parentToolUseId: options.parentToolUseId }
+          : {}),
       },
     } as unknown as MESSAGE.Task,
   } as unknown as MESSAGE.EventData;
@@ -866,6 +870,59 @@ describe("chat file task title", () => {
       action: "读取文件",
       name: "风险日报.md",
     });
+  });
+
+  it("子 Agent 工具事件应嵌套到父 Agent 卡片 children 下", () => {
+    const currentChat = {
+      sessionId: "session-subagent-nest-1",
+      requestId: "req-subagent-nest-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "agent-call-1",
+      taskId: "task-nest-1",
+      toolCallId: "parent-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "搜索 API",
+        prompt: "find endpoints",
+        subagent_type: "Explore",
+      },
+      status: "running",
+    }), currentChat);
+
+    combineData(createToolCallEvent({
+      messageId: "child-grep-1",
+      taskId: "task-nest-1",
+      toolCallId: "child-grep-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "parent-agent-call",
+    }), currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    // 顶层只应有 Agent，子工具不进 taskList
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].resultMap?.toolName || taskList[0].toolResult?.toolName).toBe("Agent");
+
+    const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
+    expect(timelineChildren).toHaveLength(1);
+    expect(timelineChildren[0].resultMap?.toolName).toBe("Agent");
+    expect(timelineChildren[0].children?.length).toBe(1);
+    expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
   });
 
   it("tool_call 阶段会立即生成可见的工具调用占位卡片", () => {

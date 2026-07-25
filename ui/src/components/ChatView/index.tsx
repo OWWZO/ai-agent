@@ -87,6 +87,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     showAction,
     changeActionStatus,
     loading: streamLoading,
+    stopActiveRun,
     streamingThoughtMap,
     sendMessage,
     regenerateLastMessage,
@@ -168,11 +169,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       case "ERROR":
         runtime.currentChat.error = event.data;
         runtime.currentChat.loading = false;
-        setDataLoading(false);
+        if (conversationRef.current.id === runtime.draftController.conversationId) {
+          setDataLoading(false);
+        }
         break;
       case "READY":
         runtime.currentChat.loading = false;
-        setDataLoading(false);
+        if (conversationRef.current.id === runtime.draftController.conversationId) {
+          setDataLoading(false);
+        }
         break;
       default:
         break;
@@ -503,7 +508,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     showBtn={false}
                     size="medium"
                     busy={loading}
-                    disabled={loading || conversation.role?.available === false}
+                    disabled={!loading && conversation.role?.available === false}
+                    onStop={loading ? () => void stopActiveRun() : undefined}
                     product={currentProduct}
                     deepThink={conversation.deepThink}
                     displayOutput={currentProduct}
@@ -611,7 +617,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                         showBtn={false}
                         size="medium"
                         busy={loading}
-                        disabled={loading || conversation.role?.available === false}
+                        disabled={!loading && conversation.role?.available === false}
+                        onStop={loading ? () => void stopActiveRun() : undefined}
                         product={currentProduct}
                         deepThink={conversation.deepThink}
                         displayOutput={currentProduct}

@@ -3,29 +3,36 @@ package org.wwz.ai.domain.agent.service.execute.planexecute.step;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
+import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ExecutorAgent;
-import org.wwz.ai.domain.agent.runtime.agent.PlanningAgent;
+import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
+import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.agent.SummaryAgent;
+import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.SubTaskExecutionResult;
 import org.wwz.ai.domain.agent.runtime.dto.TaskSummaryResult;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
+import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
+import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
+import org.wwz.ai.domain.agent.runtime.prompt.PlanSolvePrompt;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
-import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
-import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -34,20 +41,33 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * PlanSolve 逻辑树 - 步骤2：规划-执行循环
- * 初始化 Planning/Executor/Summary Agent，首次规划，循环执行直至终止
+ * PlanSolve 逻辑树 - 步骤2：单主代理 ReAct 循环（对齐 React / cchaha）。
+ * <p>
+ * 主路径：ReactImplAgent（system 固定 + messages append-only）→ 无 tool 文本即终答 → 打包 result。
+ * 不再 new PlanningAgent / ExecutorAgent / SummaryAgent 外循环。
+ * <p>
+ * 下方 parallel helper 仅保留给历史单测/兼容调用，主路径不使用。
  */
 @Slf4j
 @Service
 public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
+    private static final int DEFAULT_PLANNER_MAX_PARALLEL_TASKS = 2;
+
+    private static final Pattern FINISH_BRACKET = Pattern.compile(
+            "(?is)^\\s*Finish\\s*\\[\\s*(.*?)\\s*]\\s*$");
+    private static final Pattern FINISH_INLINE = Pattern.compile(
+            "(?is)Finish\\s*\\[\\s*(.*?)\\s*]");
+
     @Resource
     private SessionWorkingMemoryService sessionWorkingMemoryService;
 
-    private static final int DEFAULT_PLANNER_MAX_PARALLEL_TASKS = 2;
+    @Resource
+    private WorkspaceReadStateStore workspaceReadStateStore;
 
     @Resource
     private ReactorConfig reactorConfig;
@@ -57,90 +77,60 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("PlanSolve Step2: Plan-execute loop for requestId: {}", requestParameter.getRequestId());
+        log.info("PlanSolve Step2: single planner ReAct for requestId: {}", requestParameter.getRequestId());
 
         AgentContext agentContext = dynamicContext.getAgentContext();
         if (agentContext == null) {
             throw new IllegalStateException("PlanSolve Step2: agentContext is null, Step1 must run first.");
         }
 
-        PlanningAgent planning = new PlanningAgent(agentContext);
-        ExecutorAgent executor = new ExecutorAgent(agentContext);
-        SummaryAgent summary = new SummaryAgent(agentContext);
-        summary.setSystemPrompt(summary.getSystemPrompt().replace("{{query}}", requestParameter.getQuery()));
+        ReactImplAgent planner = createPlanSolvePlanner(agentContext);
+        String runResult = planner.run(agentContext.getQuery());
+        String finalAnswer = resolveFinalAnswer(planner, runResult);
 
-        dynamicContext.setPlanning(planning);
-        dynamicContext.setExecutor(executor);
-        dynamicContext.setSummary(summary);
+        dynamicContext.setExecutor(planner);
+        dynamicContext.setFinalAnswer(finalAnswer);
+        dynamicContext.setStep(2);
 
-        String planningResult = planning.run(agentContext.getQuery());
-
-        int stepIdx = 0;
-        int maxStepNum = reactorConfig.getPlannerMaxSteps() != null ? reactorConfig.getPlannerMaxSteps() : 5;
-
-        while (stepIdx <= maxStepNum) {
-            List<String> planningResults = Arrays.stream(planningResult.split("<sep>"))
-                    .map(task -> "你的任务是：" + task)
-                    .collect(Collectors.toList());
-            String executorResult;
-            agentContext.getTaskProductFiles().clear();
-
-            if (planningResults.size() == 1) {
-                executorResult = executor.run(planningResults.get(0));
-            } else {
-                List<SubTaskExecutionResult> childResults = executeParallelTasks(agentContext, requestParameter, executor, planningResults);
-                mergeChildResultsIntoParent(executor, childResults);
-                executorResult = joinTaskResults(childResults);
-            }
-
-            planningResult = planning.run(executorResult);
-
-            if ("finish".equals(planningResult)) {
-                sendSummaryResult(agentContext, summary, executor, requestParameter);
-                break;
-            }
-
-            if (planning.getState() == AgentState.IDLE || executor.getState() == AgentState.IDLE) {
-                String message = "达到最大迭代次数，任务终止。";
-                agentContext.getPrinter().send("result", message);
-                finishNonSuccessRun(agentContext, ExecutionLedgerConstants.STATUS_STOPPED, "PLAN_SOLVE_STOPPED", message);
-                break;
-            }
-
-            if (planning.getState() == AgentState.ERROR || executor.getState() == AgentState.ERROR) {
-                String message = "任务执行异常，请联系管理员，任务终止。";
-                agentContext.getPrinter().send("result", message);
-                finishNonSuccessRun(agentContext, ExecutionLedgerConstants.STATUS_FAILED, "PLAN_SOLVE_ERROR", message);
-                break;
-            }
-
-            stepIdx++;
-        }
-        if (stepIdx > maxStepNum) {
-            String message = "达到最大迭代次数，任务终止。";
-            agentContext.getPrinter().send("result", message);
-            finishNonSuccessRun(agentContext, ExecutionLedgerConstants.STATUS_STOPPED, "PLAN_SOLVE_MAX_STEP", message);
-        }
-        return "";
-    }
-
-    private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, Message planResult, AgentRequest request) {
-        TaskSummaryResult result = summary.summaryTaskResult(Collections.singletonList(planResult), request.getQuery());
-        sendSummaryResult(agentContext, result);
-    }
-
-    private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, ExecutorAgent executor, AgentRequest request) {
-        TaskSummaryResult result = summary.summaryTaskResult(executor.getMemory().getMessages(), request.getQuery());
-        sendSummaryResult(agentContext, result);
-        persistWorkingMemory(agentContext, executor, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+        sendFinalResult(agentContext, finalAnswer);
+        persistWorkingMemory(agentContext, planner, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+        persistWorkspaceReadState(agentContext);
+        return "success";
     }
 
     /**
-     * 汇总最终展示结果，并以成功态结束本次 run。
+     * 构造 PlanSolve 主代理：复用 ReactImplAgent 循环，叠加编排约定与 planner 模型/步数。
      */
-    private void sendSummaryResult(AgentContext agentContext, TaskSummaryResult result) {
+    private ReactImplAgent createPlanSolvePlanner(AgentContext agentContext) {
+        ReactImplAgent planner = new ReactImplAgent(agentContext);
+        planner.setName("plan-solve");
+        planner.setDescription("plan-execute main agent: plan mode, dispatch Agent subagents, final user reply");
+        // PlanSolve 入口已 auto-enter plan mode：编排约定 + cchaha 硬只读 plan 指引
+        planner.setSystemPrompt(PlanModePromptInjector.ensurePlanSolveWithPlanModeGuidance(planner.getSystemPrompt()));
+        PlanModePromptInjector.applyIfPlanMode(agentContext, planner);
+
+        if (reactorConfig != null) {
+            Integer maxSteps = reactorConfig.getPlannerMaxSteps();
+            if (maxSteps != null && maxSteps > 0) {
+                planner.setMaxSteps(maxSteps);
+            }
+            String plannerModel = reactorConfig.getPlannerModelName();
+            if (StringUtils.isNotBlank(plannerModel) && agentContext.getRuntimeDependencies() != null) {
+                planner.setLlm(new LLM(plannerModel, "", agentContext.getRuntimeDependencies()));
+            }
+        }
+        return planner;
+    }
+
+    private void sendFinalResult(AgentContext agentContext, String rawFinalAnswer) {
+        TaskSummaryResult result = TaskSummaryArtifactProtocol.parse(
+                StringUtils.defaultString(rawFinalAnswer),
+                agentContext.getVisibleArtifactBindings()
+        );
+
+        String taskSummary = StringUtils.defaultString(result.getTaskSummary());
         Map<String, Object> taskResult = new HashMap<>();
-        taskResult.put("taskSummary", result.getTaskSummary());
+        taskResult.put("taskSummary", taskSummary);
 
         if (CollectionUtils.isEmpty(result.getFiles())) {
             List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
@@ -155,15 +145,92 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         ExecutionLedgerRunSupport.finishRun(
                 agentContext,
                 ExecutionLedgerConstants.STATUS_SUCCESS,
-                result.getTaskSummary(),
+                taskSummary,
                 null,
                 null
         );
     }
 
+    /**
+     * 仅接受「纯文本 assistant 轮」（无 tool_calls）作为用户终答。与 React RunReactNode 同语义。
+     */
+    public static String resolveFinalAnswer(ReActAgent executor, String runResult) {
+        String fromMemory = findLastUserFacingAssistantText(executor);
+        if (StringUtils.isNotBlank(fromMemory)) {
+            return sanitizeUserFacingText(fromMemory);
+        }
 
-    private void persistWorkingMemory(AgentContext agentContext, ExecutorAgent executor, String entryAgent) {
-        if (sessionWorkingMemoryService == null || agentContext == null || executor == null) {
+        if (executor != null
+                && executor.getState() == AgentState.FINISHED
+                && isPlausibleUserFacingRunResult(runResult)) {
+            return sanitizeUserFacingText(runResult);
+        }
+
+        log.warn("PlanSolve final answer missing user-facing assistant text, request may have stopped mid-tools");
+        return "任务已执行完成，但未能生成面向用户的最终说明。请补充问题后重试，或查看过程中的工具结果。";
+    }
+
+    private static String findLastUserFacingAssistantText(ReActAgent executor) {
+        if (executor == null || executor.getMemory() == null) {
+            return null;
+        }
+        List<Message> messages = executor.getMemory().getMessages();
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (message == null || message.getRole() != RoleType.ASSISTANT) {
+                continue;
+            }
+            if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+                continue;
+            }
+            if (StringUtils.isNotBlank(message.getContent())) {
+                return message.getContent().trim();
+            }
+        }
+        return null;
+    }
+
+    private static boolean isPlausibleUserFacingRunResult(String runResult) {
+        if (StringUtils.isBlank(runResult)) {
+            return false;
+        }
+        String text = runResult.trim();
+        if (text.startsWith("Terminated:")) {
+            return false;
+        }
+        if ("No steps executed".equals(text) || "Thinking complete - no action needed".equals(text)) {
+            return false;
+        }
+        if (text.contains("工具执行结果为:") || text.contains("Tool execution")) {
+            return false;
+        }
+        return true;
+    }
+
+    static String sanitizeUserFacingText(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String text = raw.trim();
+        Matcher whole = FINISH_BRACKET.matcher(text);
+        if (whole.matches()) {
+            return whole.group(1).trim();
+        }
+        Matcher inline = FINISH_INLINE.matcher(text);
+        if (inline.find() && text.length() < 500) {
+            String inner = inline.group(1).trim();
+            if (StringUtils.isNotBlank(inner)) {
+                return inner;
+            }
+        }
+        return text;
+    }
+
+    private void persistWorkingMemory(AgentContext agentContext, ReActAgent planner, String entryAgent) {
+        if (sessionWorkingMemoryService == null || agentContext == null || planner == null) {
             return;
         }
         Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
@@ -172,8 +239,19 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
                 agentContext.getRequestId(),
                 runId,
                 entryAgent,
-                executor.exportWorkingMemoryDelta()
+                planner.exportWorkingMemoryDelta()
         );
+    }
+
+    private void persistWorkspaceReadState(AgentContext agentContext) {
+        if (workspaceReadStateStore == null || agentContext == null) {
+            return;
+        }
+        try {
+            workspaceReadStateStore.persist(agentContext);
+        } catch (Exception e) {
+            log.warn("persist workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
+        }
     }
 
     @Override
@@ -181,6 +259,53 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
             AgentRequest requestParameter,
             DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // 以下为旧 plan↔executor 并行路径保留实现（主路径不再调用；兼容历史单测子类）
+    // -------------------------------------------------------------------------
+
+    /**
+     * @deprecated 主路径已改为单 React 主代理；保留供历史 Summary 兼容。
+     */
+    @Deprecated
+    private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, Message planResult, AgentRequest request) {
+        TaskSummaryResult result = summary.summaryTaskResult(Collections.singletonList(planResult), request.getQuery());
+        sendLegacySummaryResult(agentContext, result);
+    }
+
+    /**
+     * @deprecated 主路径已改为单 React 主代理终答。
+     */
+    @Deprecated
+    private void sendSummaryResult(AgentContext agentContext, SummaryAgent summary, ExecutorAgent executor, AgentRequest request) {
+        TaskSummaryResult result = summary.summaryTaskResult(executor.getMemory().getMessages(), request.getQuery());
+        sendLegacySummaryResult(agentContext, result);
+        if (executor != null) {
+            persistWorkingMemory(agentContext, executor, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+            persistWorkspaceReadState(agentContext);
+        }
+    }
+
+    private void sendLegacySummaryResult(AgentContext agentContext, TaskSummaryResult result) {
+        Map<String, Object> taskResult = new HashMap<>();
+        taskResult.put("taskSummary", result.getTaskSummary());
+        if (CollectionUtils.isEmpty(result.getFiles())) {
+            List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
+            if (!CollectionUtils.isEmpty(fileResponses)) {
+                taskResult.put("fileList", fileResponses);
+            }
+        } else {
+            taskResult.put("fileList", result.getFiles());
+        }
+        agentContext.getPrinter().send("result", taskResult);
+        ExecutionLedgerRunSupport.finishRun(
+                agentContext,
+                ExecutionLedgerConstants.STATUS_SUCCESS,
+                result.getTaskSummary(),
+                null,
+                null
+        );
     }
 
     private void finishNonSuccessRun(AgentContext agentContext, int status, String errorCode, String errorMsg) {
@@ -193,9 +318,6 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         );
     }
 
-    /**
-     * PlanSolve 外层 task 并发统一走独立 taskExecutor。
-     */
     protected Executor resolveTaskExecutor(AgentContext agentContext) {
         if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
             return Runnable::run;

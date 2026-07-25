@@ -34,7 +34,7 @@ public class SkillTool implements BaseTool {
     @Override
     public String getDescription() {
         return "这是一个 skill 读取工具，用于按技能名称加载 SKILL.md 正文、技能目录和脚本摘要。\n"
-                + "调用时只需要传入 skill_name，返回结果中的技能目录可继续配合其他 skill 工具使用。\n"
+                + "调用时只需要传入 skill_name；返回的 basePath 可用 workspace_read/list/glob/grep 继续浏览（skill 目录已并入可读根）。\n"
                 + skillRegistry.buildSkillDescription();
     }
 

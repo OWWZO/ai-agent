@@ -134,6 +134,7 @@ vi.mock("./useConversationStream", () => ({
     loading: false,
     streamingThoughtMap: {},
     sendMessage: vi.fn(),
+    stopActiveRun: vi.fn(),
     regenerateLastMessage: vi.fn(),
   }),
 }));

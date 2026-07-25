@@ -4,11 +4,18 @@ import {
   deriveConversationMetaFromInput,
   mergeLocalRecentConversations,
   mergeRecentSessions,
+  shouldApplyConversationToView,
   shouldHydrateConversationHistory,
   toRecentSessionItem,
 } from "./homeState";
 
 describe("homeState", () => {
+  it("仅当前会话的流式更新才写入主视图", () => {
+    expect(shouldApplyConversationToView("conv-a", "conv-a")).toBe(true);
+    expect(shouldApplyConversationToView("conv-a", "conv-b")).toBe(false);
+    expect(shouldApplyConversationToView(undefined, "conv-a")).toBe(false);
+  });
+
   it("切到 dataAgent 时应清空角色并关闭 deepThink", () => {
     expect(
       deriveConversationMetaFromInput(

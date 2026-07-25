@@ -52,6 +52,8 @@ type Props = {
   disabled: boolean;
   /** Agent 任务进行中时，在发送按钮旁展示轻量运行指示 */
   busy?: boolean;
+  /** 任务进行中点击发送区停止本轮 */
+  onStop?: () => void;
   size: string;
   product?: CHAT.Product;
   deepThink?: boolean;
@@ -237,6 +239,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     showBtn,
     disabled,
     busy = false,
+    onStop,
     size,
     product,
     deepThink = false,
@@ -661,16 +664,31 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               ) : null}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <PromptInputSubmit
-                    className="relative size-9 rounded-full border-0 bg-transparent p-0 shadow-none transition-all duration-200 hover:scale-105 disabled:scale-100 disabled:opacity-50 disabled:hover:scale-100"
-                    disabled={!canSend}
-                    variant="ghost"
-                  >
-                    <AnimatedOrb size={36} />
-                  </PromptInputSubmit>
+                  {busy && onStop ? (
+                    <button
+                      type="button"
+                      className="relative flex size-9 items-center justify-center rounded-full border-0 bg-[var(--chat-accent)] p-0 text-white shadow-none transition-all duration-200 hover:scale-105 hover:opacity-90"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onStop();
+                      }}
+                      aria-label="停止"
+                    >
+                      <span className="block size-3 rounded-[2px] bg-white" />
+                    </button>
+                  ) : (
+                    <PromptInputSubmit
+                      className="relative size-9 rounded-full border-0 bg-transparent p-0 shadow-none transition-all duration-200 hover:scale-105 disabled:scale-100 disabled:opacity-50 disabled:hover:scale-100"
+                      disabled={!canSend}
+                      variant="ghost"
+                    >
+                      <AnimatedOrb size={36} />
+                    </PromptInputSubmit>
+                  )}
                 </TooltipTrigger>
                 <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                  {busy ? "任务进行中" : "发送"}
+                  {busy ? (onStop ? "停止" : "任务进行中") : "发送"}
                 </TooltipContent>
               </Tooltip>
             </PromptInputTools>

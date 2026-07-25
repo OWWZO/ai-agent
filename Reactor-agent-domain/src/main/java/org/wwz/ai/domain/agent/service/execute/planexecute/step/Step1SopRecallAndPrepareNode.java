@@ -12,6 +12,11 @@ import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceSessionFileMaterializer;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.util.DateUtil;
 import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
@@ -37,7 +42,19 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
     private AgentToolCollectionFactory agentToolCollectionFactory;
 
     @Resource
+    private WorkspaceService workspaceService;
+
+    @Resource
+    private WorkspaceSessionFileMaterializer workspaceSessionFileMaterializer;
+
+    @Resource
+    private WorkspaceReadStateStore workspaceReadStateStore;
+
+    @Resource
     private SopRecallService sopRecallService;
+
+    @Resource
+    private org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry activeAgentRunRegistry;
 
     @Resource
     private Step2PlanExecuteNode step2PlanExecuteNode;
@@ -47,6 +64,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
 
     @Resource
     private ReactorRuntimeDependencies reactorRuntimeDependencies;
+
+    @Resource
+    private PlanArtifactStore planArtifactStore;
 
     @Override
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -61,6 +81,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 .task("")
                 .dateInfo(DateUtil.CurrentDateInfo())
                 .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
+                .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
                 .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
@@ -73,6 +94,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 .runtimeDependencies(reactorRuntimeDependencies)
                 .build();
 
+        materializeSessionFiles(agentContext, request.getSessionFiles());
+        hydrateWorkspaceReadState(agentContext);
+
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,
@@ -80,12 +104,53 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
         );
         agentContext.setToolCollection(buildToolCollection(agentContext, request));
+        if (activeAgentRunRegistry != null) {
+            activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
+        }
         handleSopRecall(agentContext, request);
+        // PlanSolve = cchaha 式「先规划」：请求一进来就进入 plan mode，未批准前禁止改业务
+        enterPlanModeForPlanSolve(agentContext);
 
         dynamicContext.setAgentContext(agentContext);
         dynamicContext.setStep(1);
 
         return router(request, dynamicContext);
+    }
+
+    /**
+     * 对标 cchaha /plan：进入 plan 后才有硬只读；PlanSolve 链路默认每请求自动进入。
+     */
+    private void enterPlanModeForPlanSolve(AgentContext agentContext) {
+        if (agentContext == null) {
+            return;
+        }
+        PlanModeState state = agentContext.requirePlanModeState();
+        if (state.isPlanMode()) {
+            return;
+        }
+        state.enterPlanMode();
+        String planPathHint = PlanArtifactStore.RELATIVE_PLAN_PATH;
+        if (planArtifactStore != null) {
+            try {
+                var path = planArtifactStore.resolvePlanPath(agentContext.getSessionId());
+                if (path != null) {
+                    planPathHint = path.toString();
+                }
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        }
+        state.setPlan(state.getPlanContent(), planPathHint);
+        if (agentContext.getPrinter() != null) {
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("mode", PlanModeState.MODE_PLAN);
+            payload.put("planFilePath", planPathHint);
+            payload.put("autoEntered", true);
+            payload.put("reason", "PLAN_SOLVE_ENTRY");
+            agentContext.getPrinter().send("plan_mode_entered", payload);
+        }
+        log.info("{} PlanSolve auto-entered plan mode, planFile={}",
+                agentContext.getRequestId(), planPathHint);
     }
 
     private void handleSopRecall(AgentContext agentContext, AgentRequest request) {
@@ -105,6 +170,43 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             }
         } catch (Exception e) {
             log.error("{} SOP召回处理异常", request.getRequestId(), e);
+        }
+    }
+
+
+
+
+    private void hydrateWorkspaceReadState(AgentContext agentContext) {
+        if (workspaceReadStateStore == null || agentContext == null) {
+            return;
+        }
+        try {
+            workspaceReadStateStore.hydrate(agentContext);
+        } catch (Exception e) {
+            log.warn("hydrate workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
+        }
+    }
+
+    private void materializeSessionFiles(AgentContext agentContext, java.util.List<FileInformation> sessionFiles) {
+        if (workspaceSessionFileMaterializer == null) {
+            return;
+        }
+        try {
+            workspaceSessionFileMaterializer.materialize(agentContext, sessionFiles);
+        } catch (Exception e) {
+            log.warn("materialize session files failed, requestId={}", agentContext == null ? null : agentContext.getRequestId(), e);
+        }
+    }
+
+    private String resolveWorkspaceRoot(String sessionId) {
+        if (workspaceService == null || !workspaceService.isEnabled()) {
+            return null;
+        }
+        try {
+            return workspaceService.resolveAndEnsureRoot(sessionId).toString();
+        } catch (Exception e) {
+            log.warn("resolve workspace root failed, sessionId={}", sessionId, e);
+            return null;
         }
     }
 

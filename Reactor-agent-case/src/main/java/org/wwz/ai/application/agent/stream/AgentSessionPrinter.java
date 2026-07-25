@@ -105,6 +105,10 @@ public class AgentSessionPrinter implements Printer {
                     response.setToolResult((AgentResponse.ToolResult) message);
                     break;
                 case "tool_call":
+                case "ask_user_question":
+                case "plan_approval":
+                case "plan_mode_entered":
+                case "session_tasks":
                 case "browser":
                 case "code":
                 case "html":
@@ -116,6 +120,11 @@ public class AgentSessionPrinter implements Printer {
                 case "data_analysis":
                     response.setResultMap(JSON.parseObject(JSON.toJSONString(message)));
                     response.getResultMap().put("agentType", agentType);
+                    // 子 Agent 嵌套标签（parentToolUseId 等）经 extraResultMap 传入，
+                    // 上面 setResultMap 会覆盖，这里再合并一次。
+                    if (extraResultMap != null && !extraResultMap.isEmpty()) {
+                        response.getResultMap().putAll(extraResultMap);
+                    }
                     break;
                 case "agent_stream":
                     response.setResult((String) message);

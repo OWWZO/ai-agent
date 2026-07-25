@@ -10,8 +10,8 @@ import org.junit.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.GrepTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.ReadTool;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.ScriptRunnerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.RegistryBackedToolCallback;
@@ -108,8 +108,8 @@ public class ToolSchemaNormalizerTest {
 
         try {
             ToolSchemaNormalizer.normalizeSchema(new SkillTool(null).toParams(), "skill_tool");
-            ToolSchemaNormalizer.normalizeSchema(new ReadTool(null, null).toParams(), "read_tool");
-            ToolSchemaNormalizer.normalizeSchema(new GrepTool(null, null).toParams(), "grep_tool");
+            ToolSchemaNormalizer.normalizeSchema(new WorkspaceReadTool(null, null).toParams(), "workspace_read");
+            ToolSchemaNormalizer.normalizeSchema(new WorkspaceGrepTool(null, null).toParams(), "workspace_grep");
             ToolSchemaNormalizer.normalizeSchema(new ScriptRunnerTool(null, null, null).toParams(), "script_runner_tool");
 
             boolean hasIncompleteSchemaWarning = listAppender.list.stream()

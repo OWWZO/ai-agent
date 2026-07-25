@@ -165,7 +165,8 @@ public class ReplayProjector {
      */
     private boolean shouldSkipLlmReplay(LlmInvocationView invocation) {
         return invocation == null
-                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind());
+                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind())
+                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT.equals(invocation.getCallKind());
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,

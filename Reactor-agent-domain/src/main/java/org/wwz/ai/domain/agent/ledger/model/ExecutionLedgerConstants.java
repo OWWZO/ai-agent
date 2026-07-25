@@ -19,6 +19,8 @@ public final class ExecutionLedgerConstants {
     public static final String CALL_KIND_ASK = "ask";
     public static final String CALL_KIND_ASK_TOOL = "askTool";
     public static final String CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE = "internalDigitalEmployee";
+    /** 内部会话压缩摘要，不进入 UI 回放主语义。 */
+    public static final String CALL_KIND_INTERNAL_COMPACT = "internalCompact";
 
     public static final String ENTRY_AGENT_REACT = "react";
     public static final String ENTRY_AGENT_PLAN_SOLVE = "plan_solve";

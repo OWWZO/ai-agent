@@ -214,8 +214,14 @@ public class BaseAgentResponseHandler {
                 break;
             case "tool_result":
                 payload.put("toolResult", agentResponse.getToolResult());
+                // 子 Agent 嵌套标签在 resultMap（SubAgentPrinter），需透传到前端
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "tool_call":
+            case "ask_user_question":
+            case "plan_approval":
+            case "plan_mode_entered":
+            case "session_tasks":
             case "browser":
             case "code":
             case "html":
@@ -251,6 +257,31 @@ public class BaseAgentResponseHandler {
         }
         appendPlannerRoundId(payload, agentResponse.getResultMap());
         return payload;
+    }
+
+    private void appendSubAgentNestingTags(Map<String, Object> payload, Map<String, Object> resultMap) {
+        if (payload == null || resultMap == null || resultMap.isEmpty()) {
+            return;
+        }
+        copyIfPresent(payload, resultMap, "parentToolUseId");
+        copyIfPresent(payload, resultMap, "subAgentId");
+        copyIfPresent(payload, resultMap, "subAgentType");
+        copyIfPresent(payload, resultMap, "subAgentDescription");
+        // 前端 resolveParentToolUseId 读 resultMap.parentToolUseId，
+        // tool_result 顶层也放一份，并镜像进 resultMap 字段以便 buildTaskFromEventData 展开。
+        if (resultMap.containsKey("parentToolUseId")) {
+            Map<String, Object> nested = payload.get("resultMap") instanceof Map
+                    ? new LinkedHashMap<>((Map<String, Object>) payload.get("resultMap"))
+                    : new LinkedHashMap<>();
+            nested.putAll(resultMap);
+            payload.put("resultMap", nested);
+        }
+    }
+
+    private void copyIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+        if (source.containsKey(key) && source.get(key) != null) {
+            target.put(key, source.get(key));
+        }
     }
 
     private void syncPlannerRoundId(EventResult eventResult, AgentResponse agentResponse) {

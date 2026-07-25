@@ -120,6 +120,54 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
         }
     }
 
+    @Override
+    public void replaceReadyProjection(String sessionId, String compactRequestId, List<Message> compactedMessages) {
+        if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(compactRequestId)
+                || compactedMessages == null || compactedMessages.isEmpty()) {
+            return;
+        }
+        try {
+            WorkingMemoryTurn existing = workingMemoryTurnDao.selectByRequestId(compactRequestId);
+            if (existing != null) {
+                return;
+            }
+            List<WorkingMemoryMessage> rows = projector.project(compactedMessages, sessionId, compactRequestId, null);
+            if (rows.isEmpty()) {
+                return;
+            }
+            workingMemoryTurnDao.markReadyInvalidBySessionId(sessionId);
+            Integer maxSeq = workingMemoryTurnDao.selectMaxTurnSeq(sessionId);
+            int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
+            LocalDateTime now = LocalDateTime.now();
+            WorkingMemoryTurn turn = WorkingMemoryTurn.builder()
+                    .sessionId(sessionId)
+                    .requestId(compactRequestId)
+                    .runId(null)
+                    .turnSeq(nextSeq)
+                    .entryAgent("compaction")
+                    .status(WorkingMemoryTurn.STATUS_READY)
+                    .schemaVersion(1)
+                    .messageCount(rows.size())
+                    .tokenEstimate(estimateTokens(projector.hydrate(rows)))
+                    .startedAt(now)
+                    .finishedAt(now)
+                    .deleted(0)
+                    .build();
+            workingMemoryTurnDao.insertTurn(turn);
+            if (turn.getId() == null) {
+                return;
+            }
+            for (WorkingMemoryMessage row : rows) {
+                row.setTurnId(turn.getId());
+            }
+            workingMemoryMessageDao.batchInsertMessages(rows);
+            log.info("replaceReadyProjection sessionId={} compactRequestId={} messages={} tokens={}",
+                    sessionId, compactRequestId, rows.size(), turn.getTokenEstimate());
+        } catch (Exception e) {
+            log.warn("replaceReadyProjection failed sessionId={} compactRequestId={}", sessionId, compactRequestId, e);
+        }
+    }
+
     private int estimateTokens(List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return 0;

@@ -1,4 +1,5 @@
 import { buildDeepSearchExtendMarkdown, resolveDeepSearchStage } from "@/utils/deepSearch";
+import { buildSubAgentMarkdown, isAgentDispatchTask } from "@/utils/chat/subagent";
 import { PanelItemType } from "./type";
 
 function buildToolCallMarkdown(resultMap?: PanelItemType["resultMap"]) {
@@ -33,14 +34,22 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
 
   switch (messageType) {
     case "tool_result":
-      markDownContent = toolResult?.toolResult || "";
+      if (isAgentDispatchTask(taskItem as unknown as CHAT.Task)) {
+        markDownContent = buildSubAgentMarkdown(taskItem as unknown as CHAT.Task);
+      } else {
+        markDownContent = toolResult?.toolResult || "";
+      }
       break;
     case "tool_thought":
       // 兜底支持思考内容，避免异常状态下工作区出现“有标题但无内容”的空白面板。
       markDownContent = taskItem.toolThought || "";
       break;
     case "tool_call":
-      markDownContent = buildToolCallMarkdown(resultMap);
+      if (isAgentDispatchTask(taskItem as unknown as CHAT.Task)) {
+        markDownContent = buildSubAgentMarkdown(taskItem as unknown as CHAT.Task);
+      } else {
+        markDownContent = buildToolCallMarkdown(resultMap);
+      }
       break;
     case "code":
       if (resultMap?.code || (resultMap?.codeOutput && resultMap?.isFinal)) {

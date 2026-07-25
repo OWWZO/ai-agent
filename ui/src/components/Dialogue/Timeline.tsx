@@ -1,8 +1,13 @@
-import { FC, memo, useMemo } from "react";
+import { FC, memo, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { buildAction, getIcon } from "@/utils/chat";
+import {
+  formatSubAgentDuration,
+  isAgentDispatchTask,
+  resolveSubAgentDisplay,
+} from "@/utils/chat/subagent";
 import {
   buildDeepSearchPreviewModel,
   resolveDeepSearchStage,
@@ -15,7 +20,10 @@ import {
   ReasoningContent,
 } from "@/components/ai-elements/reasoning";
 import {
+  BotIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   LoaderCircleIcon,
   FileTextIcon,
   SearchIcon,
@@ -26,6 +34,9 @@ import {
   isTimelineTaskContainerCompleted,
   shouldShowTimelineGroupCompletedIcon,
 } from "./timelineStatus";
+import AskUserQuestionCard from "./AskUserQuestionCard";
+import PlanApprovalCard from "./PlanApprovalCard";
+import SessionTaskList from "./SessionTaskList";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -95,6 +106,15 @@ const ToolItem: FC<ToolItemProps> = memo(({
         </div>
       );
     }
+    case "ask_user_question": {
+      return <AskUserQuestionCard tool={tool} />;
+    }
+    case "plan_approval": {
+      return <PlanApprovalCard tool={tool} />;
+    }
+    case "session_tasks": {
+      return <SessionTaskList tool={tool} />;
+    }
     case "browser": {
       return (
         <div className="mt-[8px]">
@@ -142,6 +162,24 @@ const ToolItem: FC<ToolItemProps> = memo(({
       const isSummarizing =
         tool.messageType === "deep_search" && deepSearchStage === "report";
       const isDeepSearchInline = isSearching || isSummarizing;
+      const isSubAgent = isAgentDispatchTask(tool);
+      const subAgent = isSubAgent ? resolveSubAgentDisplay(tool) : null;
+
+      if (isSubAgent && subAgent) {
+        return (
+          <SubAgentTimelineCard
+            tool={tool}
+            chat={chat}
+            subAgent={subAgent}
+            actionInfo={{
+              action: actionInfo.action,
+              tool: actionInfo.tool,
+              name: actionInfo.name || "",
+            }}
+            changeActiveChat={changeActiveChat}
+          />
+        );
+      }
 
       return (
         <div
@@ -200,6 +238,142 @@ const ToolItem: FC<ToolItemProps> = memo(({
 );
 
 ToolItem.displayName = "ToolItem";
+
+const SubAgentTimelineCard: FC<{
+  tool: CHAT.Task;
+  chat: CHAT.ChatItem;
+  subAgent: ReturnType<typeof resolveSubAgentDisplay>;
+  actionInfo: { action: string; tool: string; name: string };
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+}> = memo(({ tool, chat, subAgent, actionInfo, changeActiveChat }) => {
+  const nested = tool.children || [];
+  const [expanded, setExpanded] = useState(
+    () => subAgent.status === "running" || nested.length > 0
+  );
+  const duration = formatSubAgentDuration(subAgent.totalDurationMs);
+  const subAgentRunning = subAgent.status === "running";
+  const subAgentFailed = subAgent.status === "failed";
+  const nestedCount = nested.length;
+
+  return (
+    <div className="mt-2">
+      <div
+        className={[
+          taskRowClass,
+          "border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40",
+          subAgentRunning ? "border-[var(--chat-accent)]/35" : "",
+          subAgentFailed ? "border-red-400/40" : "",
+        ].join(" ")}
+        onClick={() => changeActiveChat(tool, chat)}
+      >
+        <button
+          type="button"
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpanded((value) => !value);
+          }}
+          aria-label={expanded ? "折叠子工具" : "展开子工具"}
+        >
+          {expanded ? (
+            <ChevronDownIcon className="size-3.5" />
+          ) : (
+            <ChevronRightIcon className="size-3.5" />
+          )}
+        </button>
+        <div
+          className={[
+            "relative flex size-7 shrink-0 items-center justify-center rounded-lg border",
+            subAgentFailed
+              ? "border-red-400/50 text-red-500"
+              : subAgentRunning
+                ? "border-[var(--chat-accent)]/45 text-[var(--chat-accent)]"
+                : "border-[var(--chat-border)] text-[var(--chat-accent)]",
+          ].join(" ")}
+        >
+          {subAgentRunning ? (
+            <span
+              className="absolute -inset-0.5 rounded-[10px] border border-transparent border-t-[var(--chat-accent)] opacity-80 motion-safe:animate-spin"
+              aria-hidden
+            />
+          ) : null}
+          {subAgentRunning ? (
+            <LoaderCircleIcon className="relative z-[1] size-4 animate-spin" />
+          ) : (
+            <BotIcon className="relative z-[1] size-4" />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <span className={taskTitleClass}>{actionInfo.action}</span>
+            <span className="shrink-0 rounded-md bg-[var(--chat-accent)]/12 px-1.5 py-0.5 text-[11px] font-medium text-[var(--chat-accent)]">
+              {subAgent.subagentType}
+            </span>
+            {subAgent.description ? (
+              <span className={taskMetaClass}>{subAgent.description}</span>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[12px] text-[var(--chat-text-soft)]">
+            {subAgentRunning ? (
+              <span className="truncate">
+                同步执行中{nestedCount > 0 ? ` · ${nestedCount} tools` : "…"}
+              </span>
+            ) : (
+              <>
+                {nestedCount > 0 ? (
+                  <span className="shrink-0">{nestedCount} tools</span>
+                ) : subAgent.totalToolUseCount != null ? (
+                  <span className="shrink-0">{subAgent.totalToolUseCount} tools</span>
+                ) : null}
+                {duration ? <span className="shrink-0">{duration}</span> : null}
+                {subAgent.agentId ? (
+                  <span className="truncate font-mono text-[11px] opacity-70">
+                    {subAgent.agentId.slice(0, 8)}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      {expanded && nestedCount > 0 ? (
+        <div className="ml-6 border-l border-[var(--chat-border)]/40 pl-3">
+          {nested.map((child, index) => {
+            const childAction = buildAction(child);
+            const childLoading =
+              child.messageType === "tool_call" && !child.resultMap?.isFinal;
+            return (
+              <div
+                key={child.id || child.messageId || child.taskId || index}
+                className="mt-1.5 flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  changeActiveChat(child, chat);
+                }}
+              >
+                {childLoading ? (
+                  <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-[var(--chat-accent)]" />
+                ) : (
+                  <i
+                    className={`font_family ${getIcon(child.messageType)} shrink-0 text-[14px] text-[var(--chat-accent)]`}
+                  />
+                )}
+                <span className="shrink-0 font-medium text-[var(--chat-text)]">
+                  {childAction.action}
+                </span>
+                <span className="truncate">
+                  {childAction.name || childAction.tool || child.toolResult?.toolName || child.resultMap?.toolName}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+SubAgentTimelineCard.displayName = "SubAgentTimelineCard";
 
 const DeepSearchPreviewItem: FC<{
   tool: CHAT.Task;

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol;
@@ -31,6 +32,21 @@ public class SummaryResultNode extends AbstractExecuteSupport {
     @Resource
     private SessionWorkingMemoryService sessionWorkingMemoryService;
 
+    @Resource
+    private WorkspaceReadStateStore workspaceReadStateStore;
+
+    
+    private void persistWorkspaceReadState(AgentContext agentContext) {
+        if (workspaceReadStateStore == null || agentContext == null) {
+            return;
+        }
+        try {
+            workspaceReadStateStore.persist(agentContext);
+        } catch (Exception e) {
+            log.warn("persist workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
+        }
+    }
+
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step3: Send React final answer for requestId: {}", requestParameter.getRequestId());
@@ -39,6 +55,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         if (agentContext == null || dynamicContext.getExecutor() == null) {
             throw new IllegalStateException("React Step3: agentContext/executor is null, Step2 must run first.");
         }
+        persistWorkspaceReadState(agentContext);
 
         String rawFinalAnswer = StringUtils.defaultString(dynamicContext.getFinalAnswer());
         TaskSummaryResult result = TaskSummaryArtifactProtocol.parse(

@@ -574,3 +574,29 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     KEY idx_wm_msg_request (request_id, deleted, seq_no),
     KEY idx_wm_msg_visibility (session_id, visibility, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='å·¥ä½œè®°å¿†æ¶ˆæ¯è¡Œï¼ˆè‡ªåŒ…å« hydrateï¼‰';
+
+-- ¹¤×÷¼ÇÒäÑ¹ËõÊÂ¼ş£¨Éó¼Æ£º²ßÂÔ¡¢Ç°ºó token¡¢ÕªÒªÕıÎÄ¡¢Ñ¹ËõºóÍ¶Ó°¿ìÕÕ£©
+CREATE TABLE IF NOT EXISTS ai_agent_working_memory_compaction (
+    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT 'Ö÷¼üID',
+    session_id            VARCHAR(64)   NOT NULL COMMENT '»á»°ID',
+    trigger_request_id    VARCHAR(64)   NOT NULL COMMENT '´¥·¢Ñ¹ËõµÄµ±Ç°ÇëÇóID',
+    compact_request_id    VARCHAR(128)  NULL COMMENT 'Ğ´Èë working_memory µÄ compact request_id',
+    strategy              VARCHAR(32)   NOT NULL COMMENT 'micro-only/session-memory/full-llm/drop-oldest',
+    status                TINYINT       NOT NULL DEFAULT 1 COMMENT '1=SUCCESS,2=FAILED',
+    before_tokens         INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõÇ° token ¹ÀËã',
+    after_tokens          INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹Ëõºó token ¹ÀËã',
+    before_message_count  INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõÇ°ÏûÏ¢ÌõÊı',
+    after_message_count   INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõºóÏûÏ¢ÌõÊı',
+    threshold_tokens      INT           NOT NULL DEFAULT 0 COMMENT '´¥·¢ãĞÖµ',
+    summary_text          MEDIUMTEXT    NULL COMMENT '×¢ÈëÓÃ summary ÕıÎÄ£¨ÈôÓĞ£©',
+    before_messages_json  MEDIUMTEXT    NULL COMMENT 'Ñ¹ËõÇ° Message ÁĞ±í JSON£¨Éó¼Æ£©',
+    after_messages_json   MEDIUMTEXT    NULL COMMENT 'Ñ¹Ëõºó Message ÁĞ±í JSON£¨Éó¼Æ/¿ÉÖØ½¨£©',
+    error_message         VARCHAR(1024) NULL COMMENT 'Ê§°ÜÔ­Òò',
+    create_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '´´½¨Ê±¼ä',
+    update_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '¸üĞÂÊ±¼ä',
+    deleted               TINYINT(1)    NOT NULL DEFAULT 0 COMMENT 'ÈíÉ¾³ı',
+    PRIMARY KEY (id),
+    KEY idx_wm_compaction_session (session_id, deleted, id DESC),
+    KEY idx_wm_compaction_trigger (trigger_request_id, deleted),
+    KEY idx_wm_compaction_strategy (session_id, strategy, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='¹¤×÷¼ÇÒäÑ¹ËõÊÂ¼şÉó¼Æ±í';

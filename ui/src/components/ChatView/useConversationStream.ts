@@ -48,6 +48,7 @@ type UseConversationStreamResult = {
   loading: boolean;
   streamingThoughtMap: Record<string, string>;
   sendMessage: (inputInfo: CHAT.TInputInfo) => void;
+  stopActiveRun: () => Promise<void>;
   regenerateLastMessage: () => void;
 };
 
@@ -257,6 +258,7 @@ export function useConversationStream(
   const [loading, setLoading] = useState(false);
   const [streamingThoughtMap, setStreamingThoughtMap] = useState<Record<string, string>>({});
   const conversationRef = useRef(conversation);
+  const activeRequestIdRef = useRef<string | null>(null);
 
   const workspaceTaskThrottle = useRafThrottle<CHAT.Task | undefined>(
     undefined,
@@ -398,6 +400,8 @@ export function useConversationStream(
     const isChatMode = currentOutputStyle === "chat";
     const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
     const requestId = getUniqId();
+    activeRequestIdRef.current = requestId;
+    const isActiveStream = () => conversationRef.current.id === conversationId;
     let currentChat = createRunningChat(
       inputInfo,
       baseConversation.sessionId,
@@ -484,14 +488,17 @@ export function useConversationStream(
         (force || now - lastConversationFlushAt >= CONVERSATION_FLUSH_INTERVAL);
       const shouldFlushTask =
         !!pendingTaskData && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL);
+      const streamStillActive = isActiveStream();
 
       if (shouldFlushTask && pendingTaskData) {
-        setTaskList(pendingTaskData.taskList);
-        setPlan(pendingTaskData.plan);
-        setShowAction(resolveActionPanelVisibility({
-          plan: pendingTaskData.plan,
-          taskList: pendingTaskData.taskList,
-        }));
+        if (streamStillActive) {
+          setTaskList(pendingTaskData.taskList);
+          setPlan(pendingTaskData.plan);
+          setShowAction(resolveActionPanelVisibility({
+            plan: pendingTaskData.plan,
+            taskList: pendingTaskData.taskList,
+          }));
+        }
         pendingTaskData = null;
         lastTaskFlushAt = now;
       }
@@ -528,6 +535,7 @@ export function useConversationStream(
 
     const handleMessage = (data: MESSAGE.Answer) => {
       const { finished, resultMap, packageType, status } = data;
+      const streamStillActive = isActiveStream();
       const isTerminalGuardError =
         Boolean(finished) &&
         packageType === "result" &&
@@ -536,7 +544,9 @@ export function useConversationStream(
 
       if (isTerminalGuardError) {
         const errorText = data.errorMsg || "当前请求处理失败，请稍后重试";
-        setLoading(false);
+        if (streamStillActive) {
+          setLoading(false);
+        }
 
         if (isChatMode) {
           currentChat = {
@@ -558,7 +568,9 @@ export function useConversationStream(
           normalizedDeepThink,
           currentChat.multiAgent
         );
-        setTaskList(taskData.taskList);
+        if (streamStillActive) {
+          setTaskList(taskData.taskList);
+        }
         draftController.commit(
           draftController.replaceLastItem({ ...currentChat })
         );
@@ -575,13 +587,17 @@ export function useConversationStream(
             status: "FAILED",
           },
         };
-        setLoading(false);
+        if (streamStillActive) {
+          setLoading(false);
+        }
         syncRunningConversation();
         return;
       }
 
       if (status === "tokenUseUp") {
-        onTokenUseUp?.();
+        if (streamStillActive) {
+          onTokenUseUp?.();
+        }
         const taskData = handleTaskData(
           currentChat,
           normalizedDeepThink,
@@ -595,8 +611,10 @@ export function useConversationStream(
             status: "FAILED",
           },
         };
-        setLoading(false);
-        setTaskList(taskData.taskList);
+        if (streamStillActive) {
+          setLoading(false);
+          setTaskList(taskData.taskList);
+        }
         draftController.commit(
           draftController.replaceLastItem({ ...currentChat })
         );
@@ -630,7 +648,9 @@ export function useConversationStream(
             ...(currentChat.metrics || {}),
             status: "SUCCESS",
           };
-          setLoading(false);
+          if (streamStillActive) {
+            setLoading(false);
+          }
           syncRunningConversation();
         }
         return;
@@ -649,10 +669,10 @@ export function useConversationStream(
       if (eventData.resultMap?.messageType === "result") {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
       }
-      if (shouldRefreshWorkspaceTask(eventData)) {
+      if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
         scheduleWorkspaceStreamTask(currentChat, finished);
       }
-      if (normalizedDeepThink && isPlanThoughtEvent) {
+      if (streamStillActive && normalizedDeepThink && isPlanThoughtEvent) {
         const latestThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
         scheduleStreamingThought(currentChat.requestId, latestThought, isPlanThoughtFinal);
       }
@@ -665,8 +685,10 @@ export function useConversationStream(
           ...(currentChat.metrics || {}),
           status: "SUCCESS",
         };
-        setLoading(false);
-        if (normalizedDeepThink) {
+        if (streamStillActive) {
+          setLoading(false);
+        }
+        if (streamStillActive && normalizedDeepThink) {
           const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
           scheduleStreamingThought(currentChat.requestId, finalThought, true);
         }
@@ -710,6 +732,38 @@ export function useConversationStream(
     });
   });
 
+  const stopActiveRun = useMemoizedFn(async () => {
+    const requestId = activeRequestIdRef.current;
+    const activeConversation = conversationRef.current;
+    if (!requestId || !loading) {
+      return;
+    }
+    try {
+      const { agentRunApi } = await import("@/services/agentRun");
+      await agentRunApi.stop({
+        sessionId: activeConversation.sessionId,
+        requestId,
+      });
+    } catch (error) {
+      console.warn("stop run failed", error);
+    } finally {
+      if (conversationRef.current.id === activeConversation.id) {
+        setLoading(false);
+      }
+      const chatList = activeConversation.chatList || [];
+      const last = chatList[chatList.length - 1];
+      if (last && last.requestId === requestId) {
+        last.loading = false;
+        last.forceStop = true;
+        onConversationChange(activeConversation.id, {
+          ...activeConversation,
+          chatList: [...chatList],
+          updatedAt: Date.now(),
+        });
+      }
+    }
+  });
+
   return {
     taskList,
     workspaceStreamTask,
@@ -721,6 +775,7 @@ export function useConversationStream(
     loading,
     streamingThoughtMap,
     sendMessage,
+    stopActiveRun,
     regenerateLastMessage,
   };
 }

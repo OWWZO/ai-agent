@@ -23,4 +23,10 @@ public interface SessionWorkingMemoryService {
                      Long runId,
                      String entryAgent,
                      List<Message> turnMessages);
+
+    /**
+     * 用压缩后的投影整体替换 session 内 READY turns（旧 turns 标 INVALID）。
+     * 仅服务 compaction；不改变 Execution Ledger。
+     */
+    void replaceReadyProjection(String sessionId, String compactRequestId, List<Message> compactedMessages);
 }

@@ -14,4 +14,9 @@ public interface IWorkingMemoryTurnDao {
     WorkingMemoryTurn selectByRequestId(@Param("requestId") String requestId);
 
     java.util.List<WorkingMemoryTurn> selectReadyBySessionId(@Param("sessionId") String sessionId);
+
+    /**
+     * 将会话内全部 READY turns 标为 INVALID（压缩后投影替换）。
+     */
+    int markReadyInvalidBySessionId(@Param("sessionId") String sessionId);
 }

@@ -1,3 +1,18 @@
+/**
+ * 流式/后台更新是否应写入当前主视图。
+ * 会话切换后，非当前会话的更新只进本地缓存，不抢占界面。
+ */
+export function shouldApplyConversationToView(
+  currentConversationId: string | undefined,
+  nextConversationId: string | undefined
+) {
+  return Boolean(
+    currentConversationId &&
+      nextConversationId &&
+      currentConversationId === nextConversationId
+  );
+}
+
 export function deriveConversationMetaFromInput(
   info: Pick<CHAT.TInputInfo, "outputStyle" | "deepThink">,
   params: {

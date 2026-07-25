@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReActAgent;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
@@ -43,7 +44,8 @@ public class RunReactNode extends AbstractExecuteSupport {
             throw new IllegalStateException("React Step2: agentContext is null, Step1 must run first.");
         }
 
-        ReActAgent executor = new ReactImplAgent(agentContext);
+        ReactImplAgent executor = new ReactImplAgent(agentContext);
+        PlanModePromptInjector.applyIfPlanMode(agentContext, executor);
         String runResult = executor.run(requestParameter.getQuery());
         String finalAnswer = resolveFinalAnswer(executor, runResult);
 

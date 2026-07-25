@@ -13,6 +13,8 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.factory.AgentToolCollectionFactory;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.DefaultSkillRegistry;
@@ -21,6 +23,9 @@ import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDiscoverer;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptRunnerClient;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -49,7 +54,7 @@ public class AgentToolCollectionFactoryTest {
                         .build()
         ));
 
-        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+        AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 mcpToolExecutor,
                 skillRegistry,
@@ -58,7 +63,8 @@ public class AgentToolCollectionFactoryTest {
                         .reactEnabled(true)
                         .planSolveEnabled(true)
                         .build(),
-                Mockito.mock(SkillScriptRunnerClient.class)
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
         );
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
@@ -76,7 +82,17 @@ public class AgentToolCollectionFactoryTest {
                         "list_directory_tool",
                         "glob_tool",
                         "grep_tool",
-                        "script_runner_tool"
+                        "script_runner_tool",
+                        "Agent",
+                        "TaskCreate",
+                        "TaskGet",
+                        "TaskUpdate",
+                        "TaskList",
+                        "TodoWrite",
+                        "TaskStop",
+                        "EnterPlanMode",
+                        "ExitPlanMode",
+                        "AskUserQuestion"
                 ),
                 new ArrayList<>(toolCollection.getToolMap().keySet())
         );
@@ -91,7 +107,7 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+        AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 mcpToolExecutor,
                 skillRegistry,
@@ -100,7 +116,8 @@ public class AgentToolCollectionFactoryTest {
                         .reactEnabled(true)
                         .planSolveEnabled(false)
                         .build(),
-                Mockito.mock(SkillScriptRunnerClient.class)
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
         );
 
         ToolCollection toolCollection = factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("docs"));
@@ -109,6 +126,7 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
 
     @Test
@@ -119,7 +137,7 @@ public class AgentToolCollectionFactoryTest {
         ReactorConfig reactorConfig = buildReactorConfig();
         reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report\"}");
 
-        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+        AgentToolCollectionFactory factory = newFactory(
                 reactorConfig,
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
@@ -128,12 +146,14 @@ public class AgentToolCollectionFactoryTest {
                         .reactEnabled(false)
                         .planSolveEnabled(false)
                         .build(),
-                Mockito.mock(SkillScriptRunnerClient.class)
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
         );
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
     }
 
     @Test
@@ -141,7 +161,7 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+        AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
@@ -150,7 +170,8 @@ public class AgentToolCollectionFactoryTest {
                         .reactEnabled(false)
                         .planSolveEnabled(false)
                         .build(),
-                Mockito.mock(SkillScriptRunnerClient.class)
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
         );
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("dataAgent"));
@@ -158,6 +179,7 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("data_analysis"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("Agent"));
     }
 
     @Test
@@ -165,7 +187,7 @@ public class AgentToolCollectionFactoryTest {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
 
-        AgentToolCollectionFactory factory = new AgentToolCollectionFactory(
+        AgentToolCollectionFactory factory = newFactory(
                 buildReactorConfig(),
                 mcpToolExecutor,
                 Mockito.mock(DefaultSkillRegistry.class),
@@ -174,7 +196,8 @@ public class AgentToolCollectionFactoryTest {
                         .reactEnabled(false)
                         .planSolveEnabled(false)
                         .build(),
-                Mockito.mock(SkillScriptRunnerClient.class)
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
         );
 
         AgentContext parentContext = buildAgentContext();
@@ -248,6 +271,99 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertEquals("child", agentName[0]);
         Assert.assertEquals(Integer.valueOf(3), stepNo[0]);
         Assert.assertEquals(Long.valueOf(33L), llmInvocationId[0]);
+    }
+
+
+    @Test
+    public void shouldExposeWorkspaceToolsAndHideFileToolWhenEnabled() throws Exception {
+        DefaultSkillRegistry skillRegistry = createRegistry(true, true);
+        skillRegistry.refresh();
+
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                mcpToolExecutor,
+                skillRegistry,
+                SkillRuntimeOptions.builder()
+                        .enabled(true)
+                        .reactEnabled(true)
+                        .planSolveEnabled(true)
+                        .build(),
+                enabledWorkspaceService(),
+                enabledWorkspaceOptions()
+        );
+
+        AgentContext ctx = buildAgentContext();
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("file_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_read"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_write"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_edit"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_list"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_glob"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("workspace_grep"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("read_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("list_directory_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("glob_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("grep_tool"));
+        Assert.assertNotNull(ctx.getWorkspaceRoot());
+    }
+
+    private AgentToolCollectionFactory newFactory(ReactorConfig reactorConfig,
+                                                  McpToolExecutor mcpToolExecutor,
+                                                  org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry skillRegistry,
+                                                  SkillRuntimeOptions skillRuntimeOptions,
+                                                  WorkspaceService workspaceService,
+                                                  WorkspaceRuntimeOptions workspaceRuntimeOptions) {
+        SubAgentRegistry subAgentRegistry = new SubAgentRegistry();
+        SubAgentRunner subAgentRunner = new SubAgentRunner(subAgentRegistry);
+        return new AgentToolCollectionFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                skillRegistry,
+                skillRuntimeOptions,
+                Mockito.mock(SkillScriptRunnerClient.class),
+                workspaceService,
+                workspaceRuntimeOptions,
+                subAgentRunner,
+                subAgentRegistry,
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestionRegistry.class),
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApprovalRegistry.class),
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.class)
+        );
+    }
+
+    private WorkspaceService disabledWorkspaceService() {
+        return new WorkspaceService(
+                WorkspaceRuntimeOptions.builder().enabled(false).build(),
+                new WorkspacePathGuard(),
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class)
+        );
+    }
+
+    private WorkspaceService enabledWorkspaceService() {
+        return new WorkspaceService(
+                WorkspaceRuntimeOptions.builder()
+                        .enabled(true)
+                        .rootTemplate(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/{sessionId}")
+                        .build(),
+                new WorkspacePathGuard(),
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class)
+        );
+    }
+
+    private WorkspaceRuntimeOptions disabledWorkspaceOptions() {
+        return WorkspaceRuntimeOptions.builder().enabled(false).build();
+    }
+
+    private WorkspaceRuntimeOptions enabledWorkspaceOptions() {
+        return WorkspaceRuntimeOptions.builder()
+                .enabled(true)
+                .rootTemplate(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/{sessionId}")
+                .build();
     }
 
     private DefaultSkillRegistry createRegistry(boolean reactEnabled, boolean planSolveEnabled) throws Exception {

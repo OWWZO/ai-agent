@@ -32,6 +32,12 @@ import {
   resolveToolCallActionText,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
+import {
+  AGENT_DISPATCH_TOOL_NAME,
+  buildSubAgentAction,
+  isAgentDispatchTask,
+  resolveParentToolUseId,
+} from "./chat/subagent";
 
 type NestedTaskResultMap = MESSAGE.ResultMap & {
   resultMap?: MESSAGE.ResultMap;
@@ -199,6 +205,14 @@ function handleTaskMessageByType(
       break;
     case "tool_call":
       handleToolCallMessage(eventData, currentChat, taskIndex, toolIndex);
+      break;
+    case "ask_user_question":
+      handleNonStreamingMessage(eventData, currentChat, taskIndex);
+      break;
+    case "plan_approval":
+    case "plan_mode_entered":
+    case "session_tasks":
+      handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
     default:
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
@@ -731,6 +745,15 @@ function handleNonStreamingMessage(
     }
 
     if (placeholderIndex !== -1) {
+      const previous = taskGroup[placeholderIndex] as CHAT.Task;
+      // Agent 卡片在 tool_call→tool_result 替换时保留已挂载的子工具树
+      if (
+        Array.isArray(previous?.children) &&
+        previous.children.length > 0 &&
+        !(nextTask as CHAT.Task).children
+      ) {
+        (nextTask as CHAT.Task).children = previous.children;
+      }
       taskGroup[placeholderIndex] = nextTask;
       return;
     }
@@ -765,6 +788,10 @@ export const handleTaskData = (
   const TOOL_TYPES = [
     "tool_call",
     "tool_result",
+    "ask_user_question",
+    "plan_approval",
+    "plan_mode_entered",
+    "session_tasks",
     "browser",
     "code",
     "html",
@@ -802,27 +829,69 @@ export const handleTaskData = (
 
   validTasks?.forEach((taskGroup, groupIndex) => {
     const timelineTaskGroup = ensureTimelineTaskGroup(chatList, groupIndex);
+    // toolCallId -> 已渲染的 Agent 父卡片，用于挂载子工具（cc-haha nested）
+    const agentParentByToolCallId = new Map<string, CHAT.Task>();
 
     taskGroup?.forEach((task, taskIndex) => {
       const time = task.messageTime;
       const id = time?.concat(String(taskIndex));
 
       const processedInfo = processTaskForRender(task, id);
+      const parentToolUseId = resolveParentToolUseId(task);
+
+      // 先登记 Agent 父卡片，供后续子事件挂载
+      if (!parentToolUseId) {
+        for (const item of processedInfo) {
+          if (isAgentDispatchTask(item)) {
+            const agentToolCallId = resolveTaskToolCallId(item);
+            if (agentToolCallId) {
+              if (!item.children) {
+                item.children = [];
+              }
+              agentParentByToolCallId.set(agentToolCallId, item);
+            }
+          }
+        }
+      }
 
       if (task.messageType === "task") {
         upsertTimelineTaskContainer(timelineTaskGroup, task);
       // 深度研究里的 task_summary 属于任务级总结，必须保留在时间线中；
       // 只有请求级 result 才应该落在底部最终结论区。
-      } else if (
-        task?.messageType !== "result"
-      ) {
-        ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
+      } else if (task?.messageType !== "result") {
+        if (parentToolUseId) {
+          // 子 Agent 工具：嵌套到父 Agent 卡片，不进主时间线平铺
+          const parent = agentParentByToolCallId.get(parentToolUseId);
+          if (parent) {
+            if (!parent.children) {
+              parent.children = [];
+            }
+            for (const child of processedInfo) {
+              const childId = resolveTaskToolCallId(child) || child.messageId || child.id;
+              const existingIndex = parent.children.findIndex(
+                (item) =>
+                  (resolveTaskToolCallId(item) || item.messageId || item.id) === childId
+              );
+              if (existingIndex >= 0) {
+                parent.children[existingIndex] = child;
+              } else {
+                parent.children.push(child);
+              }
+            }
+          } else {
+            // 父卡片尚未到达时先落到主时间线，避免丢事件
+            ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
+          }
+        } else {
+          ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
+        }
       }
 
-      if (
-        TOOL_TYPES.includes(task?.messageType)
-      ) {
-        taskList.push(...processedInfo);
+      if (TOOL_TYPES.includes(task?.messageType)) {
+        // 工作区列表：子工具不进顶层 taskList，只挂在 Agent 下
+        if (!parentToolUseId) {
+          taskList.push(...processedInfo);
+        }
       }
 
       if (task?.messageType === "plan") {
@@ -910,6 +979,10 @@ export const buildAction = (task: CHAT.Task) => {
   const MESSAGE_TYPES = {
     TOOL_CALL: "tool_call",
     TOOL_RESULT: "tool_result",
+    ASK_USER_QUESTION: "ask_user_question",
+    PLAN_APPROVAL: "plan_approval",
+    PLAN_MODE_ENTERED: "plan_mode_entered",
+    SESSION_TASKS: "session_tasks",
     CODE: "code",
     HTML: "html",
     PLAN_THOUGHT: "plan_thought",
@@ -933,6 +1006,34 @@ export const buildAction = (task: CHAT.Task) => {
 
     case MESSAGE_TYPES.TOOL_RESULT:
       return handleToolResult(task);
+
+    case MESSAGE_TYPES.ASK_USER_QUESTION:
+      return {
+        action: "等待你的回答",
+        tool: "AskUserQuestion",
+        name: "选择题",
+      };
+
+    case MESSAGE_TYPES.PLAN_APPROVAL:
+      return {
+        action: "等待批准计划",
+        tool: "ExitPlanMode",
+        name: "计划批准",
+      };
+
+    case MESSAGE_TYPES.PLAN_MODE_ENTERED:
+      return {
+        action: "已进入 Plan Mode",
+        tool: "EnterPlanMode",
+        name: "计划模式",
+      };
+
+    case MESSAGE_TYPES.SESSION_TASKS:
+      return {
+        action: "任务列表已更新",
+        tool: "TaskList",
+        name: "Todo",
+      };
 
     case MESSAGE_TYPES.CODE:
       return {
@@ -1006,6 +1107,10 @@ export const buildAction = (task: CHAT.Task) => {
     const toolName = task?.toolResult?.toolName;
     const primaryFile = getPrimaryTaskFile(task);
 
+    if (toolName === AGENT_DISPATCH_TOOL_NAME || isAgentDispatchTask(task)) {
+      return buildSubAgentAction(task);
+    }
+
     switch (toolName) {
       case TOOL_NAMES.WEB_SEARCH:
       case TOOL_NAMES.INTERNAL_SEARCH:
@@ -1042,6 +1147,9 @@ export const buildAction = (task: CHAT.Task) => {
    * 工具下发阶段优先展示目标文件/路径，让用户立刻知道当前卡在“调用哪个工具做什么”。
    */
   function handleToolCallTask(task: CHAT.Task) {
+    if (isAgentDispatchTask(task) || task?.resultMap?.toolName === AGENT_DISPATCH_TOOL_NAME) {
+      return buildSubAgentAction(task);
+    }
     return {
       action: resolveToolCallActionText(task),
       tool: task?.resultMap?.toolName || "",
@@ -1088,11 +1196,16 @@ export enum IconType {
   PLAN_THOUGHT = 'plan_thought',
   TOOL_CALL = 'tool_call',
   TOOL_RESULT = 'tool_result',
+  ASK_USER_QUESTION = 'ask_user_question',
+  PLAN_APPROVAL = 'plan_approval',
+  PLAN_MODE_ENTERED = 'plan_mode_entered',
+  SESSION_TASKS = 'session_tasks',
   BROWSER = 'browser',
   FILE = 'file',
   DEEP_SEARCH = 'deep_search',
   CODE = 'code',
   HTML = 'html',
+  AGENT = 'Agent',
 }
 
 /**
@@ -1103,11 +1216,16 @@ const ICON_MAP: Record<IconType, string> = {
   [IconType.PLAN_THOUGHT]: 'icon-juli',
   [IconType.TOOL_CALL]: 'icon-tiaoshi',
   [IconType.TOOL_RESULT]: 'icon-tiaoshi',
+  [IconType.ASK_USER_QUESTION]: 'icon-juli',
+  [IconType.PLAN_APPROVAL]: 'icon-renwu',
+  [IconType.PLAN_MODE_ENTERED]: 'icon-renwu',
+  [IconType.SESSION_TASKS]: 'icon-renwu',
   [IconType.BROWSER]: 'icon-sousuo',
   [IconType.FILE]: 'icon-bianji',
   [IconType.DEEP_SEARCH]: 'icon-sousuo',
   [IconType.CODE]: 'icon-daima',
   [IconType.HTML]: 'icon-daima',
+  [IconType.AGENT]: 'icon-renwu',
 };
 
 /**

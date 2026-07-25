@@ -109,16 +109,25 @@ public abstract class BaseAgent {
         List<String> results = new ArrayList<>();
         try {
             while (currentStep < maxSteps && state != AgentState.FINISHED) {
+                if (context != null && context.isRunCancelled()) {
+                    state = AgentState.FINISHED;
+                    results.add("Terminated: User stopped");
+                    log.info("{} {} run cancelled reason={}",
+                            context.getRequestId(), getName(), context.getRunCancelReason());
+                    break;
+                }
                 currentStep++;
                 if (context != null) {
                     // 每步进入前都刷新一次当前位置，供 LLM / tool 账本读取。
                     context.markExecutionPosition(getName(), currentStep);
+                    // Plan Mode：sparse/full 提醒 + mid-run Enter 时补 system 指引
+                    org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector.injectStepReminders(this);
                 }
                 log.info("{} {} Executing step {}/{}", context.getRequestId(), getName(), currentStep, maxSteps);
                 results.add(step());
             }
 
-            if (currentStep >= maxSteps) {
+            if (currentStep >= maxSteps && state != AgentState.FINISHED) {
                 currentStep = 0;
                 state = AgentState.IDLE;
                 results.add("Terminated: Reached max steps (" + maxSteps + ")");
@@ -195,18 +204,28 @@ public abstract class BaseAgent {
         String basePrompt = context == null || context.getBasePrompt() == null
                 ? ""
                 : context.getBasePrompt().trim();
+        // SOP 为会话/请求级静态指引，进入 system 固定段（cache 友好）；query/date/files/history 仍只走 messages
+        String sopPrompt = context == null || context.getSopPrompt() == null
+                ? ""
+                : context.getSopPrompt().trim();
+        boolean hasSopPlaceholder = systemTemplate.contains("{{sopPrompt}}")
+                || systemTemplate.contains("{{executorSopPrompt}}");
         // tools 只走 API tools[]，不再写入 system 正文
         systemTemplate = systemTemplate
                 .replace("{{tools}}", "")
                 .replace("{{basePrompt}}", basePrompt)
-                .replace("{{sopPrompt}}", "")
-                .replace("{{executorSopPrompt}}", "")
+                .replace("{{sopPrompt}}", sopPrompt)
+                .replace("{{executorSopPrompt}}", sopPrompt)
                 .replace("{{query}}", "")
                 .replace("{{date}}", "")
                 .replace("{{files}}", "")
                 .replace("{{history_dialogue}}", "");
         if (extraPlaceholder != null && !extraPlaceholder.isEmpty()) {
             systemTemplate = systemTemplate.replace(extraPlaceholder, extraValue == null ? "" : extraValue);
+        }
+        // 模板无 {{sopPrompt}} 时仍把召回 SOP 并入 system（PlanSolve 主路径需要）
+        if (!sopPrompt.isEmpty() && !hasSopPlaceholder && !systemTemplate.contains(sopPrompt)) {
+            systemTemplate = systemTemplate.trim() + "\n\n# SOP\n" + sopPrompt + "\n";
         }
         systemTemplate = stripEmptyEnvBlocks(systemTemplate);
         systemTemplate = canonicalizeSystemText(systemTemplate);
@@ -502,9 +521,24 @@ public abstract class BaseAgent {
         }
 
         String toolName = command.getFunction().getName();
+        if (context != null && context.isRunCancelled()) {
+            return ToolExecutionOutcome.failure(
+                    "工具未执行：用户已停止本轮对话",
+                    "工具未执行：用户已停止本轮对话",
+                    null,
+                    "USER_STOP"
+            );
+        }
         try {
             ObjectMapper mapper = new ObjectMapper();
             Object args = mapper.readValue(normalizeToolPayload(command.getFunction().getArguments()), Object.class);
+
+            // Plan Mode 工具门禁（对标 cc-haha：plan 期禁写业务文件）
+            String planDeny = org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy.denyReason(
+                    context, toolName, args);
+            if (planDeny != null) {
+                return ToolExecutionOutcome.failure(planDeny, planDeny, null, "PLAN_MODE_DENY");
+            }
 
             ToolArtifactSource artifactSource = ToolArtifactSource.builder()
                     .sessionId(context.getSessionId())
