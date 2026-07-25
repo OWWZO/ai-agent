@@ -1,20 +1,11 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
 import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
-import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
-import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +13,7 @@ import java.util.Map;
 /**
  * 局部替换编辑工作区文件（对齐 cchaha Edit）。
  * 要求先 workspace_read；old_string 默认必须唯一，除非 replace_all=true。
+ * 本地编辑成功后仅登记预览 URL，不重复上传 content。
  */
 public class WorkspaceEditTool extends AbstractWorkspacePathTool {
 
@@ -142,14 +134,15 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
 
             Path workspaceRoot = requireWorkspaceRoot();
             String relativePath = toRelativePath(workspaceRoot, filePath);
-            String syncNote = syncToFileService(relativePath, updated);
+            String registerNote = WorkspaceFileRegistration.registerLocalFile(
+                    agentContext, relativePath, filePath, "编辑文件");
 
             StringBuilder result = new StringBuilder();
             result.append("已编辑文件: ").append(filePath).append('\n');
             result.append("替换次数: ").append(replaceAll ? occurrences : 1).append('\n');
             result.append("字符变化: ").append(original.length()).append(" -> ").append(updated.length());
-            if (StringUtils.isNotBlank(syncNote)) {
-                result.append('\n').append(syncNote);
+            if (StringUtils.isNotBlank(registerNote)) {
+                result.append('\n').append(registerNote);
             }
             return result.toString();
         } catch (WorkspaceAccessException e) {
@@ -174,74 +167,6 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             }
             count++;
             index = found + Math.max(1, target.length());
-        }
-    }
-
-    private String syncToFileService(String relativePath, String content) {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            return null;
-        }
-        try {
-            ReactorConfig reactorConfig = agentContext.getRuntimeDependencies().requireReactorConfig();
-            FileArtifactPort fileArtifactPort = agentContext.getRuntimeDependencies().requireFileArtifactPort();
-            if (reactorConfig == null || StringUtils.isBlank(reactorConfig.getCodeInterpreterUrl())) {
-                return null;
-            }
-
-            String uploadName = relativePath == null ? "workspace-file.md" : relativePath.replace('\\', '/');
-            String baseName = Path.of(uploadName).getFileName().toString();
-            if (StringUtils.isBlank(baseName)) {
-                baseName = "workspace-file.md";
-            }
-            if (!baseName.contains(".")) {
-                baseName = baseName + ".md";
-            }
-
-            FileRequest fileRequest = FileRequest.builder()
-                    .requestId(agentContext.getSessionId())
-                    .fileName(baseName)
-                    .description("workspace:" + uploadName)
-                    .content(content)
-                    .build();
-            FileResponse fileResponse = fileArtifactPort.upload(reactorConfig.getCodeInterpreterUrl(), fileRequest);
-            if (fileResponse == null) {
-                return "远端同步失败: empty response";
-            }
-
-            ToolArtifactSource artifactSource = agentContext.getCurrentToolArtifactSource();
-            File file = File.builder()
-                    .fileName(baseName)
-                    .description("workspace:" + uploadName)
-                    .ossUrl(fileResponse.getOssUrl())
-                    .domainUrl(fileResponse.getDomainUrl())
-                    .fileSize(fileResponse.getFileSize())
-                    .isInternalFile(false)
-                    .build();
-            if (artifactSource != null) {
-                agentContext.registerGeneratedArtifact(artifactSource, file);
-            }
-
-            if (agentContext.getPrinter() != null) {
-                Map<String, Object> resultMap = new HashMap<>();
-                resultMap.put("command", "编辑文件");
-                if (artifactSource != null) {
-                    resultMap.put("toolCallId", artifactSource.getToolCallId());
-                    resultMap.put("toolName", artifactSource.getToolName());
-                }
-                List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
-                fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
-                        .fileName(baseName)
-                        .ossUrl(fileResponse.getOssUrl())
-                        .domainUrl(fileResponse.getDomainUrl())
-                        .fileSize(fileResponse.getFileSize())
-                        .build());
-                resultMap.put("fileInfo", fileInfo);
-                agentContext.getPrinter().send("file", resultMap, null);
-            }
-            return "已同步文件服务: " + fileResponse.getOssUrl();
-        } catch (Exception e) {
-            log.warn("{} workspace_edit sync failed, path={}", requestId(), relativePath, e);
-            return "远端同步失败: " + e.getMessage();
         }
     }
 }

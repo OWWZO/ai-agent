@@ -45,7 +45,7 @@ public class WorkspaceService {
         }
         String template = workspaceRuntimeOptions.getRootTemplate();
         if (StringUtils.isBlank(template)) {
-            template = System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace/{sessionId}";
+            template = System.getProperty("user.dir", ".") + "/reactor-tool/skilloutput/{sessionId}";
         }
         String expanded = expandTemplate(template, sessionId);
         return Path.of(expanded).toAbsolutePath().normalize();

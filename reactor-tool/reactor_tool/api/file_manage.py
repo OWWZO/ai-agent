@@ -11,7 +11,14 @@ from urllib.parse import quote, unquote
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, Response, FileResponse
 
-from reactor_tool.model.protocal import FileRequest, FileListRequest, FileUploadRequest, get_file_id, get_legacy_file_id
+from reactor_tool.model.protocal import (
+    FileRequest,
+    FileListRequest,
+    FileUploadRequest,
+    FileRegisterRequest,
+    get_file_id,
+    get_legacy_file_id,
+)
 from reactor_tool.util.middleware_util import RequestHandlerRoute
 from reactor_tool.db.file_table_op import (
     FileInfoOp,
@@ -77,6 +84,32 @@ async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(
     preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
     download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
     return JSONResponse(content={"downloadUrl": download_url, "domainUrl": preview_url, "fileSize": file_info.file_size})
+
+
+@router.post("/register_file")
+async def register_file(body: FileRegisterRequest):
+    """登记本地已有文件：不拷贝内容，只写元数据并返回预览/下载 URL。"""
+    body.file_name = normalize_stored_file_name(body.file_name)
+    file_id = get_file_id(body.request_id, body.file_name)
+    file_info = await FileInfoOp.add_by_existing_path(
+        filename=body.file_name,
+        local_path=body.local_path,
+        file_id=file_id,
+        description=body.description or "",
+        request_id=body.request_id,
+    )
+    preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
+    download_url = get_file_download_url(file_id=file_info.request_id, file_name=file_info.filename)
+    return JSONResponse(
+        content={
+            "ossUrl": download_url,
+            "downloadUrl": download_url,
+            "domainUrl": preview_url,
+            "fileSize": file_info.file_size,
+            "fileName": file_info.filename,
+            "requestId": body.request_id,
+        }
+    )
 
 
 @router.post("/get_file_list")

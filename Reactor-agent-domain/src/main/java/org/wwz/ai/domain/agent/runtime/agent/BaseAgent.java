@@ -122,6 +122,8 @@ public abstract class BaseAgent {
                     context.markExecutionPosition(getName(), currentStep);
                     // Plan Mode：sparse/full 提醒 + mid-run Enter 时补 system 指引
                     org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector.injectStepReminders(this);
+                    // cc-haha 对齐：每步 LLM 前再判一次上下文水位（含 tool 后中途）
+                    compactWorkingMemoryIfNeeded("step");
                 }
                 log.info("{} {} Executing step {}/{}", context.getRequestId(), getName(), currentStep, maxSteps);
                 results.add(step());
@@ -1053,9 +1055,7 @@ public abstract class BaseAgent {
         if (all == null || all.isEmpty()) {
             return List.of();
         }
-        // 多轮 prompt cache：持久化「本轮新增」= 去掉 preload 前缀后的后缀
-        // 首轮 preload 为空 → 整段（含 session_env + query + tool 轨迹）入库
-        // 次轮 → 仅入库本轮新增，历史由 load 拼回，保证 messages 只 append
+        // mid-run compact 后 workingMemoryMessages 已同步为新前缀：只 persist 后缀 delta
         int preloadSize = 0;
         if (context != null && context.getWorkingMemoryMessages() != null) {
             preloadSize = context.getWorkingMemoryMessages().size();
@@ -1067,6 +1067,43 @@ public abstract class BaseAgent {
             return List.of();
         }
         return new ArrayList<>(all.subList(preloadSize, all.size()));
+    }
+
+    /**
+     * 对齐 cc-haha：每次即将调用主模型前，对当前 Memory 做阈值压缩。
+     * 成功后同步 memory + context.workingMemoryMessages，保证 export delta 正确。
+     */
+    protected void compactWorkingMemoryIfNeeded(String phase) {
+        if (context == null || memory == null) {
+            return;
+        }
+        if (context.getRuntimeDependencies() == null) {
+            return;
+        }
+        var compaction = context.getRuntimeDependencies().getOptionalSessionContextCompactionService();
+        if (compaction == null) {
+            return;
+        }
+        List<Message> current = memory.getMessages();
+        if (current == null || current.isEmpty()) {
+            return;
+        }
+        try {
+            List<Message> compacted = compaction.applyIfNeededMidRun(
+                    context.getSessionId(),
+                    context.getRequestId(),
+                    current);
+            if (compacted == null || compacted == current || compacted.equals(current)) {
+                return;
+            }
+            memory.replaceMessages(new ArrayList<>(compacted));
+            context.setWorkingMemoryMessages(new ArrayList<>(compacted));
+            log.info("{} {} mid-run compact phase={} beforeMsgs={} afterMsgs={}",
+                    context.getRequestId(), getName(), phase, current.size(), compacted.size());
+        } catch (Exception e) {
+            log.warn("{} {} mid-run compact failed phase={}: {}",
+                    context.getRequestId(), getName(), phase, e.getMessage());
+        }
     }
 
 

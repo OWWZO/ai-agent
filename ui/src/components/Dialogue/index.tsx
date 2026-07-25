@@ -222,8 +222,10 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {/* AI 思考中占位 */}
-      {chat.loading && !hasAssistantPayload ? <ThinkingMessage /> : null}
+      {/* AI 思考中占位 / Lemon 风格 status 行 */}
+      {chat.loading && !hasAssistantPayload ? (
+        <ThinkingMessage tip={chat.tip} />
+      ) : null}
 
       {/* 思考过程（深度研究模式） */}
       {!isReactType && thoughtText ? (

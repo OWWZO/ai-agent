@@ -105,6 +105,32 @@ class FileInfoOp(object):
         )
         return await FileInfoOp.add(file_info)
 
+    @classmethod
+    @timer()
+    async def add_by_existing_path(
+        cls,
+        filename: str,
+        local_path: str,
+        file_id: str,
+        description: str = None,
+        request_id: str = None,
+    ) -> FileInfo:
+        """登记已落盘文件：不拷贝内容，file_path 指向已有绝对路径。"""
+        filename = normalize_stored_file_name(filename)
+        if not local_path or not os.path.isfile(local_path):
+            raise FileNotFoundError(f"local file not found: {local_path}")
+        abs_path = os.path.abspath(local_path)
+        file_info = FileInfo(
+            file_id=file_id,
+            filename=filename,
+            file_path=abs_path,
+            description=description or "",
+            file_size=os.path.getsize(abs_path),
+            status=1,
+            request_id=request_id,
+        )
+        return await cls.add(file_info)
+
     @staticmethod
     @timer()
     async def add(file_info: FileInfo) -> FileInfo:
@@ -115,6 +141,10 @@ class FileInfoOp(object):
             if f:
                 f.status = 1
                 f.file_size = file_info.file_size
+                f.file_path = file_info.file_path
+                f.filename = file_info.filename
+                f.description = file_info.description
+                f.request_id = file_info.request_id
                 session.add(f)
             else:
                 session.add(file_info)

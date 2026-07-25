@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.springframework.scheduling.TaskScheduler;
@@ -49,6 +50,9 @@ public class ReactorRuntimeDependencies {
     Executor toolExecutor;
 
     TaskScheduler heartbeatScheduler;
+
+    /** 可选：跨轮/中途工作记忆压缩（cc-haha query 循环时机）。 */
+    SessionContextCompactionService sessionContextCompactionService;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -96,6 +100,10 @@ public class ReactorRuntimeDependencies {
 
     public TaskScheduler requireHeartbeatScheduler() {
         return Objects.requireNonNull(heartbeatScheduler, "heartbeatScheduler must not be null");
+    }
+
+    public SessionContextCompactionService getOptionalSessionContextCompactionService() {
+        return sessionContextCompactionService;
     }
 
     /**

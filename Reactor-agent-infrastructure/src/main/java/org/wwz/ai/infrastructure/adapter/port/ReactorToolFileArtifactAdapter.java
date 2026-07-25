@@ -42,6 +42,25 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
     }
 
     @Override
+    public FileResponse register(String serviceBaseUrl, FileRequest request) throws IOException {
+        FileRequest normalizedRequest = normalizeRequest(request);
+        if (StringUtils.isBlank(normalizedRequest.getLocalPath())) {
+            throw new IllegalArgumentException("localPath must not be blank for register");
+        }
+        String responseText = remoteHttpPort.execute(RemoteHttpRequest.builder()
+                .method("POST")
+                .url(normalizeBaseUrl(serviceBaseUrl) + "/v1/file_tool/register_file")
+                .headers(Map.of("Content-Type", "application/json"))
+                .body(JSON.toJSONString(normalizedRequest))
+                .connectTimeoutSeconds(60L)
+                .readTimeoutSeconds(120L)
+                .writeTimeoutSeconds(120L)
+                .callTimeoutSeconds(120L)
+                .build());
+        return JSON.parseObject(responseText, FileResponse.class);
+    }
+
+    @Override
     public FileResponse get(String serviceBaseUrl, FileRequest request) throws IOException {
         FileRequest normalizedRequest = normalizeRequest(request);
         String responseText = remoteHttpPort.execute(RemoteHttpRequest.builder()
@@ -78,6 +97,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
                 .fileName(request.getFileName())
                 .description(request.getDescription())
                 .content(request.getContent())
+                .localPath(request.getLocalPath())
                 .build();
     }
 

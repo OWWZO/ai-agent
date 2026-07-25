@@ -90,6 +90,12 @@ class FileUploadRequest(FileRequest):
     content: str = Field(description="返回的生成的文件内容")
 
 
+class FileRegisterRequest(FileRequest):
+    """登记本地已有文件：不上传 content，只写元数据并指向 localPath。"""
+    description: Optional[str] = Field(default="", description="文件描述（可含 workspace 相对路径）")
+    local_path: str = Field(alias="localPath", description="本地已存在文件的绝对路径")
+
+
 class DeepSearchRequest(BaseModel):
     """深度搜索请求：查询 + 引擎列表 + 最大循环轮次。"""
     request_id: str = Field(description="Request ID")

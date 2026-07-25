@@ -247,6 +247,19 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.web_fetch_url:}")
     private String webFetchUrl;
 
+    /**
+     * WebSearch 模式：auto | tavily | brave | disabled。
+     * auto 时优先 tavily，其次 brave。
+     */
+    @Value("${autobots.autoagent.web_search.mode:auto}")
+    private String webSearchMode;
+
+    @Value("${autobots.autoagent.web_search.tavily_api_key:}")
+    private String webSearchTavilyApiKey;
+
+    @Value("${autobots.autoagent.web_search.brave_api_key:}")
+    private String webSearchBraveApiKey;
+
     @Value("${autobots.autoagent.multimodalagent_url:}")
     private String multiModalAgentUrl;
 

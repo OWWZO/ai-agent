@@ -305,6 +305,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const canSend =
     Boolean(question.trim()) &&
     !disabled &&
+    !busy &&
     !hasUploadingAttachment &&
     !hasFailedAttachment;
   const showOutputSelector = showBtn && visibleMode !== "quick";

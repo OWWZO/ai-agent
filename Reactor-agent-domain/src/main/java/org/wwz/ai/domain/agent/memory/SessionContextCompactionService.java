@@ -5,18 +5,22 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import java.util.List;
 
 /**
- * 会话工作记忆压缩服务（P0 drop-oldest + P1 full LLM compact）。
- * 只改 hydrate 用的 Message 列表 / working_memory 投影，不改 Execution Ledger。
+ * 会话工作记忆压缩服务。
+ * 入口时机：
+ * 1) 每轮请求 enrichWorkingMemory（pre-run）
+ * 2) BaseAgent 每 step 主模型调用前（mid-run，对齐 cc-haha query 循环）
  */
 public interface SessionContextCompactionService {
 
     /**
-     * 若超阈值则压缩；失败时降级为 P0 drop-oldest。
-     *
-     * @param sessionId 会话 ID
-     * @param requestId 当前请求 ID（仅日志/熔断键）
-     * @param messages  已 hydrate 的 working memory 前缀
-     * @return 压缩后的消息列表（可能原样返回）
+     * 若超阈值则压缩；失败时降级为 drop-oldest。
      */
     List<Message> applyIfNeeded(String sessionId, String requestId, List<Message> messages);
+
+    /**
+     * mid-run 压缩：可单独开关；默认委托 applyIfNeeded。
+     */
+    default List<Message> applyIfNeededMidRun(String sessionId, String requestId, List<Message> messages) {
+        return applyIfNeeded(sessionId, requestId, messages);
+    }
 }

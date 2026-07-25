@@ -45,10 +45,18 @@ class AsyncTimer(object):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            logger.error(f"{RequestIdCtx.request_id} {self.key} error={traceback.format_exc()}")
-        else:
+        if exc_type is None:
             logger.info(f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]")
+            return False
+        # 客户端断开 / 外层 cancel scope / 生成器关闭：属正常中断，不要打 ERROR 堆栈
+        if exc_type in (asyncio.CancelledError, GeneratorExit):
+            logger.warning(
+                f"{RequestIdCtx.request_id} {self.key} cancelled/closed "
+                f"cost=[{int((time.time() - self.start_time) * 1000)} ms] type={exc_type.__name__}"
+            )
+            return False
+        logger.error(f"{RequestIdCtx.request_id} {self.key} error={traceback.format_exc()}")
+        return False
 
 
 def timer(key: str = ""):

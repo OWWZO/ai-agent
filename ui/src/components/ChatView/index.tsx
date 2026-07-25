@@ -7,6 +7,7 @@ import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
+import PlanComposerBar from "./PlanComposerBar";
 import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
@@ -495,6 +496,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             {!readOnly ? (
               <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
                 <div className="mx-auto w-full max-w-[860px]">
+                  <PlanComposerBar
+                    chat={conversation.chatList?.[conversation.chatList.length - 1]}
+                    taskList={taskList}
+                    structuredPlan={plan}
+                    loading={loading}
+                  />
                   <GeneralInput
                     key={`input-${conversation.sessionId}-single`}
                     sessionId={conversation.sessionId}
@@ -604,6 +611,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
                   {!readOnly ? (
                     <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
+                      <PlanComposerBar
+                        chat={conversation.chatList?.[conversation.chatList.length - 1]}
+                        taskList={taskList}
+                        structuredPlan={plan}
+                        loading={loading}
+                      />
                       <GeneralInput
                         key={`input-${conversation.sessionId}-left`}
                         sessionId={conversation.sessionId}

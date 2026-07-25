@@ -410,6 +410,13 @@ export function useConversationStream(
       normalizedDeepThink
     );
 
+    if (!isChatMode) {
+      currentChat = {
+        ...currentChat,
+        tip: normalizedDeepThink ? "正在制定计划..." : "思考中...",
+      };
+    }
+
     if (!isChatMode && normalizedDeepThink) {
       setStreamingThoughtMap((previous) => ({
         ...previous,
@@ -664,6 +671,9 @@ export function useConversationStream(
       const isPlanThoughtEvent = eventData.messageType === "plan_thought";
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       currentChat = combineData(eventData, currentChat);
+      if (currentChat.tip) {
+        currentChat = { ...currentChat, tip: "" };
+      }
       // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
       // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
       if (eventData.resultMap?.messageType === "result") {

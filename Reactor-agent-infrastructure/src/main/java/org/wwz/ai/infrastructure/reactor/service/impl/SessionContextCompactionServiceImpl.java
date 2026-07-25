@@ -3,6 +3,7 @@ package org.wwz.ai.infrastructure.reactor.service.impl;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
@@ -45,7 +46,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
     private static final String COMPACT_REQUEST_PREFIX = "wm-compact-";
     private static final int MAX_AUDIT_JSON_CHARS = 500_000;
 
-    private final ReactorRuntimeDependencies runtimeDependencies;
+    private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
     private final SessionWorkingMemoryService sessionWorkingMemoryService;
     private final IWorkingMemoryCompactionDao workingMemoryCompactionDao;
     private final WorkingMemoryCompactor compactor = new WorkingMemoryCompactor();
@@ -68,9 +69,10 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
     private final boolean persistProjection;
     private final boolean auditEnabled;
     private final boolean auditStoreMessages;
+    private final boolean midRunEnabled;
 
     public SessionContextCompactionServiceImpl(
-            ReactorRuntimeDependencies runtimeDependencies,
+            ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider,
             SessionWorkingMemoryService sessionWorkingMemoryService,
             IWorkingMemoryCompactionDao workingMemoryCompactionDao,
             @Value("${autobots.autoagent.compaction.enabled:true}") boolean enabled,
@@ -89,8 +91,9 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             @Value("${autobots.autoagent.compaction.micro-tool-result-max-chars:8000}") int microToolResultMaxChars,
             @Value("${autobots.autoagent.compaction.persist-projection:true}") boolean persistProjection,
             @Value("${autobots.autoagent.compaction.audit-enabled:true}") boolean auditEnabled,
-            @Value("${autobots.autoagent.compaction.audit-store-messages:true}") boolean auditStoreMessages) {
-        this.runtimeDependencies = runtimeDependencies;
+            @Value("${autobots.autoagent.compaction.audit-store-messages:true}") boolean auditStoreMessages,
+            @Value("${autobots.autoagent.compaction.mid-run-enabled:true}") boolean midRunEnabled) {
+        this.runtimeDependenciesProvider = runtimeDependenciesProvider;
         this.sessionWorkingMemoryService = sessionWorkingMemoryService;
         this.workingMemoryCompactionDao = workingMemoryCompactionDao;
         this.enabled = enabled;
@@ -110,12 +113,21 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         this.persistProjection = persistProjection;
         this.auditEnabled = auditEnabled;
         this.auditStoreMessages = auditStoreMessages;
+        this.midRunEnabled = midRunEnabled;
     }
+    private ReactorRuntimeDependencies runtimeDependencies() {
+        return runtimeDependenciesProvider.getObject();
+    }
+
 
     @Override
     public List<Message> applyIfNeeded(String sessionId, String requestId, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return messages == null ? List.of() : messages;
+        }
+        // 防止 compact 自己的 LLM 调用再触发压缩（对齐 cc-haha querySource=compact）
+        if (StringUtils.isNotBlank(requestId) && requestId.contains("-compact")) {
+            return messages;
         }
         CompactionBudget budget = resolveBudget();
         if (!budget.isEnabled()) {
@@ -197,6 +209,14 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         return compacted == null ? current : compacted;
     }
 
+    @Override
+    public List<Message> applyIfNeededMidRun(String sessionId, String requestId, List<Message> messages) {
+        if (!midRunEnabled) {
+            return messages == null ? List.of() : messages;
+        }
+        return applyIfNeeded(sessionId, requestId, messages);
+    }
+
     private List<Message> fullCompact(String sessionId,
                                       String requestId,
                                       List<Message> messages,
@@ -234,7 +254,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         }
 
         String modelName = resolveCompactModelName();
-        LLM llm = new LLM(modelName, "", runtimeDependencies);
+        LLM llm = new LLM(modelName, "", runtimeDependencies());
 
         AgentRequest fakeRequest = new AgentRequest();
         fakeRequest.setRequestId(StringUtils.defaultIfBlank(requestId, "compact") + "-compact");
@@ -245,7 +265,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                 .sessionId(sessionId)
                 .query("session-context-compaction")
                 .isStream(false)
-                .runtimeDependencies(runtimeDependencies)
+                .runtimeDependencies(runtimeDependencies())
                 .printer(new LogPrinter(fakeRequest))
                 .build();
         context.markExecutionPosition("compaction", null);
@@ -281,9 +301,9 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         int contextWindow = CompactionBudget.DEFAULT_CONTEXT_WINDOW;
         int maxOutput = CompactionBudget.DEFAULT_MAX_OUTPUT_TOKENS;
         try {
-            ReactorConfig config = runtimeDependencies.requireReactorConfig();
+            ReactorConfig config = runtimeDependencies().requireReactorConfig();
             String modelName = resolveCompactModelName(config);
-            LLMSettings settings = runtimeDependencies.resolveLlmSettings(modelName);
+            LLMSettings settings = runtimeDependencies().resolveLlmSettings(modelName);
             if (settings != null) {
                 if (settings.getMaxInputTokens() > 0) {
                     contextWindow = settings.getMaxInputTokens();
@@ -317,7 +337,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
 
     private String resolveCompactModelName() {
         try {
-            return resolveCompactModelName(runtimeDependencies.requireReactorConfig());
+            return resolveCompactModelName(runtimeDependencies().requireReactorConfig());
         } catch (Exception e) {
             return "";
         }

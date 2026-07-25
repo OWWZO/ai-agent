@@ -35,17 +35,29 @@ public final class ReactorRuntimeTestSupport {
     }
 
     public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig) {
-        return runtimeDependencies(reactorConfig, null, new MockEnvironment());
+        return runtimeDependencies(reactorConfig, null, new MockEnvironment(), null);
     }
 
     public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig,
-                                                                 IImageGenerationExecutionKernel imageKernel) {
-        return runtimeDependencies(reactorConfig, imageKernel, new MockEnvironment());
+                                                                  RemoteHttpPort remoteHttpPort) {
+        return runtimeDependencies(reactorConfig, null, new MockEnvironment(), remoteHttpPort);
     }
 
     public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig,
-                                                                 IImageGenerationExecutionKernel imageKernel,
-                                                                 Environment environment) {
+                                                                  IImageGenerationExecutionKernel imageKernel) {
+        return runtimeDependencies(reactorConfig, imageKernel, new MockEnvironment(), null);
+    }
+
+    public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig,
+                                                                  IImageGenerationExecutionKernel imageKernel,
+                                                                  Environment environment) {
+        return runtimeDependencies(reactorConfig, imageKernel, environment, null);
+    }
+
+    public static ReactorRuntimeDependencies runtimeDependencies(ReactorConfig reactorConfig,
+                                                                  IImageGenerationExecutionKernel imageKernel,
+                                                                  Environment environment,
+                                                                  RemoteHttpPort overrideRemoteHttpPort) {
         DomainMessageConverter messageConverter = new DomainMessageConverter();
         ReflectionTestUtils.setField(messageConverter, "reactorConfig", reactorConfig);
 
@@ -66,9 +78,12 @@ public final class ReactorRuntimeTestSupport {
                 .responseMapper(responseMapper)
                 .streamResponseHandler(streamResponseHandler)
                 .build();
-        RemoteHttpPort remoteHttpPort = new OkHttpRemoteHttpAdapter();
+        RemoteHttpPort remoteHttpPort = overrideRemoteHttpPort != null
+                ? overrideRemoteHttpPort
+                : new OkHttpRemoteHttpAdapter();
         RemoteStreamPort remoteStreamPort = new OkHttpRemoteStreamAdapter();
-        FileArtifactPort fileArtifactPort = new ReactorToolFileArtifactAdapter(remoteHttpPort);
+        FileArtifactPort fileArtifactPort = new ReactorToolFileArtifactAdapter(
+                overrideRemoteHttpPort != null ? overrideRemoteHttpPort : new OkHttpRemoteHttpAdapter());
         Executor sameThreadExecutor = Runnable::run;
 
         return ReactorRuntimeDependencies.builder()

@@ -26,7 +26,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * workspace_write 本地写入 + 远端同步。
+ * workspace_write：本地写入 + 登记预览 URL（不 upload content）。
  */
 public class WorkspaceWriteSyncTest {
 
@@ -73,31 +73,33 @@ public class WorkspaceWriteSyncTest {
                 .build());
         writeTool.setAgentContext(agentContext);
 
-        Mockito.when(fileArtifactPort.upload(Mockito.eq("http://127.0.0.1:1601"), Mockito.any(FileRequest.class)))
+        Mockito.when(fileArtifactPort.register(Mockito.eq("http://127.0.0.1:1601"), Mockito.any(FileRequest.class)))
                 .thenReturn(FileResponse.builder()
                         .fileName("report.md")
-                        .ossUrl("https://file.example.com/report.md")
-                        .domainUrl("https://file.example.com/preview/report.md")
+                        .ossUrl("http://127.0.0.1:1601/v1/file_tool/download/session-write-001/report.md")
+                        .domainUrl("http://127.0.0.1:1601/v1/file_tool/preview/session-write-001/report.md")
                         .fileSize(12)
                         .build());
     }
 
     @Test
-    public void shouldWriteLocallyAndSyncToFileService() throws Exception {
+    public void shouldWriteLocallyAndRegisterWithoutUpload() throws Exception {
         String result = String.valueOf(writeTool.execute(Map.of(
                 "path", "out/report.md",
                 "content", "hello sync"
         )));
 
         Assert.assertTrue(result.contains("已写入文件"));
-        Assert.assertTrue(result.contains("已同步文件服务"));
+        Assert.assertTrue(result.contains("已登记预览"));
         Assert.assertTrue(Files.isRegularFile(workspaceRoot.resolve("out/report.md")));
         Assert.assertEquals("hello sync", Files.readString(workspaceRoot.resolve("out/report.md"), StandardCharsets.UTF_8));
 
         ArgumentCaptor<FileRequest> captor = ArgumentCaptor.forClass(FileRequest.class);
-        Mockito.verify(fileArtifactPort).upload(Mockito.eq("http://127.0.0.1:1601"), captor.capture());
+        Mockito.verify(fileArtifactPort).register(Mockito.eq("http://127.0.0.1:1601"), captor.capture());
+        Mockito.verify(fileArtifactPort, Mockito.never()).upload(Mockito.anyString(), Mockito.any());
         Assert.assertEquals("report.md", captor.getValue().getFileName());
-        Assert.assertEquals("hello sync", captor.getValue().getContent());
+        Assert.assertNull(captor.getValue().getContent());
+        Assert.assertTrue(captor.getValue().getLocalPath().replace('\\', '/').endsWith("out/report.md"));
         Mockito.verify(printer).send(Mockito.eq("file"), Mockito.any(), Mockito.isNull());
         Assert.assertFalse(agentContext.getVisibleArtifactFiles().isEmpty());
     }

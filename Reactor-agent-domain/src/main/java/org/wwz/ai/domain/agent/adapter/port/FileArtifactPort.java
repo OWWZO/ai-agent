@@ -17,6 +17,11 @@ public interface FileArtifactPort {
     FileResponse upload(String serviceBaseUrl, FileRequest request) throws IOException;
 
     /**
+     * 登记本地已有文件（不传 content），返回预览/下载 URL。
+     */
+    FileResponse register(String serviceBaseUrl, FileRequest request) throws IOException;
+
+    /**
      * 按文件名获取远端文件信息。
      */
     FileResponse get(String serviceBaseUrl, FileRequest request) throws IOException;

@@ -18,7 +18,7 @@ public class AiAgentWorkspaceProperties {
     /**
      * 工作区根目录模板，支持 {sessionId}、${java.io.tmpdir}、${user.dir}。
      */
-    private String rootTemplate = "${java.io.tmpdir}/reactor-agent-workspace/{sessionId}";
+    private String rootTemplate = "${user.dir}/reactor-tool/skilloutput/{sessionId}";
 
     private int maxReadChars = 12000;
 
