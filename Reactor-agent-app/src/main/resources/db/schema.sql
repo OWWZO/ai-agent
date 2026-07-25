@@ -7,10 +7,31 @@
 --   ai_agent_artifact, ai_agent_tool_output_*,
 --   ai_agent_visitor_identity, ai_agent_featured_conversation
 --
+-- Agent assembly config (not execution facts):
+--   ai_agent_sub_agent_definition â€” custom SubAgent definitions for Agent tool
+--
 -- Do NOT add as a second main path:
 --   ai_agent_message*, ai_agent_turn, ai_agent_transcript_block,
 --   ai_agent_display_event, ai_agent_session_memory
 -- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ai_agent_sub_agent_definition (
+    id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT 'ä¸»é”®ID',
+    agent_key               VARCHAR(64)    NOT NULL COMMENT 'subagent_type å”¯ä¸€é”®ï¼Œå¦‚ code-reviewer',
+    display_name            VARCHAR(128)   NULL COMMENT 'å±•ç¤ºå',
+    when_to_use             VARCHAR(512)   NOT NULL COMMENT 'ä½•æ—¶ä½¿ç”¨ï¼ˆæ³¨å…¥ä¸» Agent å·¥å…·æè¿°ï¼‰',
+    system_prompt           MEDIUMTEXT     NOT NULL COMMENT 'å­ Agent ç³»ç»Ÿæç¤ºè¯',
+    allowed_tools_json      JSON           NULL COMMENT 'å…è®¸å·¥å…·å JSON æ•°ç»„ï¼›å« * æˆ–ç©ºè¡¨ç¤ºå…¨éƒ¨',
+    disallowed_tools_json   JSON           NULL COMMENT 'é¢å¤–ç¦æ­¢å·¥å…·å JSON æ•°ç»„',
+    max_steps               INT            NULL COMMENT 'æœ€å¤§æ­¥æ•°ï¼›NULL æ²¿ç”¨ React é…ç½®',
+    status                  TINYINT        NOT NULL DEFAULT 1 COMMENT '1=å¯ç”¨,0=ç¦ç”¨',
+    create_time             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'åˆ›å»ºæ—¶é—´',
+    update_time             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'æ›´æ–°æ—¶é—´',
+    deleted                 TINYINT(1)     NOT NULL DEFAULT 0 COMMENT 'è½¯åˆ é™¤',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sub_agent_key (agent_key, deleted),
+    KEY idx_sub_agent_status (status, deleted, update_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='å¯é…ç½®å­ Agent å®šä¹‰ï¼ˆAgent å·¥å…·è°ƒåº¦ï¼‰';
 
 CREATE TABLE IF NOT EXISTS chat_model_info (
   id bigint NOT NULL AUTO_INCREMENT COMMENT 'ä¸»é”®',
@@ -575,28 +596,28 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     KEY idx_wm_msg_visibility (session_id, visibility, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='å·¥ä½œè®°å¿†æ¶ˆæ¯è¡Œï¼ˆè‡ªåŒ…å« hydrateï¼‰';
 
--- ¹¤×÷¼ÇÒäÑ¹ËõÊÂ¼ş£¨Éó¼Æ£º²ßÂÔ¡¢Ç°ºó token¡¢ÕªÒªÕıÎÄ¡¢Ñ¹ËõºóÍ¶Ó°¿ìÕÕ£©
+-- ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¹ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½ï¿½Ô¡ï¿½Ç°ï¿½ï¿½ tokenï¿½ï¿½ÕªÒªï¿½ï¿½ï¿½Ä¡ï¿½Ñ¹ï¿½ï¿½ï¿½ï¿½Í¶Ó°ï¿½ï¿½ï¿½Õ£ï¿½
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_compaction (
-    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT 'Ö÷¼üID',
-    session_id            VARCHAR(64)   NOT NULL COMMENT '»á»°ID',
-    trigger_request_id    VARCHAR(64)   NOT NULL COMMENT '´¥·¢Ñ¹ËõµÄµ±Ç°ÇëÇóID',
-    compact_request_id    VARCHAR(128)  NULL COMMENT 'Ğ´Èë working_memory µÄ compact request_id',
+    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT 'ï¿½ï¿½ï¿½ï¿½ID',
+    session_id            VARCHAR(64)   NOT NULL COMMENT 'ï¿½á»°ID',
+    trigger_request_id    VARCHAR(64)   NOT NULL COMMENT 'ï¿½ï¿½ï¿½ï¿½Ñ¹ï¿½ï¿½ï¿½Äµï¿½Ç°ï¿½ï¿½ï¿½ï¿½ID',
+    compact_request_id    VARCHAR(128)  NULL COMMENT 'Ğ´ï¿½ï¿½ working_memory ï¿½ï¿½ compact request_id',
     strategy              VARCHAR(32)   NOT NULL COMMENT 'micro-only/session-memory/full-llm/drop-oldest',
     status                TINYINT       NOT NULL DEFAULT 1 COMMENT '1=SUCCESS,2=FAILED',
-    before_tokens         INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõÇ° token ¹ÀËã',
-    after_tokens          INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹Ëõºó token ¹ÀËã',
-    before_message_count  INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõÇ°ÏûÏ¢ÌõÊı',
-    after_message_count   INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ËõºóÏûÏ¢ÌõÊı',
-    threshold_tokens      INT           NOT NULL DEFAULT 0 COMMENT '´¥·¢ãĞÖµ',
-    summary_text          MEDIUMTEXT    NULL COMMENT '×¢ÈëÓÃ summary ÕıÎÄ£¨ÈôÓĞ£©',
-    before_messages_json  MEDIUMTEXT    NULL COMMENT 'Ñ¹ËõÇ° Message ÁĞ±í JSON£¨Éó¼Æ£©',
-    after_messages_json   MEDIUMTEXT    NULL COMMENT 'Ñ¹Ëõºó Message ÁĞ±í JSON£¨Éó¼Æ/¿ÉÖØ½¨£©',
-    error_message         VARCHAR(1024) NULL COMMENT 'Ê§°ÜÔ­Òò',
-    create_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '´´½¨Ê±¼ä',
-    update_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '¸üĞÂÊ±¼ä',
-    deleted               TINYINT(1)    NOT NULL DEFAULT 0 COMMENT 'ÈíÉ¾³ı',
+    before_tokens         INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ï¿½ï¿½Ç° token ï¿½ï¿½ï¿½ï¿½',
+    after_tokens          INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ï¿½ï¿½ï¿½ï¿½ token ï¿½ï¿½ï¿½ï¿½',
+    before_message_count  INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ï¿½ï¿½Ç°ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½',
+    after_message_count   INT           NOT NULL DEFAULT 0 COMMENT 'Ñ¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½',
+    threshold_tokens      INT           NOT NULL DEFAULT 0 COMMENT 'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ',
+    summary_text          MEDIUMTEXT    NULL COMMENT '×¢ï¿½ï¿½ï¿½ï¿½ summary ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½ï¿½Ğ£ï¿½',
+    before_messages_json  MEDIUMTEXT    NULL COMMENT 'Ñ¹ï¿½ï¿½Ç° Message ï¿½Ğ±ï¿½ JSONï¿½ï¿½ï¿½ï¿½Æ£ï¿½',
+    after_messages_json   MEDIUMTEXT    NULL COMMENT 'Ñ¹ï¿½ï¿½ï¿½ï¿½ Message ï¿½Ğ±ï¿½ JSONï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½Ø½ï¿½ï¿½ï¿½',
+    error_message         VARCHAR(1024) NULL COMMENT 'Ê§ï¿½ï¿½Ô­ï¿½ï¿½',
+    create_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½',
+    update_time           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½',
+    deleted               TINYINT(1)    NOT NULL DEFAULT 0 COMMENT 'ï¿½ï¿½É¾ï¿½ï¿½',
     PRIMARY KEY (id),
     KEY idx_wm_compaction_session (session_id, deleted, id DESC),
     KEY idx_wm_compaction_trigger (trigger_request_id, deleted),
     KEY idx_wm_compaction_strategy (session_id, strategy, deleted)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='¹¤×÷¼ÇÒäÑ¹ËõÊÂ¼şÉó¼Æ±í';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¹ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½Æ±ï¿½';

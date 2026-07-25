@@ -74,7 +74,7 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_interpreter"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("web_fetch"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("script_runner_tool"));

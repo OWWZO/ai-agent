@@ -2,14 +2,18 @@ package org.wwz.ai.domain.agent.runtime.subagent;
 
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 内置同步子 Agent 注册表（对标 cc-haha builtInAgents）。
+ * 同步子 Agent 注册表：内置类型 + 可配置（DB）类型。
+ * 对标 cc-haha builtInAgents，并支持运行时 replaceConfigured。
  */
 @Component
 public class SubAgentRegistry {
@@ -17,30 +21,68 @@ public class SubAgentRegistry {
     public static final String TYPE_EXPLORE = "Explore";
     public static final String TYPE_GENERAL_PURPOSE = "general-purpose";
 
-    private final Map<String, SubAgentDefinition> agents = new LinkedHashMap<>();
+    private final Map<String, SubAgentDefinition> builtins = new LinkedHashMap<>();
+    private final Map<String, SubAgentDefinition> configured = new ConcurrentHashMap<>();
 
     public SubAgentRegistry() {
-        register(buildExplore());
-        register(buildGeneralPurpose());
+        registerBuiltin(buildExplore());
+        registerBuiltin(buildGeneralPurpose());
     }
 
+    /**
+     * 注册内置类型（启动时一次；同 key 覆盖）。
+     */
+    public void registerBuiltin(SubAgentDefinition definition) {
+        putValidated(builtins, definition);
+    }
+
+    /**
+     * 注册或覆盖任意类型（测试/动态扩展；configured 优先可见层仍由 resolve 合并规则决定）。
+     * 若 key 与内置同名，写入 configured 可覆盖内置（除硬保护外，见 replaceConfigured）。
+     */
     public void register(SubAgentDefinition definition) {
-        if (definition == null || definition.getAgentType() == null || definition.getAgentType().isBlank()) {
-            throw new IllegalArgumentException("SubAgentDefinition.agentType 不能为空");
+        putValidated(configured, definition);
+    }
+
+    /**
+     * 用 DB 启用列表整体替换可配置层。
+     * 保留全部内置；若 DB 条目 agentType 与内置同名则忽略该条（内置不可被配置覆盖）。
+     */
+    public void replaceConfigured(Collection<SubAgentDefinition> definitions) {
+        Map<String, SubAgentDefinition> next = new ConcurrentHashMap<>();
+        if (definitions != null) {
+            for (SubAgentDefinition definition : definitions) {
+                if (definition == null
+                        || definition.getAgentType() == null
+                        || definition.getAgentType().isBlank()) {
+                    continue;
+                }
+                String key = definition.getAgentType().trim();
+                if (builtins.containsKey(key)) {
+                    continue;
+                }
+                next.put(key, normalize(definition));
+            }
         }
-        agents.put(definition.getAgentType(), definition);
+        configured.clear();
+        configured.putAll(next);
     }
 
     public Optional<SubAgentDefinition> find(String agentType) {
         if (agentType == null || agentType.isBlank()) {
             return Optional.empty();
         }
-        return Optional.ofNullable(agents.get(agentType));
+        String key = agentType.trim();
+        SubAgentDefinition configuredDef = configured.get(key);
+        if (configuredDef != null) {
+            return Optional.of(configuredDef);
+        }
+        return Optional.ofNullable(builtins.get(key));
     }
 
     public SubAgentDefinition require(String agentType) {
         return find(agentType).orElseThrow(() -> new IllegalArgumentException(
-                "未知 subagent_type: " + agentType + "。可用类型: " + String.join(", ", agents.keySet())));
+                "未知 subagent_type: " + agentType + "。可用类型: " + String.join(", ", listTypeNames())));
     }
 
     public SubAgentDefinition resolveOrDefault(String agentType) {
@@ -50,8 +92,45 @@ public class SubAgentRegistry {
         return require(agentType);
     }
 
+    /**
+     * 合并列表：内置在前，可配置在后（同 key 已在 replace 时去重）。
+     */
     public Collection<SubAgentDefinition> list() {
-        return agents.values();
+        List<SubAgentDefinition> all = new ArrayList<>(builtins.size() + configured.size());
+        all.addAll(builtins.values());
+        all.addAll(configured.values());
+        return all;
+    }
+
+    public List<String> listTypeNames() {
+        List<String> names = new ArrayList<>();
+        names.addAll(builtins.keySet());
+        names.addAll(configured.keySet());
+        return names;
+    }
+
+    public int configuredCount() {
+        return configured.size();
+    }
+
+    private static void putValidated(Map<String, SubAgentDefinition> target, SubAgentDefinition definition) {
+        if (definition == null || definition.getAgentType() == null || definition.getAgentType().isBlank()) {
+            throw new IllegalArgumentException("SubAgentDefinition.agentType 不能为空");
+        }
+        target.put(definition.getAgentType().trim(), normalize(definition));
+    }
+
+    private static SubAgentDefinition normalize(SubAgentDefinition definition) {
+        return SubAgentDefinition.builder()
+                .agentType(definition.getAgentType().trim())
+                .whenToUse(definition.getWhenToUse())
+                .systemPrompt(definition.getSystemPrompt())
+                .allowedTools(definition.getAllowedTools())
+                .disallowedTools(definition.getDisallowedTools() == null
+                        ? Set.of()
+                        : definition.getDisallowedTools())
+                .maxSteps(definition.getMaxSteps())
+                .build();
     }
 
     private static SubAgentDefinition buildExplore() {
@@ -74,6 +153,7 @@ public class SubAgentRegistry {
                         "workspace_grep",
                         "deep_search",
                         "web_fetch",
+                        "WebFetch",
                         "skill_tool"
                 ))
                 .disallowedTools(Set.of(

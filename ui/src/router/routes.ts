@@ -6,6 +6,7 @@ export const ROUTES = {
   WORKSPACE_MRAG: "/workspace/mrag",
   WORKSPACE_IMAGE_GENERATION: "/workspace/image-generation",
   WORKSPACE_SOP: "/workspace/sop",
+  WORKSPACE_SUB_AGENTS: "/workspace/sub-agents",
   NOT_FOUND: "*",
 } as const;
 

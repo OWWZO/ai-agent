@@ -119,6 +119,9 @@ public class SubAgentDispatchTest {
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("description"));
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("prompt"));
         Assert.assertTrue(tool.getDescription().contains("Explore"));
+        Assert.assertTrue(String.valueOf(
+                ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) params.get("properties")).get("subagent_type"))
+                        .get("description")).contains("Explore"));
     }
 
     private static final class StubTool implements BaseTool {

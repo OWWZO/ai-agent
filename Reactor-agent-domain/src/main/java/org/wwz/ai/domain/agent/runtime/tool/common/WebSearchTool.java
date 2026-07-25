@@ -9,6 +9,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -18,11 +19,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Web 搜索工具（对标 cc-haha WebSearchTool 的 Tavily/Brave 外部检索路径）。
- * 不依赖 Anthropic 原生 server tool。
+ * Web 搜索工具。
+ * 优先级：Grok/xAI 原生 server tool（web_search / search_parameters）→ Tavily → Brave。
  */
 @Slf4j
 @Data
@@ -31,7 +35,9 @@ public class WebSearchTool implements BaseTool {
     public static final String TOOL_NAME = "WebSearch";
 
     private static final int MAX_RESULTS = 8;
-    private static final long HTTP_TIMEOUT_SECONDS = 30L;
+    private static final long HTTP_TIMEOUT_SECONDS = 60L;
+    private static final Pattern MARKDOWN_LINK = Pattern.compile("\\[([^\\]]+)]\\((https?://[^)]+)\\)");
+    private static final Pattern BARE_URL = Pattern.compile("https?://[^\\s)>\"]+");
 
     private AgentContext agentContext;
 
@@ -45,6 +51,7 @@ public class WebSearchTool implements BaseTool {
         String currentMonthYear = java.time.YearMonth.now().toString();
         return """
                 Search the web for up-to-date information beyond the model knowledge cutoff.
+                Prefer Grok native web search when available; otherwise Tavily/Brave.
                 Returns titles, URLs and snippets. After answering, include a Sources section with markdown links.
 
                 CRITICAL:
@@ -104,20 +111,255 @@ public class WebSearchTool implements BaseTool {
             }
 
             ReactorConfig config = requireReactorConfig();
-            ResolvedProvider resolved = resolveProvider(config);
-            if (resolved.provider == Provider.DISABLED) {
-                return failure("WebSearch 未配置。请设置 autobots.autoagent.web_search.tavily_api_key 或 brave_api_key。");
+            List<ProviderPlan> plans = resolveProviderPlans(config);
+            if (plans.isEmpty()) {
+                return failure("WebSearch 未配置。请配置 Grok/xAI（web_search.grok_* 或 llm.default）或 tavily/brave API key。");
             }
 
-            List<SearchHit> hits = resolved.provider == Provider.TAVILY
-                    ? searchTavily(query, allowedDomains, blockedDomains, resolved.apiKey)
-                    : searchBrave(query, allowedDomains, blockedDomains, resolved.apiKey);
-
-            double durationSeconds = (System.currentTimeMillis() - start) / 1000.0;
-            return buildSuccess(query, resolved.provider, hits, durationSeconds);
+            Exception lastError = null;
+            for (ProviderPlan plan : plans) {
+                try {
+                    SearchBundle bundle = executePlan(plan, query, allowedDomains, blockedDomains);
+                    double durationSeconds = (System.currentTimeMillis() - start) / 1000.0;
+                    return buildSuccess(query, plan.provider(), bundle, durationSeconds);
+                } catch (Exception e) {
+                    lastError = e;
+                    log.warn("{} WebSearch provider {} failed, try next: {}",
+                            requestId(), plan.provider(), e.getMessage());
+                }
+            }
+            String msg = "WebSearch 全部 provider 失败"
+                    + (lastError == null ? "" : "：" + lastError.getMessage());
+            return failure(msg);
         } catch (Exception e) {
             log.error("{} WebSearch execute error, input={}", requestId(), input, e);
             return failure("WebSearch 执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()));
+        }
+    }
+
+    private SearchBundle executePlan(ProviderPlan plan,
+                                     String query,
+                                     List<String> allowedDomains,
+                                     List<String> blockedDomains) throws Exception {
+        return switch (plan.provider()) {
+            case GROK -> searchGrok(query, allowedDomains, blockedDomains, plan);
+            case TAVILY -> new SearchBundle(searchTavily(query, allowedDomains, blockedDomains, plan.apiKey()), null);
+            case BRAVE -> new SearchBundle(searchBrave(query, allowedDomains, blockedDomains, plan.apiKey()), null);
+            case DISABLED -> throw new IllegalStateException("disabled");
+        };
+    }
+
+    /**
+     * Grok/xAI 原生搜索：
+     * 1) tools=[{type:web_search}] server tool
+     * 2) 兼容 search_parameters live search
+     */
+    private SearchBundle searchGrok(String query,
+                                    List<String> allowedDomains,
+                                    List<String> blockedDomains,
+                                    ProviderPlan plan) throws Exception {
+        String endpoint = joinUrl(plan.baseUrl(), plan.interfaceUrl());
+        String filteredQuery = applyDomainFiltersToQuery(query, allowedDomains, blockedDomains);
+
+        Exception firstError = null;
+        try {
+            return callGrokWithServerTool(endpoint, plan, filteredQuery, query);
+        } catch (Exception e) {
+            firstError = e;
+            log.info("{} Grok web_search server tool failed, fallback search_parameters: {}",
+                    requestId(), e.getMessage());
+        }
+        try {
+            return callGrokWithSearchParameters(endpoint, plan, filteredQuery, query);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Grok native search failed: server_tool=" + firstError.getMessage()
+                            + "; search_parameters=" + e.getMessage(), e);
+        }
+    }
+
+    private SearchBundle callGrokWithServerTool(String endpoint,
+                                                ProviderPlan plan,
+                                                String filteredQuery,
+                                                String originalQuery) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", plan.model());
+        body.put("temperature", 0);
+        body.put("stream", false);
+        body.put("messages", List.of(
+                Map.of("role", "system", "content",
+                        "You are a web search assistant. Use the web_search tool. "
+                                + "Return concise findings with source titles and URLs as markdown links."),
+                Map.of("role", "user", "content",
+                        "Search the web and summarize results for: " + filteredQuery)
+        ));
+        body.put("tools", List.of(Map.of("type", "web_search")));
+        body.put("tool_choice", "auto");
+
+        String responseText = postJson(endpoint, plan.apiKey(), body);
+        return parseGrokChatResponse(responseText, originalQuery, "web_search");
+    }
+
+    private SearchBundle callGrokWithSearchParameters(String endpoint,
+                                                      ProviderPlan plan,
+                                                      String filteredQuery,
+                                                      String originalQuery) throws Exception {
+        Map<String, Object> searchParameters = new LinkedHashMap<>();
+        searchParameters.put("mode", "on");
+        searchParameters.put("return_citations", true);
+        searchParameters.put("max_search_results", MAX_RESULTS);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", plan.model());
+        body.put("temperature", 0);
+        body.put("stream", false);
+        body.put("messages", List.of(
+                Map.of("role", "system", "content",
+                        "You are a web search assistant. Use live web search. "
+                                + "Return concise findings with source titles and URLs as markdown links."),
+                Map.of("role", "user", "content",
+                        "Search the web and summarize results for: " + filteredQuery)
+        ));
+        body.put("search_parameters", searchParameters);
+
+        String responseText = postJson(endpoint, plan.apiKey(), body);
+        return parseGrokChatResponse(responseText, originalQuery, "search_parameters");
+    }
+
+    private SearchBundle parseGrokChatResponse(String responseText,
+                                               String originalQuery,
+                                               String mode) {
+        if (StringUtils.isBlank(responseText)) {
+            throw new IllegalStateException("empty response");
+        }
+        JSONObject root = JSON.parseObject(responseText);
+        if (root == null) {
+            throw new IllegalStateException("invalid json");
+        }
+        if (root.containsKey("error")) {
+            Object err = root.get("error");
+            throw new IllegalStateException(String.valueOf(err));
+        }
+
+        String content = extractAssistantContent(root);
+        List<SearchHit> hits = extractHitsFromGrok(root, content);
+        if (StringUtils.isBlank(content) && hits.isEmpty()) {
+            throw new IllegalStateException("no content/citations from grok (" + mode + ")");
+        }
+        String summary = StringUtils.isNotBlank(content)
+                ? content.trim()
+                : "Grok search completed for: " + originalQuery;
+        return new SearchBundle(hits, summary);
+    }
+
+    private String extractAssistantContent(JSONObject root) {
+        JSONArray choices = root.getJSONArray("choices");
+        if (choices == null || choices.isEmpty()) {
+            return "";
+        }
+        JSONObject first = choices.getJSONObject(0);
+        if (first == null) {
+            return "";
+        }
+        JSONObject message = first.getJSONObject("message");
+        if (message == null) {
+            return first.getString("text");
+        }
+        Object content = message.get("content");
+        if (content instanceof String text) {
+            return text;
+        }
+        if (content instanceof JSONArray parts) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < parts.size(); i++) {
+                Object part = parts.get(i);
+                if (part instanceof String s) {
+                    sb.append(s);
+                } else if (part instanceof JSONObject obj) {
+                    String t = obj.getString("text");
+                    if (StringUtils.isNotBlank(t)) {
+                        sb.append(t);
+                    }
+                }
+            }
+            return sb.toString();
+        }
+        return message.getString("content");
+    }
+
+    private List<SearchHit> extractHitsFromGrok(JSONObject root, String content) {
+        List<SearchHit> hits = new ArrayList<>();
+        collectCitationArray(root.getJSONArray("citations"), hits);
+        JSONArray choices = root.getJSONArray("choices");
+        if (choices != null && !choices.isEmpty()) {
+            JSONObject first = choices.getJSONObject(0);
+            if (first != null) {
+                collectCitationArray(first.getJSONArray("citations"), hits);
+                JSONObject message = first.getJSONObject("message");
+                if (message != null) {
+                    collectCitationArray(message.getJSONArray("citations"), hits);
+                    Object annotations = message.get("annotations");
+                    if (annotations instanceof JSONArray arr) {
+                        for (int i = 0; i < arr.size(); i++) {
+                            JSONObject ann = arr.getJSONObject(i);
+                            if (ann == null) {
+                                continue;
+                            }
+                            String url = firstNonBlank(ann.getString("url"), ann.getString("source_url"));
+                            String title = firstNonBlank(ann.getString("title"), ann.getString("name"), url);
+                            SearchHit hit = normalizeHit(title, url, ann.getString("snippet"));
+                            if (hit != null) {
+                                hits.add(hit);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (hits.isEmpty() && StringUtils.isNotBlank(content)) {
+            Matcher md = MARKDOWN_LINK.matcher(content);
+            while (md.find() && hits.size() < MAX_RESULTS) {
+                SearchHit hit = normalizeHit(md.group(1), md.group(2), null);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            }
+        }
+        if (hits.isEmpty() && StringUtils.isNotBlank(content)) {
+            Matcher bare = BARE_URL.matcher(content);
+            while (bare.find() && hits.size() < MAX_RESULTS) {
+                String url = bare.group();
+                SearchHit hit = normalizeHit(url, url, null);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            }
+        }
+        return dedupeHits(hits);
+    }
+
+    private void collectCitationArray(JSONArray citations, List<SearchHit> hits) {
+        if (citations == null) {
+            return;
+        }
+        for (int i = 0; i < citations.size(); i++) {
+            Object item = citations.get(i);
+            if (item instanceof String url) {
+                SearchHit hit = normalizeHit(url, url, null);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+                continue;
+            }
+            if (item instanceof JSONObject obj) {
+                String url = firstNonBlank(obj.getString("url"), obj.getString("source_url"), obj.getString("link"));
+                String title = firstNonBlank(obj.getString("title"), obj.getString("name"), url);
+                String snippet = firstNonBlank(obj.getString("snippet"), obj.getString("text"), obj.getString("description"));
+                SearchHit hit = normalizeHit(title, url, snippet);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            }
         }
     }
 
@@ -212,17 +454,42 @@ public class WebSearchTool implements BaseTool {
         return hits;
     }
 
+    private String postJson(String url, String apiKey, Map<String, Object> body) throws Exception {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("Authorization", "Bearer " + apiKey);
+        return requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
+                .method("POST")
+                .url(url)
+                .headers(headers)
+                .body(JSON.toJSONString(body))
+                .connectTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .readTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .writeTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .callTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .build());
+    }
+
     private ToolResultPayload buildSuccess(String query,
                                            Provider provider,
-                                           List<SearchHit> hits,
+                                           SearchBundle bundle,
                                            double durationSeconds) {
         StringBuilder sb = new StringBuilder();
         sb.append("Web search results for query: \"").append(query).append("\"\n");
-        sb.append("Search provider: ").append(provider.name().toLowerCase()).append('\n');
+        sb.append("Search provider: ").append(provider.name().toLowerCase(Locale.ROOT)).append('\n');
         sb.append(String.format("Duration: %.2fs\n\n", durationSeconds));
+
+        if (StringUtils.isNotBlank(bundle.summary())) {
+            sb.append(bundle.summary().trim()).append("\n\n");
+        }
+
+        List<SearchHit> hits = bundle.hits() == null ? List.of() : bundle.hits();
         if (hits.isEmpty()) {
-            sb.append("No results found.\n");
+            if (StringUtils.isBlank(bundle.summary())) {
+                sb.append("No results found.\n");
+            }
         } else {
+            sb.append("Links:\n");
             int index = 1;
             for (SearchHit hit : hits) {
                 sb.append(index++).append(". ").append(hit.title()).append('\n');
@@ -237,32 +504,134 @@ public class WebSearchTool implements BaseTool {
         return ToolResultPayload.text(sb.toString().trim());
     }
 
-    private ResolvedProvider resolveProvider(ReactorConfig config) {
-        String mode = StringUtils.defaultIfBlank(config.getWebSearchMode(), "auto").trim().toLowerCase();
+    /**
+     * auto: grok → tavily → brave
+     * grok / tavily / brave / disabled 为强制模式
+     */
+    private List<ProviderPlan> resolveProviderPlans(ReactorConfig config) {
+        String mode = StringUtils.defaultIfBlank(config.getWebSearchMode(), "auto").trim().toLowerCase(Locale.ROOT);
+        List<ProviderPlan> plans = new ArrayList<>();
+
+        if ("disabled".equals(mode)) {
+            return plans;
+        }
+
+        ProviderPlan grok = resolveGrokPlan(config);
         String tavilyKey = StringUtils.trimToNull(config.getWebSearchTavilyApiKey());
         String braveKey = StringUtils.trimToNull(config.getWebSearchBraveApiKey());
 
-        if ("disabled".equals(mode)) {
-            return new ResolvedProvider(Provider.DISABLED, null);
+        if ("grok".equals(mode) || "xai".equals(mode)) {
+            if (grok != null) {
+                plans.add(grok);
+            }
+            return plans;
         }
         if ("tavily".equals(mode)) {
-            return tavilyKey != null
-                    ? new ResolvedProvider(Provider.TAVILY, tavilyKey)
-                    : new ResolvedProvider(Provider.DISABLED, null);
+            if (tavilyKey != null) {
+                plans.add(new ProviderPlan(Provider.TAVILY, tavilyKey, null, null, null));
+            }
+            return plans;
         }
         if ("brave".equals(mode)) {
-            return braveKey != null
-                    ? new ResolvedProvider(Provider.BRAVE, braveKey)
-                    : new ResolvedProvider(Provider.DISABLED, null);
+            if (braveKey != null) {
+                plans.add(new ProviderPlan(Provider.BRAVE, braveKey, null, null, null));
+            }
+            return plans;
         }
+
         // auto
+        if (grok != null) {
+            plans.add(grok);
+        }
         if (tavilyKey != null) {
-            return new ResolvedProvider(Provider.TAVILY, tavilyKey);
+            plans.add(new ProviderPlan(Provider.TAVILY, tavilyKey, null, null, null));
         }
         if (braveKey != null) {
-            return new ResolvedProvider(Provider.BRAVE, braveKey);
+            plans.add(new ProviderPlan(Provider.BRAVE, braveKey, null, null, null));
         }
-        return new ResolvedProvider(Provider.DISABLED, null);
+        return plans;
+    }
+
+    private ProviderPlan resolveGrokPlan(ReactorConfig config) {
+        String apiKey = firstNonBlank(
+                StringUtils.trimToNull(config.getWebSearchGrokApiKey()),
+                null
+        );
+        String baseUrl = firstNonBlank(
+                StringUtils.trimToNull(config.getWebSearchGrokBaseUrl()),
+                null
+        );
+        String model = firstNonBlank(
+                StringUtils.trimToNull(config.getWebSearchGrokModel()),
+                null
+        );
+        String interfaceUrl = firstNonBlank(
+                StringUtils.trimToNull(config.getWebSearchGrokInterfaceUrl()),
+                "/v1/chat/completions"
+        );
+
+        LLMSettings llm = resolveAgentLlmSettings();
+        if (llm != null) {
+            if (apiKey == null) {
+                apiKey = StringUtils.trimToNull(llm.getApiKey());
+            }
+            if (baseUrl == null) {
+                baseUrl = StringUtils.trimToNull(llm.getBaseUrl());
+            }
+            if (model == null) {
+                model = StringUtils.trimToNull(llm.getModel());
+            }
+            if (StringUtils.isBlank(config.getWebSearchGrokInterfaceUrl())
+                    && StringUtils.isNotBlank(llm.getInterfaceUrl())) {
+                interfaceUrl = llm.getInterfaceUrl().trim();
+            }
+        }
+
+        if (StringUtils.isBlank(apiKey) || StringUtils.isBlank(baseUrl) || StringUtils.isBlank(model)) {
+            return null;
+        }
+
+        // auto 下仅当模型像 grok/xai，或显式配置了 grok_* 时启用
+        boolean explicitGrokConfig = StringUtils.isNotBlank(config.getWebSearchGrokApiKey())
+                || StringUtils.isNotBlank(config.getWebSearchGrokBaseUrl())
+                || StringUtils.isNotBlank(config.getWebSearchGrokModel());
+        if (!explicitGrokConfig && !looksLikeGrokModel(model) && !looksLikeXaiEndpoint(baseUrl)) {
+            return null;
+        }
+
+        return new ProviderPlan(Provider.GROK, apiKey, baseUrl, interfaceUrl, model);
+    }
+
+    private LLMSettings resolveAgentLlmSettings() {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            return null;
+        }
+        try {
+            String modelName = null;
+            if (agentContext.getRuntimeDependencies().getReactorConfig() != null) {
+                modelName = agentContext.getRuntimeDependencies().getReactorConfig().getReactModelName();
+            }
+            return agentContext.getRuntimeDependencies().resolveLlmSettings(modelName);
+        } catch (Exception e) {
+            log.debug("{} resolve llm settings for web search skipped: {}", requestId(), e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean looksLikeGrokModel(String model) {
+        if (StringUtils.isBlank(model)) {
+            return false;
+        }
+        String m = model.toLowerCase(Locale.ROOT);
+        return m.contains("grok") || m.contains("xai");
+    }
+
+    private static boolean looksLikeXaiEndpoint(String baseUrl) {
+        if (StringUtils.isBlank(baseUrl)) {
+            return false;
+        }
+        String u = baseUrl.toLowerCase(Locale.ROOT);
+        return u.contains("x.ai") || u.contains("xai");
     }
 
     private static String applyDomainFiltersToQuery(String query,
@@ -287,10 +656,46 @@ public class WebSearchTool implements BaseTool {
     }
 
     private static SearchHit normalizeHit(String title, String url, String snippet) {
-        if (StringUtils.isBlank(title) || StringUtils.isBlank(url)) {
+        if (StringUtils.isBlank(url)) {
             return null;
         }
-        return new SearchHit(title.trim(), url.trim(), StringUtils.defaultString(snippet).trim());
+        String safeTitle = StringUtils.defaultIfBlank(title, url).trim();
+        return new SearchHit(safeTitle, url.trim(), StringUtils.defaultString(snippet).trim());
+    }
+
+    private static List<SearchHit> dedupeHits(List<SearchHit> hits) {
+        Map<String, SearchHit> map = new LinkedHashMap<>();
+        for (SearchHit hit : hits) {
+            if (hit == null || StringUtils.isBlank(hit.url())) {
+                continue;
+            }
+            map.putIfAbsent(hit.url(), hit);
+            if (map.size() >= MAX_RESULTS) {
+                break;
+            }
+        }
+        return new ArrayList<>(map.values());
+    }
+
+    private static String joinUrl(String baseUrl, String interfaceUrl) {
+        String base = StringUtils.removeEnd(StringUtils.trimToEmpty(baseUrl), "/");
+        String path = StringUtils.defaultIfBlank(interfaceUrl, "/v1/chat/completions").trim();
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        return base + path;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.isNotBlank(value)) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private ToolResultPayload failure(String message) {
@@ -345,12 +750,20 @@ public class WebSearchTool implements BaseTool {
     }
 
     private enum Provider {
+        GROK,
         TAVILY,
         BRAVE,
         DISABLED
     }
 
-    private record ResolvedProvider(Provider provider, String apiKey) {
+    private record ProviderPlan(Provider provider,
+                                String apiKey,
+                                String baseUrl,
+                                String interfaceUrl,
+                                String model) {
+    }
+
+    private record SearchBundle(List<SearchHit> hits, String summary) {
     }
 
     private record SearchHit(String title, String url, String snippet) {

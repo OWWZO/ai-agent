@@ -30,6 +30,7 @@ public final class PlanModeToolPolicy {
             "workspace_grep",
             "deep_search",
             "web_fetch",
+            "WebFetch",
             "skill_tool"
     );
 

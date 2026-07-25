@@ -76,7 +76,11 @@ public class AgentDispatchTool implements BaseTool {
 
         Map<String, Object> subagentType = new LinkedHashMap<>();
         subagentType.put("type", "string");
-        subagentType.put("description", "子 Agent 类型：Explore（只读探索）或 general-purpose（通用）。省略则 general-purpose");
+        String typeHint = "子 Agent 类型；省略则 general-purpose。可用: "
+                + (subAgentRegistry == null || subAgentRegistry.listTypeNames().isEmpty()
+                ? "Explore, general-purpose"
+                : String.join(", ", subAgentRegistry.listTypeNames()));
+        subagentType.put("description", typeHint);
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("description", description);

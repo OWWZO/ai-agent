@@ -52,4 +52,10 @@ public class RemoteHttpRequest {
      * 整体调用超时时间，单位秒；为空时由适配器使用默认值。
      */
     Long callTimeoutSeconds;
+
+    /**
+     * 是否自动跟随重定向；为空时默认 true（兼容既有调用）。
+     * WebFetch 等场景应设为 false，由业务判断跨域 redirect。
+     */
+    Boolean followRedirects;
 }

@@ -69,6 +69,9 @@ public class ShellAndWebSearchToolTest {
     public void webSearchShouldFailWhenNoApiKey() {
         ReactorConfig config = new ReactorConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "auto");
+        ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "");
+        ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "");
+        ReflectionTestUtils.setField(config, "webSearchGrokModel", "");
         ReflectionTestUtils.setField(config, "webSearchTavilyApiKey", "");
         ReflectionTestUtils.setField(config, "webSearchBraveApiKey", "");
 
@@ -84,6 +87,95 @@ public class ShellAndWebSearchToolTest {
         Assert.assertTrue(Boolean.TRUE.equals(payload.getFailed()));
         Assert.assertTrue(payload.getErrorMsg().contains("未配置")
                 || payload.getLlmObservation().contains("未配置"));
+    }
+
+    @Test
+    public void webSearchShouldPreferGrokThenParseCitations() {
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "webSearchMode", "auto");
+        ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "grok-key");
+        ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "https://api.x.ai");
+        ReflectionTestUtils.setField(config, "webSearchGrokModel", "grok-4");
+        ReflectionTestUtils.setField(config, "webSearchGrokInterfaceUrl", "/v1/chat/completions");
+        ReflectionTestUtils.setField(config, "webSearchTavilyApiKey", "tavily-should-not-use");
+        ReflectionTestUtils.setField(config, "webSearchBraveApiKey", "");
+
+        RemoteHttpPort httpPort = request -> {
+            Assert.assertEquals("POST", request.getMethod());
+            Assert.assertTrue(request.getUrl().contains("api.x.ai"));
+            Assert.assertTrue(request.getBody().contains("web_search")
+                    || request.getBody().contains("search_parameters"));
+            return """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": "Grok found [Example Title](https://example.com) about Spring."
+                          }
+                        }
+                      ],
+                      "citations": [
+                        {"title": "Example Title", "url": "https://example.com", "snippet": "snippet"}
+                      ]
+                    }
+                    """;
+        };
+
+        AgentContext context = AgentContext.builder()
+                .requestId("req-ws-grok")
+                .sessionId("session-ws-grok")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        WebSearchTool tool = new WebSearchTool();
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "Spring AI"));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(payload.getLlmObservation().contains("grok"));
+        Assert.assertTrue(payload.getLlmObservation().contains("https://example.com"));
+        Assert.assertTrue(payload.getLlmObservation().contains("Example Title"));
+    }
+
+    @Test
+    public void webSearchShouldFallbackToTavilyWhenGrokFails() {
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "webSearchMode", "auto");
+        ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "grok-key");
+        ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "https://api.x.ai");
+        ReflectionTestUtils.setField(config, "webSearchGrokModel", "grok-4");
+        ReflectionTestUtils.setField(config, "webSearchTavilyApiKey", "tavily-key");
+        ReflectionTestUtils.setField(config, "webSearchBraveApiKey", "");
+
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        RemoteHttpPort httpPort = request -> {
+            int n = calls.incrementAndGet();
+            if (request.getUrl().contains("x.ai")) {
+                throw new RuntimeException("grok down");
+            }
+            Assert.assertTrue(request.getUrl().contains("tavily.com"));
+            return """
+                    {
+                      "results": [
+                        {"title": "Tavily Hit", "url": "https://tavily.example", "content": "ok"}
+                      ]
+                    }
+                    """;
+        };
+
+        AgentContext context = AgentContext.builder()
+                .requestId("req-ws-fallback")
+                .sessionId("session-ws-fallback")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        WebSearchTool tool = new WebSearchTool();
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "example search"));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(payload.getLlmObservation().contains("tavily"));
+        Assert.assertTrue(payload.getLlmObservation().contains("Tavily Hit"));
+        Assert.assertTrue(calls.get() >= 2);
     }
 
     @Test

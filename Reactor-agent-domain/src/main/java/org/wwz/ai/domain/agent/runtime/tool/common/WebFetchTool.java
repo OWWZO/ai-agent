@@ -1,257 +1,369 @@
 package org.wwz.ai.domain.agent.runtime.tool.common;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
+import org.wwz.ai.domain.agent.adapter.port.RemoteHttpResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
-import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.WebFetchRequest;
-import org.wwz.ai.domain.agent.runtime.dto.WebFetchResponse;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
-import java.util.ArrayList;
+import java.net.URI;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
- * 单网页抓取工具，负责调用 reactor-tool 的 web_fetch 端点并登记文件产物。
+ * WebFetch（对标 cc-haha）：抓取 URL → HTML 转文本 → 用 prompt 经小模型提炼。
+ * 不再依赖 reactor-tool /web_fetch 与文件产物。
  */
 @Slf4j
 @Data
 public class WebFetchTool implements BaseTool {
 
-    private static final int DEFAULT_TIMEOUT_SECONDS = 30;
-    private static final int SUMMARY_MAX_LENGTH = 500;
+    public static final String TOOL_NAME = "WebFetch";
+
+    private static final int MAX_URL_LENGTH = 2000;
+    private static final int MAX_MARKDOWN_LENGTH = 100_000;
+    private static final int MAX_SAME_HOST_REDIRECTS = 10;
+    private static final long FETCH_TIMEOUT_SECONDS = 60L;
+    private static final int EXTRACT_TIMEOUT_SECONDS = 90;
+    private static final String USER_AGENT = "ReactorAgentWebFetch/1.0";
+    private static final Pattern SCRIPT_STYLE = Pattern.compile(
+            "(?is)<(script|style|noscript|svg|iframe)[^>]*>.*?</\\1>");
+    private static final Pattern TAG = Pattern.compile("(?is)<[^>]+>");
+    private static final Pattern MULTI_SPACE = Pattern.compile("[ \\t\\x0B\\f\\r]+");
+    private static final Pattern MULTI_NL = Pattern.compile("\\n{3,}");
 
     private AgentContext agentContext;
 
     @Override
     public String getName() {
-        return "web_fetch";
+        return TOOL_NAME;
     }
 
     @Override
     public String getDescription() {
-        String defaultDesc = "这是一个单网页抓取工具，用于读取指定 URL 的正文内容，并把完整正文保存为文件产物。";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return StringUtils.isNotBlank(reactorConfig.getWebFetchToolDesc())
-                ? reactorConfig.getWebFetchToolDesc()
-                : defaultDesc;
+        return """
+                IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Prefer specialized MCP tools for GitHub/Confluence/etc.
+
+                Fetches content from a URL and processes it with a prompt using a secondary model.
+                - Inputs: url (required), prompt (required — what to extract/analyze)
+                - HTTP is upgraded to HTTPS
+                - HTML is converted to plain text/markdown-like content
+                - Cross-host redirects are NOT followed automatically; the tool returns redirect info for a new call
+                - Results may be summarized if the page is very large
+                - Read-only; does not write files
+                """;
     }
 
     @Override
     public Map<String, Object> toParams() {
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getWebFetchToolParams().isEmpty()) {
-            return reactorConfig.getWebFetchToolParams();
-        }
+        Map<String, Object> url = new LinkedHashMap<>();
+        url.put("type", "string");
+        url.put("description", "The URL to fetch content from (http/https)");
 
-        Map<String, Object> urlParam = new LinkedHashMap<>();
-        urlParam.put("type", "string");
-        urlParam.put("description", "需要抓取正文的单个网页 URL，必须以 http:// 或 https:// 开头。");
-
-        Map<String, Object> timeoutParam = new LinkedHashMap<>();
-        timeoutParam.put("type", "integer");
-        timeoutParam.put("description", "可选下载超时时间，单位秒，默认 30 秒。");
+        Map<String, Object> prompt = new LinkedHashMap<>();
+        prompt.put("type", "string");
+        prompt.put("description", "The prompt to run on the fetched content (what to extract or analyze)");
 
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("url", urlParam);
-        properties.put("timeout_seconds", timeoutParam);
+        properties.put("url", url);
+        properties.put("prompt", prompt);
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", properties);
-        parameters.put("required", Collections.singletonList("url"));
+        parameters.put("required", List.of("url", "prompt"));
         return parameters;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
+        long start = System.currentTimeMillis();
         try {
-            Map<String, Object> params = (Map<String, Object>) input;
-            String url = StringUtils.trimToEmpty(valueAsString(params.get("url")));
-            if (StringUtils.isBlank(url)) {
-                return buildFailurePayload("web_fetch 执行失败：url 不能为空。");
+            Map<String, Object> params = coerceMap(input);
+            String rawUrl = StringUtils.trimToEmpty(valueAsString(params.get("url")));
+            String prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
+            if (StringUtils.isBlank(rawUrl)) {
+                return failure("WebFetch 失败：url 不能为空");
+            }
+            if (StringUtils.isBlank(prompt)) {
+                return failure("WebFetch 失败：prompt 不能为空（需说明要从页面提取/分析什么）");
             }
 
-            WebFetchRequest request = WebFetchRequest.builder()
-                    .requestId(resolveRequestId())
-                    .url(url)
-                    .timeoutSeconds(resolveTimeoutSeconds(params))
-                    .build();
-            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
-            WebFetchResponse response = callWebFetch(request);
-            if (response == null) {
-                return buildFailurePayload("web_fetch 执行失败：远端服务未返回结果。");
-            }
-            if (!Integer.valueOf(200).equals(response.getCode())) {
-                return buildFailurePayload("web_fetch 执行失败：" + StringUtils.defaultIfBlank(response.getMessage(), "未知错误"));
-            }
-            if (response.getData() == null) {
-                return buildFailurePayload("web_fetch 执行失败：远端服务返回的 data 为空。");
+            String upgradedUrl = upgradeToHttps(rawUrl);
+            validateUrl(upgradedUrl);
+
+            FetchResult fetch = fetchWithPermittedRedirects(upgradedUrl, 0);
+            if (fetch.redirect()) {
+                String message = """
+                        REDIRECT DETECTED: The URL redirects to a different host.
+
+                        Original URL: %s
+                        Redirect URL: %s
+                        Status: %d
+
+                        To complete your request, call WebFetch again with:
+                        - url: "%s"
+                        - prompt: "%s"
+                        """.formatted(
+                        fetch.originalUrl(),
+                        fetch.redirectUrl(),
+                        fetch.statusCode(),
+                        fetch.redirectUrl(),
+                        prompt
+                ).trim();
+                return ToolResultPayload.text(message);
             }
 
-            appendGeneratedArtifacts(response, artifactSource);
-            emitFileMessage(response, artifactSource);
-            return buildSuccessPayload(response);
+            String markdown = truncateContent(fetch.content());
+            String extracted = applyPromptToContent(prompt, markdown);
+            long durationMs = System.currentTimeMillis() - start;
+
+            String observation = """
+                    WebFetch result for %s
+                    HTTP %d %s | %d bytes | %dms
+
+                    %s
+                    """.formatted(
+                    fetch.finalUrl(),
+                    fetch.statusCode(),
+                    StringUtils.defaultString(fetch.statusText()),
+                    fetch.bytes(),
+                    durationMs,
+                    extracted
+            ).trim();
+            return ToolResultPayload.text(observation);
         } catch (Exception e) {
-            log.error("{} web_fetch execute error, input={}", requestId(), input, e);
-            return buildFailurePayload("web_fetch 执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), "未知异常"));
+            log.error("{} WebFetch execute error, input={}", requestId(), input, e);
+            return failure("WebFetch 失败：" + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()));
         }
     }
 
-    private WebFetchResponse callWebFetch(WebFetchRequest request) {
-        ReactorConfig reactorConfig = requireReactorConfig();
-        String responseText;
+    private FetchResult fetchWithPermittedRedirects(String url, int depth) throws Exception {
+        if (depth > MAX_SAME_HOST_REDIRECTS) {
+            throw new IllegalStateException("Too many redirects (exceeded " + MAX_SAME_HOST_REDIRECTS + ")");
+        }
+
+        RemoteHttpResponse response = requireRemoteHttpPort().executeDetailed(RemoteHttpRequest.builder()
+                .method("GET")
+                .url(url)
+                .headers(Map.of(
+                        "Accept", "text/markdown, text/html, text/plain, */*",
+                        "User-Agent", USER_AGENT
+                ))
+                .connectTimeoutSeconds(30L)
+                .readTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
+                .writeTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
+                .callTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
+                .followRedirects(false)
+                .build());
+
+        int code = response.getStatusCode();
+        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+            String location = headerIgnoreCase(response.getHeaders(), "Location");
+            if (StringUtils.isBlank(location)) {
+                throw new IllegalStateException("Redirect missing Location header");
+            }
+            String redirectUrl = URI.create(url).resolve(location.trim()).toString();
+            redirectUrl = upgradeToHttps(redirectUrl);
+            if (isPermittedRedirect(url, redirectUrl)) {
+                return fetchWithPermittedRedirects(redirectUrl, depth + 1);
+            }
+            return FetchResult.redirect(url, redirectUrl, code);
+        }
+
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException("HTTP " + code + " for " + url
+                    + ": " + StringUtils.abbreviate(StringUtils.defaultString(response.getBody()), 200));
+        }
+
+        String contentType = StringUtils.defaultString(headerIgnoreCase(response.getHeaders(), "Content-Type")).toLowerCase(Locale.ROOT);
+        String body = StringUtils.defaultString(response.getBody());
+        String content;
+        if (contentType.contains("text/html") || looksLikeHtml(body)) {
+            content = htmlToText(body);
+        } else {
+            content = body;
+        }
+        if (StringUtils.isBlank(content)) {
+            throw new IllegalStateException("Empty content from " + url);
+        }
+        String finalUrl = StringUtils.defaultIfBlank(response.getFinalUrl(), url);
+        return FetchResult.content(finalUrl, code, response.getStatusText(), content, content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+    }
+
+    private String applyPromptToContent(String prompt, String markdownContent) throws Exception {
+        String modelPrompt = """
+                Web page content:
+                ---
+                %s
+                ---
+
+                %s
+
+                Provide a concise response based only on the content above.
+                - Prefer short quotes; do not dump the entire page
+                - Use quotation marks for exact language from the source
+                """.formatted(markdownContent, prompt);
+
+        ReactorConfig config = requireReactorConfig();
+        String modelName = StringUtils.defaultIfBlank(config.getSummaryModelName(), config.getReactModelName());
+        LLM llm = new LLM(modelName, "", agentContext.getRuntimeDependencies());
+        String answer = llm.ask(
+                agentContext,
+                Collections.singletonList(Message.userMessage(modelPrompt, null)),
+                Collections.emptyList(),
+                false,
+                false,
+                0.0
+        ).get(EXTRACT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        return StringUtils.defaultIfBlank(answer, "No response from model");
+    }
+
+    private static String htmlToText(String html) {
+        String cleaned = SCRIPT_STYLE.matcher(html).replaceAll(" ");
+        cleaned = cleaned.replaceAll("(?i)<br\\s*/?>", "\n");
+        cleaned = cleaned.replaceAll("(?i)</p>", "\n\n");
+        cleaned = cleaned.replaceAll("(?i)</div>", "\n");
+        cleaned = cleaned.replaceAll("(?i)</h[1-6]>", "\n\n");
+        cleaned = cleaned.replaceAll("(?i)</li>", "\n");
+        cleaned = cleaned.replaceAll("(?i)<li[^>]*>", "- ");
+        cleaned = TAG.matcher(cleaned).replaceAll(" ");
+        cleaned = decodeBasicEntities(cleaned);
+        cleaned = MULTI_SPACE.matcher(cleaned).replaceAll(" ");
+        cleaned = MULTI_NL.matcher(cleaned).replaceAll("\n\n");
+        return cleaned.trim();
+    }
+
+    private static String decodeBasicEntities(String text) {
+        return text
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'");
+    }
+
+    private static boolean looksLikeHtml(String body) {
+        String sample = body.length() > 500 ? body.substring(0, 500).toLowerCase(Locale.ROOT) : body.toLowerCase(Locale.ROOT);
+        return sample.contains("<html") || sample.contains("<body") || sample.contains("<div") || sample.contains("<p");
+    }
+
+    private static String truncateContent(String content) {
+        if (content == null || content.length() <= MAX_MARKDOWN_LENGTH) {
+            return content;
+        }
+        return content.substring(0, MAX_MARKDOWN_LENGTH) + "\n\n[Content truncated due to length...]";
+    }
+
+    private static void validateUrl(String url) {
+        if (url.length() > MAX_URL_LENGTH) {
+            throw new IllegalArgumentException("URL too long (max " + MAX_URL_LENGTH + ")");
+        }
+        URI uri;
         try {
-            responseText = requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
-                    .method("POST")
-                    .url(normalizeBaseUrl(reactorConfig.getWebFetchUrl()) + "/v1/tool/web_fetch")
-                    .headers(Map.of("Content-Type", "application/json"))
-                    .body(JSON.toJSONString(request))
-                    .connectTimeoutSeconds(30L)
-                    .readTimeoutSeconds((long) request.getTimeoutSeconds())
-                    .writeTimeoutSeconds((long) request.getTimeoutSeconds())
-                    .callTimeoutSeconds((long) request.getTimeoutSeconds())
-                    .build());
+            uri = URI.create(url);
         } catch (Exception e) {
-            throw new IllegalStateException("调用 web_fetch 远端服务失败: " + e.getMessage(), e);
+            throw new IllegalArgumentException("Invalid URL: " + url);
         }
-        return JSON.parseObject(responseText, WebFetchResponse.class);
+        String scheme = StringUtils.defaultString(uri.getScheme()).toLowerCase(Locale.ROOT);
+        if (!"http".equals(scheme) && !"https".equals(scheme)) {
+            throw new IllegalArgumentException("Only http/https URLs are supported");
+        }
+        if (StringUtils.isNotBlank(uri.getUserInfo())) {
+            throw new IllegalArgumentException("URL must not contain username/password");
+        }
+        String host = uri.getHost();
+        if (StringUtils.isBlank(host)) {
+            throw new IllegalArgumentException("URL hostname is required");
+        }
+        // 允许 localhost / 裸主机名用于内网与测试；公网域名仍应含点
+        if (!"localhost".equalsIgnoreCase(host) && !host.contains(".")) {
+            throw new IllegalArgumentException("URL hostname is not publicly resolvable style: " + host);
+        }
     }
 
-    private void appendGeneratedArtifacts(WebFetchResponse response, ToolArtifactSource artifactSource) {
-        for (CodeInterpreterResponse.FileInfo fileInfo : response.safeFileInfo()) {
-            if (fileInfo == null) {
-                continue;
+    private static String upgradeToHttps(String url) {
+        if (url != null && url.regionMatches(true, 0, "http://", 0, 7)) {
+            return "https://" + url.substring(7);
+        }
+        return url;
+    }
+
+    /**
+     * 仅允许同主机（含 www. 增删）的 redirect；跨域返回给模型再调。
+     */
+    static boolean isPermittedRedirect(String originalUrl, String redirectUrl) {
+        try {
+            URI original = URI.create(originalUrl);
+            URI redirect = URI.create(redirectUrl);
+            if (!StringUtils.equalsIgnoreCase(original.getScheme(), redirect.getScheme())) {
+                return false;
             }
-            File file = File.builder()
-                    .fileName(fileInfo.getFileName())
-                    .ossUrl(fileInfo.getOssUrl())
-                    .domainUrl(fileInfo.getDomainUrl())
-                    .fileSize(fileInfo.getFileSize())
-                    .description(buildFileDescription(response))
-                    .isInternalFile(false)
-                    .build();
-            agentContext.registerGeneratedArtifact(artifactSource, file);
+            int originalPort = original.getPort();
+            int redirectPort = redirect.getPort();
+            if (originalPort != redirectPort) {
+                return false;
+            }
+            if (StringUtils.isNotBlank(redirect.getUserInfo())) {
+                return false;
+            }
+            String o = stripWww(StringUtils.defaultString(original.getHost()).toLowerCase(Locale.ROOT));
+            String r = stripWww(StringUtils.defaultString(redirect.getHost()).toLowerCase(Locale.ROOT));
+            return o.equals(r);
+        } catch (Exception e) {
+            return false;
         }
     }
 
-    private void emitFileMessage(WebFetchResponse response, ToolArtifactSource artifactSource) {
-        if (agentContext == null || agentContext.getPrinter() == null || CollectionUtils.isEmpty(response.safeFileInfo())) {
-            return;
-        }
-        Map<String, Object> resultMap = new HashMap<>();
-        resultMap.put("command", "抓取网页正文");
-        resultMap.put("fileInfo", new ArrayList<>(response.safeFileInfo()));
-        if (artifactSource != null) {
-            resultMap.put("toolCallId", artifactSource.getToolCallId());
-            resultMap.put("toolName", artifactSource.getToolName());
-        }
-        String digitalEmployee = agentContext.getToolCollection() == null
-                ? null
-                : agentContext.getToolCollection().getDigitalEmployee(getName());
-        agentContext.getPrinter().send("file", resultMap, digitalEmployee);
+    private static String stripWww(String hostname) {
+        return hostname.startsWith("www.") ? hostname.substring(4) : hostname;
     }
 
-    private ToolResultPayload buildSuccessPayload(WebFetchResponse response) {
-        WebFetchResponse.DataPayload data = response.getData();
-        String title = StringUtils.defaultIfBlank(data.getTitle(), "未命名网页");
-        String finalUrl = StringUtils.defaultIfBlank(data.getFinalUrl(), "未知地址");
-        String summary = abbreviateContent(data.getContent());
-        String observation = "网页抓取完成。标题：" + title
-                + "；最终地址：" + finalUrl
-                + "；正文摘要：" + summary
-                + "；完整内容已保存为文件产物。";
-        return ToolResultPayload.builder()
-                .toolResult(observation)
-                .llmObservation(observation)
-                .structuredOutput(null)
-                .failed(Boolean.FALSE)
-                .build();
+    private static String headerIgnoreCase(Map<String, String> headers, String name) {
+        if (headers == null || name == null) {
+            return null;
+        }
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(name)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
-    private ToolResultPayload buildFailurePayload(String message) {
+    private ToolResultPayload failure(String message) {
         return ToolResultPayload.failure(message, message, null, message);
     }
 
-    private String buildFileDescription(WebFetchResponse response) {
-        WebFetchResponse.DataPayload data = response == null ? null : response.getData();
-        if (data == null) {
-            return "网页抓取正文";
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> coerceMap(Object input) {
+        if (input instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
         }
-        return StringUtils.defaultIfBlank(data.getTitle(), data.getFinalUrl());
-    }
-
-    private Integer resolveTimeoutSeconds(Map<String, Object> params) {
-        Integer timeoutSeconds = valueAsInteger(params.get("timeout_seconds"));
-        if (timeoutSeconds == null) {
-            timeoutSeconds = valueAsInteger(params.get("timeoutSeconds"));
-        }
-        if (timeoutSeconds == null || timeoutSeconds <= 0) {
-            return DEFAULT_TIMEOUT_SECONDS;
-        }
-        return timeoutSeconds;
-    }
-
-    private String resolveRequestId() {
-        if (agentContext == null) {
-            return "unknown";
-        }
-        if (StringUtils.isNotBlank(agentContext.getSessionId())) {
-            return agentContext.getSessionId();
-        }
-        return agentContext.getRequestId();
-    }
-
-    private String abbreviateContent(String content) {
-        String normalized = StringUtils.normalizeSpace(StringUtils.defaultString(content));
-        if (normalized.length() <= SUMMARY_MAX_LENGTH) {
-            return normalized;
-        }
-        return normalized.substring(0, SUMMARY_MAX_LENGTH) + "...";
-    }
-
-    private String normalizeBaseUrl(String baseUrl) {
-        String normalized = StringUtils.trimToEmpty(baseUrl);
-        if (StringUtils.isBlank(normalized)) {
-            throw new IllegalStateException("web_fetch_url 未配置");
-        }
-        return normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
-    }
-
-    private String requestId() {
-        return agentContext == null ? "unknown" : StringUtils.defaultString(agentContext.getRequestId(), "unknown");
+        return Map.of();
     }
 
     private String valueAsString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
-    private Integer valueAsInteger(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value).trim());
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
+    private String requestId() {
+        return agentContext == null ? "unknown" : StringUtils.defaultString(agentContext.getRequestId(), "unknown");
     }
 
     private ReactorConfig requireReactorConfig() {
@@ -266,5 +378,24 @@ public class WebFetchTool implements BaseTool {
             throw new IllegalStateException("WebFetchTool 缺少 ReactorRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
+    }
+
+    private record FetchResult(
+            boolean redirect,
+            String originalUrl,
+            String redirectUrl,
+            String finalUrl,
+            int statusCode,
+            String statusText,
+            String content,
+            int bytes
+    ) {
+        static FetchResult redirect(String original, String redirect, int code) {
+            return new FetchResult(true, original, redirect, null, code, null, null, 0);
+        }
+
+        static FetchResult content(String finalUrl, int code, String statusText, String content, int bytes) {
+            return new FetchResult(false, null, null, finalUrl, code, statusText, content, bytes);
+        }
     }
 }

@@ -1,11 +1,11 @@
 import classNames from "classnames";
-import { ClipboardList, DatabaseZap, WandSparkles } from "lucide-react";
+import { Bot, ClipboardList, DatabaseZap, WandSparkles } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { ROUTES } from "@/router/routes";
 
 type WorkspaceToolItem = {
-  key: "mrag" | "image-generation" | "sop";
+  key: "mrag" | "image-generation" | "sop" | "sub-agents";
   label: string;
   description: string;
   icon: typeof DatabaseZap;
@@ -33,6 +33,13 @@ const workspaceToolItems: WorkspaceToolItem[] = [
     description: "标准作业程序与试召回",
     icon: ClipboardList,
     to: ROUTES.WORKSPACE_SOP,
+  },
+  {
+    key: "sub-agents",
+    label: "子 Agent 装配",
+    description: "自定义 prompt 与工具调度",
+    icon: Bot,
+    to: ROUTES.WORKSPACE_SUB_AGENTS,
   },
 ];
 

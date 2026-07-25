@@ -139,7 +139,7 @@ public class AgentToolCollectionFactory {
                 deepSearchTool.setAgentContext(agentContext);
                 toolCollection.addTool(deepSearchTool);
             }
-            if (agentToolList.contains("web_fetch")) {
+            if (agentToolList.contains("web_fetch") || agentToolList.contains("WebFetch")) {
                 WebFetchTool webFetchTool = new WebFetchTool();
                 webFetchTool.setAgentContext(agentContext);
                 toolCollection.addTool(webFetchTool);

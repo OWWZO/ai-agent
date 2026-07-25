@@ -15,6 +15,7 @@ const FeaturedConversationDetail = React.lazy(
 const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
 const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
 const WorkspaceSop = React.lazy(() => import('@/pages/WorkspaceSop'));
+const SubAgentAdmin = React.lazy(() => import('@/pages/SubAgentAdmin'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 
 // 创建路由配置
@@ -72,6 +73,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading loading={true} className="h-full"/>}>
             <WorkspaceSop />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.WORKSPACE_SUB_AGENTS,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <SubAgentAdmin />
           </Suspense>
         ),
       },
