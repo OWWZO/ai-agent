@@ -53,4 +53,11 @@ dependencies = [
     "uvicorn>=0.35.0",
     "fastembed>=0.8.0",
     "numpy>=2.3.1",
+    "python-pptx>=1.0.0",
+    "reportlab>=4.2.0",
+    "markdown-it-py>=3.0.0",
+    "mdit-py-plugins>=0.4.0",
+    "linkify-it-py>=2.1.0",
+    "latex2mathml>=3.81.0",
+    "httpx>=0.28.0",
 ]

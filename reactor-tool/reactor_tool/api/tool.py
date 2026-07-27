@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""工具服务主路由：Java 侧通过 HTTP/SSE 调用的全部业务端点。
+"""Tool API routes for Java HTTP/SSE calls.
 
-端点一览：
+Endpoints:
   /code_interpreter  /report  /deepsearch  /web_fetch
   /embedding/text    /table_rag  /cal_engine  /auto_analysis  /nl2sql
   /sopRecall         /script_runner  /mragQuery
+  /document_generate /slides_generate /excel_generator /checklist_generate /template_filler
 """
 import asyncio
 import contextvars
@@ -38,6 +39,7 @@ from reactor_tool.model.protocal import (
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
     WebFetchRequest,
+    DocgenRequest,
 )
 from reactor_tool.tool.mrag.storage.models.mrag_session_model import MRagSessionModel
 from reactor_tool.tool.mrag.storage.models.mrag_turn_model import MRagTurnModel
@@ -58,12 +60,12 @@ router = APIRouter(route_class=RequestHandlerRoute)
 
 
 def _error_response(status_code: int, message: str) -> JSONResponse:
-    """统一错误响应结构，便于 Java 侧直连排障。"""
+    """Unified error response for Java clients."""
     return JSONResponse(status_code=status_code, content={"message": message})
 
 
 def _normalize_vector(vector: list[float]) -> list[float]:
-    """按 L2 范数归一化单条向量。"""
+    """L2-normalize one vector."""
     if not vector:
         return vector
     norm = math.sqrt(sum(component * component for component in vector))
@@ -73,7 +75,7 @@ def _normalize_vector(vector: list[float]) -> list[float]:
 
 
 def _normalize_vector_batch(vectors: list[list[float]], normalize: bool) -> list[list[float]]:
-    """根据请求参数决定是否执行批量归一化。"""
+    """Optionally batch L2-normalize vectors."""
     if not normalize:
         return vectors
     return [_normalize_vector(vector) for vector in vectors]
@@ -589,7 +591,7 @@ async def post_script_runner(body: ScriptRunnerRequest):
 
 
 def _build_mrag_chunk(content: str, finish_reason: str | None = None) -> dict:
-    """统一输出与 Java 侧兼容的 OpenAI SSE 片段结构。"""
+    """Unified error response for Java clients."""
     return {
         "id": "chatcmpl-mrag",
         "choices": [
@@ -788,3 +790,110 @@ async def post_mrag_query(body: MultimodalRAGRequest):
     )
 
 
+def _docgen_params(body: DocgenRequest) -> dict:
+    data = body.model_dump(by_alias=False, exclude_none=False)
+    request_id = data.pop("request_id", None) or getattr(body, "request_id", None)
+    # drop response-only noise if any
+    data.pop("extra", None)
+    return request_id, data
+
+
+@router.post("/document_generate")
+async def post_document_generate(body: DocgenRequest):
+    """LeAgent-aligned document_generate (PDF/DOCX/HTML/Markdown)."""
+    from reactor_tool.tool.docgen.service import run_document_generate
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_document_generate(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+    except Exception as e:
+        logger.exception(f"document_generate failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/slides_generate")
+async def post_slides_generate(body: DocgenRequest):
+    """LeAgent-aligned slides_generate (PPTX)."""
+    from reactor_tool.tool.docgen.service import run_slides_generate
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_slides_generate(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+    except Exception as e:
+        logger.exception(f"slides_generate failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/excel_generator")
+async def post_excel_generator(body: DocgenRequest):
+    """LeAgent-aligned excel_generator."""
+    from reactor_tool.tool.docgen.service import run_excel_generator
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_excel_generator(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+    except Exception as e:
+        logger.exception(f"excel_generator failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/checklist_generate")
+async def post_checklist_generate(body: DocgenRequest):
+    """LeAgent-aligned checklist_generate."""
+    from reactor_tool.tool.docgen.service import run_checklist_generate
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_checklist_generate(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+    except Exception as e:
+        logger.exception(f"checklist_generate failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/template_filler")
+async def post_template_filler(body: DocgenRequest):
+    """LeAgent-aligned template_filler (Jinja2)."""
+    from reactor_tool.tool.docgen.service import run_template_filler
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_template_filler(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+    except Exception as e:
+        logger.exception(f"template_filler failed: {e}")
+        return _error_response(400, str(e))
+
+
+def _camel_file_payload(result: dict) -> dict:
+    """Normalize service payload keys for Java clients."""
+    file_info = result.get("fileInfo") or result.get("file_info") or []
+    # ensure camelCase keys inside fileInfo
+    norm_files = []
+    for f in file_info:
+        if not isinstance(f, dict):
+            continue
+        norm_files.append({
+            "fileName": f.get("fileName") or f.get("file_name"),
+            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+        })
+    out = {
+        "success": bool(result.get("success", True)),
+        "message": result.get("message") or "ok",
+        "fileInfo": norm_files,
+        "outputPath": result.get("outputPath") or result.get("output_path"),
+        "stats": result.get("stats") or {},
+        "warnings": result.get("warnings") or [],
+    }
+    if result.get("rendered") is not None:
+        out["rendered"] = result.get("rendered")
+    for k in ("format", "sheet_names", "file_size_bytes", "rendered_length", "variables_used", "output_format"):
+        if k in result:
+            out[k] = result[k]
+    return out

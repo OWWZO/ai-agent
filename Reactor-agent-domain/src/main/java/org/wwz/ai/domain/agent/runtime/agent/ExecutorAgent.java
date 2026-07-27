@@ -140,7 +140,7 @@ public class ExecutorAgent extends ReActAgent {
         for (ToolCall command : toolCalls) {
             ToolExecutionOutcome outcome = toolOutcomes.get(command.getId());
             String toolResult = outcome == null ? "" : outcome.getToolResult();
-            if (!Arrays.asList("code_interpreter", "report_tool", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide", "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch").contains(command.getFunction().getName())) {
+            if (!Arrays.asList("code_interpreter", "report_tool", "document_generate", "slides_generate", "excel_generator", "checklist_generate", "template_filler", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide", "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch").contains(command.getFunction().getName())) {
                 String toolName = command.getFunction().getName();
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                                 .toolName(toolName)

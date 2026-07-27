@@ -28,6 +28,11 @@ import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.ReportTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChecklistGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ExcelGeneratorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiPatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
@@ -117,7 +122,7 @@ public class AgentToolCollectionFactory {
             }
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,bash,powershell,code,canvas,multimodalagent,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,bash,powershell,code,report,docgen,canvas,multimodalagent,image_generation,data_analysis")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -132,6 +137,33 @@ public class AgentToolCollectionFactory {
                 ReportTool reportTool = new ReportTool();
                 reportTool.setAgentContext(agentContext);
                 toolCollection.addTool(reportTool);
+            }
+
+            if (agentToolList.contains("docgen")
+                    || agentToolList.contains("document_generate")
+                    || agentToolList.contains("slides_generate")
+                    || agentToolList.contains("excel_generator")
+                    || agentToolList.contains("checklist_generate")
+                    || agentToolList.contains("template_filler")) {
+                DocumentGenerateTool documentGenerateTool = new DocumentGenerateTool();
+                documentGenerateTool.setAgentContext(agentContext);
+                toolCollection.addTool(documentGenerateTool);
+
+                SlidesGenerateTool slidesGenerateTool = new SlidesGenerateTool();
+                slidesGenerateTool.setAgentContext(agentContext);
+                toolCollection.addTool(slidesGenerateTool);
+
+                ExcelGeneratorTool excelGeneratorTool = new ExcelGeneratorTool();
+                excelGeneratorTool.setAgentContext(agentContext);
+                toolCollection.addTool(excelGeneratorTool);
+
+                ChecklistGenerateTool checklistGenerateTool = new ChecklistGenerateTool();
+                checklistGenerateTool.setAgentContext(agentContext);
+                toolCollection.addTool(checklistGenerateTool);
+
+                TemplateFillerTool templateFillerTool = new TemplateFillerTool();
+                templateFillerTool.setAgentContext(agentContext);
+                toolCollection.addTool(templateFillerTool);
             }
             if (agentToolList.contains("canvas")
                     || agentToolList.contains("canvas_publish")

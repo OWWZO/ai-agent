@@ -310,3 +310,28 @@ class EmbeddingProxyResponse(BaseModel):
     vectors: List[List[float]] = Field(default_factory=list, description="批量向量结果")
     dimension: Optional[int] = Field(default=None, description="向量维度")
     model: Optional[str] = Field(default=None, description="实际使用的模型名称")
+
+
+class DocgenRequest(BaseModel):
+    """统一文档生成请求：requestId + 透传 LeAgent 兼容 params。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    request_id: str = Field(alias="requestId", description="Request / session ID")
+    # remaining fields accepted via extra="allow" and forwarded as params
+
+
+class DocgenResponse(BaseModel):
+    """统一文档生成响应。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId")
+    success: bool = True
+    message: str = "ok"
+    file_info: List[ScriptRunnerFileInfo] = Field(default_factory=list, alias="fileInfo")
+    output_path: Optional[str] = Field(default=None, alias="outputPath")
+    stats: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[Any] = Field(default_factory=list)
+    rendered: Optional[str] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)

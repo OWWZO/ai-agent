@@ -42,6 +42,20 @@ public class PowerShellTool extends AbstractShellTool {
                 - Use -NonInteractive; never Read-Host / Get-Credential / interactive git rebase -i
                 - Quote paths with spaces; use call operator for native exe: & "C:\\path\\app.exe" args
                 - Optional timeout in milliseconds (default 120000, max 600000)
+
+                CRITICAL - python one-liners (PowerShell eats unquoted args):
+                - WRONG: python -c import openpyxl; print(1)
+                - WRONG: python -c "import x; print('ok')" nested wrong when outer shell strips quotes
+                - RIGHT (prefer here-string):
+                  python -c @"
+                  import openpyxl
+                  import pandas as pd
+                  print('ok')
+                  "@
+                - RIGHT (single-quoted -c for simple code, use double quotes inside Python):
+                  python -c 'import openpyxl; import pandas as pd; print("ok")'
+                - BETTER: write a .py file with workspace_write then `python script.py` (most reliable)
+                - Paths with spaces MUST be quoted: Get-ChildItem -Path "D:\\Java Code\\ai-agent\\..."
                 """;
     }
 

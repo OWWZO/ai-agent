@@ -38,9 +38,12 @@ public class BashTool extends AbstractShellTool {
                 Usage notes:
                 - command is required
                 - Optional timeout in milliseconds (default 120000, max 600000)
-                - Quote paths with spaces
+                - Quote paths with spaces: "/d/Java Code/ai-agent/..."
                 - Chain dependent commands with && ; use ; when later commands should run regardless
                 - Do not use interactive flags (-i) or editors that need TTY
+                - For Python checks prefer: python -c 'import openpyxl; print("ok")'  (single quotes outside)
+                - Or write a temp .py file then run python that_file.py (most reliable)
+                - Prefer code_interpreter tool for multi-step Python data work when available
                 """;
     }
 

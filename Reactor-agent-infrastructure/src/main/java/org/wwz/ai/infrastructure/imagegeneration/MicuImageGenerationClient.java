@@ -16,6 +16,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -630,7 +631,7 @@ public class MicuImageGenerationClient {
             Request request = new Request.Builder().url(normalized).get().build();
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    throw new IllegalStateException(label + " 下载失败 HTTP " + response.code());
+                    throw new IllegalStateException(label + " 下载失败 HTTP " + response.code() + " url=" + normalized);
                 }
                 byte[] bytes = response.body().bytes();
                 validateInputSize(bytes, label);
@@ -655,17 +656,59 @@ public class MicuImageGenerationClient {
             return value;
         }
         if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
-            return value;
+            return encodePreviewPathIfNeeded(value);
+        }
+        // 相对 preview/download 路径：补全为绝对 URL
+        if ((value.startsWith("/preview/") || value.startsWith("/download/"))
+                && StringUtils.hasText(previewBaseUrl)) {
+            return encodePreviewPathIfNeeded(previewBaseUrl + value);
         }
         if (StringUtils.hasText(previewBaseUrl) && StringUtils.hasText(requestId)) {
             String fileName = value;
-            if (fileName.startsWith("/")) {
-                int slash = fileName.lastIndexOf('/');
-                fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName.substring(1);
+            if (fileName.contains("/") || fileName.contains("\\")) {
+                int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+                fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
             }
-            return previewBaseUrl + "/preview/" + requestId + "/" + fileName;
+            return encodePreviewPathIfNeeded(previewBaseUrl + "/preview/" + requestId + "/" + fileName);
         }
         return value;
+    }
+
+    /**
+     * 文件服务 preview/download 路径中的中文文件名需要 URL 编码，否则会 404。
+     */
+    private String encodePreviewPathIfNeeded(String url) {
+        if (!StringUtils.hasText(url)) {
+            return url;
+        }
+        int markerPreview = url.indexOf("/preview/");
+        int markerDownload = url.indexOf("/download/");
+        int marker = markerPreview >= 0 ? markerPreview : markerDownload;
+        if (marker < 0) {
+            return url;
+        }
+        String prefixPath = markerPreview >= 0 ? "/preview/" : "/download/";
+        int start = marker + prefixPath.length();
+        String head = url.substring(0, start);
+        String tail = url.substring(start);
+        String query = "";
+        int q = tail.indexOf('?');
+        if (q >= 0) {
+            query = tail.substring(q);
+            tail = tail.substring(0, q);
+        }
+        String[] parts = tail.split("/", -1);
+        StringBuilder encoded = new StringBuilder(head);
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                encoded.append('/');
+            }
+            if (!parts[i].isEmpty()) {
+                encoded.append(URLEncoder.encode(parts[i], StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+        }
+        encoded.append(query);
+        return encoded.toString();
     }
 
     private void validateInputSize(byte[] bytes, String label) {

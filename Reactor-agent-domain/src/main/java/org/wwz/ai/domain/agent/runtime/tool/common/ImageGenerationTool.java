@@ -91,8 +91,11 @@ public class ImageGenerationTool implements BaseTool {
             // 仅在未显式要求文生图时，才兜底复用当前轮图片，避免误伤明确的 images 模式。
             if (fileNames.isEmpty() && shouldReuseContextImages(mode)) {
                 fileNames = collectContextImageFileNames();
+            } else {
+                // Agent 常传裸文件名；先映射到 productFiles 里的可访问 URL，避免按 sessionId 重拼 preview 导致 404。
+                fileNames = resolveReferenceList(fileNames);
             }
-            List<String> maskFileNames = toStringList(params.get("maskFileNames"));
+            List<String> maskFileNames = resolveReferenceList(toStringList(params.get("maskFileNames")));
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             ImageGenerationExecutionResult result = requireKernel().execute(ImageGenerationExecuteCommand.builder()
                     // 图片产物目录按 session 归档，和其他工具保持一致，便于会话内统一查看文件。
@@ -196,6 +199,93 @@ public class ImageGenerationTool implements BaseTool {
             return file.getOssUrl();
         }
         return file.getFileName();
+    }
+
+    /**
+     * 把 agent 传入的 fileNames/maskFileNames 解析为可下载引用。
+     * 优先保留 http(s)/data URL；裸文件名则匹配会话 productFiles 的 domainUrl/ossUrl。
+     */
+    private List<String> resolveReferenceList(List<String> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<String> resolved = new ArrayList<>(refs.size());
+        for (String ref : refs) {
+            String value = StringUtils.trimToEmpty(ref);
+            if (StringUtils.isBlank(value)) {
+                continue;
+            }
+            if (looksLikeDirectUrl(value)) {
+                resolved.add(value);
+                continue;
+            }
+            String mapped = findProductFileUrl(value);
+            if (StringUtils.isNotBlank(mapped)) {
+                resolved.add(mapped);
+            } else {
+                // 保留原值，交给下游 previewBaseUrl + requestId 兜底拼接
+                resolved.add(value);
+            }
+        }
+        return resolved;
+    }
+
+    private boolean looksLikeDirectUrl(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.startsWith("http://")
+                || lower.startsWith("https://")
+                || lower.startsWith("data:")
+                || lower.contains("/preview/")
+                || lower.contains("/download/");
+    }
+
+    private String findProductFileUrl(String fileNameOrPath) {
+        if (agentContext == null || agentContext.getProductFiles() == null) {
+            return null;
+        }
+        String wanted = basename(fileNameOrPath);
+        if (StringUtils.isBlank(wanted)) {
+            return null;
+        }
+        for (File file : agentContext.getProductFiles()) {
+            if (file == null || StringUtils.isBlank(file.getFileName())) {
+                continue;
+            }
+            if (!wanted.equalsIgnoreCase(basename(file.getFileName()))) {
+                continue;
+            }
+            String url = resolveImageReference(file);
+            if (StringUtils.isNotBlank(url) && !wanted.equals(url)) {
+                return url;
+            }
+        }
+        for (File file : agentContext.getProductFiles()) {
+            if (file == null) {
+                continue;
+            }
+            for (String candidate : Arrays.asList(file.getDomainUrl(), file.getOssUrl())) {
+                if (StringUtils.isBlank(candidate)) {
+                    continue;
+                }
+                if (wanted.equalsIgnoreCase(basename(candidate))) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String basename(String path) {
+        if (path == null) {
+            return null;
+        }
+        String value = path.trim();
+        int q = value.indexOf('?');
+        if (q >= 0) {
+            value = value.substring(0, q);
+        }
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        return slash >= 0 ? value.substring(slash + 1) : value;
     }
 
     private String resolveOutputFileName(Object rawValue) {
