@@ -2,6 +2,7 @@ import { memo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import classNames from "classnames";
 import {
+  Bot,
   SquarePen,
   Search,
   MoreHorizontal,
@@ -17,7 +18,13 @@ import type { ConversationSessionItem } from "@/services/agentConversation";
 import ConversationSessionActionMenu from "./ConversationSessionActionMenu";
 import { canFeatureConversationSession } from "./featuredConversationAdminModel";
 
-type SidebarView = "chat" | "mrag" | "image-generation" | "sop" | "featured";
+type SidebarView =
+  | "chat"
+  | "mrag"
+  | "image-generation"
+  | "sop"
+  | "sub-agents"
+  | "featured";
 
 type NavItem = {
   key: SidebarView;
@@ -45,6 +52,11 @@ const navItems: NavItem[] = [
     key: "sop",
     label: "SOP",
     icon: ClipboardList,
+  },
+  {
+    key: "sub-agents",
+    label: "子 Agent",
+    icon: Bot,
   },
   {
     key: "featured",

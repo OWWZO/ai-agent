@@ -43,16 +43,6 @@ public class SubAgentDefinitionAdminController {
         return success(data);
     }
 
-    @GetMapping("/{agentKey}")
-    public Response<SubAgentDefinitionRespVO> get(@PathVariable("agentKey") String agentKey) {
-        return subAgentDefinitionAdminApplicationService.get(agentKey)
-                .map(record -> success(toRespVO(record)))
-                .orElseGet(() -> Response.<SubAgentDefinitionRespVO>builder()
-                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                        .info("agentKey 不存在")
-                        .build());
-    }
-
     @GetMapping("/tool-catalog")
     public Response<List<String>> toolCatalog() {
         return success(List.of(
@@ -72,7 +62,6 @@ public class SubAgentDefinitionAdminController {
                 "code_interpreter",
                 "report_tool",
                 "skill_tool",
-                "script_runner_tool",
                 "image_generation_tool",
                 "data_analysis",
                 "multimodalagent_tool",
@@ -82,6 +71,16 @@ public class SubAgentDefinitionAdminController {
                 "TaskUpdate",
                 "TaskList"
         ));
+    }
+
+    @GetMapping("/{agentKey}")
+    public Response<SubAgentDefinitionRespVO> get(@PathVariable("agentKey") String agentKey) {
+        return subAgentDefinitionAdminApplicationService.get(agentKey)
+                .map(record -> success(toRespVO(record)))
+                .orElseGet(() -> Response.<SubAgentDefinitionRespVO>builder()
+                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                        .info("agentKey 不存在")
+                        .build());
     }
 
     @PostMapping("/create")

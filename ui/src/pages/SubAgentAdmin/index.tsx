@@ -44,7 +44,11 @@ function recordToDraft(record: SubAgentDefinitionRecord): Draft {
   };
 }
 
-const SubAgentAdmin: ReactorType.FC = () => {
+type SubAgentAdminProps = {
+  embedded?: boolean;
+};
+
+const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   const [items, setItems] = useState<SubAgentDefinitionRecord[]>([]);
   const [catalog, setCatalog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -188,33 +192,54 @@ const SubAgentAdmin: ReactorType.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--chat-bg,#f8fafc)]">
-      <div className="border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link
-              to={ROUTES.HOME}
-              className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              返回
-            </Link>
-            <div className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-sky-600" />
-              <div>
-                <div className="text-base font-semibold text-slate-900">
-                  子 Agent 装配
-                </div>
-                <div className="text-[12px] text-slate-400">
-                  自定义 prompt / 工具，供主 Agent 的 Agent 工具调度
+      {!embedded ? (
+        <div className="border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Link
+                to={ROUTES.HOME}
+                className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                返回
+              </Link>
+              <div className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-sky-600" />
+                <div>
+                  <div className="text-base font-semibold text-slate-900">
+                    子 Agent 装配
+                  </div>
+                  <div className="text-[12px] text-slate-400">
+                    自定义 prompt / 工具，供主 Agent 的 Agent 工具调度
+                  </div>
                 </div>
               </div>
             </div>
+            <WorkspaceToolSwitcher />
           </div>
-          <WorkspaceToolSwitcher />
         </div>
-      </div>
+      ) : (
+        <div className="border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <Bot className="h-5 w-5 text-sky-600" />
+            <div>
+              <div className="text-base font-semibold text-slate-900">
+                子 Agent 装配
+              </div>
+              <div className="text-[12px] text-slate-400">
+                自定义 prompt / 工具，供主 Agent 的 Agent 工具调度
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 gap-4 p-4 sm:p-6">
+      <div
+        className={classNames(
+          "flex min-h-0 w-full flex-1 gap-4 p-4 sm:p-6",
+          embedded ? "" : "mx-auto max-w-[1400px]"
+        )}
+      >
         <aside className="flex w-full max-w-[320px] shrink-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5">
             <span className="text-sm font-medium text-slate-700">定义列表</span>

@@ -12,9 +12,12 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCanvasPublishDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCodeInterpreterDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiPatchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiTreeDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputFileToolDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
@@ -72,6 +75,9 @@ public class ToolOutputArtifactBackfillTest {
                 imageGenerationDao,
                 scriptRunnerDao,
                 planningDao,
+                Mockito.mock(IToolOutputCanvasPublishDao.class),
+                Mockito.mock(IToolOutputEmitUiTreeDao.class),
+                Mockito.mock(IToolOutputEmitUiPatchDao.class),
                 artifactLedgerDao
         );
 
@@ -129,6 +135,9 @@ public class ToolOutputArtifactBackfillTest {
                 imageGenerationDao,
                 scriptRunnerDao,
                 planningDao,
+                Mockito.mock(IToolOutputCanvasPublishDao.class),
+                Mockito.mock(IToolOutputEmitUiTreeDao.class),
+                Mockito.mock(IToolOutputEmitUiPatchDao.class),
                 artifactLedgerDao
         );
 
@@ -163,7 +172,10 @@ public class ToolOutputArtifactBackfillTest {
                 multimodalAgentDao,
                 imageGenerationDao,
                 scriptRunnerDao,
-                planningDao
+                planningDao,
+                Mockito.mock(IToolOutputCanvasPublishDao.class),
+                Mockito.mock(IToolOutputEmitUiTreeDao.class),
+                Mockito.mock(IToolOutputEmitUiPatchDao.class)
         );
 
         writer.write(ToolOutputPersistCommand.builder()

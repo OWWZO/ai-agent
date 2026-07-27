@@ -19,8 +19,6 @@ public interface SkillRegistry {
 
     SkillDefinition getRequiredSkill(String skillName);
 
-    SkillScriptDefinition getRequiredScript(String skillName, String scriptName);
-
     Path assertPathAllowed(Path candidatePath);
 
     String buildSkillDescription();

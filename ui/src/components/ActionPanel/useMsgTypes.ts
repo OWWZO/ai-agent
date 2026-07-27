@@ -75,6 +75,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       isHtml = isHTML(toolResult.toolResult);
     }
     const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
+    const useGenUi = messageType === 'ui_tree';
     const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFile);
     const useImage =
       isImageFile &&
@@ -94,6 +95,7 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       useBrowser: messageType === 'browser',
       useCode,
       useHtml,
+      useGenUi,
       useImage,
       useExcel,
       useFile,

@@ -1,9 +1,7 @@
 package org.wwz.ai.domain.agent.ledger.model.tooloutput;
 
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
-import org.wwz.ai.domain.agent.runtime.dto.skill.ScriptRunnerToolResponse;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,27 +30,6 @@ public final class ToolFileRefMapper {
                     .ossUrl(item.getOssUrl())
                     .domainUrl(item.getDomainUrl())
                     .downloadUrl(item.getOssUrl())
-                    .previewUrl(item.getDomainUrl())
-                    .fileSize(item.getFileSize() == null ? null : item.getFileSize().longValue())
-                    .build());
-        }
-        return result;
-    }
-
-    public static List<ToolFileRef> fromScriptRunnerFileInfo(List<ScriptRunnerToolResponse.FileInfo> fileInfo) {
-        List<ToolFileRef> result = new ArrayList<>();
-        if (CollectionUtils.isEmpty(fileInfo)) {
-            return result;
-        }
-        for (ScriptRunnerToolResponse.FileInfo item : fileInfo) {
-            if (item == null) {
-                continue;
-            }
-            result.add(ToolFileRef.builder()
-                    .fileName(item.getFileName())
-                    .ossUrl(item.getOssUrl())
-                    .domainUrl(item.getDomainUrl())
-                    .downloadUrl(StringUtils.defaultIfBlank(item.getDownloadUrl(), item.getOssUrl()))
                     .previewUrl(item.getDomainUrl())
                     .fileSize(item.getFileSize() == null ? null : item.getFileSize().longValue())
                     .build());

@@ -75,16 +75,6 @@ public class DefaultSkillRegistry implements SkillRegistry {
     }
 
     @Override
-    public SkillScriptDefinition getRequiredScript(String skillName, String scriptName) {
-        SkillDefinition skillDefinition = getRequiredSkill(skillName);
-        SkillScriptDefinition scriptDefinition = skillDefinition.getScripts().get(scriptName);
-        if (scriptDefinition == null) {
-            throw new SkillLoadException("Script not found: " + skillName + "/" + scriptName);
-        }
-        return scriptDefinition;
-    }
-
-    @Override
     public Path assertPathAllowed(Path candidatePath) {
         Path normalizedCandidatePath = candidatePath.toAbsolutePath().normalize();
         for (SkillDefinition skillDefinition : skillCache.values()) {

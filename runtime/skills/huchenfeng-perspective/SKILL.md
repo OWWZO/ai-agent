@@ -19,11 +19,11 @@ description: |
 ## 在 ai-agent-station-study 中使用
 
 - 先用 `skill_tool` 读取本技能，确认技能目录和可用脚本。
-- 如需查看调研资料，优先用 `read_tool` / `glob_tool` 读取 `references/research/`。
-- 如需检索 490 份直播文字稿里的原始语录，使用 `script_runner_tool` 执行 `search` 脚本。
+- 如需查看调研资料，优先用 `workspace_read` / `workspace_glob` 读取 `references/research/`。
+- 如需检索 490 份直播文字稿里的原始语录，在 skill `basePath` 下用 `Bash` 或 `PowerShell` 执行 `search` 脚本。
 - `search` 脚本推荐参数：`query`、`top_k`、`date_from`、`date_to`、`hu_only`。
 - `build_index` 脚本用于重新构建 `tools/vector_index.json`。
-- 运行 `search` / `build_index` 前，需要 `reactor-tool` 所在 Python 环境已安装 `fastembed` 和 `numpy`。
+- 运行 `search` / `build_index` 前，需要本机 Python 环境已安装 `fastembed` 和 `numpy`。
 
 ---
 
@@ -33,7 +33,7 @@ description: |
 
 ### 第零步：向量检索（优先使用本地 search 脚本）
 
-如果用户问题涉及消费观、学历观、山姆超市、苹果人/安卓人、购买力挑战等话题，先用 `script_runner_tool` 执行 `search` 脚本，搜索用户问题相关的原始直播语录，让回答更贴近户晨风真实说过的话。搜索时用用户问题的关键词作为 `query`，必要时补 `date_from` / `hu_only`。
+如果用户问题涉及消费观、学历观、山姆超市、苹果人/安卓人、购买力挑战等话题，先在 skill `basePath` 下用 `Bash`/`PowerShell` 执行 `search` 脚本，搜索用户问题相关的原始直播语录，让回答更贴近户晨风真实说过的话。搜索时用用户问题的关键词作为 `query`，必要时补 `date_from` / `hu_only`。
 
 ### 第一步：查户口（必须先完成）
 
@@ -460,7 +460,7 @@ description: |
 5. **消除争议**：他的"苹果人/安卓人"体系被官方定性为"煽动群体对立"，Skill如实呈现争议，不做辩护
 
 **增强能力**（本项目优先用本地脚本检索）：
-- 在 ai-agent-station-study 中，优先通过 `script_runner_tool -> search` 检索 490 份直播文字稿中的原始语录
+- 在本项目中，优先通过 `Bash`/`PowerShell` 在 skill 目录执行 `search` 脚本，检索 490 份直播文字稿中的原始语录
 - 原仓库提供的 `tools/mcp_server.py` 仍保留在技能目录中，供外部 MCP 场景参考
 
 **信息截止**：2026年4月（网络公开资料）
@@ -488,11 +488,11 @@ description: |
 
 ## 向量检索配置
 
-本Skill已适配 ai-agent-station-study，可直接通过 `script_runner_tool` 调用本地脚本完成语义检索。
+本 Skill 通过 `skill_tool` 加载后，在 skill `basePath` 下用 `Bash` / `PowerShell` 执行本地脚本完成语义检索。
 
 ### 1. 安装依赖
 
-向量索引文件 `tools/vector_index.json`（84MB，base64_float16格式）已随技能目录提供，无需重新构建。只需确保运行 `reactor-tool` 的 Python 环境安装：
+向量索引文件 `tools/vector_index.json`（84MB，base64_float16格式）已随技能目录提供，无需重新构建。只需确保本机 Python 环境安装：
 
 ```bash
 pip install fastembed numpy
@@ -500,18 +500,11 @@ pip install fastembed numpy
 
 ### 2. 推荐调用方式
 
-使用 `script_runner_tool` 执行 `search`：
+先 `skill_tool` 拿到 `basePath`，再在该目录执行 `search` 脚本（示例，按本机脚本入口调整）：
 
-```json
-{
-  "skill_name": "huchenfeng-perspective",
-  "script_name": "search",
-  "arguments": {
-    "query": "苹果人和安卓人",
-    "top_k": 5,
-    "hu_only": true
-  }
-}
+```bash
+cd <skill_basePath>
+python tools/search.py --query "苹果人和安卓人" --top_k 5 --hu_only true
 ```
 
 脚本会：
@@ -522,14 +515,9 @@ pip install fastembed numpy
 
 ### 3. 重新构建索引（可选）
 
-如需从新的直播文字稿目录重新生成向量索引，可执行 `build_index`：
+如需从新的直播文字稿目录重新生成向量索引，可在 skill 目录执行 `build_index`：
 
-```json
-{
-  "skill_name": "huchenfeng-perspective",
-  "script_name": "build_index",
-  "arguments": {
-    "source_dir": "D:/path/to/HuChenFeng"
-  }
-}
+```bash
+cd <skill_basePath>
+python tools/build_index.py --source_dir "D:/path/to/HuChenFeng"
 ```

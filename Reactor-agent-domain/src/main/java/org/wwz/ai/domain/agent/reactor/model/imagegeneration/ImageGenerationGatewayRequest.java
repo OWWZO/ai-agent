@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Java -> Python 生图请求模型。
+ * 生图网关请求模型（Java 直连上游）。
  */
 @Data
 @Builder

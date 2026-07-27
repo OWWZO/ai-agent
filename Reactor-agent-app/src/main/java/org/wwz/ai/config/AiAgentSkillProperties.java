@@ -52,9 +52,4 @@ public class AiAgentSkillProperties {
      * grep_tool 默认最大匹配数
      */
     private int maxGrepMatches = 100;
-
-    /**
-     * script_runner_tool 默认超时时间
-     */
-    private int defaultScriptTimeoutSeconds = 120;
 }

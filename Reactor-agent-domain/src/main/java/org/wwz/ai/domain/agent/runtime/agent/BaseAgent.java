@@ -533,7 +533,7 @@ public abstract class BaseAgent {
         }
         try {
             ObjectMapper mapper = new ObjectMapper();
-            Object args = mapper.readValue(normalizeToolPayload(command.getFunction().getArguments()), Object.class);
+            Object args = parseToolArguments(toolName, command.getFunction().getArguments(), mapper);
 
             // Plan Mode 工具门禁（对标 cc-haha：plan 期禁写业务文件）
             String planDeny = org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy.denyReason(
@@ -738,6 +738,38 @@ public abstract class BaseAgent {
             return new ObjectMapper().readValue(normalizedPayload, Object.class);
         } catch (Exception ignore) {
             return null;
+        }
+    }
+
+    /**
+     * Parse tool arguments; salvage truncated canvas_publish JSON when normal parse fails.
+     */
+    private Object parseToolArguments(String toolName, String arguments, ObjectMapper mapper) throws Exception {
+        String normalizedPayload = normalizeToolPayload(arguments);
+        try {
+            return mapper.readValue(normalizedPayload, Object.class);
+        } catch (Exception parseError) {
+            if (org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage.isCanvasPublish(toolName)) {
+                Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage
+                        .parseOrSalvage(normalizedPayload);
+                if (salvaged != null && !salvaged.isEmpty()) {
+                    log.warn("{} canvas_publish args salvaged after parse failure: {}",
+                            context == null ? "-" : context.getRequestId(),
+                            parseError.getMessage());
+                    return salvaged;
+                }
+            }
+            if (org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage.isEmitUiTree(toolName)) {
+                Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage
+                        .parseOrSalvage(normalizedPayload);
+                if (salvaged != null && !salvaged.isEmpty()) {
+                    log.warn("{} emit_ui_tree args salvaged after parse failure: {}",
+                            context == null ? "-" : context.getRequestId(),
+                            parseError.getMessage());
+                    return salvaged;
+                }
+            }
+            throw parseError;
         }
     }
 

@@ -12,7 +12,6 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.ScriptRunnerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.RegistryBackedToolCallback;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
@@ -110,7 +109,6 @@ public class ToolSchemaNormalizerTest {
             ToolSchemaNormalizer.normalizeSchema(new SkillTool(null).toParams(), "skill_tool");
             ToolSchemaNormalizer.normalizeSchema(new WorkspaceReadTool(null, null).toParams(), "workspace_read");
             ToolSchemaNormalizer.normalizeSchema(new WorkspaceGrepTool(null, null).toParams(), "workspace_grep");
-            ToolSchemaNormalizer.normalizeSchema(new ScriptRunnerTool(null, null, null).toParams(), "script_runner_tool");
 
             boolean hasIncompleteSchemaWarning = listAppender.list.stream()
                     .map(ILoggingEvent::getFormattedMessage)

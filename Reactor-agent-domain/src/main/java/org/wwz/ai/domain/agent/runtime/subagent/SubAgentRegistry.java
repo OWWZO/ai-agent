@@ -162,7 +162,6 @@ public class SubAgentRegistry {
                         "file_tool",
                         "code_interpreter",
                         "report_tool",
-                        "script_runner_tool",
                         "image_generation",
                         "data_analysis",
                         "multimodalagent_tool"

@@ -17,7 +17,7 @@ public class ReactorConfigMultiModalAgentTest {
                 {"type":"object","properties":{"question":{"type":"string","description":"查询问题"}},"required":["question"]}
                 """);
         reactorConfig.setMessageInterval("{\"knowledge\":\"1,4\"}");
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,report,multimodalagent\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,code,multimodalagent\"}");
         ReflectionTestUtils.setField(reactorConfig, "multiModalAgentDesc", "多模态知识检索工具");
         ReflectionTestUtils.setField(reactorConfig, "multiModalAgentUrl", "http://127.0.0.1:1601");
 

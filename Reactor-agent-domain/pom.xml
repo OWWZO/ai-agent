@@ -126,6 +126,13 @@
         </dependency>
         <!-- spring ai 框架 end -->
 
+        <!-- GenUI export PDF (DOCX uses pure OOXML zip writer, no POI) -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.39</version>
+        </dependency>
+
         <!-- 系统模块 -->
         <dependency>
             <groupId>cn.bugstack.ai</groupId>

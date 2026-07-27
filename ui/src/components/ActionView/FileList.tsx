@@ -33,7 +33,7 @@ type FileItem = {
   mimeType?: string | null;
 };
 
-const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis'];
+const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis', 'ui_tree'];
 
 const getFileIcon = (type: string) => {
   switch (type) {

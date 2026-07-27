@@ -39,7 +39,4 @@ public class SkillRuntimeOptions {
 
     @Builder.Default
     private int maxGrepMatches = 100;
-
-    @Builder.Default
-    private int defaultScriptTimeoutSeconds = 120;
 }

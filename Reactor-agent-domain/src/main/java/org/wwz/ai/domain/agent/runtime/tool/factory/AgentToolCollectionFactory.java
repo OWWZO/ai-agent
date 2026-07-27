@@ -28,16 +28,20 @@ import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.ReportTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiPatchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.BashTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.PowerShellTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.skill.ScriptRunnerTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptRunnerClient;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGlobTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceListTool;
@@ -65,7 +69,6 @@ public class AgentToolCollectionFactory {
     private final McpToolExecutor mcpToolExecutor;
     private final SkillRegistry skillRegistry;
     private final SkillRuntimeOptions skillRuntimeOptions;
-    private final SkillScriptRunnerClient skillScriptRunnerClient;
     private final WorkspaceService workspaceService;
     private final WorkspaceRuntimeOptions workspaceRuntimeOptions;
     private final SubAgentRunner subAgentRunner;
@@ -100,10 +103,6 @@ public class AgentToolCollectionFactory {
         toolCollection.setMcpToolExecutor(runtimeDependencies.getOptionalMcpToolExecutor());
 
         if ("dataAgent".equals(request.getOutputStyle())) {
-            ReportTool reportTool = new ReportTool();
-            reportTool.setAgentContext(agentContext);
-            toolCollection.addTool(reportTool);
-
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             dataAnalysisTool.setAgentContext(agentContext);
             toolCollection.addTool(dataAnalysisTool);
@@ -118,7 +117,7 @@ public class AgentToolCollectionFactory {
             }
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,bash,powershell,code,report,multimodalagent")
+                            .getOrDefault("default", "search,web_fetch,web_search,bash,powershell,code,canvas,multimodalagent,image_generation,data_analysis")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -133,6 +132,34 @@ public class AgentToolCollectionFactory {
                 ReportTool reportTool = new ReportTool();
                 reportTool.setAgentContext(agentContext);
                 toolCollection.addTool(reportTool);
+            }
+            if (agentToolList.contains("canvas")
+                    || agentToolList.contains("canvas_publish")
+                    || agentToolList.contains("html_canvas")
+                    || agentToolList.contains("genui")) {
+                GetHtmlCanvasGuideTool getHtmlCanvasGuideTool = new GetHtmlCanvasGuideTool();
+                getHtmlCanvasGuideTool.setAgentContext(agentContext);
+                toolCollection.addTool(getHtmlCanvasGuideTool);
+
+                CanvasPublishTool canvasPublishTool = new CanvasPublishTool();
+                canvasPublishTool.setAgentContext(agentContext);
+                toolCollection.addTool(canvasPublishTool);
+
+                GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
+                getGenuiGuideTool.setAgentContext(agentContext);
+                toolCollection.addTool(getGenuiGuideTool);
+
+                ListUiComponentsTool listUiComponentsTool = new ListUiComponentsTool();
+                listUiComponentsTool.setAgentContext(agentContext);
+                toolCollection.addTool(listUiComponentsTool);
+
+                EmitUiTreeTool emitUiTreeTool = new EmitUiTreeTool();
+                emitUiTreeTool.setAgentContext(agentContext);
+                toolCollection.addTool(emitUiTreeTool);
+
+                EmitUiPatchTool emitUiPatchTool = new EmitUiPatchTool();
+                emitUiPatchTool.setAgentContext(agentContext);
+                toolCollection.addTool(emitUiPatchTool);
             }
             if (agentToolList.contains("search")) {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();
@@ -300,13 +327,10 @@ public class AgentToolCollectionFactory {
 
     private void registerSkillTools(ToolCollection toolCollection, AgentContext agentContext) {
         // path 浏览统一走 workspace_*；skill 目录已并入 workspace 可读根
+        // 脚本执行对齐 cc-haha：由 Bash / PowerShell 在 skill basePath 下运行，不再挂 script_runner_tool
         SkillTool skillTool = new SkillTool(skillRegistry);
         skillTool.setAgentContext(agentContext);
         toolCollection.addTool(skillTool);
-
-        ScriptRunnerTool scriptRunnerTool = new ScriptRunnerTool(skillRegistry, skillRuntimeOptions, skillScriptRunnerClient);
-        scriptRunnerTool.setAgentContext(agentContext);
-        toolCollection.addTool(scriptRunnerTool);
     }
 
     private enum SkillAttachScope {

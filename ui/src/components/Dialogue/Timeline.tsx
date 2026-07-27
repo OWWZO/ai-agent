@@ -37,6 +37,8 @@ import {
 import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
+import GenUiInline from "@/components/genui/GenUiInline";
+import { getGenUiTreeFromTask, resolveDisplayGenUiTree } from "@/utils/chat/genuiState";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -114,6 +116,30 @@ const ToolItem: FC<ToolItemProps> = memo(({
     }
     case "session_tasks": {
       return <SessionTaskList tool={tool} />;
+    }
+    case "ui_tree": {
+      const tree = resolveDisplayGenUiTree(tool) || getGenUiTreeFromTask(tool);
+      const nested: any = tool.resultMap?.resultMap || tool.resultMap || {};
+      const patchCount = Array.isArray(nested.appliedPatches)
+        ? nested.appliedPatches.length
+        : Number(nested.patchCount) || 0;
+      return (
+        <div className="mt-2">
+          <GenUiInline tree={tree} showExport patchCount={patchCount} />
+        </div>
+      );
+    }
+    case "ui_patch": {
+      const nested: any = tool.resultMap?.resultMap || tool.resultMap || {};
+      const count = Array.isArray(nested.patches)
+        ? nested.patches.length
+        : Number(nested.patchCount) || 0;
+      const merged = Boolean(nested.mergedIntoTree);
+      return (
+        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+          {merged ? `GenUI 补丁已合并到上方界面（${count} 条）` : `GenUI 补丁（${count} 条）`}
+        </div>
+      );
     }
     case "browser": {
       return (

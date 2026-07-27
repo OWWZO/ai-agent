@@ -27,7 +27,6 @@ public final class SubAgentToolFilter {
             "file_tool",
             "code_interpreter",
             "report_tool",
-            "script_runner_tool",
             "image_generation",
             "data_analysis",
             "multimodalagent_tool"

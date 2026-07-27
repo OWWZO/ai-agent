@@ -118,6 +118,8 @@ public class AgentSessionPrinter implements Printer {
                 case "knowledge":
                 case "deep_search":
                 case "data_analysis":
+                case "ui_tree":
+                case "ui_patch":
                     response.setResultMap(JSON.parseObject(JSON.toJSONString(message)));
                     response.getResultMap().put("agentType", agentType);
                     // 子 Agent 嵌套标签（parentToolUseId 等）经 extraResultMap 传入，

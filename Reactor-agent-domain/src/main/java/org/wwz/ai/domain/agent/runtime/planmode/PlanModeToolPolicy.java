@@ -31,7 +31,10 @@ public final class PlanModeToolPolicy {
             "deep_search",
             "web_fetch",
             "WebFetch",
-            "skill_tool"
+            "skill_tool",
+            "get_html_canvas_guide",
+            "get_genui_guide",
+            "list_ui_components"
     );
 
     private static final Set<String> MUTATING = Set.of(
@@ -40,7 +43,9 @@ public final class PlanModeToolPolicy {
             "file_tool",
             "code_interpreter",
             "report_tool",
-            "script_runner_tool",
+            "canvas_publish",
+            "emit_ui_tree",
+            "emit_ui_patch",
             "image_generation",
             "data_analysis",
             "multimodalagent_tool"

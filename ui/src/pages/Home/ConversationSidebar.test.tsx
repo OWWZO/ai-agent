@@ -21,5 +21,6 @@ describe("ConversationSidebar", () => {
     );
 
     expect(html).toContain("精品对话");
+    expect(html).toContain("子 Agent");
   });
 });

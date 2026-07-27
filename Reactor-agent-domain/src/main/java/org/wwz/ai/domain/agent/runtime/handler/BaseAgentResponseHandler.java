@@ -231,6 +231,8 @@ public class BaseAgentResponseHandler {
             case "knowledge":
             case "deep_search":
             case "data_analysis":
+            case "ui_tree":
+            case "ui_patch":
                 if (agentResponse.getResultMap() != null) {
                     payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
                 }

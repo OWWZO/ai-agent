@@ -22,7 +22,6 @@ import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMarkdownParser;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDiscoverer;
-import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptRunnerClient;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
@@ -69,15 +68,15 @@ public class AgentToolCollectionFactoryTest {
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
 
-        // 顺序随 tool_list 配置；本测显式只挂 search/web_fetch/code/report/multimodalagent
+        // 顺序随 tool_list 配置；本测显式只挂 search/web_fetch/code/multimodalagent（默认不含 report）
         Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_interpreter"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("report_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("script_runner_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("Bash"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("PowerShell"));
@@ -162,7 +161,7 @@ public class AgentToolCollectionFactoryTest {
 
         ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("dataAgent"));
 
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("report_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("data_analysis"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("Agent"));
@@ -311,7 +310,6 @@ public class AgentToolCollectionFactoryTest {
                 mcpToolExecutor,
                 skillRegistry,
                 skillRuntimeOptions,
-                Mockito.mock(SkillScriptRunnerClient.class),
                 workspaceService,
                 workspaceRuntimeOptions,
                 subAgentRunner,
@@ -369,7 +367,7 @@ public class AgentToolCollectionFactoryTest {
 
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,report,multimodalagent\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,multimodalagent\"}");
         ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 2);
         return reactorConfig;
     }

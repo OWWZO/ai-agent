@@ -84,6 +84,8 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
           className="block h-full min-h-0 w-full rounded-lg bg-[var(--chat-surface)]"
           src={htmlUrl}
           title="HTML preview"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+          referrerPolicy="no-referrer-when-downgrade"
           onLoad={stopLoading}
           onError={() => {
             setError("引用资源不存在或已失效");

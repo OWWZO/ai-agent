@@ -7,11 +7,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
 import org.wwz.ai.domain.agent.runtime.dto.Plan;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiTreeToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
@@ -23,9 +26,12 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 import org.wwz.ai.infrastructure.dao.reactor.IArtifactLedgerDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCanvasPublishDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCodeInterpreterDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiPatchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiTreeDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputFileToolDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
@@ -57,6 +63,9 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     private final IToolOutputImageGenerationDao imageGenerationDao;
     private final IToolOutputScriptRunnerDao scriptRunnerDao;
     private final IToolOutputPlanningDao planningDao;
+    private final IToolOutputCanvasPublishDao canvasPublishDao;
+    private final IToolOutputEmitUiTreeDao emitUiTreeDao;
+    private final IToolOutputEmitUiPatchDao emitUiPatchDao;
     private final IArtifactLedgerDao artifactLedgerDao;
 
     @Override
@@ -74,6 +83,9 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.IMAGE_GENERATION -> Optional.ofNullable(toImageGenerationOutput(imageGenerationDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.SCRIPT_RUNNER -> Optional.ofNullable(toScriptRunnerOutput(scriptRunnerDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.PLANNING -> Optional.ofNullable(toPlanningOutput(planningDao.queryByToolInvocationId(toolInvocationId)));
+            case ToolOutputNames.CANVAS_PUBLISH -> Optional.ofNullable(toCanvasPublishOutput(canvasPublishDao.queryByToolInvocationId(toolInvocationId)));
+            case ToolOutputNames.EMIT_UI_TREE -> Optional.ofNullable(toEmitUiTreeOutput(emitUiTreeDao.queryByToolInvocationId(toolInvocationId)));
+            case ToolOutputNames.EMIT_UI_PATCH -> Optional.ofNullable(toEmitUiPatchOutput(emitUiPatchDao.queryByToolInvocationId(toolInvocationId)));
             default -> Optional.empty();
         };
     }
@@ -93,6 +105,9 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         addIfPresent(matches, ToolOutputNames.IMAGE_GENERATION, imageGenerationDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.SCRIPT_RUNNER, scriptRunnerDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.PLANNING, planningDao.queryByRequestToolCall(requestId, toolCallId));
+        addIfPresent(matches, ToolOutputNames.CANVAS_PUBLISH, canvasPublishDao.queryByRequestToolCall(requestId, toolCallId));
+        addIfPresent(matches, ToolOutputNames.EMIT_UI_TREE, emitUiTreeDao.queryByRequestToolCall(requestId, toolCallId));
+        addIfPresent(matches, ToolOutputNames.EMIT_UI_PATCH, emitUiPatchDao.queryByRequestToolCall(requestId, toolCallId));
         if (matches.size() > 1) {
             log.warn("tool output direct lookup conflict, requestId={}, toolCallId={}, matchedTools={}",
                     requestId, toolCallId, matches.stream().map(ToolOutputView::getToolName).toList());
@@ -112,6 +127,9 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             case ToolOutputNames.IMAGE_GENERATION -> toImageGenerationOutput(row);
             case ToolOutputNames.SCRIPT_RUNNER -> toScriptRunnerOutput(row);
             case ToolOutputNames.PLANNING -> toPlanningOutput(row);
+            case ToolOutputNames.CANVAS_PUBLISH -> toCanvasPublishOutput(row);
+            case ToolOutputNames.EMIT_UI_TREE -> toEmitUiTreeOutput(row);
+            case ToolOutputNames.EMIT_UI_PATCH -> toEmitUiPatchOutput(row);
             default -> null;
         };
         ToolOutputView view = toView(toolName, row, output);
@@ -154,6 +172,47 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .code(stringValue(row, "code"))
                 .explain(stringValue(row, "explain"))
                 .fileRefs(resolveFileRefs(row))
+                .build();
+    }
+
+
+    private ToolStructuredOutput toCanvasPublishOutput(Map<String, Object> row) {
+        if (row == null) {
+            return null;
+        }
+        return CanvasPublishToolOutput.builder()
+                .title(stringValue(row, "title"))
+                .mode(stringValue(row, "mode"))
+                .primaryFileName(stringValue(row, "primary_file_name", "primaryFileName"))
+                .previewUrl(stringValue(row, "preview_url", "previewUrl"))
+                .downloadUrl(stringValue(row, "download_url", "downloadUrl"))
+                .openInPanel(booleanValue(row, "open_in_panel", "openInPanel"))
+                .salvaged(booleanValue(row, "salvaged"))
+                .fileRefs(resolveFileRefs(row))
+                .build();
+    }
+
+    private ToolStructuredOutput toEmitUiTreeOutput(Map<String, Object> row) {
+        if (row == null) {
+            return null;
+        }
+        Map<String, Object> tree = readJsonMap(stringValue(row, "tree_json", "treeJson"));
+        return GenUiTreeToolOutput.builder()
+                .tree(tree)
+                .canvasId(stringValue(row, "canvas_id", "canvasId"))
+                .salvaged(booleanValue(row, "salvaged"))
+                .build();
+    }
+
+    private ToolStructuredOutput toEmitUiPatchOutput(Map<String, Object> row) {
+        if (row == null) {
+            return null;
+        }
+        List<Map<String, Object>> patches = readJsonListOfMap(stringValue(row, "patches_json", "patchesJson"));
+        return GenUiPatchToolOutput.builder()
+                .patches(patches)
+                .canvasId(stringValue(row, "canvas_id", "canvasId"))
+                .seq(integerValue(row, "seq"))
                 .build();
     }
 
@@ -314,6 +373,56 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                     .build());
         }
         return fileRefs;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readJsonMap(String json) {
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        try {
+            Object parsed = JSON.parse(json);
+            if (parsed instanceof Map<?, ?> map) {
+                Map<String, Object> out = new java.util.LinkedHashMap<>();
+                for (Map.Entry<?, ?> e : map.entrySet()) {
+                    if (e.getKey() != null) {
+                        out.put(String.valueOf(e.getKey()), e.getValue());
+                    }
+                }
+                return out;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> readJsonListOfMap(String json) {
+        if (StringUtils.isBlank(json)) {
+            return java.util.Collections.emptyList();
+        }
+        try {
+            Object parsed = JSON.parse(json);
+            if (parsed instanceof List<?> list) {
+                List<Map<String, Object>> out = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        Map<String, Object> rowMap = new java.util.LinkedHashMap<>();
+                        for (Map.Entry<?, ?> e : map.entrySet()) {
+                            if (e.getKey() != null) {
+                                rowMap.put(String.valueOf(e.getKey()), e.getValue());
+                            }
+                        }
+                        out.add(rowMap);
+                    }
+                }
+                return out;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return java.util.Collections.emptyList();
     }
 
     private String stringValue(Map<String, Object> row, String... keys) {

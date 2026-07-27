@@ -7,10 +7,13 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiTreeToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
@@ -20,9 +23,12 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputWriter;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCanvasPublishDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputCodeInterpreterDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiPatchDao;
+import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiTreeDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputFileToolDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
@@ -51,6 +57,9 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
     private final IToolOutputImageGenerationDao imageGenerationDao;
     private final IToolOutputScriptRunnerDao scriptRunnerDao;
     private final IToolOutputPlanningDao planningDao;
+    private final IToolOutputCanvasPublishDao canvasPublishDao;
+    private final IToolOutputEmitUiTreeDao emitUiTreeDao;
+    private final IToolOutputEmitUiPatchDao emitUiPatchDao;
 
     @Override
     public void write(ToolOutputPersistCommand command) {
@@ -89,6 +98,9 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
                 case ToolOutputNames.IMAGE_GENERATION -> handleInsertResult(command, imageGenerationDao.insert(buildImageGenerationRow(command, cast(command, ImageGenerationToolOutput.class))), strict);
                 case ToolOutputNames.SCRIPT_RUNNER -> handleInsertResult(command, scriptRunnerDao.insert(buildScriptRunnerRow(command, cast(command, ScriptRunnerToolOutput.class))), strict);
                 case ToolOutputNames.PLANNING -> handleInsertResult(command, planningDao.insert(buildPlanningRow(command, cast(command, PlanningToolOutput.class))), strict);
+                case ToolOutputNames.CANVAS_PUBLISH -> handleInsertResult(command, canvasPublishDao.insert(buildCanvasPublishRow(command, cast(command, CanvasPublishToolOutput.class))), strict);
+                case ToolOutputNames.EMIT_UI_TREE -> handleInsertResult(command, emitUiTreeDao.insert(buildEmitUiTreeRow(command, cast(command, GenUiTreeToolOutput.class))), strict);
+                case ToolOutputNames.EMIT_UI_PATCH -> handleInsertResult(command, emitUiPatchDao.insert(buildEmitUiPatchRow(command, cast(command, GenUiPatchToolOutput.class))), strict);
                 default -> log.debug("skip unsupported tool output persist, toolName={}", toolName);
             }
         } catch (DuplicateKeyException e) {
@@ -172,6 +184,34 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("stdout", output.getStdout());
         row.put("stderr", output.getStderr());
         row.put("summary", output.getSummary());
+        return row;
+    }
+
+    private Map<String, Object> buildCanvasPublishRow(ToolOutputPersistCommand command, CanvasPublishToolOutput output) {
+        Map<String, Object> row = baseRow(command);
+        row.put("title", output.getTitle());
+        row.put("mode", output.getMode());
+        row.put("primaryFileName", output.getPrimaryFileName());
+        row.put("previewUrl", output.getPreviewUrl());
+        row.put("downloadUrl", output.getDownloadUrl());
+        row.put("openInPanel", output.getOpenInPanel() == null ? null : (Boolean.TRUE.equals(output.getOpenInPanel()) ? 1 : 0));
+        row.put("salvaged", output.getSalvaged() == null ? null : (Boolean.TRUE.equals(output.getSalvaged()) ? 1 : 0));
+        return row;
+    }
+
+    private Map<String, Object> buildEmitUiTreeRow(ToolOutputPersistCommand command, GenUiTreeToolOutput output) {
+        Map<String, Object> row = baseRow(command);
+        row.put("canvasId", output.getCanvasId());
+        row.put("salvaged", output.getSalvaged() == null ? null : (Boolean.TRUE.equals(output.getSalvaged()) ? 1 : 0));
+        row.put("treeJson", toJson(output.getTree()));
+        return row;
+    }
+
+    private Map<String, Object> buildEmitUiPatchRow(ToolOutputPersistCommand command, GenUiPatchToolOutput output) {
+        Map<String, Object> row = baseRow(command);
+        row.put("canvasId", output.getCanvasId());
+        row.put("seq", output.getSeq());
+        row.put("patchesJson", toJson(output.getPatches()));
         return row;
     }
 

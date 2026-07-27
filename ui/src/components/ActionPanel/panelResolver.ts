@@ -10,6 +10,7 @@ export interface PanelResolverMessageTypes {
   isHtml?: boolean;
   searchList?: SearchListItem[];
   usePpt?: boolean;
+  useGenUi?: boolean;
 }
 
 type HtmlPanelView = {
@@ -50,6 +51,11 @@ type MarkdownPanelView = {
   isStreaming: boolean;
 };
 
+type GenUiPanelView = {
+  type: "ui_tree";
+  tree?: unknown;
+};
+
 type EmptyPanelView = {
   type: "empty";
 };
@@ -61,7 +67,8 @@ export type PanelView =
   | InlineHtmlPanelView
   | FilePanelView
   | JsonPanelView
-  | MarkdownPanelView;
+  | MarkdownPanelView
+  | GenUiPanelView;
 
 interface ResolvePanelViewParams {
   taskItem?: PanelItemType;
@@ -115,12 +122,21 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     useJSON,
     searchList,
     usePpt,
+    useGenUi,
   } = msgTypes || {};
 
   if (searchList?.length) {
     return {
       type: "search",
       searchList,
+    };
+  }
+
+  if (useGenUi || taskItem.messageType === "ui_tree") {
+    const nested = (taskItem as any)?.resultMap;
+    return {
+      type: "ui_tree",
+      tree: nested?.tree || nested?.resultMap?.tree,
     };
   }
 

@@ -34,7 +34,6 @@ public class AiAgentSkillAutoConfiguration {
                 .maxListEntries(properties.getMaxListEntries())
                 .maxGlobResults(properties.getMaxGlobResults())
                 .maxGrepMatches(properties.getMaxGrepMatches())
-                .defaultScriptTimeoutSeconds(properties.getDefaultScriptTimeoutSeconds())
                 .build();
     }
 }

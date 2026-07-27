@@ -8,6 +8,9 @@ import org.wwz.ai.domain.agent.ledger.replay.HistoryReplayPrinter;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CanvasPublishToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiPatchToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiTreeToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DataAnalysisToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
@@ -50,6 +53,21 @@ public class ReplayProjectorAutoConfiguration {
     @Bean
     public ReportToolInvocationProjector reportToolInvocationProjector() {
         return new ReportToolInvocationProjector();
+    }
+
+    @Bean
+    public CanvasPublishToolInvocationProjector canvasPublishToolInvocationProjector() {
+        return new CanvasPublishToolInvocationProjector();
+    }
+
+    @Bean
+    public GenUiTreeToolInvocationProjector genUiTreeToolInvocationProjector() {
+        return new GenUiTreeToolInvocationProjector();
+    }
+
+    @Bean
+    public GenUiPatchToolInvocationProjector genUiPatchToolInvocationProjector() {
+        return new GenUiPatchToolInvocationProjector();
     }
 
     @Bean

@@ -10,6 +10,7 @@ import ChatView from "@/components/ChatView";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import WorkspaceSop from "@/pages/WorkspaceSop";
+import SubAgentAdmin from "@/pages/SubAgentAdmin";
 import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
   GENERIC_TASK_PRODUCT,
@@ -75,7 +76,13 @@ import {
 
 type HomeProps = Record<string, never>;
 
-type SidebarView = "chat" | "mrag" | "image-generation" | "sop" | "featured";
+type SidebarView =
+  | "chat"
+  | "mrag"
+  | "image-generation"
+  | "sop"
+  | "sub-agents"
+  | "featured";
 
 type InitialState = {
   productType: string;
@@ -229,6 +236,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       : activeView === "mrag" ||
           activeView === "image-generation" ||
           activeView === "sop" ||
+          activeView === "sub-agents" ||
           activeView === "featured"
         ? "min-h-0 flex-1 overflow-hidden"
         : "min-h-0 flex-1 overflow-auto";
@@ -822,6 +830,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               <WorkspaceImageGeneration embedded />
             ) : activeView === "sop" ? (
               <WorkspaceSop embedded />
+            ) : activeView === "sub-agents" ? (
+              <SubAgentAdmin embedded />
             ) : activeView === "featured" ? (
               <FeaturedConversations
                 embedded

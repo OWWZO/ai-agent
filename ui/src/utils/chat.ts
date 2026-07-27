@@ -32,6 +32,7 @@ import {
   resolveToolCallActionText,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
+import { mergeUiPatchIntoTaskGroup } from "@/utils/chat/genuiState";
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
@@ -199,6 +200,10 @@ function handleTaskMessageByType(
     case "knowledge":
     case "data_analysis":
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
+      break;
+    case "ui_tree":
+    case "ui_patch":
+      handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
     case "deep_search":
       handleDeepSearchMessage(eventData, currentChat, taskIndex);
@@ -702,6 +707,16 @@ function handleNonStreamingMessage(
 
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
+
+    // GenUI patch: merge onto latest ui_tree in the same task group.
+    if (nextTask.messageType === "ui_patch") {
+      const merged = mergeUiPatchIntoTaskGroup(taskGroup as any, nextTask as any);
+      if (merged) {
+        // Keep a lightweight patch breadcrumb in timeline.
+        taskGroup.push(nextTask);
+        return;
+      }
+    }
     const placeholderIndex = findToolCallPlaceholderIndex(
       taskGroup,
       resolveTaskToolCallId(nextTask)
@@ -985,6 +1000,8 @@ export const buildAction = (task: CHAT.Task) => {
     SESSION_TASKS: "session_tasks",
     CODE: "code",
     HTML: "html",
+    UI_TREE: "ui_tree",
+    UI_PATCH: "ui_patch",
     PLAN_THOUGHT: "plan_thought",
     PLAN: "plan",
     FILE: "file",
@@ -1047,6 +1064,20 @@ export const buildAction = (task: CHAT.Task) => {
         action: "正在生成web页面",
         tool: "编辑器",
         name: ""
+      };
+
+    case MESSAGE_TYPES.UI_TREE:
+      return {
+        action: "正在生成界面组件",
+        tool: "GenUI",
+        name: "画布"
+      };
+
+    case MESSAGE_TYPES.UI_PATCH:
+      return {
+        action: "正在更新界面组件",
+        tool: "GenUI",
+        name: "补丁"
       };
 
     case MESSAGE_TYPES.PLAN_THOUGHT:

@@ -12,6 +12,10 @@ public final class ToolOutputNames {
     public static final String FILE_TOOL = "file_tool";
     public static final String CODE_INTERPRETER = "code_interpreter";
     public static final String REPORT_TOOL = "report_tool";
+    /** Structured tool name; not yet a dedicated output table (artifact + projector). */
+    public static final String CANVAS_PUBLISH = "canvas_publish";
+    public static final String EMIT_UI_TREE = "emit_ui_tree";
+    public static final String EMIT_UI_PATCH = "emit_ui_patch";
     public static final String DATA_ANALYSIS = "data_analysis";
     public static final String MULTIMODAL_AGENT = "multimodalagent_tool";
     public static final String IMAGE_GENERATION = "image_generation_tool";
@@ -23,6 +27,9 @@ public final class ToolOutputNames {
             FILE_TOOL,
             CODE_INTERPRETER,
             REPORT_TOOL,
+            CANVAS_PUBLISH,
+            EMIT_UI_TREE,
+            EMIT_UI_PATCH,
             DATA_ANALYSIS,
             MULTIMODAL_AGENT,
             IMAGE_GENERATION,

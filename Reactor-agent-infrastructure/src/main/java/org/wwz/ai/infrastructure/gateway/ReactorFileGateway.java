@@ -59,57 +59,101 @@ public class ReactorFileGateway {
         String originalFileName = StringUtils.hasText(file.getOriginalFilename())
                 ? Objects.requireNonNull(file.getOriginalFilename()).trim()
                 : "uploaded-file";
-        String uploadUrl = trimTrailingSlash(baseUrl) + "/v1/file_tool/upload_file_data";
-
         try {
             MediaType parsedMediaType = StringUtils.hasText(file.getContentType())
                     ? MediaType.parse(file.getContentType())
                     : DEFAULT_MEDIA_TYPE;
             MediaType mediaType = parsedMediaType == null ? DEFAULT_MEDIA_TYPE : parsedMediaType;
             StreamingMultipartFileRequestBody fileBody = new StreamingMultipartFileRequestBody(file, mediaType);
-
-            MultipartBody requestBody = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("requestId", sessionId)
-                    .addFormDataPart("file", originalFileName, fileBody)
-                    .build();
-
-            Request request = new Request.Builder()
-                    .url(uploadUrl)
-                    .post(requestBody)
-                    .build();
-
-            try (Response response = uploadClient.newCall(request).execute()) {
-                String responseText = response.body() == null ? null : response.body().string();
-                if (!response.isSuccessful()) {
-                    log.error("对话附件上传失败 sessionId={}, fileName={}, code={}, body={}",
-                            sessionId, originalFileName, response.code(), responseText);
-                    throw new IllegalStateException(resolveUploadFailureMessage(response.code()));
-                }
-                if (!StringUtils.hasText(responseText)) {
-                    throw new IllegalStateException("文件服务返回为空");
-                }
-
-                JSONObject result = JSON.parseObject(responseText);
-                String previewUrl = firstText(result.getString("domainUrl"), result.getString("downloadUrl"));
-                String downloadUrl = firstText(result.getString("downloadUrl"), result.getString("domainUrl"));
-                String resourceKey = buildStableResourceKey(sessionId, originalFileName, file.getSize(), fileBody.getSha256Hex());
-
-                return ConversationUploadFileDTO.builder()
-                        .name(originalFileName)
-                        .url(previewUrl)
-                        .type(resolveFileExtension(originalFileName))
-                        .size(result.getLong("fileSize"))
-                        .downloadUrl(downloadUrl)
-                        .previewUrl(previewUrl)
-                        .resourceKey(resourceKey)
-                        .mimeType(file.getContentType())
-                        .originFileName(originalFileName)
-                        .build();
-            }
+            return uploadBinary(sessionId, originalFileName, mediaType, fileBody, file.getSize(), file.getContentType());
         } catch (IOException e) {
             log.error("对话附件上传异常 sessionId={}, fileName={}", sessionId, originalFileName, e);
             throw new IllegalStateException("文件服务调用失败", e);
+        }
+    }
+
+    /**
+     * 上传内存中的二进制产物（如 Java 端直接生成的图片）到 reactor-tool 文件服务。
+     */
+    public ConversationUploadFileDTO uploadBinaryFile(String sessionId,
+                                                      String fileName,
+                                                      byte[] content,
+                                                      String contentType) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("sessionId 不能为空");
+        }
+        if (content == null || content.length == 0) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        String originalFileName = StringUtils.hasText(fileName) ? fileName.trim() : "uploaded-file";
+        MediaType parsedMediaType = StringUtils.hasText(contentType)
+                ? MediaType.parse(contentType)
+                : DEFAULT_MEDIA_TYPE;
+        MediaType mediaType = parsedMediaType == null ? DEFAULT_MEDIA_TYPE : parsedMediaType;
+        try {
+            return uploadBinary(
+                    sessionId,
+                    originalFileName,
+                    mediaType,
+                    RequestBody.create(mediaType, content),
+                    content.length,
+                    contentType
+            );
+        } catch (IOException e) {
+            log.error("二进制产物上传异常 sessionId={}, fileName={}", sessionId, originalFileName, e);
+            throw new IllegalStateException("文件服务调用失败", e);
+        }
+    }
+
+    private ConversationUploadFileDTO uploadBinary(String sessionId,
+                                                   String originalFileName,
+                                                   MediaType mediaType,
+                                                   RequestBody fileBody,
+                                                   long fileSize,
+                                                   String contentType) throws IOException {
+        String baseUrl = reactorConfig.getCodeInterpreterUrl();
+        if (!StringUtils.hasText(baseUrl)) {
+            throw new IllegalStateException("autobots.autoagent.code_interpreter_url 未配置");
+        }
+        String uploadUrl = trimTrailingSlash(baseUrl) + "/v1/file_tool/upload_file_data";
+        MultipartBody requestBody = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("requestId", sessionId)
+                .addFormDataPart("file", originalFileName, fileBody)
+                .build();
+        Request request = new Request.Builder()
+                .url(uploadUrl)
+                .post(requestBody)
+                .build();
+        try (Response response = uploadClient.newCall(request).execute()) {
+            String responseText = response.body() == null ? null : response.body().string();
+            if (!response.isSuccessful()) {
+                log.error("文件上传失败 sessionId={}, fileName={}, code={}, body={}",
+                        sessionId, originalFileName, response.code(), responseText);
+                throw new IllegalStateException(resolveUploadFailureMessage(response.code()));
+            }
+            if (!StringUtils.hasText(responseText)) {
+                throw new IllegalStateException("文件服务返回为空");
+            }
+            JSONObject result = JSON.parseObject(responseText);
+            String previewUrl = firstText(result.getString("domainUrl"), result.getString("downloadUrl"));
+            String downloadUrl = firstText(result.getString("downloadUrl"), result.getString("domainUrl"));
+            String sha256Hex = fileBody instanceof StreamingMultipartFileRequestBody streamingBody
+                    ? streamingBody.getSha256Hex()
+                    : null;
+            String resourceKey = buildStableResourceKey(sessionId, originalFileName, fileSize, sha256Hex);
+            Long responseSize = result.getLong("fileSize");
+            return ConversationUploadFileDTO.builder()
+                    .name(originalFileName)
+                    .url(previewUrl)
+                    .type(resolveFileExtension(originalFileName))
+                    .size(responseSize == null ? fileSize : responseSize)
+                    .downloadUrl(downloadUrl)
+                    .previewUrl(previewUrl)
+                    .resourceKey(resourceKey)
+                    .mimeType(contentType)
+                    .originFileName(originalFileName)
+                    .build();
         }
     }
 

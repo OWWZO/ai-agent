@@ -278,8 +278,33 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.multimodalagent_url:}")
     private String multiModalAgentUrl;
 
+    /**
+     * 兼容旧配置：历史上指向 reactor-tool 的 image_generation 代理地址。
+     * Java 直连上游后不再作为主配置，仅作 base_url 兜底。
+     */
     @Value("${autobots.autoagent.image_generation_url:}")
     private String imageGenerationUrl;
+
+    /**
+     * 图片上游 base URL（米醋 / OpenAI 兼容），例如 https://www.micuapi.ai
+     */
+    @Value("${autobots.autoagent.image_generation.base_url:}")
+    private String imageGenerationBaseUrl;
+
+    @Value("${autobots.autoagent.image_generation.api_key:}")
+    private String imageGenerationApiKey;
+
+    @Value("${autobots.autoagent.image_generation.model:gpt-image-2}")
+    private String imageGenerationModel;
+
+    @Value("${autobots.autoagent.image_generation.grok_base_url:}")
+    private String imageGenerationGrokBaseUrl;
+
+    @Value("${autobots.autoagent.image_generation.grok_api_key:}")
+    private String imageGenerationGrokApiKey;
+
+    @Value("${autobots.autoagent.image_generation.grok_model:grok-imagine-image-lite}")
+    private String imageGenerationGrokModel;
 
     @Value("${autobots.autoagent.mcp_client_url:}")
     private String mcpClientUrl;
@@ -319,12 +344,6 @@ public class ReactorConfig {
      */
     @Value("${autobots.autoagent.skill.plan-solve-enabled:true}")
     private Boolean skillPlanSolveEnabled;
-
-    /**
-     * skill 脚本默认超时，便于在统一配置快照中查看当前生效值。
-     */
-    @Value("${autobots.autoagent.skill.default-script-timeout-seconds:120}")
-    private Integer skillDefaultScriptTimeoutSeconds;
 
     /**
      * skill 文本读取上限，便于和 read_tool / skill_tool 的截断行为联动排查。
