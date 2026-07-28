@@ -14,6 +14,7 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
+import RunPresenceBar from "./RunPresenceBar";
 import { type MarkdownNormalizationScope } from "@/utils/markdown";
 import RunStatus from "@/components/ActionView/RunStatus";
 import {
@@ -141,7 +142,6 @@ const DialogueComponent: FC<Props> = (props) => {
   const hasAssistantPayload =
     !!chat.response ||
     !!thoughtText ||
-    !!chat.tip ||
     !!displayedPlan ||
     !!chat.tasks.length ||
     !!chat.conclusion;
@@ -176,13 +176,6 @@ const DialogueComponent: FC<Props> = (props) => {
               {chat.query}
             </MessageContent>
           </Message>
-        </div>
-      ) : null}
-
-      {/* 提示 */}
-      {chat.tip ? (
-        <div className="mt-4 w-full text-[14px] leading-7 text-[var(--chat-text-soft)]">
-          {chat.tip}
         </div>
       ) : null}
 
@@ -222,9 +215,12 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {/* AI 思考中占位 / Lemon 风格 status 行 */}
+      {/* 首包前：完整存在感；已有内容后：紧凑状态条 */}
       {chat.loading && !hasAssistantPayload ? (
         <ThinkingMessage tip={chat.tip} />
+      ) : null}
+      {chat.loading && hasAssistantPayload ? (
+        <RunPresenceBar hint={chat.tip || "正在推进任务…"} compact />
       ) : null}
 
       {/* 思考过程（深度研究模式） */}

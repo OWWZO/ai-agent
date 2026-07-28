@@ -82,6 +82,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const {
     taskList,
     workspaceStreamTask,
+    workspaceCaption,
     activeRunState,
     setActiveRunState,
     plan,
@@ -712,6 +713,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             <ActionView
               activeTask={activeTask}
               streamTask={workspaceStreamTask}
+              workspaceCaption={workspaceCaption}
               taskList={taskList}
               plan={plan}
               runState={activeRunState}

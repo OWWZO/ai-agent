@@ -20,7 +20,7 @@ describe("useConversationStream helpers", () => {
     expect(next.conclusion?.messageType).toBe("task_summary");
   });
 
-  it("存在 plan 但没有 renderable task 时仍应打开右侧工作区", () => {
+  it("存在 plan 但没有产物 task 时不自动打开右侧工作区", () => {
     expect(
       resolveActionPanelVisibility({
         plan: {
@@ -28,7 +28,7 @@ describe("useConversationStream helpers", () => {
         } as unknown as CHAT.Plan,
         taskList: [],
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("heartbeat 包在缺少 resultMap 时也应被正常解析", () => {

@@ -1,4 +1,4 @@
-import { FC, memo, useMemo, useState } from "react";
+import { FC, memo, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import AttachmentList from "@/components/AttachmentList";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -34,6 +34,7 @@ import {
   isTimelineTaskContainerCompleted,
   shouldShowTimelineGroupCompletedIcon,
 } from "./timelineStatus";
+import { isTimelineToolActive } from "@/components/ChatView/streamState";
 import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
@@ -101,7 +102,7 @@ const ToolItem: FC<ToolItemProps> = memo(({
       const streamingThought = !tool.resultMap?.isFinal;
       return (
         <div className="mt-[8px] rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/38 px-3 py-2.5">
-          <Reasoning isStreaming={streamingThought} defaultOpen>
+          <Reasoning isStreaming={streamingThought} defaultOpen={streamingThought}>
             <ReasoningTrigger />
             <ReasoningContent>{tool.toolThought || ""}</ReasoningContent>
           </Reasoning>
@@ -273,13 +274,17 @@ const SubAgentTimelineCard: FC<{
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 }> = memo(({ tool, chat, subAgent, actionInfo, changeActiveChat }) => {
   const nested = tool.children || [];
-  const [expanded, setExpanded] = useState(
-    () => subAgent.status === "running" || nested.length > 0
-  );
+  const [expanded, setExpanded] = useState(() => subAgent.status === "running");
   const duration = formatSubAgentDuration(subAgent.totalDurationMs);
   const subAgentRunning = subAgent.status === "running";
   const subAgentFailed = subAgent.status === "failed";
   const nestedCount = nested.length;
+
+  useEffect(() => {
+    if (subAgentRunning) {
+      setExpanded(true);
+    }
+  }, [subAgentRunning]);
 
   return (
     <div className="mt-2">
@@ -485,6 +490,127 @@ const resolveDigitalEmployee = (task: CHAT.Task): string | undefined => {
   return task.children?.find((child) => child.digitalEmployee)?.digitalEmployee;
 };
 
+const TimelineTaskBlock: FC<{
+  chat: CHAT.ChatItem;
+  task: CHAT.Task;
+  isPlanSolveMessage: boolean;
+  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changePlan?: () => void;
+  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+}> = ({ chat, task, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => {
+  const children = task.children || [];
+  const digitalEmployee = resolveDigitalEmployee(task);
+  const taskCompleted = isTimelineTaskContainerCompleted(task);
+  const hasActiveChild = children.some((tool) => isTimelineToolActive(tool));
+  const canCollapse = children.length > 1 && taskCompleted && !hasActiveChild;
+  const [expanded, setExpanded] = useState(() => !canCollapse);
+
+  useEffect(() => {
+    if (hasActiveChild) {
+      setExpanded(true);
+    } else if (canCollapse) {
+      setExpanded(false);
+    }
+  }, [canCollapse, hasActiveChild]);
+
+  return (
+    <div
+      className="overflow-hidden"
+    >
+      {isPlanSolveMessage && task.task ? (
+        <div className="mb-1">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 text-left"
+            onClick={() => {
+              if (canCollapse) {
+                setExpanded((value) => !value);
+              }
+            }}
+            disabled={!canCollapse}
+          >
+            {canCollapse ? (
+              expanded ? (
+                <ChevronDownIcon className="size-3.5 shrink-0 text-[var(--chat-text-soft)]" />
+              ) : (
+                <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--chat-text-soft)]" />
+              )
+            ) : null}
+            <div className="min-w-0 flex-1 font-[500]">{task.task}</div>
+            {canCollapse && !expanded ? (
+              <span className="shrink-0 text-[12px] text-[var(--chat-text-soft)]">
+                {children.length} 步已完成
+              </span>
+            ) : null}
+          </button>
+          {digitalEmployee && (
+            <div className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-[var(--chat-border)]/18 bg-[var(--chat-surface)]/80 px-3 py-1.5 text-[13px]">
+              <UserIcon className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
+              <span className="text-[var(--chat-text-soft)]">{digitalEmployee}</span>
+              {taskCompleted && (
+                <>
+                  <span className="text-[var(--chat-border)]">|</span>
+                  <CheckIcon className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
+      {!isPlanSolveMessage && canCollapse ? (
+        <button
+          type="button"
+          className="mt-1 flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? (
+            <ChevronDownIcon className="size-3.5 shrink-0" />
+          ) : (
+            <ChevronRightIcon className="size-3.5 shrink-0" />
+          )}
+          <span className="font-medium text-[var(--chat-text)]">
+            {expanded ? "收起已完成步骤" : `已完成 ${children.length} 步`}
+          </span>
+        </button>
+      ) : null}
+      {expanded || !canCollapse
+        ? children.map((tool, index) => {
+            const stage =
+              tool.messageType === "deep_search"
+                ? resolveDeepSearchStage(tool.resultMap?.messageType)
+                : undefined;
+            const shouldRenderPreview =
+              tool.messageType === "deep_search" &&
+              shouldRenderDeepSearchPreview(stage);
+
+            return (
+              <div
+                key={tool.id || tool.messageId || tool.taskId || index}
+                className="overflow-hidden"
+              >
+                {shouldRenderPreview ? (
+                  <DeepSearchPreviewItem
+                    tool={tool}
+                    chat={chat}
+                    changeActiveChat={changeActiveChat}
+                  />
+                ) : (
+                  <ToolItem
+                    tool={tool}
+                    chat={chat}
+                    changePlan={changePlan}
+                    changeActiveChat={changeActiveChat}
+                    changeFile={changeFile}
+                  />
+                )}
+              </div>
+            );
+          })
+        : null}
+    </div>
+  );
+};
+
 const TimelineContent: FC<{
   chat: CHAT.ChatItem;
   tasks: CHAT.Task[];
@@ -495,66 +621,17 @@ const TimelineContent: FC<{
 }> = ({ chat, tasks, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => {
   return (
     <>
-      {tasks.map((task, taskIndex) => {
-        const digitalEmployee = resolveDigitalEmployee(task);
-        const taskCompleted = isTimelineTaskContainerCompleted(task);
-        return (
-          <div
-            key={task.id || task.messageId || task.taskId || taskIndex}
-            className="overflow-hidden"
-          >
-            {isPlanSolveMessage && task.task ? (
-              <div className="mb-1">
-                <div className="font-[500]">{task.task}</div>
-                {digitalEmployee && (
-                  <div className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-[var(--chat-border)]/18 bg-[var(--chat-surface)]/80 px-3 py-1.5 text-[13px]">
-                    <UserIcon className="h-3.5 w-3.5 text-[var(--chat-text-muted)]" />
-                    <span className="text-[var(--chat-text-soft)]">{digitalEmployee}</span>
-                    {taskCompleted && (
-                      <>
-                        <span className="text-[var(--chat-border)]">|</span>
-                        <CheckIcon className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : null}
-            {(task.children || []).map((tool, index) => {
-              const stage =
-                tool.messageType === "deep_search"
-                  ? resolveDeepSearchStage(tool.resultMap?.messageType)
-                  : undefined;
-              const shouldRenderPreview =
-                tool.messageType === "deep_search" &&
-                shouldRenderDeepSearchPreview(stage);
-
-              return (
-                <div
-                  key={tool.id || tool.messageId || tool.taskId || index}
-                  className="overflow-hidden"
-                >
-                  {shouldRenderPreview ? (
-                    <DeepSearchPreviewItem
-                      tool={tool}
-                      chat={chat}
-                      changeActiveChat={changeActiveChat}
-                    />
-                  ) : (
-                    <ToolItem
-                      tool={tool}
-                      chat={chat}
-                      changePlan={changePlan}
-                      changeActiveChat={changeActiveChat}
-                      changeFile={changeFile}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+      {tasks.map((task, taskIndex) => (
+        <TimelineTaskBlock
+          key={task.id || task.messageId || task.taskId || taskIndex}
+          chat={chat}
+          task={task}
+          isPlanSolveMessage={isPlanSolveMessage}
+          changeActiveChat={changeActiveChat}
+          changePlan={changePlan}
+          changeFile={changeFile}
+        />
+      ))}
     </>
   );
 };

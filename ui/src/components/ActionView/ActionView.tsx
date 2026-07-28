@@ -30,6 +30,7 @@ type ActionViewProps = {
   taskList?: PanelItemType[];
   activeTask?: CHAT.Task;
   streamTask?: CHAT.Task;
+  workspaceCaption?: string;
   plan?: CHAT.Plan;
   runState?: {
     status?: string;
@@ -43,7 +44,18 @@ type ActionViewProps = {
 };
 
 const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
-  const { className, onClose, activeTask, streamTask, taskList, plan, runState, isFocusMode, onToggleFocusMode } = props;
+  const {
+    className,
+    onClose,
+    activeTask,
+    streamTask,
+    workspaceCaption,
+    taskList,
+    plan,
+    runState,
+    isFocusMode,
+    onToggleFocusMode,
+  } = props;
 
   const [curFileItem, setCurFileItem] = useSafeState<CHAT.TFile>();
   const planRef = useRef<PlanViewAction>(null);
@@ -119,6 +131,13 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
           </button>
         </div>
       </motion.div>
+
+      {workspaceCaption ? (
+        <div className="border-b border-[var(--chat-border)]/40 px-4 pb-2.5 text-[12px] leading-5 text-[var(--chat-text-soft)]">
+          <span className="text-[var(--chat-text-muted)]">工作区 · </span>
+          {workspaceCaption}
+        </div>
+      ) : null}
 
       {/* Content Area */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

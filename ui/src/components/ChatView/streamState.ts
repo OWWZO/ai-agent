@@ -1,11 +1,89 @@
 import { shouldRenderDeepSearchWorkspace } from "@/utils/deepSearch";
+import { buildAction } from "@/utils/chat";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 import type { ActiveRunState } from "./chatView.types";
+
+export type RunPhase =
+  | "idle"
+  | "queued"
+  | "thinking"
+  | "planning"
+  | "working"
+  | "crafting"
+  | "settling"
+  | "failed"
+  | "stopped";
+
+export type RunAttention = "timeline" | "workspace" | "composer";
+
+export type RunPresence = {
+  phase: RunPhase;
+  hint: string;
+  attention: RunAttention;
+  workspaceTitle?: string;
+};
 
 const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "task_summary",
   "result",
   "tool_thought",
+  "ask_user_question",
+  "plan_approval",
+  "plan_mode_entered",
+  "session_tasks",
+  "ui_patch",
 ]);
+
+/**
+ * 只有真正“值得抢焦点”的产物才自动打开右侧工作区。
+ * tool_call / 纯 tool_result 只留在时间线，避免每一步工具都把双栏拉开。
+ */
+const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
+  "file",
+  "html",
+  "markdown",
+  "ppt",
+  "code",
+  "browser",
+  "knowledge",
+  "data_analysis",
+  "ui_tree",
+  "deep_search",
+]);
+
+const CRAFTING_MESSAGE_TYPES = new Set([
+  "file",
+  "html",
+  "markdown",
+  "ppt",
+  "code",
+  "data_analysis",
+  "ui_tree",
+  "deep_search",
+]);
+
+function isTaskFinal(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  if (!task) {
+    return false;
+  }
+  return Boolean(task.finish || task.isFinal || task.resultMap?.isFinal);
+}
+
+function hasWorkspaceArtifacts(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return false;
+  }
+  if (Array.isArray(task.artifactRefs) && task.artifactRefs.length > 0) {
+    return true;
+  }
+  try {
+    return getTaskFiles(task as CHAT.Task).length > 0;
+  } catch {
+    return false;
+  }
+}
 
 export function isWorkspaceRenderableTask(
   task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
@@ -23,6 +101,28 @@ export function isWorkspaceRenderableTask(
   }
 
   return true;
+}
+
+/**
+ * 自动打开 / 跟随工作区的注意力过滤：产物优先，工具调用噪声排除。
+ */
+export function isWorkspaceAttentionTask(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!isWorkspaceRenderableTask(task)) {
+    return false;
+  }
+
+  const messageType = task?.messageType || "";
+  if (WORKSPACE_ATTENTION_MESSAGE_TYPES.has(messageType)) {
+    return true;
+  }
+
+  if (messageType === "tool_result" && hasWorkspaceArtifacts(task)) {
+    return true;
+  }
+
+  return false;
 }
 
 export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {
@@ -44,7 +144,37 @@ export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {
     return false;
   }
 
-  return true;
+  const innerType = eventData.resultMap?.messageType || eventData.messageType;
+  if (innerType && WORKSPACE_HIDDEN_MESSAGE_TYPES.has(innerType)) {
+    return false;
+  }
+
+  if (innerType === "tool_call") {
+    return false;
+  }
+
+  if (innerType === "tool_result") {
+    return hasWorkspaceArtifacts({
+      messageType: "tool_result",
+      artifactRefs: eventData.artifactRefs,
+      resultMap: eventData.resultMap,
+    } as unknown as CHAT.Task);
+  }
+
+  if (innerType && WORKSPACE_ATTENTION_MESSAGE_TYPES.has(innerType)) {
+    return true;
+  }
+
+  // plan 本身不自动抢工作区焦点（左侧 PlanSection 已承接）。
+  if (eventData.messageType === "plan" || innerType === "plan") {
+    return false;
+  }
+
+  return isWorkspaceAttentionTask({
+    messageType: innerType,
+    resultMap: eventData.resultMap,
+    artifactRefs: eventData.artifactRefs,
+  } as unknown as CHAT.Task);
 }
 
 export function getLatestRenderableTask(chat: CHAT.ChatItem): CHAT.Task | undefined {
@@ -53,8 +183,7 @@ export function getLatestRenderableTask(chat: CHAT.ChatItem): CHAT.Task | undefi
     const group = groups[groupIndex] || [];
     for (let taskIndex = group.length - 1; taskIndex >= 0; taskIndex -= 1) {
       const task = group[taskIndex] as CHAT.Task | undefined;
-      // 工作区只跟随真正属于右侧详情面的任务。
-      if (!isWorkspaceRenderableTask(task)) {
+      if (!isWorkspaceAttentionTask(task)) {
         continue;
       }
       return task;
@@ -74,10 +203,9 @@ export function resolveActionPanelVisibility(params: {
   plan?: CHAT.Plan;
   taskList: CHAT.Task[];
 }) {
-  return (
-    Boolean(params.plan) ||
-    params.taskList.some((task) => isWorkspaceRenderableTask(task))
-  );
+  // 右侧工作区只在有值得观看的产物时自动展开；plan 单独出现时保持单栏。
+  void params.plan;
+  return params.taskList.some((task) => isWorkspaceAttentionTask(task));
 }
 
 export function resolveLatestRunState(
@@ -91,4 +219,182 @@ export function resolveLatestRunState(
     status: chat.metrics?.status,
     finishedAt: chat.finishedAt,
   };
+}
+
+export function isTimelineToolActive(tool?: CHAT.Task) {
+  if (!tool) {
+    return false;
+  }
+  if (tool.messageType === "ask_user_question" || tool.messageType === "plan_approval") {
+    return !isTaskFinal(tool);
+  }
+  if (tool.messageType === "tool_thought") {
+    return !isTaskFinal(tool);
+  }
+  if (tool.messageType === "tool_call") {
+    return !isTaskFinal(tool) && tool.resultMap?.status !== "success";
+  }
+  if (CRAFTING_MESSAGE_TYPES.has(tool.messageType || "")) {
+    return !isTaskFinal(tool);
+  }
+  return !isTaskFinal(tool) && tool.messageType !== "task_summary";
+}
+
+function collectTimelineTools(chat?: CHAT.ChatItem): CHAT.Task[] {
+  if (!chat) {
+    return [];
+  }
+  const fromRendered = (chat.tasks || []).flatMap((group) =>
+    (group || []).flatMap((container) => container.children || [])
+  );
+  if (fromRendered.length) {
+    return fromRendered;
+  }
+  return (chat.multiAgent?.tasks || []).flatMap((group) => group || []) as CHAT.Task[];
+}
+
+function resolveWorkspaceTitle(task?: CHAT.Task) {
+  if (!task) {
+    return undefined;
+  }
+  try {
+    const action = buildAction(task);
+    const label = [action.action, action.name].filter(Boolean).join(" · ");
+    return label || task.messageType;
+  } catch {
+    return task.messageType;
+  }
+}
+
+const PHASE_HINTS: Record<RunPhase, string> = {
+  idle: "",
+  queued: "正在理解任务…",
+  thinking: "正在梳理思路…",
+  planning: "正在制定计划…",
+  working: "正在推进任务…",
+  crafting: "正在整理产出…",
+  settling: "正在汇总结果…",
+  failed: "本轮未能完成",
+  stopped: "已停止",
+};
+
+export function resolveRunPhaseHint(
+  phase: RunPhase,
+  options?: { deepThink?: boolean; workspaceTitle?: string }
+) {
+  if (phase === "queued" && options?.deepThink) {
+    return "正在制定计划…";
+  }
+  if (phase === "crafting" && options?.workspaceTitle) {
+    return options.workspaceTitle;
+  }
+  if (phase === "working" && options?.workspaceTitle) {
+    return options.workspaceTitle;
+  }
+  return PHASE_HINTS[phase];
+}
+
+export function resolveRunPresence(params: {
+  loading: boolean;
+  chat?: CHAT.ChatItem;
+  deepThink?: boolean;
+  plan?: CHAT.Plan;
+  taskList?: CHAT.Task[];
+}): RunPresence {
+  const { loading, chat, deepThink, plan, taskList } = params;
+  const status = String(chat?.metrics?.status || "").toUpperCase();
+  const attentionTask =
+    (taskList || []).find((task) => isWorkspaceAttentionTask(task) && isTimelineToolActive(task)) ||
+    (chat ? getLatestRenderableTask(chat) : undefined);
+  const workspaceTitle = resolveWorkspaceTitle(attentionTask);
+
+  if (status === "FAILED") {
+    return {
+      phase: "failed",
+      hint: chat?.tip || PHASE_HINTS.failed,
+      attention: "timeline",
+    };
+  }
+
+  if (status === "STOPPED" || chat?.forceStop) {
+    return {
+      phase: "stopped",
+      hint: PHASE_HINTS.stopped,
+      attention: "timeline",
+    };
+  }
+
+  if (!loading) {
+    return {
+      phase: "idle",
+      hint: "",
+      attention: "composer",
+      workspaceTitle: attentionTask ? workspaceTitle : undefined,
+    };
+  }
+
+  const tools = collectTimelineTools(chat);
+  const hasThought = Boolean(
+    chat?.thought?.trim() ||
+      chat?.multiAgent?.plan_thought?.trim()
+  );
+  const hasPlan = Boolean(plan || chat?.plan || chat?.multiAgent?.plan);
+  const hasActiveTool = tools.some((tool) => isTimelineToolActive(tool));
+  const hasCrafting = tools.some(
+    (tool) =>
+      CRAFTING_MESSAGE_TYPES.has(tool.messageType || "") ||
+      isWorkspaceAttentionTask(tool)
+  );
+  const conclusionStreaming =
+    chat?.conclusion?.messageType === "agent_stream" ||
+    (Boolean(chat?.conclusion) && !isTaskFinal(chat?.conclusion));
+
+  let phase: RunPhase = "queued";
+  if (conclusionStreaming || (chat?.conclusion && loading)) {
+    phase = "settling";
+  } else if (
+    attentionTask &&
+    CRAFTING_MESSAGE_TYPES.has(attentionTask.messageType || "")
+  ) {
+    phase = "crafting";
+  } else if (hasCrafting && hasActiveTool) {
+    phase = "crafting";
+  } else if (hasActiveTool || tools.length > 0) {
+    phase = "working";
+  } else if (hasPlan && deepThink) {
+    phase = "planning";
+  } else if (hasThought) {
+    phase = "thinking";
+  } else if (deepThink) {
+    // 深度研究首包前仍属 queued，文案走“制定计划”
+    phase = "queued";
+  }
+
+  const attention: RunAttention =
+    phase === "crafting" && attentionTask
+      ? "workspace"
+      : phase === "settling"
+        ? "timeline"
+        : "timeline";
+
+  return {
+    phase,
+    hint: resolveRunPhaseHint(phase, { deepThink, workspaceTitle }),
+    attention,
+    workspaceTitle,
+  };
+}
+
+export function resolveWorkspaceCaption(task?: CHAT.Task, loading?: boolean) {
+  if (!task) {
+    return undefined;
+  }
+  const title = resolveWorkspaceTitle(task);
+  if (!title) {
+    return undefined;
+  }
+  if (loading && isTimelineToolActive(task)) {
+    return `正在产出：${title}`;
+  }
+  return title;
 }

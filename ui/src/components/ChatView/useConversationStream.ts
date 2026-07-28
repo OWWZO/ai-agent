@@ -24,6 +24,8 @@ import {
   getLatestRenderableTask,
   resolveActionPanelVisibility,
   resolveLatestRunState,
+  resolveRunPresence,
+  resolveWorkspaceCaption,
   shouldRefreshWorkspaceTask,
 } from "./streamState";
 
@@ -40,6 +42,7 @@ type UseConversationStreamOptions = {
 type UseConversationStreamResult = {
   taskList: CHAT.Task[];
   workspaceStreamTask?: CHAT.Task;
+  workspaceCaption?: string;
   activeRunState?: ActiveRunState;
   setActiveRunState: Dispatch<SetStateAction<ActiveRunState | undefined>>;
   plan?: CHAT.Plan;
@@ -413,7 +416,11 @@ export function useConversationStream(
     if (!isChatMode) {
       currentChat = {
         ...currentChat,
-        tip: normalizedDeepThink ? "正在制定计划..." : "思考中...",
+        tip: resolveRunPresence({
+          loading: true,
+          chat: currentChat,
+          deepThink: normalizedDeepThink,
+        }).hint,
       };
     }
 
@@ -629,6 +636,19 @@ export function useConversationStream(
       }
 
       if (packageType === "heartbeat") {
+        if (!isChatMode && streamStillActive && currentChat.loading) {
+          const presence = resolveRunPresence({
+            loading: true,
+            chat: currentChat,
+            deepThink: normalizedDeepThink,
+            plan: currentChat.plan || currentChat.multiAgent?.plan,
+          });
+          if (presence.hint && currentChat.tip !== presence.hint) {
+            currentChat = { ...currentChat, tip: presence.hint };
+            pendingConversation = draftController.replaceLastItem({ ...currentChat });
+            scheduleNonChatFlush(false);
+          }
+        }
         return;
       }
 
@@ -671,9 +691,6 @@ export function useConversationStream(
       const isPlanThoughtEvent = eventData.messageType === "plan_thought";
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       currentChat = combineData(eventData, currentChat);
-      if (currentChat.tip) {
-        currentChat = { ...currentChat, tip: "" };
-      }
       // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
       // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
       if (eventData.resultMap?.messageType === "result") {
@@ -691,6 +708,7 @@ export function useConversationStream(
       }
       if (finished) {
         currentChat.loading = false;
+        currentChat.tip = "";
         currentChat.metrics = {
           ...(currentChat.metrics || {}),
           status: "SUCCESS",
@@ -702,6 +720,14 @@ export function useConversationStream(
           const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
           scheduleStreamingThought(currentChat.requestId, finalThought, true);
         }
+      } else {
+        const presence = resolveRunPresence({
+          loading: true,
+          chat: currentChat,
+          deepThink: normalizedDeepThink,
+          plan: currentChat.plan || currentChat.multiAgent?.plan,
+        });
+        currentChat = { ...currentChat, tip: presence.hint };
       }
 
       draftController.replaceLastItem({ ...currentChat });
@@ -765,6 +791,11 @@ export function useConversationStream(
       if (last && last.requestId === requestId) {
         last.loading = false;
         last.forceStop = true;
+        last.tip = "";
+        last.metrics = {
+          ...(last.metrics || {}),
+          status: "STOPPED",
+        };
         onConversationChange(activeConversation.id, {
           ...activeConversation,
           chatList: [...chatList],
@@ -774,9 +805,14 @@ export function useConversationStream(
     }
   });
 
+  const workspaceCaption = useMemo(() => {
+    return resolveWorkspaceCaption(workspaceStreamTask, loading);
+  }, [loading, workspaceStreamTask]);
+
   return {
     taskList,
     workspaceStreamTask,
+    workspaceCaption,
     activeRunState,
     setActiveRunState,
     plan,

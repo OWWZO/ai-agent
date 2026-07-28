@@ -139,30 +139,40 @@ const ConversationSidebar = memo(function ConversationSidebar(
   );
 
   return (
-    <div className="hidden h-full w-[260px] shrink-0 flex-col border-r border-[var(--chat-border)] bg-[var(--chat-surface)]/95 backdrop-blur-sm lg:flex">
-      {/* 顶部操作区 */}
-      <div className="shrink-0 px-3 pt-4 pb-2">
+    <div className="hidden h-full w-[var(--chat-sidebar-width)] shrink-0 flex-col border-r border-[var(--chat-border)] bg-[var(--chat-nav)] lg:flex">
+      {/* 顶部操作区 — Manus 侧栏风格 */}
+      <div className="flex h-14 shrink-0 items-center justify-between px-3.5">
+        <div className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--chat-text)]">
+          Reactor
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={handleSearchToggle}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+            aria-label="搜索"
+          >
+            <Search className="h-[18px] w-[18px]" />
+          </button>
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+            aria-label="新建任务"
+          >
+            <SquarePen className="h-[18px] w-[18px]" />
+          </button>
+        </div>
+      </div>
+
+      <div className="shrink-0 px-2 pb-2">
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center gap-2.5 rounded-xl bg-[var(--chat-surface)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--chat-text)] shadow-[var(--shadow-sm)] transition-all duration-200 hover:bg-[var(--chat-surface-soft)] hover:shadow-[var(--shadow-md)]"
+          className="flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[14px] font-medium text-[var(--chat-text)] transition-colors hover:bg-black/[0.04]"
         >
-          <SquarePen className="h-4 w-4 text-[var(--chat-text-soft)]" />
-          <span>新聊天</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleSearchToggle}
-          className={classNames(
-            "mt-2 flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] transition-colors",
-            searchOpen
-              ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-              : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)]"
-          )}
-        >
-          <Search className="h-4 w-4" />
-          <span>搜索聊天</span>
+          <SquarePen className="h-[18px] w-[18px]" />
+          <span>新建任务</span>
         </button>
 
         <AnimatePresence>
@@ -193,7 +203,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="搜索会话..."
                   autoFocus
-                  className="w-full rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 pr-8 text-[13px] text-[var(--chat-text)] outline-none transition-colors placeholder:text-[var(--chat-text-muted)] focus:border-[var(--chat-border-strong)]"
+                  className="w-full rounded-[10px] border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 pr-8 text-[13px] text-[var(--chat-text)] outline-none transition-colors placeholder:text-[var(--chat-text-muted)] focus:border-[#0000004d]"
                 />
                 {searchQuery && (
                   <button
@@ -210,14 +220,8 @@ const ConversationSidebar = memo(function ConversationSidebar(
         </AnimatePresence>
       </div>
 
-      {/* 分隔线 */}
-      <div className="mx-3 h-px bg-[var(--chat-border)]" />
-
       {/* 导航区 */}
-      <div className="shrink-0 px-3 py-2">
-        <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--chat-text-muted)]">
-          工作台
-        </div>
+      <div className="shrink-0 px-2 py-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.key;
@@ -227,27 +231,24 @@ const ConversationSidebar = memo(function ConversationSidebar(
               type="button"
               onClick={() => onChangeView(item.key)}
               className={classNames(
-                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] transition-colors",
+                "flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[14px] font-medium transition-colors",
                 isActive
-                  ? "bg-[var(--chat-surface-soft)] font-medium text-[var(--chat-text)]"
-                  : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)]/50 hover:text-[var(--chat-text)]"
+                  ? "bg-black/[0.08] text-[var(--chat-text)]"
+                  : "text-[var(--chat-text)] hover:bg-black/[0.04]"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-[18px] w-[18px] shrink-0" />
               <span>{item.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* 分隔线 */}
-      <div className="mx-3 h-px bg-[var(--chat-border)]" />
-
       {/* 最近会话 */}
-      <div className="flex min-h-0 flex-1 flex-col px-3 pt-2">
-        <div className="mb-1.5 flex items-center justify-between px-3">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--chat-text-muted)]">
-            最近
+      <div className="flex min-h-0 flex-1 flex-col px-2 pt-3">
+        <div className="mb-1.5 flex items-center justify-between px-2.5">
+          <span className="text-[12px] font-medium text-[var(--chat-text-muted)]">
+            任务
           </span>
           {recentSessionsLoading && (
             <span className="text-[11px] text-[var(--chat-text-muted)]">
@@ -258,7 +259,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
 
         <div className="flex-1 overflow-y-auto scrollbar-hover">
           {filteredSessions.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[12px] text-[var(--chat-text-muted)]">
+            <div className="px-2.5 py-4 text-center text-[12px] text-[var(--chat-text-muted)]">
               {searchQuery.trim() ? "未找到匹配的会话" : "暂无会话"}
             </div>
           ) : (
@@ -279,13 +280,22 @@ const ConversationSidebar = memo(function ConversationSidebar(
                       type="button"
                       onClick={() => onSelectSession(session)}
                       className={classNames(
-                        "group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
+                        "group flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors",
                         isActive
-                          ? "bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-                          : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface-soft)]/50 hover:text-[var(--chat-text)]"
+                          ? "bg-black/[0.08] text-[var(--chat-text)]"
+                          : "text-[var(--chat-text)] hover:bg-black/[0.04]"
                       )}
                     >
-                      <span className="min-w-0 flex-1 truncate text-[13px]">
+                      <span
+                        className={classNames(
+                          "size-3.5 shrink-0 rounded-full border-[1.5px]",
+                          isActive
+                            ? "border-[var(--chat-accent)] shadow-[inset_0_0_0_3px_var(--chat-accent)]"
+                            : "border-[var(--chat-text-muted)]"
+                        )}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
                         {session.title || "未命名会话"}
                       </span>
                       <span

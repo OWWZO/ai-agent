@@ -10,7 +10,8 @@
 
 :root {
   /* Editorial Tech Color System - oklch warm grays */
-  --background: oklch(0.985 0.002 90);
+  /* 画布底色保留 Manus 灰，其余 token 恢复 editorial */
+  --background: #f5f5f7;
   --foreground: oklch(0.12 0.01 60);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.01 60);
@@ -45,7 +46,8 @@
   --radius-full: 9999px;
 
   /* Chat System Colors - oklch with warm tint */
-  --chat-bg: oklch(0.985 0.003 80);
+  --chat-bg: #f5f5f7;
+  --chat-nav: #f0f0f0;
   --chat-panel: oklch(1 0 0 / 0.72);
   --chat-panel-strong: oklch(1 0 0 / 0.95);
   --chat-surface: oklch(0.995 0.004 75);
@@ -95,7 +97,7 @@
   --shadow-elevated: 0 20px 60px oklch(0 0 0 / 0.1), 0 8px 24px oklch(0 0 0 / 0.06);
 
   /* Layout */
-  --chat-sidebar-width: 300px;
+  --chat-sidebar-width: 280px;
   --chat-content-width: 900px;
   --header-height: 72px;
   --input-height: 80px;
@@ -127,11 +129,8 @@
     Georgia,
     serif;
 
-  /* Page Background - subtle gradients */
-  --page-gradient:
-    radial-gradient(ellipse 80% 50% at 50% -15%, oklch(0.7 0.05 260 / 0.04), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 100%, oklch(0.6 0.04 200 / 0.03), transparent),
-    linear-gradient(180deg, oklch(1 0 0) 0%, oklch(0.985 0.002 90) 50%, oklch(0.98 0.003 90) 100%);
+  /* 全局画布：保留 Manus 灰底 */
+  --page-gradient: #f5f5f7;
 }
 
 .dark {
@@ -156,6 +155,7 @@
   --ring: oklch(0.65 0.15 260 / 0.3);
 
   --chat-bg: oklch(0.08 0.005 80);
+  --chat-nav: #1f1f1f;
   --chat-panel: oklch(0.12 0.01 80 / 0.65);
   --chat-panel-strong: oklch(0.15 0.01 80 / 0.95);
   --chat-surface: oklch(0.15 0.012 75);

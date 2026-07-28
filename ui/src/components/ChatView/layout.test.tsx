@@ -126,6 +126,7 @@ vi.mock("./useConversationStream", () => ({
   useConversationStream: () => ({
     taskList: [],
     workspaceStreamTask: undefined,
+    workspaceCaption: undefined,
     activeRunState: undefined,
     setActiveRunState: vi.fn(),
     plan: undefined,

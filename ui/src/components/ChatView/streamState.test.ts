@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  isWorkspaceAttentionTask,
+  resolveActionPanelVisibility,
+  resolveRunPresence,
+  resolveWorkspaceCaption,
+  shouldRefreshWorkspaceTask,
+} from "./streamState";
+
+describe("streamState presence & attention", () => {
+  it("plan 单独存在时不自动打开右侧工作区", () => {
+    expect(
+      resolveActionPanelVisibility({
+        plan: {
+          stages: [{ title: "分析需求", status: "completed" }],
+        } as unknown as CHAT.Plan,
+        taskList: [],
+      })
+    ).toBe(false);
+  });
+
+  it("html / file 等产物任务会打开工作区", () => {
+    expect(
+      resolveActionPanelVisibility({
+        taskList: [
+          {
+            messageType: "html",
+            resultMap: { messageType: "html", isFinal: false },
+          } as CHAT.Task,
+        ],
+      })
+    ).toBe(true);
+  });
+
+  it("tool_call 不作为自动工作区注意力目标", () => {
+    expect(
+      isWorkspaceAttentionTask({
+        messageType: "tool_call",
+        resultMap: { messageType: "tool_call", status: "running" },
+      } as CHAT.Task)
+    ).toBe(false);
+  });
+
+  it("tool_call 事件不刷新工作区跟随", () => {
+    expect(
+      shouldRefreshWorkspaceTask({
+        messageType: "task",
+        messageId: "m1",
+        taskId: "t1",
+        messageOrder: 1,
+        taskOrder: 1,
+        resultMap: {
+          messageType: "tool_call",
+          status: "running",
+        },
+      } as unknown as MESSAGE.EventData)
+    ).toBe(false);
+  });
+
+  it("markdown 事件会刷新工作区跟随", () => {
+    expect(
+      shouldRefreshWorkspaceTask({
+        messageType: "task",
+        messageId: "m2",
+        taskId: "t1",
+        messageOrder: 2,
+        taskOrder: 1,
+        resultMap: {
+          messageType: "markdown",
+          isFinal: false,
+        },
+      } as unknown as MESSAGE.EventData)
+    ).toBe(true);
+  });
+
+  it("发送后首包前应为 queued/thinking 存在感", () => {
+    const presence = resolveRunPresence({
+      loading: true,
+      deepThink: true,
+      chat: {
+        loading: true,
+        multiAgent: { tasks: [] },
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+
+    expect(presence.phase).toBe("queued");
+    expect(presence.hint).toContain("计划");
+  });
+
+  it("有进行中产物时应进入 crafting 并指向工作区", () => {
+    const task = {
+      messageType: "html",
+      resultMap: { messageType: "html", isFinal: false },
+    } as CHAT.Task;
+
+    const presence = resolveRunPresence({
+      loading: true,
+      taskList: [task],
+      chat: {
+        loading: true,
+        multiAgent: { tasks: [[task]] },
+        tasks: [[{ children: [task] }]],
+        metrics: { status: "RUNNING" },
+      } as unknown as CHAT.ChatItem,
+    });
+
+    expect(presence.phase).toBe("crafting");
+    expect(presence.attention).toBe("workspace");
+    expect(resolveWorkspaceCaption(task, true)).toContain("正在产出");
+  });
+});
