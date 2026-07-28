@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.subagent.SubAgentDefinitionAdminApplicationService;
@@ -57,9 +58,8 @@ public class SubAgentDefinitionAdminController {
                 "deep_search",
                 "WebFetch",
                 "WebSearch",
-                "Bash",
-                "PowerShell",
                 "code_interpreter",
+                "code_execution",
                 "report_tool",
                 "skill_tool",
                 "image_generation_tool",
@@ -103,6 +103,15 @@ public class SubAgentDefinitionAdminController {
 
     @DeleteMapping("/{agentKey}")
     public Response<Boolean> delete(@PathVariable("agentKey") String agentKey) {
+        return deleteByAgentKey(agentKey);
+    }
+
+    @DeleteMapping("/delete")
+    public Response<Boolean> deleteByQuery(@RequestParam("agentKey") String agentKey) {
+        return deleteByAgentKey(agentKey);
+    }
+
+    private Response<Boolean> deleteByAgentKey(String agentKey) {
         try {
             return success(subAgentDefinitionAdminApplicationService.delete(agentKey));
         } catch (IllegalArgumentException ex) {

@@ -26,7 +26,12 @@ public class DocumentGenerateTool extends AbstractDocGenTool {
     protected String defaultDescription() {
         return "Generate a professional document (PDF, DOCX, HTML, or Markdown) from markdown content. "
                 + "Supports headings, tables, images, task lists, code blocks, quotes, LaTeX math, "
-                + "footnotes, callouts, chart/metrics blocks, TOC, cover, watermark, themes. "
+                + "footnotes, definition lists, callouts, chart/metrics/checklist blocks, TOC, cover, headers/footers, "
+                + "watermark, page setup, encryption, merging, and themes. "
+                + "For charts, put a document chart JSON object inside a ```chart fence: "
+                + "{\"type\":\"chart\",\"chart_type\":\"bar|line|pie|scatter|area|barh\","
+                + "\"title\":\"...\",\"categories\":[\"...\"],\"series\":[{\"name\":\"...\",\"values\":[1,2]}]}. "
+                + "Do not use ECharts option JSON such as xAxis/yAxis/series.data/title.text; it is rendered as code, not a chart. "
                 + "Chinese/CJK text is font-safe. Prefer this over report_tool when the user needs a real .pdf/.docx file.";
     }
 
@@ -35,18 +40,28 @@ public class DocumentGenerateTool extends AbstractDocGenTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. report.pdf / memo.docx. Extension decides format if format omitted."));
         properties.put("format", stringProp("Output format: pdf | docx | html | markdown. Defaults from output_path extension, else pdf."));
-        properties.put("content", stringProp("Markdown body (preferred). Supports GFM tables, task lists, ```chart/```metrics fences, ::: callout, [TOC], \\newpage."));
-        properties.put("blocks", arrayProp("Typed block array escape hatch (optional if content provided).", Map.of("type", "object")));
+        properties.put("content", stringProp("Markdown body (preferred). Supports GFM tables, task lists, images, blockquotes, LaTeX math, footnotes, definition lists, YAML front matter, ```chart/```metrics/```checklist JSON fences, ::: callout, [TOC], and \\newpage. For a chart, use {type:'chart', chart_type:'bar|line|pie|scatter|area|barh', title:'...', categories:['...'], series:[{name:'...', values:[1,2]}]}; never use ECharts xAxis/yAxis/series.data JSON."));
+        properties.put("blocks", arrayProp("Typed content blocks, appended after content when both are given: heading{text,level}, paragraph{text,alignment}, list{ordered,items}, table{columns,rows,align,caption,style,total_row,zebra,widths,number_format}, image{path|url|file_id|base64_data,caption,width_pct}, code{code,language}, quote{text,attribution}, callout{variant,title,text}, chart{chart_type,categories,series,title}, metrics{items}, checklist{title,groups|items}, divider, page_break, spacer{height_pt}, toc, math{latex,caption}, definition_list{items}, footnotes{items}, columns{columns,widths,gap_pt}.", Map.of("type", "object")));
         properties.put("title", stringProp("Document title (metadata + cover)."));
         properties.put("subtitle", stringProp("Subtitle under title."));
         properties.put("author", stringProp("Author."));
         properties.put("date", stringProp("Date string on cover."));
         properties.put("subject", stringProp("Subject metadata."));
+        properties.put("keywords", arrayProp("Keyword metadata.", stringProp("Keyword.")));
         properties.put("theme", stringProp("Theme name, e.g. professional."));
         properties.put("toc", boolProp("Include table of contents."));
-        properties.put("cover", boolProp("Include cover page."));
+        properties.put("cover", Map.of("description", "true for a cover page, or an object with title, subtitle, author, date, organization, and logo_path.", "anyOf", List.of(Map.of("type", "boolean"), Map.of("type", "object"))));
         properties.put("numbered_headings", boolProp("Number headings 1 / 1.1 / 1.1.1 (PDF)."));
+        properties.put("justify", boolProp("Justify body text for formal reports."));
+        properties.put("numbered_figures", boolProp("Auto-number table, image, and chart captions."));
+        properties.put("section_pages", boolProp("Start every H1 section on a new page."));
+        properties.put("header", Map.of("type", "object", "description", "Running page header: text, show_page_number, alignment. PDF text supports {page}, {pages}, {title}, {author}, {date}, and {section}."));
+        properties.put("footer", Map.of("type", "object", "description", "Running page footer: text, show_page_number, alignment."));
+        properties.put("watermark", Map.of("type", "object", "description", "PDF watermark: text, color, opacity, angle, font_size."));
+        properties.put("page", Map.of("type", "object", "description", "Page setup: size (A4, LETTER, LEGAL, A3, A5), orientation, and point-based margins."));
+        properties.put("encryption", Map.of("type", "object", "description", "PDF password protection: user_password and optional owner_password."));
+        properties.put("merge_sources", arrayProp("Existing PDF paths appended after the generated content (PDF only).", stringProp("PDF path.")));
         properties.put("fileName", stringProp("Alias of output_path for Reactor file naming."));
-        return objectSchema(properties, List.of("content"));
+        return objectSchema(properties, List.of("output_path"));
     }
 }

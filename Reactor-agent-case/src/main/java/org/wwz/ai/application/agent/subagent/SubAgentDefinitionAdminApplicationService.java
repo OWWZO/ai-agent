@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class SubAgentDefinitionAdminApplicationService {
 
-    private static final Pattern AGENT_KEY_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_-]{1,62}$");
+    private static final Pattern AGENT_KEY_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_/-]{1,62}$");
 
     private final ISubAgentDefinitionRepository subAgentDefinitionRepository;
     private final SubAgentDefinitionLoader subAgentDefinitionLoader;

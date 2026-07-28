@@ -70,6 +70,12 @@ class CodeInterpreterOutputUploadTest(unittest.IsolatedAsyncioTestCase):
                 self.output_dir.joinpath("chart.png").write_bytes(b"fake-png")
                 yield FakeFinalAnswerStep("图表已生成")
 
+            def get_produced_files(self):
+                return [{"file_path": str(self.output_dir.joinpath("chart.png"))}]
+
+            def close_sandbox(self):
+                return None
+
         def fake_create_ci_agent(*args, **kwargs):
             return FakeAgent(kwargs["output_dir"])
 

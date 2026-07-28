@@ -47,9 +47,9 @@ from reactor_tool.tool.code_interpreter_policy import (
     CodeInterpreterPermissionPolicy,
 )
 from reactor_tool.tool.code_interpreter_runtime_guard import (
-    activate_runtime_io_guard,
     extract_runtime_permission_error,
 )
+from reactor_tool.tool.python_sandbox_executor import PythonSandboxExecutor
 from reactor_tool.tool.final_answer_check import FinalAnswerCheck
 from reactor_tool.util.file_util import generate_data_id
 from reactor_tool.util.log_util import timer
@@ -211,8 +211,12 @@ class CIAgent(CodeAgent):
     ):
         self.output_dir = output_dir  # 产物输出目录
         self.before_execute = before_execute  # 执行前钩子（静态权限校验等）
-        self.runtime_variables = runtime_variables or {}  # 注入解释器的变量
         self.runtime_permission_policy = runtime_permission_policy
+        self.sandbox_executor = (
+            PythonSandboxExecutor(runtime_permission_policy)
+            if runtime_permission_policy is not None
+            else None
+        )
         super().__init__(
             tools=tools,
             model=model,
@@ -224,9 +228,14 @@ class CIAgent(CodeAgent):
             executor_kwargs=executor_kwargs,
             **kwargs,
         )
-        # 把权限上下文/helper 变量注入 Python 解释器状态
-        if getattr(self, "python_executor", None) and self.runtime_variables:
-            self.python_executor.send_variables(self.runtime_variables)
+    def get_produced_files(self) -> list[dict[str, Any]]:
+        if self.sandbox_executor is None:
+            return []
+        return self.sandbox_executor.produced_files()
+
+    def close_sandbox(self) -> None:
+        if self.sandbox_executor is not None:
+            self.sandbox_executor.close()
 
     @timer()
     def _step_stream(
@@ -361,9 +370,11 @@ class CIAgent(CodeAgent):
             )
 
         try:
-            if self.runtime_permission_policy is not None:
-                with activate_runtime_io_guard(self.runtime_permission_policy):
-                    _, execution_logs, _ = self.python_executor(code_action)
+            if self.sandbox_executor is not None:
+                sandbox_result = self.sandbox_executor.execute(code_action)
+                execution_logs = sandbox_result.stdout
+                if sandbox_result.stderr:
+                    execution_logs = f"{execution_logs}\n{sandbox_result.stderr}".strip()
             else:
                 _, execution_logs, _ = self.python_executor(code_action)
 
@@ -387,7 +398,7 @@ class CIAgent(CodeAgent):
                 observation = _format_permission_error_for_agent(permission_error)
                 memory_step.observations = observation
                 raise AgentExecutionError(observation, self.logger) from e
-            if (
+            if self.sandbox_executor is None and (
                 hasattr(self.python_executor, "state")
                 and "_print_outputs" in self.python_executor.state
             ):

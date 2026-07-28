@@ -16,6 +16,7 @@ import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
+import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -230,11 +231,16 @@ public abstract class BaseAgent {
             systemTemplate = systemTemplate.trim() + "\n\n# SOP\n" + sopPrompt + "\n";
         }
         systemTemplate = stripEmptyEnvBlocks(systemTemplate);
+        IntentGatedPrompt.Selection intentPolicy = IntentGatedPrompt.select(
+                context == null ? null : context.getQuery(),
+                context == null ? null : context.getToolCollection());
+        systemTemplate = intentPolicy.appendTo(systemTemplate);
         systemTemplate = canonicalizeSystemText(systemTemplate);
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
-        String agentSlot = StringUtils.defaultIfBlank(getName(), "agent");
+        String agentSlot = StringUtils.defaultIfBlank(getName(), "agent")
+                + "|intent=" + intentPolicy.getCacheKey();
         String sessionId = context == null ? null : context.getSessionId();
         return org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze.freezeSystem(
                 sessionId, agentSlot, toolSig, systemTemplate);

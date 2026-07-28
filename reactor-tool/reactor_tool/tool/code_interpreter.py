@@ -35,7 +35,6 @@ from reactor_tool.tool.code_interpreter_policy import (
     CodeExecutionPermissionError,
     CodeInterpreterPermissionPolicy,
     build_permission_policy,
-    build_runtime_helpers,
     validate_code_against_policy,
 )
 from reactor_tool.util.file_util import download_all_files_in_path, upload_file, upload_file_by_path
@@ -338,7 +337,10 @@ async def code_interpreter_agent(
                 
                 elif isinstance(step, FinalAnswerStep):
                     file_list = []
-                    for file_path in collect_output_files(output_dir=output_dir):
+                    for produced_file in agent.get_produced_files():
+                        file_path = produced_file.get("file_path")
+                        if not file_path:
+                            continue
                         file_info = await upload_file_by_path(
                             file_path=file_path, request_id=request_id
                         )
@@ -370,34 +372,10 @@ async def code_interpreter_agent(
         raise e
 
     finally:
+        if "agent" in locals():
+            agent.close_sandbox()
         if work_dir:
             shutil.rmtree(work_dir, ignore_errors=True)
-
-
-def collect_output_files(output_dir):
-    if not output_dir or not os.path.isdir(output_dir):
-        return []
-
-    collected_files = []
-    for root, dir_names, file_names in os.walk(output_dir):
-        # 只保留用户可见的产物目录，避免把缓存目录一并传回工作区。
-        dir_names[:] = [
-            dir_name
-            for dir_name in dir_names
-            if not dir_name.startswith(".") and dir_name != "__pycache__"
-        ]
-        for file_name in file_names:
-            if file_name.startswith("."):
-                continue
-            file_path = os.path.join(root, file_name)
-            if not os.path.isfile(file_path):
-                continue
-            collected_files.append(
-                (os.path.getmtime(file_path), os.path.relpath(file_path, output_dir).lower(), file_path)
-            )
-
-    collected_files.sort(key=lambda item: (item[0], item[1]))
-    return [item[2] for item in collected_files]
 
 
 def _ci_model_id_and_litellm_kwargs():
@@ -502,19 +480,14 @@ def create_ci_agent(
             input_files=[],
         )
 
-    runtime_helpers = build_runtime_helpers(permission_policy)
-    runtime_variables = permission_policy.to_runtime_variables()
-
     return CIAgent(
         model=model,
         prompt_templates=prompt_templates,
         tools=[PythonInterpreterTool()],
         return_full_result=return_full_result,
         additional_authorized_imports=list(permission_policy.authorized_imports),
-        executor_kwargs={"additional_functions": runtime_helpers},
         output_dir=output_dir,
         before_execute=lambda code_action: validate_code_against_policy(code_action, permission_policy),
-        runtime_variables=runtime_variables,
         runtime_permission_policy=permission_policy,
     )
 

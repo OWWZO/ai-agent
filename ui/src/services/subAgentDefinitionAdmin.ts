@@ -52,7 +52,8 @@ export const subAgentDefinitionAdminApi = {
 
   remove: (agentKey: string) =>
     api.delete<boolean>(
-      `/api/v1/admin/sub-agent-definitions/${encodeURIComponent(agentKey)}`
+      "/api/v1/admin/sub-agent-definitions/delete",
+      { agentKey }
     ) as unknown as Promise<boolean>,
 
   reload: () =>

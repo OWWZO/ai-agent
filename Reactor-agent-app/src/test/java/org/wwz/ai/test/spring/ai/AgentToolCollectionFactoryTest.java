@@ -33,6 +33,7 @@ import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 工具装配工厂测试，确保 skill 只进入 PlanSolve / ReAct。
@@ -71,6 +72,7 @@ public class AgentToolCollectionFactoryTest {
         // 顺序随 tool_list 配置；本测显式只挂 search/web_fetch/code/multimodalagent（默认不含 report）
         Assert.assertTrue(toolCollection.getToolMap().containsKey("file_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("code_interpreter"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("code_execution"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("deep_search"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
@@ -139,6 +141,26 @@ public class AgentToolCollectionFactoryTest {
 
         Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
+    }
+
+    @Test
+    public void shouldRegisterAllDocumentGenerationToolsForReactAndPlanSolve() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMultiAgentToolList("{\"default\":\"docgen\"}");
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+
+        assertDocumentGenerationTools(factory.buildForReact(buildAgentContext(), buildAgentRequest("html")));
+        assertDocumentGenerationTools(factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("html")));
     }
 
     @Test
@@ -367,9 +389,27 @@ public class AgentToolCollectionFactoryTest {
 
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,multimodalagent\"}");
+        reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,code_execution,multimodalagent\"}");
         ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 2);
         return reactorConfig;
+    }
+
+    private void assertDocumentGenerationTools(ToolCollection toolCollection) {
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("document_generate"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("slides_generate"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("excel_generator"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("checklist_generate"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("template_filler"));
+
+        Map<String, Object> documentParameters = toolCollection.getTool("document_generate").toParams();
+        Map<String, Object> properties = (Map<String, Object>) documentParameters.get("properties");
+        Assert.assertTrue(((List<String>) documentParameters.get("required")).contains("output_path"));
+        Assert.assertFalse(((List<String>) documentParameters.get("required")).contains("content"));
+        Assert.assertTrue(properties.containsKey("blocks"));
+        Assert.assertTrue(properties.containsKey("header"));
+        Assert.assertTrue(properties.containsKey("footer"));
+        Assert.assertTrue(properties.containsKey("watermark"));
+        Assert.assertTrue(properties.containsKey("encryption"));
     }
 
     private AgentContext buildAgentContext() {

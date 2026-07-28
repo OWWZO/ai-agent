@@ -93,6 +93,7 @@ public class ImageGenerationToolTest {
 
         ImageGenerationToolOutput structuredOutput = (ImageGenerationToolOutput) payload.getStructuredOutput();
         Assert.assertTrue(payload.getToolResult().contains("poster.png"));
+        Assert.assertTrue(payload.getLlmObservation().contains("https://file.example.com/preview/poster.png"));
         Assert.assertNotNull(structuredOutput);
         Assert.assertFalse(payload.getFailed());
         Assert.assertEquals("生成活动海报", structuredOutput.getPrompt());

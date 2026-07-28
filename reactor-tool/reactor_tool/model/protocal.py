@@ -48,6 +48,21 @@ class CIRequest(BaseModel):
     origin_file_names: Optional[List[dict]] = Field(default=None, alias="originFileNames", description="原始文本信息")
 
 
+class CodeExecutionRequest(BaseModel):
+    """调用侧 Agent 直接执行 Python 源码的受控沙箱请求。"""
+    request_id: str = Field(alias="requestId", min_length=1)
+    source: str = Field(min_length=1)
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    file_names: List[str] = Field(default_factory=list, alias="fileNames")
+    timeout_seconds: int = Field(default=120, alias="timeoutSeconds", ge=1, le=600)
+    memory_bytes: Optional[int] = Field(default=None, alias="memoryBytes", ge=16 * 1024 * 1024)
+    import_tier: Literal["stdlib", "extended", "unrestricted"] = Field(default="extended", alias="importTier")
+    permission_profile: Literal["analysis", "workspace"] = Field(default="analysis", alias="permissionProfile")
+    reset_workspace: bool = Field(default=False, alias="resetWorkspace")
+    workspace_file: Optional[str] = Field(default=None, alias="workspaceFile")
+    files: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class ReportRequest(CIRequest):
     """报告生成请求：在 CIRequest 上增加输出格式与模板类型。"""
     file_type: Literal["html", "markdown", "ppt"] = Field("html", alias="fileType", description="生成报告的文件类型")

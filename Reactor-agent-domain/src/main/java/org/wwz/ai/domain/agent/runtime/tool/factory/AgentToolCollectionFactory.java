@@ -23,6 +23,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskStopTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskUpdateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TodoWriteTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.DataAnalysisTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.CodeExecutionTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.DeepSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
@@ -39,8 +40,6 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.BashTool;
-import org.wwz.ai.domain.agent.runtime.tool.common.PowerShellTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
@@ -122,7 +121,7 @@ public class AgentToolCollectionFactory {
             }
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,bash,powershell,code,report,docgen,canvas,multimodalagent,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,report,docgen,canvas,multimodalagent,image_generation,data_analysis")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -208,15 +207,10 @@ public class AgentToolCollectionFactory {
                 webSearchTool.setAgentContext(agentContext);
                 toolCollection.addTool(webSearchTool);
             }
-            if (agentToolList.contains("bash") || agentToolList.contains("Bash")) {
-                BashTool bashTool = new BashTool();
-                bashTool.setAgentContext(agentContext);
-                toolCollection.addTool(bashTool);
-            }
-            if (agentToolList.contains("powershell") || agentToolList.contains("PowerShell")) {
-                PowerShellTool powerShellTool = new PowerShellTool();
-                powerShellTool.setAgentContext(agentContext);
-                toolCollection.addTool(powerShellTool);
+            if (agentToolList.contains("code_execution")) {
+                CodeExecutionTool codeExecutionTool = new CodeExecutionTool();
+                codeExecutionTool.setAgentContext(agentContext);
+                toolCollection.addTool(codeExecutionTool);
             }
             if (agentToolList.contains("multimodalagent")) {
                 MultiModalAgent multiModalAgent = new MultiModalAgent();

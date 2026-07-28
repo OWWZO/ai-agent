@@ -40,6 +40,7 @@ from reactor_tool.model.protocal import (
     EmbeddingProxyResponse,
     WebFetchRequest,
     DocgenRequest,
+    CodeExecutionRequest,
 )
 from reactor_tool.tool.mrag.storage.models.mrag_session_model import MRagSessionModel
 from reactor_tool.tool.mrag.storage.models.mrag_turn_model import MRagTurnModel
@@ -250,6 +251,14 @@ async def post_code_interpreter(
             "fileInfo": file_info,
             "requestId": body.request_id,
         }
+
+
+@router.post("/code_execution")
+async def post_code_execution(body: CodeExecutionRequest):
+    """Run caller-supplied Python and return stdout, errors, and fileInfo."""
+    from reactor_tool.tool.direct_code_execution import execute_code
+
+    return await execute_code(body)
 
 
 @router.post("/report")

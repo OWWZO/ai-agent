@@ -1,8 +1,4 @@
-"""Chart block rendering (matplotlib → PNG bytes) for all document formats.
-
-CJK-safe: applies :func:`leagent.code.matplotlib_cjk.configure_matplotlib_cjk`
-before drawing so Chinese titles / labels never render as boxes.
-"""
+"""Chart block rendering (matplotlib -> PNG bytes) for all document formats."""
 
 from __future__ import annotations
 
@@ -10,6 +6,7 @@ import io
 from typing import TYPE_CHECKING, Any
 
 import reactor_tool.docgen._structlog as structlog
+from reactor_tool.docgen.cjk_font_discovery import resolve_cjk_regular_path
 if TYPE_CHECKING:
     from reactor_tool.docgen.model import ChartBlock
     from reactor_tool.docgen.themes import Theme
@@ -33,9 +30,7 @@ def render_chart_png(
         import matplotlib
 
         matplotlib.use("Agg", force=False)
-        from leagent.code.matplotlib_cjk import configure_matplotlib_cjk
-
-        configure_matplotlib_cjk()
+        _configure_matplotlib_cjk(matplotlib)
         import matplotlib.pyplot as plt
     except Exception as exc:  # noqa: BLE001 - charts degrade to omission
         logger.warning("docgen_chart_matplotlib_unavailable", error=str(exc))
@@ -76,6 +71,22 @@ def render_chart_png(
         return None
     finally:
         plt.close(fig)
+
+
+def _configure_matplotlib_cjk(matplotlib: Any) -> None:
+    """Apply a discovered CJK font without depending on the code-execution package."""
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    font_path = resolve_cjk_regular_path()
+    if not font_path:
+        return
+    try:
+        from matplotlib import font_manager
+
+        font_manager.fontManager.addfont(font_path)
+        font_name = font_manager.FontProperties(fname=font_path).get_name()
+        matplotlib.rcParams["font.sans-serif"] = [font_name, *matplotlib.rcParams["font.sans-serif"]]
+    except Exception as exc:  # noqa: BLE001 - a missing font must not drop the chart
+        logger.warning("docgen_chart_cjk_font_unavailable", error=str(exc), font_path=font_path)
 
 
 def _draw(ax: Any, block: ChartBlock, series: list[Any], palette: list[str]) -> None:

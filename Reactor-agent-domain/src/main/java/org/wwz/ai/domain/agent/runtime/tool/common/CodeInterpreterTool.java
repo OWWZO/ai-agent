@@ -160,7 +160,8 @@ public class CodeInterpreterTool implements BaseTool {
                         }
                     }
                     if (!future.isDone()) {
-                        future.complete(buildSuccessPayload(codeResponse, output.toString()));
+                        future.complete(buildSuccessPayload(codeResponse,
+                                appendArtifactUrls(output.toString(), codeResponse.getFileInfo())));
                     }
                 }
 
@@ -197,6 +198,33 @@ public class CodeInterpreterTool implements BaseTool {
                         .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(codeResponse == null ? null : codeResponse.getFileInfo()))
                         .build()
         );
+    }
+
+    /**
+     * 流式代码解释器在任务结束后才取得上传 URL，需写入 observation 供后续 document_generate 使用。
+     */
+    private String appendArtifactUrls(String output, List<CodeInterpreterResponse.FileInfo> files) {
+        if (Objects.isNull(files) || files.isEmpty()) {
+            return output;
+        }
+        StringBuilder result = new StringBuilder(StringUtils.defaultString(output));
+        boolean appended = false;
+        for (CodeInterpreterResponse.FileInfo file : files) {
+            if (Objects.isNull(file)) {
+                continue;
+            }
+            String url = StringUtils.firstNonBlank(file.getDomainUrl(), file.getOssUrl());
+            if (StringUtils.isBlank(url)) {
+                continue;
+            }
+            if (!appended) {
+                result.append("\n后续工具可用产物（图片传给 document_generate 时使用 image.url）：");
+                appended = true;
+            }
+            result.append("\n- fileName:").append(StringUtils.defaultString(file.getFileName()))
+                    .append(" url:").append(url);
+        }
+        return result.toString();
     }
 
     private ToolResultPayload buildFailurePayload(String message) {
