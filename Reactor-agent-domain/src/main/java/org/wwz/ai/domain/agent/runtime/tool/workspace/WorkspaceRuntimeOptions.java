@@ -24,7 +24,7 @@ public class WorkspaceRuntimeOptions {
      * 工作区根目录模板，支持 {sessionId} 占位。
      */
     @Builder.Default
-    private String rootTemplate = "${user.dir}/reactor-tool/skilloutput/{sessionId}";
+    private String rootTemplate = "{repoRoot}/reactor-tool/skilloutput/{sessionId}";
 
     @Builder.Default
     private int maxReadChars = 12000;

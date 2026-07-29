@@ -97,6 +97,9 @@ class PythonSandboxExecutor:
             return
         runner = Path(__file__).with_name("python_sandbox_runner.py")
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        # cwd 固定到 output/，相对路径落盘（如 savefig('a.png')）默认可被采集上传
+        output_dir = Path(self._policy.output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
         self._process = subprocess.Popen(
             [sys.executable, "-I", str(runner)],
             stdin=subprocess.PIPE,
@@ -104,7 +107,7 @@ class PythonSandboxExecutor:
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            cwd=self._policy.workspace_root,
+            cwd=str(output_dir),
             env=_sandbox_environment(),
             creationflags=creation_flags,
             start_new_session=os.name != "nt",

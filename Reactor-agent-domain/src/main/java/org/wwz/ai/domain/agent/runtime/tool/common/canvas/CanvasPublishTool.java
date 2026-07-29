@@ -14,6 +14,7 @@ import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
@@ -276,10 +277,7 @@ public class CanvasPublishTool implements BaseTool {
             return null;
         }
         try {
-            Path sessionRoot = Path.of(
-                    System.getProperty("user.dir", "."),
-                    "reactor-tool", "skilloutput", agentContext.getSessionId()
-            ).toAbsolutePath().normalize();
+            Path sessionRoot = WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId());
             Path candidate;
             Path asPath = Path.of(normalized);
             if (asPath.isAbsolute()) {

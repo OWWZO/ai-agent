@@ -16,9 +16,10 @@ public class AiAgentWorkspaceProperties {
     private boolean enabled = true;
 
     /**
-     * 工作区根目录模板，支持 {sessionId}、${java.io.tmpdir}、${user.dir}。
+     * 工作区根目录模板，支持 {sessionId}、{repoRoot}、${java.io.tmpdir}。
+     * 默认 skilloutput 布局由 WorkspacePaths 解析 monorepo 根，勿依赖 Spring 展开的 ${user.dir}。
      */
-    private String rootTemplate = "${user.dir}/reactor-tool/skilloutput/{sessionId}";
+    private String rootTemplate = "{repoRoot}/reactor-tool/skilloutput/{sessionId}";
 
     private int maxReadChars = 12000;
 

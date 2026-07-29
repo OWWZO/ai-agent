@@ -6,6 +6,7 @@
 # Date:   2025/7/7
 # =====================
 import os
+import sys
 import warnings
 from optparse import OptionParser
 from pathlib import Path
@@ -83,26 +84,47 @@ if __name__ == "__main__":
     print_logo()
 
     reload_enabled = os.getenv("ENV", "local") == "local"
+    workers = int(options.workers)
+    # Windows 上 uvicorn multiprocess 会在 sock.listen 处抛 WinError 10022。
+    if sys.platform == "win32" and workers > 1:
+        print(f"Windows does not support uvicorn multi-worker; forcing workers=1 (requested {workers})")
+        workers = 1
+    # reload 与 multi-worker 互斥，统一收敛为单进程。
+    if reload_enabled and workers > 1:
+        print(f"reload mode forces workers=1 (requested {workers})")
+        workers = 1
+
     app_factory_path = "server:create_app"
 
     # 单进程直接构造 app；多 worker/reload 使用 factory，让子进程内再创建应用，避免启动期导入过重。
-    if not reload_enabled and int(options.workers) <= 1:
-        uvicorn.run(
-            app=create_app(),
-            host=options.host,
-            port=options.port,
-            timeout_keep_alive=99999,
-            ws_ping_interval=99999,
-            ws_ping_timeout=99999,
-        )
+    if workers <= 1:
+        if reload_enabled:
+            uvicorn.run(
+                app=app_factory_path,
+                factory=True,
+                host=options.host,
+                port=options.port,
+                reload=True,
+                timeout_keep_alive=99999,
+                ws_ping_interval=99999,
+                ws_ping_timeout=99999,
+            )
+        else:
+            uvicorn.run(
+                app=create_app(),
+                host=options.host,
+                port=options.port,
+                timeout_keep_alive=99999,
+                ws_ping_interval=99999,
+                ws_ping_timeout=99999,
+            )
     else:
         uvicorn.run(
             app=app_factory_path,
             factory=True,
             host=options.host,
             port=options.port,
-            workers=options.workers,
-            reload=reload_enabled,
+            workers=workers,
             timeout_keep_alive=99999,
             ws_ping_interval=99999,
             ws_ping_timeout=99999,

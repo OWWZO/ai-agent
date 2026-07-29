@@ -44,8 +44,10 @@ public class WorkspaceService {
             throw new WorkspaceAccessException("workspace tools are disabled");
         }
         String template = workspaceRuntimeOptions.getRootTemplate();
-        if (StringUtils.isBlank(template)) {
-            template = System.getProperty("user.dir", ".") + "/reactor-tool/skilloutput/{sessionId}";
+        // 默认 skilloutput 布局一律走 monorepo 规范路径。
+        // 注意：Spring 会先展开 yml 里的 ${user.dir}，不能再依赖占位符是否还在。
+        if (StringUtils.isBlank(template) || isDefaultSkillOutputTemplate(template)) {
+            return WorkspacePaths.skillOutputSessionRoot(sessionId);
         }
         String expanded = expandTemplate(template, sessionId);
         return Path.of(expanded).toAbsolutePath().normalize();
@@ -98,15 +100,21 @@ public class WorkspaceService {
         return candidate;
     }
 
+    private boolean isDefaultSkillOutputTemplate(String template) {
+        String normalized = template.replace('\\', '/');
+        return normalized.contains("reactor-tool/skilloutput")
+                || normalized.contains("{repoRoot}")
+                || normalized.contains("${user.dir}");
+    }
+
     private String expandTemplate(String template, String sessionId) {
         String safeSessionId = StringUtils.defaultIfBlank(sessionId, "anonymous")
                 .replaceAll("[\\\\/:*?\"<>|]", "_");
-        String expanded = template
+        String repoRoot = WorkspacePaths.resolveRepoRoot().toString();
+        return template
                 .replace("{sessionId}", safeSessionId)
+                .replace("{repoRoot}", repoRoot)
+                .replace("${user.dir}", repoRoot)
                 .replace("${java.io.tmpdir}", System.getProperty("java.io.tmpdir", "."));
-        if (expanded.contains("${user.dir}")) {
-            expanded = expanded.replace("${user.dir}", System.getProperty("user.dir", "."));
-        }
-        return expanded;
     }
 }

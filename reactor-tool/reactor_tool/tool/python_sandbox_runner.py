@@ -41,19 +41,42 @@ def _policy_from_payload(payload: dict[str, Any]) -> CodeInterpreterPermissionPo
     )
 
 
-def _snapshot_output_files(output_dir: Path) -> dict[Path, tuple[int, int]]:
-    if not output_dir.is_dir():
+# 不参与产物采集：输入目录、沙箱元文件、隐藏路径
+_EXCLUDED_TOP_DIRS = frozenset({"input"})
+_EXCLUDED_FILE_NAMES = frozenset({"__last_source__.py"})
+
+
+def _is_harvestable_file(path: Path, workspace_root: Path) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        relative = path.resolve().relative_to(workspace_root)
+    except ValueError:
+        return False
+    parts = relative.parts
+    if not parts or any(part.startswith(".") for part in parts):
+        return False
+    if parts[0] in _EXCLUDED_TOP_DIRS:
+        return False
+    if relative.name in _EXCLUDED_FILE_NAMES or relative.name.startswith("__last_source__"):
+        return False
+    return True
+
+
+def _snapshot_workspace_files(workspace_root: Path) -> dict[Path, tuple[int, int]]:
+    if not workspace_root.is_dir():
         return {}
     files: dict[Path, tuple[int, int]] = {}
-    for path in output_dir.rglob("*"):
-        if path.is_symlink() or not path.is_file() or any(part.startswith(".") for part in path.relative_to(output_dir).parts):
+    for path in workspace_root.rglob("*"):
+        if not _is_harvestable_file(path, workspace_root):
             continue
-        stat = path.stat()
-        files[path.resolve()] = (stat.st_size, stat.st_mtime_ns)
+        resolved = path.resolve()
+        stat = resolved.stat()
+        files[resolved] = (stat.st_size, stat.st_mtime_ns)
     return files
 
 
-def _produced_files(output_dir: Path,
+def _produced_files(workspace_root: Path,
                     before: dict[Path, tuple[int, int]],
                     after: dict[Path, tuple[int, int]]) -> list[dict[str, Any]]:
     produced: list[dict[str, Any]] = []
@@ -63,7 +86,7 @@ def _produced_files(output_dir: Path,
         mime_type, _ = mimetypes.guess_type(path.name)
         produced.append({
             "file_path": str(path),
-            "relative_path": path.relative_to(output_dir).as_posix(),
+            "relative_path": path.relative_to(workspace_root).as_posix(),
             "name": path.name,
             "size": after[path][0],
             "mime_type": mime_type or "application/octet-stream",
@@ -92,6 +115,7 @@ def _safe_json(value: Any) -> Any:
 
 def main() -> int:
     policy: CodeInterpreterPermissionPolicy | None = None
+    workspace_root: Path | None = None
     output_dir: Path | None = None
     globals_env: dict[str, Any] | None = None
 
@@ -101,7 +125,9 @@ def main() -> int:
             request_type = request.get("type")
             if request_type == "init":
                 policy = _policy_from_payload(request["policy"])
+                workspace_root = Path(policy.workspace_root).resolve()
                 output_dir = Path(policy.output_dir).resolve()
+                workspace_root.mkdir(parents=True, exist_ok=True)
                 output_dir.mkdir(parents=True, exist_ok=True)
                 globals_env = {"__name__": "__sandbox__"}
                 globals_env.update(policy.to_runtime_variables())
@@ -112,10 +138,16 @@ def main() -> int:
             if request_type == "close":
                 _write_response({"type": "closed"})
                 return 0
-            if request_type != "execute" or policy is None or output_dir is None or globals_env is None:
+            if (
+                request_type != "execute"
+                or policy is None
+                or workspace_root is None
+                or output_dir is None
+                or globals_env is None
+            ):
                 raise ValueError("runner is not initialized")
 
-            before = _snapshot_output_files(output_dir)
+            before = _snapshot_workspace_files(workspace_root)
             started_at = time.monotonic()
             stdout = io.StringIO()
             stderr = io.StringIO()
@@ -129,7 +161,7 @@ def main() -> int:
                 status = "error"
                 error = str(exc)
                 stderr.write(traceback.format_exc())
-            after = _snapshot_output_files(output_dir)
+            after = _snapshot_workspace_files(workspace_root)
             stdout_text, stdout_truncated = _truncate(stdout.getvalue())
             stderr_text, stderr_truncated = _truncate(stderr.getvalue())
             _write_response({
@@ -143,7 +175,7 @@ def main() -> int:
                 "result": _safe_json(globals_env.get("result")),
                 "duration_ms": int((time.monotonic() - started_at) * 1000),
                 "returncode": 0 if status == "success" else 1,
-                "produced_files": _produced_files(output_dir, before, after),
+                "produced_files": _produced_files(workspace_root, before, after),
             })
         except BaseException as exc:
             _write_response({

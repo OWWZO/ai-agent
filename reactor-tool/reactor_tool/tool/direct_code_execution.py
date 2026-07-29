@@ -12,11 +12,15 @@ from reactor_tool.tool.code_interpreter_policy import build_permission_policy
 from reactor_tool.tool.python_sandbox_executor import PythonSandboxExecutionError, PythonSandboxExecutor
 from reactor_tool.util.file_util import download_all_files_in_path, upload_file_by_path
 
+# reactor-tool 包根：.../reactor-tool/reactor_tool/tool/this.py → parents[2] = reactor-tool
+_REACTOR_TOOL_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_SKILL_OUTPUT = _REACTOR_TOOL_ROOT / "skilloutput"
+
 
 async def execute_code(request: CodeExecutionRequest) -> dict:
-    workspace = _workspace_path(request.request_id)
-    if request.reset_workspace and workspace.exists():
-        shutil.rmtree(workspace)
+    workspace = _workspace_path(request)
+    if request.reset_workspace:
+        _reset_code_execution_dirs(workspace)
     input_dir = workspace / "input"
     output_dir = workspace / "output"
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -71,10 +75,37 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
                      source_file=str(source_file))
 
 
-def _workspace_path(request_id: str) -> Path:
-    root = Path(os.getenv("CODE_EXECUTION_WORKSPACE_ROOT") or ".reactor-code-execution")
-    safe_id = "".join(char if char.isalnum() or char in "-_" else "_" for char in request_id)[:120] or "anonymous"
-    return (root / safe_id).resolve()
+def _workspace_path(request: CodeExecutionRequest) -> Path:
+    """统一会话工作区：skilloutput/{sessionId}（与 Java workspace_write 对齐）。"""
+    if request.workspace_root and str(request.workspace_root).strip():
+        return Path(str(request.workspace_root).strip()).expanduser().resolve()
+
+    safe_id = _safe_session_id(request.request_id)
+    env_root = (os.getenv("CODE_EXECUTION_WORKSPACE_ROOT") or "").strip()
+    if env_root:
+        # 兼容测试/运维：显式根目录下再按 session 隔离
+        return (Path(env_root).expanduser().resolve() / safe_id).resolve()
+
+    skill_root = (os.getenv("SKILL_OUTPUT_ROOT") or os.getenv("REACTOR_SKILL_OUTPUT_ROOT") or "").strip()
+    if skill_root:
+        return (Path(skill_root).expanduser().resolve() / safe_id).resolve()
+
+    return (_DEFAULT_SKILL_OUTPUT / safe_id).resolve()
+
+
+def _safe_session_id(request_id: str) -> str:
+    return "".join(char if char.isalnum() or char in "-_" else "_" for char in (request_id or ""))[:120] or "anonymous"
+
+
+def _reset_code_execution_dirs(workspace: Path) -> None:
+    """只清理代码执行子目录，不删除会话里 workspace_write 等其它产物。"""
+    for name in ("input", "output"):
+        target = workspace / name
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+    source_file = workspace / "__last_source__.py"
+    if source_file.is_file():
+        source_file.unlink(missing_ok=True)
 
 
 def _resolve_source(request: CodeExecutionRequest, workspace: Path) -> str:

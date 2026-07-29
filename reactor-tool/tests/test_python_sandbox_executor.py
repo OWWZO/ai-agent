@@ -61,6 +61,61 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             finally:
                 executor.close()
 
+    def test_should_use_output_dir_as_process_cwd(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                result = executor.execute(
+                    "import os\n"
+                    "with open('cwd_result.txt', 'w', encoding='utf-8') as handle:\n"
+                    "    handle.write('from-cwd')\n"
+                    "print(os.getcwd())\n"
+                )
+                self.assertEqual(["cwd_result.txt"], [item["name"] for item in result.produced_files])
+                self.assertTrue((output_dir / "cwd_result.txt").is_file())
+                self.assertEqual(
+                    str(output_dir.resolve()),
+                    str(Path(result.stdout.strip()).resolve()),
+                )
+            finally:
+                executor.close()
+
+    def test_should_harvest_workspace_root_files_and_skip_input(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            (workspace_root / "input").mkdir()
+            (workspace_root / "input" / "seed.csv").write_text("a,1\n", encoding="utf-8")
+            (workspace_root / "__last_source__.py").write_text("print(1)\n", encoding="utf-8")
+            policy = build_permission_policy(
+                profile="workspace",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                result = executor.execute(
+                    "from pathlib import Path\n"
+                    "Path(workspace_root).joinpath('root_chart.png').write_bytes(b'png')\n"
+                    "Path(workspace_root).joinpath('input', 'ignored.txt').write_text('no', encoding='utf-8')\n"
+                )
+                self.assertEqual(["root_chart.png"], [item["name"] for item in result.produced_files])
+                self.assertEqual("root_chart.png", result.produced_files[0]["relative_path"])
+                self.assertTrue((workspace_root / "root_chart.png").is_file())
+            finally:
+                executor.close()
+
 
 if __name__ == "__main__":
     unittest.main()

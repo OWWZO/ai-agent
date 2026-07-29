@@ -60,6 +60,8 @@ class CodeExecutionRequest(BaseModel):
     permission_profile: Literal["analysis", "workspace"] = Field(default="analysis", alias="permissionProfile")
     reset_workspace: bool = Field(default=False, alias="resetWorkspace")
     workspace_file: Optional[str] = Field(default=None, alias="workspaceFile")
+    # 会话工作区绝对路径（与 Java skilloutput/{sessionId} 对齐）；缺省时落 reactor-tool/skilloutput/{sessionId}
+    workspace_root: Optional[str] = Field(default=None, alias="workspaceRoot")
     files: List[Dict[str, Any]] = Field(default_factory=list)
 
 

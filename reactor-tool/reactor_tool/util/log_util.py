@@ -28,7 +28,10 @@ class Timer(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is not None:
-            logger.error(f"{RequestIdCtx.request_id} {self.key} error={exc_tb}")
+            logger.error(
+                f"{RequestIdCtx.request_id} {self.key} error={exc_type.__name__}: {exc_val}\n"
+                f"{traceback.format_exc()}"
+            )
         else:
             logger.info(f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]")
 

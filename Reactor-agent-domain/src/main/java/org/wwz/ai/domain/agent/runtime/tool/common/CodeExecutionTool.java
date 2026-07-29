@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.LinkedHashMap;
@@ -27,13 +28,27 @@ public class CodeExecutionTool implements BaseTool {
     @Override public String getName() { return "code_execution"; }
 
     @Override public String getDescription() {
-        return "直接在受控 Python 沙箱执行源码。用于计算、数据处理、图表及用户可下载文件生成。"
-                + "文件必须写入 build_output_path('filename') 返回的路径，系统会自动上传并展示。";
+        return "直接在受控 Python 沙箱执行源码。用于计算、数据处理、图表及用户可下载文件生成。\n"
+                + "【产物路径硬性规则】\n"
+                + "1. 需要生成/保存文件时，必须用 build_output_path('文件名') 得到路径再写入；"
+                + "系统只采集并上传该 helper 对应目录中的新文件，前端才能预览/下载。\n"
+                + "2. 正确示例：Path(build_output_path('chart.png')).write_bytes(...)；"
+                + "plt.savefig(build_output_path('chart.png'))；"
+                + "df.to_excel(build_output_path('结果.xlsx'))。\n"
+                + "3. 禁止写死绝对路径（如 D:\\\\...\\\\skilloutput\\\\session-...\\\\xxx），"
+                + "禁止仅用相对文件名 savefig('a.png') 或随意 Path('a.png') 期望自动注册"
+                + "（未走 build_output_path 的路径可能不上传、不展示）。\n"
+                + "4. 读会话输入文件用 resolve_input_path('文件名')；"
+                + "沙箱已注入 build_output_path / resolve_input_path / read_text_file / write_text_file，无需 import。";
     }
 
     @Override public Map<String, Object> toParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("source", Map.of("type", "string", "description", "完整 Python 源码"));
+        properties.put("source", Map.of(
+                "type", "string",
+                "description", "完整 Python 源码。生成文件时必须 Path(build_output_path('name.ext')) 或 "
+                        + "plt.savefig(build_output_path('name.ext')) 等；禁止硬编码 skilloutput/盘符绝对路径。"
+        ));
         properties.put("inputs", Map.of("type", "object", "description", "注入 Python 全局变量的 JSON 对象"));
         properties.put("fileNames", Map.of("type", "array", "items", Map.of("type", "string"), "description", "会话输入文件名"));
         properties.put("files", Map.of("type", "array", "items", Map.of("type", "object"), "description", "写入工作区的小型文本或 Base64 文件"));
@@ -56,6 +71,8 @@ public class CodeExecutionTool implements BaseTool {
             ReactorConfig config = agentContext.getRuntimeDependencies().requireReactorConfig();
             Map<String, Object> request = new LinkedHashMap<>(params);
             request.put("requestId", agentContext.getSessionId());
+            // 与 workspace_write 同一会话目录：reactor-tool/skilloutput/{sessionId}
+            request.put("workspaceRoot", WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId()).toString());
             request.put("source", source);
             String body = agentContext.getRuntimeDependencies().requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
                     .method("POST").url(config.getCodeInterpreterUrl() + "/v1/tool/code_execution")
