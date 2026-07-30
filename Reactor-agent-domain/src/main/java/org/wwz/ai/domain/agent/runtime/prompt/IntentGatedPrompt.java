@@ -22,10 +22,13 @@ public final class IntentGatedPrompt {
             "网页", "页面", "看板", "仪表盘", "卡片", "交互式", "画布", "落地页");
 
     private static final String DOCUMENT_POLICY = """
-            # 文档生成策略
+            # 文档生成策略（对齐 LeAgent document_generation）
             - 用户要求 PDF、DOCX、HTML 或 Markdown 交付时，使用 document_generate；优先传完整 markdown content，只有需要精确布局时才使用 blocks。
-            - 正式报告应按需要组织封面、目录、执行摘要、清晰的标题层级、表格/图表/风险提示和结论；不要把交付物退化为一整页连续段落。
+            - 正式报告骨架：封面（cover）→ 目录（toc，≥4 级标题时）→ 执行摘要 → 分节正文 → 结论/建议 → 附录。
+            - 正文用真实标题层级（## / ###，勿跳级）；可枚举内容用 **GFM 表格（≤6 列）**，趋势对比用 ```chart 围栏。
+            - GFM 表：表前后空行；表头+`| --- |`+数据行；列数一致；禁止 Tab 伪表。
             - 用户要求可编辑文档时选 docx；要求打印保真或正式交付时选 pdf。
+            - 主题可选 professional / corporate / academic / minimal / modern，或 theme_designer 自定义名。
             - 文档生成完成后必须检查 warnings 和 content_stats；图表、图片或字体有告警时不得静默交付，应修正参数后重新生成或明确说明降级结果。
             - 仅在用户要求保存、导出或下载时生成文件；没有明确文件交付需求时直接在对话中回答。
             """;

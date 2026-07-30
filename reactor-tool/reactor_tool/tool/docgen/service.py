@@ -40,7 +40,11 @@ def resolve_output_path(request_id: str, output_path: str | None, default_ext: s
 
 
 async def _upload_result(request_id: str, output_path: Path, result: dict[str, Any]) -> dict[str, Any]:
-    file_info = await upload_file_by_path(str(output_path), request_id=request_id)
+    file_info = None
+    try:
+        file_info = await upload_file_by_path(str(output_path), request_id=request_id)
+    except Exception as exc:  # noqa: BLE001 - local-only envs may lack FILE_SERVER_URL
+        logger.warning(f"docgen upload skipped path={output_path}: {exc}")
     payload = {
         "success": bool(result.get("success", True)),
         "outputPath": str(output_path),
@@ -612,4 +616,193 @@ async def run_template_filler(request_id: str, params: dict[str, Any]) -> dict[s
     # also return rendered text for agent
     payload = await _upload_result(request_id, final, result)
     payload["rendered"] = result.get("rendered", "")
+    return payload
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+async def run_document_template(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Manage reusable docgen templates (save/list/get/delete/preview/generate)."""
+    from reactor_tool.docgen import templates as store
+
+    action = str(params.get("action") or "").strip().lower()
+    actions = ("save", "list", "get", "delete", "preview", "generate")
+    if action not in actions:
+        raise ValueError(f"Unknown action: {action!r}. Use one of {actions}.")
+
+    if action == "list":
+        return {"success": True, "message": "ok", "templates": store.list_templates(), "fileInfo": []}
+
+    name = params.get("name")
+    if not name:
+        raise ValueError(f"`name` is required for action={action}.")
+
+    if action == "save":
+        template = store.DocTemplate.model_validate(
+            {
+                "name": name,
+                "kind": params.get("kind") or "document",
+                "description": params.get("description"),
+                "theme": params.get("theme"),
+                "variables": params.get("variables") or [],
+                "content": params.get("content"),
+                "slides": params.get("slides"),
+                "defaults": params.get("defaults") or {},
+            }
+        )
+        saved = store.save_template(template, overwrite=params.get("overwrite", True))
+        saved["success"] = True
+        saved["message"] = "ok"
+        saved["fileInfo"] = []
+        saved["usage"] = (
+            f"Instantiate with action='generate', name='{saved['name']}', "
+            "values={{...}}, output_path='...'."
+        )
+        return saved
+
+    if action == "delete":
+        removed = store.delete_template(str(name))
+        return {"success": True, "message": "ok", "deleted": removed, "name": name, "fileInfo": []}
+
+    template = store.load_template(str(name))
+    if template is None:
+        raise ValueError(f"Template not found: {name!r}")
+
+    if action == "get":
+        return {
+            "success": True,
+            "message": "ok",
+            "template": template.model_dump(exclude_none=True),
+            "fileInfo": [],
+        }
+
+    payload = store.render_template(template, params.get("values") or {})
+    if action == "preview":
+        return {"success": True, "message": "ok", "name": template.name, "rendered": payload, "fileInfo": []}
+
+    # generate
+    output_path = params.get("output_path") or params.get("fileName")
+    if not output_path:
+        raise ValueError("`output_path` is required for action=generate.")
+    payload.pop("kind", None)
+    if template.kind == "deck":
+        path = resolve_output_path(request_id, output_path, ".pptx")
+        result = generate_slides({**payload, "output_path": str(path)}, path)
+        final = Path(result.get("output_path") or path)
+        return await _upload_result(request_id, final, result)
+
+    fmt = (params.get("format") or payload.get("format") or "pdf").strip().lower()
+    ext_map = {"pdf": ".pdf", "docx": ".docx", "html": ".html", "markdown": ".md"}
+    path = resolve_output_path(request_id, output_path, ext_map.get(fmt, ".pdf"))
+    gen_params = {**payload, "output_path": str(path), "format": fmt}
+    result = generate_document(gen_params, path)
+    final = Path(result.get("output_path") or path)
+    return await _upload_result(request_id, final, result)
+
+
+async def run_theme_designer(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Create/list/get/delete custom docgen themes."""
+    del request_id  # no file upload for theme metadata ops
+    from reactor_tool.docgen import theming
+    from reactor_tool.docgen.themes import BUILTIN_THEMES, get_theme
+
+    action = str(params.get("action") or "").strip().lower()
+    actions = ("create", "save", "list", "get", "delete")
+    if action not in actions:
+        raise ValueError(f"Unknown action: {action!r}. Use one of {actions}.")
+    kind = params.get("kind") or "document"
+    name = params.get("name")
+
+    if action == "list":
+        builtin = [{"name": t.name, "kind": t.kind, "builtin": True} for t in BUILTIN_THEMES.values()]
+        custom = [{**item, "builtin": False} for item in theming.list_custom_themes()]
+        return {"success": True, "message": "ok", "themes": builtin + custom, "fileInfo": []}
+
+    if not name:
+        raise ValueError(f"`name` is required for action={action}.")
+
+    if action == "get":
+        resolved = get_theme(str(name), kind=kind)
+        payload = theming.load_custom_theme_payload(str(name))
+        return {
+            "success": True,
+            "message": "ok",
+            "name": resolved.name,
+            "builtin": str(name) in BUILTIN_THEMES,
+            "payload": payload,
+            "resolved": resolved.model_dump(),
+            "lint_warnings": theming.lint_theme(resolved),
+            "fileInfo": [],
+        }
+
+    if action == "delete":
+        removed = theming.delete_custom_theme(str(name))
+        return {"success": True, "message": "ok", "deleted": removed, "name": name, "fileInfo": []}
+
+    if action == "create":
+        primary = params.get("primary")
+        if not primary:
+            raise ValueError("`primary` (brand color '#RRGGBB') is required for create.")
+        payload = theming.derive_theme_payload(
+            kind=kind,
+            primary=str(primary),
+            accent=params.get("accent"),
+            mode=params.get("mode"),
+            heading_font=params.get("heading_font"),
+            body_font=params.get("body_font"),
+            east_asia_font=params.get("east_asia_font"),
+        )
+        overrides = params.get("overrides")
+        if isinstance(overrides, dict) and overrides:
+            _deep_merge(payload, overrides)
+    else:  # save
+        payload = params.get("payload")
+        if not isinstance(payload, dict) or not payload:
+            raise ValueError("`payload` (theme object) is required for save.")
+
+    resolved = get_theme({**payload, "name": "candidate"}, kind=kind)
+    if resolved.name != "candidate":
+        raise ValueError("Theme payload failed validation against the theme schema.")
+    lint = theming.lint_theme(resolved)
+    result: dict[str, Any] = {
+        "success": True,
+        "message": "ok",
+        "name": name,
+        "kind": kind,
+        "payload": payload,
+        "colors": resolved.colors.model_dump(),
+        "lint_warnings": lint,
+        "fileInfo": [],
+    }
+    if params.get("dry_run"):
+        result["saved"] = False
+        return result
+
+    saved = theming.save_custom_theme(str(name), payload, kind=kind)
+    result.update({"saved": True, "path": saved["path"]})
+    result["usage"] = (
+        f'Pass theme: "{saved["name"]}" to '
+        + ("slides_generate" if kind == "deck" else "document_generate")
+        + "."
+    )
+    return result
+
+
+async def run_chart_generator(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    from reactor_tool.tool.docgen.chart_generator import generate_chart
+
+    fmt = (params.get("output_format") or "png").strip().lower()
+    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), f".{fmt}")
+    result = generate_chart(params, path)
+    final = Path(result.get("output_path") or path)
+    payload = await _upload_result(request_id, final, result)
+    for k in ("chart_type", "theme", "format"):
+        if k in result:
+            payload[k] = result[k]
     return payload

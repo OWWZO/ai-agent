@@ -92,40 +92,49 @@ public class CodeExecutionTool implements BaseTool {
                 event.put("toolName", artifactSource.getToolName()); event.put("fileInfo", fileInfo);
                 agentContext.getPrinter().send("file", event, null);
             }
-            String observation = "status=" + response.getString("status") + "\nstdout:\n"
-                    + StringUtils.defaultString(response.getString("stdout")) + "\nstderr:\n"
-                    + StringUtils.defaultString(response.getString("stderr")) + "\nresult:\n"
-                    + JSON.toJSONString(response.get("result"))
-                    + formatArtifactUrls(fileInfo);
-            if (!"ok".equals(response.getString("status"))) {
-                return ToolResultPayload.failure(observation, observation, null, response.getString("error"));
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tool", "code_execution");
+            data.put("status", response.getString("status"));
+            data.put("stdout", StringUtils.defaultString(response.getString("stdout")));
+            data.put("stderr", StringUtils.defaultString(response.getString("stderr")));
+            if (response.get("result") != null) {
+                data.put("result", response.get("result"));
             }
-            return ToolResultPayload.text(observation);
+            if (StringUtils.isNotBlank(response.getString("error"))) {
+                data.put("error", response.getString("error"));
+            }
+            if (!fileInfo.isEmpty()) {
+                List<Map<String, Object>> files = new java.util.ArrayList<>();
+                for (CodeInterpreterResponse.FileInfo info : fileInfo) {
+                    if (info == null) {
+                        continue;
+                    }
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("file_name", info.getFileName());
+                    String url = StringUtils.firstNonBlank(info.getDomainUrl(), info.getOssUrl());
+                    if (StringUtils.isNotBlank(url)) {
+                        row.put("url", url);
+                    }
+                    if (info.getFileSize() != null) {
+                        row.put("file_size", info.getFileSize());
+                    }
+                    files.add(row);
+                }
+                data.put("produced_files", files);
+                data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
+            }
+            if (!"ok".equals(response.getString("status"))) {
+                data.put("ok", Boolean.FALSE);
+                return ToolResultPayload.failureFrom(
+                        StringUtils.defaultIfBlank(response.getString("error"), "code_execution failed"),
+                        data
+                );
+            }
+            data.put("ok", Boolean.TRUE);
+            return ToolResultPayload.fromData(data);
         } catch (Exception e) {
             log.error("{} code_execution failed", agentContext == null ? "unknown" : agentContext.getRequestId(), e);
-            return ToolResultPayload.failure("code_execution 执行失败：" + e.getMessage(), "code_execution 执行失败", null, e.getMessage());
+            return ToolResultPayload.failureFrom("code_execution 执行失败：" + e.getMessage(), null);
         }
-    }
-
-    /**
-     * 上传发生在 Python 执行结束后，只有这里能把最终文件 URL 回传给主智能体。
-     */
-    private String formatArtifactUrls(List<CodeInterpreterResponse.FileInfo> files) {
-        if (files == null || files.isEmpty()) {
-            return "";
-        }
-        StringBuilder result = new StringBuilder("\n后续工具可用产物（图片传给 document_generate 时使用 image.url）：");
-        for (CodeInterpreterResponse.FileInfo file : files) {
-            if (file == null) {
-                continue;
-            }
-            String url = StringUtils.firstNonBlank(file.getDomainUrl(), file.getOssUrl());
-            if (StringUtils.isBlank(url)) {
-                continue;
-            }
-            result.append("\n- fileName:").append(StringUtils.defaultString(file.getFileName()))
-                    .append(" url:").append(url);
-        }
-        return result.toString();
     }
 }

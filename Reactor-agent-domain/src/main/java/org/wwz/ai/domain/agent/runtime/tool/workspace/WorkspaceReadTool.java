@@ -56,7 +56,7 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             Map<String, Object> params = requireInputMap(input);
             Path filePath = requireAllowedPath(params);
             if (!Files.isRegularFile(filePath)) {
-                return "workspace_read 只支持读取文件路径: " + filePath;
+                return failResult("workspace_read 只支持读取文件路径: " + filePath);
             }
 
             int startLine = Math.max(1, readInt(params, "start_line", 1));
@@ -72,8 +72,13 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         && existing.getStartLine() == startLine
                         && existing.getLineCount() == lineCount
                         && isUnchanged(existing, mtimeMs, contentHash)) {
-                    return FILE_UNCHANGED_STUB + "\n路径: " + filePath
-                            + "\n范围: " + startLine + " + " + lineCount + " lines";
+                    Map<String, Object> unchanged = new LinkedHashMap<>();
+                    unchanged.put("unchanged", Boolean.TRUE);
+                    unchanged.put("path", filePath.toString());
+                    unchanged.put("startLine", startLine);
+                    unchanged.put("lineCount", lineCount);
+                    unchanged.put("message", FILE_UNCHANGED_STUB);
+                    return okResult(unchanged);
                 }
             }
 
@@ -81,18 +86,15 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             int fromIndex = Math.min(lineList.size(), startLine - 1);
             int toIndex = Math.min(lineList.size(), fromIndex + lineCount);
 
-            StringBuilder result = new StringBuilder();
-            result.append("路径: ").append(filePath).append('\n');
-            result.append("范围: ").append(startLine).append(" - ").append(fromIndex + (toIndex - fromIndex)).append('\n');
-            result.append("内容:\n");
+            StringBuilder content = new StringBuilder();
             for (int i = fromIndex; i < toIndex; i++) {
-                result.append(i + 1).append(" | ").append(lineList.get(i)).append('\n');
+                content.append(i + 1).append(" | ").append(lineList.get(i)).append('\n');
             }
-
-            String body = result.toString();
+            String body = content.toString();
+            boolean truncated = false;
             if (body.length() > workspaceRuntimeOptions.getMaxReadChars()) {
-                body = body.substring(0, workspaceRuntimeOptions.getMaxReadChars())
-                        + "\n[已截断，超过最大返回字符数 " + workspaceRuntimeOptions.getMaxReadChars() + "]";
+                body = body.substring(0, workspaceRuntimeOptions.getMaxReadChars());
+                truncated = true;
             }
 
             if (agentContext != null) {
@@ -104,16 +106,24 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         .contentHash(contentHash)
                         .build());
             }
-            return body;
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", filePath.toString());
+            data.put("startLine", startLine);
+            data.put("endLine", fromIndex + (toIndex - fromIndex));
+            data.put("content", body);
+            if (truncated) {
+                data.put("truncated", Boolean.TRUE);
+            }
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_read failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_read io error, input={}", requestId(), input, e);
-            return "workspace_read failed to read file";
+            return failResult("workspace_read failed to read file");
         } catch (Exception e) {
             log.error("{} workspace_read error, input={}", requestId(), input, e);
-            return "workspace_read execute failed";
+            return failResult("workspace_read execute failed");
         }
     }
 

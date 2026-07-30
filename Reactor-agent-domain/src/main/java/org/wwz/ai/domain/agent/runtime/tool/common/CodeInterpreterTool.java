@@ -17,12 +17,14 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -89,7 +91,7 @@ public class CodeInterpreterTool implements BaseTool {
     }
 
     /**
-     * 调用 CodeAgent
+     * 调用 CodeAgent：细粒度 SSE（任务/过程/步骤思考/代码/执行输出/结论）对齐 data_analysis 累加推送。
      */
     public CompletableFuture<ToolResultPayload> callCodeAgentStream(CodeInterpreterRequest codeRequest,
                                                                     ToolArtifactSource artifactSource) {
@@ -98,8 +100,13 @@ public class CodeInterpreterTool implements BaseTool {
             ReactorConfig reactorConfig = requireReactorConfig();
             String url = reactorConfig.getCodeInterpreterUrl() + "/v1/tool/code_interpreter";
             log.info("{} code_interpreter request {}", agentContext.getRequestId(), JSONObject.toJSONString(codeRequest));
-            java.util.concurrent.atomic.AtomicReference<CodeInterpreterResponse> latestResponseRef =
-                    new java.util.concurrent.atomic.AtomicReference<>(CodeInterpreterResponse.builder()
+            String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
+            String messageId = StringUtil.getUUID();
+            String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
+            StringBuilder fullContentBuilder = new StringBuilder();
+            List<CodeInterpreterResponse.FileInfo> finalFileInfo = new ArrayList<>();
+            AtomicReference<CodeInterpreterResponse> latestResponseRef =
+                    new AtomicReference<>(CodeInterpreterResponse.builder()
                             .codeOutput("code_interpreter执行失败")
                             .build());
 
@@ -129,8 +136,26 @@ public class CodeInterpreterTool implements BaseTool {
                     }
                     log.info("{} code_interpreter recv data: {}", agentContext.getRequestId(), data);
                     CodeInterpreterResponse codeResponse = JSONObject.parseObject(data, CodeInterpreterResponse.class);
+                    if (codeResponse == null) {
+                        return;
+                    }
                     latestResponseRef.set(codeResponse);
+
+                    // 过程区只累加 data（Python 侧已写入任务/思考/代码/输出 Markdown）；
+                    // 纯 code 事件只用于产物 fileInfo，避免与 data 中的代码块重复。
+                    String chunkText = codeResponse.getData() == null
+                            ? ""
+                            : String.valueOf(codeResponse.getData());
+                    if (StringUtils.isNotBlank(chunkText)) {
+                        fullContentBuilder.append(chunkText);
+                        if (!chunkText.endsWith("\n")) {
+                            fullContentBuilder.append("\n");
+                        }
+                    }
+
                     if (Objects.nonNull(codeResponse.getFileInfo()) && !codeResponse.getFileInfo().isEmpty()) {
+                        finalFileInfo.clear();
+                        finalFileInfo.addAll(codeResponse.getFileInfo());
                         for (CodeInterpreterResponse.FileInfo fileInfo : codeResponse.getFileInfo()) {
                             File file = File.builder()
                                     .fileName(fileInfo.getFileName())
@@ -143,25 +168,63 @@ public class CodeInterpreterTool implements BaseTool {
                             agentContext.registerGeneratedArtifact(artifactSource, file);
                         }
                     }
-                    String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
-                    log.info("requestId:{} task:{} toolName:{} digitalEmployee:{}", agentContext.getRequestId(),
-                            agentContext.getToolCollection().getCurrentTask(), getName(), digitalEmployee);
-                    agentContext.getPrinter().send("code", codeResponse, digitalEmployee);
+
+                    codeResponse.setToolCallId(toolCallId);
+                    if (Boolean.TRUE.equals(codeResponse.getIsFinal())) {
+                        String conclusion = StringUtils.firstNonBlank(
+                                codeResponse.getCodeOutput(),
+                                codeResponse.getContent(),
+                                chunkText);
+                        if (StringUtils.isNotBlank(conclusion)
+                                && fullContentBuilder.indexOf(conclusion) < 0) {
+                            fullContentBuilder.append("\n").append(conclusion).append("\n");
+                        }
+                        String full = fullContentBuilder.toString();
+                        codeResponse.setData(full);
+                        if (StringUtils.isBlank(codeResponse.getCodeOutput())) {
+                            codeResponse.setCodeOutput(full);
+                        }
+                        if (!finalFileInfo.isEmpty()) {
+                            codeResponse.setFileInfo(finalFileInfo);
+                        }
+                        agentContext.getPrinter().send(messageId, "code",
+                                codeResponse, digitalEmployee, true);
+                    } else if (StringUtils.isNotBlank(chunkText)) {
+                        // 中间过程统一用 data 推 Markdown 增量；无 data 的 code/file 事件不刷 UI
+                        CodeInterpreterResponse progress = CodeInterpreterResponse.builder()
+                                .requestsId(codeResponse.getRequestsId())
+                                .data(chunkText)
+                                .code(codeResponse.getCode())
+                                .fileInfo(codeResponse.getFileInfo())
+                                .isFinal(false)
+                                .toolCallId(toolCallId)
+                                .build();
+                        agentContext.getPrinter().send(messageId, "code",
+                                progress, digitalEmployee, false);
+                    }
                 }
 
                 @Override
                 public void onClosed() {
                     CodeInterpreterResponse codeResponse = latestResponseRef.get();
-                    StringBuilder output = new StringBuilder(StringUtils.defaultString(codeResponse.getCodeOutput()));
-                    if (Objects.nonNull(codeResponse.getFileInfo()) && !codeResponse.getFileInfo().isEmpty()) {
-                        output.append("\n\n其中保存了文件: ");
-                        for (CodeInterpreterResponse.FileInfo fileInfo : codeResponse.getFileInfo()) {
-                            output.append(fileInfo.getFileName()).append("\n");
-                        }
+                    if (codeResponse.getFileInfo() == null && !finalFileInfo.isEmpty()) {
+                        codeResponse.setFileInfo(finalFileInfo);
+                    }
+                    String full = fullContentBuilder.toString();
+                    if (StringUtils.isBlank(full)) {
+                        full = StringUtils.defaultString(codeResponse.getCodeOutput());
+                    }
+                    String display = appendArtifactUrls(full, codeResponse.getFileInfo());
+                    if (StringUtils.isNotBlank(display) && !Boolean.TRUE.equals(codeResponse.getIsFinal())) {
+                        codeResponse.setData(display);
+                        codeResponse.setCodeOutput(StringUtils.firstNonBlank(codeResponse.getCodeOutput(), display));
+                        codeResponse.setIsFinal(true);
+                        codeResponse.setToolCallId(toolCallId);
+                        agentContext.getPrinter().send(messageId, "code",
+                                codeResponse, digitalEmployee, true);
                     }
                     if (!future.isDone()) {
-                        future.complete(buildSuccessPayload(codeResponse,
-                                appendArtifactUrls(output.toString(), codeResponse.getFileInfo())));
+                        future.complete(buildSuccessPayload(codeResponse, display));
                     }
                 }
 
@@ -187,9 +250,43 @@ public class CodeInterpreterTool implements BaseTool {
     }
 
     private ToolResultPayload buildSuccessPayload(CodeInterpreterResponse codeResponse, String displayText) {
-        return ToolResultPayload.structured(
-                displayText,
-                displayText,
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "code_interpreter");
+        data.put("ok", Boolean.TRUE);
+        if (codeResponse != null) {
+            if (StringUtils.isNotBlank(codeResponse.getCodeOutput())) {
+                data.put("codeOutput", codeResponse.getCodeOutput());
+            }
+            if (StringUtils.isNotBlank(codeResponse.getContent())) {
+                data.put("content", codeResponse.getContent());
+            }
+            if (StringUtils.isNotBlank(codeResponse.getExplain())) {
+                data.put("explain", codeResponse.getExplain());
+            }
+            List<CodeInterpreterResponse.FileInfo> files = codeResponse.getFileInfo();
+            if (files != null && !files.isEmpty()) {
+                List<Map<String, Object>> produced = new ArrayList<>();
+                for (CodeInterpreterResponse.FileInfo info : files) {
+                    if (info == null) {
+                        continue;
+                    }
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("file_name", info.getFileName());
+                    String url = StringUtils.firstNonBlank(info.getDomainUrl(), info.getOssUrl());
+                    if (StringUtils.isNotBlank(url)) {
+                        row.put("url", url);
+                    }
+                    produced.add(row);
+                }
+                data.put("produced_files", produced);
+                data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
+            }
+        }
+        if (!data.containsKey("codeOutput") && StringUtils.isNotBlank(displayText)) {
+            data.put("codeOutput", displayText);
+        }
+        return ToolResultPayload.fromData(
+                data,
                 CodeInterpreterToolOutput.builder()
                         .codeOutput(codeResponse == null ? null : codeResponse.getCodeOutput())
                         .content(codeResponse == null ? null : codeResponse.getContent())

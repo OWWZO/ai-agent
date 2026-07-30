@@ -78,4 +78,14 @@ describe("normalizeMarkdownForDisplay", () => {
 
     expect(normalized).toBe(sample);
   });
+
+  it("passes through empty content", () => {
+    expect(normalizeMarkdownForDisplay(undefined)).toBe("");
+    expect(normalizeMarkdownForDisplay("")).toBe("");
+  });
+
+  it("normalizes BOM and newlines only for default scope sticky headings still split", () => {
+    expect(normalizeMarkdownForDisplay("\uFEFFa\r\nb\rc")).toBe("a\nb\nc");
+    expect(normalizeMarkdownForDisplay("前言## 标题")).toBe("前言\n\n## 标题");
+  });
 });

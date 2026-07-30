@@ -194,11 +194,18 @@ public class FileTool implements BaseTool {
                 // 内部文件不通知前端
                 agentContext.getPrinter().send("file", resultMap, digitalEmployee);
             }
-            // 返回工具执行结果
-            String toolResult = fileRequest.getFileName() + " 写入到文件链接: " + fileResponse.getOssUrl();
-            return ToolResultPayload.structured(
-                    toolResult,
-                    toolResult,
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tool", "file_tool");
+            data.put("ok", Boolean.TRUE);
+            data.put("command", "upload");
+            data.put("fileName", fileRequest.getFileName());
+            data.put("previewUrl", fileResponse.getDomainUrl());
+            data.put("downloadUrl", fileResponse.getOssUrl());
+            if (fileResponse.getFileSize() != null) {
+                data.put("fileSize", fileResponse.getFileSize());
+            }
+            return ToolResultPayload.fromData(
+                    data,
                     FileToolOutput.builder()
                             .command("upload")
                             .primaryFileName(fileRequest.getFileName())
@@ -268,10 +275,16 @@ public class FileTool implements BaseTool {
                 if (fileContent.length() > reactorConfig.getFileToolContentTruncateLen()) {
                     fileContent = fileContent.substring(0, reactorConfig.getFileToolContentTruncateLen());
                 }
-                String toolResult = "文件内容 " + fileContent;
-                return ToolResultPayload.structured(
-                        toolResult,
-                        toolResult,
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("tool", "file_tool");
+                data.put("ok", Boolean.TRUE);
+                data.put("command", "get");
+                data.put("fileName", fileRequest.getFileName());
+                data.put("previewUrl", fileResponse.getDomainUrl());
+                data.put("downloadUrl", fileResponse.getOssUrl());
+                data.put("content", fileContent);
+                return ToolResultPayload.fromData(
+                        data,
                         FileToolOutput.builder()
                                 .command("get")
                                 .primaryFileName(fileRequest.getFileName())

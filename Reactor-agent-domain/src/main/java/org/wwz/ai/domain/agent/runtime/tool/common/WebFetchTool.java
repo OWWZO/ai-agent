@@ -107,44 +107,33 @@ public class WebFetchTool implements BaseTool {
 
             FetchResult fetch = fetchWithPermittedRedirects(upgradedUrl, 0);
             if (fetch.redirect()) {
-                String message = """
-                        REDIRECT DETECTED: The URL redirects to a different host.
-
-                        Original URL: %s
-                        Redirect URL: %s
-                        Status: %d
-
-                        To complete your request, call WebFetch again with:
-                        - url: "%s"
-                        - prompt: "%s"
-                        """.formatted(
-                        fetch.originalUrl(),
-                        fetch.redirectUrl(),
-                        fetch.statusCode(),
-                        fetch.redirectUrl(),
-                        prompt
-                ).trim();
-                return ToolResultPayload.text(message);
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("tool", "web_fetch");
+                data.put("ok", Boolean.FALSE);
+                data.put("redirect", Boolean.TRUE);
+                data.put("url", fetch.originalUrl());
+                data.put("redirectUrl", fetch.redirectUrl());
+                data.put("status", fetch.statusCode());
+                data.put("hint", "Call web_fetch again with redirectUrl and the same prompt.");
+                data.put("prompt", prompt);
+                return ToolResultPayload.fromData(data);
             }
 
             String markdown = truncateContent(fetch.content());
             String extracted = applyPromptToContent(prompt, markdown);
             long durationMs = System.currentTimeMillis() - start;
 
-            String observation = """
-                    WebFetch result for %s
-                    HTTP %d %s | %d bytes | %dms
-
-                    %s
-                    """.formatted(
-                    fetch.finalUrl(),
-                    fetch.statusCode(),
-                    StringUtils.defaultString(fetch.statusText()),
-                    fetch.bytes(),
-                    durationMs,
-                    extracted
-            ).trim();
-            return ToolResultPayload.text(observation);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tool", "web_fetch");
+            data.put("ok", Boolean.TRUE);
+            data.put("url", fetch.finalUrl());
+            data.put("status", fetch.statusCode());
+            data.put("statusText", StringUtils.defaultString(fetch.statusText()));
+            data.put("bytes", fetch.bytes());
+            data.put("durationMs", durationMs);
+            data.put("prompt", prompt);
+            data.put("content", extracted);
+            return ToolResultPayload.fromData(data);
         } catch (Exception e) {
             log.error("{} WebFetch execute error, input={}", requestId(), input, e);
             return failure("WebFetch 失败：" + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()));
@@ -347,7 +336,7 @@ public class WebFetchTool implements BaseTool {
     }
 
     private ToolResultPayload failure(String message) {
-        return ToolResultPayload.failure(message, message, null, message);
+        return ToolResultPayload.failureFrom(message, null);
     }
 
     @SuppressWarnings("unchecked")

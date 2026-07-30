@@ -19,6 +19,7 @@ import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
@@ -459,13 +460,14 @@ public abstract class BaseAgent {
 
     /**
      * 统一生成最终 observation。
-     * 先做长度裁剪，再追加当前 toolCall 关联的产物摘要，确保账本与主智能体看到的内容完全一致。
+     * 先做长度裁剪（LeAgent 风格截断提示），再追加当前 toolCall 关联的产物摘要，
+     * 确保账本与主智能体看到的内容完全一致；artifact 摘要不参与 maxObserve 裁剪。
      */
     protected String buildFinalLlmObservation(String rawObservation, String toolCallId) {
         String observation = StringUtils.defaultString(rawObservation);
         Integer maxObserve = resolveMaxObserveLength();
-        if (maxObserve != null && maxObserve > 0 && observation.length() > maxObserve) {
-            observation = observation.substring(0, maxObserve);
+        if (maxObserve != null && maxObserve > 0) {
+            observation = ToolObservationSerializer.truncateForLlm(observation, maxObserve);
         }
         return attachToolArtifactSummary(observation, toolCallId);
     }
@@ -941,38 +943,46 @@ public abstract class BaseAgent {
 
     private ToolResultPayload normalizeToolResultPayload(Object rawResult, ObjectMapper mapper) {
         if (rawResult instanceof ToolResultPayload payload) {
-            // rich tool 已经给出 typed output 时，只做 observation/failure 语义兜底，不再回退组装结构化 JSON。
+            // 已预填 llmObservation 的 rich tool 保持原样；仅 llmData 时走 LeAgent serialize_for_llm。
+            boolean failed = Boolean.TRUE.equals(payload.getFailed());
             String toolResult = StringUtils.defaultString(payload.getToolResult());
+            String llmObservation = payload.getLlmObservation();
+            if (StringUtils.isBlank(llmObservation)) {
+                if (payload.getLlmData() != null || failed) {
+                    llmObservation = ToolObservationSerializer.serializePayload(payload);
+                } else {
+                    llmObservation = toolResult;
+                }
+            }
+            if (StringUtils.isBlank(toolResult)) {
+                toolResult = llmObservation;
+            }
             return ToolResultPayload.builder()
                     .toolResult(toolResult)
-                    .llmObservation(StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult))
+                    .llmObservation(llmObservation)
+                    .llmData(payload.getLlmData())
                     .structuredOutput(payload.getStructuredOutput())
-                    .failed(Boolean.TRUE.equals(payload.getFailed()))
+                    .failed(failed)
                     .errorMsg(payload.getErrorMsg())
                     .build();
         }
         if (rawResult instanceof String textResult) {
+            // 对齐 LeAgent：成功 + str data → 原样
             return ToolResultPayload.builder()
                     .toolResult(textResult)
-                    .llmObservation(textResult)
+                    .llmObservation(ToolObservationSerializer.serializeSuccess(textResult))
+                    .llmData(textResult)
                     .failed(Boolean.FALSE)
                     .build();
         }
-        try {
-            String serialized = mapper.writeValueAsString(rawResult);
-            return ToolResultPayload.builder()
-                    .toolResult(serialized)
-                    .llmObservation(serialized)
-                    .failed(Boolean.FALSE)
-                    .build();
-        } catch (Exception e) {
-            String fallback = String.valueOf(rawResult);
-            return ToolResultPayload.builder()
-                    .toolResult(fallback)
-                    .llmObservation(fallback)
-                    .failed(Boolean.FALSE)
-                    .build();
-        }
+        // 对齐 LeAgent：成功 + 非 str → json.dumps(data)
+        String serialized = ToolObservationSerializer.serializeSuccess(rawResult);
+        return ToolResultPayload.builder()
+                .toolResult(serialized)
+                .llmObservation(serialized)
+                .llmData(rawResult)
+                .failed(Boolean.FALSE)
+                .build();
     }
 
     private String resolveToolProvider(String toolName) {

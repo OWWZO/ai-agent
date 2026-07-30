@@ -29,11 +29,30 @@ import org.wwz.ai.domain.agent.runtime.tool.common.FileTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.ImageGenerationTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.MultiModalAgent;
 import org.wwz.ai.domain.agent.runtime.tool.common.ReportTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChartGeneratorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChecklistGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentTemplateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ExcelGeneratorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ThemeDesignerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataAggregateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataCleanTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataMergeTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataTransformTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataValidateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.SqlQueryTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.CitationExtractorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.CsvProcessorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.ExcelReaderTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.HtmlProcessorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.ImageOcrTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.MarkdownProcessorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfReaderTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfStructureTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.TextProcessorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.WordReaderTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.CanvasPublishTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiPatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
@@ -121,7 +140,7 @@ public class AgentToolCollectionFactory {
             }
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
-                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,report,docgen,canvas,multimodalagent,image_generation,data_analysis")
+                            .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,report,docgen,docread,dataprep,canvas,multimodalagent,image_generation,data_analysis")
                             .split(","))
                     .map(String::trim)
                     .filter(item -> !item.isEmpty())
@@ -143,7 +162,10 @@ public class AgentToolCollectionFactory {
                     || agentToolList.contains("slides_generate")
                     || agentToolList.contains("excel_generator")
                     || agentToolList.contains("checklist_generate")
-                    || agentToolList.contains("template_filler")) {
+                    || agentToolList.contains("template_filler")
+                    || agentToolList.contains("document_template")
+                    || agentToolList.contains("theme_designer")
+                    || agentToolList.contains("chart_generator")) {
                 DocumentGenerateTool documentGenerateTool = new DocumentGenerateTool();
                 documentGenerateTool.setAgentContext(agentContext);
                 toolCollection.addTool(documentGenerateTool);
@@ -163,6 +185,40 @@ public class AgentToolCollectionFactory {
                 TemplateFillerTool templateFillerTool = new TemplateFillerTool();
                 templateFillerTool.setAgentContext(agentContext);
                 toolCollection.addTool(templateFillerTool);
+
+                DocumentTemplateTool documentTemplateTool = new DocumentTemplateTool();
+                documentTemplateTool.setAgentContext(agentContext);
+                toolCollection.addTool(documentTemplateTool);
+
+                ThemeDesignerTool themeDesignerTool = new ThemeDesignerTool();
+                themeDesignerTool.setAgentContext(agentContext);
+                toolCollection.addTool(themeDesignerTool);
+
+                ChartGeneratorTool chartGeneratorTool = new ChartGeneratorTool();
+                chartGeneratorTool.setAgentContext(agentContext);
+                toolCollection.addTool(chartGeneratorTool);
+            }
+            if (agentToolList.contains("docread")
+                    || agentToolList.contains("csv_processor")
+                    || agentToolList.contains("excel_reader")
+                    || agentToolList.contains("pdf_reader")
+                    || agentToolList.contains("word_reader")
+                    || agentToolList.contains("html_processor")
+                    || agentToolList.contains("markdown_processor")
+                    || agentToolList.contains("text_processor")
+                    || agentToolList.contains("pdf_structure")
+                    || agentToolList.contains("citation_extractor")
+                    || agentToolList.contains("image_ocr")) {
+                registerDocReadTools(toolCollection, agentContext);
+            }
+            if (agentToolList.contains("dataprep")
+                    || agentToolList.contains("data_aggregate")
+                    || agentToolList.contains("data_clean")
+                    || agentToolList.contains("data_merge")
+                    || agentToolList.contains("data_transform")
+                    || agentToolList.contains("data_validate")
+                    || agentToolList.contains("sql_query")) {
+                registerDataPrepTools(toolCollection, agentContext);
             }
             if (agentToolList.contains("canvas")
                     || agentToolList.contains("canvas_publish")
@@ -332,6 +388,74 @@ public class AgentToolCollectionFactory {
         WorkspaceGrepTool grepTool = new WorkspaceGrepTool(workspaceService, workspaceRuntimeOptions);
         grepTool.setAgentContext(agentContext);
         toolCollection.addTool(grepTool);
+    }
+
+    private void registerDocReadTools(ToolCollection toolCollection, AgentContext agentContext) {
+        CsvProcessorTool csvProcessorTool = new CsvProcessorTool();
+        csvProcessorTool.setAgentContext(agentContext);
+        toolCollection.addTool(csvProcessorTool);
+
+        ExcelReaderTool excelReaderTool = new ExcelReaderTool();
+        excelReaderTool.setAgentContext(agentContext);
+        toolCollection.addTool(excelReaderTool);
+
+        HtmlProcessorTool htmlProcessorTool = new HtmlProcessorTool();
+        htmlProcessorTool.setAgentContext(agentContext);
+        toolCollection.addTool(htmlProcessorTool);
+
+        MarkdownProcessorTool markdownProcessorTool = new MarkdownProcessorTool();
+        markdownProcessorTool.setAgentContext(agentContext);
+        toolCollection.addTool(markdownProcessorTool);
+
+        TextProcessorTool textProcessorTool = new TextProcessorTool();
+        textProcessorTool.setAgentContext(agentContext);
+        toolCollection.addTool(textProcessorTool);
+
+        WordReaderTool wordReaderTool = new WordReaderTool();
+        wordReaderTool.setAgentContext(agentContext);
+        toolCollection.addTool(wordReaderTool);
+
+        PdfReaderTool pdfReaderTool = new PdfReaderTool();
+        pdfReaderTool.setAgentContext(agentContext);
+        toolCollection.addTool(pdfReaderTool);
+
+        PdfStructureTool pdfStructureTool = new PdfStructureTool();
+        pdfStructureTool.setAgentContext(agentContext);
+        toolCollection.addTool(pdfStructureTool);
+
+        CitationExtractorTool citationExtractorTool = new CitationExtractorTool();
+        citationExtractorTool.setAgentContext(agentContext);
+        toolCollection.addTool(citationExtractorTool);
+
+        ImageOcrTool imageOcrTool = new ImageOcrTool();
+        imageOcrTool.setAgentContext(agentContext);
+        toolCollection.addTool(imageOcrTool);
+    }
+
+    private void registerDataPrepTools(ToolCollection toolCollection, AgentContext agentContext) {
+        DataAggregateTool dataAggregateTool = new DataAggregateTool();
+        dataAggregateTool.setAgentContext(agentContext);
+        toolCollection.addTool(dataAggregateTool);
+
+        DataCleanTool dataCleanTool = new DataCleanTool();
+        dataCleanTool.setAgentContext(agentContext);
+        toolCollection.addTool(dataCleanTool);
+
+        DataMergeTool dataMergeTool = new DataMergeTool();
+        dataMergeTool.setAgentContext(agentContext);
+        toolCollection.addTool(dataMergeTool);
+
+        DataTransformTool dataTransformTool = new DataTransformTool();
+        dataTransformTool.setAgentContext(agentContext);
+        toolCollection.addTool(dataTransformTool);
+
+        DataValidateTool dataValidateTool = new DataValidateTool();
+        dataValidateTool.setAgentContext(agentContext);
+        toolCollection.addTool(dataValidateTool);
+
+        SqlQueryTool sqlQueryTool = new SqlQueryTool();
+        sqlQueryTool.setAgentContext(agentContext);
+        toolCollection.addTool(sqlQueryTool);
     }
 
     private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {

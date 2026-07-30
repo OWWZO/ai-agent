@@ -91,8 +91,8 @@ public abstract class AbstractDocGenTool implements BaseTool {
             List<File> files = registerFiles(json.getJSONArray("fileInfo"), artifactSource);
             emitFileMessage(files, artifactSource);
 
-            String observation = buildObservation(json, files);
-            return ToolResultPayload.text(observation);
+            // 对齐 LeAgent：成功 data 走 serialize_for_llm（JSON），不在此拼中文 prose。
+            return ToolResultPayload.fromData(buildLlmData(json, files));
         } catch (Exception e) {
             log.error("{} {} error, input={}", agentContext == null ? "-" : agentContext.getRequestId(), getName(), input, e);
             return failure(getName() + " 执行失败：" + e.getMessage());
@@ -151,43 +151,62 @@ public abstract class AbstractDocGenTool implements BaseTool {
         agentContext.getPrinter().send(messageId, "file", resultMap, digitalEmployee, true);
     }
 
-    private String buildObservation(JSONObject json, List<File> files) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(getName()).append(" 成功。");
+    /**
+     * 构造成功 data（LeAgent ToolResult.data 语义）。文件完整 URL 由 artifact 摘要补充，
+     * data 内只保留短引用，避免 observation 塞长链。
+     */
+    private Map<String, Object> buildLlmData(JSONObject json, List<File> files) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", getName());
+        data.put("ok", Boolean.TRUE);
         if (files != null && !files.isEmpty()) {
-            sb.append(" 文件：");
-            for (int i = 0; i < files.size(); i++) {
-                File f = files.get(i);
-                if (i > 0) {
-                    sb.append("；");
+            List<Map<String, Object>> produced = new ArrayList<>();
+            for (File f : files) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("file_name", f.getFileName());
+                if (f.getFileSize() != null) {
+                    entry.put("file_size", f.getFileSize());
                 }
-                sb.append(f.getFileName());
-                if (StringUtils.isNotBlank(f.getDomainUrl())) {
-                    sb.append(" (").append(f.getDomainUrl()).append(")");
-                } else if (StringUtils.isNotBlank(f.getOssUrl())) {
-                    sb.append(" (").append(f.getOssUrl()).append(")");
-                }
+                produced.add(entry);
             }
-            sb.append("。");
+            data.put("produced_files", produced);
         }
-        if (json.get("stats") != null) {
-            sb.append(" stats=").append(json.getString("stats"));
+        putIfPresent(data, json, "stats");
+        putIfPresent(data, json, "message");
+        putIfPresent(data, json, "warnings");
+        putIfPresent(data, json, "lint_warnings");
+        for (String key : List.of(
+                "templates", "template", "themes", "theme", "payload", "resolved",
+                "colors", "usage", "saved", "deleted", "name", "kind",
+                "path", "variables", "chart_type", "format"
+        )) {
+            putIfPresent(data, json, key);
         }
+        // rendered 可能很大：保留截断摘要，完整交付物看 produced_files / artifact
         if (StringUtils.isNotBlank(json.getString("rendered"))) {
             String rendered = json.getString("rendered");
             if (rendered.length() > 2000) {
-                rendered = rendered.substring(0, 2000) + "...";
+                rendered = rendered.substring(0, 2000) + "...[truncated]";
             }
-            sb.append("\nrendered:\n").append(rendered);
+            data.put("rendered", rendered);
         }
-        if (json.get("warnings") != null && !json.getJSONArray("warnings").isEmpty()) {
-            sb.append("\nwarnings=").append(json.getString("warnings"));
+        return data;
+    }
+
+    private static void putIfPresent(Map<String, Object> data, JSONObject json, String key) {
+        if (json == null || !json.containsKey(key) || json.get(key) == null) {
+            return;
         }
-        return sb.toString();
+        Object value = json.get(key);
+        if (value instanceof String text && text.length() > 3000) {
+            data.put(key, text.substring(0, 3000) + "...[truncated]");
+            return;
+        }
+        data.put(key, value);
     }
 
     protected ToolResultPayload failure(String message) {
-        return ToolResultPayload.failure(message, message, null, message);
+        return ToolResultPayload.failureFrom(message, null);
     }
 
     protected ReactorConfig requireReactorConfig() {

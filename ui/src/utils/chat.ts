@@ -199,6 +199,7 @@ function handleTaskMessageByType(
     case "ppt":
     case "knowledge":
     case "data_analysis":
+    case "code":
       handleContentMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "ui_tree":

@@ -15,8 +15,6 @@ import {
   RefreshCwIcon,
   MoreHorizontalIcon,
 } from "lucide-react";
-import { normalizeMarkdownForDisplay } from "@/utils/markdown";
-
 export type MessageToolbarProps = {
   response?: string;
   onRegenerate?: () => void;
@@ -33,9 +31,7 @@ export const MessageToolbar: FC<MessageToolbarProps> = ({
       return;
     }
 
-    navigator.clipboard.writeText(
-      normalizeMarkdownForDisplay(response, { scope: "default" })
-    ).then(() => {
+    navigator.clipboard.writeText(response).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

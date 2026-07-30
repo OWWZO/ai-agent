@@ -474,34 +474,29 @@ public class WebSearchTool implements BaseTool {
                                            Provider provider,
                                            SearchBundle bundle,
                                            double durationSeconds) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Web search results for query: \"").append(query).append("\"\n");
-        sb.append("Search provider: ").append(provider.name().toLowerCase(Locale.ROOT)).append('\n');
-        sb.append(String.format("Duration: %.2fs\n\n", durationSeconds));
-
-        if (StringUtils.isNotBlank(bundle.summary())) {
-            sb.append(bundle.summary().trim()).append("\n\n");
-        }
-
         List<SearchHit> hits = bundle.hits() == null ? List.of() : bundle.hits();
-        if (hits.isEmpty()) {
-            if (StringUtils.isBlank(bundle.summary())) {
-                sb.append("No results found.\n");
+        List<Map<String, Object>> hitRows = new ArrayList<>(hits.size());
+        for (SearchHit hit : hits) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("title", hit.title());
+            row.put("url", hit.url());
+            if (StringUtils.isNotBlank(hit.snippet())) {
+                row.put("snippet", hit.snippet());
             }
-        } else {
-            sb.append("Links:\n");
-            int index = 1;
-            for (SearchHit hit : hits) {
-                sb.append(index++).append(". ").append(hit.title()).append('\n');
-                sb.append("   URL: ").append(hit.url()).append('\n');
-                if (StringUtils.isNotBlank(hit.snippet())) {
-                    sb.append("   ").append(hit.snippet().replace('\n', ' ')).append('\n');
-                }
-                sb.append('\n');
-            }
+            hitRows.add(row);
         }
-        sb.append("REMINDER: Include the sources above in your response using markdown hyperlinks.");
-        return ToolResultPayload.text(sb.toString().trim());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "web_search");
+        data.put("ok", Boolean.TRUE);
+        data.put("query", query);
+        data.put("provider", provider.name().toLowerCase(Locale.ROOT));
+        data.put("durationSec", Math.round(durationSeconds * 100.0) / 100.0);
+        if (StringUtils.isNotBlank(bundle.summary())) {
+            data.put("summary", bundle.summary().trim());
+        }
+        data.put("hits", hitRows);
+        data.put("reminder", "Cite sources with markdown hyperlinks in the final answer.");
+        return ToolResultPayload.fromData(data);
     }
 
     /**
@@ -699,7 +694,7 @@ public class WebSearchTool implements BaseTool {
     }
 
     private ToolResultPayload failure(String message) {
-        return ToolResultPayload.failure(message, message, null, message);
+        return ToolResultPayload.failureFrom(message, null);
     }
 
     @SuppressWarnings("unchecked")

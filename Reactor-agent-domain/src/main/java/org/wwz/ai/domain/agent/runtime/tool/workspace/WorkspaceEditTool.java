@@ -61,16 +61,16 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             Map<String, Object> params = requireInputMap(input);
             Path filePath = requireWritablePath(params);
             if (!Files.isRegularFile(filePath)) {
-                return "workspace_edit 只支持已存在的文件路径: " + filePath;
+                return failResult("workspace_edit 只支持已存在的文件路径: " + filePath);
             }
 
             String absolutePath = filePath.toAbsolutePath().normalize().toString();
             if (agentContext == null) {
-                return "workspace_edit requires agent context";
+                return failResult("workspace_edit requires agent context");
             }
             WorkspaceFileReadState readState = agentContext.getWorkspaceFileReadState(absolutePath);
             if (readState == null) {
-                return "You must use workspace_read at least once on this file before editing: " + absolutePath;
+                return failResult("You must use workspace_read at least once on this file before editing: " + absolutePath);
             }
             long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
             String currentContent = Files.readString(filePath, StandardCharsets.UTF_8);
@@ -78,42 +78,42 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             if (mtimeMs > readState.getMtimeMs()) {
                 // mtime 变化时，hash 相同则放行；不同则要求重读
                 if (readState.getContentHash() == null || !readState.getContentHash().equals(currentHash)) {
-                    return "File has been modified since read, either by the user or another tool. "
-                            + "Read it again with workspace_read before editing: " + absolutePath;
+                    return failResult("File has been modified since read, either by the user or another tool. "
+                            + "Read it again with workspace_read before editing: " + absolutePath);
                 }
             }
 
             Object oldValue = params.get("old_string");
             Object newValue = params.get("new_string");
             if (oldValue == null) {
-                return "old_string is required";
+                return failResult("old_string is required");
             }
             if (newValue == null) {
-                return "new_string is required";
+                return failResult("new_string is required");
             }
             String oldString = String.valueOf(oldValue);
             String newString = String.valueOf(newValue);
             if (oldString.equals(newString)) {
-                return "old_string and new_string must be different";
+                return failResult("old_string and new_string must be different");
             }
             if (oldString.isEmpty()) {
-                return "old_string must not be empty";
+                return failResult("old_string must not be empty");
             }
 
             boolean replaceAll = readBoolean(params, "replace_all", false);
             String original = Files.readString(filePath, StandardCharsets.UTF_8);
             if (original.length() > workspaceRuntimeOptions.getMaxWriteChars()) {
-                return "file too large to edit safely, size=" + original.length();
+                return failResult("file too large to edit safely, size=" + original.length());
             }
 
             int occurrences = countOccurrences(original, oldString);
             if (occurrences == 0) {
-                return "old_string not found in file. Re-read the file with workspace_read and ensure exact match "
-                        + "(do not include line-number prefixes).";
+                return failResult("old_string not found in file. Re-read the file with workspace_read and ensure exact match "
+                        + "(do not include line-number prefixes).");
             }
             if (!replaceAll && occurrences > 1) {
-                return "Found " + occurrences + " occurrences of old_string; either provide more surrounding context "
-                        + "to make it unique, or set replace_all=true.";
+                return failResult("Found " + occurrences + " occurrences of old_string; either provide more surrounding context "
+                        + "to make it unique, or set replace_all=true.");
             }
 
             String updated = replaceAll
@@ -137,23 +137,24 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             String registerNote = WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "编辑文件");
 
-            StringBuilder result = new StringBuilder();
-            result.append("已编辑文件: ").append(filePath).append('\n');
-            result.append("替换次数: ").append(replaceAll ? occurrences : 1).append('\n');
-            result.append("字符变化: ").append(original.length()).append(" -> ").append(updated.length());
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", filePath.toString());
+            data.put("replacements", replaceAll ? occurrences : 1);
+            data.put("charsBefore", original.length());
+            data.put("charsAfter", updated.length());
             if (StringUtils.isNotBlank(registerNote)) {
-                result.append('\n').append(registerNote);
+                data.put("registerNote", registerNote);
             }
-            return result.toString();
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_edit failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_edit io error, input={}", requestId(), input, e);
-            return "workspace_edit failed to edit file";
+            return failResult("workspace_edit failed to edit file");
         } catch (Exception e) {
             log.error("{} workspace_edit error, input={}", requestId(), input, e);
-            return "workspace_edit execute failed";
+            return failResult("workspace_edit execute failed");
         }
     }
 

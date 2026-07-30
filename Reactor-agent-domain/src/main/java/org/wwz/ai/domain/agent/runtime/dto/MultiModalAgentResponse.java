@@ -26,6 +26,18 @@ public class MultiModalAgentResponse {
     private Boolean isFinal;
     private String toolCallId;
 
+    /**
+     * 细粒度过程阶段：task/route/retrieve_round/summarize/plan_next/merge/rerank/answer/final/error。
+     */
+    private String stage;
+
+    /**
+     * 阶段附加元数据（round、hitCount 等）。
+     */
+    private Object meta;
+
+    private String requestId;
+
     @Data
     @Builder
     @NoArgsConstructor

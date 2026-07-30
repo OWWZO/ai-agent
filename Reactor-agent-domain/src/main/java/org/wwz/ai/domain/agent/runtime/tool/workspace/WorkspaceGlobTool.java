@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime.tool.workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,48 +53,49 @@ public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
                 basePath = requireAllowedPath(params);
             }
             if (!Files.isDirectory(basePath)) {
-                return "workspace_glob 只支持目录路径: " + basePath;
+                return failResult("workspace_glob 只支持目录路径: " + basePath);
             }
             Object patternValue = params.get("pattern");
             if (patternValue == null || String.valueOf(patternValue).isBlank()) {
-                return "pattern is required";
+                return failResult("pattern is required");
             }
 
             String pattern = String.valueOf(patternValue).trim();
             Pattern matcher = buildGlobPattern(pattern);
-            StringBuilder result = new StringBuilder();
-            result.append("目录: ").append(basePath).append('\n');
-            result.append("模式: ").append(pattern).append('\n');
-            result.append("命中:\n");
-
+            List<String> files = new ArrayList<>();
+            boolean truncated = false;
             try (var pathStream = Files.walk(basePath)) {
                 List<Path> matchedPaths = pathStream
                         .filter(Files::isRegularFile)
                         .filter(path -> matcher.matcher(toRelativePath(basePath, path)).matches())
                         .limit(workspaceRuntimeOptions.getMaxGlobResults() + 1L)
                         .toList();
-                boolean truncated = matchedPaths.size() > workspaceRuntimeOptions.getMaxGlobResults();
+                truncated = matchedPaths.size() > workspaceRuntimeOptions.getMaxGlobResults();
                 List<Path> displayPaths = truncated
                         ? matchedPaths.subList(0, workspaceRuntimeOptions.getMaxGlobResults())
                         : matchedPaths;
 
                 for (Path matchedPath : displayPaths) {
-                    result.append("- ").append(toRelativePath(basePath, matchedPath)).append('\n');
-                }
-                if (truncated) {
-                    result.append("[已截断，超过最大匹配数 ").append(workspaceRuntimeOptions.getMaxGlobResults()).append("]\n");
+                    files.add(toRelativePath(basePath, matchedPath));
                 }
             }
-            return result.toString();
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", basePath.toString());
+            data.put("pattern", pattern);
+            data.put("files", files);
+            if (truncated) {
+                data.put("truncated", Boolean.TRUE);
+            }
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_glob failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_glob io error, input={}", requestId(), input, e);
-            return "workspace_glob execute failed";
+            return failResult("workspace_glob execute failed");
         } catch (Exception e) {
             log.error("{} workspace_glob error, input={}", requestId(), input, e);
-            return "workspace_glob execute failed";
+            return failResult("workspace_glob execute failed");
         }
     }
 }

@@ -137,11 +137,15 @@ public class PlanningTool implements BaseTool {
         Function<Map<String, Object>, String> handler = commandHandlers.get(command);
         if (handler != null) {
             String observation = handler.apply(params);
-            return ToolResultPayload.structured(
-                    observation,
-                    observation,
-                    lastStructuredOutput
-            );
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tool", "planning");
+            data.put("ok", Boolean.TRUE);
+            data.put("command", command);
+            data.put("message", observation);
+            if (lastStructuredOutput != null) {
+                data.put("plan", lastStructuredOutput);
+            }
+            return ToolResultPayload.fromData(data, lastStructuredOutput);
         } else {
             throw new IllegalArgumentException("Unknown command: " + command);
         }

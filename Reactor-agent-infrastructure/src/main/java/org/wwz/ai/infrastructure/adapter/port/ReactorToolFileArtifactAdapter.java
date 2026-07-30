@@ -1,6 +1,10 @@
 package org.wwz.ai.infrastructure.adapter.port;
 
 import com.alibaba.fastjson.JSON;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
@@ -10,8 +14,10 @@ import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 基于 reactor-tool 既有文件接口的文件产物适配器。
@@ -78,14 +84,37 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
 
     @Override
     public String readText(String url, Long timeoutSeconds) throws IOException {
-        return remoteHttpPort.execute(RemoteHttpRequest.builder()
-                .method("GET")
-                .url(url)
-                .connectTimeoutSeconds(timeoutSeconds)
-                .readTimeoutSeconds(timeoutSeconds)
-                .writeTimeoutSeconds(timeoutSeconds)
-                .callTimeoutSeconds(timeoutSeconds)
-                .build());
+        byte[] bytes = readBytes(url, timeoutSeconds);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public byte[] readBytes(String url, Long timeoutSeconds) throws IOException {
+        if (StringUtils.isBlank(url)) {
+            throw new IllegalArgumentException("url must not be blank");
+        }
+        long timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? 60L : timeoutSeconds;
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(timeout, TimeUnit.SECONDS)
+                .readTimeout(timeout, TimeUnit.SECONDS)
+                .writeTimeout(timeout, TimeUnit.SECONDS)
+                .callTimeout(timeout + 30L, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build();
+        Request request = new Request.Builder().url(url).get().build();
+        try (Response response = client.newCall(request).execute()) {
+            ResponseBody body = response.body();
+            if (!response.isSuccessful()) {
+                String err = body == null ? "" : body.string();
+                throw new IOException("HTTP download failed, code=" + response.code()
+                        + ", url=" + url + ", body=" + err);
+            }
+            if (body == null) {
+                return new byte[0];
+            }
+            return body.bytes();
+        }
     }
 
     private FileRequest normalizeRequest(FileRequest request) {

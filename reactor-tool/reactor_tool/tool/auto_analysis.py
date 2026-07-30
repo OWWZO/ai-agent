@@ -6,45 +6,44 @@
 # =====================
 """自动多步数据分析 Agent。
 
-基于 schema 取数工具 + 洞察工具 + CodeAgent，按 max_steps 迭代分析，
+基于 schema 取数工具 + 洞察工具 + 混合协议 Agent：
+- 外层 Function Calling 提交 python_interpreter(code=...)
+- 内层 get_data / insight 等由代码编排
 最终汇总 insights 与 summary 输出 Markdown 报告。
 """
 import asyncio
 from datetime import datetime
 import os
-import re
 from typing import Dict, List
 from dotenv import load_dotenv
 from jinja2 import Template
 import pandas as pd
 
-from smolagents import PythonInterpreterTool, Tool, ActionStep, ActionOutput, ToolCall, FinalAnswerStep
-from smolagents import CodeAgent
-
 from reactor_tool.util.log_util import timer
 from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.prompt_util import get_prompt
-from reactor_tool.tool.code_interpreter import RawOpenAICompatHTTPModel
 
 from reactor_tool.model.context import AnalysisContext
 
 from reactor_tool.tool.analysis_component.schema_data import get_schema
 from reactor_tool.tool.analysis_component.insights import InsightType
-from reactor_tool.tool.analysis_component.analysis_tool import GetDataTool, DataTransTool, InsightTool, SaveInsightTool, FinalAnswerTool
+from reactor_tool.tool.analysis_component.analysis_tool import (
+    GetDataTool,
+    DataTransTool,
+    InsightTool,
+    SaveInsightTool,
+    FinalAnswerTool,
+)
+from reactor_tool.tool.analysis_component.analysis_fc_agent import (
+    AnalysisFCCodeAgent,
+    AnalysisStepEvent,
+)
 
 
 load_dotenv()
 
 
 pd.set_option("display.max_columns", None)
-
-# 分析 Agent 允许 import 的科学计算栈
-authorized_imports=[
-    "pandas", "numpy",
-    "statsmodels", "statsmodels.*",
-    "scipy", "scipy.*",
-    "sklearn", "sklearn.*",
-]
 
 
 _RESULT_TEMPLATE = """# {{ task }}  
@@ -71,7 +70,7 @@ _RESULT_TEMPLATE = """# {{ task }}
 
 
 class AutoAnalysisAgent(object):
-    """自动数据分析：拉取 schema → 构建 AnalysisContext → CodeAgent 多步分析。"""
+    """自动数据分析：拉取 schema → 构建 AnalysisContext → FC 交代码 Agent 多步分析。"""
 
     def __init__(self, max_steps: int = 10, stream: bool = False, queue: asyncio.Queue = None):
         # 流式事件队列
@@ -123,61 +122,90 @@ class AutoAnalysisAgent(object):
             instructions=instructions,
             context=context,
             max_steps=self.max_steps,
-            return_full_result=False,
         )
-        result = agent.run(task=context.task, stream=self.stream)
-        
+        result_stream = agent.run(task=context.task, stream=True)
+
         await self.queue.put({"requestId": context.request_id, "data": f"\n# 分析过程  \n", "isFinal": False})
-        if self.stream:
-            step = 1
-            await self.queue.put({"requestId": context.request_id, "data": f"\n## 分析步骤 {step}  \n", "isFinal": False})
-            for chunk in result:
-                if isinstance(chunk, ActionStep) and chunk.model_output:
-                    if step > 1:
-                        await self.queue.put({"requestId": context.request_id, "data": f"\n## 分析步骤 {step}  \n", "isFinal": False})
-                    await self.queue.put({"requestId": context.request_id, "data": chunk.model_output.replace("Thought:", "\n").split("<code>")[0], "isFinal": False})
-                    if code := re.search(r"<code>(.*)</code>", chunk.model_output, re.S):
-                        await self.queue.put({"requestId": context.request_id, "data": f"\n```python\n{code.group(1).strip()}\n```\n", "isFinal": False})
-                    step += 1
-                elif isinstance(chunk, ToolCall):
-                    continue
-                elif isinstance(chunk, ActionOutput):
-                    continue
-                elif isinstance(chunk, FinalAnswerStep):
-                    return chunk.output
-                else:
-                    pass
-        else:
-            return result
+        final_output = None
+        for event in result_stream:
+            if not isinstance(event, AnalysisStepEvent):
+                continue
+            await self.queue.put({
+                "requestId": context.request_id,
+                "data": f"\n## 分析步骤 {event.step}  \n",
+                "isFinal": False,
+            })
+            if event.thought:
+                await self.queue.put({
+                    "requestId": context.request_id,
+                    "data": f"\n{event.thought}\n",
+                    "isFinal": False,
+                })
+            if event.code:
+                await self.queue.put({
+                    "requestId": context.request_id,
+                    "data": f"\n```python\n{event.code}\n```\n",
+                    "isFinal": False,
+                })
+            if event.observation:
+                preview = event.observation
+                if len(preview) > 2500:
+                    preview = preview[:2500] + "\n..."
+                await self.queue.put({
+                    "requestId": context.request_id,
+                    "data": f"\n### 执行结果\n```\n{preview}\n```\n",
+                    "isFinal": False,
+                })
+            if event.is_final:
+                final_output = event.output
+                break
+
+        if final_output is None:
+            return {
+                "insights": context.insights or [],
+                "summary": "分析未返回最终结论",
+            }
+        if isinstance(final_output, dict):
+            return final_output
+        return {
+            "insights": context.insights or [],
+            "summary": str(final_output),
+        }
 
     @staticmethod
     def trans_result(task, content):
-        return Template(_RESULT_TEMPLATE).render(task=task, insights=content.get("insights", []), summary=content.get("summary", "无"))
+        if not isinstance(content, dict):
+            content = {"insights": [], "summary": str(content)}
+        return Template(_RESULT_TEMPLATE).render(
+            task=task,
+            insights=content.get("insights", []),
+            summary=content.get("summary", "无"),
+        )
 
 
 def create_agent(
-        context: AnalysisContext, 
-        tools: List[Tool] = [GetDataTool, DataTransTool, InsightTool, SaveInsightTool, FinalAnswerTool], 
-        instructions: str= None,
+        context: AnalysisContext,
+        instructions: str = None,
         max_steps: int = 10,
-        return_full_result: bool = False,
-) -> CodeAgent:
-    model = os.getenv("ANALYSIS_MODEL", "gpt-4.1")
-    base_url = os.getenv("OPENAI_BASE_URL")
-    api_key = os.getenv("OPENAI_API_KEY")
-    _model = RawOpenAICompatHTTPModel(
-        model_id=model,
-        api_base=base_url,
-        api_key=api_key,
-    )
-    
-    return CodeAgent(
-        model=_model,
-        instructions=instructions,
-        tools=[PythonInterpreterTool(authorized_imports=authorized_imports)] \
-            + [tool(context=context) for tool in tools],
-        additional_authorized_imports=authorized_imports,
-        max_steps=max_steps,
-        return_full_result=return_full_result,
-    )
+) -> AnalysisFCCodeAgent:
+    """构建混合协议分析 Agent：外层仅 FC python_interpreter，业务工具注入代码沙箱。"""
+    inner_tools = {
+        "get_data": GetDataTool(context=context),
+        "data_trans": DataTransTool(context=context),
+        "insight_analysis": InsightTool(context=context),
+        "save_insight": SaveInsightTool(context=context),
+        "final_answer": FinalAnswerTool(context=context),
+    }
+    # smolagents Tool 的 name 属性即调用名；保持 map key 与 name 一致
+    for name, tool in list(inner_tools.items()):
+        if getattr(tool, "name", None) and tool.name != name:
+            inner_tools[tool.name] = tool
 
+    return AnalysisFCCodeAgent(
+        instructions=instructions or "",
+        inner_tools=inner_tools,
+        max_steps=max_steps,
+        model_id=os.getenv("ANALYSIS_MODEL") or os.getenv("DEFAULT_MODEL"),
+        api_base=os.getenv("OPENAI_BASE_URL"),
+        api_key=os.getenv("OPENAI_API_KEY"),
+    )

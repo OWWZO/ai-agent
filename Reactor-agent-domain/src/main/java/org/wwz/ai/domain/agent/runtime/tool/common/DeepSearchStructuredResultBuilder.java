@@ -104,12 +104,15 @@ public class DeepSearchStructuredResultBuilder {
     public ToolResultPayload buildPayload(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
         DeepSearchToolOutput output = buildOutput(normalizedAnswer);
-        return ToolResultPayload.builder()
-                .toolResult(normalizedAnswer)
-                .llmObservation(buildLlmObservation(normalizedAnswer))
-                .structuredOutput(output)
-                .failed(Boolean.FALSE)
+        // 用对象 llmData，由中央 serialize_for_llm 出 JSON（不再预填 prose/JSON 字符串）
+        DeepSearchObservationOutput observation = DeepSearchObservationOutput.builder()
+                .tool("deep_search")
+                .query(query)
+                .subQueries(new ArrayList<>(decomposedQueries))
+                .results(buildObservationResults())
+                .answerSummary(truncate(normalizedAnswer, OBSERVATION_ANSWER_MAX_LEN))
                 .build();
+        return ToolResultPayload.fromData(observation, output);
     }
 
     /**

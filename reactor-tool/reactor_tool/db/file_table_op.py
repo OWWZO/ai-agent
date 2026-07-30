@@ -44,14 +44,31 @@ class _FileDB(object):
     async def save_by_data(self, file: UploadFile, scope: str = None) -> str:
         """将 UploadFile 二进制写入本地，返回落盘路径。"""
         file_name = file.filename
-        file_data = file.file.read()
+        # 必须二进制读取；await file.read() 兼容已消费/未 seek 的 stream
+        try:
+            await file.seek(0)
+        except Exception:
+            try:
+                file.file.seek(0)
+            except Exception:
+                pass
+        file_data = await file.read()
+        if not file_data:
+            # fallback sync read once more after seek
+            try:
+                file.file.seek(0)
+                file_data = file.file.read()
+            except Exception:
+                file_data = b""
+        if not file_data:
+            raise ValueError(f"uploaded file is empty: {file_name}")
         safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope)) if scope else ""
         save_directory = self._work_dir if not safe_scope else os.path.join(self._work_dir, safe_scope)
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
         save_path = os.path.join(save_directory, file_name)
         with open(save_path, "wb") as f:
-             f.write(file_data)
+            f.write(file_data)
         return save_path
 
 

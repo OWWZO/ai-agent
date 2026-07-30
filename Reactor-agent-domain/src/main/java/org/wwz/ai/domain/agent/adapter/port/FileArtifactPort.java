@@ -28,6 +28,12 @@ public interface FileArtifactPort {
 
     /**
      * 读取指定 URL 的文本内容。
+     * <p>仅适合文本文件；二进制请用 {@link #readBytes(String, Long)}。
      */
     String readText(String url, Long timeoutSeconds) throws IOException;
+
+    /**
+     * 读取指定 URL 的原始字节（xlsx/pdf/图片等二进制附件必须走此接口）。
+     */
+    byte[] readBytes(String url, Long timeoutSeconds) throws IOException;
 }

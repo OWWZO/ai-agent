@@ -52,9 +52,11 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
       }
       break;
     case "code":
-      if (resultMap?.code || (resultMap?.codeOutput && resultMap?.isFinal)) {
-        const text = resultMap?.code || resultMap?.codeOutput;
-        markDownContent = `\`\`\`python\n${text}\n\`\`\``;
+      // 细粒度过程区（任务/思考/代码/执行输出）落在 codeOutput；仅有 code 时兜底为 python 代码块
+      if (resultMap?.codeOutput) {
+        markDownContent = resultMap.codeOutput;
+      } else if (resultMap?.code) {
+        markDownContent = `\`\`\`python\n${resultMap.code}\n\`\`\``;
       }
       break;
     case "markdown":

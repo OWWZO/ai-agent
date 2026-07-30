@@ -164,12 +164,15 @@ public class StreamResponseHandler {
         // 元数据
         String[] finishReason = new String[1];   // 结束原因
         LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
+        int[] chunkCount = new int[]{0};
+        int[] toolDeltaCount = new int[]{0};
 
         // 订阅数据流
         flux.subscribe(
             // === 处理每个数据块 ===
             response -> {
                 try {
+                    chunkCount[0]++;
                     // 提取文本内容
                     Generation generation = response != null ? response.getResult() : null;
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
@@ -177,6 +180,7 @@ public class StreamResponseHandler {
 
                     // 收集工具调用片段（先于推送，以便 arm 过程文本推送）
                     if (output != null && output.getToolCalls() != null) {
+                        toolDeltaCount[0] += output.getToolCalls().size();
                         mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
                     }
                     if (!thoughtPushArmed[0] && !toolCallAccumulators.isEmpty()) {
@@ -245,10 +249,25 @@ public class StreamResponseHandler {
                         }
                     }
 
-                    // 空响应校验
+                    // 空响应校验：无文本且无可用 tool_call（常见于上游空流、解析丢 tool 片段、模型拒答）
                     if (StringUtils.isBlank(content) && !hasToolCalls) {
-                        future.completeExceptionally(
-                            new IllegalArgumentException("Empty response from streaming LLM"));
+                        String requestId = context == null ? "-" : context.getRequestId();
+                        log.warn("{} empty streaming tool-call response: chunks={}, toolDeltas={}, " +
+                                        "accumulators={}, finishReason={}, usage={}",
+                                requestId,
+                                chunkCount[0],
+                                toolDeltaCount[0],
+                                toolCallAccumulators.size(),
+                                finishReason[0],
+                                usageHolder[0] == null ? null : usageHolder[0].getTotalTokens());
+                        String detail = String.format(
+                                "Empty response from streaming LLM (chunks=%d, toolDeltas=%d, accumulators=%d, finishReason=%s). " +
+                                        "Check model endpoint, tools schema size, and whether tool_call deltas were dropped.",
+                                chunkCount[0],
+                                toolDeltaCount[0],
+                                toolCallAccumulators.size(),
+                                finishReason[0]);
+                        future.completeExceptionally(new IllegalArgumentException(detail));
                         return;
                     }
 
@@ -322,7 +341,19 @@ public class StreamResponseHandler {
                                 Map<String, ToolCallAccumulator> toolCallAccumulators) {
         int index = 0;
         for (AssistantMessage.ToolCall toolCall : toolCalls) {
-            String key = StringUtils.defaultIfBlank(toolCall.id(), toolCall.name() + "#" + index);
+            // Prefer stable id. When id is blank (some OpenAI-compatible deltas), pin by stream order
+            // so name/arguments fragments still merge onto the same accumulator.
+            String key = StringUtils.isNotBlank(toolCall.id())
+                    ? toolCall.id()
+                    : ("idx#" + index);
+            // If this fragment carries an id that already exists, use it; also migrate idx key when id appears.
+            if (StringUtils.isNotBlank(toolCall.id()) && toolCallAccumulators.containsKey(toolCall.id())) {
+                key = toolCall.id();
+            } else if (StringUtils.isNotBlank(toolCall.id()) && toolCallAccumulators.containsKey("idx#" + index)) {
+                ToolCallAccumulator existing = toolCallAccumulators.remove("idx#" + index);
+                toolCallAccumulators.put(toolCall.id(), existing);
+                key = toolCall.id();
+            }
             ToolCallAccumulator accumulator = toolCallAccumulators.computeIfAbsent(key, ignored -> new ToolCallAccumulator());
             accumulator.merge(toolCall, chatResponseMapper);
             index++;

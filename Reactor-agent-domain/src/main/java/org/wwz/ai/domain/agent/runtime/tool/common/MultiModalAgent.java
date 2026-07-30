@@ -243,6 +243,10 @@ public class MultiModalAgent implements BaseTool {
             if (!StringUtils.hasText(data) || "[DONE]".equals(data) || data.startsWith("heartbeat")) {
                 return;
             }
+            if (finalSent) {
+                // 终态已推送后忽略后续 stop/final 重复包
+                return;
+            }
 
             MultiModalAgentResponse streamResponse;
             try {
@@ -299,6 +303,12 @@ public class MultiModalAgent implements BaseTool {
             return false;
         }
 
+        // 细粒度 stage 事件：过程走 knowledge，答案 token 仍累加 fullContent，final 仅推答案 markdown
+        if (StringUtils.hasText(streamResponse.getStage())) {
+            return handleStageEvent(streamResponse, messageId, digitalEmployee, incrementalBuffer,
+                    fullContent, artifactSource);
+        }
+
         if (streamResponse.getChoices() != null && !streamResponse.getChoices().isEmpty()) {
             MultiModalAgentResponse.Choice choice = streamResponse.getChoices().get(0);
             MultiModalAgentResponse.Delta delta = choice.getDelta();
@@ -308,14 +318,16 @@ public class MultiModalAgent implements BaseTool {
                 emitIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
             }
             if ("stop".equalsIgnoreCase(choice.getFinishReason())) {
-                emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
-                return true;
+                // 不在此终态：等待 stage=final，以便拼上图片 markdown 等尾部片段
+                flushIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
             }
             return false;
         }
 
         appendContent(streamResponse.getData(), incrementalBuffer, fullContent);
-        if (Boolean.TRUE.equals(streamResponse.getIsFinal())) {
+        if (Boolean.TRUE.equals(streamResponse.getIsFinal())
+                && !StringUtils.hasText(streamResponse.getStage())) {
+            flushIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
             emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
             return true;
         }
@@ -323,6 +335,72 @@ public class MultiModalAgent implements BaseTool {
             emitIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
         }
         return false;
+    }
+
+    /**
+     * stage 事件分流：过程 Markdown 立即 knowledge；answer/final 不写答案 buffer 的过程标题；error 失败终态。
+     */
+    private boolean handleStageEvent(MultiModalAgentResponse streamResponse,
+                                     String messageId,
+                                     String digitalEmployee,
+                                     StringBuilder incrementalBuffer,
+                                     StringBuilder fullContent,
+                                     ToolArtifactSource artifactSource) {
+        String stage = streamResponse.getStage();
+        String data = streamResponse.getData();
+
+        if ("error".equalsIgnoreCase(stage)) {
+            flushIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
+            String message = StringUtils.hasText(data) ? data : "MRAG 检索失败";
+            if (fullContent.length() == 0) {
+                fullContent.append(message);
+            }
+            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
+            return true;
+        }
+
+        if ("final".equalsIgnoreCase(stage) || Boolean.TRUE.equals(streamResponse.getIsFinal())) {
+            flushIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
+            // final.data 通常为空，答案真相在 fullContent（token 累加）
+            if (StringUtils.hasText(data) && fullContent.length() == 0) {
+                fullContent.append(data);
+            }
+            emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
+            return true;
+        }
+
+        if ("answer".equalsIgnoreCase(stage)) {
+            // 「# 生成答案」标题进过程区，不进入答案正文
+            if (StringUtils.hasText(data)) {
+                emitProcessKnowledge(messageId, digitalEmployee, data);
+            }
+            return false;
+        }
+
+        // task/route/retrieve_round/summarize/plan_next/merge/rerank …
+        if (StringUtils.hasText(data)) {
+            emitProcessKnowledge(messageId, digitalEmployee, data);
+        }
+        return false;
+    }
+
+    private void emitProcessKnowledge(String messageId, String digitalEmployee, String markdown) {
+        if (!StringUtils.hasText(markdown)) {
+            return;
+        }
+        MultiModalAgentResponse response = MultiModalAgentResponse.builder()
+                .data(markdown)
+                .isFinal(false)
+                .stage("process")
+                .build();
+        attachToolCallId(response);
+        agentContext.getPrinter().send(messageId, "knowledge", response, digitalEmployee, false);
+    }
+
+    private void flushIncrementalKnowledge(String messageId,
+                                           String digitalEmployee,
+                                           StringBuilder incrementalBuffer) {
+        emitIncrementalKnowledge(messageId, digitalEmployee, incrementalBuffer);
     }
 
     private void appendContent(String content, StringBuilder incrementalBuffer, StringBuilder fullContent) {

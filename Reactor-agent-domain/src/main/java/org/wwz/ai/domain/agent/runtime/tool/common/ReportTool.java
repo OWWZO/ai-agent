@@ -224,9 +224,30 @@ public class ReportTool implements BaseTool {
                                                   CodeInterpreterResponse codeResponse,
                                                   String result) {
         String normalizedResult = StringUtils.defaultString(result);
-        return ToolResultPayload.structured(
-                normalizedResult,
-                normalizedResult,
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "report_tool");
+        data.put("ok", Boolean.TRUE);
+        data.put("fileType", codeRequest.getFileType());
+        data.put("summary", abbreviate(normalizedResult, 160));
+        data.put("content", normalizedResult);
+        if (codeResponse != null && codeResponse.getFileInfo() != null && !codeResponse.getFileInfo().isEmpty()) {
+            List<Map<String, Object>> produced = new ArrayList<>();
+            for (CodeInterpreterResponse.FileInfo info : codeResponse.getFileInfo()) {
+                if (info == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("file_name", info.getFileName());
+                String url = StringUtils.firstNonBlank(info.getDomainUrl(), info.getOssUrl());
+                if (StringUtils.isNotBlank(url)) {
+                    row.put("url", url);
+                }
+                produced.add(row);
+            }
+            data.put("produced_files", produced);
+        }
+        return ToolResultPayload.fromData(
+                data,
                 ReportToolOutput.builder()
                         .fileType(codeRequest.getFileType())
                         .summary(abbreviate(normalizedResult, 160))

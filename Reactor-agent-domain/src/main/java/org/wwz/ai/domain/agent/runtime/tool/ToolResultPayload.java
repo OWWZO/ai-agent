@@ -24,8 +24,15 @@ public class ToolResultPayload {
 
     /**
      * 回传给主智能体继续推理的 observation。
+     * 若为空且提供了 {@link #llmData}，由 {@link ToolObservationSerializer} 在 BaseAgent 中生成。
      */
     private String llmObservation;
+
+    /**
+     * 对齐 LeAgent {@code ToolResult.data} 的结构化载荷。
+     * 成功时由 serialize_for_llm 序列化为 observation；失败时可作为 detail。
+     */
+    private Object llmData;
 
     /**
      * rich tool 强类型输出。
@@ -50,12 +57,38 @@ public class ToolResultPayload {
         return ToolResultPayload.builder()
                 .toolResult(resultText)
                 .llmObservation(resultText)
+                .llmData(resultText)
+                .failed(Boolean.FALSE)
+                .build();
+    }
+
+    /**
+     * 对齐 LeAgent {@code ToolResult.ok(data)}：只带 data，observation 由中央 serialize 生成。
+     */
+    public static ToolResultPayload fromData(Object data) {
+        return ToolResultPayload.builder()
+                .toolResult(data instanceof String text ? text : null)
+                .llmData(data)
+                .failed(Boolean.FALSE)
+                .build();
+    }
+
+    /**
+     * 结构化 ledger 输出 + 主智能体 llmData（observation 由 serialize 生成，不写 prose）。
+     */
+    public static ToolResultPayload fromData(Object data, ToolStructuredOutput structuredOutput) {
+        return ToolResultPayload.builder()
+                .toolResult(data instanceof String text ? text : null)
+                .llmData(data)
+                .structuredOutput(structuredOutput)
                 .failed(Boolean.FALSE)
                 .build();
     }
 
     /**
      * rich tool 强类型输出快捷工厂。
+     * 注意：会预填 llmObservation，BaseAgent 不会再 serialize llmData。
+     * 新工具请优先 {@link #fromData(Object, ToolStructuredOutput)}。
      */
     public static ToolResultPayload structured(String toolResult,
                                                String llmObservation,
@@ -81,6 +114,18 @@ public class ToolResultPayload {
                 .structuredOutput(structuredOutput)
                 .failed(Boolean.TRUE)
                 .errorMsg(errorMsg)
+                .build();
+    }
+
+    /**
+     * 对齐 LeAgent {@code ToolResult.fail(error, data=detail)}。
+     */
+    public static ToolResultPayload failureFrom(String error, Object detail) {
+        return ToolResultPayload.builder()
+                .toolResult(error)
+                .llmData(detail)
+                .failed(Boolean.TRUE)
+                .errorMsg(error)
                 .build();
     }
 }

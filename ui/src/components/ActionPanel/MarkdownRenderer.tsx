@@ -71,7 +71,9 @@ const MarkdownRenderer: ReactorType.FC<{
     isStreaming = false,
     normalizationScope = 'default',
   } = props;
-  const normalizedContent = normalizeMarkdownForDisplay(markDownContent, { scope: normalizationScope });
+  const normalizedContent = normalizeMarkdownForDisplay(markDownContent, {
+    scope: normalizationScope,
+  });
 
   const { scrollToBottom } = usePanelContext() || {};
   const lastScrollAtRef = useRef<number>(0);

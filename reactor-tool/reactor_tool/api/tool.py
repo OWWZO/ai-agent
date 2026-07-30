@@ -6,6 +6,10 @@ Endpoints:
   /embedding/text    /table_rag  /cal_engine  /auto_analysis  /nl2sql
   /sopRecall         /script_runner  /mragQuery
   /document_generate /slides_generate /excel_generator /checklist_generate /template_filler
+  /document_template /theme_designer /chart_generator
+  /csv_processor /excel_reader /html_processor /markdown_processor /text_processor
+  /word_reader /pdf_reader /pdf_structure /citation_extractor /image_ocr
+  /data_aggregate /data_clean /data_merge /data_transform /data_validate /sql_query
 """
 import asyncio
 import contextvars
@@ -111,24 +115,26 @@ async def post_code_interpreter(
             ):
 
                 if isinstance(chunk, CodeOuput):
-                    # 代码块 + 产物文件
+                    # 过程 Markdown 已由上游 str 事件推送；此处保留 code 快照与 .py 产物
                     yield ServerSentEvent(
                         data=json.dumps(
                             {
                                 "requestId": body.request_id,
                                 "code": chunk.code,
                                 "fileInfo": chunk.file_list,
+                                "step": getattr(chunk, "step", 0) or None,
                                 "isFinal": False,
                             },
                             ensure_ascii=False,
                         )
                     )
                 elif isinstance(chunk, ActionOutput):
-                    # 动作 observation
+                    # 最终结论 + 产物；正文也写入 data 便于 Java 累加
                     yield ServerSentEvent(
                         data=json.dumps(
                             {
                                 "requestId": body.request_id,
+                                "data": chunk.content,
                                 "codeOutput": chunk.content,
                                 "fileInfo": chunk.file_list,
                                 "isFinal": True,
@@ -138,6 +144,7 @@ async def post_code_interpreter(
                     )
                     yield ServerSentEvent(data="[DONE]")
                 elif isinstance(chunk, str):
+                    # 任务区 / 过程区 / 步骤思考 / 代码块 / 执行输出（对齐 auto_analysis）
                     acc_content += chunk
                     acc_token += 1
                     if body.stream_mode.mode == "general":
@@ -673,10 +680,18 @@ def _ensure_mrag_session(session_id: str, question: str, kb_scope: str | list[st
     return session
 
 
+def _is_mrag_stage_event(chunk) -> bool:
+    """细粒度过程事件：含 stage 字段，与 OpenAI chunk 区分。"""
+    return isinstance(chunk, dict) and bool(chunk.get("stage"))
+
+
 def _normalize_mrag_chunk(chunk) -> dict | None:
-    """兼容 OpenAI SDK chunk、字典和纯文本三种返回形态。"""
+    """兼容 stage 事件、OpenAI SDK chunk、字典和纯文本。"""
     if chunk is None:
         return None
+
+    if _is_mrag_stage_event(chunk):
+        return chunk
 
     if isinstance(chunk, str):
         return _build_mrag_chunk(chunk)
@@ -736,15 +751,42 @@ async def post_mrag_query(body: MultimodalRAGRequest):
     def generator():
         has_payload = False
         answer_parts = []
+        process_parts = []
         raw_chunks = []
         final_status = "SUCCESS"
         error_message = ""
+        request_id = (getattr(body, "request_id", None) or session_id or "").strip()
         try:
             for chunk in agent.run(body.question, body.image_urls):
                 payload = _normalize_mrag_chunk(chunk)
                 if not payload:
                     continue
                 has_payload = True
+                if _is_mrag_stage_event(payload):
+                    payload = {
+                        **payload,
+                        "requestId": request_id or payload.get("requestId"),
+                    }
+                    raw_chunks.append(payload)
+                    stage = payload.get("stage")
+                    data = payload.get("data") or ""
+                    if stage in {"answer", "final"} and data:
+                        # final 通常 data 为空（答案在 token 流）；answer 标题不算答案正文
+                        if stage == "answer" and data.strip().startswith("# 生成答案"):
+                            process_parts.append(data)
+                        elif stage == "final":
+                            pass
+                        else:
+                            answer_parts.append(data)
+                    elif data:
+                        process_parts.append(data)
+                    yield json.dumps(payload, ensure_ascii=False)
+                    if stage == "error" or payload.get("isFinal"):
+                        if stage == "error":
+                            final_status = "FAILED"
+                            error_message = data or "MRAG 检索失败"
+                    continue
+
                 raw_chunks.append(payload)
                 delta = ((payload.get("choices") or [{}])[0].get("delta") or {}).get("content", "")
                 if delta:
@@ -754,16 +796,43 @@ async def post_mrag_query(body: MultimodalRAGRequest):
             logger.exception("mragQuery timeout")
             final_status = "FAILED"
             error_message = "MRAG 检索超时，请稍后重试。"
+            yield json.dumps(
+                {
+                    "requestId": request_id,
+                    "stage": "error",
+                    "data": error_message,
+                    "isFinal": True,
+                },
+                ensure_ascii=False,
+            )
             yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         except Exception as e:
             logger.exception("mragQuery failed")
             final_status = "FAILED"
             error_message = f"MRAG 检索失败：{e}"
+            yield json.dumps(
+                {
+                    "requestId": request_id,
+                    "stage": "error",
+                    "data": error_message,
+                    "isFinal": True,
+                },
+                ensure_ascii=False,
+            )
             yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         else:
             if not has_payload:
                 final_status = "FAILED"
                 error_message = "MRAG 未返回有效内容。"
+                yield json.dumps(
+                    {
+                        "requestId": request_id,
+                        "stage": "error",
+                        "data": error_message,
+                        "isFinal": True,
+                    },
+                    ensure_ascii=False,
+                )
                 yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         finally:
             if turn and turn_store:
@@ -875,6 +944,241 @@ async def post_template_filler(body: DocgenRequest):
     except Exception as e:
         logger.exception(f"template_filler failed: {e}")
         return _error_response(400, str(e))
+
+
+def _docgen_meta_payload(result: dict) -> dict:
+    """Payload for docgen metadata tools (theme/template list etc.)."""
+    out = _camel_file_payload(result) if result.get("fileInfo") or result.get("outputPath") or result.get("output_path") else {
+        "success": bool(result.get("success", True)),
+        "message": result.get("message") or "ok",
+        "fileInfo": [],
+    }
+    # pass through useful keys for agent observation
+    for k in (
+        "templates", "template", "themes", "theme", "payload", "resolved",
+        "lint_warnings", "colors", "usage", "saved", "deleted", "name", "kind",
+        "path", "rendered", "variables", "chart_type", "format",
+    ):
+        if k in result:
+            out[k] = result[k]
+    return out
+
+
+@router.post("/document_template")
+async def post_document_template(body: DocgenRequest):
+    from reactor_tool.tool.docgen.service import run_document_template
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_document_template(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+    except Exception as e:
+        logger.exception(f"document_template failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/theme_designer")
+async def post_theme_designer(body: DocgenRequest):
+    from reactor_tool.tool.docgen.service import run_theme_designer
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_theme_designer(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+    except Exception as e:
+        logger.exception(f"theme_designer failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/chart_generator")
+async def post_chart_generator(body: DocgenRequest):
+    from reactor_tool.tool.docgen.service import run_chart_generator
+
+    try:
+        request_id, params = _docgen_params(body)
+        result = await run_chart_generator(request_id, params)
+        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+    except Exception as e:
+        logger.exception(f"chart_generator failed: {e}")
+        return _error_response(400, str(e))
+
+
+def _docread_params(body: DocgenRequest) -> tuple:
+    data = body.model_dump(by_alias=False, exclude_none=False)
+    request_id = data.pop("request_id", None) or getattr(body, "request_id", None)
+    data.pop("extra", None)
+    return request_id, data
+
+
+def _docread_payload(result: dict) -> dict:
+    """Normalize docread response for Java BaseTool clients."""
+    file_info = result.get("fileInfo") or result.get("file_info") or []
+    norm_files = []
+    for f in file_info:
+        if not isinstance(f, dict):
+            continue
+        norm_files.append({
+            "fileName": f.get("fileName") or f.get("file_name"),
+            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+        })
+    out = {
+        "success": bool(result.get("success", True)),
+        "message": result.get("message") or "ok",
+        "data": result.get("data"),
+        "fileInfo": norm_files,
+    }
+    return out
+
+
+async def _post_docread(tool_name: str, body: DocgenRequest):
+    from reactor_tool.tool.docread.service import RUNNERS
+
+    runner = RUNNERS.get(tool_name)
+    if runner is None:
+        return _error_response(404, f"unknown docread tool: {tool_name}")
+    try:
+        request_id, params = _docread_params(body)
+        result = await runner(request_id, params)
+        if not result.get("success", True):
+            return JSONResponse(
+                status_code=400,
+                content={"requestId": request_id, **_docread_payload(result)},
+            )
+        return JSONResponse(content={"requestId": request_id, **_docread_payload(result)})
+    except Exception as e:
+        logger.exception(f"{tool_name} failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/csv_processor")
+async def post_csv_processor(body: DocgenRequest):
+    return await _post_docread("csv_processor", body)
+
+
+@router.post("/excel_reader")
+async def post_excel_reader(body: DocgenRequest):
+    return await _post_docread("excel_reader", body)
+
+
+@router.post("/html_processor")
+async def post_html_processor(body: DocgenRequest):
+    return await _post_docread("html_processor", body)
+
+
+@router.post("/markdown_processor")
+async def post_markdown_processor(body: DocgenRequest):
+    return await _post_docread("markdown_processor", body)
+
+
+@router.post("/text_processor")
+async def post_text_processor(body: DocgenRequest):
+    return await _post_docread("text_processor", body)
+
+
+@router.post("/word_reader")
+async def post_word_reader(body: DocgenRequest):
+    return await _post_docread("word_reader", body)
+
+
+@router.post("/pdf_reader")
+async def post_pdf_reader(body: DocgenRequest):
+    return await _post_docread("pdf_reader", body)
+
+
+@router.post("/pdf_structure")
+async def post_pdf_structure(body: DocgenRequest):
+    return await _post_docread("pdf_structure", body)
+
+
+@router.post("/citation_extractor")
+async def post_citation_extractor(body: DocgenRequest):
+    return await _post_docread("citation_extractor", body)
+
+
+@router.post("/image_ocr")
+async def post_image_ocr(body: DocgenRequest):
+    return await _post_docread("image_ocr", body)
+
+
+def _dataprep_params(body: DocgenRequest) -> tuple:
+    data = body.model_dump(by_alias=False, exclude_none=False)
+    request_id = data.pop("request_id", None) or getattr(body, "request_id", None)
+    data.pop("extra", None)
+    return request_id, data
+
+
+def _dataprep_payload(result: dict) -> dict:
+    file_info = result.get("fileInfo") or result.get("file_info") or []
+    norm_files = []
+    for f in file_info:
+        if not isinstance(f, dict):
+            continue
+        norm_files.append({
+            "fileName": f.get("fileName") or f.get("file_name"),
+            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+        })
+    return {
+        "success": bool(result.get("success", True)),
+        "message": result.get("message") or "ok",
+        "data": result.get("data"),
+        "fileInfo": norm_files,
+    }
+
+
+async def _post_dataprep(tool_name: str, body: DocgenRequest):
+    from reactor_tool.tool.dataprep.service import RUNNERS
+
+    runner = RUNNERS.get(tool_name)
+    if runner is None:
+        return _error_response(404, f"unknown dataprep tool: {tool_name}")
+    try:
+        request_id, params = _dataprep_params(body)
+        result = await runner(request_id, params)
+        if not result.get("success", True):
+            return JSONResponse(
+                status_code=400,
+                content={"requestId": request_id, **_dataprep_payload(result)},
+            )
+        return JSONResponse(content={"requestId": request_id, **_dataprep_payload(result)})
+    except Exception as e:
+        logger.exception(f"{tool_name} failed: {e}")
+        return _error_response(400, str(e))
+
+
+@router.post("/data_aggregate")
+async def post_data_aggregate(body: DocgenRequest):
+    return await _post_dataprep("data_aggregate", body)
+
+
+@router.post("/data_clean")
+async def post_data_clean(body: DocgenRequest):
+    return await _post_dataprep("data_clean", body)
+
+
+@router.post("/data_merge")
+async def post_data_merge(body: DocgenRequest):
+    return await _post_dataprep("data_merge", body)
+
+
+@router.post("/data_transform")
+async def post_data_transform(body: DocgenRequest):
+    return await _post_dataprep("data_transform", body)
+
+
+@router.post("/data_validate")
+async def post_data_validate(body: DocgenRequest):
+    return await _post_dataprep("data_validate", body)
+
+
+@router.post("/sql_query")
+async def post_sql_query(body: DocgenRequest):
+    return await _post_dataprep("sql_query", body)
 
 
 def _camel_file_payload(result: dict) -> dict:

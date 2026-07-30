@@ -57,8 +57,9 @@ public class WorkspaceSessionFileMaterializerTest {
 
     @Test
     public void shouldMaterializeSessionFilesIntoWorkspace() throws Exception {
-        Mockito.when(fileArtifactPort.readText("https://file.example.com/notes.md", 60L))
-                .thenReturn("# notes\nhello workspace");
+        byte[] textBytes = "# notes\nhello workspace".getBytes(StandardCharsets.UTF_8);
+        Mockito.when(fileArtifactPort.readBytes("https://file.example.com/notes.md", 60L))
+                .thenReturn(textBytes);
 
         List<String> written = materializer.materialize(agentContext, List.of(
                 FileInformation.builder()
@@ -72,6 +73,27 @@ public class WorkspaceSessionFileMaterializerTest {
         Assert.assertTrue(Files.isRegularFile(target));
         Assert.assertTrue(Files.readString(target, StandardCharsets.UTF_8).contains("hello workspace"));
         Assert.assertTrue(agentContext.getProductFiles().get(0).getDescription().contains("workspace:notes.md"));
+    }
+
+    @Test
+    public void shouldMaterializeBinaryXlsxWithoutUtf8Corruption() throws Exception {
+        // minimal ZIP local file header magic used by real .xlsx
+        byte[] xlsxMagic = new byte[]{0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00};
+        Mockito.when(fileArtifactPort.readBytes("https://file.example.com/data.xlsx", 60L))
+                .thenReturn(xlsxMagic);
+
+        List<String> written = materializer.materialize(agentContext, List.of(
+                FileInformation.builder()
+                        .fileName("data.xlsx")
+                        .ossUrl("https://file.example.com/data.xlsx")
+                        .build()
+        ));
+
+        Assert.assertEquals(List.of("data.xlsx"), written);
+        Path target = workspaceRoot.resolve("data.xlsx");
+        Assert.assertTrue(Files.isRegularFile(target));
+        byte[] onDisk = Files.readAllBytes(target);
+        Assert.assertArrayEquals(xlsxMagic, onDisk);
     }
 
     @Test

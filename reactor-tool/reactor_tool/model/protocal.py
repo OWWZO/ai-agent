@@ -253,6 +253,9 @@ class ScriptRunnerResponse(BaseModel):
 class MultimodalRAGRequest(BaseModel):
     """MRAG 查询请求"""
 
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    request_id: Optional[str] = Field(default="", alias="requestId", description="请求/会话 ID")
     question: str = Field(default="", min_length=1, description="文本检索问题")
     image_urls: List[str] = Field(default_factory=list, description="图片 URL 列表")
     kb_id: Optional[str] = Field(default="", description="知识库 ID，缺省时回退默认知识库")

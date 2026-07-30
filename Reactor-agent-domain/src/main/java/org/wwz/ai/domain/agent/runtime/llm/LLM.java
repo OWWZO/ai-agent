@@ -516,20 +516,46 @@ Prompt prompt = buildPrompt(
                 });
             }
 
-            return streamResponseHandler.handleToolCallStream(
+            CompletableFuture<ToolCallResponse> streamFuture = streamResponseHandler.handleToolCallStream(
                     context,
                     LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
                     startTime,
                     pushToClient
-            )
+            ).orTimeout(timeout, TimeUnit.SECONDS);
+
+            // 空流再开一次 stream；仍失败则留给上层 think 结束
+            return streamFuture.handle((response, throwable) -> {
+                        if (throwable == null) {
+                            return CompletableFuture.completedFuture(response);
+                        }
+                        Throwable root = unwrapCompletionThrowable(throwable);
+                        if (!isEmptyStreamingResponse(root)) {
+                            return CompletableFuture.<ToolCallResponse>failedFuture(root);
+                        }
+                        log.warn("{} empty streaming askTool, retry once non-stream, model={}",
+                                context.getRequestId(), model);
+                        return AgentExecutorSupport.supplyAsync(
+                                runtimeDependencies.requireLlmExecutor(),
+                                "llmAskToolFunctionCallEmptyStreamRetry",
+                                () -> {
+                                    try {
+                                        ChatResponse callResponse = LlmRequestRetry.call(
+                                                retryLabel + ":empty-stream-retry",
+                                                () -> chatModel.call(prompt));
+                                        return responseMapper.toToolCallResponse(callResponse, startTime);
+                                    } catch (Exception e) {
+                                        throw new CompletionException(e);
+                                    }
+                                }).orTimeout(timeout, TimeUnit.SECONDS);
+                    })
+                    .thenCompose(f -> f)
                     .whenComplete((response, throwable) -> {
                         if (throwable == null) {
                             finishLlmInvocation(context, invocationHandle, response, null);
                             return;
                         }
                         finishLlmInvocation(context, invocationHandle, null, unwrapCompletionThrowable(throwable));
-                    })
-                    .orTimeout(timeout, TimeUnit.SECONDS);
+                    });
         } catch (Exception e) {
             log.error("{} Unexpected error in askTool: {}", context.getRequestId(), e.getMessage(), e);
             return failedFuture(e);
@@ -1080,6 +1106,14 @@ Prompt prompt = buildPrompt(
             return throwable.getCause();
         }
         return throwable;
+    }
+
+    private boolean isEmptyStreamingResponse(Throwable throwable) {
+        if (!(throwable instanceof IllegalArgumentException)) {
+            return false;
+        }
+        String message = throwable.getMessage();
+        return message != null && message.startsWith("Empty response from streaming LLM");
     }
 
     private <T> CompletableFuture<T> failedFuture(Exception e) {

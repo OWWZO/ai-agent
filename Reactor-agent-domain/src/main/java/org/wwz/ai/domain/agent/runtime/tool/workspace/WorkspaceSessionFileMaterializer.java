@@ -9,7 +9,6 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,6 +20,8 @@ import java.util.Set;
 /**
  * 将会话上传附件物化到 workspace 本地目录，使 agent 能通过 workspace_* 工具读取。
  * 失败只记日志，不阻断主链路。
+ * <p>
+ * 必须按二进制下载写入：xlsx/pdf/图片等不能用 UTF-8 文本读写，否则 ZIP 包会损坏。
  */
 @Slf4j
 @Component
@@ -28,7 +29,7 @@ import java.util.Set;
 public class WorkspaceSessionFileMaterializer {
 
     private static final long READ_TIMEOUT_SECONDS = 60L;
-    private static final int MAX_FILE_BYTES = 8 * 1024 * 1024;
+    private static final int MAX_FILE_BYTES = 32 * 1024 * 1024;
 
     private final WorkspaceService workspaceService;
     private final FileArtifactPort fileArtifactPort;
@@ -75,13 +76,13 @@ public class WorkspaceSessionFileMaterializer {
                 continue;
             }
             try {
-                String content = fileArtifactPort.readText(sourceUrl, READ_TIMEOUT_SECONDS);
-                if (content == null) {
+                // 始终二进制下载，避免 xlsx/pdf/png 被当文本 UTF-8 转码损坏
+                byte[] bytes = fileArtifactPort.readBytes(sourceUrl, READ_TIMEOUT_SECONDS);
+                if (bytes == null || bytes.length == 0) {
                     log.warn("{} materialize empty content, fileName={}, url={}",
                             agentContext.getRequestId(), fileName, sourceUrl);
                     continue;
                 }
-                byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_FILE_BYTES) {
                     log.warn("{} materialize skip oversized file, fileName={}, size={}",
                             agentContext.getRequestId(), fileName, bytes.length);
@@ -95,8 +96,11 @@ public class WorkspaceSessionFileMaterializer {
                 Files.write(target, bytes);
                 written.add(fileName);
                 usedNames.add(fileName.toLowerCase(Locale.ROOT));
-                log.info("{} materialize session file ok, fileName={}, bytes={}",
-                        agentContext.getRequestId(), fileName, bytes.length);
+                log.info("{} materialize session file ok, fileName={}, bytes={}, magic={}",
+                        agentContext.getRequestId(),
+                        fileName,
+                        bytes.length,
+                        magicHint(bytes));
             } catch (Exception e) {
                 log.warn("{} materialize session file failed, fileName={}, url={}",
                         agentContext.getRequestId(), fileName, sourceUrl, e);
@@ -168,5 +172,17 @@ public class WorkspaceSessionFileMaterializer {
             }
         }
         return null;
+    }
+
+    private static String magicHint(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "empty";
+        }
+        int n = Math.min(4, bytes.length);
+        StringBuilder sb = new StringBuilder(n * 2);
+        for (int i = 0; i < n; i++) {
+            sb.append(String.format("%02x", bytes[i]));
+        }
+        return sb.toString();
     }
 }

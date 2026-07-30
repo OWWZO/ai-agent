@@ -55,11 +55,11 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
             Path filePath = requireWritablePath(params);
             Object contentValue = params.get("content");
             if (contentValue == null) {
-                return "content is required";
+                return failResult("content is required");
             }
             String content = String.valueOf(contentValue);
             if (content.length() > workspaceRuntimeOptions.getMaxWriteChars()) {
-                return "content 超过最大写入字符数 " + workspaceRuntimeOptions.getMaxWriteChars();
+                return failResult("content 超过最大写入字符数 " + workspaceRuntimeOptions.getMaxWriteChars());
             }
 
             Path parent = filePath.getParent();
@@ -90,17 +90,23 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
             String relativePath = toRelativePath(workspaceRoot, filePath);
             String registerNote = WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "写入文件");
-            return "已写入文件: " + filePath + " (" + content.length() + " chars)"
-                    + (StringUtils.isBlank(registerNote) ? "" : "\n" + registerNote);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", filePath.toString());
+            data.put("relativePath", relativePath);
+            data.put("chars", content.length());
+            if (StringUtils.isNotBlank(registerNote)) {
+                data.put("registerNote", registerNote);
+            }
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_write failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_write io error, input={}", requestId(), input, e);
-            return "workspace_write failed to write file";
+            return failResult("workspace_write failed to write file");
         } catch (Exception e) {
             log.error("{} workspace_write error, input={}", requestId(), input, e);
-            return "workspace_write execute failed";
+            return failResult("workspace_write execute failed");
         }
     }
 }

@@ -219,9 +219,30 @@ public class DataAnalysisTool implements BaseTool {
                                                   String data,
                                                   List<CodeInterpreterResponse.FileInfo> fileInfo) {
         String normalizedData = StringUtils.defaultIfBlank(data, "分析结果为空").trim();
-        return ToolResultPayload.structured(
-                normalizedData,
-                normalizedData,
+        Map<String, Object> llmData = new LinkedHashMap<>();
+        llmData.put("tool", "data_analysis");
+        llmData.put("ok", Boolean.TRUE);
+        llmData.put("task", request.getTask());
+        llmData.put("summary", abbreviate(normalizedData, 160));
+        llmData.put("content", normalizedData);
+        if (fileInfo != null && !fileInfo.isEmpty()) {
+            List<Map<String, Object>> produced = new ArrayList<>();
+            for (CodeInterpreterResponse.FileInfo info : fileInfo) {
+                if (info == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("file_name", info.getFileName());
+                String url = StringUtils.firstNonBlank(info.getDomainUrl(), info.getOssUrl());
+                if (StringUtils.isNotBlank(url)) {
+                    row.put("url", url);
+                }
+                produced.add(row);
+            }
+            llmData.put("produced_files", produced);
+        }
+        return ToolResultPayload.fromData(
+                llmData,
                 DataAnalysisToolOutput.builder()
                         .task(request.getTask())
                         .summary(abbreviate(normalizedData, 160))

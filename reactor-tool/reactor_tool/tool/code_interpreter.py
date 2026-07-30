@@ -324,8 +324,38 @@ async def code_interpreter_agent(
         )
 
         if stream:
+            # 与 auto_analysis 对齐：任务区 / 过程区 / 步骤思考 / 代码 / 执行输出 / 结论
+            yield f"# 代码任务  \n{task}  \n"
+            if files:
+                file_lines = "\n".join(
+                    f"- `{item.get('path')}`" for item in files if item.get("path")
+                )
+                yield f"\n## 输入文件  \n{file_lines}\n"
+                abstracts = []
+                for item in files:
+                    abstract = str(item.get("abstract") or "").strip()
+                    if not abstract:
+                        continue
+                    preview = abstract if len(abstract) <= 800 else abstract[:800] + "\n..."
+                    abstracts.append(f"### 预览 `{item.get('path')}`\n\n```\n{preview}\n```")
+                if abstracts:
+                    yield "\n## 数据预览  \n\n" + "\n\n".join(abstracts) + "\n"
+            yield "\n# 执行过程  \n"
+            step_no = 0
             for step in agent.run(task=str(template_task), stream=True, max_steps=10):
                 if isinstance(step, CodeOuput):
+                    step_no += 1
+                    step.step = step_no
+                    yield f"\n## 执行步骤 {step_no}  \n"
+                    if step.thought:
+                        yield f"\n{step.thought}\n"
+                    code_text = str(step.code or "").strip()
+                    if code_text:
+                        yield f"\n```python\n{code_text}\n```\n"
+                    logs = str(step.execution_logs or "").strip()
+                    if logs:
+                        preview = logs if len(logs) <= 2000 else logs[:2000] + "\n..."
+                        yield f"\n### 执行输出\n```\n{preview}\n```\n"
                     file_info = await upload_file(
                         content=step.code,
                         file_name=step.file_name,
@@ -334,7 +364,7 @@ async def code_interpreter_agent(
                     )
                     step.file_list = [file_info]
                     yield step
-                
+
                 elif isinstance(step, FinalAnswerStep):
                     file_list = []
                     for produced_file in agent.get_produced_files():
@@ -355,14 +385,14 @@ async def code_interpreter_agent(
                             request_id=request_id,
                         )
                     )
-
+                    yield "\n# 执行结论  \n"
                     output = ActionOutput(content=step.output, file_list=file_list)
                     yield output
                 elif isinstance(step, ChatMessageStreamDelta):
-                    #yield step.content
+                    # token 级流式不推送，避免刷屏；完整思考在 CodeOuput.thought 中给出
                     pass
                 await asyncio.sleep(0)
-                
+
         else:
             output = agent.run(task=str(template_task))
             yield output

@@ -15,12 +15,12 @@ import {
 import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 import RunPresenceBar from "./RunPresenceBar";
-import { type MarkdownNormalizationScope } from "@/utils/markdown";
 import RunStatus from "@/components/ActionView/RunStatus";
 import {
   isPlanSolveConversation,
   isStructuredConversation,
 } from "@/utils/agentMode";
+import { type MarkdownNormalizationScope } from "@/utils/markdown";
 import {
   buildPlannerRoundsForDisplay,
   syncPlannerVersionCursor,
@@ -40,9 +40,7 @@ type Props = {
   onRegenerate?: () => void;
 };
 
-/**
- * 结构化总结单独启用增强规范化，避免误伤普通聊天和其他 Markdown 预览场景。
- */
+/** 结构化总结单独启用增强规范化，避免误伤普通聊天。 */
 function resolveConclusionMarkdownScope(
   chat: CHAT.ChatItem,
   deepThink: boolean

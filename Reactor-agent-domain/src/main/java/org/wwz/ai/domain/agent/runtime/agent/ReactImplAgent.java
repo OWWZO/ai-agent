@@ -205,7 +205,7 @@ public class ReactImplAgent extends ReActAgent {
             String toolResult = outcome == null ? "" : outcome.getToolResult();
 
             // 步骤3.1：特殊工具结果不推送（如代码解释器、报表工具等，避免前端展示冗余信息）
-            if (!Arrays.asList("code_interpreter", "report_tool", "document_generate", "slides_generate", "excel_generator", "checklist_generate", "template_filler", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide", "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch").contains(command.getFunction().getName())) {
+            if (!Arrays.asList("code_interpreter", "report_tool", "document_generate", "slides_generate", "excel_generator", "checklist_generate", "template_filler", "document_template", "theme_designer", "chart_generator", "file_tool", "deep_search", "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide", "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch").contains(command.getFunction().getName())) {
                 // 推送工具结果到客户端：包含工具名、参数、执行结果
                 printer.send("tool_result", AgentResponse.ToolResult.builder()
                         .toolName(command.getFunction().getName())

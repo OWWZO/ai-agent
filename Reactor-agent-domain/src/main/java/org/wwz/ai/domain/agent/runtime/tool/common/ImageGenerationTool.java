@@ -360,31 +360,36 @@ public class ImageGenerationTool implements BaseTool {
                 .usedFallback(result.getUsedFallback())
                 .fileRefs(toToolFileRefs(result.getFiles()))
                 .build();
-        return ToolResultPayload.structured(summary, buildLlmObservation(summary, result.getFiles()), structuredOutput);
-    }
-
-    /**
-     * URL 必须显式回传给主智能体，才能在后续 document_generate 调用中作为 image.url 使用。
-     */
-    private String buildLlmObservation(String summary, List<WorkspaceImageFile> files) {
-        if (CollectionUtils.isEmpty(files)) {
-            return summary;
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", "image_generation");
+        data.put("ok", Boolean.TRUE);
+        data.put("summary", summary);
+        data.put("prompt", result.getPrompt());
+        data.put("mode", result.getMode());
+        data.put("size", result.getSize());
+        if (result.getBatchCount() != null) {
+            data.put("batchCount", result.getBatchCount());
         }
-        StringBuilder observation = new StringBuilder(summary).append("\n可用于后续 document_generate 的图片引用：");
-        for (WorkspaceImageFile file : files) {
-            if (file == null) {
-                continue;
+        if (!CollectionUtils.isEmpty(result.getFiles())) {
+            List<Map<String, Object>> produced = new ArrayList<>();
+            for (WorkspaceImageFile file : result.getFiles()) {
+                if (file == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("file_name", file.getFileName());
+                row.put("mimeType", file.getMimeType());
+                String url = StringUtil.firstNonBlank(
+                        file.getPreviewUrl(), file.getDomainUrl(), file.getDownloadUrl(), file.getOssUrl());
+                if (StringUtils.isNotBlank(url)) {
+                    row.put("url", url);
+                }
+                produced.add(row);
             }
-            String url = StringUtil.firstNonBlank(
-                    file.getPreviewUrl(), file.getDomainUrl(), file.getDownloadUrl(), file.getOssUrl());
-            if (StringUtils.isBlank(url)) {
-                continue;
-            }
-            observation.append("\n- fileName:").append(StringUtils.defaultString(file.getFileName()))
-                    .append(" mimeType:").append(StringUtils.defaultString(file.getMimeType()))
-                    .append(" url:").append(url);
+            data.put("produced_files", produced);
+            data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
         }
-        return observation.toString();
+        return ToolResultPayload.fromData(data, structuredOutput);
     }
 
     /**

@@ -121,6 +121,16 @@ def _scan_unsafe_code(code: str) -> list[str]:
     return sorted(set(issues))
 
 
+def _extract_thought_text(output_text: str) -> str:
+    """从 LLM 输出中剥离代码块，保留思考/任务描述供 SSE 过程展示。"""
+    if not output_text:
+        return ""
+    text = output_text.replace("Thought:", "\n")
+    text = re.sub(r"<code>.*?</code>", "", text, flags=re.S | re.I)
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    return text.strip()
+
+
 def _format_permission_error_for_agent(error: CodeExecutionPermissionError) -> str:
     """把权限拒绝错误整理成便于 agent 下一步自修的 observation。"""
     lines = [
@@ -391,7 +401,13 @@ class CIAgent(CodeAgent):
                 file_name = f"{matcher.group(1).replace(' ', '')}.py"
             else:
                 file_name = f'{generate_data_id("index")}.py'
-            yield CodeOuput(code=code_action,file_name=file_name)
+            thought = _extract_thought_text(output_text or "")
+            yield CodeOuput(
+                code=code_action,
+                file_name=file_name,
+                thought=thought,
+                execution_logs=execution_logs or "",
+            )
         except Exception as e:
             permission_error = extract_runtime_permission_error(str(e))
             if permission_error is not None:

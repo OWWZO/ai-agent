@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +57,7 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
             }
             Object patternValue = params.get("pattern");
             if (patternValue == null || String.valueOf(patternValue).isBlank()) {
-                return "pattern is required";
+                return failResult("pattern is required");
             }
 
             String searchPattern = String.valueOf(patternValue).trim();
@@ -72,15 +73,11 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
                     candidateFiles = pathStream.filter(Files::isRegularFile).toList();
                 }
             } else {
-                return "workspace_grep 需要文件或目录路径: " + basePath;
+                return failResult("workspace_grep 需要文件或目录路径: " + basePath);
             }
 
-            StringBuilder result = new StringBuilder();
-            result.append("路径: ").append(basePath).append('\n');
-            result.append("匹配: ").append(searchPattern).append('\n');
-            result.append("结果:\n");
-
-            int matchCount = 0;
+            List<Map<String, Object>> matches = new ArrayList<>();
+            boolean truncated = false;
             for (Path filePath : candidateFiles) {
                 List<String> lines;
                 try {
@@ -94,33 +91,38 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
                         String relativePath = displayBasePath == null
                                 ? filePath.getFileName().toString()
                                 : toRelativePath(displayBasePath, filePath);
-                        result.append("- ")
-                                .append(relativePath)
-                                .append(':')
-                                .append(i + 1)
-                                .append(": ")
-                                .append(lines.get(i))
-                                .append('\n');
-                        matchCount++;
-                        if (matchCount >= workspaceRuntimeOptions.getMaxGrepMatches()) {
-                            result.append("[已截断，超过最大匹配数 ")
-                                    .append(workspaceRuntimeOptions.getMaxGrepMatches())
-                                    .append("]\n");
-                            return result.toString();
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("path", relativePath);
+                        row.put("line", i + 1);
+                        row.put("text", lines.get(i));
+                        matches.add(row);
+                        if (matches.size() >= workspaceRuntimeOptions.getMaxGrepMatches()) {
+                            truncated = true;
+                            break;
                         }
                     }
                 }
+                if (truncated) {
+                    break;
+                }
             }
-            return result.toString();
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", basePath.toString());
+            data.put("pattern", searchPattern);
+            data.put("matches", matches);
+            if (truncated) {
+                data.put("truncated", Boolean.TRUE);
+            }
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_grep failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_grep io error, input={}", requestId(), input, e);
-            return "workspace_grep execute failed";
+            return failResult("workspace_grep execute failed");
         } catch (Exception e) {
             log.error("{} workspace_grep error, input={}", requestId(), input, e);
-            return "workspace_grep execute failed";
+            return failResult("workspace_grep execute failed");
         }
     }
 

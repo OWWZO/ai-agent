@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime.tool.workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,47 +52,48 @@ public class WorkspaceListTool extends AbstractWorkspacePathTool {
                 directoryPath = requireAllowedPath(params);
             }
             if (!Files.isDirectory(directoryPath)) {
-                return "workspace_list 只支持目录路径: " + directoryPath;
+                return failResult("workspace_list 只支持目录路径: " + directoryPath);
             }
 
             int maxDepth = Math.max(1, readInt(params, "max_depth", 2));
-            StringBuilder result = new StringBuilder();
-            result.append("目录: ").append(directoryPath).append('\n');
-            result.append("内容:\n");
-
+            List<Map<String, Object>> entriesOut = new ArrayList<>();
+            boolean truncated = false;
             try (var pathStream = Files.walk(directoryPath, maxDepth)) {
                 List<Path> entries = pathStream
                         .filter(path -> !path.equals(directoryPath))
                         .limit(workspaceRuntimeOptions.getMaxListEntries() + 1L)
                         .toList();
-                boolean truncated = entries.size() > workspaceRuntimeOptions.getMaxListEntries();
+                truncated = entries.size() > workspaceRuntimeOptions.getMaxListEntries();
                 List<Path> displayEntries = truncated
                         ? entries.subList(0, workspaceRuntimeOptions.getMaxListEntries())
                         : entries;
 
                 for (Path entry : displayEntries) {
-                    String entryType = Files.isDirectory(entry) ? "DIR" : "FILE";
-                    String relativePath = toRelativePath(directoryPath, entry);
-                    result.append("- [").append(entryType).append("] ").append(relativePath);
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("type", Files.isDirectory(entry) ? "DIR" : "FILE");
+                    row.put("path", toRelativePath(directoryPath, entry));
                     if (Files.isRegularFile(entry)) {
-                        result.append(" (").append(Files.size(entry)).append(" bytes)");
+                        row.put("bytes", Files.size(entry));
                     }
-                    result.append('\n');
-                }
-                if (truncated) {
-                    result.append("[已截断，超过最大条数 ").append(workspaceRuntimeOptions.getMaxListEntries()).append("]\n");
+                    entriesOut.add(row);
                 }
             }
-            return result.toString();
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", directoryPath.toString());
+            data.put("entries", entriesOut);
+            if (truncated) {
+                data.put("truncated", Boolean.TRUE);
+            }
+            return okResult(data);
         } catch (WorkspaceAccessException e) {
             log.warn("{} workspace_list failed, input={}", requestId(), input, e);
-            return e.getMessage();
+            return failResult(e.getMessage());
         } catch (IOException e) {
             log.error("{} workspace_list io error, input={}", requestId(), input, e);
-            return "workspace_list execute failed";
+            return failResult("workspace_list execute failed");
         } catch (Exception e) {
             log.error("{} workspace_list error, input={}", requestId(), input, e);
-            return "workspace_list execute failed";
+            return failResult("workspace_list execute failed");
         }
     }
 }
