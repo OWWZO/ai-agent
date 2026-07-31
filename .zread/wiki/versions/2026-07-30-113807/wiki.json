@@ -1,0 +1,237 @@
+{
+  "id": "2026-07-30-113807",
+  "generated_at": "2026-07-30T03:38:07.4709014Z",
+  "language": "zh",
+  "pages": [
+    {
+      "slug": "1-xiang-mu-gai-lan",
+      "title": "项目概览",
+      "file": "1-xiang-mu-gai-lan.md",
+      "section": "Get Started",
+      "level": "Beginner"
+    },
+    {
+      "slug": "2-kuai-su-kai-shi",
+      "title": "快速开始",
+      "file": "2-kuai-su-kai-shi.md",
+      "section": "Get Started",
+      "level": "Beginner"
+    },
+    {
+      "slug": "3-ji-zhu-zhan-yu-mo-kuai-yi-lai",
+      "title": "技术栈与模块依赖",
+      "file": "3-ji-zhu-zhan-yu-mo-kuai-yi-lai.md",
+      "section": "Get Started",
+      "group": "环境与部署",
+      "level": "Beginner"
+    },
+    {
+      "slug": "4-java-hou-duan-qi-dong-yu-pei-zhi",
+      "title": "Java 后端启动与配置",
+      "file": "4-java-hou-duan-qi-dong-yu-pei-zhi.md",
+      "section": "Get Started",
+      "group": "环境与部署",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "5-python-gong-ju-yun-xing-shi-qi-dong",
+      "title": "Python 工具运行时启动",
+      "file": "5-python-gong-ju-yun-xing-shi-qi-dong.md",
+      "section": "Get Started",
+      "group": "环境与部署",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "6-qian-duan-ui-qi-dong-yu-lian-diao",
+      "title": "前端 UI 启动与联调",
+      "file": "6-qian-duan-ui-qi-dong-yu-lian-diao.md",
+      "section": "Get Started",
+      "group": "环境与部署",
+      "level": "Beginner"
+    },
+    {
+      "slug": "7-shou-ge-fu-za-ren-wu-dui-hua",
+      "title": "首个复杂任务对话",
+      "file": "7-shou-ge-fu-za-ren-wu-dui-hua.md",
+      "section": "Get Started",
+      "group": "上手实践",
+      "level": "Beginner"
+    },
+    {
+      "slug": "8-dian-xing-chang-jing-su-lan",
+      "title": "典型场景速览",
+      "file": "8-dian-xing-chang-jing-su-lan.md",
+      "section": "Get Started",
+      "group": "上手实践",
+      "level": "Beginner"
+    },
+    {
+      "slug": "9-fen-ceng-jia-gou-yu-mo-kuai-zhi-ze",
+      "title": "分层架构与模块职责",
+      "file": "9-fen-ceng-jia-gou-yu-mo-kuai-zhi-ze.md",
+      "section": "Deep Dive",
+      "group": "系统架构",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "10-duan-dao-duan-qing-qiu-liu-zhuan",
+      "title": "端到端请求流转",
+      "file": "10-duan-dao-duan-qing-qiu-liu-zhuan.md",
+      "section": "Deep Dive",
+      "group": "系统架构",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "11-zi-zhi-neng-ti-yuan-cheng-gua-zai-she-ji",
+      "title": "子智能体远程挂载设计",
+      "file": "11-zi-zhi-neng-ti-yuan-cheng-gua-zai-she-ji.md",
+      "section": "Deep Dive",
+      "group": "系统架构",
+      "level": "Advanced"
+    },
+    {
+      "slug": "12-react-zhi-xing-lian-lu",
+      "title": "ReAct 执行链路",
+      "file": "12-react-zhi-xing-lian-lu.md",
+      "section": "Deep Dive",
+      "group": "Agent 执行内核",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "13-plan-execute-zhi-xing-lian-lu",
+      "title": "Plan-Execute 执行链路",
+      "file": "13-plan-execute-zhi-xing-lian-lu.md",
+      "section": "Deep Dive",
+      "group": "Agent 执行内核",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "14-hun-he-mo-shi-yu-dong-tai-replan",
+      "title": "混合模式与动态 Replan",
+      "file": "14-hun-he-mo-shi-yu-dong-tai-replan.md",
+      "section": "Deep Dive",
+      "group": "Agent 执行内核",
+      "level": "Advanced"
+    },
+    {
+      "slug": "15-duo-gong-ju-bing-fa-diao-du",
+      "title": "多工具并发调度",
+      "file": "15-duo-gong-ju-bing-fa-diao-du.md",
+      "section": "Deep Dive",
+      "group": "Agent 执行内核",
+      "level": "Advanced"
+    },
+    {
+      "slug": "16-gong-ju-ji-he-yu-chan-wu-deng-ji",
+      "title": "工具集合与产物登记",
+      "file": "16-gong-ju-ji-he-yu-chan-wu-deng-ji.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "17-deepsearch-yu-webfetch",
+      "title": "DeepSearch 与 WebFetch",
+      "file": "17-deepsearch-yu-webfetch.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "18-codeinterpreter-yu-sha-xiang-zhi-xing",
+      "title": "CodeInterpreter 与沙箱执行",
+      "file": "18-codeinterpreter-yu-sha-xiang-zhi-xing.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "19-report-yu-duo-ge-shi-chan-wu-sheng-cheng",
+      "title": "Report 与多格式产物生成",
+      "file": "19-report-yu-duo-ge-shi-chan-wu-sheng-cheng.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "20-mcp-zhu-ce-yu-xie-yi-gua-pei",
+      "title": "MCP 注册与协议适配",
+      "file": "20-mcp-zhu-ce-yu-xie-yi-gua-pei.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Advanced"
+    },
+    {
+      "slug": "21-skill-ti-xi-yu-jiao-ben-yun-xing",
+      "title": "Skill 体系与脚本运行",
+      "file": "21-skill-ti-xi-yu-jiao-ben-yun-xing.md",
+      "section": "Deep Dive",
+      "group": "工具与能力扩展",
+      "level": "Advanced"
+    },
+    {
+      "slug": "22-hui-hua-gong-zuo-qu-yu-wen-jian-fu-yong",
+      "title": "会话工作区与文件复用",
+      "file": "22-hui-hua-gong-zuo-qu-yu-wen-jian-fu-yong.md",
+      "section": "Deep Dive",
+      "group": "记忆、检索与可观测",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "23-gong-zuo-ji-yi-ya-suo-yu-shang-xia-wen-guan-li",
+      "title": "工作记忆压缩与上下文管理",
+      "file": "23-gong-zuo-ji-yi-ya-suo-yu-shang-xia-wen-guan-li.md",
+      "section": "Deep Dive",
+      "group": "记忆、检索与可观测",
+      "level": "Advanced"
+    },
+    {
+      "slug": "24-mrag-hun-he-jian-suo-yu-zhong-pai",
+      "title": "MRAG 混合检索与重排",
+      "file": "24-mrag-hun-he-jian-suo-yu-zhong-pai.md",
+      "section": "Deep Dive",
+      "group": "记忆、检索与可观测",
+      "level": "Advanced"
+    },
+    {
+      "slug": "25-sop-yu-yi-zhao-hui",
+      "title": "SOP 语义召回",
+      "file": "25-sop-yu-yi-zhao-hui.md",
+      "section": "Deep Dive",
+      "group": "记忆、检索与可观测",
+      "level": "Advanced"
+    },
+    {
+      "slug": "26-zhi-xing-zhang-ben-yu-li-shi-hui-fang",
+      "title": "执行账本与历史回放",
+      "file": "26-zhi-xing-zhang-ben-yu-li-shi-hui-fang.md",
+      "section": "Deep Dive",
+      "group": "记忆、检索与可观测",
+      "level": "Advanced"
+    },
+    {
+      "slug": "27-sse-liu-shi-dui-hua-yu-jie-guo-xuan-ran",
+      "title": "SSE 流式对话与结果渲染",
+      "file": "27-sse-liu-shi-dui-hua-yu-jie-guo-xuan-ran.md",
+      "section": "Deep Dive",
+      "group": "前端与扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "28-gong-zuo-qu-ye-mian-yu-chan-wu-yu-lan",
+      "title": "工作区页面与产物预览",
+      "file": "28-gong-zuo-qu-ye-mian-yu-chan-wu-yu-lan.md",
+      "section": "Deep Dive",
+      "group": "前端与扩展",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "29-zi-ding-yi-gong-ju-yu-zi-zhi-neng-ti-jie-ru",
+      "title": "自定义工具与子智能体接入",
+      "file": "29-zi-ding-yi-gong-ju-yu-zi-zhi-neng-ti-jie-ru.md",
+      "section": "Deep Dive",
+      "group": "前端与扩展",
+      "level": "Advanced"
+    }
+  ]
+}
