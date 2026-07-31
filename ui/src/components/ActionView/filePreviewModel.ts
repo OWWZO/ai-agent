@@ -11,6 +11,10 @@ export interface PreviewRendererFlags {
   useHtml?: boolean;
   useExcel?: boolean;
   useImage?: boolean;
+  usePdf?: boolean;
+  useDocx?: boolean;
+  useLegacyDoc?: boolean;
+  useWord?: boolean;
 }
 
 export function filterPreviewTaskList(taskList?: PanelItemType[]) {
@@ -100,7 +104,14 @@ export function resolvePreviewCanPreview(
   artifactMissing: boolean
 ) {
   return !artifactMissing && Boolean(
-    flags?.useFile || flags?.useHtml || flags?.useExcel || flags?.useImage
+    flags?.useFile ||
+      flags?.useHtml ||
+      flags?.useExcel ||
+      flags?.useImage ||
+      flags?.usePdf ||
+      flags?.useDocx ||
+      flags?.useLegacyDoc ||
+      flags?.useWord
   );
 }
 

@@ -80,6 +80,8 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("SendUserMessage"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("Brief"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("Bash"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("PowerShell"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("WebSearch"));

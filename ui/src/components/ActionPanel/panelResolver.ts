@@ -5,6 +5,10 @@ export interface PanelResolverMessageTypes {
   useHtml?: boolean;
   useImage?: boolean;
   useExcel?: boolean;
+  usePdf?: boolean;
+  useDocx?: boolean;
+  useLegacyDoc?: boolean;
+  useWord?: boolean;
   useFile?: boolean;
   useJSON?: boolean | string;
   isHtml?: boolean;
@@ -29,9 +33,10 @@ type InlineHtmlPanelView = {
 };
 
 type FilePanelView = {
-  type: "file" | "image" | "excel";
+  type: "file" | "image" | "excel" | "pdf" | "docx" | "legacy-doc";
   fileUrl: string;
   fileName?: string;
+  downloadUrl?: string;
   missingReason?: string;
 };
 
@@ -119,6 +124,9 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     useImage,
     isHtml,
     useExcel,
+    usePdf,
+    useDocx,
+    useLegacyDoc,
     useJSON,
     searchList,
     usePpt,
@@ -164,6 +172,7 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
       type: "excel",
       fileUrl: primaryFile?.url || "",
       fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
       missingReason,
     };
   }
@@ -173,6 +182,37 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
       type: "image",
       fileUrl: primaryFile?.url || "",
       fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
+      missingReason,
+    };
+  }
+
+  if (usePdf) {
+    return {
+      type: "pdf",
+      fileUrl: primaryFile?.url || "",
+      fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
+      missingReason,
+    };
+  }
+
+  if (useDocx) {
+    return {
+      type: "docx",
+      fileUrl: primaryFile?.url || "",
+      fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
+      missingReason,
+    };
+  }
+
+  if (useLegacyDoc) {
+    return {
+      type: "legacy-doc",
+      fileUrl: primaryFile?.url || "",
+      fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
       missingReason,
     };
   }
@@ -182,6 +222,7 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
       type: "file",
       fileUrl: primaryFile?.url || "",
       fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
       missingReason,
     };
   }

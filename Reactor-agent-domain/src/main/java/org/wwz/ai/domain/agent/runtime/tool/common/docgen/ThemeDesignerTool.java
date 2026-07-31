@@ -40,8 +40,8 @@ public class ThemeDesignerTool extends AbstractDocGenTool {
         properties.put("heading_font", stringProp("create: heading font name"));
         properties.put("body_font", stringProp("create: body font name"));
         properties.put("east_asia_font", stringProp("create: CJK font e.g. Microsoft YaHei"));
-        properties.put("overrides", Map.of("type", "object", "description", "create: deep-merge overrides"));
-        properties.put("payload", Map.of("type", "object", "description", "save: explicit theme payload"));
+        properties.put("overrides", objectProp("create: deep-merge overrides"));
+        properties.put("payload", objectProp("save: explicit theme payload"));
         properties.put("dry_run", boolProp("create/save: return payload without persisting"));
         return objectSchema(properties, List.of("action"));
     }

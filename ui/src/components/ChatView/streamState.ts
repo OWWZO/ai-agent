@@ -27,10 +27,13 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "task_summary",
   "result",
   "tool_thought",
+  "llm_reasoning",
+  // tool_thought = 过程回复；llm_reasoning = 原生 CoT
   "ask_user_question",
   "plan_approval",
   "plan_mode_entered",
   "session_tasks",
+  "user_brief",
   "ui_patch",
 ]);
 
@@ -145,6 +148,10 @@ export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {
   }
 
   const innerType = eventData.resultMap?.messageType || eventData.messageType;
+  // ui_patch merges into the latest ui_tree; must refresh workspace to pick up mutated tree.
+  if (innerType === "ui_patch") {
+    return true;
+  }
   if (innerType && WORKSPACE_HIDDEN_MESSAGE_TYPES.has(innerType)) {
     return false;
   }

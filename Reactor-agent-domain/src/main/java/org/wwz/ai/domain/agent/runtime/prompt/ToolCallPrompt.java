@@ -8,7 +8,7 @@ package org.wwz.ai.domain.agent.runtime.prompt;
  */
 public class ToolCallPrompt {
 
-    public static final String USER_FACING_REPLY_CONTRACT_MARKER = "USER_FACING_REPLY_CONTRACT_V3";
+    public static final String USER_FACING_REPLY_CONTRACT_MARKER = "USER_FACING_REPLY_CONTRACT_V5";
 
     /**
      * 终答硬约定：response_style + 「有文件则短摘要、不重贴大表」。
@@ -129,10 +129,12 @@ public class ToolCallPrompt {
         if (base == null || base.isEmpty()) {
             return "";
         }
-        // 去掉历史 V1/V2 整块，避免双份约定
+        // 去掉历史 V1–V4 整块，避免双份约定
         for (String legacy : new String[]{
                 "USER_FACING_REPLY_CONTRACT_V1",
-                "USER_FACING_REPLY_CONTRACT_V2"
+                "USER_FACING_REPLY_CONTRACT_V2",
+                "USER_FACING_REPLY_CONTRACT_V3",
+                "USER_FACING_REPLY_CONTRACT_V4"
         }) {
             if (!base.contains(legacy)) {
                 continue;

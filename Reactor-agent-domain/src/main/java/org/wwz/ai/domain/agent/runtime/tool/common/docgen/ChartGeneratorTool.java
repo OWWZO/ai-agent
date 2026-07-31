@@ -30,17 +30,9 @@ public class ChartGeneratorTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
-        Map<String, Object> seriesItem = new LinkedHashMap<>();
-        seriesItem.put("type", "object");
-        seriesItem.put("description", "{name, values:number[]}");
-
-        Map<String, Object> dataProps = new LinkedHashMap<>();
-        dataProps.put("type", "object");
-        dataProps.put("description", "Chart data: categories, series, values, labels, x/y, matrix, row_labels");
-
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("chart_type", stringProp("bar|line|pie|scatter|heatmap|radar|area|histogram|horizontal_bar"));
-        properties.put("data", dataProps);
+        properties.put("data", objectProp("Chart data: categories, series, values, labels, x/y, matrix, row_labels"));
         properties.put("title", stringProp("Chart title"));
         properties.put("x_label", stringProp("X-axis label"));
         properties.put("y_label", stringProp("Y-axis label"));

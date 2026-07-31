@@ -33,6 +33,7 @@ public class WorkingMemoryProjector {
                     .seqNo(seq++)
                     .role(message.getRole().name())
                     .content(message.getContent())
+                    .reasoningContent(message.getReasoningContent())
                     .toolCallId(message.getToolCallId())
                     .toolCallsJson(message.getToolCalls() == null || message.getToolCalls().isEmpty()
                             ? null
@@ -61,9 +62,9 @@ public class WorkingMemoryProjector {
             if (role == RoleType.TOOL) {
                 messages.add(Message.toolMessage(row.getContent(), row.getToolCallId(), row.getBase64Image()));
             } else if (role == RoleType.ASSISTANT && toolCalls != null && !toolCalls.isEmpty()) {
-                messages.add(Message.fromToolCalls(row.getContent(), toolCalls));
+                messages.add(Message.fromToolCalls(row.getContent(), row.getReasoningContent(), toolCalls));
             } else if (role == RoleType.ASSISTANT) {
-                messages.add(Message.assistantMessage(row.getContent(), row.getBase64Image()));
+                messages.add(Message.assistantMessage(row.getContent(), row.getReasoningContent(), row.getBase64Image()));
             } else if (role == RoleType.SYSTEM) {
                 messages.add(Message.systemMessage(row.getContent(), row.getBase64Image()));
             } else {

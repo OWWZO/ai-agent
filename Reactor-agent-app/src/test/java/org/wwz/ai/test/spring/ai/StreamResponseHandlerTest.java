@@ -60,6 +60,42 @@ public class StreamResponseHandlerTest {
     }
 
     @Test
+    public void test_handleToolCallStreamPushesReasoningEvenWithToolCalls() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-reasoning")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(
+                        reasoningChunk("先想清楚", "要查资料",
+                                new AssistantMessage.ToolCall("call-r", "function", "deep_search", "{\"q\":"), null, null),
+                        reasoningChunk("", "再搜",
+                                new AssistantMessage.ToolCall("call-r", "function", "deep_search", "\"x\"}"), "tool_calls", 20)
+                ),
+                System.currentTimeMillis() - 10
+        ).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        Assert.assertEquals("要查资料再搜", response.getReasoningContent());
+        Assert.assertEquals("先想清楚", response.getContent());
+        Assert.assertEquals(1, response.getToolCalls().size());
+        Assert.assertTrue(printer.messages.stream().anyMatch(
+                m -> "llm_reasoning".equals(m.messageType) && Boolean.TRUE.equals(m.isFinal)));
+        Assert.assertTrue(printer.messages.stream().anyMatch(
+                m -> "tool_thought".equals(m.messageType)));
+    }
+
+    @Test
     public void test_handleToolCallStreamAggregatesArgumentsAndFinalContent() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
         ReactorConfig reactorConfig = new ReactorConfig();
@@ -127,15 +163,22 @@ public class StreamResponseHandlerTest {
         return new ChatResponse(List.of(new Generation(assistantMessage)));
     }
 
-    private ChatResponse toolChunk(String content,
-                                   AssistantMessage.ToolCall toolCall,
-                                   String finishReason,
-                                   Integer totalTokens) {
-        AssistantMessage assistantMessage = AssistantMessage.builder()
-                .content(content)
-                .properties(java.util.Map.of())
-                .toolCalls(List.of(toolCall))
-                .build();
+    private ChatResponse reasoningChunk(String content,
+                                        String reasoning,
+                                        AssistantMessage.ToolCall toolCall,
+                                        String finishReason,
+                                        Integer totalTokens) {
+        java.util.Map<String, Object> props = new java.util.LinkedHashMap<>();
+        if (reasoning != null && !reasoning.isBlank()) {
+            props.put("reasoningContent", reasoning);
+        }
+        AssistantMessage.Builder builder = AssistantMessage.builder()
+                .content(content == null ? "" : content)
+                .properties(props);
+        if (toolCall != null) {
+            builder.toolCalls(List.of(toolCall));
+        }
+        AssistantMessage assistantMessage = builder.build();
         if (finishReason == null && totalTokens == null) {
             return new ChatResponse(List.of(new Generation(assistantMessage)));
         }
@@ -149,6 +192,13 @@ public class StreamResponseHandlerTest {
                 .usage(new DefaultUsage(10, totalTokens - 10, totalTokens))
                 .build();
         return new ChatResponse(List.of(new Generation(assistantMessage, generationMetadata)), responseMetadata);
+    }
+
+    private ChatResponse toolChunk(String content,
+                                   AssistantMessage.ToolCall toolCall,
+                                   String finishReason,
+                                   Integer totalTokens) {
+        return reasoningChunk(content, null, toolCall, finishReason, totalTokens);
     }
 
     private static class RecordingPrinter implements Printer {

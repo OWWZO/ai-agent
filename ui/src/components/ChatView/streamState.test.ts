@@ -74,6 +74,23 @@ describe("streamState presence & attention", () => {
     ).toBe(true);
   });
 
+  it("ui_patch 事件会刷新工作区以反映已合并 tree", () => {
+    expect(
+      shouldRefreshWorkspaceTask({
+        messageType: "task",
+        messageId: "m3",
+        taskId: "t1",
+        messageOrder: 3,
+        taskOrder: 1,
+        resultMap: {
+          messageType: "ui_patch",
+          isFinal: true,
+          patches: [{ op: "replace", path: "/root/props/title", value: "X" }],
+        },
+      } as unknown as MESSAGE.EventData)
+    ).toBe(true);
+  });
+
   it("发送后首包前应为 queued/thinking 存在感", () => {
     const presence = resolveRunPresence({
       loading: true,

@@ -59,6 +59,12 @@ public class Message {
     private String content;
 
     /**
+     * 模型原生 CoT / reasoning_content（与 content 独立）。
+     * DeepSeek / Qwen3 等推理模型在 tool-call 轮次回传时需要此字段。
+     */
+    private String reasoningContent;
+
+    /**
      * 图片数据（Base64编码）
      * 用途：支撑多模态交互，存储图片的Base64编码字符串（无需额外文件传输）；
      * 场景：用户上传商品图片提问、大模型返回图文回答等；
@@ -121,9 +127,14 @@ public class Message {
      * 示例：Message.assistantMessage("以下是产品市场竞争力分析...", null);
      */
     public static Message assistantMessage(String content, String base64Image) {
+        return assistantMessage(content, null, base64Image);
+    }
+
+    public static Message assistantMessage(String content, String reasoningContent, String base64Image) {
         return Message.builder()
                 .role(RoleType.ASSISTANT)
                 .content(content)
+                .reasoningContent(reasoningContent)
                 .base64Image(base64Image)
                 .build();
     }
@@ -153,9 +164,14 @@ public class Message {
      * 场景：大模型思考后决定调用工具，通过该方法创建包含工具调用指令的助手消息。
      */
     public static Message fromToolCalls(String content, List<ToolCall> toolCalls) {
+        return fromToolCalls(content, null, toolCalls);
+    }
+
+    public static Message fromToolCalls(String content, String reasoningContent, List<ToolCall> toolCalls) {
         return Message.builder()
                 .role(RoleType.ASSISTANT)
                 .content(content)
+                .reasoningContent(reasoningContent)
                 .toolCalls(toolCalls)
                 .build();
     }

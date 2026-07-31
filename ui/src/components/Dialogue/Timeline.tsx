@@ -38,6 +38,7 @@ import { isTimelineToolActive } from "@/components/ChatView/streamState";
 import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
+import UserBriefCard from "./UserBriefCard";
 import GenUiInline from "@/components/genui/GenUiInline";
 import { getGenUiTreeFromTask, resolveDisplayGenUiTree } from "@/utils/chat/genuiState";
 
@@ -69,7 +70,7 @@ const taskTitleClass =
 const taskMetaClass =
   "truncate text-[13px] text-[var(--chat-text-soft)]";
 
-const ToolItem: FC<ToolItemProps> = memo(({
+export const ToolItem: FC<ToolItemProps> = memo(({
   tool,
   chat,
   changePlan,
@@ -98,14 +99,26 @@ const ToolItem: FC<ToolItemProps> = memo(({
         </div>
       );
     }
-    case "tool_thought": {
+    case "llm_reasoning": {
       const streamingThought = !tool.resultMap?.isFinal;
       return (
         <div className="mt-[8px] rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/38 px-3 py-2.5">
-          <Reasoning isStreaming={streamingThought} defaultOpen={streamingThought}>
+          <Reasoning isStreaming={streamingThought} defaultOpen={false}>
             <ReasoningTrigger />
             <ReasoningContent>{tool.toolThought || ""}</ReasoningContent>
           </Reasoning>
+        </div>
+      );
+    }
+    case "tool_thought": {
+      // 助手过程回复：常显，不当深度思考
+      const text = (tool.toolThought || "").trim();
+      if (!text) {
+        return null;
+      }
+      return (
+        <div className="mt-2 px-1 text-[14px] leading-7 text-[var(--chat-text)]">
+          {text}
         </div>
       );
     }
@@ -117,6 +130,9 @@ const ToolItem: FC<ToolItemProps> = memo(({
     }
     case "session_tasks": {
       return <SessionTaskList tool={tool} />;
+    }
+    case "user_brief": {
+      return <UserBriefCard tool={tool} />;
     }
     case "ui_tree": {
       const tree = resolveDisplayGenUiTree(tool) || getGenUiTreeFromTask(tool);
@@ -406,7 +422,7 @@ const SubAgentTimelineCard: FC<{
 
 SubAgentTimelineCard.displayName = "SubAgentTimelineCard";
 
-const DeepSearchPreviewItem: FC<{
+export const DeepSearchPreviewItem: FC<{
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;

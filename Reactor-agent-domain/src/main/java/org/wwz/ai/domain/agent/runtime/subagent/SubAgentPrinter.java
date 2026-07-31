@@ -53,7 +53,7 @@ public class SubAgentPrinter implements Printer {
             return;
         }
         // 子 Agent 思考过程默认不刷主时间线，只保留工具活动（对齐 cc-haha 折叠）
-        if ("tool_thought".equals(messageType)) {
+        if ("tool_thought".equals(messageType) || "llm_reasoning".equals(messageType)) {
             return;
         }
         Object enrichedMessage = enrichMessage(message);

@@ -29,9 +29,9 @@ public class DataValidateTool extends AbstractDocReadTool {
     @Override
     protected Map<String, Object> defaultParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("schema", Map.of("type", "object", "description", "Column schema rules"));
-        properties.put("rules", Map.of("type", "array", "description", "Extra validation rules", "items", Map.of("type", "object")));
-        properties.put("data", Map.of("type", "array", "items", Map.of("type", "object")));
+        properties.put("schema", objectProp("Column schema rules"));
+        properties.put("rules", Map.of("type", "array", "description", "Extra validation rules", "items", objectProp("Validation rule")));
+        properties.put("data", Map.of("type", "array", "items", objectProp("Row object")));
         properties.put("source_path", stringProp("Input file path under workspace"));
         return objectSchema(properties, List.of());
     }

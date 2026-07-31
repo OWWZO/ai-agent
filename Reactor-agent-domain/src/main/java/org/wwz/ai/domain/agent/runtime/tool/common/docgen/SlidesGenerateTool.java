@@ -30,10 +30,6 @@ public class SlidesGenerateTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
-        Map<String, Object> slideItem = new LinkedHashMap<>();
-        slideItem.put("type", "object");
-        slideItem.put("description", "One slide: layout, title, body markdown, optional image/chart/quote fields.");
-
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. deck.pptx."));
         properties.put("title", stringProp("Deck title (auto title slide when first slide is not layout=title)."));
@@ -41,7 +37,7 @@ public class SlidesGenerateTool extends AbstractDocGenTool {
         properties.put("author", stringProp("Author."));
         properties.put("theme", stringProp("Theme, default executive_light."));
         properties.put("aspect", stringProp("Aspect ratio, default 16:9."));
-        properties.put("slides", arrayProp("Non-empty array of slide objects.", slideItem));
+        properties.put("slides", arrayProp("Non-empty array of slide objects.", objectProp("One slide: layout, title, body markdown, optional image/chart/quote fields.")));
         properties.put("fileName", stringProp("Alias of output_path."));
         return objectSchema(properties, List.of("slides"));
     }

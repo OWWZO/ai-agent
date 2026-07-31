@@ -81,14 +81,49 @@ export function mergeUiPatchIntoTaskGroup(
 
   // Light patch task for timeline breadcrumb (no full re-render needed elsewhere).
   const patchRm: any = patchTask.resultMap || {};
-  patchTask.resultMap = {
-    ...patchRm,
-    mergedIntoTree: true,
-    patchCount: patches.length,
-    isFinal: true,
-  };
+  // Preserve nested patches for getGenUiPatchesFromTask / breadcrumb count.
+  if (patchRm.resultMap && typeof patchRm.resultMap === "object") {
+    patchTask.resultMap = {
+      ...patchRm,
+      resultMap: {
+        ...patchRm.resultMap,
+        mergedIntoTree: true,
+        patchCount: patches.length,
+        isFinal: true,
+      },
+      mergedIntoTree: true,
+      patchCount: patches.length,
+      isFinal: true,
+    };
+  } else {
+    patchTask.resultMap = {
+      ...patchRm,
+      mergedIntoTree: true,
+      patchCount: patches.length,
+      isFinal: true,
+    };
+  }
 
   return true;
+}
+
+/**
+ * Search task groups from newest to oldest and merge patch into the latest ui_tree.
+ * Plan/multi-step runs may place tree and patch in different task groups.
+ */
+export function mergeUiPatchIntoTasks(
+  tasks: Array<Array<CHAT.Task | MESSAGE.Task>> | undefined | null,
+  patchTask: CHAT.Task | MESSAGE.Task
+): boolean {
+  if (!Array.isArray(tasks) || !tasks.length) return false;
+  for (let g = tasks.length - 1; g >= 0; g--) {
+    const group = tasks[g];
+    if (!Array.isArray(group) || !group.length) continue;
+    if (mergeUiPatchIntoTaskGroup(group, patchTask)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

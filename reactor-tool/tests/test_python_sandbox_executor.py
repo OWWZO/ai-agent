@@ -116,6 +116,75 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             finally:
                 executor.close()
 
+    def test_should_roundtrip_non_ascii_code_and_stdout(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                # Chinese + Windows path-like backslashes inside string literals.
+                result = executor.execute(
+                    "msg = '网络分析\\\\路径'\n"
+                    "print(msg)\n"
+                    "print('完成')\n"
+                )
+                self.assertIn("网络分析", result.stdout)
+                self.assertIn("完成", result.stdout)
+            finally:
+                executor.close()
+
+    def test_should_sanitize_surrogate_stdout_without_crashing_protocol(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                # Lone surrogate in stdout must not kill the JSON protocol.
+                result = executor.execute("print('ok\\udcadend')")
+                self.assertIn("ok", result.stdout)
+                # Protocol stays alive for a follow-up request.
+                second = executor.execute("print(123)")
+                self.assertIn("123", second.stdout)
+            finally:
+                executor.close()
+
+    def test_should_rewrite_ndarray_ptp_for_numpy2(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=30)
+            try:
+                result = executor.execute(
+                    "import numpy as np\n"
+                    "strength = np.array([1.0, 3.0, 2.0])\n"
+                    "span = strength.ptp()\n"
+                    "print(span)\n"
+                )
+                self.assertIn("2.0", result.stdout)
+            finally:
+                executor.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,8 +40,14 @@ export const resolveMarkdownContent = (taskItem?: PanelItemType) => {
         markDownContent = toolResult?.toolResult || "";
       }
       break;
+    case "llm_reasoning":
+      markDownContent =
+        (taskItem as { reasoningContent?: string }).reasoningContent ||
+        taskItem.toolThought ||
+        "";
+      break;
     case "tool_thought":
-      // 兜底支持思考内容，避免异常状态下工作区出现“有标题但无内容”的空白面板。
+      // 助手过程回复，不是思考
       markDownContent = taskItem.toolThought || "";
       break;
     case "tool_call":

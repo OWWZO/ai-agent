@@ -6,6 +6,7 @@ each execution request.
 """
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
 import json
@@ -15,6 +16,22 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any
+
+# Force UTF-8 on the protocol streams. The parent launches this module with
+# ``-I`` (isolated), which ignores PYTHONIOENCODING; on Windows the default
+# console encoding is often GBK and would corrupt non-ASCII JSON payloads.
+def _configure_stdio() -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_configure_stdio()
 
 # The runner is launched as a script with ``-I`` from an arbitrary workspace.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -94,8 +111,18 @@ def _produced_files(workspace_root: Path,
     return produced
 
 
+def _sanitize_text(value: str) -> str:
+    """Drop lone surrogates so UTF-8 / JSON never blow up on Windows."""
+    if not value:
+        return value
+    return value.encode("utf-8", errors="replace").decode("utf-8")
+
+
 def _write_response(response: dict[str, Any]) -> None:
-    sys.__stdout__.write(json.dumps(response, ensure_ascii=False) + "\n")
+    # ensure_ascii=True keeps the wire protocol pure ASCII so a mismatched
+    # child-side encoding cannot produce Invalid \\escape on the next request.
+    payload = json.dumps(response, ensure_ascii=True, default=str)
+    sys.__stdout__.write(payload + "\n")
     sys.__stdout__.flush()
 
 
@@ -107,10 +134,46 @@ def _truncate(value: str, limit: int = 200_000) -> tuple[str, bool]:
 
 def _safe_json(value: Any) -> Any:
     try:
-        json.dumps(value)
+        json.dumps(value, ensure_ascii=True, default=str)
         return value
     except (TypeError, ValueError):
-        return str(value)
+        return _sanitize_text(str(value))
+
+
+def _sandbox_np_ptp(arr: Any, *args: Any, **kwargs: Any) -> Any:
+    """NumPy 2.x removed ndarray.ptp; route legacy calls through np.ptp."""
+    import numpy as np
+
+    return np.ptp(arr, *args, **kwargs)
+
+
+class _PtpCallRewriter(ast.NodeTransformer):
+    """Rewrite ``obj.ptp(...)`` into ``__sandbox_np_ptp__(obj, ...)``.
+
+    ``numpy.ndarray.ptp`` is a removed stub on NumPy 2.x and the C type is
+    immutable, so monkey-patching is impossible.
+    """
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        node = self.generic_visit(node)
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "ptp":
+            return ast.copy_location(
+                ast.Call(
+                    func=ast.Name(id="__sandbox_np_ptp__", ctx=ast.Load()),
+                    args=[func.value, *node.args],
+                    keywords=list(node.keywords),
+                ),
+                node,
+            )
+        return node
+
+
+def _compile_user_code(source: str):
+    tree = ast.parse(source, filename="<code_interpreter>", mode="exec")
+    tree = _PtpCallRewriter().visit(tree)
+    ast.fix_missing_locations(tree)
+    return compile(tree, "<code_interpreter>", "exec")
 
 
 def main() -> int:
@@ -132,6 +195,7 @@ def main() -> int:
                 globals_env = {"__name__": "__sandbox__"}
                 globals_env.update(policy.to_runtime_variables())
                 globals_env.update(build_runtime_helpers(policy))
+                globals_env["__sandbox_np_ptp__"] = _sandbox_np_ptp
                 globals_env.update(dict(request.get("initial_variables") or {}))
                 _write_response({"type": "ready"})
                 continue
@@ -156,14 +220,15 @@ def main() -> int:
             try:
                 with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                     with activate_runtime_io_guard(policy):
-                        exec(compile(str(request.get("code") or ""), "<code_interpreter>", "exec"), globals_env)
+                        source = str(request.get("code") or "")
+                        exec(_compile_user_code(source), globals_env)
             except BaseException as exc:
                 status = "error"
-                error = str(exc)
-                stderr.write(traceback.format_exc())
+                error = _sanitize_text(str(exc))
+                stderr.write(_sanitize_text(traceback.format_exc()))
             after = _snapshot_workspace_files(workspace_root)
-            stdout_text, stdout_truncated = _truncate(stdout.getvalue())
-            stderr_text, stderr_truncated = _truncate(stderr.getvalue())
+            stdout_text, stdout_truncated = _truncate(_sanitize_text(stdout.getvalue()))
+            stderr_text, stderr_truncated = _truncate(_sanitize_text(stderr.getvalue()))
             _write_response({
                 "type": "result",
                 "status": status,
@@ -182,8 +247,8 @@ def main() -> int:
                 "type": "result",
                 "status": "crash",
                 "stdout": "",
-                "stderr": traceback.format_exc(),
-                "error": str(exc),
+                "stderr": _sanitize_text(traceback.format_exc()),
+                "error": _sanitize_text(str(exc)),
                 "produced_files": [],
             })
     return 0

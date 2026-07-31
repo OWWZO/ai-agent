@@ -200,6 +200,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .id(record.getLlmInvocationId())
                     .status(record.getStatus())
                     .responseText(record.getResponseText())
+                    .reasoningContent(record.getReasoningContent())
                     .toolCallCount(defaultZero(record.getToolCallCount()))
                     .promptTokens(defaultZero(record.getPromptTokens()))
                     .completionTokens(defaultZero(record.getCompletionTokens()))

@@ -2,13 +2,29 @@ import { copyText, downloadFile, formatTimestamp, showMessage } from "@/utils";
 import { keyBy } from "lodash";
 import React, { useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
-import { FileRenderer, HTMLRenderer, ImageRenderer, PanelItemType, TableRenderer } from "../ActionPanel";
+import {
+  FileRenderer,
+  HTMLRenderer,
+  ImageRenderer,
+  PanelItemType,
+  PdfRenderer,
+  TableRenderer,
+  WordRenderer,
+} from "../ActionPanel";
 import { useBoolean, useMemoizedFn } from "ahooks";
 import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getTaskFiles, isImageFileLike } from "@/utils/taskArtifacts";
+import {
+  getTaskFiles,
+  isBinaryPreviewFileLike,
+  isDocxFileLike,
+  isImageFileLike,
+  isLegacyDocFileLike,
+  isPdfFileLike,
+  isTextCopyableFileLike,
+} from "@/utils/taskArtifacts";
 import {
   FileText,
   Download,
@@ -37,16 +53,21 @@ const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_ana
 
 const getFileIcon = (type: string) => {
   switch (type) {
-    case 'csv':
-    case 'xlsx':
-    case 'xls':
+    case "csv":
+    case "xlsx":
+    case "xls":
       return <FileSpreadsheet className="h-4 w-4 text-emerald-500" />;
-    case 'html':
-    case 'code':
+    case "html":
+    case "code":
       return <FileCode className="h-4 w-4 text-blue-500" />;
-    case 'md':
-    case 'markdown':
-    case 'txt':
+    case "pdf":
+      return <FileText className="h-4 w-4 text-red-500" />;
+    case "doc":
+    case "docx":
+      return <FileText className="h-4 w-4 text-blue-600" />;
+    case "md":
+    case "markdown":
+    case "txt":
       return <FileText className="h-4 w-4 text-gray-500" />;
     default:
       return <FileIcon className="h-4 w-4 text-gray-400" />;
@@ -95,16 +116,18 @@ const FileList: React.FC<{
   const downloadUrl =
     fileItem && "downloadUrl" in fileItem ? fileItem.downloadUrl : undefined;
   const isImageFile = Boolean(fileItem && isImageFileLike(fileItem));
+  const canCopyText = Boolean(fileItem && isTextCopyableFileLike(fileItem));
+  const isBinaryFile = Boolean(fileItem && isBinaryPreviewFileLike(fileItem));
 
   const copy = useMemoizedFn(async () => {
-    if (!fileItem?.url) return;
+    if (!fileItem?.url || !canCopyText) return;
     startCopying();
     try {
       const response = await fetch(fileItem.url);
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok) throw new Error("Network response was not ok");
       const data = await response.text();
       copyText(data);
-      showMessage()?.success('复制成功');
+      showMessage()?.success("复制成功");
     } finally {
       stopCopying();
     }
@@ -177,7 +200,7 @@ const FileList: React.FC<{
     );
   }
 
-  // File Detail View
+  // File Detail View — 与 ActionPanel / useMsgTypes 同一套类型分支
   const renderContent = () => {
     if (isImageFile) {
       return (
@@ -190,15 +213,67 @@ const FileList: React.FC<{
       );
     }
 
+    if (isPdfFileLike(fileItem)) {
+      return (
+        <PdfRenderer
+          fileUrl={fileItem.url}
+          fileName={fileItem.name}
+          downloadUrl={downloadUrl || fileItem.url}
+          missingReason={missingReason}
+          className="h-full"
+        />
+      );
+    }
+
+    if (isLegacyDocFileLike(fileItem)) {
+      return (
+        <WordRenderer
+          fileUrl={fileItem.url}
+          fileName={fileItem.name}
+          downloadUrl={downloadUrl || fileItem.url}
+          missingReason={missingReason}
+          legacyOnly
+          className="h-full"
+        />
+      );
+    }
+
+    if (isDocxFileLike(fileItem)) {
+      return (
+        <WordRenderer
+          fileUrl={fileItem.url}
+          fileName={fileItem.name}
+          downloadUrl={downloadUrl || fileItem.url}
+          missingReason={missingReason}
+          className="h-full"
+        />
+      );
+    }
+
     switch (fileItem.type) {
-      case 'ppt':
-      case 'html':
+      case "ppt":
+      case "pptx":
+      case "html":
+      case "htm":
         return <HTMLRenderer htmlUrl={fileItem.url} className="h-full" />;
-      case 'csv':
-      case 'xlsx':
-        return <TableRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
+      case "csv":
+      case "xlsx":
+      case "xls":
+        return (
+          <TableRenderer
+            fileUrl={fileItem.url}
+            fileName={fileItem.name}
+            missingReason={missingReason}
+          />
+        );
       default:
-        return <FileRenderer fileUrl={fileItem.url} fileName={fileItem.name} />;
+        return (
+          <FileRenderer
+            fileUrl={fileItem.url}
+            fileName={fileItem.name}
+            missingReason={missingReason}
+          />
+        );
     }
   };
 
@@ -236,7 +311,7 @@ const FileList: React.FC<{
             </TooltipContent>
           </Tooltip>
 
-          {!isImageFile && !['xlsx', 'xls'].includes(fileItem.type) && (
+          {canCopyText && !isBinaryFile && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

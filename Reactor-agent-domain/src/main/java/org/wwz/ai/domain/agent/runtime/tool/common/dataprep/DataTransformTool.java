@@ -33,14 +33,14 @@ public class DataTransformTool extends AbstractDocReadTool {
         properties.put("transformations", Map.of(
                 "type", "array",
                 "description", "Transform ops: rename, cast, map_values, derive, select, reorder, drop, string_transform, ...",
-                "items", Map.of("type", "object")
+                "items", objectProp("Transform operation")
         ));
         properties.put("operations", Map.of(
                 "type", "array",
                 "description", "Alias of transformations",
-                "items", Map.of("type", "object")
+                "items", objectProp("Transform operation")
         ));
-        properties.put("data", Map.of("type", "array", "items", Map.of("type", "object")));
+        properties.put("data", Map.of("type", "array", "items", objectProp("Row object")));
         properties.put("source_path", stringProp("Input file path under workspace"));
         properties.put("output_format", stringProp("records | dict"));
         return objectSchema(properties, List.of());

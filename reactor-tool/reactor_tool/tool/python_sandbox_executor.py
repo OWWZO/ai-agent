@@ -107,6 +107,7 @@ class PythonSandboxExecutor:
             stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             cwd=str(output_dir),
             env=_sandbox_environment(),
             creationflags=creation_flags,
@@ -132,7 +133,9 @@ class PythonSandboxExecutor:
         process = self._process
         if process is None or process.stdin is None or process.stdout is None:
             raise RuntimeError("Python sandbox runner is unavailable")
-        process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        # ASCII-only wire format: immune to Windows GBK/UTF-8 stdin mismatches
+        # when the child is launched with ``-I`` (PYTHONIOENCODING ignored).
+        process.stdin.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
         process.stdin.flush()
         response_line = _read_line_with_timeout(process.stdout, self._timeout_seconds)
         if response_line is None:

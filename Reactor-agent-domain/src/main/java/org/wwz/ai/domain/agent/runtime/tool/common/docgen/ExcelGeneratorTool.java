@@ -30,15 +30,11 @@ public class ExcelGeneratorTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
-        Map<String, Object> sheetItem = new LinkedHashMap<>();
-        sheetItem.put("type", "object");
-        sheetItem.put("description", "Sheet definition: name, headers, data (2D array), formulas, charts, styles, etc.");
-
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. data.xlsx."));
-        properties.put("sheets", arrayProp("Array of sheet definitions (required).", sheetItem));
+        properties.put("sheets", arrayProp("Array of sheet definitions (required).", objectProp("Sheet definition: name, headers, data (2D array), formulas, charts, styles, etc.")));
         properties.put("preset", stringProp("Optional preset, e.g. financial."));
-        properties.put("workbook_properties", Map.of("type", "object", "description", "Workbook metadata: title/author/subject/company."));
+        properties.put("workbook_properties", objectProp("Workbook metadata: title/author/subject/company."));
         properties.put("fileName", stringProp("Alias of output_path."));
         return objectSchema(properties, List.of("sheets"));
     }

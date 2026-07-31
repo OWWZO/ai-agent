@@ -98,7 +98,7 @@
 
   /* Layout */
   --chat-sidebar-width: 280px;
-  --chat-content-width: 900px;
+  --chat-content-width: 960px;
   --header-height: 72px;
   --input-height: 80px;
 
@@ -804,6 +804,101 @@ ol {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* Cursor-style agent timeline (from product demo motion) */
+.agent-step-timeline {
+  --timeline-meta: color-mix(in oklab, var(--chat-text-muted) 92%, transparent);
+  --timeline-soft: color-mix(in oklab, var(--chat-text-soft) 88%, transparent);
+  --timeline-rail: color-mix(in oklab, var(--chat-border) 70%, transparent);
+  font-feature-settings: "tnum" 1;
+}
+
+.agent-step-timeline [data-slot="collapsible-content"] {
+  overflow: hidden;
+}
+
+.agent-step-timeline [data-slot="collapsible-content"][data-state="open"] {
+  animation: timelineCollapseOpen 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.agent-step-timeline [data-slot="collapsible-content"][data-state="closed"] {
+  animation: timelineCollapseClose 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+@keyframes timelineCollapseOpen {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes timelineCollapseClose {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+.timeline-segment-enter {
+  animation: timelineSegmentEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes timelineSegmentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.timeline-tool-row {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.timeline-tool-row:hover {
+  background-color: color-mix(in oklab, var(--chat-interactive-hover) 80%, transparent);
+}
+
+.timeline-duration {
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-assistant-reply {
+  color: var(--chat-text);
+  font-size: 15px;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
+}
+
+.timeline-thinking-label {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: color-mix(in oklab, var(--chat-text-soft) 95%, var(--chat-text));
+}
+
+.timeline-group-title {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: color-mix(in oklab, var(--chat-text-soft) 90%, var(--chat-text));
+}
+
+.timeline-rail {
+  border-left: 1px solid var(--timeline-rail);
 }
 
 /* Thinking pulse animation */

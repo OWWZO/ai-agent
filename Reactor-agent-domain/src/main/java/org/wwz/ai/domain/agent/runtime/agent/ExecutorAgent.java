@@ -10,13 +10,14 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 工具调用代理 - 处理工具/函数调用的基础代理类
@@ -71,40 +72,38 @@ public class ExecutorAgent extends ReActAgent {
             getMemory().addMessage(Message.userMessage(seed, null));
         }
         try {
-            // 获取带工具选项的响应
+            // 获取带工具选项的响应；超时等瞬态错误走指数退避重试
             log.info("{} executor ask tool {}", context.getRequestId(), JSON.toJSONString(availableTools));
-            CompletableFuture<LLM.ToolCallResponse> future = getLlm().askTool(
-                    context,
-                    getMemory().getMessages(),
-                    Message.systemMessage(getSystemPrompt(), null),
-                    availableTools,
-                    ToolChoice.AUTO, null, false, 300
+            LLM.ToolCallResponse response = LlmRequestRetry.call(
+                    "executor-think:" + context.getRequestId(),
+                    () -> awaitAskTool(getLlm().askTool(
+                            context,
+                            getMemory().getMessages(),
+                            Message.systemMessage(getSystemPrompt(), null),
+                            availableTools,
+                            ToolChoice.AUTO, null, false, 300
+                    ))
             );
-
-            LLM.ToolCallResponse response = future.get();
             setToolCalls(response.getToolCalls());
 
-            // 记录响应信息
+            if (response.getReasoningContent() != null && !response.getReasoningContent().isBlank()) {
+                printer.send(org.wwz.ai.domain.agent.runtime.llm.ReasoningContentExtractor.EVENT_TYPE,
+                        response.getReasoningContent());
+            }
             if (response.getContent() != null && !response.getContent().trim().isEmpty()) {
-                String thinkResult = response.getContent();
-                String subType = "taskThought";
                 if (toolCalls.isEmpty()) {
                     Map<String, Object> taskSummary = new HashMap<>();
                     taskSummary.put("taskSummary", response.getContent());
                     taskSummary.put("fileList", context.getTaskProductFiles());
-                    thinkResult = JSON.toJSONString(taskSummary);
-                    subType = "taskSummary";
                     printer.send("task_summary", taskSummary);
                 } else {
                     printer.send("tool_thought", response.getContent());
                 }
-
             }
 
-            // 创建并添加助手消息
             Message assistantMsg = response.getToolCalls() != null && !response.getToolCalls().isEmpty() && !"struct_parse".equals(llm.getFunctionCallType()) ?
-                    Message.fromToolCalls(response.getContent(), response.getToolCalls()) :
-                    Message.assistantMessage(response.getContent(), null);
+                    Message.fromToolCalls(response.getContent(), response.getReasoningContent(), response.getToolCalls()) :
+                    Message.assistantMessage(response.getContent(), response.getReasoningContent(), null);
             getMemory().addMessage(assistantMsg);
 
         } catch (Exception e) {
@@ -184,6 +183,22 @@ public class ExecutorAgent extends ReActAgent {
             throw new IllegalStateException("ExecutorAgent 缺少 ReactorRuntimeDependencies");
         }
         return context.getRuntimeDependencies();
+    }
+
+    private static LLM.ToolCallResponse awaitAskTool(
+            java.util.concurrent.CompletableFuture<LLM.ToolCallResponse> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 
 }

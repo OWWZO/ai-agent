@@ -39,8 +39,11 @@ public class LlmInvocation {
     /** 模型名 */
     private String modelName;
 
-    /** 完整响应文本 */
+    /** 完整响应文本（content，面向用户/过程文） */
     private String responseText;
+
+    /** 模型原生 CoT / reasoning_content（与 content 独立） */
+    private String reasoningContent;
 
     /** 工具调用数量 */
     private Integer toolCallCount;

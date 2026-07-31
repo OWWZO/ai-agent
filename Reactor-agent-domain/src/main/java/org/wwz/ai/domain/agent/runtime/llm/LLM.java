@@ -199,6 +199,12 @@ public class LLM {
                             new TypeReference<List<Map<String, Object>>>() {
                             });
                     messageMap.put("tool_calls", toolCallsMap);
+                    if (StringUtils.isNotBlank(message.getReasoningContent())) {
+                        messageMap.put("reasoning_content", message.getReasoningContent());
+                    }
+                    if (message.getContent() != null) {
+                        messageMap.put("content", message.getContent());
+                    }
                 }
             } else if (StringUtils.isNotBlank(message.getToolCallId())) {
                 ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
@@ -220,6 +226,9 @@ public class LLM {
             } else {
                 messageMap.put("role", message.getRole().getValue());
                 messageMap.put("content", message.getContent());
+                if (StringUtils.isNotBlank(message.getReasoningContent())) {
+                    messageMap.put("reasoning_content", message.getReasoningContent());
+                }
             }
             formattedMessages.add(messageMap);
         }
@@ -357,13 +366,18 @@ public class LLM {
                 return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", () -> {
                     try {
                         ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
-                        String content = responseMapper.toText(response);
+                        ReasoningContentExtractor.SplitResult split =
+                                ReasoningContentExtractor.splitFromChatResponse(response);
+                        String content = split.hasContent()
+                                ? split.content()
+                                : responseMapper.toText(response);
                         LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
                         finishLlmInvocation(
                                 context,
                                 invocationHandle,
                                 ExecutionLedgerConstants.STATUS_SUCCESS,
                                 content,
+                                split.reasoningContent(),
                                 0,
                                 usage,
                                 resolveFinishReason(response),
@@ -987,6 +1001,7 @@ Prompt prompt = buildPrompt(
                     handle,
                     ExecutionLedgerConstants.resolveFailureStatus(throwable),
                     null,
+                    null,
                     0,
                     null,
                     null,
@@ -1008,6 +1023,7 @@ Prompt prompt = buildPrompt(
                 handle,
                 ExecutionLedgerConstants.STATUS_SUCCESS,
                 response == null ? null : response.getContent(),
+                response == null ? null : response.getReasoningContent(),
                 response == null || response.getToolCalls() == null ? 0 : response.getToolCalls().size(),
                 usage,
                 response == null ? null : response.getFinishReason(),
@@ -1019,6 +1035,18 @@ Prompt prompt = buildPrompt(
                                      LlmInvocationHandle handle,
                                      Integer status,
                                      String responseText,
+                                     Integer toolCallCount,
+                                     LlmUsageSnapshot usage,
+                                     String finishReason,
+                                     String errorMsg) {
+        finishLlmInvocation(context, handle, status, responseText, null, toolCallCount, usage, finishReason, errorMsg);
+    }
+
+    private void finishLlmInvocation(AgentContext context,
+                                     LlmInvocationHandle handle,
+                                     Integer status,
+                                     String responseText,
+                                     String reasoningContent,
                                      Integer toolCallCount,
                                      LlmUsageSnapshot usage,
                                      String finishReason,
@@ -1040,6 +1068,7 @@ Prompt prompt = buildPrompt(
                 .requestId(context.getRequestId())
                 .status(status)
                 .responseText(responseText)
+                .reasoningContent(reasoningContent)
                 .toolCallCount(toolCallCount)
                 .promptTokens(snapshot.getPromptTokens())
                 .completionTokens(snapshot.getCompletionTokens())
@@ -1313,6 +1342,8 @@ Prompt prompt = buildPrompt(
     @NoArgsConstructor
     public static class ToolCallResponse {
         private String content;
+        /** 模型原生 CoT，与 content 独立（DeepSeek / Qwen reasoning_content）。 */
+        private String reasoningContent;
         private List<ToolCall> toolCalls;
         private String streamMessageId;
         private String finishReason;

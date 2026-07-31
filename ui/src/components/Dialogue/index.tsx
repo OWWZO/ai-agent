@@ -7,11 +7,6 @@ import {
   MessageContent,
 } from "@/components/ai-elements/message";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
-import {
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
-} from "@/components/ai-elements/reasoning";
 import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 import RunPresenceBar from "./RunPresenceBar";
@@ -26,7 +21,7 @@ import {
   syncPlannerVersionCursor,
 } from "./plannerHistory";
 import { PlanSection } from "./PlanSection";
-import { Timeline } from "./Timeline";
+import { AgentStepTimeline } from "./AgentStepTimeline";
 import { MessageToolbar } from "./MessageToolbar";
 import { resolveTaskSummaryText } from "./contentHelpers";
 
@@ -67,16 +62,13 @@ const ConclusionSection: FC<{
     [chat.conclusion]
   );
   return (
-    <div className="mt-7">
-      <div className="mb-3 rounded-2xl border border-[var(--chat-border)]/70 bg-[var(--chat-surface)]/72 px-4 py-3">
-        <div className="mb-2 text-[12px] font-medium text-[var(--chat-text-soft)]">
-          结果
-        </div>
+    <div className="mt-5">
+      <div className="mb-3 px-1 py-1">
         <MarkdownRenderer
           markDownContent={summary}
           isStreaming={summaryStreaming}
           normalizationScope={normalizationScope}
-          className="chat-markdown conclusion-markdown"
+          className="chat-markdown conclusion-markdown text-[15px] leading-[1.75] tracking-[-0.01em] text-[var(--chat-text)]"
         />
       </div>
       <AttachmentList
@@ -125,6 +117,7 @@ const DialogueComponent: FC<Props> = (props) => {
   const latestRoundIndex = Math.max(plannerRounds.length - 1, 0);
   const selectedThoughtRound = plannerRounds[thoughtVersionIndex];
   const selectedPlanRound = plannerRounds[planVersionIndex];
+  // 顶部版本化思考仅用 plan_thought；原生 CoT / 过程文走时间线分段（避免重复）
   const thoughtText = selectedThoughtRound?.planThought || "";
   const displayedPlan = selectedPlanRound?.plan || chat.plan;
   const thoughtVersionLabel =
@@ -145,10 +138,49 @@ const DialogueComponent: FC<Props> = (props) => {
     !!chat.conclusion;
   const showStandaloneResponse =
     chat.agentType === 0 && !!chat.response && !chat.conclusion;
+  const showProcessTimeline =
+    !showStandaloneResponse &&
+    (!!thoughtText || !!displayedPlan || chat.tasks.length > 0);
+  const thoughtStreaming =
+    chat.loading && thoughtVersionIndex === latestRoundIndex;
 
   const changeActiveChat = useCallback((task: CHAT.Task, targetChat: CHAT.ChatItem) => {
     changeTask?.(task, targetChat);
   }, [changeTask]);
+
+  const handleThoughtPrev = useCallback(() => {
+    setThoughtVersionIndex((current) => Math.max(current - 1, 0));
+  }, []);
+
+  const handleThoughtNext = useCallback(() => {
+    setThoughtVersionIndex((current) => Math.min(current + 1, latestRoundIndex));
+  }, [latestRoundIndex]);
+
+  const planSlot = useMemo(() => {
+    if (isReactType || !displayedPlan) {
+      return null;
+    }
+    return (
+      <PlanSection
+        plan={displayedPlan}
+        versionLabel={planVersionLabel}
+        onPrev={() => setPlanVersionIndex((current) => Math.max(current - 1, 0))}
+        onNext={() =>
+          setPlanVersionIndex((current) => Math.min(current + 1, latestRoundIndex))
+        }
+        canPrev={planVersionIndex > 0}
+        canNext={planVersionIndex < latestRoundIndex}
+        staticSnapshot={planIsHistoricalSnapshot}
+      />
+    );
+  }, [
+    isReactType,
+    displayedPlan,
+    planVersionLabel,
+    planVersionIndex,
+    latestRoundIndex,
+    planIsHistoricalSnapshot,
+  ]);
 
   return (
     <div className="chat-dialogue flex h-full flex-col font-normal">
@@ -221,67 +253,22 @@ const DialogueComponent: FC<Props> = (props) => {
         <RunPresenceBar hint={chat.tip || "正在推进任务…"} compact />
       ) : null}
 
-      {/* 思考过程（深度研究模式） */}
-      {!isReactType && thoughtText ? (
-        <div className="mt-7 w-full overflow-hidden rounded-2xl border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/36 p-3 shadow-[var(--shadow-sm)] ring-0">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="text-[12px] font-medium text-[var(--chat-text-muted)]">
-              Planner Thought
-            </div>
-            {thoughtVersionLabel ? (
-              <div className="inline-flex items-center gap-1 rounded-full bg-[var(--chat-surface)] px-2 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
-                <button
-                  type="button"
-                  className="rounded px-1 disabled:opacity-40"
-                  onClick={() => setThoughtVersionIndex((current) => Math.max(current - 1, 0))}
-                  disabled={thoughtVersionIndex <= 0}
-                >
-                  {"<"}
-                </button>
-                <span>{thoughtVersionLabel}</span>
-                <button
-                  type="button"
-                  className="rounded px-1 disabled:opacity-40"
-                  onClick={() => setThoughtVersionIndex((current) => Math.min(current + 1, latestRoundIndex))}
-                  disabled={thoughtVersionIndex >= latestRoundIndex}
-                >
-                  {">"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <Reasoning
-            isStreaming={chat.loading && thoughtVersionIndex === latestRoundIndex}
-            defaultOpen
-            className="not-prose mb-0"
-          >
-            <ReasoningTrigger className="rounded-xl px-2 py-1.5 hover:bg-[var(--chat-surface-muted)]/32" />
-            <ReasoningContent>{thoughtText}</ReasoningContent>
-          </Reasoning>
-        </div>
-      ) : null}
-
-      {/* 任务计划 */}
-      {!isReactType && displayedPlan ? (
-        <div className="mt-7 w-full">
-          <PlanSection
-            plan={displayedPlan}
-            versionLabel={planVersionLabel}
-            onPrev={() => setPlanVersionIndex((current) => Math.max(current - 1, 0))}
-            onNext={() => setPlanVersionIndex((current) => Math.min(current + 1, latestRoundIndex))}
-            canPrev={planVersionIndex > 0}
-            canNext={planVersionIndex < latestRoundIndex}
-            staticSnapshot={planIsHistoricalSnapshot}
-          />
-        </div>
-      ) : null}
-
-      {/* 任务时间线 */}
-      {chat.tasks.length ? (
-        <div className="mt-7 w-full">
-          <Timeline
+      {/* Cursor 风格过程时间线 */}
+      {showProcessTimeline ? (
+        <div className="mt-5 w-full max-w-[min(960px,100%)]">
+          <AgentStepTimeline
             chat={chat}
             isPlanSolveMessage={isPlanSolveMessage}
+            thoughtText={thoughtText}
+            thoughtStreaming={thoughtStreaming}
+            thoughtVersionLabel={thoughtVersionLabel}
+            thoughtVersionIndex={thoughtVersionIndex}
+            thoughtVersionTotal={plannerRounds.length}
+            onThoughtPrev={handleThoughtPrev}
+            onThoughtNext={handleThoughtNext}
+            canThoughtPrev={thoughtVersionIndex > 0}
+            canThoughtNext={thoughtVersionIndex < latestRoundIndex}
+            planSlot={planSlot}
             changeActiveChat={changeActiveChat}
             changePlan={changePlan}
             changeFile={changeFile}
@@ -289,9 +276,9 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {/* 结论 */}
+      {/* 结论：过程之后的人话结果 */}
       {chat.conclusion ? (
-        <div className="w-full">
+        <div className="timeline-segment-enter mt-3 w-full max-w-[min(960px,100%)]">
           <ConclusionSection
             chat={chat}
             changeFile={changeFile}

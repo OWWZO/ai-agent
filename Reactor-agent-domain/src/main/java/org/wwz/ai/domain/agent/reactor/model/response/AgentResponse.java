@@ -30,6 +30,8 @@ public class AgentResponse {
     private String task;
     private String taskSummary;
     private String toolThought;
+    /** 模型原生 CoT（reasoning_content），与 toolThought 过程文独立 */
+    private String reasoningContent;
     private ToolResult toolResult;
     private Map<String, Object> resultMap;
     private String result;

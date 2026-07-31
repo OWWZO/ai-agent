@@ -12,9 +12,29 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.CodeExecutionTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataAggregateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataCleanTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataMergeTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataTransformTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.DataValidateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.dataprep.SqlQueryTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChartGeneratorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ChecklistGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.DocumentTemplateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ExcelGeneratorTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.SlidesGenerateTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.TemplateFillerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docgen.ThemeDesignerTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.docread.PdfReaderTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.RegistryBackedToolCallback;
 import org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -100,21 +120,55 @@ public class ToolSchemaNormalizerTest {
 
     @Test
     public void test_validSkillToolSchemasShouldNotEmitIncompleteSchemaWarning() {
+        assertNoIncompleteSchemaWarning(
+                new SkillTool(null),
+                new WorkspaceReadTool(null, null),
+                new WorkspaceGrepTool(null, null)
+        );
+    }
+
+    @Test
+    public void test_fixedRuntimeToolSchemasShouldNotEmitIncompleteSchemaWarning() {
+        assertNoIncompleteSchemaWarning(
+                new ChartGeneratorTool(),
+                new ChecklistGenerateTool(),
+                new CodeExecutionTool(),
+                new DataAggregateTool(),
+                new DataCleanTool(),
+                new DataMergeTool(),
+                new DataTransformTool(),
+                new DataValidateTool(),
+                new DocumentGenerateTool(),
+                new DocumentTemplateTool(),
+                new ExcelGeneratorTool(),
+                new GetGenuiGuideTool(),
+                new GetHtmlCanvasGuideTool(),
+                new ListUiComponentsTool(),
+                new PdfReaderTool(),
+                new SlidesGenerateTool(),
+                new SqlQueryTool(),
+                new TemplateFillerTool(),
+                new ThemeDesignerTool()
+        );
+    }
+
+    private void assertNoIncompleteSchemaWarning(BaseTool... tools) {
         Logger logger = (Logger) LoggerFactory.getLogger(ToolSchemaNormalizer.class);
         ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
         listAppender.start();
         logger.addAppender(listAppender);
 
         try {
-            ToolSchemaNormalizer.normalizeSchema(new SkillTool(null).toParams(), "skill_tool");
-            ToolSchemaNormalizer.normalizeSchema(new WorkspaceReadTool(null, null).toParams(), "workspace_read");
-            ToolSchemaNormalizer.normalizeSchema(new WorkspaceGrepTool(null, null).toParams(), "workspace_grep");
+            for (BaseTool tool : tools) {
+                ToolSchemaNormalizer.normalizeSchema(tool.toParams(), tool.getName());
+            }
 
-            boolean hasIncompleteSchemaWarning = listAppender.list.stream()
+            List<String> warnings = listAppender.list.stream()
                     .map(ILoggingEvent::getFormattedMessage)
-                    .anyMatch(message -> message.contains("检测到不完整 object schema"));
+                    .filter(message -> message.contains("检测到不完整 object schema"))
+                    .toList();
 
-            Assert.assertFalse("合法 schema 不应该触发不完整 object schema 告警", hasIncompleteSchemaWarning);
+            Assert.assertTrue("合法 schema 不应该触发不完整 object schema 告警: " + warnings, warnings.isEmpty());
         } finally {
             logger.detachAppender(listAppender);
             listAppender.stop();

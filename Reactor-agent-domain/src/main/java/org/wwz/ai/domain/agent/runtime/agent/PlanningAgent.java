@@ -21,6 +21,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanningPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.common.PlanningTool;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
@@ -33,7 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.time.LocalDateTime;
 
 /**
@@ -171,19 +172,24 @@ public class PlanningAgent extends ReActAgent {
 // 4. 设置流式消息类型：用于前端区分消息类型（plan_thought=计划思考过程）
             context.setStreamMessageType("plan_thought");
 
-            // 5. 异步调用大模型获取工具调用响应：
-            // - 参数：上下文、历史消息、系统提示词、可用工具、工具选择策略（AUTO=自动选择）、超时时间300秒
-            CompletableFuture<LLM.ToolCallResponse> future = getLlm().askTool(context,
-                    getMemory().getMessages(),
-                    Message.systemMessage(getSystemPrompt(), null),
-                    availableTools,
-                    ToolChoice.AUTO, null, context.getIsStream(), false, 3000
+            // 5/6. askTool + 同步等待；超时等瞬态错误走指数退避重试
+            LLM.ToolCallResponse response = LlmRequestRetry.call(
+                    "plan-think:" + context.getRequestId(),
+                    () -> awaitAskTool(getLlm().askTool(context,
+                            getMemory().getMessages(),
+                            Message.systemMessage(getSystemPrompt(), null),
+                            availableTools,
+                            ToolChoice.AUTO, null, context.getIsStream(), false, 3000
+                    ))
             );
-
-            // 6. 同步获取异步结果（阻塞等待大模型响应）
-            LLM.ToolCallResponse response = future.get();
             setToolCalls(response.getToolCalls()); // 保存大模型返回的工具调用列表
             bindCurrentPlannerRoundId(response.getToolCalls());
+
+            // 原生 CoT：有则推（与 tool_call 无关）
+            if (response.getReasoningContent() != null && !response.getReasoningContent().isBlank()) {
+                printer.send(org.wwz.ai.domain.agent.runtime.llm.ReasoningContentExtractor.EVENT_TYPE,
+                        response.getReasoningContent());
+            }
 
             if (context.getIsStream()
                     && response.getContent() != null
@@ -207,14 +213,12 @@ public class PlanningAgent extends ReActAgent {
             log.info("{} {} selected {} tools to use", context.getRequestId(), getName(),
                     response.getToolCalls() != null ? response.getToolCalls().size() : 0);
 
-            // 9. 构建助手消息并添加到记忆：
-            // - 分支1：有工具调用且不是结构化解析模式 → 构建包含工具调用的助手消息
-            // - 分支2：无工具调用/结构化解析模式 → 构建普通助手消息
+            // 9. 构建助手消息并添加到记忆（带 reasoning 以便下轮 passback）
             Message assistantMsg = response.getToolCalls() != null && !response.getToolCalls().isEmpty() && !"struct_parse".equals(llm.getFunctionCallType()) ?
-                    Message.fromToolCalls(response.getContent(), response.getToolCalls()) :
-                    Message.assistantMessage(response.getContent(), null);
+                    Message.fromToolCalls(response.getContent(), response.getReasoningContent(), response.getToolCalls()) :
+                    Message.assistantMessage(response.getContent(), response.getReasoningContent(), null);
 
-            getMemory().addMessage(assistantMsg); // 助手消息加入记忆，用于后续多轮对话
+            getMemory().addMessage(assistantMsg);
 
         } catch (Exception e) {
             // 异常处理：仅记录日志，不返回false（避免智能体直接终止）
@@ -482,5 +486,21 @@ public class PlanningAgent extends ReActAgent {
         payload.put("step_index", output.getBeforePlan() == null ? null : output.getBeforePlan().getCurrentStepIndex());
         payload.put("step_status", STEP_STATUS_COMPLETED);
         return com.alibaba.fastjson.JSON.toJSONString(payload);
+    }
+
+    private static LLM.ToolCallResponse awaitAskTool(
+            java.util.concurrent.CompletableFuture<LLM.ToolCallResponse> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 }

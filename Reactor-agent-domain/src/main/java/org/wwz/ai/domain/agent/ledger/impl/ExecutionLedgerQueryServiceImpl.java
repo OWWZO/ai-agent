@@ -187,6 +187,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
                     .streaming(invocation.getStreaming())
                     .modelName(invocation.getModelName())
                     .responseText(invocation.getResponseText())
+                    .reasoningContent(invocation.getReasoningContent())
                     .toolCallCount(invocation.getToolCallCount())
                     .promptTokens(invocation.getPromptTokens())
                     .completionTokens(invocation.getCompletionTokens())

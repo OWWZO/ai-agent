@@ -24,6 +24,8 @@ public class WorkingMemoryMessage {
     private Integer seqNo;
     private String role;
     private String content;
+    /** 模型原生 CoT，passback / hydrate 用 */
+    private String reasoningContent;
     private String toolCallId;
     private String toolCallsJson;
     private String base64Image;

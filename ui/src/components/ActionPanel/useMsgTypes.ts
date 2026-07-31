@@ -2,7 +2,14 @@ import { isHTML, isValidJSON } from "@/utils";
 import { buildDeepSearchResultItems } from "@/utils/deepSearch";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
-import { getPrimaryTaskFile, isImageFileLike } from "@/utils/taskArtifacts";
+import {
+  getPrimaryTaskFile,
+  isDocxFileLike,
+  isExcelFileLike,
+  isImageFileLike,
+  isLegacyDocFileLike,
+  isPdfFileLike,
+} from "@/utils/taskArtifacts";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
   if (!taskItem) {
@@ -66,7 +73,11 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       || normalizedMimeType.includes('text/html');
     const isPptFile = normalizedFileName.endsWith('.ppt')
       || normalizedFileName.endsWith('.pptx');
-    const useExcel = !!primaryFile && (normalizedFileName.includes('.csv') || normalizedFileName.includes('.xlsx'));
+    const useExcel = !!primaryFile && isExcelFileLike(primaryFile);
+    const usePdf = !!primaryFile && isPdfFileLike(primaryFile);
+    const useDocx = !!primaryFile && isDocxFileLike(primaryFile);
+    const useLegacyDoc = !!primaryFile && isLegacyDocFileLike(primaryFile);
+    const useWord = useDocx || useLegacyDoc;
 
     let isHtml = false;
     if (messageType === 'code' && resultMap.codeOutput) {
@@ -88,7 +99,9 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       !useImage &&
       !useExcel &&
       !useHtml &&
-      !usePpt;
+      !usePpt &&
+      !usePdf &&
+      !useWord;
     const useCode = messageType === 'code' && !useFile;
 
     return {
@@ -98,6 +111,10 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       useGenUi,
       useImage,
       useExcel,
+      usePdf,
+      useDocx,
+      useLegacyDoc,
+      useWord,
       useFile,
       useJSON: messageType === 'tool_result' && toolResult?.toolResult && isValidJSON(toolResult.toolResult),
       isHtml,

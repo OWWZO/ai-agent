@@ -31,10 +31,10 @@ public class DataAggregateTool extends AbstractDocReadTool {
     protected Map<String, Object> defaultParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("operation", stringProp("groupby | pivot | describe | value_counts | rolling"));
-        properties.put("data", Map.of("type", "array", "description", "Inline list of row objects", "items", Map.of("type", "object")));
+        properties.put("data", Map.of("type", "array", "description", "Inline list of row objects", "items", objectProp("Row object")));
         properties.put("source_path", stringProp("CSV/JSON/JSONL/Parquet path under workspace"));
         properties.put("group_by", Map.of("type", "array", "items", Map.of("type", "string"), "description", "Group-by columns"));
-        properties.put("aggregations", Map.of("type", "object", "description", "column -> sum|mean|avg|count|min|max|..."));
+        properties.put("aggregations", objectProp("column -> sum|mean|avg|count|min|max|..."));
         properties.put("pivot_index", Map.of("type", "array", "items", Map.of("type", "string")));
         properties.put("pivot_columns", Map.of("type", "array", "items", Map.of("type", "string")));
         properties.put("pivot_values", Map.of("type", "array", "items", Map.of("type", "string")));

@@ -125,7 +125,19 @@ public class ReplayProjector {
 
             List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             String messageType = null;
-            if (StringUtils.isNotBlank(llmInvocation.getResponseText())) {
+            // 原生 CoT 单独回放为 llm_reasoning（与 content 双路）
+            if (StringUtils.isNotBlank(llmInvocation.getReasoningContent())) {
+                events.add(buildLlmReplayEvent(
+                        bundle,
+                        state,
+                        llmInvocation,
+                        "llm_reasoning",
+                        null
+                ));
+            }
+            // content：有 tool 时才是过程文；无 tool 的 content 是终答，由 run finalSummary / result 交付，不进时间线
+            if (StringUtils.isNotBlank(llmInvocation.getResponseText())
+                    && shouldProjectResponseTextAsProcess(llmInvocation)) {
                 messageType = resolveLlmMessageType(llmInvocation);
                 events.add(buildLlmReplayEvent(
                         bundle,
@@ -140,7 +152,8 @@ public class ReplayProjector {
                 continue;
             }
 
-            boolean reuseCurrentTaskGroup = "tool_thought".equals(messageType);
+            boolean reuseCurrentTaskGroup = "tool_thought".equals(messageType)
+                    || "llm_reasoning".equals(messageType);
             for (ToolInvocationView toolInvocation : linkedTools) {
                 List<ArtifactView> artifacts = artifactsByInvocationId.getOrDefault(toolInvocation.getId(), List.of());
                 events.addAll(toolInvocationProjectorRegistry.project(
@@ -184,7 +197,7 @@ public class ReplayProjector {
         return ProjectedReplayEvent.builder()
                 .taskId(state.getTaskId())
                 .taskOrder(state.getTaskOrder().getAndIncrement())
-                .messageId(resolveLlmMessageId(invocation))
+                .messageId(resolveLlmMessageId(invocation, messageType))
                 .messageType(resolveOuterMessageType(messageType))
                 .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
                 .resultMap(buildLlmResponse(bundle, invocation, messageType, plannerRoundId))
@@ -224,6 +237,27 @@ public class ReplayProjector {
             return "task_summary";
         }
         return "tool_thought";
+    }
+
+    /**
+     * 是否把 response_text 投影为时间线过程事件。
+     * 无 tool 的 content 是终答，不得再投影成 tool_thought / 假思考，否则与 conclusion 重复。
+     */
+    private boolean shouldProjectResponseTextAsProcess(LlmInvocationView invocation) {
+        if (invocation == null) {
+            return false;
+        }
+        String agentName = invocation.getAgentName();
+        if ("planning".equals(agentName) || "summary".equals(agentName)) {
+            return true;
+        }
+        if ("executor".equals(agentName)
+                && Integer.valueOf(0).equals(invocation.getToolCallCount())) {
+            // task_summary 仍进时间线任务总结
+            return true;
+        }
+        // react 等：仅有 tool 时 content 才是过程文
+        return invocation.getToolCallCount() != null && invocation.getToolCallCount() > 0;
     }
 
     /**
@@ -300,13 +334,21 @@ public class ReplayProjector {
                 + String.valueOf(invocation.getInvocationSeq());
     }
 
+    private String resolveLlmMessageId(LlmInvocationView invocation, String messageType) {
+        String base = resolveLlmMessageId(invocation);
+        if ("llm_reasoning".equals(messageType)) {
+            return base + ":reasoning";
+        }
+        return base;
+    }
+
     private Object buildLlmResponse(ReplayFactBundle bundle,
                                     LlmInvocationView invocation,
                                     String messageType,
                                     String plannerRoundId) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("requestId", bundle == null || bundle.getRun() == null ? null : bundle.getRun().getRequestId());
-        response.put("messageId", resolveLlmMessageId(invocation));
+        response.put("messageId", resolveLlmMessageId(invocation, messageType));
         response.put("messageType", messageType);
         response.put("messageTime", invocation.getFinishedAt() == null
                 ? String.valueOf(System.currentTimeMillis())
@@ -316,6 +358,9 @@ public class ReplayProjector {
         if ("plan_thought".equals(messageType)) {
             response.put("planThought", invocation.getResponseText());
             appendPlannerRoundId(response, plannerRoundId);
+        } else if ("llm_reasoning".equals(messageType)) {
+            // 只用 reasoning_content，不用 response_text 冒充思考
+            response.put("reasoningContent", invocation.getReasoningContent());
         } else if ("tool_thought".equals(messageType)) {
             response.put("toolThought", invocation.getResponseText());
         } else if ("task_summary".equals(messageType)) {

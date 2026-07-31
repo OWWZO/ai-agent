@@ -36,11 +36,11 @@ public class DocumentTemplateTool extends AbstractDocGenTool {
         properties.put("kind", stringProp("document | deck"));
         properties.put("description", stringProp("One-line description for list"));
         properties.put("content", stringProp("Document markdown body with Jinja2 placeholders"));
-        properties.put("slides", arrayProp("Deck slides list (objects with Jinja2 text fields)", Map.of("type", "object")));
+        properties.put("slides", arrayProp("Deck slides list (objects with Jinja2 text fields)", objectProp("Deck slide")));
         properties.put("theme", stringProp("Theme name (built-in or theme_designer)"));
-        properties.put("variables", arrayProp("Declared variables [{name,description,default,required}]", Map.of("type", "object")));
-        properties.put("defaults", Map.of("type", "object", "description", "Extra generate defaults (toc, cover, header, ...)"));
-        properties.put("values", Map.of("type", "object", "description", "Variable values for preview/generate"));
+        properties.put("variables", arrayProp("Declared variables [{name,description,default,required}]", objectProp("Variable declaration")));
+        properties.put("defaults", objectProp("Extra generate defaults (toc, cover, header, ...)"));
+        properties.put("values", objectProp("Variable values for preview/generate"));
         properties.put("output_path", stringProp("generate: output file name e.g. report.pdf / deck.pptx"));
         properties.put("format", stringProp("generate document: pdf|docx|html|markdown"));
         properties.put("overwrite", boolProp("save: replace existing template, default true"));

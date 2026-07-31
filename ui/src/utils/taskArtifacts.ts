@@ -46,11 +46,57 @@ const IMAGE_FILE_EXTENSIONS = new Set([
   "ico",
 ]);
 
+const PDF_FILE_EXTENSIONS = new Set(["pdf"]);
+
+/** 可客户端转 HTML 预览的 Word（OOXML） */
+const DOCX_FILE_EXTENSIONS = new Set(["docx"]);
+
+/** 老式 Word，浏览器端不做预览 */
+const LEGACY_DOC_EXTENSIONS = new Set(["doc"]);
+
+const EXCEL_FILE_EXTENSIONS = new Set(["csv", "xlsx", "xls"]);
+
+const TEXT_COPYABLE_EXTENSIONS = new Set([
+  "md",
+  "markdown",
+  "txt",
+  "json",
+  "js",
+  "ts",
+  "tsx",
+  "jsx",
+  "py",
+  "java",
+  "xml",
+  "html",
+  "htm",
+  "css",
+  "yml",
+  "yaml",
+  "sql",
+  "sh",
+  "log",
+  "csv",
+]);
+
 const normalizeExtension = (value?: string | null) => {
   return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/^\./, "");
+};
+
+const resolveFileExtension = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name"> | null
+) => {
+  if (!fileLike) {
+    return "";
+  }
+  const fromType = normalizeExtension(fileLike.type);
+  if (fromType) {
+    return fromType;
+  }
+  return normalizeExtension(fileLike.name?.split(".").pop());
 };
 
 /**
@@ -152,6 +198,117 @@ export const isImageFileLike = (
 
   const normalizedNameExtension = normalizeExtension(fileLike.name.split(".").pop());
   return IMAGE_FILE_EXTENSIONS.has(normalizedNameExtension);
+};
+
+/**
+ * PDF：工作区走 pdf.js 预览，不要进文本 FileRenderer。
+ */
+export const isPdfFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (mime === "application/pdf" || mime.includes("application/pdf")) {
+    return true;
+  }
+  return PDF_FILE_EXTENSIONS.has(resolveFileExtension(fileLike));
+};
+
+/**
+ * DOCX：mammoth 转 HTML 只读预览。
+ */
+export const isDocxFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (
+    mime.includes("officedocument.wordprocessingml") ||
+    mime.includes("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+  ) {
+    return true;
+  }
+  return DOCX_FILE_EXTENSIONS.has(resolveFileExtension(fileLike));
+};
+
+/**
+ * 老 .doc：仅下载，不尝试前端解析。
+ */
+export const isLegacyDocFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  if (isDocxFileLike(fileLike)) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (mime === "application/msword") {
+    return true;
+  }
+  return LEGACY_DOC_EXTENSIONS.has(resolveFileExtension(fileLike));
+};
+
+/** Word 家族（docx 可预览 + doc 仅下载） */
+export const isWordFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => isDocxFileLike(fileLike) || isLegacyDocFileLike(fileLike);
+
+export const isExcelFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (
+    mime.includes("spreadsheet") ||
+    mime.includes("excel") ||
+    mime === "text/csv"
+  ) {
+    return true;
+  }
+  const ext = resolveFileExtension(fileLike);
+  if (EXCEL_FILE_EXTENSIONS.has(ext)) {
+    return true;
+  }
+  const name = String(fileLike.name || "").toLowerCase();
+  return name.includes(".csv") || name.includes(".xlsx") || name.includes(".xls");
+};
+
+/**
+ * 二进制/office 等禁止 response.text() 复制。
+ */
+export const isBinaryPreviewFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) {
+    return false;
+  }
+  return (
+    isImageFileLike(fileLike) ||
+    isPdfFileLike(fileLike) ||
+    isWordFileLike(fileLike) ||
+    isExcelFileLike(fileLike)
+  );
+};
+
+export const isTextCopyableFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike || isBinaryPreviewFileLike(fileLike)) {
+    return false;
+  }
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (mime.startsWith("text/") || mime.includes("json") || mime.includes("xml")) {
+    return true;
+  }
+  return TEXT_COPYABLE_EXTENSIONS.has(resolveFileExtension(fileLike));
 };
 
 const readNestedResultMap = (taskLike: any) => {

@@ -262,10 +262,20 @@ public abstract class AbstractDocReadTool implements BaseTool {
     protected static Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
-        parameters.put("properties", properties);
-        if (required != null && !required.isEmpty()) {
-            parameters.put("required", required);
-        }
+        parameters.put("properties", properties != null ? properties : new LinkedHashMap<String, Object>());
+        parameters.put("required", required != null ? required : List.of());
         return parameters;
+    }
+
+    /** 自由形态 object：显式 properties/required，避免 ToolSchemaNormalizer 告警。 */
+    protected static Map<String, Object> objectProp(String description) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("type", "object");
+        if (description != null && !description.isBlank()) {
+            m.put("description", description);
+        }
+        m.put("properties", new LinkedHashMap<String, Object>());
+        m.put("required", List.of());
+        return m;
     }
 }

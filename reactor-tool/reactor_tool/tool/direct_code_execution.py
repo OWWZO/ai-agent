@@ -28,7 +28,10 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
     _stage_inline_files(workspace, request.files)
     source = _resolve_source(request, workspace)
     source_file = workspace / "__last_source__.py"
-    source_file.write_text(source, encoding="utf-8")
+    source_file.write_text(
+        source.encode("utf-8", errors="replace").decode("utf-8"),
+        encoding="utf-8",
+    )
     try:
         ast.parse(source, filename=str(source_file))
     except SyntaxError as exc:

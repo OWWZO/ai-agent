@@ -42,8 +42,14 @@ public class LlmChatResponseMapper {
         AssistantMessage output = generation.getOutput();
         List<ToolCall> toolCalls = toToolCalls(output);
         LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata());
+        ReasoningContentExtractor.SplitResult split = ReasoningContentExtractor.splitFromChatResponse(response);
+        String content = sanitizeContent(split.content());
+        if (content == null) {
+            content = sanitizeContent(output.getText());
+        }
         return applyUsage(LLM.ToolCallResponse.builder()
-                .content(sanitizeContent(output.getText()))
+                .content(content)
+                .reasoningContent(sanitizeContent(split.reasoningContent()))
                 .toolCalls(toolCalls)
                 .finishReason(generation.getMetadata() != null ? generation.getMetadata().getFinishReason() : null)
                 .duration(System.currentTimeMillis() - startTimeMs)

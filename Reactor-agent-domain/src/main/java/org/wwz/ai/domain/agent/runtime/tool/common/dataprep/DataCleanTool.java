@@ -32,9 +32,9 @@ public class DataCleanTool extends AbstractDocReadTool {
         properties.put("operations", Map.of(
                 "type", "array",
                 "description", "Cleaning ops: remove_duplicates, fill_missing, drop_missing, trim_whitespace, normalize_types, ...",
-                "items", Map.of("type", "object")
+                "items", objectProp("Cleaning operation")
         ));
-        properties.put("data", Map.of("type", "array", "description", "Inline rows", "items", Map.of("type", "object")));
+        properties.put("data", Map.of("type", "array", "description", "Inline rows", "items", objectProp("Row object")));
         properties.put("source_path", stringProp("Input file path under workspace"));
         properties.put("output_format", stringProp("records | dict"));
         return objectSchema(properties, List.of("operations"));

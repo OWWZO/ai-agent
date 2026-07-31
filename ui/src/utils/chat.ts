@@ -32,7 +32,7 @@ import {
   resolveToolCallActionText,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
-import { mergeUiPatchIntoTaskGroup } from "@/utils/chat/genuiState";
+import { mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
@@ -192,7 +192,12 @@ function handleTaskMessageByType(
       handleAgentStreamMessage(eventData, currentChat);
       break;
     case "tool_thought":
+      // 助手过程 content（有 tool 时），不是思考
       handleToolThoughtMessage(eventData, currentChat, taskIndex, toolIndex);
+      break;
+    case "llm_reasoning":
+      // 原生 CoT only
+      handleLlmReasoningMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "html":
     case "markdown":
@@ -218,6 +223,7 @@ function handleTaskMessageByType(
     case "plan_approval":
     case "plan_mode_entered":
     case "session_tasks":
+    case "user_brief":
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
     default:
@@ -293,19 +299,73 @@ function handleToolThoughtMessage(
 ) {
   const { tasks } = currentChat.multiAgent;
   const { taskId, resultMap } = eventData;
-  const { toolThought, isFinal } = resultMap;
+  // 仅过程 content，不用 reasoningContent 冒充
+  const thoughtText = resultMap?.toolThought || "";
+  const { isFinal } = resultMap;
 
   if (taskIndex === -1) {
-    tasks.push([createNewTask(taskId, resultMap)]);
+    tasks.push([
+      createNewTask(taskId, {
+        ...resultMap,
+        messageType: "tool_thought",
+        toolThought: thoughtText,
+      }),
+    ]);
     return;
   }
 
   if (toolIndex === -1) {
-    tasks[taskIndex].push(createNewTask(taskId, resultMap));
+    tasks[taskIndex].push(
+      createNewTask(taskId, {
+        ...resultMap,
+        messageType: "tool_thought",
+        toolThought: thoughtText,
+      })
+    );
     return;
   }
 
-  updateToolThought(tasks[taskIndex][toolIndex], toolThought || '', isFinal);
+  updateToolThought(tasks[taskIndex][toolIndex], thoughtText || "", isFinal);
+}
+
+/** 原生 CoT：只写 llm_reasoning，不与 tool_thought 混用 */
+function handleLlmReasoningMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem,
+  taskIndex: number,
+  toolIndex: number
+) {
+  const { tasks } = currentChat.multiAgent;
+  const { taskId, resultMap } = eventData;
+  const reasoningText =
+    (resultMap as { reasoningContent?: string } | undefined)?.reasoningContent ||
+    "";
+  const { isFinal } = resultMap;
+
+  // 字段统一落在 toolThought 仅作展示载体，messageType 必须是 llm_reasoning
+  if (taskIndex === -1) {
+    tasks.push([
+      createNewTask(taskId, {
+        ...resultMap,
+        messageType: "llm_reasoning",
+        toolThought: reasoningText,
+      }),
+    ]);
+    return;
+  }
+
+  if (toolIndex === -1) {
+    tasks[taskIndex].push(
+      createNewTask(taskId, {
+        ...resultMap,
+        messageType: "llm_reasoning",
+        toolThought: reasoningText,
+      })
+    );
+    return;
+  }
+
+  updateToolThought(tasks[taskIndex][toolIndex], reasoningText || "", isFinal);
 }
 
 /**
@@ -709,11 +769,14 @@ function handleNonStreamingMessage(
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
 
-    // GenUI patch: merge onto latest ui_tree in the same task group.
+    // GenUI patch: merge onto latest ui_tree (any task group; plan steps may differ).
     if (nextTask.messageType === "ui_patch") {
-      const merged = mergeUiPatchIntoTaskGroup(taskGroup as any, nextTask as any);
+      const merged = mergeUiPatchIntoTasks(
+        currentChat.multiAgent.tasks as any,
+        nextTask as any
+      );
       if (merged) {
-        // Keep a lightweight patch breadcrumb in timeline.
+        // Keep a lightweight patch breadcrumb in timeline (current step group).
         taskGroup.push(nextTask);
         return;
       }
@@ -775,6 +838,15 @@ function handleNonStreamingMessage(
     }
 
     taskGroup.push(nextTask);
+  } else if (nextTask.messageType === "ui_patch") {
+    const merged = mergeUiPatchIntoTasks(
+      currentChat.multiAgent.tasks as any,
+      nextTask as any
+    );
+    currentChat.multiAgent.tasks.push([nextTask]);
+    if (!merged) {
+      // no prior ui_tree — breadcrumb only
+    }
   } else {
     currentChat.multiAgent.tasks.push([
       nextTask,
@@ -808,6 +880,7 @@ export const handleTaskData = (
     "plan_approval",
     "plan_mode_entered",
     "session_tasks",
+    "user_brief",
     "browser",
     "code",
     "html",
@@ -818,6 +891,7 @@ export const handleTaskData = (
     "markdown",
     "ppt",
     "data_analysis",
+    "ui_tree",
   ];
 
   currentChat.thought = planThought || "";

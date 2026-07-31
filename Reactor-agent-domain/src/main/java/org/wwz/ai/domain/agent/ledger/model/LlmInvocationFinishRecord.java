@@ -24,6 +24,9 @@ public class LlmInvocationFinishRecord {
 
     private String responseText;
 
+    /** 模型原生 CoT */
+    private String reasoningContent;
+
     private Integer toolCallCount;
 
     private Integer promptTokens;

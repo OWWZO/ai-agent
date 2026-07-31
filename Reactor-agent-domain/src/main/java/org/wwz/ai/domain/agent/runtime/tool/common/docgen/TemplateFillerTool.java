@@ -34,7 +34,7 @@ public class TemplateFillerTool extends AbstractDocGenTool {
         properties.put("template_string", stringProp("Template content when source=string."));
         properties.put("template_path", stringProp("Template file path when source=file."));
         properties.put("template_url", stringProp("Template URL when source=url."));
-        properties.put("variables", Map.of("type", "object", "description", "Template variables object."));
+        properties.put("variables", objectProp("Template variables object."));
         properties.put("output_path", stringProp("Optional output file name."));
         properties.put("output_format", stringProp("text | html | json | yaml | markdown."));
         properties.put("strict_mode", boolProp("Raise on undefined variables. Default false."));

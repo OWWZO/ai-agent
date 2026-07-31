@@ -88,9 +88,14 @@ public class DomainMessageConverter {
     }
 
     private AssistantMessage toAssistantMessage(Message message) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        // DeepSeek/Qwen 等 tool-call 轮次回传需要 reasoningContent
+        if (StringUtils.isNotBlank(message.getReasoningContent())) {
+            properties.put(ReasoningContentExtractor.METADATA_REASONING_CONTENT, message.getReasoningContent());
+        }
         AssistantMessage.Builder builder = AssistantMessage.builder()
                 .content(StringUtils.defaultString(message.getContent()))
-                .properties(Map.of());
+                .properties(properties);
 
         if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
             List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();

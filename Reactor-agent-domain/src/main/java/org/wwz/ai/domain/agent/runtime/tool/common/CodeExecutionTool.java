@@ -49,9 +49,18 @@ public class CodeExecutionTool implements BaseTool {
                 "description", "完整 Python 源码。生成文件时必须 Path(build_output_path('name.ext')) 或 "
                         + "plt.savefig(build_output_path('name.ext')) 等；禁止硬编码 skilloutput/盘符绝对路径。"
         ));
-        properties.put("inputs", Map.of("type", "object", "description", "注入 Python 全局变量的 JSON 对象"));
+        Map<String, Object> freeformObject = new LinkedHashMap<>();
+        freeformObject.put("type", "object");
+        freeformObject.put("properties", new LinkedHashMap<String, Object>());
+        freeformObject.put("required", List.of());
+
+        Map<String, Object> inputs = new LinkedHashMap<>(freeformObject);
+        inputs.put("description", "注入 Python 全局变量的 JSON 对象");
+        properties.put("inputs", inputs);
         properties.put("fileNames", Map.of("type", "array", "items", Map.of("type", "string"), "description", "会话输入文件名"));
-        properties.put("files", Map.of("type", "array", "items", Map.of("type", "object"), "description", "写入工作区的小型文本或 Base64 文件"));
+        Map<String, Object> fileItem = new LinkedHashMap<>(freeformObject);
+        fileItem.put("description", "工作区文件条目");
+        properties.put("files", Map.of("type", "array", "items", fileItem, "description", "写入工作区的小型文本或 Base64 文件"));
         properties.put("timeoutSeconds", Map.of("type", "integer", "minimum", 1, "maximum", 600));
         properties.put("memoryBytes", Map.of("type", "integer", "description", "可选内存上限（字节）"));
         properties.put("importTier", Map.of("type", "string", "enum", List.of("stdlib", "extended", "unrestricted")));

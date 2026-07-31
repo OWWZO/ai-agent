@@ -95,4 +95,94 @@ describe("ActionPanel file content rendering", () => {
       expect(panelView.fileName).toBe("风险日报.md");
     }
   });
+
+  const buildBinaryFileTask = (
+    fileName: string,
+    overrides?: Partial<MESSAGE.Task>
+  ): MESSAGE.Task =>
+    buildFileTask({
+      resultMap: {
+        command: "读取文件",
+        primaryFileName: fileName,
+        previewUrl: `https://example.com/${encodeURIComponent(fileName)}`,
+        downloadUrl: `https://example.com/dl/${encodeURIComponent(fileName)}`,
+        fileInfo: [
+          {
+            fileName,
+            ossUrl: `https://example.com/${encodeURIComponent(fileName)}`,
+            domainUrl: `https://example.com/${encodeURIComponent(fileName)}`,
+            fileSize: 1024,
+          },
+        ],
+      },
+      ...overrides,
+    });
+
+  it("should classify pdf as pdf renderer not text file", () => {
+    const task = buildBinaryFileTask("报告.pdf");
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.usePdf).toBe(true);
+    expect(msgTypes?.useFile).toBe(false);
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+    expect(panelView.type).toBe("pdf");
+  });
+
+  it("should classify docx as docx renderer", () => {
+    const task = buildBinaryFileTask("方案.docx");
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.useDocx).toBe(true);
+    expect(msgTypes?.useWord).toBe(true);
+    expect(msgTypes?.useFile).toBe(false);
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+    expect(panelView.type).toBe("docx");
+  });
+
+  it("should classify legacy doc as download-only panel", () => {
+    const task = buildBinaryFileTask("旧稿.doc");
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.useLegacyDoc).toBe(true);
+    expect(msgTypes?.useDocx).toBe(false);
+    expect(msgTypes?.useFile).toBe(false);
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+    expect(panelView.type).toBe("legacy-doc");
+  });
 });

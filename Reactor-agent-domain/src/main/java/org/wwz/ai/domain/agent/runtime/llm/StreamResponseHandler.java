@@ -147,45 +147,42 @@ public class StreamResponseHandler {
         // 异步结果容器
         CompletableFuture<LLM.ToolCallResponse> future = new CompletableFuture<>();
 
-        // 内容收集器
-        StringBuilder allContent = new StringBuilder();      // 完整内容
-        StringBuilder streamBuffer = new StringBuilder();    // 推送缓冲区
+        // 双路收集：content（正式/过程文）与 reasoning（原生 CoT）
+        StringBuilder allContent = new StringBuilder();
+        StringBuilder allReasoning = new StringBuilder();
+        StringBuilder streamBuffer = new StringBuilder();
+        StringBuilder reasoningBuffer = new StringBuilder();
+        int[] reasoningEmitted = new int[]{0};
 
         // 流式推送配置
         String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
-        int[] intervals = resolveIntervals();   // 推送间隔配置
-        int[] tokenIndex = new int[]{1};        // token计数器
-        // 无 tool_call 的文本是用户终答，不推 tool_thought；出现 tool_call 后再放行过程文本
+        String reasoningMessageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
+        int[] intervals = resolveIntervals();
+        int[] tokenIndex = new int[]{1};
+        // content 过程文：无 tool_call 的文本是终答，不推 tool_thought；出现 tool_call 后再放行
         boolean[] thoughtPushArmed = new boolean[]{false};
 
-        // 工具调用收集器 (按id合并多chunk)
         Map<String, ToolCallAccumulator> toolCallAccumulators = new LinkedHashMap<>();
 
-        // 元数据
-        String[] finishReason = new String[1];   // 结束原因
+        String[] finishReason = new String[1];
         LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
         int[] chunkCount = new int[]{0};
         int[] toolDeltaCount = new int[]{0};
 
-        // 订阅数据流
         flux.subscribe(
-            // === 处理每个数据块 ===
             response -> {
                 try {
                     chunkCount[0]++;
-                    // 提取文本内容
                     Generation generation = response != null ? response.getResult() : null;
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
-                    String chunkContent = output != null ? output.getText() : null;
 
-                    // 收集工具调用片段（先于推送，以便 arm 过程文本推送）
+                    // 收集 tool_call 片段（先于 content 推送 arm）
                     if (output != null && output.getToolCalls() != null) {
                         toolDeltaCount[0] += output.getToolCalls().size();
                         mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
                     }
                     if (!thoughtPushArmed[0] && !toolCallAccumulators.isEmpty()) {
                         thoughtPushArmed[0] = true;
-                        // 此前缓存的过程文本一次性放出
                         if (pushToClient && messageId != null && streamBuffer.length() > 0
                                 && context.getPrinter() != null) {
                             context.getPrinter().send(messageId, context.getStreamMessageType(),
@@ -194,11 +191,39 @@ public class StreamResponseHandler {
                         }
                     }
 
-                    // 累积文本内容
-                    if (StringUtils.isNotBlank(chunkContent)) {
-                        allContent.append(chunkContent);
+                    // 流式 delta：禁止 trim（token 常带 leading space）
+                    String chunkReasoning = ReasoningContentExtractor.extractDeltaReasoning(response);
+                    String chunkContent = ReasoningContentExtractor.extractDeltaContent(response);
+                    // 兼容 content 里嵌 <think> 的整段再拆
+                    if (StringUtils.isNotEmpty(chunkContent)
+                            && StringUtils.containsIgnoreCase(chunkContent, "<think>")) {
+                        ReasoningContentExtractor.SplitResult tagged =
+                                ReasoningContentExtractor.split(chunkContent, chunkReasoning);
+                        chunkContent = tagged.content();
+                        if (StringUtils.isNotEmpty(tagged.reasoningContent())) {
+                            chunkReasoning = tagged.reasoningContent();
+                        }
+                    }
 
-                        // 仅在已确认有 tool_call 后，才把过程文本流式推前端
+                    // reasoning：支持增量 / 累计两种网关；有就推
+                    if (StringUtils.isNotEmpty(chunkReasoning)) {
+                        String reasoningDelta = appendReasoningChunk(allReasoning, chunkReasoning);
+                        if (StringUtils.isNotEmpty(reasoningDelta)
+                                && pushToClient && reasoningMessageId != null && context.getPrinter() != null) {
+                            reasoningBuffer.append(reasoningDelta);
+                            if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])
+                                    || reasoningBuffer.length() >= 24) {
+                                context.getPrinter().send(reasoningMessageId,
+                                        ReasoningContentExtractor.EVENT_TYPE,
+                                        reasoningBuffer.toString(), false);
+                                reasoningEmitted[0] += reasoningBuffer.length();
+                                reasoningBuffer.setLength(0);
+                            }
+                        }
+                    }
+
+                    if (StringUtils.isNotEmpty(chunkContent)) {
+                        allContent.append(chunkContent);
                         if (pushToClient && messageId != null) {
                             streamBuffer.append(chunkContent);
                             if (thoughtPushArmed[0] && shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
@@ -210,47 +235,60 @@ public class StreamResponseHandler {
                         }
                     }
 
-                    // 提取结束原因
                     if (generation != null && generation.getMetadata() != null
                         && StringUtils.isNotBlank(generation.getMetadata().getFinishReason())) {
                         finishReason[0] = generation.getMetadata().getFinishReason();
                     }
 
-                    // 优先取接口返回 usage
                     usageHolder[0] = usageHolder[0].mergeLatest(
                             LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata()));
 
                 } catch (Exception e) {
-                    future.completeExceptionally(e);  // 异常结束
+                    future.completeExceptionally(e);
                 }
             },
 
-            // === 流异常 ===
             future::completeExceptionally,
 
-            // === 流完成 ===
             () -> {
                 try {
-                    // 构建最终工具调用列表
                     List<ToolCall> toolCalls = buildToolCalls(toolCallAccumulators);
-                    String content = allContent.toString();
+                    // 整轮再 split 一次，兜底 <think> 跨 chunk 或仅 final metadata
+                    ReasoningContentExtractor.SplitResult finalSplit =
+                            ReasoningContentExtractor.split(allContent.toString(), allReasoning.toString());
+                    String content = finalSplit.content();
+                    String reasoningContent = finalSplit.reasoningContent();
                     boolean hasToolCalls = toolCalls != null && !toolCalls.isEmpty();
+                    boolean hasReasoning = StringUtils.isNotBlank(reasoningContent);
+                    boolean hasContent = StringUtils.isNotBlank(content);
 
-                    // 仅有 tool_call 时推过程文本；纯终答轮不推 tool_thought（由 result 交付）
+                    // reasoning 收尾：有就推 final（有/无 tool_call 均推）
+                    if (pushToClient && reasoningMessageId != null && context.getPrinter() != null && hasReasoning) {
+                        if (reasoningBuffer.length() > 0) {
+                            context.getPrinter().send(reasoningMessageId,
+                                    ReasoningContentExtractor.EVENT_TYPE,
+                                    reasoningBuffer.toString(), false);
+                            reasoningBuffer.setLength(0);
+                        }
+                        context.getPrinter().send(reasoningMessageId,
+                                ReasoningContentExtractor.EVENT_TYPE,
+                                reasoningContent, true);
+                    }
+
+                    // content 过程文：仅有 tool_call 时推 tool_thought；纯终答由 result 交付
                     if (pushToClient && messageId != null && hasToolCalls && context.getPrinter() != null) {
                         if (streamBuffer.length() > 0) {
                             context.getPrinter().send(messageId, context.getStreamMessageType(),
                                     streamBuffer.toString(), false);
                             streamBuffer.setLength(0);
                         }
-                        if (StringUtils.isNotBlank(content)) {
+                        if (hasContent) {
                             context.getPrinter().send(messageId, context.getStreamMessageType(),
                                     content, true);
                         }
                     }
 
-                    // 空响应校验：无文本且无可用 tool_call（常见于上游空流、解析丢 tool 片段、模型拒答）
-                    if (StringUtils.isBlank(content) && !hasToolCalls) {
+                    if (!hasContent && !hasToolCalls && !hasReasoning) {
                         String requestId = context == null ? "-" : context.getRequestId();
                         log.warn("{} empty streaming tool-call response: chunks={}, toolDeltas={}, " +
                                         "accumulators={}, finishReason={}, usage={}",
@@ -271,9 +309,9 @@ public class StreamResponseHandler {
                         return;
                     }
 
-                    // 组装并返回最终结果
                     future.complete(chatResponseMapper.applyUsage(LLM.ToolCallResponse.builder()
-                        .content(StringUtils.isBlank(content) ? null : content)
+                        .content(hasContent ? content : null)
+                        .reasoningContent(hasReasoning ? reasoningContent : null)
                         .toolCalls(toolCalls)
                         .streamMessageId(messageId)
                         .finishReason(finishReason[0])
@@ -320,6 +358,36 @@ public class StreamResponseHandler {
 
     private boolean shouldFlush(int tokenIndex, int firstInterval, int sendInterval) {
         return tokenIndex == firstInterval || tokenIndex % sendInterval == 0;
+    }
+
+    /**
+     * 追加 reasoning chunk：兼容增量 delta 与「每帧全量累计」两种网关。
+     *
+     * @return 真正需要推给前端的增量文本（可能为空）
+     */
+    private static String appendReasoningChunk(StringBuilder all, String chunk) {
+        if (chunk == null || chunk.isEmpty()) {
+            return "";
+        }
+        String soFar = all.toString();
+        if (soFar.isEmpty()) {
+            all.append(chunk);
+            return chunk;
+        }
+        // 累计全文：新帧以旧全文为前缀
+        if (chunk.startsWith(soFar) && chunk.length() >= soFar.length()) {
+            String delta = chunk.substring(soFar.length());
+            all.setLength(0);
+            all.append(chunk);
+            return delta;
+        }
+        // 重复旧帧
+        if (soFar.startsWith(chunk)) {
+            return "";
+        }
+        // 真增量
+        all.append(chunk);
+        return chunk;
     }
 
     private String extractText(ChatResponse response) {

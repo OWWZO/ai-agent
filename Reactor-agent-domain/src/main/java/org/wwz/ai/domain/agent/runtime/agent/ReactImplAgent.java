@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -19,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 工具调用代理 - 处理工具/函数调用的基础代理类
@@ -123,44 +124,51 @@ public class ReactImplAgent extends ReActAgent {
             // 步骤3：设置流式响应类型（标记当前流式消息为"tool_thought"，供前端识别）
             context.setStreamMessageType("tool_thought");
 
-            // 步骤4：调用大模型的工具调用专用接口（askTool），生成工具调用指令
-            CompletableFuture<LLM.ToolCallResponse> future = getLlm().askTool(
-                    context,                  // 智能体上下文（请求ID、流式标识等）
-                    getMemory().getMessages(),// 对话历史（记忆中的所有消息）
-                    Message.systemMessage(getSystemPrompt(), null), // 系统提示词消息
-                    availableTools,           // 可用工具集合（供大模型选择）
-                    ToolChoice.AUTO,          // 工具选择策略：自动（由大模型决策是否调用工具）
-                    null,                     // 自定义温度系数（使用LLM实例默认值）
-                    context.getIsStream(),    // 是否流式响应（true=流式，false=非流式）
-                    300                       // 超时时间（300秒）
+            // 步骤4/5：askTool + 同步等待；超时等瞬态错误走指数退避重试
+            LLM.ToolCallResponse response = LlmRequestRetry.call(
+                    "react-think:" + context.getRequestId(),
+                    () -> awaitAskTool(
+                            getLlm().askTool(
+                                    context,
+                                    getMemory().getMessages(),
+                                    Message.systemMessage(getSystemPrompt(), null),
+                                    availableTools,
+                                    ToolChoice.AUTO,
+                                    null,
+                                    context.getIsStream(),
+                                    300
+                            )
+                    )
             );
-
-            // 步骤5：同步获取大模型响应（阻塞等待，直到返回工具调用结果）
-            LLM.ToolCallResponse response = future.get();
 
             // 步骤6：更新智能体状态：保存大模型决策的工具调用列表
             setToolCalls(response.getToolCalls());
 
-            // 步骤7：非流式且本轮有 tool_call 时才推过程思考；无 tool 的文本是终答，走 result 不推 tool_thought
-            if (!Boolean.TRUE.equals(context.getIsStream())
-                    && response.getContent() != null
-                    && !response.getContent().isEmpty()
-                    && response.getToolCalls() != null
-                    && !response.getToolCalls().isEmpty()) {
-                printer.send("tool_thought", response.getContent());
+            // 步骤7：原生 CoT 有则推（与是否 tool_call 无关）；过程文仅在有 tool 时推
+            if (!Boolean.TRUE.equals(context.getIsStream())) {
+                if (response.getReasoningContent() != null && !response.getReasoningContent().isEmpty()) {
+                    printer.send(org.wwz.ai.domain.agent.runtime.llm.ReasoningContentExtractor.EVENT_TYPE,
+                            response.getReasoningContent());
+                }
+                if (response.getContent() != null
+                        && !response.getContent().isEmpty()
+                        && response.getToolCalls() != null
+                        && !response.getToolCalls().isEmpty()) {
+                    printer.send("tool_thought", response.getContent());
+                }
             }
 
-            // 步骤8：构建助手消息，添加到智能体记忆（记录大模型的决策结果）
+            // 步骤8：构建助手消息（带 reasoning 以便下轮 passback）
             Message assistantMsg;
             if (response.getToolCalls() != null && !response.getToolCalls().isEmpty()
                     && !"struct_parse".equals(llm.getFunctionCallType())) {
-                // 场景1：原生函数调用模式（function_call）+ 有工具调用指令 → 构建工具调用消息
-                assistantMsg = Message.fromToolCalls(response.getContent(), response.getToolCalls());
+                assistantMsg = Message.fromToolCalls(
+                        response.getContent(), response.getReasoningContent(), response.getToolCalls());
             } else {
-                // 场景2：结构化解析模式（struct_parse）或无工具调用指令 → 构建普通助手消息
-                assistantMsg = Message.assistantMessage(response.getContent(), null);
+                assistantMsg = Message.assistantMessage(
+                        response.getContent(), response.getReasoningContent(), null);
             }
-            getMemory().addMessage(assistantMsg); // 添加到记忆，保证对话上下文连续
+            getMemory().addMessage(assistantMsg);
 
         } catch (Exception e) {
             // 异常处理：记录错误日志，添加异常消息到记忆，标记智能体为完成状态
@@ -262,5 +270,21 @@ public class ReactImplAgent extends ReActAgent {
             throw new IllegalStateException("ReactImplAgent 缺少 ReactorRuntimeDependencies");
         }
         return context.getRuntimeDependencies();
+    }
+
+    private static LLM.ToolCallResponse awaitAskTool(
+            java.util.concurrent.CompletableFuture<LLM.ToolCallResponse> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(cause);
+        }
     }
 }

@@ -139,7 +139,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg p-2 -m-2 text-[13px] text-muted-foreground/88 transition-colors hover:bg-muted/30 hover:text-foreground/82",
+          "flex w-full items-center gap-2 rounded-md p-1.5 -m-1.5 text-[13px] text-muted-foreground/88 transition-colors hover:bg-muted/25 hover:text-foreground/82",
           className
         )}
         {...props}
@@ -187,12 +187,12 @@ export const ReasoningContent = memo(
         )}
         {...props}
       >
-        <div className="mt-3.5">
+        <div className="mt-2.5">
           <MessageResponse
             isStreaming={isStreaming}
             animateByChars={false}
             showStreamingCursor={false}
-            className="text-[12px] leading-6 text-foreground/62 [&_p]:text-[12px] [&_p]:leading-6 [&_li]:text-[12px] [&_li]:leading-6 [&_ol]:leading-6 [&_ul]:leading-6 [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px] [&_blockquote]:text-foreground/56 [&_code]:text-[11.5px]"
+            className="text-[13px] leading-6 tracking-[-0.01em] text-foreground/68 [&_p]:text-[13px] [&_p]:leading-6 [&_li]:text-[13px] [&_li]:leading-6 [&_ol]:leading-6 [&_ul]:leading-6 [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[13px] [&_blockquote]:text-foreground/56 [&_code]:text-[12px]"
           >
             {children}
           </MessageResponse>

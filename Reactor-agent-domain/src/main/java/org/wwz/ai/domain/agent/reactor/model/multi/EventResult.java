@@ -75,6 +75,7 @@ public class EventResult {
         add("knowledge");
         add("deep_search");
         add("tool_thought");
+        add("llm_reasoning");
         add("tool_call");
         add("data_analysis");
     }};

@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -32,6 +33,7 @@ public class GetGenuiGuideTool implements BaseTool {
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", Collections.emptyMap());
+        parameters.put("required", List.of());
         parameters.put("additionalProperties", false);
         return parameters;
     }

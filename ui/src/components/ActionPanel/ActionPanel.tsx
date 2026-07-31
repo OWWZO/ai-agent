@@ -9,6 +9,8 @@ import GenUiInline from "@/components/genui/GenUiInline";
 import TableRenderer from "./TableRenderer";
 import FileRenderer from "./FileRenderer";
 import ImageRenderer from "./ImageRenderer";
+import PdfRenderer from "./PdfRenderer";
+import WordRenderer from "./WordRenderer";
 import SearchListRenderer from "./SearchListRenderer";
 import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
@@ -181,6 +183,40 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
             />
           </ContentWrapper>
         );
+      case "pdf":
+        return (
+          <ContentWrapper key="pdf">
+            <PdfRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "docx":
+        return (
+          <ContentWrapper key="docx">
+            <WordRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+            />
+          </ContentWrapper>
+        );
+      case "legacy-doc":
+        return (
+          <ContentWrapper key="legacy-doc">
+            <WordRenderer
+              fileUrl={panelView.fileUrl}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              missingReason={panelView.missingReason}
+              legacyOnly
+            />
+          </ContentWrapper>
+        );
       case "file":
         return (
           <ContentWrapper key="file">
@@ -210,7 +246,11 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
   }, [panelView]);
 
   const isImmersivePreview =
-    panelView.type === "html" || panelView.type === "inline-html";
+    panelView.type === "html" ||
+    panelView.type === "inline-html" ||
+    panelView.type === "pdf" ||
+    panelView.type === "docx" ||
+    panelView.type === "legacy-doc";
 
   const ref = useRef<HTMLDivElement>(null);
   const shouldAutoFollowRef = useRef(true);

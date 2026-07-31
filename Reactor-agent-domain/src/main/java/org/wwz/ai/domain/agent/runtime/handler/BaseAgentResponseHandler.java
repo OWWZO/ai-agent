@@ -191,6 +191,10 @@ public class BaseAgentResponseHandler {
             case "tool_thought":
                 payload.put("toolThought", agentResponse.getToolThought());
                 break;
+            case "llm_reasoning":
+                // 仅原生 CoT；禁止再塞进 toolThought（避免被当过程文/假思考）
+                payload.put("reasoningContent", agentResponse.getReasoningContent());
+                break;
             case "task":
                 payload.put("task", agentResponse.getTask());
                 break;

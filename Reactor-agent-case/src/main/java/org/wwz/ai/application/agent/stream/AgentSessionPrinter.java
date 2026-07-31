@@ -79,6 +79,10 @@ public class AgentSessionPrinter implements Printer {
                 case "tool_thought":
                     response.setToolThought((String) message);
                     break;
+                case "llm_reasoning":
+                    // 原生 CoT：有 tool_call / 无 tool_call 均推
+                    response.setReasoningContent(message == null ? null : String.valueOf(message));
+                    break;
                 case "task":
                     response.setTask(((String) message).replaceAll("^执行顺序(\\d+)\\.\\s?", ""));
                     break;
@@ -109,6 +113,7 @@ public class AgentSessionPrinter implements Printer {
                 case "plan_approval":
                 case "plan_mode_entered":
                 case "session_tasks":
+                case "user_brief":
                 case "browser":
                 case "code":
                 case "html":

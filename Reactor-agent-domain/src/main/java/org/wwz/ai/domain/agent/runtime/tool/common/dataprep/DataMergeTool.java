@@ -32,11 +32,11 @@ public class DataMergeTool extends AbstractDocReadTool {
         properties.put("operation", stringProp("merge | concat"));
         properties.put("how", stringProp("inner | outer | left | right | cross"));
         properties.put("on", stringProp("Join key column(s)"));
-        properties.put("left_data", Map.of("type", "array", "items", Map.of("type", "object")));
-        properties.put("right_data", Map.of("type", "array", "items", Map.of("type", "object")));
+        properties.put("left_data", Map.of("type", "array", "items", objectProp("Left row")));
+        properties.put("right_data", Map.of("type", "array", "items", objectProp("Right row")));
         properties.put("left_on", stringProp("Left join keys"));
         properties.put("right_on", stringProp("Right join keys"));
-        properties.put("datasets", Map.of("type", "array", "description", "Datasets for concat"));
+        properties.put("datasets", Map.of("type", "array", "description", "Datasets for concat", "items", objectProp("Dataset")));
         properties.put("axis", stringProp("concat axis: rows | columns"));
         return objectSchema(properties, List.of());
     }

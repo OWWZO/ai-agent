@@ -29,17 +29,13 @@ public class ChecklistGenerateTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("type", "object");
-        item.put("description", "Checklist item: text, status, priority, assignee, due_date, notes, sub_items.");
-
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. checklist.md / checklist.pdf."));
         properties.put("format", stringProp("markdown | json | html | pdf | docx."));
         properties.put("title", stringProp("Checklist title."));
         properties.put("description", stringProp("Checklist description."));
-        properties.put("items", arrayProp("Flat list of items.", item));
-        properties.put("groups", arrayProp("Grouped items: [{name, description, items:[...]}].", Map.of("type", "object")));
+        properties.put("items", arrayProp("Flat list of items.", objectProp("Checklist item: text, status, priority, assignee, due_date, notes, sub_items.")));
+        properties.put("groups", arrayProp("Grouped items: [{name, description, items:[...]}].", objectProp("Checklist group")));
         properties.put("theme", stringProp("Theme for HTML/PDF/DOCX."));
         properties.put("fileName", stringProp("Alias of output_path."));
         return objectSchema(properties, List.of());
