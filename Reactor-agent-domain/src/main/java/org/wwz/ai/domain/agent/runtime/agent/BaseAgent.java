@@ -34,8 +34,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 所有 Agent 的抽象基类。
@@ -614,6 +617,9 @@ public abstract class BaseAgent {
     /**
      * 并发执行多个工具调用，并返回完整 outcome。
      * 子类可以基于同一份 outcome 同时处理前端展示、记忆写回和账本一致性。
+     * <p>
+     * Agent 派发走 task 池，普通工具走 tool 池，打断「同池嵌套阻塞」自死锁；
+     * allOf 带超时，超时未完成的工具标记 failed，避免 UI 永久 running。
      */
     protected Map<String, ToolExecutionOutcome> executeToolOutcomes(List<ToolCall> commands) {
         Map<String, ToolExecutionOutcome> result = new ConcurrentHashMap<>();
@@ -630,20 +636,39 @@ public abstract class BaseAgent {
         emitToolCallRunningEvents(commands, dispatchIndexMapping);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
-        Executor toolExecutor = resolveToolExecutor();
         for (ToolCall toolCall : commands) {
+            Executor executor = resolveExecutorForTool(toolCall);
+            String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
             CompletableFuture<Void> future = AgentExecutorSupport
-                    .supplyAsync(toolExecutor, "toolBatch", () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)))
-                    .thenAccept(outcome -> {
-                        result.put(toolCall.getId(), outcome);
-                        finishToolInvocation(toolCall, outcome);
-                        recordToolArtifacts(toolCall);
-                        emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
+                    .supplyAsync(executor, scene, () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)))
+                    .handle((outcome, error) -> {
+                        ToolExecutionOutcome finalOutcome = outcome;
+                        if (error != null) {
+                            Throwable root = unwrapExecutionError(error);
+                            String msg = root.getMessage() == null
+                                    ? root.getClass().getSimpleName()
+                                    : root.getMessage();
+                            finalOutcome = toolFailureOutcome("Tool execution error: " + msg, msg);
+                        }
+                        completeToolOutcome(result, toolCall, finalOutcome, dispatchIndexMapping, true);
+                        return null;
                     });
             futures.add(future);
         }
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        awaitToolBatch(futures);
+        for (ToolCall command : commands) {
+            if (command == null || StringUtils.isBlank(command.getId()) || result.containsKey(command.getId())) {
+                continue;
+            }
+            completeToolOutcome(
+                    result,
+                    command,
+                    toolFailureOutcome("工具执行超时，已终止等待", "TOOL_BATCH_TIMEOUT"),
+                    dispatchIndexMapping,
+                    false);
+        }
+
         Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
         for (ToolCall command : commands) {
             if (command != null && StringUtils.isNotBlank(command.getId())) {
@@ -651,6 +676,86 @@ public abstract class BaseAgent {
             }
         }
         return ordered;
+    }
+
+    private void awaitToolBatch(List<CompletableFuture<Void>> futures) {
+        if (futures == null || futures.isEmpty()) {
+            return;
+        }
+        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        long timeoutSeconds = resolveToolBatchTimeoutSeconds();
+        try {
+            if (timeoutSeconds > 0L) {
+                all.orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+            } else {
+                all.join();
+            }
+        } catch (CompletionException e) {
+            Throwable root = unwrapExecutionError(e);
+            if (root instanceof TimeoutException) {
+                log.error("{} tool batch timed out after {}s",
+                        context == null ? "-" : context.getRequestId(), timeoutSeconds);
+            } else {
+                log.error("{} tool batch join failed",
+                        context == null ? "-" : context.getRequestId(), root);
+            }
+        }
+    }
+
+    /**
+     * 登记工具 outcome，并按需落账本/产物/终态事件。
+     * 超时补完路径不调用 recordToolArtifacts，与历史行为一致。
+     */
+    private void completeToolOutcome(Map<String, ToolExecutionOutcome> result,
+                                     ToolCall toolCall,
+                                     ToolExecutionOutcome outcome,
+                                     Map<String, Integer> dispatchIndexMapping,
+                                     boolean recordArtifacts) {
+        if (toolCall == null || StringUtils.isBlank(toolCall.getId()) || outcome == null) {
+            return;
+        }
+        result.put(toolCall.getId(), outcome);
+        finishToolInvocation(toolCall, outcome);
+        if (recordArtifacts) {
+            recordToolArtifacts(toolCall);
+        }
+        emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
+    }
+
+    private static ToolExecutionOutcome toolFailureOutcome(String message, String errorMsg) {
+        return ToolExecutionOutcome.failure(message, message, null, errorMsg);
+    }
+
+    private static Throwable unwrapExecutionError(Throwable error) {
+        Throwable current = error;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current == null ? error : current;
+    }
+
+    private boolean isAgentDispatchTool(ToolCall toolCall) {
+        return toolCall != null
+                && toolCall.getFunction() != null
+                && org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool.NAME
+                .equals(toolCall.getFunction().getName());
+    }
+
+    /**
+     * Agent 派发占用 task 池；普通工具占用 tool 池，避免嵌套 Agent 与子工具同池自死锁。
+     */
+    private Executor resolveExecutorForTool(ToolCall toolCall) {
+        if (isAgentDispatchTool(toolCall)) {
+            return resolveTaskExecutor();
+        }
+        return resolveToolExecutor();
+    }
+
+    private long resolveToolBatchTimeoutSeconds() {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            return 600L;
+        }
+        return context.getRuntimeDependencies().resolveToolBatchTimeoutSeconds();
     }
 
     /**
@@ -841,6 +946,10 @@ public abstract class BaseAgent {
             }
             items.add(ToolInvocationBatchStartRecord.Item.builder()
                     .toolCallId(command.getId())
+                    .parentToolCallId(context.getParentToolUseId())
+                    .subAgentId(context.getSubAgentId())
+                    .subAgentType(context.getSubAgentType())
+                    .subAgentDescription(context.getSubAgentDescription())
                     .dispatchIndex(dispatchIndex++)
                     .toolName(command.getFunction().getName())
                     .toolProvider(resolveToolProvider(command.getFunction().getName()))
@@ -1003,6 +1112,13 @@ public abstract class BaseAgent {
             return Runnable::run;
         }
         return context.getRuntimeDependencies().requireToolExecutor();
+    }
+
+    private Executor resolveTaskExecutor() {
+        if (context == null || context.getRuntimeDependencies() == null) {
+            return Runnable::run;
+        }
+        return context.getRuntimeDependencies().requireTaskExecutor();
     }
 
     private String resolveStorageKey(File file) {

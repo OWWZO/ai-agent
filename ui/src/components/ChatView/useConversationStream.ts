@@ -479,6 +479,7 @@ export function useConversationStream(
     let lastConversationFlushAt = 0;
     let lastTaskFlushAt = 0;
     const CONVERSATION_FLUSH_INTERVAL = 16;
+    /** 工作区 taskList 可略节流；时间线 chat.tasks 必须随事件即时派生 */
     const TASK_FLUSH_INTERVAL = 96;
 
     const flushNonChatUpdates = (force = false) => {
@@ -487,14 +488,18 @@ export function useConversationStream(
       }
 
       const now = performance.now();
-      if (taskDataDirty && (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL)) {
-        pendingTaskData = handleTaskData(
+      // 只要有新事件就重建 chat.tasks，避免 multiAgent 已更新但时间线仍停在旧快照
+      if (taskDataDirty) {
+        const derived = handleTaskData(
           currentChat,
           normalizedDeepThink,
           currentChat.multiAgent
         );
-        syncDerivedConversationSnapshot(pendingTaskData.currentChat);
+        syncDerivedConversationSnapshot(derived.currentChat);
         taskDataDirty = false;
+        if (force || now - lastTaskFlushAt >= TASK_FLUSH_INTERVAL) {
+          pendingTaskData = derived;
+        }
       }
 
       const shouldFlushConversation =
@@ -733,7 +738,16 @@ export function useConversationStream(
       draftController.replaceLastItem({ ...currentChat });
       if (!isPlanThoughtEvent || isPlanThoughtFinal) {
         pendingConversation = draftController.getSnapshot();
-        scheduleNonChatFlush(finished);
+        // 过程文 / 工具占位 / 工具结果：强制刷新，避免等工具跑完才整块冒泡
+        const forceTimeline =
+          finished ||
+          eventData.messageType === "tool_thought" ||
+          eventData.messageType === "llm_reasoning" ||
+          eventData.messageType === "tool_call" ||
+          eventData.messageType === "tool_result" ||
+          eventData.resultMap?.messageType === "tool_call" ||
+          eventData.resultMap?.messageType === "tool_result";
+        scheduleNonChatFlush(forceTimeline);
       }
     };
 

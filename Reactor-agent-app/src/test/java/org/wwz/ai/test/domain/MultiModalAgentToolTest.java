@@ -78,13 +78,12 @@ public class MultiModalAgentToolTest {
                 agentContext.clearCurrentToolArtifactSource();
             }
 
-            String result = payload.getToolResult();
             MultimodalAgentToolOutput structuredOutput = (MultimodalAgentToolOutput) payload.getStructuredOutput();
-            Assert.assertTrue(result.contains("多模态检索会先召回图文片段。"));
-            Assert.assertTrue(result.contains("![图片](https://img.example.com/mrag.png)"));
             Assert.assertNotNull(structuredOutput);
             Assert.assertFalse(payload.getFailed());
-            Assert.assertTrue(structuredOutput.getMarkdownContent().contains("![图片]"));
+            Assert.assertNotNull(payload.getLlmData());
+            Assert.assertTrue(structuredOutput.getMarkdownContent().contains("多模态检索会先召回图文片段。"));
+            Assert.assertTrue(structuredOutput.getMarkdownContent().contains("![图片](https://img.example.com/mrag.png)"));
             Assert.assertFalse(structuredOutput.getFileRefs().isEmpty());
             Assert.assertEquals("markdown", printer.messageTypes().get(printer.messageTypes().size() - 1));
             Assert.assertEquals(

@@ -94,19 +94,16 @@ public class TodoWriteTool implements BaseTool {
             List<SessionTaskItem> newTodos = store.list();
             SessionTaskListPublisher.publish(agentContext);
 
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("oldCount", oldTodos.size());
-            body.put("newCount", newTodos.size());
-            body.put("tasks", store.toClientTaskList());
-            String text = "Todos have been modified successfully. Ensure that you continue to use the todo list "
-                    + "to track your progress. Please proceed with the current tasks if applicable.\n"
-                    + "oldCount=" + oldTodos.size() + " newCount=" + newTodos.size() + "\n"
-                    + JSON.toJSONString(body);
-            return ToolResultPayload.text(text);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "Todos have been modified successfully. Continue using the todo list to track progress.");
+            fields.put("oldCount", oldTodos.size());
+            fields.put("newCount", newTodos.size());
+            fields.put("tasks", store.toClientTaskList());
+            return ToolResultPayload.okData(TaskToolNames.TODO_WRITE, fields);
         } catch (Exception e) {
             log.warn("TodoWrite failed", e);
             String msg = "TodoWrite 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 

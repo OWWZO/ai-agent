@@ -7,7 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { BrainIcon, ChevronDownIcon, SparklesIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { motion } from "motion/react";
@@ -106,19 +106,12 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
   getThinkingMessage?: (isStreaming: boolean, duration?: number) => ReactNode;
 };
 
-// 动态思考指示器组件
-const ThinkingIndicator = memo(() => {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[12px] text-muted-foreground/80">思考中</span>
-      <div className="flex items-center gap-0.5" aria-hidden>
-        <span className="h-1 w-1 rounded-full bg-primary/60" />
-        <span className="h-1 w-1 rounded-full bg-primary/80" />
-        <span className="h-1 w-1 rounded-full bg-primary" />
-      </div>
-    </div>
-  );
-});
+// 动态思考指示器：文字光效，无星星图标
+const ThinkingIndicator = memo(() => (
+  <span className="thinking-shimmer text-[13px] font-medium tracking-[0.02em]">
+    正在理解问题…
+  </span>
+));
 
 ThinkingIndicator.displayName = "ThinkingIndicator";
 
@@ -127,9 +120,9 @@ const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
     return <ThinkingIndicator />;
   }
   if (duration === undefined) {
-    return <span className="text-[12px] text-muted-foreground/80">思考完成</span>;
+    return <span className="text-[13px] text-muted-foreground/80">思考完成</span>;
   }
-  return <span className="text-[12px] text-muted-foreground/80">已思考 {duration} 秒</span>;
+  return <span className="text-[13px] text-muted-foreground/80">已思考 {duration} 秒</span>;
 };
 
 export const ReasoningTrigger = memo(
@@ -146,14 +139,7 @@ export const ReasoningTrigger = memo(
       >
         {children ?? (
           <>
-            <div>
-              {isStreaming ? (
-                <SparklesIcon className="size-4 text-primary" />
-              ) : (
-                <BrainIcon className="size-4" />
-              )}
-            </div>
-            <div className="flex-1 text-left">
+            <div className="min-w-0 flex-1 text-left">
               {getThinkingMessage(isStreaming, duration)}
             </div>
             <motion.div

@@ -40,6 +40,15 @@ public class ToolInvocationBatchStartRecord {
 
         private String toolCallId;
 
+        /** 父 Agent 工具 toolCallId（子 Agent 内嵌工具） */
+        private String parentToolCallId;
+
+        private String subAgentId;
+
+        private String subAgentType;
+
+        private String subAgentDescription;
+
         private Integer dispatchIndex;
 
         private String toolName;

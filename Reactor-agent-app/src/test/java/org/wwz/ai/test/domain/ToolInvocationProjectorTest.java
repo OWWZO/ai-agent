@@ -62,6 +62,40 @@ public class ToolInvocationProjectorTest {
         Assert.assertEquals(1, events.size());
         Assert.assertEquals("task", events.get(0).getMessageType());
         Assert.assertEquals("tool_result", resultMap(events.get(0)).get("messageType"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> toolResult = (Map<String, Object>) resultMap(events.get(0)).get("toolResult");
+        Assert.assertEquals("tool-call-read-001", toolResult.get("toolCallId"));
+    }
+
+    @Test
+    public void shouldProjectSubAgentNestingTagsOnToolResult() {
+        ToolInvocationView invocation = ToolInvocationView.builder()
+                .toolCallId("nested-tool-001")
+                .toolName("workspace_read")
+                .agentName("subagent:Explore")
+                .parentToolCallId("parent-agent-call")
+                .subAgentId("abc123subagent")
+                .subAgentType("Explore")
+                .subAgentDescription("scan controllers")
+                .llmObservation("found 3 files")
+                .build();
+
+        List<ProjectedReplayEvent> events = registry.project(invocation, List.of(), new EventResult());
+
+        Assert.assertEquals(1, events.size());
+        Map<String, Object> response = resultMap(events.get(0));
+        Assert.assertEquals("parent-agent-call", response.get("parentToolUseId"));
+        Assert.assertEquals("abc123subagent", response.get("subAgentId"));
+        Assert.assertEquals("Explore", response.get("subAgentType"));
+        Assert.assertEquals("scan controllers", response.get("subAgentDescription"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> toolResult = (Map<String, Object>) response.get("toolResult");
+        Assert.assertEquals("nested-tool-001", toolResult.get("toolCallId"));
+        Assert.assertEquals("workspace_read", toolResult.get("toolName"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> nestedResultMap = (Map<String, Object>) response.get("resultMap");
+        Assert.assertNotNull(nestedResultMap);
+        Assert.assertEquals("parent-agent-call", nestedResultMap.get("parentToolUseId"));
     }
 
     @Test

@@ -22,7 +22,7 @@ Reactor Phase 1 之后，本模块不再承载 legacy HTTP controller，也不�
 | 接口 | 职责 |
 |-----|------|
 | `IRagService` | RAG 检索服务 |
-| `AgentQueryService` | GPT 查询与多智能体运行时查询服务 |
+| `GptQueryAgentRequestFactory` | 浏览器 GptQueryReq → 运行时 AgentRequest 翻译 |
 | `DataAgentQueryService` | 数据问答运行时查询服务 |
 | `ExecutionLedgerQueryService` | 执行账本查询服务 |
 
@@ -138,7 +138,7 @@ A: Reactor 是 Agent 执行引擎的核心实现，包含 Agent 生命周期管�
 |---------|------|
 | `src/main/java/org/wwz/ai/domain/agent/rag/IRagService.java` | RAG 服务接口 |
 | `src/main/java/org/wwz/ai/domain/agent/rag/RagService.java` | RAG 服务实现 |
-| `src/main/java/org/wwz/ai/domain/agent/runtime/AgentQueryService.java` | GPT 查询稳定运行时 seam |
+| `src/main/java/org/wwz/ai/domain/agent/runtime/GptQueryAgentRequestFactory.java` | 主聊天请求协议翻译 |
 | `src/main/java/org/wwz/ai/domain/agent/rag/DataAgentQueryService.java` | 数据问答稳定查询 seam |
 
 ### 执行策略

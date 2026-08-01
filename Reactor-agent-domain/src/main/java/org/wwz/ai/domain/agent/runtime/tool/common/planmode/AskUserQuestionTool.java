@@ -171,23 +171,18 @@ public class AskUserQuestionTool implements BaseTool {
                 return fail("等待用户回答失败：" + e.getMessage());
             }
 
-            // 3) 打包回模型
-            StringBuilder sb = new StringBuilder("User has answered your questions: ");
-            List<String> parts = new ArrayList<>();
-            for (Map.Entry<String, String> e : answers.entrySet()) {
-                parts.add("\"" + e.getKey() + "\"=\"" + e.getValue() + "\"");
-            }
-            sb.append(String.join(", ", parts));
-            sb.append(". You can now continue with the user's answers in mind.");
-
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("questions", questions);
-            body.put("answers", answers);
-            body.put("questionId", pending.getQuestionId());
-            return ToolResultPayload.text(sb + "\n" + JSON.toJSONString(body));
+            // 3) 打包回模型（JSON 结构化 observation）
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "User has answered your questions. Continue with the answers in mind.");
+            fields.put("questions", questions);
+            fields.put("answers", answers);
+            fields.put("questionId", pending.getQuestionId());
+            return ToolResultPayload.okData(NAME, fields);
         } catch (Exception e) {
             log.warn("AskUserQuestion failed", e);
-            return fail("AskUserQuestion 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+            return ToolResultPayload.failureFrom(
+                    "AskUserQuestion 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
+                    null);
         }
     }
 
@@ -209,7 +204,7 @@ public class AskUserQuestionTool implements BaseTool {
     }
 
     private static ToolResultPayload fail(String msg) {
-        return ToolResultPayload.failure(msg, msg, null, msg);
+        return ToolResultPayload.failureFrom(msg, null);
     }
 
     @SuppressWarnings("unchecked")

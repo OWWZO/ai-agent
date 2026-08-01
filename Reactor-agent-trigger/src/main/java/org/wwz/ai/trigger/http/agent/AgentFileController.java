@@ -7,9 +7,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.wwz.ai.api.response.Response;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.infrastructure.gateway.ReactorFileGateway;
-import org.wwz.ai.infrastructure.gateway.dto.ConversationUploadFileDTO;
+import org.wwz.ai.application.agent.file.ConversationFileApplicationService;
+import org.wwz.ai.domain.agent.model.valobj.ConversationUploadedFile;
 import org.wwz.ai.trigger.http.agent.vo.AgentFileUploadRespVO;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -18,6 +17,7 @@ import javax.annotation.Resource;
 
 /**
  * 对话附件上传 Controller。
+ * 仅依赖 case 编排，不直连 infrastructure 网关。
  */
 @Slf4j
 @RestController
@@ -25,10 +25,7 @@ import javax.annotation.Resource;
 public class AgentFileController {
 
     @Resource
-    private ReactorFileGateway reactorFileGateway;
-
-    @Resource
-    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
+    private ConversationFileApplicationService conversationFileApplicationService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<AgentFileUploadRespVO> upload(@RequestParam("sessionId") String sessionId,
@@ -47,14 +44,16 @@ public class AgentFileController {
         }
 
         try {
-            conversationSessionOwnershipApplicationService.ensureSessionAccessible(
+            ConversationUploadedFile uploaded = conversationFileApplicationService.upload(
                     VisitorRequestContext.requireVisitorId(),
                     sessionId,
-                    null
+                    file.getOriginalFilename(),
+                    file.getContentType(),
+                    file.getSize(),
+                    file.getInputStream()
             );
-            ConversationUploadFileDTO fileDTO = reactorFileGateway.uploadConversationFile(sessionId, file);
             AgentFileUploadRespVO respVO = new AgentFileUploadRespVO();
-            BeanUtils.copyProperties(fileDTO, respVO);
+            BeanUtils.copyProperties(uploaded, respVO);
             return Response.<AgentFileUploadRespVO>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())

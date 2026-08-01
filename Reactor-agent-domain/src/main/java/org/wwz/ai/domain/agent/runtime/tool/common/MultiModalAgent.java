@@ -494,26 +494,25 @@ public class MultiModalAgent implements BaseTool {
                 .markdownContent(markdownContent)
                 .fileRefs(ToolFileRefMapper.fromGenericFileInfo(fileInfo))
                 .build();
-        return ToolResultPayload.structured(
-                markdownContent,
-                markdownContent,
-                structuredOutput
-        );
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("summary", structuredOutput.getSummary());
+        fields.put("markdownContent", markdownContent);
+        fields.put("fileRefs", structuredOutput.getFileRefs());
+        return ToolResultPayload.okData(getName(), fields, structuredOutput);
     }
 
     /**
      * 失败路径也返回最小 typed output，避免账本再次出现空结构。
      */
     private ToolResultPayload buildFailurePayload(String message) {
-        return ToolResultPayload.failure(
-                message,
-                message,
-                MultimodalAgentToolOutput.builder()
-                        .summary(message)
-                        .markdownContent("")
-                        .build(),
-                message
-        );
+        MultimodalAgentToolOutput structuredOutput = MultimodalAgentToolOutput.builder()
+                .summary(message)
+                .markdownContent("")
+                .build();
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("tool", getName());
+        detail.put("summary", message);
+        return ToolResultPayload.failureFrom(message, detail, structuredOutput);
     }
 
     /**

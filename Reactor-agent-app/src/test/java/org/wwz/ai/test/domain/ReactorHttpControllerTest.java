@@ -108,7 +108,9 @@ public class ReactorHttpControllerTest {
         Assert.assertFalse(dataAgentFieldTypes.contains("org.wwz.ai.domain.agent.rag.SchemaRecallService"));
         Assert.assertFalse(dataAgentFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService"));
 
-        Assert.assertTrue(gptQueryApplicationFieldTypes.contains("org.wwz.ai.domain.agent.runtime.AgentQueryService"));
+        Assert.assertTrue(gptQueryApplicationFieldTypes.contains("org.wwz.ai.application.agent.dispatch.IAgentDispatchService"));
+        Assert.assertTrue(gptQueryApplicationFieldTypes.contains("org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory"));
+        Assert.assertFalse(gptQueryApplicationFieldTypes.contains("org.wwz.ai.domain.agent.runtime.AgentQueryService"));
         Assert.assertFalse(gptQueryApplicationFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.IGptProcessService"));
         Assert.assertFalse(gptQueryApplicationFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.IMultiAgentService"));
 

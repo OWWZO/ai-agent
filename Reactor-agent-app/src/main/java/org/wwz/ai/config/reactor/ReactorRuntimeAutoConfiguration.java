@@ -20,7 +20,9 @@ import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
+import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
 import java.util.concurrent.Executor;
 
@@ -56,11 +58,12 @@ public class ReactorRuntimeAutoConfiguration {
                                                                  RemoteHttpPort remoteHttpPort,
                                                                  RemoteStreamPort remoteStreamPort,
                                                                  FileArtifactPort fileArtifactPort,
-                                                                 @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
-                                                                 @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
-                                                                 @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
-                                                                 @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler,
-                                                                 @Lazy SessionContextCompactionService sessionContextCompactionService) {
+                                                                  @Qualifier(AgentExecutorNames.LLM_EXECUTOR) Executor llmExecutor,
+                                                                  @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
+                                                                  @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
+                                                                  @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler,
+                                                                  @Lazy SessionContextCompactionService sessionContextCompactionService,
+                                                                  AgentExecutorProperties agentExecutorProperties) {
         // SessionContextCompactionService 是接口，@Lazy 可走 JDK 代理；
         // 反向依赖用 ObjectProvider，避免对 final 的 ReactorRuntimeDependencies 做 CGLIB 代理。
         return ReactorRuntimeDependencies.builder()
@@ -76,7 +79,19 @@ public class ReactorRuntimeAutoConfiguration {
                 .taskExecutor(taskExecutor)
                 .toolExecutor(toolExecutor)
                 .heartbeatScheduler(heartbeatScheduler)
+                .toolBatchTimeoutSeconds(agentExecutorProperties.getToolBatchTimeoutSeconds())
                 .sessionContextCompactionService(sessionContextCompactionService)
                 .build();
+    }
+
+    @Bean
+    public SubAgentConcurrencyGate subAgentConcurrencyGate(AgentExecutorProperties agentExecutorProperties) {
+        int max = agentExecutorProperties.getMaxConcurrentSubAgents() == null
+                ? SubAgentConcurrencyGate.DEFAULT_MAX_CONCURRENT
+                : agentExecutorProperties.getMaxConcurrentSubAgents();
+        long acquireTimeout = agentExecutorProperties.getSubAgentAcquireTimeoutSeconds() == null
+                ? SubAgentConcurrencyGate.DEFAULT_ACQUIRE_TIMEOUT_SECONDS
+                : agentExecutorProperties.getSubAgentAcquireTimeoutSeconds();
+        return new SubAgentConcurrencyGate(max, acquireTimeout);
     }
 }

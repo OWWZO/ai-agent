@@ -1,5 +1,4 @@
 import { FC, useState, useCallback, useMemo, memo, useEffect, useRef } from "react";
-import { User } from "lucide-react";
 import AttachmentList from "@/components/AttachmentList";
 import { getTaskFiles } from "@/utils/taskArtifacts";
 import {
@@ -187,21 +186,18 @@ const DialogueComponent: FC<Props> = (props) => {
       {/* 附件 */}
       {(chat.files || []).length ? (
         <div className="mt-5 flex w-full justify-end">
-          <AttachmentList files={chat.files} preview={false} />
+          <AttachmentList
+            files={chat.files}
+            preview={true}
+            review={(file) => changeFile?.(file, chat)}
+          />
         </div>
       ) : null}
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="user-message-enter mt-5 flex w-full max-w-[90%] flex-row-reverse items-end gap-2 ml-auto md:max-w-[80%]">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
-            style={{ boxShadow: "var(--chat-soft-shadow)" }}
-            aria-hidden="true"
-          >
-            <User className="h-4 w-4 text-stone-800" />
-          </div>
-          <Message from="user" className="max-w-[calc(100%-2.5rem)]">
+        <div className="user-message-enter mt-5 ml-auto flex w-full max-w-[85%] justify-end">
+          <Message from="user" className="max-w-full">
             <MessageContent>
               {chat.query}
             </MessageContent>

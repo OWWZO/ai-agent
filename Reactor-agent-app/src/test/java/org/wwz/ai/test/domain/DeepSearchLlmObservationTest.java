@@ -66,8 +66,9 @@ public class DeepSearchLlmObservationTest {
     }
 
     @Test
-    public void shouldApplyDeterministicTruncationToDeepSearchObservation() {
+    public void shouldKeepFullAnswerAndTruncateSourceDocsInObservation() {
         DeepSearchStructuredResultBuilder builder = new DeepSearchStructuredResultBuilder("AI 芯片供应链");
+        String fullAnswer = repeat("总结", 150);
         builder.recordEvent(DeepSearchrResponse.builder()
                 .messageType("extend")
                 .searchResult(DeepSearchrResponse.SearchResult.builder()
@@ -86,7 +87,7 @@ public class DeepSearchLlmObservationTest {
                         )))
                         .build())
                 .build());
-        builder.recordFinalAnswer("AI 芯片供应链", repeat("总结", 150));
+        builder.recordFinalAnswer("AI 芯片供应链", fullAnswer);
 
         JSONObject llmObservation = JSON.parseObject(builder.buildPayload("fallback").getLlmObservation());
         JSONArray results = llmObservation.getJSONArray("results");
@@ -94,7 +95,8 @@ public class DeepSearchLlmObservationTest {
 
         Assert.assertEquals(3, docs.size());
         Assert.assertTrue(docs.getJSONObject(0).getString("summary").length() <= 183);
-        Assert.assertTrue(llmObservation.getString("answerSummary").length() <= 243);
+        // 总结文章全量返回，不再截断
+        Assert.assertEquals(fullAnswer, llmObservation.getString("answerSummary"));
     }
 
     @Test

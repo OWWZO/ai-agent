@@ -102,10 +102,7 @@ const StreamingTextComponent = ({
       parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
 
     if (isNearBottom) {
-      parent.scrollTo({
-        top: parent.scrollHeight,
-        behavior: "smooth",
-      });
+      parent.scrollTop = parent.scrollHeight;
     }
   }, [displayText, isStreaming]);
 

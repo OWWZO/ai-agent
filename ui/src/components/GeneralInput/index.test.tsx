@@ -37,7 +37,7 @@ describe("GeneralInput", () => {
     expect(html).toContain('aria-label="Working"');
   });
 
-  it("未指定输出格式时展示中性文案", () => {
+  it("输入工具条不再展示输出格式入口", () => {
     const html = renderToStaticMarkup(
       <GeneralInput
         sessionId="session-1"
@@ -56,7 +56,9 @@ describe("GeneralInput", () => {
       />
     );
 
-    expect(html).toContain("输出格式");
+    expect(html).not.toContain("输出格式");
     expect(html).not.toContain("网页模式");
+    expect(html).toContain("深度思考");
+    expect(html).toContain("数据分析");
   });
 });

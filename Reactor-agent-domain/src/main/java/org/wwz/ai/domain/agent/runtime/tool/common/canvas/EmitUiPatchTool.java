@@ -85,29 +85,31 @@ public class EmitUiPatchTool implements BaseTool {
                 agentContext.getPrinter().send(toolCallId, "ui_patch", streamPayload, digitalEmployee, true);
             }
 
-            String observation = "GenUI patch applied ("
-                    + ((List<?>) normalized.get("patches")).size()
-                    + " ops).";
             Integer seq = null;
             if (normalized.get("seq") instanceof Number n) {
                 seq = n.intValue();
             }
-            return ToolResultPayload.structured(
-                    observation,
-                    observation,
+            List<Map<String, Object>> patches = (List<Map<String, Object>>) normalized.get("patches");
+            String canvasId = stringVal(normalized.get("canvas_id"));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "GenUI patch applied (" + patches.size() + " ops).");
+            fields.put("canvasId", canvasId);
+            fields.put("seq", seq);
+            fields.put("patchCount", patches.size());
+            return ToolResultPayload.okData(
+                    getName(),
+                    fields,
                     GenUiPatchToolOutput.builder()
-                            .patches((List<Map<String, Object>>) normalized.get("patches"))
-                            .canvasId(stringVal(normalized.get("canvas_id")))
+                            .patches(patches)
+                            .canvasId(canvasId)
                             .seq(seq)
                             .build()
             );
         } catch (Exception e) {
             log.warn("emit_ui_patch failed: {}", e.getMessage());
-            return ToolResultPayload.failure(
+            return ToolResultPayload.failureFrom(
                     "emit_ui_patch validation failed: " + e.getMessage(),
-                    "emit_ui_patch validation failed: " + e.getMessage(),
-                    null,
-                    e.getMessage()
+                    null
             );
         }
     }

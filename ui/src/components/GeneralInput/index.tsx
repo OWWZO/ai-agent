@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowUpIcon,
   BarChart3Icon,
   BrainCircuitIcon,
   CheckIcon,
@@ -10,7 +11,6 @@ import {
 } from "lucide-react";
 
 import { AI_CHAT_FLOATING_CLASS } from "@/components/ai-elements/ai-chat-surface";
-import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -37,8 +37,6 @@ import { cn } from "@/lib/utils";
 import {
   GENERIC_TASK_PRODUCT,
   defaultProduct,
-  isOutputProductType,
-  OUTPUT_PRODUCT_TYPES,
   productList,
 } from "@/utils/constants";
 import UploadAttachmentChip from "./UploadAttachmentChip";
@@ -57,6 +55,7 @@ type Props = {
   size: string;
   product?: CHAT.Product;
   deepThink?: boolean;
+  /** @deprecated 输出格式已下线，保留 prop 兼容旧调用 */
   displayOutput?: CHAT.Product;
   chatRole?: CHAT.ConversationRole | null;
   chatRoles?: CHAT.FixRole[];
@@ -67,12 +66,9 @@ type Props = {
 };
 
 type InputModeKey = "quick" | "think" | "research";
-const OUTPUT_PRODUCTS = productList.filter((item) =>
-  OUTPUT_PRODUCT_TYPES.includes(item.type as (typeof OUTPUT_PRODUCT_TYPES)[number])
-) as CHAT.Product[];
+
 const DATA_AGENT_PRODUCT =
   (productList.find((item) => item.type === "dataAgent") as CHAT.Product | undefined) ?? defaultProduct;
-const DEFAULT_OUTPUT_PRODUCT = (OUTPUT_PRODUCTS[0] ?? defaultProduct) as CHAT.Product;
 
 const MODE_OPTIONS: Array<{
   key: InputModeKey;
@@ -109,127 +105,24 @@ const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
   return deepThink ? "research" : "think";
 };
 
-const getOutputProduct = (product?: CHAT.Product, displayOutput?: CHAT.Product) => {
-  if (product && isOutputProductType(product.type)) {
-    return product;
-  }
-  if (displayOutput && isOutputProductType(displayOutput.type)) {
-    return displayOutput;
-  }
-  return DEFAULT_OUTPUT_PRODUCT;
-};
-
-const getProductLabel = (name: string) => name.replace("模式", "");
-const getOutputShortDescription = (type: string) => {
-  switch (type) {
-    case "html":
-      return "网页页面";
-    case "docs":
-      return "文档报告";
-    case "ppt":
-      return "演示文稿";
-    case "table":
-      return "数据表格";
-    default:
-      return "结构化输出";
-  }
-};
-
-type SelectorTone = {
-  icon: string;
-  iconActive: string;
-  check: string;
-};
-
-const MODE_TONES: Record<InputModeKey, SelectorTone> = {
-  quick: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-  think: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-  research: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-};
-
-const OUTPUT_TONES: Record<string, SelectorTone> = {
-  html: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-  docs: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-  ppt: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-  table: {
-    icon: "text-[#4b5563]",
-    iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-    check: "text-[#0a74da]",
-  },
-};
-
-const DATA_AGENT_TONE: SelectorTone = {
-  icon: "text-[#4b5563]",
-  iconActive: "bg-[#e8f2ff] text-[#0a74da]",
-  check: "text-[#0a74da]",
-};
-
-const selectorTrayClassName =
-  "flex min-w-0 flex-1 flex-wrap items-center gap-1 rounded-full bg-transparent p-0.5 sm:flex-none";
-
-const chipButtonClassName = (active: boolean, disabled?: boolean) =>
-  cn(
-    "group inline-flex h-9 max-w-full items-center gap-2 rounded-full border border-transparent px-3 pr-3 text-[14px] font-medium transition-all duration-200",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d9ff] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-    disabled && "cursor-not-allowed opacity-50",
-    !disabled && "hover:bg-white",
-    active
-      ? "bg-[#e8f2ff] text-[#0a74da]"
-      : "bg-transparent text-[#111827]"
-  );
-
-const chipIconWrapClassName = (tone: SelectorTone, active: boolean) =>
-  cn(
-    "flex size-[26px] shrink-0 items-center justify-center rounded-full transition-all duration-200",
-    active
-      ? tone.iconActive
-      : cn("bg-transparent ring-0 group-hover:bg-white/90", tone.icon)
-  );
-
 const menuContentClassName =
-  "rounded-[16px] border-0 bg-white p-0.5 shadow-[0_10px_28px_-18px_rgba(15,23,42,0.2)]";
+  "rounded-[18px] border border-black/[0.04] bg-white p-1 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.28)]";
 
 const menuTitleClassName =
-  "px-2 pb-1 pt-0.5 text-[10px] font-semibold tracking-[0.06em] text-[#6b7280] uppercase";
+  "px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-[#86868b]";
 
 const menuItemClassName = (active: boolean) =>
   cn(
-    "flex w-full gap-1.5 rounded-xl border border-transparent px-1.5 py-2 text-left transition-all duration-200",
-    active
-      ? "bg-[#e8f2ff]"
-      : "bg-transparent hover:bg-[#f9fafb]"
+    "flex w-full items-center gap-2 rounded-[12px] px-2 py-2 text-left transition-colors",
+    active ? "bg-[#f5f5f7]" : "hover:bg-[#f5f5f7]/80"
   );
 
-const menuIconWrapClassName = (tone: SelectorTone, active: boolean) =>
+const toolBtnClassName = (active?: boolean, disabled?: boolean) =>
   cn(
-    "mt-0.5 flex size-6.5 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
-    active
-      ? tone.iconActive
-      : cn("bg-transparent ring-0", tone.icon)
+    "inline-flex h-8 max-w-full items-center gap-1 rounded-full px-2 text-[13px] font-medium tracking-[-0.01em] transition-colors",
+    "text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f]",
+    active && "text-[#1d1d1f]",
+    disabled && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#6b6b70]"
   );
 
 const GeneralInput: ReactorType.FC<Props> = (props) => {
@@ -243,7 +136,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     size,
     product,
     deepThink = false,
-    displayOutput,
     chatRole,
     chatRoles = [],
     showRoleSelector = false,
@@ -254,7 +146,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const [question, setQuestion] = useState("");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [outputMenuOpen, setOutputMenuOpen] = useState(false);
   const tempData = useRef<{ compositing?: boolean }>({});
   const {
     attachmentUploads,
@@ -267,31 +158,24 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
-  const hasSelectedOutputProduct = isOutputProductType(product?.type);
-  const resolvedOutputProduct = useMemo(
-    () => getOutputProduct(product, displayOutput),
-    [displayOutput, product]
-  );
 
-  // 记住上一次标准任务模式，切到“数据分析”后仍能保持用户刚才的选择感。
-  const lastStandardModeRef = useRef<InputModeKey>(currentMode === "quick" ? "think" : currentMode);
-  const lastOutputProductRef = useRef<CHAT.Product>(resolvedOutputProduct);
+  // 记住离开数据分析前的推理模式
+  const lastStandardModeRef = useRef<InputModeKey>(
+    currentMode === "quick" ? "think" : currentMode
+  );
 
   useEffect(() => {
     if (product?.type === "dataAgent") {
       return;
     }
-
-    lastStandardModeRef.current = currentMode;
-    lastOutputProductRef.current = resolvedOutputProduct;
-  }, [currentMode, product?.type, resolvedOutputProduct]);
+    lastStandardModeRef.current = currentMode === "quick" ? "think" : currentMode;
+  }, [currentMode, product?.type]);
 
   const visibleMode = isDataAgent ? lastStandardModeRef.current : currentMode;
-  const visibleOutputProduct = isDataAgent ? lastOutputProductRef.current : resolvedOutputProduct;
-  const currentModeOption = MODE_OPTIONS.find((item) => item.key === visibleMode) ?? MODE_OPTIONS[0];
+  const currentModeOption =
+    MODE_OPTIONS.find((item) => item.key === visibleMode) ?? MODE_OPTIONS[1];
   const CurrentModeIcon = currentModeOption.icon;
-  const currentModeTone = MODE_TONES[currentModeOption.key];
-  const visibleOutputTone = OUTPUT_TONES[visibleOutputProduct.type] ?? OUTPUT_TONES.html;
+
   const hasUploadingAttachment = attachmentOrder.some((id) => {
     const status = attachmentUploads[id]?.status;
     return status === "pending" || status === "uploading";
@@ -308,21 +192,23 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     !busy &&
     !hasUploadingAttachment &&
     !hasFailedAttachment;
-  const showOutputSelector = showBtn && visibleMode !== "quick";
   const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
 
-  const handleAttachmentsAdded = useCallback((attachments: PromptInputAttachmentItem[]) => {
-    const nextAttachments = attachments.filter(
-      (attachment): attachment is PromptInputAttachmentItem & { file: File } =>
-        Boolean(attachment.file)
-    );
-    addAttachmentUploads(
-      nextAttachments.map((attachment) => ({
-        id: attachment.id,
-        file: attachment.file,
-      }))
-    );
-  }, [addAttachmentUploads]);
+  const handleAttachmentsAdded = useCallback(
+    (attachments: PromptInputAttachmentItem[]) => {
+      const nextAttachments = attachments.filter(
+        (attachment): attachment is PromptInputAttachmentItem & { file: File } =>
+          Boolean(attachment.file)
+      );
+      addAttachmentUploads(
+        nextAttachments.map((attachment) => ({
+          id: attachment.id,
+          file: attachment.file,
+        }))
+      );
+    },
+    [addAttachmentUploads]
+  );
 
   const handleSelectionChange = (nextProduct: CHAT.Product, nextDeepThink: boolean) => {
     onSelectionChange?.({
@@ -332,26 +218,13 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   };
 
   const handleModeSelect = (modeKey: InputModeKey) => {
-    // 前端暂时关闭对话模式切换，菜单里不再暴露 quick。
     if (modeKey === "quick") {
       setModeMenuOpen(false);
       return;
     }
-    handleSelectionChange(
-      isDataAgent ? visibleOutputProduct : product ?? visibleOutputProduct,
-      modeKey === "research"
-    );
+    // 输出格式已下线：标准任务统一走通用 task
+    handleSelectionChange(GENERIC_TASK_PRODUCT, modeKey === "research");
     setModeMenuOpen(false);
-  };
-
-  const handleOutputSelect = (nextOutput: CHAT.Product) => {
-    handleSelectionChange(nextOutput, visibleMode === "research");
-    setOutputMenuOpen(false);
-  };
-
-  const handleOutputClear = () => {
-    handleSelectionChange(GENERIC_TASK_PRODUCT, visibleMode === "research");
-    setOutputMenuOpen(false);
   };
 
   const handleSubmit = ({ text }: { text: string; files: unknown[] }) => {
@@ -406,8 +279,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         <PromptInput
           accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
           className={cn(
-            "reactor-input-flat w-full rounded-3xl transition-all duration-300",
-            size === "big" ? "rounded-[28px]" : "rounded-3xl"
+            "reactor-input-flat w-full transition-[border-color,box-shadow] duration-200",
+            size === "big" ? "rounded-[28px]" : "rounded-[26px]"
           )}
           convertBlobUrlsOnSubmit={false}
           multiple
@@ -415,7 +288,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
           onSubmit={handleSubmit}
         >
           <PromptInputBody>
-            <PromptInputAttachments className="px-4 pt-3">
+            <PromptInputAttachments className="px-3.5 pt-2.5">
               {(file) => (
                 <UploadAttachmentChip
                   key={file.id}
@@ -429,9 +302,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "px-4 text-[14px] leading-6 text-[var(--chat-text)] placeholder:text-[var(--chat-text-soft)] placeholder:opacity-100",
-                "focus:placeholder:text-[var(--chat-text-soft)]/50",
-                size === "big" ? "min-h-24 pt-4 text-[15px]" : "min-h-16 pt-3.5"
+                "px-4 text-[15px] leading-[1.55] text-[#1d1d1f] placeholder:text-[#aeaeb2] placeholder:opacity-100",
+                size === "big" ? "min-h-[76px] pt-3.5" : "min-h-[52px] pt-2.5"
               )}
               disabled={disabled}
               onChange={(event) => setQuestion(event.target.value)}
@@ -447,34 +319,24 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             />
           </PromptInputBody>
 
-          <PromptInputFooter
-            className={cn(
-              "items-end gap-3 px-3.5 pb-3 pt-1",
-              showBtn ? "flex-col sm:flex-row sm:items-end" : "justify-between gap-2.5"
-            )}
-          >
-            <PromptInputTools
-              className={cn(
-                "w-full flex-wrap items-center gap-2",
-                !showBtn && "w-auto gap-1.5"
-              )}
-            >
+          <PromptInputFooter className="items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
+            <PromptInputTools className="min-w-0 flex-1 flex-wrap items-center gap-0.5">
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger
                   size="icon-sm"
                   variant="ghost"
                   disabled={disabled}
-                  className="h-9 w-9 rounded-full border-0 bg-zinc-100 text-stone-700 shadow-none ring-0 transition-all duration-200 hover:bg-zinc-200 focus-visible:ring-0"
+                  className="h-8 w-8 rounded-full border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
                 >
                   <PlusIcon className="size-4" />
                 </PromptInputActionMenuTrigger>
-                <PromptInputActionMenuContent className={cn("min-w-[180px]", menuContentClassName)}>
+                <PromptInputActionMenuContent className={cn("min-w-[168px]", menuContentClassName)}>
                   <PromptInputActionAddAttachments label="上传附件" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
 
               {showBtn ? (
-                <div className={selectorTrayClassName}>
+                <>
                   {showRoleSelector ? (
                     <ChatRoleSelector
                       roles={chatRoles}
@@ -483,34 +345,34 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       onSelect={(role) => onRoleSelect?.(role)}
                     />
                   ) : null}
+
                   <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        aria-pressed={true}
                         disabled={disabled}
-                        className={chipButtonClassName(true, disabled)}
+                        className={toolBtnClassName(!isDataAgent, disabled)}
                       >
-                        <span className={chipIconWrapClassName(currentModeTone, true)}>
-                          <CurrentModeIcon className="size-4" />
-                        </span>
+                        <CurrentModeIcon className="size-3.5 shrink-0 opacity-80" />
                         <span className="truncate">{currentModeOption.label}</span>
                         <ChevronDownIcon
-                          className={cn("size-4 shrink-0 text-[var(--chat-text-muted)] transition-transform", modeMenuOpen && "rotate-180")}
+                          className={cn(
+                            "size-3.5 shrink-0 opacity-50 transition-transform",
+                            modeMenuOpen && "rotate-180"
+                          )}
                         />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="start"
                       side="bottom"
-                      sideOffset={12}
-                      className={cn("w-[190px]", menuContentClassName)}
+                      sideOffset={10}
+                      className={cn("w-[200px]", menuContentClassName)}
                     >
-                      <div className={menuTitleClassName}>推理模式</div>
-                      <div className="space-y-1">
+                      <div className={menuTitleClassName}>模式</div>
+                      <div className="space-y-0.5">
                         {VISIBLE_MODE_OPTIONS.map((option) => {
-                          const isActive = option.key === visibleMode;
-                          const tone = MODE_TONES[option.key];
+                          const isActive = option.key === visibleMode && !isDataAgent;
                           return (
                             <button
                               key={option.key}
@@ -518,18 +380,18 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                               className={menuItemClassName(isActive)}
                               onClick={() => handleModeSelect(option.key)}
                             >
-                              <span className={menuIconWrapClassName(tone, isActive)}>
-                                <option.icon className="size-3.5" />
-                              </span>
-                              <span className="min-w-0 flex-1 pr-0.5">
-                                <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
+                              <option.icon className="size-3.5 shrink-0 text-[#6b6b70]" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[13.5px] font-medium text-[#1d1d1f]">
                                   {option.label}
                                 </span>
-                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
+                                <span className="mt-0.5 block text-[11px] leading-4 text-[#86868b]">
                                   {option.description}
                                 </span>
                               </span>
-                              {isActive ? <CheckIcon className={cn("mt-1 size-3 shrink-0", tone.check)} /> : null}
+                              {isActive ? (
+                                <CheckIcon className="size-3.5 shrink-0 text-[#1d1d1f]" />
+                              ) : null}
                             </button>
                           );
                         })}
@@ -537,109 +399,28 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  {showOutputSelector ? (
-                    <DropdownMenu open={outputMenuOpen} onOpenChange={setOutputMenuOpen}>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          aria-pressed={hasSelectedOutputProduct}
-                          disabled={disabled || isDataAgent}
-                          className={chipButtonClassName(hasSelectedOutputProduct, disabled || isDataAgent)}
-                        >
-                          <span className={chipIconWrapClassName(visibleOutputTone, hasSelectedOutputProduct)}>
-                            <i className={cn("font_family text-[14px]", visibleOutputProduct.img)} />
-                          </span>
-                          <span className="truncate">
-                            {hasSelectedOutputProduct ? getProductLabel(visibleOutputProduct.name) : "输出格式"}
-                          </span>
-                          <ChevronDownIcon
-                            className={cn("size-4 shrink-0 text-[var(--chat-text-muted)] transition-transform", outputMenuOpen && "rotate-180")}
-                          />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        side="top"
-                        avoidCollisions={false}
-                        sideOffset={12}
-                        className={cn("w-[186px]", menuContentClassName)}
-                      >
-                        <div className={menuTitleClassName}>输出格式</div>
-                        <div className="space-y-1">
-                          <button
-                            type="button"
-                            className={menuItemClassName(!hasSelectedOutputProduct && !isDataAgent)}
-                            onClick={handleOutputClear}
-                          >
-                            <span
-                              className={menuIconWrapClassName(
-                                visibleOutputTone,
-                                !hasSelectedOutputProduct && !isDataAgent
-                              )}
-                            >
-                              <span className="text-[11px] font-semibold">Auto</span>
-                            </span>
-                            <span className="min-w-0 flex-1 pr-0.5">
-                              <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
-                                不指定
-                              </span>
-                              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
-                                由后端按任务内容自行判断
-                              </span>
-                            </span>
-                            {!hasSelectedOutputProduct && !isDataAgent ? (
-                              <CheckIcon className={cn("size-3 shrink-0", visibleOutputTone.check)} />
-                            ) : null}
-                          </button>
-                          {OUTPUT_PRODUCTS.map((item) => {
-                            const isActive =
-                              item.type === visibleOutputProduct.type && hasSelectedOutputProduct;
-                            const tone = OUTPUT_TONES[item.type] ?? visibleOutputTone;
-                            return (
-                              <button
-                                key={item.type}
-                                type="button"
-                                className={menuItemClassName(isActive)}
-                                onClick={() => handleOutputSelect(item)}
-                              >
-                                <span className={menuIconWrapClassName(tone, isActive)}>
-                                  <i className={cn("font_family text-[13px]", item.img)} />
-                                </span>
-                                <span className="min-w-0 flex-1 pr-0.5">
-                                  <span className="block text-[14px] font-medium tracking-[-0.01em] text-[var(--chat-text)]">
-                                    {getProductLabel(item.name)}
-                                  </span>
-                                  <span className="mt-0.5 block text-[11px] leading-4 text-[var(--chat-text-soft)]">
-                                    {getOutputShortDescription(item.type)}
-                                  </span>
-                                </span>
-                                {isActive ? <CheckIcon className={cn("size-3 shrink-0", tone.check)} /> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : null}
-
                   {showDataAgentToggle ? (
                     <button
                       type="button"
                       aria-pressed={isDataAgent}
                       disabled={disabled}
-                      className={chipButtonClassName(isDataAgent, disabled)}
+                      className={toolBtnClassName(isDataAgent, disabled)}
                       onClick={() => {
-                        if (visibleMode === "quick" && !isDataAgent) return;
+                        if (isDataAgent) {
+                          handleSelectionChange(
+                            GENERIC_TASK_PRODUCT,
+                            lastStandardModeRef.current === "research"
+                          );
+                          return;
+                        }
                         handleSelectionChange(DATA_AGENT_PRODUCT, false);
                       }}
                     >
-                      <span className={chipIconWrapClassName(DATA_AGENT_TONE, isDataAgent)}>
-                        <BarChart3Icon className="size-4" />
-                      </span>
+                      <BarChart3Icon className="size-3.5 shrink-0 opacity-80" />
                       <span className="truncate">数据分析</span>
                     </button>
                   ) : null}
-                </div>
+                </>
               ) : showRoleSelector ? (
                 <ChatRoleSelector
                   roles={chatRoles}
@@ -650,15 +431,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               ) : null}
             </PromptInputTools>
 
-            <PromptInputTools className="shrink-0 items-center gap-2 self-end">
+            <PromptInputTools className="ml-auto shrink-0 items-center gap-1.5 self-end">
               {busy ? (
                 <div
-                  className="mr-1 flex items-center text-[13px] font-medium text-muted-foreground"
+                  className="mr-0.5 flex items-center text-[12px] font-medium text-[#86868b]"
                   role="status"
                   aria-live="polite"
                   aria-label="Working"
                 >
-                  <span className="thinking-shimmer text-[13px] font-medium tracking-[0.02em]">
+                  <span className="thinking-shimmer text-[12px] font-medium tracking-[0.02em]">
                     Working
                   </span>
                 </div>
@@ -668,7 +449,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   {busy && onStop ? (
                     <button
                       type="button"
-                      className="relative flex size-9 items-center justify-center rounded-full border-0 bg-[var(--chat-accent)] p-0 text-white shadow-none transition-all duration-200 hover:scale-105 hover:opacity-90"
+                      className="relative flex size-8 items-center justify-center rounded-full border-0 bg-[#1d1d1f] p-0 text-white shadow-none transition-opacity hover:opacity-90"
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -676,15 +457,19 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       }}
                       aria-label="停止"
                     >
-                      <span className="block size-3 rounded-[2px] bg-white" />
+                      <span className="block size-2.5 rounded-[2px] bg-white" />
                     </button>
                   ) : (
                     <PromptInputSubmit
-                      className="relative size-9 rounded-full border-0 bg-transparent p-0 shadow-none transition-all duration-200 hover:scale-105 disabled:scale-100 disabled:opacity-50 disabled:hover:scale-100"
+                      className={cn(
+                        "reactor-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
+                        "bg-[#1d1d1f] text-white hover:opacity-90",
+                        "disabled:cursor-not-allowed disabled:bg-[#e8e8ed] disabled:text-[#aeaeb2] disabled:opacity-100"
+                      )}
                       disabled={!canSend}
                       variant="ghost"
                     >
-                      <AnimatedOrb size={36} />
+                      <ArrowUpIcon className="size-[15px] stroke-[2.25]" />
                     </PromptInputSubmit>
                   )}
                 </TooltipTrigger>

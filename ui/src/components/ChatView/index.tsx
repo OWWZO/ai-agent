@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { getStableTaskIdentity } from "@/utils/chat";
@@ -17,7 +16,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { PanelLeftClose, PanelRightClose } from "lucide-react";
+import { FolderOpen, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { parseDataChatEvent } from "@/utils/sseParsers";
 import type { DataConversationRuntime } from "./chatView.types";
 import {
@@ -26,6 +25,10 @@ import {
   useConversationStream,
 } from "./useConversationStream";
 import { useWorkspacePanels } from "./useWorkspacePanels";
+
+type ChatViewApi = {
+  openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+};
 
 type Props = {
   inputInfo: CHAT.TInputInfo;
@@ -39,6 +42,11 @@ type Props = {
   ) => void;
   onRoleSelect: (role: CHAT.FixRole) => void;
   onInputConsumed?: () => void;
+  onTaskListChange?: (taskList: CHAT.Task[]) => void;
+  onRegisterApi?: (api: ChatViewApi | null) => void;
+  onOpenTaskFiles?: () => void;
+  /** 沉浸模式变化：Home 用来收起/展开左侧会话栏 */
+  onFocusModeChange?: (immersive: boolean) => void;
 };
 
 const getTaskStableKey = (task?: CHAT.Task) => {
@@ -55,9 +63,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onConversationChange,
     onRoleSelect,
     onInputConsumed,
+    onTaskListChange,
+    onRegisterApi,
+    onOpenTaskFiles,
+    onFocusModeChange,
   } = props;
 
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
+  /** 打开工作区前缓存要点的文件，避免 ActionView 未挂载时 setFilePreview 丢失 */
+  const [pendingPreviewFile, setPendingPreviewFile] = useState<CHAT.TFile>();
   const {
     leftPanelWidth,
     isDragging,
@@ -69,15 +83,18 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     handleDragMove,
     handleDragEnd,
     setIsRightCollapsed,
-    setIsFocusMode,
     toggleLeftPanel,
     toggleRightPanel: toggleWorkspaceRightPanel,
     toggleFocusMode,
+    exitFocusMode,
   } = useWorkspacePanels();
+
+  useEffect(() => {
+    onFocusModeChange?.(isFocusMode);
+  }, [isFocusMode, onFocusModeChange]);
   const actionViewRef = ActionView.useActionView();
   const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
-  const [isConversationSwitching, setIsConversationSwitching] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const {
     taskList,
@@ -99,6 +116,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     onPrepareStreamingWorkspace: () => {
       // 新一轮请求开始后，工作区恢复自动跟随，避免仍停留在上一轮手动点开的旧任务上。
       setActiveTask(undefined);
+      setPendingPreviewFile(undefined);
       actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     },
     onTokenUseUp: () => {
@@ -140,13 +158,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       return prevActiveTask;
     });
   }, [taskList, workspaceStreamTask]);
-
-  // Ensure fade-in starts before the browser paints after conversation switch.
-  useLayoutEffect(() => {
-    setIsConversationSwitching(true);
-    const timer = setTimeout(() => setIsConversationSwitching(false), 220);
-    return () => clearTimeout(timer);
-  }, [conversation.id]);
 
   const commitConversation = useMemoizedFn(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -191,6 +202,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
     setIsRightCollapsed(false);
+    // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
+    setPendingPreviewFile(undefined);
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     changeActionStatus(true);
     setActiveTask(task);
@@ -200,15 +213,31 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     });
   };
 
-  const changeFile = (file: CHAT.TFile, chat?: CHAT.ChatItem) => {
+  const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
+    // 只打开右侧预览 tab；左侧文件管理仅由「查看当前任务的文件」入口进入
     setIsRightCollapsed(false);
     changeActionStatus(true);
     setActiveRunState({
       status: chat?.metrics?.status,
       finishedAt: chat?.finishedAt,
     });
+    // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费
+    setPendingPreviewFile(file);
     actionViewRef.current?.setFilePreview(file);
-  };
+  });
+
+  const clearPendingPreviewFile = useMemoizedFn(() => {
+    setPendingPreviewFile(undefined);
+  });
+
+  useEffect(() => {
+    onTaskListChange?.(taskList || []);
+  }, [taskList, onTaskListChange]);
+
+  useEffect(() => {
+    onRegisterApi?.({ openFile: changeFile });
+    return () => onRegisterApi?.(null);
+  }, [changeFile, onRegisterApi]);
 
   const changePlan = () => {
     setIsRightCollapsed(false);
@@ -335,132 +364,34 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const headerTitle = conversation.chatTitle || conversation.title;
 
-  const renderChatDialogues = () => {
-    if (isConversationSwitching) {
-      return (
-        <motion.div
-          key={`switch-${conversation.id}`}
-          initial={{
-            opacity: 0.9,
-            y: 6
-          }}
-          animate={{
-            opacity: 1,
-            y: 0
-          }}
-          transition={{
-            duration: 0.14,
-            ease: [0.25, 0.46, 0.45, 0.94]
-          }}
-        >
-          {conversation.chatList.map((chat) => (
-            <Dialogue
-              key={chat.requestId}
-              chat={chat}
-              streamingThought={streamingThoughtMap[chat.requestId]}
-              deepThink={conversation.deepThink}
-              changeTask={changeTask}
-              changeFile={changeFile}
-              changePlan={changePlan}
-              onRegenerate={readOnly ? undefined : handleRegenerate}
-            />
-          ))}
-        </motion.div>
-      );
-    }
-
-    return (
-      <AnimatePresence mode="popLayout" initial={false}>
-        {conversation.chatList.map((chat) => (
-          <motion.div
-            key={chat.requestId}
-            initial={{
-              opacity: 0.9,
-              y: 6
-            }}
-            animate={{
-              opacity: 1,
-              y: 0
-            }}
-            exit={{
-              opacity: 0.85,
-              y: -4
-            }}
-            transition={{
-              duration: 0.14,
-              ease: [0.25, 0.46, 0.45, 0.94],
-            }}
-          >
-            <Dialogue
-              chat={chat}
-              streamingThought={streamingThoughtMap[chat.requestId]}
-              deepThink={conversation.deepThink}
-              changeTask={changeTask}
-              changeFile={changeFile}
-              changePlan={changePlan}
-              onRegenerate={readOnly ? undefined : handleRegenerate}
-            />
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    );
-  };
+  const renderChatDialogues = () => (
+    <>
+      {conversation.chatList.map((chat) => (
+        <Dialogue
+          key={chat.requestId}
+          chat={chat}
+          streamingThought={streamingThoughtMap[chat.requestId]}
+          deepThink={conversation.deepThink}
+          changeTask={changeTask}
+          changeFile={changeFile}
+          changePlan={changePlan}
+          onRegenerate={readOnly ? undefined : handleRegenerate}
+        />
+      ))}
+    </>
+  );
 
   const renderDataDialogues = () => {
     const visibleDataChats = optimisticDataChat
       ? [...conversation.dataChatList, optimisticDataChat]
       : conversation.dataChatList;
 
-    if (isConversationSwitching) {
-      return (
-        <motion.div
-          key={`switch-data-${conversation.id}`}
-          initial={{
-            opacity: 0.9,
-            y: 6
-          }}
-          animate={{
-            opacity: 1,
-            y: 0
-          }}
-          transition={{
-            duration: 0.14,
-            ease: [0.25, 0.46, 0.45, 0.94]
-          }}
-        >
-          {visibleDataChats.map((chat, idx) => (
-            <DataDialogue key={`${conversation.id}-${idx}`} chat={chat} />
-          ))}
-        </motion.div>
-      );
-    }
-
     return (
-      <AnimatePresence mode="popLayout" initial={false}>
+      <>
         {visibleDataChats.map((chat, idx) => (
-          <motion.div
-            key={`${conversation.id}-${idx}`}
-            initial={{
-              opacity: 0.9,
-              y: 6
-            }}
-            animate={{
-              opacity: 1,
-              y: 0
-            }}
-            exit={{
-              opacity: 0.85,
-              y: -4
-            }}
-            transition={{
-              duration: 0.14,
-              ease: [0.25, 0.46, 0.45, 0.94],
-            }}
-          >
-            <DataDialogue chat={chat} />
-          </motion.div>
+          <DataDialogue key={`${conversation.id}-${idx}`} chat={chat} />
         ))}
-      </AnimatePresence>
+      </>
     );
   };
 
@@ -485,9 +416,21 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => onOpenTaskFiles?.()}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                title="查看当前任务的文件"
+                aria-label="查看当前任务的文件"
+              >
+                <FolderOpen className="h-4 w-4" />
+              </button>
             </div>
 
-            <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden">
+            <Conversation
+              key={conversation.id}
+              className="chat-fade-bottom min-h-0 flex-1 overflow-hidden"
+            >
               <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
                 {renderChatDialogues()}
               </ConversationContent>
@@ -542,7 +485,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       );
     }
 
-    // 双面板布局；专注模式隐藏对话区，把工作区拉满
+    // 双面板布局；沉浸模式：对话区窄列保留，工作区主导（侧栏由 Home 收起）
     return (
       <div
         ref={containerRef}
@@ -552,112 +495,132 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         )}
       >
         {/* Left Panel - Chat Area */}
-        {!isFocusMode && (
-          <div
-            className={classNames(
-              "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
-              isDragging ? "transition-none" : "transition-all duration-300",
-              isLeftCollapsed && "w-14 min-w-14",
-              !isLeftCollapsed && "shrink-0"
-            )}
-            style={{
-              ...(!isLeftCollapsed ? { width: `${leftPanelWidth}%` } : {}),
-              boxShadow: "var(--chat-soft-shadow)",
-            }}
-          >
-            {isLeftCollapsed ? (
+        <div
+          className={classNames(
+            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
+            isDragging ? "transition-none" : "transition-all duration-300",
+            isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
+            (!isLeftCollapsed || isFocusMode) && "shrink-0"
+          )}
+          style={{
+            ...((!isLeftCollapsed || isFocusMode)
+              ? {
+                width: `${isFocusMode ? leftPanelWidth : leftPanelWidth}%`,
+                minWidth: isFocusMode ? 280 : undefined,
+                maxWidth: isFocusMode ? "28%" : undefined,
+              }
+              : {}),
+            boxShadow: "var(--chat-soft-shadow)",
+          }}
+        >
+          {isLeftCollapsed && !isFocusMode ? (
             // 折叠状态
-              <div className="flex h-full flex-col items-center py-4">
-                <button
-                  onClick={toggleLeftPanel}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                  title="展开聊天区"
-                >
-                  <PanelRightClose className="h-5 w-5" />
-                </button>
-              </div>
-            ) : (
-            // 展开状态
-              <>
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <h2 className="truncate text-[16px] font-semibold text-[var(--chat-text)]">
-                      {headerTitle}
-                    </h2>
-                    {conversation.deepThink && (
-                      <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                        <i className="font_family icon-shendusikao text-[11px]"></i>
-                        <span>深度研究</span>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={toggleLeftPanel}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                    title="收起聊天区"
-                  >
-                    <PanelLeftClose className="h-4 w-4" />
-                  </button>
-                </div>
-
-                {/* Messages */}
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden px-5 pt-5">
-                    <ConversationContent>
-                      {renderChatDialogues()}
-                    </ConversationContent>
-                    <ConversationScrollButton />
-                  </Conversation>
-
-                  {!readOnly ? (
-                    <div className="shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-4 pt-3">
-                      <PlanComposerBar
-                        chat={conversation.chatList?.[conversation.chatList.length - 1]}
-                        taskList={taskList}
-                        structuredPlan={plan}
-                        loading={loading}
-                      />
-                      <GeneralInput
-                        key={`input-${conversation.sessionId}-left`}
-                        sessionId={conversation.sessionId}
-                        placeholder={
-                          conversation.role?.available === false
-                            ? "当前角色已失效，请新建对话后重新选择角色"
-                            : loading
-                              ? "任务进行中..."
-                              : "希望 Reactor 为你做哪些任务呢？"
-                        }
-                        showBtn={false}
-                        size="medium"
-                        busy={loading}
-                        disabled={!loading && conversation.role?.available === false}
-                        onStop={loading ? () => void stopActiveRun() : undefined}
-                        product={currentProduct}
-                        deepThink={conversation.deepThink}
-                        displayOutput={currentProduct}
-                        chatRole={conversation.role}
-                        chatRoles={chatRoles}
-                        showRoleSelector={false}
-                        onRoleSelect={onRoleSelect}
-                        send={(info) =>
-                          sendMessage({
-                            ...info,
-                            outputStyle: toRequestOutputStyle(conversation.productType),
-                            deepThink: conversation.deepThink,
-                            aiAgentId: conversation.role?.agentId,
-                          })
-                        }
-                      />
+            <div className="flex h-full flex-col items-center py-4">
+              <button
+                onClick={toggleLeftPanel}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                title="展开聊天区"
+              >
+                <PanelRightClose className="h-5 w-5" />
+              </button>
+            </div>
+          ) : (
+            // 展开状态（含沉浸窄列）
+            <>
+              {/* Header */}
+              <div className={classNames(
+                "flex items-center justify-between py-4",
+                isFocusMode ? "px-3" : "px-5"
+              )}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <h2 className="truncate text-[16px] font-semibold text-[var(--chat-text)]">
+                    {headerTitle}
+                  </h2>
+                  {conversation.deepThink && !isFocusMode && (
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+                      <i className="font_family icon-shendusikao text-[11px]"></i>
+                      <span>深度研究</span>
                     </div>
-                  ) : null}
+                  )}
                 </div>
-              </>
-            )}
-          </div>
-        )}
+                {!isFocusMode ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTaskFiles?.()}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                    title="查看当前任务的文件"
+                    aria-label="查看当前任务的文件"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
 
-        {/* Drag Handle */}
+              {/* Messages */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <Conversation
+                  key={conversation.id}
+                  className={classNames(
+                    "chat-fade-bottom min-h-0 flex-1 overflow-hidden pt-5",
+                    isFocusMode ? "px-3" : "px-5"
+                  )}
+                >
+                  <ConversationContent>
+                    {renderChatDialogues()}
+                  </ConversationContent>
+                  <ConversationScrollButton />
+                </Conversation>
+
+                {!readOnly ? (
+                  <div className={classNames(
+                    "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
+                    isFocusMode ? "px-2" : "px-4"
+                  )}>
+                    <PlanComposerBar
+                      chat={conversation.chatList?.[conversation.chatList.length - 1]}
+                      taskList={taskList}
+                      structuredPlan={plan}
+                      loading={loading}
+                    />
+                    <GeneralInput
+                      key={`input-${conversation.sessionId}-left`}
+                      sessionId={conversation.sessionId}
+                      placeholder={
+                        conversation.role?.available === false
+                          ? "当前角色已失效，请新建对话后重新选择角色"
+                          : loading
+                            ? "任务进行中..."
+                            : "希望 Reactor 为你做哪些任务呢？"
+                      }
+                      showBtn={false}
+                      size="medium"
+                      busy={loading}
+                      disabled={!loading && conversation.role?.available === false}
+                      onStop={loading ? () => void stopActiveRun() : undefined}
+                      product={currentProduct}
+                      deepThink={conversation.deepThink}
+                      displayOutput={currentProduct}
+                      chatRole={conversation.role}
+                      chatRoles={chatRoles}
+                      showRoleSelector={false}
+                      onRoleSelect={onRoleSelect}
+                      send={(info) =>
+                        sendMessage({
+                          ...info,
+                          outputStyle: toRequestOutputStyle(conversation.productType),
+                          deepThink: conversation.deepThink,
+                          aiAgentId: conversation.role?.agentId,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Drag Handle — 沉浸模式锁定比例，不可拖 */}
         {!isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
           <div
             aria-label="调整对话区和工作区宽度"
@@ -713,6 +676,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             <ActionView
               activeTask={activeTask}
               streamTask={workspaceStreamTask}
+              pendingPreviewFile={pendingPreviewFile}
+              onPendingPreviewFileConsumed={clearPendingPreviewFile}
               workspaceCaption={workspaceCaption}
               taskList={taskList}
               plan={plan}
@@ -722,7 +687,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               ref={actionViewRef}
               onClose={() => {
                 if (isFocusMode) {
-                  setIsFocusMode(false);
+                  exitFocusMode();
                 } else {
                   changeActionStatus(false);
                   setIsRightCollapsed(true);
@@ -756,7 +721,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </div>
           </div>
 
-          <Conversation className="chat-fade-bottom min-h-0 flex-1 overflow-hidden">
+          <Conversation
+            key={conversation.id}
+            className="chat-fade-bottom min-h-0 flex-1 overflow-hidden"
+          >
             <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
               {renderDataDialogues()}
             </ConversationContent>

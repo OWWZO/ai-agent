@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.canvas;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -46,8 +45,6 @@ public class GetHtmlCanvasGuideTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
-        Map<String, Object> guide = HtmlCanvasGuidePayload.payload();
-        String json = JSON.toJSONString(guide);
-        return ToolResultPayload.text(json);
+        return ToolResultPayload.fromData(HtmlCanvasGuidePayload.payload());
     }
 }

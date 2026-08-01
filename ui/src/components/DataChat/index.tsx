@@ -10,127 +10,130 @@ import {
 } from "./chartConfig";
 import { defaultChartPresets } from "./chartPresets";
 import { buildQuerySummary } from "./querySummary";
+import {
+  BarChart3,
+  ChartLine,
+  ChartPie,
+  ChevronDown,
+  ChevronUp,
+  Table2,
+} from "lucide-react";
 
-/**
- * 图形切换Bar
- * @param props
- * @returns
- */
 const TypeBar: ReactorType.FC<{
   currentType: string;
   chartCfg: DataChatSourceConfig;
   onChange?: (val: string) => void;
 }> = (props) => {
-  const _chartTypes: Record<string, any>[] = [
-    { type: "line", icon: "icon-zhexian" },
-    { type: "bar", icon: "icon-zhuzhuang" },
-    { type: "hbar", icon: "icon-tiaoxing" },
-    { type: "pie", icon: "icon-shanxing" },
-    { type: "table", icon: "icon-biaoge" },
-  ];
+  const chartTypes = [
+    { type: "line", icon: ChartLine, label: "折线" },
+    { type: "bar", icon: BarChart3, label: "柱状" },
+    { type: "hbar", icon: BarChart3, label: "条形" },
+    { type: "pie", icon: ChartPie, label: "饼图" },
+    { type: "table", icon: Table2, label: "表格" },
+  ] as const;
 
   const { currentType, chartCfg, onChange } = props;
-  const [showQueryArgs, setShowQueryArgs] = useState<boolean>(true);
+  const [showQueryArgs, setShowQueryArgs] = useState(true);
   const summary = useMemo(() => buildQuerySummary(chartCfg), [chartCfg]);
 
   return (
     <>
-      <div className="mb-[10px] flex justify-start items-center w-full">
-        {/* 按钮切换组 */}
-        {summary.showTypeSwitch && (
-          <div className="p-[2px] border border-[#dcdee0] rounded-[4px] flex bg-[#f8f8f9] mr-[10px]">
-            {_chartTypes.map((item, index) => {
+      <div className="mb-3 flex w-full flex-wrap items-center justify-start gap-2">
+        {summary.showTypeSwitch ? (
+          <div className="flex items-center gap-0.5 rounded-lg border border-[var(--chat-border)]/70 bg-[var(--chat-surface-soft)]/60 p-0.5">
+            {chartTypes.map((item) => {
+              const Icon = item.icon;
+              const active = currentType === item.type;
               return (
-                <div
-                  key={index}
-                  className={classNames("p-[2px] pl-[8px] pr-[8px]", {
-                    "bg-[white]": currentType === item.type,
-                    "cursor-pointer": currentType !== item.type,
-                    "cursor-default": currentType === item.type,
-                  })}
+                <button
+                  key={item.type}
+                  type="button"
+                  title={item.label}
+                  className={classNames(
+                    "inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[12px] transition-colors",
+                    active
+                      ? "bg-white font-medium text-[var(--chat-text)] shadow-sm"
+                      : "text-[var(--chat-text-soft)] hover:bg-white/70 hover:text-[var(--chat-text)]"
+                  )}
                   onClick={() => onChange?.(item.type)}
                 >
-                  <i className={classNames("font_family", { [item.icon]: true })}></i>
-                </div>
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{item.label}</span>
+                </button>
               );
             })}
           </div>
-        )}
-        {/* 收起展开按钮 */}
-        {
-          <div
-            className="query_arguments cursor-pointer border border-[#dcdee0] rounded-[4px] pl-[12px] pr-[12px] pt-[3px] pb-[3px]"
-            onClick={() => setShowQueryArgs(!showQueryArgs)}
-          >
-            <span>分析参数</span>
-            <i className={classNames("font_family", { "icon-zhankai": showQueryArgs, "icon-shouqi": !showQueryArgs })}></i>
-          </div>
-        }
+        ) : null}
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--chat-border)]/70 px-3 text-[12px] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+          onClick={() => setShowQueryArgs(!showQueryArgs)}
+        >
+          <span>分析参数</span>
+          {showQueryArgs ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
-      {showQueryArgs && (
-        <div className="mb-[15px] mt-[10px] w-full leading-[24px] text-[12px] text-[#6a6a6a] flex flex-col gap-y-[10px]">
-          {/* 维度行 */}
-          {summary.dims.length > 0 && (
-            <div className="flex items-baseline">
-              <i className="font_family icon-zhibiao text-[12px]"></i>
-              <span className="mr-[8px] ml-[4px] w-[25px] whitespace-nowrap">维度</span>
-              <div className="flex gap-[4px] flex-wrap">
-                {summary.dims.map((item, i) => {
-                  return (
-                    <div key={i} className="p-[0] pl-[8px] pr-[8px] rounded-[4px] text-[#4a5fe8] bg-[#edeffd]">
-                      {item}
-                    </div>
-                  );
-                })}
+      {showQueryArgs ? (
+        <div className="mb-3 flex w-full flex-col gap-2 text-[12px] leading-6 text-[var(--chat-text-soft)]">
+          {summary.dims.length > 0 ? (
+            <div className="flex items-baseline gap-2">
+              <span className="w-8 shrink-0 whitespace-nowrap">维度</span>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.dims.map((item, i) => (
+                  <span
+                    key={i}
+                    className="rounded-md bg-[#edeffd] px-2 py-0.5 text-[#4a5fe8]"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
-          )}
-          {/* 指标行 */}
-          {summary.measures.length > 0 && (
-            <div className="flex items-baseline">
-              <i className="font_family icon-weidu text-[12px]"></i>
-              <span className="mr-[8px] ml-[4px] w-[25px] whitespace-nowrap">指标</span>
-              <div className="flex gap-[4px] flex-wrap">
-                {summary.measures.map((item, i) => {
-                  return (
-                    <div key={i} className="p-[0] pl-[8px] pr-[8px] rounded-[4px] text-[#2fbc44] bg-[#eaf8ec]">
-                      {item}
-                    </div>
-                  );
-                })}
+          ) : null}
+          {summary.measures.length > 0 ? (
+            <div className="flex items-baseline gap-2">
+              <span className="w-8 shrink-0 whitespace-nowrap">指标</span>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.measures.map((item, i) => (
+                  <span
+                    key={i}
+                    className="rounded-md bg-[#eaf8ec] px-2 py-0.5 text-[#2fbc44]"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
-          )}
-          {/* 筛选行 */}
-          {summary.filters.length > 0 && (
-            <div className="flex items-baseline">
-              <i className="font_family icon-shaixuan1 text-[12px]"></i>
-              <span className="mr-[8px] ml-[4px] w-[25px] whitespace-nowrap">筛选</span>
-              <div className="flex gap-[4px] flex-wrap">
-                {summary.filters.map((item, i) => {
-                  return (
-                    <div key={i} className="p-[0] pl-[8px] pr-[8px] rounded-[4px] text-[#8031f5] bg-[#f2eafe]">
-                      {item}
-                    </div>
-                  );
-                })}
+          ) : null}
+          {summary.filters.length > 0 ? (
+            <div className="flex items-baseline gap-2">
+              <span className="w-8 shrink-0 whitespace-nowrap">筛选</span>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.filters.map((item, i) => (
+                  <span
+                    key={i}
+                    className="rounded-md bg-[#f2eafe] px-2 py-0.5 text-[#8031f5]"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
-          )}
-          {/* 计算公式 */}
-          {summary.formula && (
-            <div className="flex items-baseline">
-              <i className="font_family icon-bianliang text-[12px]"></i>
-              <span className="mr-[8px] ml-[4px] w-[25px] whitespace-nowrap">公式</span>
-              <div className="flex gap-[4px] flex-wrap">
-                <div className="p-[0] pl-[8px] pr-[8px] rounded-[4px] text-[#c13ddb] bg-[#f9ecfb]">
-                  {summary.formula}
-                </div>
-              </div>
+          ) : null}
+          {summary.formula ? (
+            <div className="flex items-baseline gap-2">
+              <span className="w-8 shrink-0 whitespace-nowrap">公式</span>
+              <span className="rounded-md bg-[#f9ecfb] px-2 py-0.5 text-[#c13ddb]">
+                {summary.formula}
+              </span>
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
     </>
   );
 };
@@ -140,7 +143,9 @@ const DataChat: ReactorType.FC<{
 }> = (props) => {
   const { data } = props;
   const chartCfg = typeof data === "object" && data ? data : {};
-  const [currentType, setCurrentType] = useState<string>(resolveChartType(chartCfg));
+  const [currentType, setCurrentType] = useState<string>(
+    resolveChartType(chartCfg)
+  );
 
   const transConfig = useMemo(() => {
     return buildChartConfig({
@@ -150,14 +155,18 @@ const DataChat: ReactorType.FC<{
   }, [chartCfg, currentType]);
 
   return (
-    <div className="w-full flex flex-col items-center max-w-[1200px] mt-[24px] bg-[#fff] p-[15px] rounded-[12px]">
-      {/* 图形切换Bar */}
-      <TypeBar currentType={currentType} chartCfg={chartCfg} onChange={(t) => setCurrentType(t)} />
-      {/* 图形渲染 */}
-      <div className="w-full flex flex-col items-center border rounded-[8px] border-[#e9e9f0] p-[10px]">
+    <div className="mt-6 flex w-full max-w-[1200px] flex-col items-center rounded-2xl border border-[var(--chat-border)]/50 bg-white p-4 shadow-[var(--shadow-xs)] sm:p-5">
+      <TypeBar
+        currentType={currentType}
+        chartCfg={chartCfg}
+        onChange={(t) => setCurrentType(t)}
+      />
+      <div className="w-full rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] p-3 sm:p-4">
         {transConfig.chartType === "kpiGroup" && <Card data={transConfig} />}
         {transConfig.chartType === "table" && <SimpleTable data={transConfig} />}
-        {defaultChartPresets.chartTypes.includes(transConfig.chartType as never) && <Chart data={transConfig} />}
+        {defaultChartPresets.chartTypes.includes(
+          transConfig.chartType as never
+        ) && <Chart data={transConfig} />}
       </div>
     </div>
   );

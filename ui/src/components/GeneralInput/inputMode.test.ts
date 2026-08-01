@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSubmitPayload } from "./inputMode";
 
 describe("inputMode", () => {
-  it("深度研究模式应保留结构化输出类型并打开 deepThink", () => {
+  it("深度研究模式不再透传输出格式，仅打开 deepThink", () => {
     expect(
       buildSubmitPayload({
         question: "帮我调研竞品",
@@ -14,12 +14,21 @@ describe("inputMode", () => {
         chatRole: null,
       })
     ).toMatchObject({
-      outputStyle: "html",
       deepThink: true,
     });
+    expect(
+      buildSubmitPayload({
+        question: "帮我调研竞品",
+        visibleMode: "research",
+        isDataAgent: false,
+        currentProductType: "html",
+        uploadedFiles: [],
+        chatRole: null,
+      })
+    ).not.toHaveProperty("outputStyle");
   });
 
-  it("未选择输出格式时不应默认透传 html", () => {
+  it("标准任务不透传 outputStyle", () => {
     expect(
       buildSubmitPayload({
         question: "先帮我分析这个问题",

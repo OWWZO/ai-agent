@@ -27,6 +27,21 @@ public class ToolInvocation {
     /** 模型返回的 toolCallId */
     private String toolCallId;
 
+    /**
+     * 父 Agent 工具的 toolCallId（子 Agent 嵌套工具专用）。
+     * 历史重放靠此字段还原 parentToolUseId 嵌套展示。
+     */
+    private String parentToolCallId;
+
+    /** 子 Agent 运行时 id（可选，展示用） */
+    private String subAgentId;
+
+    /** 子 Agent 类型（Explore / general-purpose 等） */
+    private String subAgentType;
+
+    /** 子 Agent 任务短描述 */
+    private String subAgentDescription;
+
     /** 原始分发顺序 */
     private Integer dispatchIndex;
 

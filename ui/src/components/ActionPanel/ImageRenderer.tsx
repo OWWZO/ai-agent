@@ -30,20 +30,22 @@ const ImageRenderer: ReactorType.FC<ImageRendererProps> = React.memo((props) => 
   return (
     <div
       className={classNames(
-        "flex min-h-full items-center justify-center px-4 py-6",
+        "ws-preview-stage flex min-h-full items-center justify-center px-4 py-6",
         className
       )}
     >
-      {/* 约束最大高度，避免长图或大图把工作区撑坏，同时保留点击放大预览能力。 */}
-      <Image
-        src={imageUrl}
-        alt={fileName || "图片预览"}
-        className="max-w-full"
-        style={{
-          maxHeight: "min(72vh, 960px)",
-          objectFit: "contain",
-        }}
-      />
+      <div className="ws-doc-media mx-auto w-full max-w-[720px] overflow-hidden rounded-2xl border border-[var(--chat-border)]/70 bg-white p-3 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-4">
+        <Image
+          src={imageUrl}
+          alt={fileName || "图片预览"}
+          className="!max-w-full"
+          style={{
+            maxHeight: "min(72vh, 960px)",
+            width: "100%",
+            objectFit: "contain",
+          }}
+        />
+      </div>
     </div>
   );
 });

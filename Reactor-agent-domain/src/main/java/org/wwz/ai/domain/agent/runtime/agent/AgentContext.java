@@ -213,6 +213,21 @@ public class AgentContext {
     ThreadLocal<ToolArtifactSource> currentToolArtifactSourceHolder = new ThreadLocal<>();
 
     /**
+     * 子 Agent 嵌套展示元数据：父 Agent 工具的 toolCallId。
+     * 仅 SubAgentContextFactory 写入；账本登记与 SSE 共用。
+     */
+    String parentToolUseId;
+
+    /** 子 Agent 运行时 id（展示/账本） */
+    String subAgentId;
+
+    /** 子 Agent 类型（Explore / general-purpose 等） */
+    String subAgentType;
+
+    /** 子 Agent 任务短描述 */
+    String subAgentDescription;
+
+    /**
      * 当前请求的执行账本写入器。
      * 根节点初始化后挂入，LLM / BaseAgent / Summary 等运行时统一复用。
      */

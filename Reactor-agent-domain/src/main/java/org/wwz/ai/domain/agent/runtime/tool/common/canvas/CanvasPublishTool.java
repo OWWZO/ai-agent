@@ -245,27 +245,26 @@ public class CanvasPublishTool implements BaseTool {
 
         String preview = StringUtils.defaultIfBlank(fileResponse.getDomainUrl(), fileResponse.getOssUrl());
         String download = StringUtils.defaultIfBlank(fileResponse.getOssUrl(), fileResponse.getDomainUrl());
-        String toolResult = "Canvas published: " + fileRequest.getFileName()
-                + " preview=" + preview
-                + (salvaged ? " (args salvaged from truncated tool call)" : "");
-        String observation = toolResult
-                + ". Prefer opening the HTML preview panel for the user. "
-                + "Do not call report_tool for the same HTML page.";
-
-        return ToolResultPayload.structured(
-                toolResult,
-                observation,
-                CanvasPublishToolOutput.builder()
-                        .title(title)
-                        .mode(mode)
-                        .primaryFileName(fileRequest.getFileName())
-                        .previewUrl(preview)
-                        .downloadUrl(download)
-                        .openInPanel(openInPanel)
-                        .salvaged(salvaged)
-                        .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
-                        .build()
-        );
+        CanvasPublishToolOutput structuredOutput = CanvasPublishToolOutput.builder()
+                .title(title)
+                .mode(mode)
+                .primaryFileName(fileRequest.getFileName())
+                .previewUrl(preview)
+                .downloadUrl(download)
+                .openInPanel(openInPanel)
+                .salvaged(salvaged)
+                .fileRefs(ToolFileRefMapper.fromCodeInterpreterFileInfo(fileInfo))
+                .build();
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("message", "Canvas published. Prefer the HTML preview panel; do not call report_tool for the same page.");
+        fields.put("title", title);
+        fields.put("mode", mode);
+        fields.put("fileName", fileRequest.getFileName());
+        fields.put("previewUrl", preview);
+        fields.put("downloadUrl", download);
+        fields.put("openInPanel", openInPanel);
+        fields.put("salvaged", salvaged);
+        return ToolResultPayload.okData(getName(), fields, structuredOutput);
     }
 
     private String loadHtmlFromPath(String htmlPath) {

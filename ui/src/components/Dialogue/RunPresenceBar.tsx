@@ -19,11 +19,9 @@ const RunPresenceBar: FC<RunPresenceBarProps> = ({ hint, compact = false }) => {
         role="status"
         aria-live="polite"
       >
-        <span
-          className="size-1.5 shrink-0 rounded-full bg-[var(--chat-accent)] motion-safe:animate-pulse"
-          aria-hidden
-        />
-        <span className="truncate">{text}</span>
+        <span className="thinking-shimmer truncate font-medium tracking-[0.02em]">
+          {text}
+        </span>
       </div>
     );
   }

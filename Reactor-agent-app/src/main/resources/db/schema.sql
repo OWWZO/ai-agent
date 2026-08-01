@@ -213,6 +213,10 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     run_id            BIGINT         NOT NULL COMMENT '所属 run ID',
     llm_invocation_id BIGINT         NOT NULL COMMENT '来源 LLM invocation ID',
     tool_call_id      VARCHAR(128)   NOT NULL COMMENT '模型返回的 toolCallId',
+    parent_tool_call_id VARCHAR(128) NULL COMMENT '父 Agent 工具 toolCallId（子 Agent 嵌套）',
+    sub_agent_id      VARCHAR(64)    NULL COMMENT '子 Agent 运行时 id',
+    sub_agent_type    VARCHAR(64)    NULL COMMENT '子 Agent 类型',
+    sub_agent_description VARCHAR(256) NULL COMMENT '子 Agent 任务短描述',
     dispatch_index    INT            NOT NULL COMMENT '模型原始分发顺序',
     agent_name        VARCHAR(32)    NOT NULL COMMENT '当前 agent 名称',
     step_no           INT            NULL COMMENT '当前步号',
@@ -232,7 +236,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     UNIQUE KEY uk_run_tool_call (run_id, tool_call_id),
     UNIQUE KEY uk_llm_dispatch (llm_invocation_id, dispatch_index),
     KEY idx_tool_run_create (run_id, deleted, create_time DESC),
-    KEY idx_tool_name_create (tool_name, deleted, create_time DESC)
+    KEY idx_tool_name_create (tool_name, deleted, create_time DESC),
+    KEY idx_tool_parent_call (run_id, parent_tool_call_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用账本表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_tool_output_deep_search (

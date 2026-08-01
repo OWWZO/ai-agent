@@ -66,6 +66,11 @@ import VisitorBootstrapScreen from "./VisitorBootstrapScreen";
 import VisitorLoginGate from "./VisitorLoginGate";
 import WelcomeView from "./WelcomeView";
 import ConversationSidebar from "./ConversationSidebar";
+import type { PanelItemType } from "@/components/ActionPanel";
+import {
+  workspaceFileKey,
+  type WorkspaceFileItem,
+} from "@/components/ActionView/workspaceFiles";
 import {
   buildFeaturedConversationFormState,
   canFeatureConversationSession,
@@ -163,6 +168,18 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     CHAT.ConversationHistory[]
   >([]);
   const [activeView, setActiveView] = useState<SidebarView>("chat");
+  const [sidebarPanel, setSidebarPanel] = useState<"sessions" | "task-files">(
+    "sessions"
+  );
+  const [workspaceImmersive, setWorkspaceImmersive] = useState(false);
+  const [workspaceTaskList, setWorkspaceTaskList] = useState<PanelItemType[]>(
+    []
+  );
+  const [selectedTaskFileKey, setSelectedTaskFileKey] = useState("");
+  type ChatViewApi = {
+    openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  };
+  const chatViewApiRef = useRef<ChatViewApi | null>(null);
   const [featuredEntryId, setFeaturedEntryId] = useState("");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(() => getProductByType(initialRef.current.productType));
@@ -374,12 +391,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   ]);
 
   useEffect(() => {
-    const matched = getProductByType(currentConversation.productType);
-
+    // 输出格式已下线：历史 html/docs/ppt/table 会话归一为通用任务
+    const raw = getProductByType(currentConversation.productType);
+    const matched = isOutputProductType(raw.type) ? GENERIC_TASK_PRODUCT : raw;
     setProduct((prev) => (prev.type === matched.type ? prev : matched));
-    if (isOutputProductType(matched.type)) {
-      setDisplayOutput((prev) => (prev?.type === matched.type ? prev : matched));
-    }
   }, [currentConversation.productType]);
 
   const resetInput = useCallback(() => {
@@ -540,19 +555,20 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       product: CHAT.Product;
       deepThink: boolean;
     }) => {
-      setProduct(nextProduct);
-      if (isOutputProductType(nextProduct.type)) {
-        setDisplayOutput(nextProduct);
-      }
+      // 输出格式已下线，结构化类型强制回落通用任务
+      const resolved = isOutputProductType(nextProduct.type)
+        ? GENERIC_TASK_PRODUCT
+        : nextProduct;
+      setProduct(resolved);
 
       updateCurrentConversationMeta({
-        productType: nextProduct.type,
+        productType: resolved.type,
         deepThink:
-          nextProduct.type === "chat" || nextProduct.type === "dataAgent"
+          resolved.type === "chat" || resolved.type === "dataAgent"
             ? false
             : nextDeepThink,
         role:
-          nextProduct.type === "chat"
+          resolved.type === "chat"
             ? currentConversation.role || toConversationRole(defaultFixRole)
             : null,
       });
@@ -577,15 +593,15 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         return;
       }
 
+      const nextProduct = isOutputProductType(defaultStructuredProduct.type)
+        ? GENERIC_TASK_PRODUCT
+        : defaultStructuredProduct;
       updateCurrentConversationMeta({
-        productType: defaultStructuredProduct.type,
+        productType: nextProduct.type,
         deepThink: false,
         role: null,
       });
-      setProduct(defaultStructuredProduct);
-      if (isOutputProductType(defaultStructuredProduct.type)) {
-        setDisplayOutput(defaultStructuredProduct);
-      }
+      setProduct(nextProduct);
       setActiveView("chat");
     },
     [createNewChat, currentConversation, updateCurrentConversationMeta]
@@ -805,22 +821,60 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
       <div className="flex h-full w-full">
-        <ConversationSidebar
-          activeView={activeView}
-          recentSessions={displayedRecentSessions}
-          recentSessionsLoading={recentSessionsLoading}
-          selectedSessionId={currentConversation.sessionId}
-          visitorUsername={visitorBootstrap?.username}
-          onNewChat={createNewChat}
-          onSelectSession={handleSelectRecentSession}
-          onChangeView={(view) => {
-            if (view === "featured") {
-              setFeaturedEntryId("");
-            }
-            setActiveView(view);
-          }}
-          onManageFeaturedConversation={handleOpenFeaturedAdmin}
-        />
+        <div
+          className={
+            workspaceImmersive
+              ? "w-0 min-w-0 overflow-hidden opacity-0 pointer-events-none transition-[width,opacity] duration-300"
+              : "hidden h-full w-[var(--chat-sidebar-width)] shrink-0 transition-[width,opacity] duration-300 lg:block"
+          }
+        >
+          <ConversationSidebar
+            activeView={activeView}
+            recentSessions={displayedRecentSessions}
+            recentSessionsLoading={recentSessionsLoading}
+            selectedSessionId={currentConversation.sessionId}
+            visitorUsername={visitorBootstrap?.username}
+            sidebarPanel={sidebarPanel}
+            taskList={workspaceTaskList}
+            selectedTaskFileKey={selectedTaskFileKey}
+            onNewChat={() => {
+              setSidebarPanel("sessions");
+              setSelectedTaskFileKey("");
+              setWorkspaceImmersive(false);
+              createNewChat();
+            }}
+            onSelectSession={(session) => {
+              setSidebarPanel("sessions");
+              setSelectedTaskFileKey("");
+              setWorkspaceImmersive(false);
+              handleSelectRecentSession(session);
+            }}
+            onChangeView={(view) => {
+              if (view === "featured") {
+                setFeaturedEntryId("");
+              }
+              setSidebarPanel("sessions");
+              setWorkspaceImmersive(false);
+              setActiveView(view);
+            }}
+            onManageFeaturedConversation={handleOpenFeaturedAdmin}
+            onOpenTaskFiles={() => {
+              if (activeView !== "chat") {
+                setActiveView("chat");
+              }
+              setWorkspaceImmersive(false);
+              setSidebarPanel("task-files");
+            }}
+            onCloseTaskFiles={() => setSidebarPanel("sessions")}
+            onSelectTaskFile={(file: WorkspaceFileItem) => {
+              setSelectedTaskFileKey(workspaceFileKey(file));
+              chatViewApiRef.current?.openFile(file);
+            }}
+            onRefreshTaskFiles={() => {
+              setWorkspaceTaskList((prev) => [...prev]);
+            }}
+          />
+        </div>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className={contentContainerClassName}>
@@ -846,6 +900,15 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 onConversationChange={updateConversation}
                 onRoleSelect={handleRoleSelect}
                 onInputConsumed={onInputConsumed}
+                onTaskListChange={setWorkspaceTaskList}
+                onRegisterApi={(api) => {
+                  chatViewApiRef.current = api;
+                }}
+                onOpenTaskFiles={() => {
+                  setWorkspaceImmersive(false);
+                  setSidebarPanel("task-files");
+                }}
+                onFocusModeChange={setWorkspaceImmersive}
               />
             ) : (
               <WelcomeView

@@ -1,5 +1,4 @@
-import { copyText, downloadFile, formatTimestamp, showMessage } from "@/utils";
-import { keyBy } from "lodash";
+import { copyText, downloadFile, showMessage } from "@/utils";
 import React, { useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
 import {
@@ -11,13 +10,13 @@ import {
   TableRenderer,
   WordRenderer,
 } from "../ActionPanel";
+import DocumentFallback from "../ActionPanel/DocumentFallback";
 import { useBoolean, useMemoizedFn } from "ahooks";
 import LoadingSpinner from "../LoadingSpinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
-  getTaskFiles,
   isBinaryPreviewFileLike,
   isDocxFileLike,
   isImageFileLike,
@@ -35,21 +34,13 @@ import {
   FileIcon,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  collectWorkspaceFiles,
+  workspaceFileKey,
+  type WorkspaceFileItem,
+} from "./workspaceFiles";
 
-type FileItem = {
-  name: string;
-  messageTime?: string;
-  type: string;
-  task: PanelItemType;
-  url: string;
-  downloadUrl?: string;
-  missing?: boolean;
-  missingReason?: string;
-  resourceKey?: string;
-  mimeType?: string | null;
-};
-
-const messageTypeEnum = ['file', 'code', 'html', 'markdown', 'result', 'data_analysis', 'ui_tree'];
+type FileItem = WorkspaceFileItem;
 
 const getFileIcon = (type: string) => {
   switch (type) {
@@ -78,8 +69,18 @@ const FileList: React.FC<{
   taskList?: PanelItemType[];
   activeFile?: CHAT.TFile;
   clearActiveFile?: () => void;
+  /** 嵌入工作区浏览器时隐藏二级标题栏 */
+  embedded?: boolean;
+  /** 强制按源码视图打开（用于工作区「源码」分段） */
+  forceSource?: boolean;
 }> = (props) => {
-  const { taskList, clearActiveFile, activeFile } = props;
+  const {
+    taskList,
+    clearActiveFile,
+    activeFile,
+    embedded = false,
+    forceSource = false,
+  } = props;
 
   const [activeItem, setActiveItem] = useState<string | undefined>();
   const [copying, { setFalse: stopCopying, setTrue: startCopying }] = useBoolean(false);
@@ -90,22 +91,13 @@ const FileList: React.FC<{
   });
 
   const { list: fileList, map: fileMap } = useMemo(() => {
-    let map: Record<string, FileItem> = {};
-    const list = (taskList || []).reduce<FileItem[]>((pre, task) => {
-      if (messageTypeEnum.includes(task.messageType)) {
-        const files: FileItem[] = getTaskFiles(task).map((file) => ({
-          ...file,
-          task,
-          messageTime: formatTimestamp(task.messageTime),
-        }));
-        pre.push(...files.filter((item) => !map[item.resourceKey || item.name]));
-        map = keyBy(pre, (item) => item.resourceKey || item.name);
-      }
-      return pre;
-    }, []);
+    const list = collectWorkspaceFiles(taskList);
+    const map = Object.fromEntries(
+      list.map((item) => [workspaceFileKey(item), item])
+    ) as Record<string, FileItem>;
     return {
       list,
-      map
+      map,
     };
   }, [taskList]);
 
@@ -156,9 +148,9 @@ const FileList: React.FC<{
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {fileList.map((item) => (
             <Card
-              key={item.resourceKey || item.name}
+              key={workspaceFileKey(item)}
               className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
-              onClick={() => setActiveItem(item.resourceKey || item.name)}
+              onClick={() => setActiveItem(workspaceFileKey(item))}
             >
               <CardContent className="flex items-center gap-2.5 p-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#f5f5f7]">
@@ -202,6 +194,21 @@ const FileList: React.FC<{
 
   // File Detail View — 与 ActionPanel / useMsgTypes 同一套类型分支
   const renderContent = () => {
+    const nameExt = (fileItem.name?.split(".").pop() || "").toLowerCase();
+    const rawType = (fileItem.type || "").toLowerCase();
+    const resolvedExt = (() => {
+      if (nameExt && nameExt.length <= 8 && !nameExt.includes("/")) {
+        return nameExt;
+      }
+      if (rawType.includes("html")) return "html";
+      if (rawType.includes("pdf")) return "pdf";
+      if (rawType.includes("/")) {
+        const leaf = rawType.split("/").pop() || "";
+        return leaf === "plain" ? "txt" : leaf;
+      }
+      return rawType.replace(/^\./, "");
+    })();
+
     if (isImageFile) {
       return (
         <ImageRenderer
@@ -220,6 +227,7 @@ const FileList: React.FC<{
           fileName={fileItem.name}
           downloadUrl={downloadUrl || fileItem.url}
           missingReason={missingReason}
+          hideChrome={embedded}
           className="h-full"
         />
       );
@@ -233,6 +241,7 @@ const FileList: React.FC<{
           downloadUrl={downloadUrl || fileItem.url}
           missingReason={missingReason}
           legacyOnly
+          hideChrome={embedded}
           className="h-full"
         />
       );
@@ -245,17 +254,68 @@ const FileList: React.FC<{
           fileName={fileItem.name}
           downloadUrl={downloadUrl || fileItem.url}
           missingReason={missingReason}
+          hideChrome={embedded}
           className="h-full"
         />
       );
     }
 
-    switch (fileItem.type) {
+    // HTML：预览 = iframe；源码分段 = FileRenderer 高亮
+    if ((resolvedExt === "html" || resolvedExt === "htm") && !forceSource) {
+      return (
+        <HTMLRenderer
+          htmlUrl={fileItem.url}
+          downloadUrl={downloadUrl || fileItem.url}
+          missingReason={missingReason}
+          className="h-full min-h-[480px]"
+        />
+      );
+    }
+
+    if ((resolvedExt === "html" || resolvedExt === "htm") && forceSource) {
+      return (
+        <FileRenderer
+          fileUrl={fileItem.url}
+          fileName={fileItem.name?.endsWith(".html") || fileItem.name?.endsWith(".htm")
+            ? fileItem.name
+            : `${fileItem.name || "preview"}.html`}
+          missingReason={missingReason}
+          forceSource
+        />
+      );
+    }
+
+    switch (resolvedExt) {
+      case "png":
+      case "jpg":
+      case "jpeg":
+      case "gif":
+      case "webp":
+      case "bmp":
+      case "svg":
+      case "avif":
+      case "ico":
+        return (
+          <ImageRenderer
+            imageUrl={fileItem.url}
+            fileName={fileItem.name}
+            missingReason={missingReason}
+            className="h-full"
+          />
+        );
       case "ppt":
       case "pptx":
-      case "html":
-      case "htm":
-        return <HTMLRenderer htmlUrl={fileItem.url} className="h-full" />;
+        return (
+          <DocumentFallback
+            label="PPT"
+            title="暂不支持在线预览 PPT/PPTX"
+            description="请下载后用 PowerPoint / WPS 打开。若产物已转为 HTML 演示页，请打开对应 .html 文件。"
+            fileName={fileItem.name}
+            downloadUrl={downloadUrl || fileItem.url}
+            className="h-full"
+            type="info"
+          />
+        );
       case "csv":
       case "xlsx":
       case "xls":
@@ -263,7 +323,9 @@ const FileList: React.FC<{
           <TableRenderer
             fileUrl={fileItem.url}
             fileName={fileItem.name}
+            downloadUrl={downloadUrl || fileItem.url}
             missingReason={missingReason}
+            className="h-full min-h-0"
           />
         );
       default:
@@ -271,76 +333,147 @@ const FileList: React.FC<{
           <FileRenderer
             fileUrl={fileItem.url}
             fileName={fileItem.name}
+            downloadUrl={downloadUrl || fileItem.url}
             missingReason={missingReason}
           />
         );
     }
   };
 
+  if (embedded) {
+    const ext = (fileItem.type || fileItem.name?.split(".").pop() || "").toLowerCase();
+    const isSpreadsheet = ["csv", "xlsx", "xls"].includes(ext);
+    const isDownloadOnly = ["ppt", "pptx", "pps", "ppsx"].includes(ext);
+    const isMedia =
+      isImageFile ||
+      isPdfFileLike(fileItem) ||
+      isSpreadsheet ||
+      isDownloadOnly ||
+      ["html", "htm"].includes(ext);
+    // 源码类：全幅白底 + 行号高亮，不套文档卡片
+    const isSourceCode = [
+      "py",
+      "python",
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "css",
+      "scss",
+      "less",
+      "json",
+      "xml",
+      "yml",
+      "yaml",
+      "sh",
+      "bash",
+      "sql",
+      "java",
+      "go",
+      "rs",
+      "c",
+      "cpp",
+      "h",
+      "hpp",
+      "code",
+      "log",
+    ].includes(ext);
+
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div
+          className={
+            isMedia || isSourceCode
+              ? isSpreadsheet
+                ? "min-h-0 flex-1 overflow-hidden bg-white"
+                : "min-h-0 flex-1 overflow-auto bg-white"
+              : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8"
+          }
+        >
+          {renderContent()}
+        </div>
+      </div>
+    );
+  }
+
+  const detailExt = (
+    fileItem.type ||
+    fileItem.name?.split(".").pop() ||
+    ""
+  ).toLowerCase();
+  const isSpreadsheetDetail = ["csv", "xlsx", "xls"].includes(detailExt);
+
   return (
     <ActionViewFrame
-      className="bg-white/50"
+      className={isSpreadsheetDetail ? "flex min-h-0 flex-col overflow-hidden bg-white/50" : "bg-white/50"}
       titleNode={
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           {getFileIcon(fileItem.type)}
           <span className="truncate">{fileItem.name}</span>
         </div>
       }
       onClickTitle={clearActive}
     >
-      <TooltipProvider>
-        <div className="flex items-center justify-end gap-1 px-4 py-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
-                onClick={() =>
-                  downloadFile(
-                    downloadUrl || fileItem.url || "",
-                    fileItem.name
-                  )
-                }
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>下载</p>
-            </TooltipContent>
-          </Tooltip>
-
-          {canCopyText && !isBinaryFile && (
+      <div className={isSpreadsheetDetail ? "flex h-full min-h-0 flex-col" : undefined}>
+        <TooltipProvider>
+          <div className="flex shrink-0 items-center justify-end gap-1 px-4 py-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
-                  onClick={copy}
-                  disabled={copying}
+                  onClick={() =>
+                    downloadFile(
+                      downloadUrl || fileItem.url || "",
+                      fileItem.name
+                    )
+                  }
                 >
-                  {copying ? (
-                    <LoadingSpinner className="h-4 w-4" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
+                  <Download className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>复制</p>
+                <p>下载</p>
               </TooltipContent>
             </Tooltip>
-          )}
+
+            {canCopyText && !isBinaryFile && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#86868b] hover:text-[#1d1d1f]"
+                    onClick={copy}
+                    disabled={copying}
+                  >
+                    {copying ? (
+                      <LoadingSpinner className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>复制</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </TooltipProvider>
+
+        <Separator className="shrink-0 bg-[#e8e8ed]" />
+
+        <div
+          className={
+            isSpreadsheetDetail
+              ? "min-h-0 flex-1 overflow-hidden"
+              : "h-full overflow-auto p-4"
+          }
+        >
+          {renderContent()}
         </div>
-      </TooltipProvider>
-
-      <Separator className="bg-[#e8e8ed]" />
-
-      {/* ActionViewFrame 本身已提供 flex 高度，这里不要再用 flex-1，避免高度失效导致 iframe 只显示一小段 */}
-      <div className="h-full overflow-auto p-4">
-        {renderContent()}
       </div>
     </ActionViewFrame>
   );

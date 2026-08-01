@@ -8,13 +8,13 @@
     rgba(42, 51, 70, 0.04) 0px 6px 6px -3px,
     rgba(14, 63, 126, 0.04) 0px 12px 12px -6px,
     rgba(14, 63, 126, 0.04) 0px 24px 24px -12px;
-  --chat-composer-shadow:
-    rgba(14, 63, 126, 0.06) 0px 0px 0px 1px,
-    rgba(42, 51, 69, 0.06) 0px 1px 1px -0.5px,
-    rgba(42, 51, 70, 0.06) 0px 3px 3px -1.5px,
-    rgba(42, 51, 70, 0.06) 0px 6px 6px -3px,
-    rgba(14, 63, 126, 0.06) 0px 12px 12px -6px,
-    rgba(14, 63, 126, 0.06) 0px 24px 24px -12px;
+  --chat-composer-shadow: none;
+  --chat-composer-shadow-focus: none;
+  --chat-user-bubble: oklch(97% 0 0);
+}
+
+.dark {
+  --chat-user-bubble: oklch(26.9% 0 0);
 }
 
 @keyframes slide-up-bounce {
@@ -33,6 +33,24 @@
 
 .user-message-enter {
   animation: slide-up-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ClawsGO user bubble */
+.chat-user-bubble {
+  max-width: 85%;
+  margin-left: auto;
+  border-radius: 18px;
+  border: 0;
+  background: var(--chat-user-bubble, oklch(97% 0 0));
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--chat-text, #111827);
+  box-shadow: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 @keyframes image-bounce {

@@ -35,10 +35,10 @@ function asTasks(raw: unknown): SessionTask[] {
 
 function StatusIcon({ status }: { status?: string }) {
   if (status === "completed") {
-    return <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />;
+    return <CheckCircle2Icon className="size-3.5 shrink-0 text-[var(--chat-text-muted)]" />;
   }
   if (status === "in_progress") {
-    return <CircleDotIcon className="size-3.5 shrink-0 text-[var(--chat-accent)]" />;
+    return <CircleDotIcon className="size-3.5 shrink-0 text-[var(--chat-text-muted)]" />;
   }
   return <CircleIcon className="size-3.5 shrink-0 text-[var(--chat-text-soft)]" />;
 }
@@ -72,9 +72,9 @@ const SessionTaskList: FC<SessionTaskListProps> = memo(({ tool }) => {
   }
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/35 bg-[var(--chat-surface-soft)]/55 px-3 py-2.5">
+    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50 bg-white px-3 py-2.5">
       <div className="mb-2 flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-[var(--chat-accent)]/10 text-[var(--chat-accent)]">
+        <div className="flex size-7 items-center justify-center rounded-lg border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           <ListTodoIcon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -89,7 +89,7 @@ const SessionTaskList: FC<SessionTaskListProps> = memo(({ tool }) => {
         {tasks.map((task) => (
           <li
             key={task.id}
-            className="flex items-start gap-2 rounded-xl border border-[var(--chat-border)]/25 bg-[var(--chat-surface)]/60 px-2.5 py-1.5"
+            className="flex items-start gap-2 rounded-xl border border-[var(--chat-border)]/40 bg-[#fafafa] px-2.5 py-1.5"
           >
             <StatusIcon status={task.status} />
             <div className="min-w-0 flex-1">
@@ -105,7 +105,7 @@ const SessionTaskList: FC<SessionTaskListProps> = memo(({ tool }) => {
                 {task.subject || task.description || "未命名"}
               </div>
               {task.status === "in_progress" && task.activeForm ? (
-                <div className="text-[11px] text-[var(--chat-accent)]">{task.activeForm}</div>
+                <div className="text-[11px] text-[var(--chat-text-muted)]">{task.activeForm}</div>
               ) : null}
               {task.description && task.subject && task.description !== task.subject ? (
                 <div className="mt-0.5 line-clamp-2 text-[11px] text-[var(--chat-text-soft)]">

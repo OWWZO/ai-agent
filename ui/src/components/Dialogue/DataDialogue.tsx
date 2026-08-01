@@ -1,5 +1,4 @@
 import { FC } from "react";
-import { User } from "lucide-react";
 import DataChat from "@/components/DataChat";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
@@ -16,15 +15,8 @@ const DataDialogue: FC<Props> = (props) => {
   return (
     <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
       {chat.query ? (
-        <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[90%] flex-row-reverse items-end gap-2 md:max-w-[80%]">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
-            style={{ boxShadow: "var(--chat-soft-shadow)" }}
-            aria-hidden="true"
-          >
-            <User className="h-4 w-4 text-stone-800" />
-          </div>
-          <Message from="user" className="max-w-[calc(100%-2.5rem)]">
+        <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[85%] justify-end">
+          <Message from="user" className="max-w-full">
             <MessageContent>{chat.query}</MessageContent>
           </Message>
         </div>

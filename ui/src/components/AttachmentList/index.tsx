@@ -1,7 +1,6 @@
-import { iconType } from "@/utils/constants";
-import docxIcon from "@/assets/icon/docx.png";
-import { Tooltip } from "antd";
+import { ImageIcon, X } from "lucide-react";
 import { isImageFileLike } from "@/utils/taskArtifacts";
+import { cn } from "@/lib/utils";
 
 type Props = {
   files?: CHAT.TFile[];
@@ -10,86 +9,252 @@ type Props = {
   review?: (file: CHAT.TFile) => void;
 };
 
+type FileKind = "img" | "xlsx" | "md" | "html" | "pdf" | "css" | "code" | "file";
+
+function resolveExt(file: CHAT.TFile): string {
+  return (file.type || file.name?.split(".").pop() || "").toLowerCase();
+}
+
+function resolveKind(file: CHAT.TFile): FileKind {
+  const ext = resolveExt(file);
+  if (
+    isImageFileLike(file) ||
+    ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"].includes(ext)
+  ) {
+    return "img";
+  }
+  if (["csv", "xlsx", "xls"].includes(ext)) return "xlsx";
+  if (["md", "markdown", "txt"].includes(ext)) return "md";
+  if (["html", "htm"].includes(ext)) return "html";
+  if (ext === "pdf") return "pdf";
+  if (["css", "scss", "less"].includes(ext)) return "css";
+  if (
+    ["js", "ts", "tsx", "jsx", "py", "java", "json", "xml", "code"].includes(ext)
+  ) {
+    return "code";
+  }
+  return "file";
+}
+
+function typeLabel(file: CHAT.TFile, kind: FileKind): string {
+  const ext = resolveExt(file).toUpperCase();
+  switch (kind) {
+    case "img":
+      return file.originFileName || describeFromName(file.name) || `Image · ${ext || "PNG"}`;
+    case "xlsx":
+      return `Spreadsheet · ${ext || "XLSX"}`;
+    case "md":
+      return describeFromName(file.name) || `Document · ${ext || "MD"}`;
+    case "html":
+      return "Web page · HTML";
+    case "pdf":
+      return "Document · PDF";
+    case "css":
+      return "样式文件 · CSS";
+    case "code":
+      return `Code · ${ext || "FILE"}`;
+    default:
+      return describeFromName(file.name) || (ext ? `File · ${ext}` : "File");
+  }
+}
+
+/** 从文件名提炼副标题（去掉扩展名后的短描述） */
+function describeFromName(name?: string): string {
+  if (!name) return "";
+  const base = name.replace(/\.[^.]+$/, "").trim();
+  if (base.length <= 28) return base;
+  return `${base.slice(0, 26)}…`;
+}
+
+function displayTitle(file: CHAT.TFile): string {
+  const name = file.name || "未命名文件";
+  // 主卡标题尽量用可读名，去掉过长扩展噪声
+  return name;
+}
+
+function KindBadge({ kind, className }: { kind: FileKind; className?: string }) {
+  // 对齐 ClawsGO：X / T / 图片图标字母角标
+  if (kind === "xlsx") {
+    return (
+      <span className={cn("text-[15px] font-bold tracking-tight", className)}>
+        X
+      </span>
+    );
+  }
+  if (kind === "md" || kind === "pdf" || kind === "file") {
+    return (
+      <span className={cn("text-[15px] font-bold tracking-tight", className)}>
+        T
+      </span>
+    );
+  }
+  if (kind === "html" || kind === "code") {
+    return (
+      <span className={cn("text-[13px] font-bold tracking-tight", className)}>
+        &lt;/&gt;
+      </span>
+    );
+  }
+  if (kind === "css") {
+    return (
+      <span className={cn("text-[15px] font-bold tracking-tight", className)}>
+        T
+      </span>
+    );
+  }
+  return <ImageIcon className={cn("h-5 w-5", className)} strokeWidth={1.6} />;
+}
+
+function kindTone(_kind: FileKind) {
+  return "bg-[#f5f5f7] text-[#6b6b70]";
+}
+
 const AttachmentList: ReactorType.FC<Props> = (props) => {
   const { files, preview, remove, review } = props;
-  // 附件字段可能缺失，这里统一兜底成空数组，避免界面直接崩溃。
   const attachmentList = Array.isArray(files) ? files : [];
-
-  const formatSize = (size?: number) => {
-    if (typeof size !== "number" || Number.isNaN(size) || size < 0) {
-      return "未知大小";
-    }
-    const units = ["B", "KB", "MB", "GB"];
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-    return `${size?.toFixed(2)} ${units[unitIndex]}`;
-  };
-
-  const combinIcon = (f: CHAT.TFile) => {
-    const fileType = f.type?.toLowerCase?.() || "";
-    if (isImageFileLike(f) && f.url) {
-      return f.url;
-    } else {
-      return iconType[fileType] || docxIcon;
-    }
-  };
-
-  const removeFile = (index: number) => {
-    remove?.(index);
-  };
-
-  const reviewFile = (f: CHAT.TFile) => {
-    review?.(f);
-  };
 
   if (!attachmentList.length) {
     return null;
   }
 
-  const renderFile = (f: CHAT.TFile, index: number) => {
+  // 交付态：主卡 + 其余 mini chips（ClawsGO / 截图样式）
+  if (preview) {
+    const [primary, ...rest] = attachmentList;
+    const primaryKind = resolveKind(primary);
+
     return (
-      <div
-        key={index}
-        className={`group relative box-border flex w-full max-w-sm items-center gap-2 rounded-lg px-1 py-1 transition-colors ${
-          preview ? "cursor-pointer hover:bg-muted/35" : "cursor-default"
-        }`}
-        onClick={() => reviewFile(f)}
-      >
-        <img src={combinIcon(f)} alt={f.name || "附件"} className="h-9 w-9 shrink-0 object-contain" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Tooltip title={f.name || "未命名文件"}>
-              <div className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-snug text-[#27272A]">
-                {f.name || "未命名文件"}
-              </div>
-            </Tooltip>
-            <span className="shrink-0 text-[11px] leading-snug text-[#C4C4C8]" aria-hidden>
-              ·
-            </span>
-            <span className="shrink-0 tabular-nums text-[11px] leading-snug text-[#9E9FA3]">
-              {formatSize(f.size)}
-            </span>
+      <div className="mt-3.5 flex w-full max-w-full flex-col gap-2">
+        <button
+          type="button"
+          className="group flex w-full items-center gap-3 rounded-2xl border border-[#e8e8ed] bg-[#fafafa] px-3.5 py-3 text-left transition-colors hover:bg-[#f3f3f5]"
+          onClick={() => review?.(primary)}
+        >
+          <span
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+              kindTone(primaryKind)
+            )}
+          >
+            {isImageFileLike(primary) && primary.url ? (
+              <img
+                src={primary.url}
+                alt=""
+                className="h-10 w-10 rounded-xl object-cover"
+              />
+            ) : (
+              <KindBadge kind={primaryKind} />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">
+              {displayTitle(primary)}
+            </div>
+            <div className="mt-0.5 truncate text-[12px] font-medium text-[#86868b]">
+              {typeLabel(primary, primaryKind)}
+            </div>
           </div>
-        </div>
-        {!preview ? (
-          <i
-            className="font_family icon-jia-1 absolute right-2 top-2 hidden cursor-pointer text-[12px] group-hover:block"
-            onClick={(e) => {
-              e.stopPropagation();
-              removeFile(index);
-            }}
-          ></i>
+          <span className="inline-flex h-8 shrink-0 items-center rounded-full border border-[#e5e5ea] bg-white px-3.5 text-[12.5px] font-medium text-[#1d1d1f] transition-colors group-hover:bg-[#f5f5f7]">
+            打开文件
+          </span>
+        </button>
+
+        {rest.length > 0 ? (
+          <div className="flex w-full flex-wrap gap-2">
+            {rest.map((file, index) => {
+              const kind = resolveKind(file);
+              return (
+                <button
+                  key={`${file.resourceKey || file.name}-${index}`}
+                  type="button"
+                  className="flex min-w-0 max-w-[calc(33.33%-6px)] flex-[1_1_140px] items-center gap-2 rounded-2xl border border-[#e8e8ed] bg-[#fafafa] px-2.5 py-2 text-left transition-colors hover:bg-[#f3f3f5]"
+                  onClick={() => review?.(file)}
+                  title={file.name}
+                >
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                      kindTone(kind)
+                    )}
+                  >
+                    {isImageFileLike(file) && file.url ? (
+                      <img
+                        src={file.url}
+                        alt=""
+                        className="h-7 w-7 rounded-lg object-cover"
+                      />
+                    ) : kind === "img" ? (
+                      <ImageIcon className="h-3.5 w-3.5" strokeWidth={1.6} />
+                    ) : (
+                      <KindBadge kind={kind} className="text-[12px]" />
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[12.5px] font-semibold leading-tight text-[#1d1d1f]">
+                      {displayTitle(file)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-[#86868b]">
+                      {typeLabel(file, kind)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         ) : null}
       </div>
     );
-  };
+  }
 
+  // 输入态附件：紧凑可删除
   return (
-    <div className="w-full flex gap-8 flex-wrap">
-      {attachmentList.map((f, index) => renderFile(f, index))}
+    <div className="flex w-full flex-wrap gap-2">
+      {attachmentList.map((file, index) => {
+        const kind = resolveKind(file);
+        return (
+          <div
+            key={`${file.resourceKey || file.name}-${index}`}
+            className="group relative flex max-w-sm items-center gap-2 rounded-2xl border border-[#e8e8ed] bg-[#fafafa] px-2.5 py-2"
+          >
+            <span
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+                kindTone(kind)
+              )}
+            >
+              {isImageFileLike(file) && file.url ? (
+                <img
+                  src={file.url}
+                  alt=""
+                  className="h-8 w-8 rounded-xl object-cover"
+                />
+              ) : (
+                <KindBadge kind={kind} className="text-[13px]" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-medium text-[#1d1d1f]">
+                {displayTitle(file)}
+              </div>
+              <div className="truncate text-[11px] text-[#86868b]">
+                {typeLabel(file, kind)}
+              </div>
+            </div>
+            {remove ? (
+              <button
+                type="button"
+                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full border border-[#e5e5ea] bg-white text-[#86868b] shadow-sm group-hover:flex hover:text-[#1d1d1f]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  remove(index);
+                }}
+                aria-label="移除附件"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 };

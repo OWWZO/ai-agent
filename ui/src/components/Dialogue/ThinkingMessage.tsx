@@ -10,7 +10,7 @@ type ThinkingMessageProps = {
  * tip 用于临时 status 文案（如“正在制定计划…”）。
  */
 const ThinkingMessage: FC<ThinkingMessageProps> = ({ tip }) => (
-  <RunPresenceBar hint={tip?.trim() ? tip : "正在理解任务…"} />
+  <RunPresenceBar hint={tip?.trim() ? tip : "正在理解问题…"} />
 );
 
 export default ThinkingMessage;

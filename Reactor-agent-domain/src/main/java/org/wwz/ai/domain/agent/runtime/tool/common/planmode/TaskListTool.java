@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -53,14 +52,16 @@ public class TaskListTool implements BaseTool {
             }
             List<SessionTaskItem> all = agentContext.requireSessionTaskList().list();
             if (all.isEmpty()) {
-                return ToolResultPayload.text("No tasks found");
+                Map<String, Object> empty = new LinkedHashMap<>();
+                empty.put("tasks", List.of());
+                empty.put("message", "No tasks found");
+                return ToolResultPayload.okData(TaskToolNames.TASK_LIST, empty);
             }
             Set<String> completedIds = all.stream()
                     .filter(t -> SessionTaskItem.STATUS_COMPLETED.equals(t.getStatus()))
                     .map(SessionTaskItem::getId)
                     .collect(Collectors.toSet());
 
-            StringBuilder sb = new StringBuilder();
             List<Map<String, Object>> rows = new ArrayList<>();
             for (SessionTaskItem item : all) {
                 List<String> blockedBy = item.getBlockedBy() == null
@@ -68,13 +69,6 @@ public class TaskListTool implements BaseTool {
                         : item.getBlockedBy().stream()
                         .filter(id -> !completedIds.contains(id))
                         .toList();
-                sb.append("#").append(item.getId())
-                        .append(" [").append(item.getStatus()).append("] ")
-                        .append(item.getSubject());
-                if (!blockedBy.isEmpty()) {
-                    sb.append(" (blockedBy: ").append(String.join(",", blockedBy)).append(")");
-                }
-                sb.append('\n');
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("id", item.getId());
                 row.put("subject", item.getSubject());
@@ -83,13 +77,13 @@ public class TaskListTool implements BaseTool {
                 row.put("blockedBy", blockedBy);
                 rows.add(row);
             }
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("tasks", rows);
-            return ToolResultPayload.text(sb + JSON.toJSONString(body));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("tasks", rows);
+            return ToolResultPayload.okData(TaskToolNames.TASK_LIST, fields);
         } catch (Exception e) {
             log.warn("TaskList failed", e);
             String msg = "TaskList 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 }

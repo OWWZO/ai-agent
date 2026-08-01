@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
+import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -141,18 +142,31 @@ public class ReactorController {
 
 
     /**
-     * 处理Agent流式增量查询请求，返回SSE事件流
+     * 处理Agent流式增量查询请求，返回SSE事件流。
+     * 进程内直接调度；/AutoAgent 仅保留调试入口。
+     *
      * @param params 查询请求参数对象，包含GPT查询所需信息
      * @return 返回SSE事件发射器，用于流式传输增量响应结果
      */
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
+        String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
         SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
-        SseLifecycleSupport.registerLifecycle(emitter,
-                Objects.toString(params.getRequestId(), "legacy-gpt-query"),
-                null,
-                log);
-        gptQueryApplicationService.queryAgentStreamIncr(params, new SseEmitterAgentSessionStream(emitter));
+        ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
+                heartbeatScheduler,
+                emitter,
+                requestId,
+                agentExecutorProperties.getHeartbeat().getIntervalMillis(),
+                log,
+                AgentResponseProjectionStream.buildHeartbeat(requestId)
+        );
+        SseLifecycleSupport.registerLifecycle(emitter, requestId, heartbeatFuture, log);
+        try {
+            gptQueryApplicationService.queryAgentStreamIncr(params, new SseEmitterAgentSessionStream(emitter));
+        } catch (Exception e) {
+            log.error("{} queryAgentStreamIncr bootstrap error", requestId, e);
+            emitter.completeWithError(e);
+        }
         return emitter;
     }
 

@@ -17,7 +17,6 @@ import {
   GlobeIcon,
   LoaderCircleIcon,
   SearchIcon,
-  SparklesIcon,
   TerminalIcon,
   BotIcon,
   WrenchIcon,
@@ -125,16 +124,12 @@ function isRichInlineStep(step: ProcessStepRow): boolean {
 
 const stepKindIcon = (kind: ProcessStepKind, active: boolean) => {
   const className = cn(
-    "size-3.5 shrink-0",
-    active ? "text-[var(--chat-accent)]" : "text-[var(--chat-text-muted)]"
+    "size-[15px] shrink-0",
+    active ? "text-[var(--chat-text-muted)]" : "text-[var(--chat-text-muted)]"
   );
   switch (kind) {
     case "thinking":
-      return active ? (
-        <SparklesIcon className={cn(className, "text-[var(--chat-accent)]")} />
-      ) : (
-        <BrainIcon className={className} />
-      );
+      return <BrainIcon className={className} />;
     case "read":
       return <FileTextIcon className={className} />;
     case "edit":
@@ -175,10 +170,7 @@ const DurationBadge: FC<{ label?: string; active?: boolean }> = ({
   return (
     <span
       className={cn(
-        "timeline-duration ml-auto shrink-0 text-[12px]",
-        active
-          ? "text-[var(--chat-accent-muted)]"
-          : "text-[var(--chat-text-muted)]/80"
+        "timeline-duration ml-auto shrink-0 text-[13px] font-normal text-[var(--chat-text-muted)]"
       )}
     >
       {active && !label ? "…" : label}
@@ -186,24 +178,21 @@ const DurationBadge: FC<{ label?: string; active?: boolean }> = ({
   );
 };
 
-/** 视频同款：sparkle + 标签 + 右侧时长 */
+/** 深度思考行头：无图标；流式时文字走 understanding 光效 */
 const ThinkingRowHeader: FC<{
   streaming: boolean;
   durationLabel?: string;
   label?: string;
 }> = ({ streaming, durationLabel, label = "深度思考" }) => (
   <div className="flex w-full min-w-0 items-center gap-2">
-    <div className="flex size-5 shrink-0 items-center justify-center">
-      {streaming ? (
-        <SparklesIcon className="size-3.5 text-[var(--chat-accent)] motion-safe:animate-pulse" />
-      ) : (
-        <SparklesIcon className="size-3.5 text-[var(--chat-text-muted)]/75" />
+    <span
+      className={cn(
+        "timeline-thinking-label text-[14.5px] font-medium text-[var(--chat-text-muted)]",
+        streaming && "thinking-shimmer"
       )}
-    </div>
-    <span className="timeline-thinking-label text-[13px]">{label}</span>
-    {streaming ? (
-      <span className="text-[12px] text-[var(--chat-text-muted)]">思考中</span>
-    ) : null}
+    >
+      {label}
+    </span>
     <DurationBadge label={durationLabel} active={streaming} />
   </div>
 );
@@ -225,21 +214,15 @@ const ThoughtHeader: FC<{
   canPrev,
   canNext,
 }) => (
-  <div className="flex w-full items-center gap-2 text-[13px] text-[var(--chat-text-soft)]">
-    <div className="flex size-5 shrink-0 items-center justify-center">
-      {streaming ? (
-        <SparklesIcon className="size-3.5 text-[var(--chat-accent)]" />
-      ) : (
-        <BrainIcon className="size-3.5 text-[var(--chat-text-muted)]" />
+  <div className="flex w-full items-center gap-2 text-[14.5px] text-[var(--chat-text-muted)]">
+    <span
+      className={cn(
+        "font-medium text-[var(--chat-text-muted)]",
+        streaming && "thinking-shimmer"
       )}
-    </div>
-    <span className="font-medium text-[var(--chat-text)]">深度思考</span>
-    {streaming ? (
-      <span className="inline-flex items-center gap-1 text-[12px] text-[var(--chat-text-muted)]">
-        <span className="h-1 w-1 rounded-full bg-[var(--chat-accent)]/70 motion-safe:animate-pulse" />
-        思考中
-      </span>
-    ) : null}
+    >
+      深度思考
+    </span>
     {versionLabel ? (
       <div
         className="inline-flex items-center gap-0.5 rounded-full bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-[11px] text-[var(--chat-text-muted)]"
@@ -316,7 +299,7 @@ const CompactStepRow: FC<{
           className="not-prose mb-0"
         >
           <ReasoningTrigger
-            className="m-0 rounded-lg px-1 py-1.5 hover:bg-[var(--chat-interactive-hover)]"
+            className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent"
             getThinkingMessage={(streaming) => (
               <ThinkingRowHeader
                 streaming={streaming}
@@ -324,7 +307,7 @@ const CompactStepRow: FC<{
               />
             )}
           />
-          <ReasoningContent className="pl-7 text-[13px] leading-6 text-[var(--chat-text-soft)]">
+          <ReasoningContent className="pl-6 text-[13px] leading-6 text-[var(--chat-text-muted)]">
             {thoughtText || "…"}
           </ReasoningContent>
         </Reasoning>
@@ -377,13 +360,14 @@ const CompactStepRow: FC<{
     );
   }
 
+  const titleText = step.detail
+    ? `${step.title} 「${step.detail}」`
+    : step.title;
+
   return (
     <button
       type="button"
-      className={cn(
-        "timeline-tool-row group flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left",
-        step.active ? "bg-[var(--chat-accent-soft)]/30" : ""
-      )}
+      className="timeline-tool-row group flex w-full min-h-8 cursor-pointer items-center gap-2 py-[5px] text-left"
       onClick={() => {
         if (step.tool.messageType === "plan") {
           ctx.changePlan?.();
@@ -392,35 +376,22 @@ const CompactStepRow: FC<{
         ctx.changeActiveChat(step.tool, ctx.chat);
       }}
     >
-      <div className="flex size-5 shrink-0 items-center justify-center text-[var(--chat-text-muted)]">
+      <div className="flex size-[15px] shrink-0 items-center justify-center text-[var(--chat-text-muted)]">
         {step.active ? (
-          <LoaderCircleIcon className="size-3.5 animate-spin text-[var(--chat-accent)]" />
+          <LoaderCircleIcon className="size-[15px] animate-spin text-[var(--chat-text-muted)]" />
         ) : (
           stepKindIcon(step.kind, step.active)
         )}
       </div>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span
-            className={cn(
-              "truncate text-[13px] leading-5 tracking-[-0.01em]",
-              step.active
-                ? "font-medium text-[var(--chat-text)]"
-                : "text-[var(--chat-text-soft)]/90"
-            )}
-          >
-            {step.title}
-          </span>
-          {step.detail ? (
-            <span className="truncate text-[12px] text-[var(--chat-text-muted)]/75">
-              {step.detail}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      {step.expandable ? (
-        <ChevronRightIcon className="size-3 shrink-0 text-[var(--chat-text-muted)]/60 opacity-0 transition-opacity group-hover:opacity-100" />
-      ) : null}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-left text-[14.5px] font-medium leading-5 tracking-[-0.01em] text-[var(--chat-text-muted)] group-hover:text-[var(--chat-text)]",
+          step.active && "thinking-shimmer"
+        )}
+      >
+        {titleText}
+      </span>
+      <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--chat-text-muted)] opacity-55" />
       <DurationBadge label={step.durationLabel} active={step.active} />
     </button>
   );
@@ -440,19 +411,26 @@ const StepGroupBlock: FC<{
   useEffect(() => {
     if (forceOpen || group.active) {
       setOpen(true);
-    } else if (canCollapse && group.completed && group.stepCount > 1) {
+    } else if (canCollapse && group.completed) {
+      // 步骤全部完成后自动折叠（含单步组）
       setOpen(false);
     }
-  }, [forceOpen, group.active, group.completed, group.stepCount, canCollapse]);
+  }, [forceOpen, group.active, group.completed, canCollapse]);
 
   const stepsBody = (
-    <div className="timeline-rail relative ml-[10px] pl-3">
+    <div className="timeline-rail relative ml-[7px] pl-3.5">
       <AnimatePresence initial={false}>
         {group.steps.map((step, index) => (
           <motion.div
             key={step.id}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{
+              opacity: 0,
+              y: 4,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
             transition={{
               duration: 0.2,
               delay: Math.min(index * 0.03, 0.18),
@@ -478,31 +456,32 @@ const StepGroupBlock: FC<{
     >
       <CollapsibleTrigger
         className={cn(
-          "group flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left transition-colors",
-          "hover:bg-[var(--chat-interactive-hover)]"
+          "group flex w-full items-center gap-2 py-1.5 text-left transition-colors",
+          "text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
         )}
       >
-        <div className="flex size-5 shrink-0 items-center justify-center">
-          {group.active ? (
-            <SparklesIcon className="size-3.5 text-[var(--chat-accent)] motion-safe:animate-pulse" />
-          ) : (
-            <SparklesIcon className="size-3.5 text-[var(--chat-text-muted)]/70" />
+        <span
+          className={cn(
+            "timeline-group-title min-w-0 flex-1 truncate text-[14.5px] font-medium",
+            group.active && "thinking-shimmer"
           )}
-        </div>
-        <span className="timeline-group-title min-w-0 flex-1 truncate text-[13px]">
+        >
           {group.title}
         </span>
         {group.digitalEmployee ? (
-          <span className="hidden shrink-0 rounded-md bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-[11px] text-[var(--chat-text-muted)] sm:inline">
+          <span className="hidden shrink-0 text-[12px] text-[var(--chat-text-muted)] sm:inline">
             {group.digitalEmployee}
           </span>
         ) : null}
         <motion.div
           animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
+          transition={{
+            duration: 0.2,
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
           className="shrink-0"
         >
-          <ChevronDownIcon className="size-3.5 text-[var(--chat-text-muted)]/70" />
+          <ChevronDownIcon className="size-3.5 text-current opacity-70" />
         </motion.div>
         <DurationBadge label={group.durationLabel} active={group.active} />
       </CollapsibleTrigger>
@@ -522,7 +501,7 @@ const UserMessageSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => (
 
 UserMessageSegment.displayName = "UserMessageSegment";
 
-/** 折叠「深度思考」：默认收起；视频同款 sparkle + 右侧时长 */
+/** 折叠「深度思考」：默认收起；流式时文字光效 */
 const ThinkingSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => {
   const [open, setOpen] = useState(false);
   const thoughtText = asText(step.tool.toolThought);
@@ -550,7 +529,7 @@ const ThinkingSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => {
         className="not-prose mb-0"
       >
         <ReasoningTrigger
-          className="m-0 rounded-md px-1 py-1.5 hover:bg-[var(--chat-interactive-hover)]"
+          className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent"
           getThinkingMessage={(isStreaming) => (
             <ThinkingRowHeader
               streaming={isStreaming}
@@ -558,7 +537,7 @@ const ThinkingSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => {
             />
           )}
         />
-        <ReasoningContent className="pl-7 text-[13px] leading-6 text-[var(--chat-text-soft)]">
+        <ReasoningContent className="pl-6 text-[13px] leading-6 text-[var(--chat-text-muted)]">
           {thoughtText || "…"}
         </ReasoningContent>
       </Reasoning>
@@ -623,8 +602,8 @@ const ProcessSegmentView: FC<{
   if (segment.type === "final_reply") {
     return <FinalReplySegment text={segment.text} />;
   }
-  // 单步工具：直接展开行（截图 `>_ tool`），多步才折叠「执行了 N 个步骤」
-  if (segment.group.stepCount <= 1 && !segment.group.active) {
+  // 单步且已完成：直接展示工具行；进行中/多步走可折叠组，完成后自动收起
+  if (segment.group.stepCount <= 1 && segment.group.completed) {
     return (
       <div className="w-full">
         {segment.group.steps.map((step) => (
@@ -636,12 +615,8 @@ const ProcessSegmentView: FC<{
   return (
     <StepGroupBlock
       group={segment.group}
-      defaultOpen={
-        segment.group.active ||
-        !segment.group.completed ||
-        segment.group.stepCount <= 2
-      }
-      forceOpen={segment.group.active || (loading && isLast)}
+      defaultOpen={segment.group.active || !segment.group.completed}
+      forceOpen={segment.group.active}
       ctx={ctx}
     />
   );
@@ -695,17 +670,16 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
     ]
   );
 
-  const [thoughtOpen, setThoughtOpen] = useState(() =>
-    Boolean(thoughtStreaming || chat.loading)
-  );
+  const [thoughtOpen, setThoughtOpen] = useState(() => Boolean(thoughtStreaming));
 
   useEffect(() => {
-    if (thoughtStreaming || (chat.loading && thoughtText)) {
+    // 深度思考流式时展开；思考结束即折叠（不等整轮 chat 结束）
+    if (thoughtStreaming) {
       setThoughtOpen(true);
-    } else if (!chat.loading && thoughtText) {
+    } else if (thoughtText) {
       setThoughtOpen(false);
     }
-  }, [thoughtStreaming, chat.loading, thoughtText]);
+  }, [thoughtStreaming, thoughtText]);
 
   const ctx = useMemo<StepRowContext>(
     () => ({
@@ -744,7 +718,7 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
             }
             className="not-prose mb-0"
           >
-            <ReasoningTrigger className="m-0 rounded-md px-1 py-1.5 hover:bg-[var(--chat-interactive-hover)]">
+            <ReasoningTrigger className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent">
               {model.thought.versionLabel ? (
                 <ThoughtHeader
                   streaming={model.thought.streaming}

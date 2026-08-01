@@ -59,10 +59,9 @@ const SearchListItemComponent: ReactorType.FC<SearchListItem & { index: number }
           ease: [0.25, 0.46, 0.45, 0.94],
         }}
         className={cn(
-          "group rounded-2xl px-4 py-4 transition-all duration-200",
-          "bg-[var(--chat-surface-soft)]/65 shadow-[var(--shadow-xs)]",
+          "group rounded-2xl border border-[var(--chat-border)]/50 bg-white px-4 py-4 transition-colors duration-200",
           clickable
-            ? "cursor-pointer hover:bg-[var(--chat-surface-muted)]/90 hover:shadow-[var(--shadow-sm)]"
+            ? "cursor-pointer hover:bg-[#fafafa]"
             : "cursor-default"
         )}
         onClick={() => {
@@ -84,7 +83,7 @@ const SearchListItemComponent: ReactorType.FC<SearchListItem & { index: number }
       >
         <div className="flex gap-3.5">
           <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/90 text-[var(--chat-text-muted)] transition-colors duration-200 group-hover:text-[var(--chat-text-soft)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]"
             aria-hidden
           >
             {kind === "query" ? (
@@ -94,12 +93,7 @@ const SearchListItemComponent: ReactorType.FC<SearchListItem & { index: number }
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3
-              className={cn(
-                "text-[15px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]",
-                "transition-colors duration-200 group-hover:text-[#0071e3]"
-              )}
-            >
+            <h3 className="text-[15px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)] transition-colors duration-200 group-hover:text-[#1d1d1f]">
               {name || "未命名来源"}
             </h3>
             {snippet ? (
@@ -152,7 +146,7 @@ const SearchListRenderer: ReactorType.FC<SearchListRendererProps> = React.memo((
   if (!list?.length) {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center px-4 py-16 text-center">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--chat-surface-soft)] text-[var(--chat-text-muted)] shadow-[var(--shadow-xs)]">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--chat-border)]/50 bg-white text-[var(--chat-text-muted)]">
           {loading ? (
             <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.5} />
           ) : (
@@ -170,7 +164,7 @@ const SearchListRenderer: ReactorType.FC<SearchListRendererProps> = React.memo((
   return (
     <div className={cn("mx-auto w-full max-w-2xl px-1 pb-8 pt-2", className)}>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--chat-surface-soft)] text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--chat-border)]/50 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           {loading ? (
             <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} />
           ) : (

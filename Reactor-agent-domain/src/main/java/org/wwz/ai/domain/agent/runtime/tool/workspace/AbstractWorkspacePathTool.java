@@ -8,7 +8,6 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -71,13 +70,7 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
      */
     /** 成功：结构化 llmData，由中央 serialize_for_llm 输出 JSON。 */
     protected ToolResultPayload okResult(Map<String, Object> fields) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("tool", getName());
-        data.put("ok", Boolean.TRUE);
-        if (fields != null) {
-            data.putAll(fields);
-        }
-        return ToolResultPayload.fromData(data);
+        return ToolResultPayload.okData(getName(), fields);
     }
 
     /** 失败：LeAgent 风格 Error 前缀。 */

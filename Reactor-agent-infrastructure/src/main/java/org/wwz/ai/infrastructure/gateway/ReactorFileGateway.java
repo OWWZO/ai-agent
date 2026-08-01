@@ -51,23 +51,51 @@ public class ReactorFileGateway {
             throw new IllegalArgumentException("上传文件不能为空");
         }
 
-        String baseUrl = reactorConfig.getCodeInterpreterUrl();
-        if (!StringUtils.hasText(baseUrl)) {
-            throw new IllegalStateException("autobots.autoagent.code_interpreter_url 未配置");
-        }
-
         String originalFileName = StringUtils.hasText(file.getOriginalFilename())
                 ? Objects.requireNonNull(file.getOriginalFilename()).trim()
                 : "uploaded-file";
         try {
-            MediaType parsedMediaType = StringUtils.hasText(file.getContentType())
-                    ? MediaType.parse(file.getContentType())
-                    : DEFAULT_MEDIA_TYPE;
-            MediaType mediaType = parsedMediaType == null ? DEFAULT_MEDIA_TYPE : parsedMediaType;
-            StreamingMultipartFileRequestBody fileBody = new StreamingMultipartFileRequestBody(file, mediaType);
-            return uploadBinary(sessionId, originalFileName, mediaType, fileBody, file.getSize(), file.getContentType());
+            return uploadConversationFile(
+                    sessionId,
+                    originalFileName,
+                    file.getContentType(),
+                    file.getSize(),
+                    file.getInputStream()
+            );
         } catch (IOException e) {
             log.error("对话附件上传异常 sessionId={}, fileName={}", sessionId, originalFileName, e);
+            throw new IllegalStateException("文件服务调用失败", e);
+        }
+    }
+
+    /**
+     * 协议无关的会话附件上传入口（供 ConversationFilePort 适配）。
+     */
+    public ConversationUploadFileDTO uploadConversationFile(String sessionId,
+                                                            String originalFileName,
+                                                            String contentType,
+                                                            long size,
+                                                            InputStream content) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("sessionId 不能为空");
+        }
+        if (content == null) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        if (!StringUtils.hasText(reactorConfig.getCodeInterpreterUrl())) {
+            throw new IllegalStateException("autobots.autoagent.code_interpreter_url 未配置");
+        }
+
+        String resolvedName = StringUtils.hasText(originalFileName) ? originalFileName.trim() : "uploaded-file";
+        try {
+            MediaType parsedMediaType = StringUtils.hasText(contentType)
+                    ? MediaType.parse(contentType)
+                    : DEFAULT_MEDIA_TYPE;
+            MediaType mediaType = parsedMediaType == null ? DEFAULT_MEDIA_TYPE : parsedMediaType;
+            StreamingInputStreamRequestBody fileBody = new StreamingInputStreamRequestBody(content, mediaType, size);
+            return uploadBinary(sessionId, resolvedName, mediaType, fileBody, size, contentType);
+        } catch (IOException e) {
+            log.error("对话附件上传异常 sessionId={}, fileName={}", sessionId, resolvedName, e);
             throw new IllegalStateException("文件服务调用失败", e);
         }
     }
@@ -138,9 +166,12 @@ public class ReactorFileGateway {
             JSONObject result = JSON.parseObject(responseText);
             String previewUrl = firstText(result.getString("domainUrl"), result.getString("downloadUrl"));
             String downloadUrl = firstText(result.getString("downloadUrl"), result.getString("domainUrl"));
-            String sha256Hex = fileBody instanceof StreamingMultipartFileRequestBody streamingBody
-                    ? streamingBody.getSha256Hex()
-                    : null;
+            String sha256Hex = null;
+            if (fileBody instanceof StreamingMultipartFileRequestBody streamingBody) {
+                sha256Hex = streamingBody.getSha256Hex();
+            } else if (fileBody instanceof StreamingInputStreamRequestBody streamingBody) {
+                sha256Hex = streamingBody.getSha256Hex();
+            }
             String resourceKey = buildStableResourceKey(sessionId, originalFileName, fileSize, sha256Hex);
             Long responseSize = result.getLong("fileSize");
             return ConversationUploadFileDTO.builder()
@@ -198,6 +229,65 @@ public class ReactorFileGateway {
             return "";
         }
         return fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 通过流式方式把 InputStream 写入下游。
+     */
+    private static final class StreamingInputStreamRequestBody extends RequestBody {
+
+        private final InputStream inputStream;
+        private final MediaType mediaType;
+        private final long contentLength;
+        private volatile String sha256Hex;
+
+        private StreamingInputStreamRequestBody(InputStream inputStream, MediaType mediaType, long contentLength) {
+            this.inputStream = inputStream;
+            this.mediaType = mediaType;
+            this.contentLength = contentLength;
+        }
+
+        @Override
+        public MediaType contentType() {
+            return mediaType;
+        }
+
+        @Override
+        public long contentLength() {
+            return contentLength >= 0 ? contentLength : -1L;
+        }
+
+        @Override
+        public void writeTo(BufferedSink sink) throws IOException {
+            MessageDigest messageDigest = newSha256Digest();
+            byte[] buffer = new byte[STREAM_BUFFER_SIZE];
+            int readLength;
+            while ((readLength = inputStream.read(buffer)) != -1) {
+                messageDigest.update(buffer, 0, readLength);
+                sink.write(buffer, 0, readLength);
+            }
+            this.sha256Hex = toHex(messageDigest.digest());
+        }
+
+        private String getSha256Hex() {
+            return sha256Hex;
+        }
+
+        private MessageDigest newSha256Digest() {
+            try {
+                return MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("JVM 不支持 SHA-256", e);
+            }
+        }
+
+        private String toHex(byte[] value) {
+            StringBuilder builder = new StringBuilder(value.length * 2);
+            for (byte current : value) {
+                builder.append(String.format("%02x", current));
+            }
+            return builder.toString();
+        }
     }
 
     /**

@@ -12,6 +12,7 @@ import ImageRenderer from "./ImageRenderer";
 import PdfRenderer from "./PdfRenderer";
 import WordRenderer from "./WordRenderer";
 import SearchListRenderer from "./SearchListRenderer";
+import DocumentFallback from "./DocumentFallback";
 import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
 import { PanelProvider } from ".";
@@ -163,12 +164,26 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
             <HTMLRenderer htmlUrl={panelView.htmlUrl} />
           </ContentWrapper>
         );
+      case "download-only":
+        return (
+          <ContentWrapper key="download-only">
+            <DocumentFallback
+              label={panelView.label}
+              title={panelView.title}
+              description={panelView.description}
+              fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
+              type="info"
+            />
+          </ContentWrapper>
+        );
       case "excel":
         return (
           <ContentWrapper key="excel">
             <TableRenderer
               fileUrl={panelView.fileUrl}
               fileName={panelView.fileName}
+              downloadUrl={panelView.downloadUrl}
               missingReason={panelView.missingReason}
             />
           </ContentWrapper>

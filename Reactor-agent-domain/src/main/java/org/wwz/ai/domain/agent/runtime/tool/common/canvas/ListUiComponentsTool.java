@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.canvas;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -41,14 +40,14 @@ public class ListUiComponentsTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("node_shape", "{\"kind\":\"...\",\"props\":{...},\"children\":[...]}");
-        body.put("rules", List.of(
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("node_shape", "{\"kind\":\"...\",\"props\":{...},\"children\":[...]}");
+        fields.put("rules", List.of(
                 "Every component prop goes inside props.",
                 "children is only for nested nodes, never strings.",
                 "Omit nodeId unless you need stable emit_ui_patch targets."
         ));
-        body.put("components", GenUiCatalog.listCatalog());
-        return ToolResultPayload.text(JSON.toJSONString(body));
+        fields.put("components", GenUiCatalog.listCatalog());
+        return ToolResultPayload.okData(CanvasToolNames.LIST_UI_COMPONENTS, fields);
     }
 }

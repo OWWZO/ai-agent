@@ -2,6 +2,7 @@ package org.wwz.ai.domain.agent.runtime.subagent;
 
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
@@ -33,7 +34,8 @@ public final class SubAgentToolFilter {
     );
 
     /**
-     * 从父工具池筛选出子 Agent 可用工具（共享工具实例引用，调用方负责 rebind context）。
+     * 从父工具池筛选出子 Agent 可用工具。
+     * 共享底层工具实例引用；调用方应使用 {@link ContextScopedTool#bindAll} 绑定子 context。
      */
     public static ToolCollection filter(ToolCollection parentTools, SubAgentDefinition definition) {
         return filter(parentTools, definition, false);

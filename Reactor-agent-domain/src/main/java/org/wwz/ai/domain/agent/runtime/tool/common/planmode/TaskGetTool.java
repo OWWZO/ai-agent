@@ -64,26 +64,18 @@ public class TaskGetTool implements BaseTool {
             }
             Optional<SessionTaskItem> found = agentContext.requireSessionTaskList().get(taskId);
             if (found.isEmpty()) {
-                return ToolResultPayload.text("Task not found: " + taskId);
+                Map<String, Object> notFound = new LinkedHashMap<>();
+                notFound.put("taskId", taskId);
+                notFound.put("message", "Task not found: " + taskId);
+                return ToolResultPayload.softFailData(TaskToolNames.TASK_GET, notFound);
             }
-            SessionTaskItem item = found.get();
-            StringBuilder sb = new StringBuilder();
-            sb.append("Task #").append(item.getId()).append(" — ").append(item.getSubject()).append('\n');
-            sb.append("Status: ").append(item.getStatus()).append('\n');
-            sb.append("Description: ").append(item.getDescription()).append('\n');
-            if (item.getBlockedBy() != null && !item.getBlockedBy().isEmpty()) {
-                sb.append("Blocked by: ").append(String.join(", ", item.getBlockedBy())).append('\n');
-            }
-            if (item.getBlocks() != null && !item.getBlocks().isEmpty()) {
-                sb.append("Blocks: ").append(String.join(", ", item.getBlocks())).append('\n');
-            }
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("task", item.toDetailMap());
-            return ToolResultPayload.text(sb + JSON.toJSONString(body));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("task", found.get().toDetailMap());
+            return ToolResultPayload.okData(TaskToolNames.TASK_GET, fields);
         } catch (Exception e) {
             log.warn("TaskGet failed", e);
             String msg = "TaskGet 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 

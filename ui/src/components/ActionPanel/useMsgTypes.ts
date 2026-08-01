@@ -9,6 +9,7 @@ import {
   isImageFileLike,
   isLegacyDocFileLike,
   isPdfFileLike,
+  isPptFileLike,
 } from "@/utils/taskArtifacts";
 
 export const getSearchList = (taskItem?: PanelItemType) => {
@@ -71,8 +72,6 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     const isHtmlFile = normalizedFileName.endsWith('.html')
       || normalizedFileName.endsWith('.htm')
       || normalizedMimeType.includes('text/html');
-    const isPptFile = normalizedFileName.endsWith('.ppt')
-      || normalizedFileName.endsWith('.pptx');
     const useExcel = !!primaryFile && isExcelFileLike(primaryFile);
     const usePdf = !!primaryFile && isPdfFileLike(primaryFile);
     const useDocx = !!primaryFile && isDocxFileLike(primaryFile);
@@ -87,13 +86,9 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
     }
     const useHtml = messageType === 'html' || (!!primaryFile && isHtmlFile);
     const useGenUi = messageType === 'ui_tree';
-    const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFile);
-    const useImage =
-      isImageFile &&
-      (
-        messageType === 'file' ||
-        (messageType === 'tool_result' && toolResult?.toolName === 'image_generation_tool')
-      );
+    const usePpt = messageType === 'ppt' || (!!primaryFile && isPptFileLike(primaryFile));
+    // 只要主文件是图片就走图片预览（图表/工具产物常见为 tool_result + .png）
+    const useImage = isImageFile;
     const useFile =
       !!primaryFile &&
       !useImage &&

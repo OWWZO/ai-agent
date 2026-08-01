@@ -25,10 +25,22 @@ public final class SseLifecycleSupport {
                                                     String requestId,
                                                     long heartbeatIntervalMillis,
                                                     Logger log) {
+        return startHeartbeat(scheduler, emitter, requestId, heartbeatIntervalMillis, log, "heartbeat");
+    }
+
+    /**
+     * 向浏览器主聊天路径发送结构化心跳（如 GptProcessResult），避免前端 JSON.parse 失败。
+     */
+    public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
+                                                    SseEmitter emitter,
+                                                    String requestId,
+                                                    long heartbeatIntervalMillis,
+                                                    Logger log,
+                                                    Object heartbeatPayload) {
         return scheduler.scheduleAtFixedRate(() -> {
             try {
                 log.info("{} send heartbeat", requestId);
-                emitter.send("heartbeat");
+                emitter.send(heartbeatPayload);
             } catch (Exception e) {
                 if (SseClientDisconnectDetector.isClientDisconnected(e)) {
                     log.info("{} heartbeat stopped because SSE client disconnected", requestId);

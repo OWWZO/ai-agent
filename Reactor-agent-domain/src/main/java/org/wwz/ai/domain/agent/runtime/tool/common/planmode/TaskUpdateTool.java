@@ -83,10 +83,14 @@ public class TaskUpdateTool implements BaseTool {
             if ("deleted".equalsIgnoreCase(status)) {
                 boolean removed = agentContext.requireSessionTaskList().delete(taskId);
                 if (!removed) {
-                    return ToolResultPayload.text("Task not found: " + taskId);
+                    return notFound(taskId);
                 }
                 SessionTaskListPublisher.publish(agentContext);
-                return ToolResultPayload.text("已删除任务 #" + taskId);
+                Map<String, Object> deleted = new LinkedHashMap<>();
+                deleted.put("deleted", Boolean.TRUE);
+                deleted.put("taskId", taskId);
+                deleted.put("message", "已删除任务 #" + taskId);
+                return ToolResultPayload.okData(TaskToolNames.TASK_UPDATE, deleted);
             }
 
             List<String> addBlocks = asStringList(params.get("addBlocks"));
@@ -101,26 +105,31 @@ public class TaskUpdateTool implements BaseTool {
                     addBlocks,
                     addBlockedBy);
             if (updated.isEmpty()) {
-                return ToolResultPayload.text("Task not found: " + taskId);
+                return notFound(taskId);
             }
             SessionTaskItem item = updated.get();
             SessionTaskListPublisher.publish(agentContext);
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("task", item.toDetailMap());
-            body.put("success", true);
-            return ToolResultPayload.text(
-                    "已更新任务 #" + item.getId() + " — " + item.getSubject()
-                            + "\nstatus=" + item.getStatus() + "\n"
-                            + JSON.toJSONString(body));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("success", Boolean.TRUE);
+            fields.put("message", "已更新任务 #" + item.getId() + " — " + item.getSubject());
+            fields.put("task", item.toDetailMap());
+            return ToolResultPayload.okData(TaskToolNames.TASK_UPDATE, fields);
         } catch (Exception e) {
             log.warn("TaskUpdate failed", e);
             String msg = "TaskUpdate 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 
     private static ToolResultPayload fail(String msg) {
-        return ToolResultPayload.failure(msg, msg, null, msg);
+        return ToolResultPayload.failureFrom(msg, null);
+    }
+
+    private static ToolResultPayload notFound(String taskId) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("taskId", taskId);
+        fields.put("message", "Task not found: " + taskId);
+        return ToolResultPayload.softFailData(TaskToolNames.TASK_UPDATE, fields);
     }
 
     @SuppressWarnings("unchecked")

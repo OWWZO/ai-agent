@@ -532,10 +532,9 @@ export function segmentProcessSteps(
       (step) => countsAsExecutableStep(step.tool) || isThinkingStep(step)
     );
     const displayCount = executables.length;
+    // 仅按组内步骤是否仍在执行判定 active，避免整轮 loading 期间步骤组无法折叠
     const active =
-      Boolean(forceActive) ||
-      ordered.some((step) => step.active) ||
-      (options.loading && displayCount > 0);
+      Boolean(forceActive) || ordered.some((step) => step.active);
     const completed = ordered.every((step) => step.completed) && !active;
     const durationMs = sumDurations(ordered.map((step) => step.durationMs));
     groupSerial += 1;
@@ -622,7 +621,8 @@ export function segmentProcessSteps(
     buffer.push(step);
   }
 
-  flushWorkGroup(options.loading);
+  // 末组是否 active 由组内步骤状态决定，不因整轮 loading 强制保持展开
+  flushWorkGroup(false);
 
   // 终答只走 chat.conclusion / result，不再把过程文提升为 final_reply（避免与结论重复）
   return segments;
@@ -694,47 +694,90 @@ export function deriveAgentProcessModel(
   let groupSerial = 0;
   const taskGroups = chat.tasks || [];
 
-  taskGroups.forEach((group, groupIndex) => {
-    (group || []).forEach((container, containerIndex) => {
-      const children = flattenGroupChildren(container);
-      if (!children.length) {
-        return;
-      }
+  // ReAct / 普通任务：跨 container 合并 children 再切分，避免历史回放「一工具一组」时
+  // 永远落成 stepCount=1 的已完成组而被时间线压成平铺（折叠「执行了 N 步」消失）。
+  // PlanSolve 仍按 plan task 容器边界分段，保留步骤标题。
+  type ContainerSlice = {
+    children: CHAT.Task[];
+    container?: CHAT.Task;
+    groupIndex: number;
+    containerIndex: number;
+    isLastContainer: boolean;
+  };
+  const slices: ContainerSlice[] = [];
 
-      const isLastContainer =
-        groupIndex === taskGroups.length - 1 &&
-        containerIndex === (group || []).length - 1;
-
-      const steps = buildStepRows(children, {
-        loading,
-        nowMs,
-        finishedAtMs,
-      });
-      if (!steps.length) {
-        return;
-      }
-
-      const sliced = segmentProcessSteps(steps, {
-        loading: loading && isLastContainer,
-        isPlanSolve,
-        container,
-        groupIndexBase: groupSerial,
-      });
-      for (const segment of sliced) {
-        if (segment.type === "group") {
-          groupSerial += 1;
-          // 保证 id 唯一
-          segment.group.id =
-            segment.group.id ||
-            container.id ||
-            container.messageId ||
-            container.taskId ||
-            `group-${groupIndex}-${containerIndex}-${groupSerial}`;
+  if (!isPlanSolve) {
+    const merged: CHAT.Task[] = [];
+    let lastMeta: Omit<ContainerSlice, "children"> | undefined;
+    taskGroups.forEach((group, groupIndex) => {
+      (group || []).forEach((container, containerIndex) => {
+        const children = flattenGroupChildren(container);
+        if (!children.length) {
+          return;
         }
-        segments.push(segment);
-      }
+        merged.push(...children);
+        lastMeta = {
+          container,
+          groupIndex,
+          containerIndex,
+          isLastContainer:
+            groupIndex === taskGroups.length - 1 &&
+            containerIndex === (group || []).length - 1,
+        };
+      });
     });
-  });
+    if (merged.length && lastMeta) {
+      slices.push({ children: merged, ...lastMeta });
+    }
+  } else {
+    taskGroups.forEach((group, groupIndex) => {
+      (group || []).forEach((container, containerIndex) => {
+        const children = flattenGroupChildren(container);
+        if (!children.length) {
+          return;
+        }
+        slices.push({
+          children,
+          container,
+          groupIndex,
+          containerIndex,
+          isLastContainer:
+            groupIndex === taskGroups.length - 1 &&
+            containerIndex === (group || []).length - 1,
+        });
+      });
+    });
+  }
+
+  for (const slice of slices) {
+    const steps = buildStepRows(slice.children, {
+      loading,
+      nowMs,
+      finishedAtMs,
+    });
+    if (!steps.length) {
+      continue;
+    }
+
+    const sliced = segmentProcessSteps(steps, {
+      loading: loading && slice.isLastContainer,
+      isPlanSolve,
+      container: slice.container,
+      groupIndexBase: groupSerial,
+    });
+    for (const segment of sliced) {
+      if (segment.type === "group") {
+        groupSerial += 1;
+        segment.group.id =
+          segment.group.id ||
+          slice.container?.id ||
+          slice.container?.messageId ||
+          slice.container?.taskId ||
+          `group-${slice.groupIndex}-${slice.containerIndex}-${groupSerial}`;
+      }
+      segments.push(segment);
+    }
+  }
 
   const groups = segments
     .filter((segment): segment is Extract<ProcessSegment, { type: "group" }> =>

@@ -83,15 +83,14 @@ public class TaskCreateTool implements BaseTool {
             SessionTaskItem item = agentContext.requireSessionTaskList()
                     .create(subject, description, activeForm, null);
             SessionTaskListPublisher.publish(agentContext);
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("task", item.toSummaryMap());
-            String text = "已创建任务 #" + item.getId() + "：" + item.getSubject()
-                    + "\nstatus=pending";
-            return ToolResultPayload.text(text + "\n" + JSON.toJSONString(body));
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "已创建任务 #" + item.getId() + "：" + item.getSubject());
+            fields.put("task", item.toSummaryMap());
+            return ToolResultPayload.okData(TaskToolNames.TASK_CREATE, fields);
         } catch (Exception e) {
             log.warn("TaskCreate failed", e);
             String msg = "TaskCreate 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 

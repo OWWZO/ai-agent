@@ -96,6 +96,42 @@ public class StreamResponseHandlerTest {
     }
 
     @Test
+    public void test_handleToolCallStreamPushesContentBeforeToolCallsArrive() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-content-first")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        // 先只有 content，后才出现 tool_call —— 过程文必须先被推送
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(
+                        textChunk("我先说明下一步"),
+                        toolChunk("", new AssistantMessage.ToolCall("call-x", "function", "read_file", "{\"path\":\"a\"}"), "tool_calls", 12)
+                ),
+                System.currentTimeMillis() - 10
+        ).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        Assert.assertEquals("我先说明下一步", response.getContent());
+        Assert.assertEquals(1, response.getToolCalls().size());
+        Assert.assertTrue(
+                "content 应在 tool_call 出现前就已推送",
+                printer.messages.stream().anyMatch(
+                        m -> "tool_thought".equals(m.messageType)
+                                && String.valueOf(m.message).contains("我先说明下一步"))
+        );
+    }
+
+    @Test
     public void test_handleToolCallStreamAggregatesArgumentsAndFinalContent() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
         ReactorConfig reactorConfig = new ReactorConfig();

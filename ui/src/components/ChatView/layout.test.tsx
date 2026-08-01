@@ -156,6 +156,7 @@ vi.mock("./useWorkspacePanels", () => ({
     toggleLeftPanel: vi.fn(),
     toggleRightPanel: vi.fn(),
     toggleFocusMode: vi.fn(),
+    exitFocusMode: vi.fn(),
   }),
 }));
 

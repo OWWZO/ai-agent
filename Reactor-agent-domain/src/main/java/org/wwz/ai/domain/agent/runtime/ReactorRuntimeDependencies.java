@@ -51,6 +51,11 @@ public class ReactorRuntimeDependencies {
 
     TaskScheduler heartbeatScheduler;
 
+    /**
+     * 工具批 allOf 超时秒数；null 或 ≤0 表示不超时（仅测试夹具）。
+     */
+    Long toolBatchTimeoutSeconds;
+
     /** 可选：跨轮/中途工作记忆压缩（cc-haha query 循环时机）。 */
     SessionContextCompactionService sessionContextCompactionService;
 
@@ -100,6 +105,16 @@ public class ReactorRuntimeDependencies {
 
     public TaskScheduler requireHeartbeatScheduler() {
         return Objects.requireNonNull(heartbeatScheduler, "heartbeatScheduler must not be null");
+    }
+
+    /**
+     * @return 工具批超时秒数；未配置时默认 600。
+     */
+    public long resolveToolBatchTimeoutSeconds() {
+        if (toolBatchTimeoutSeconds == null) {
+            return 600L;
+        }
+        return toolBatchTimeoutSeconds;
     }
 
     public SessionContextCompactionService getOptionalSessionContextCompactionService() {

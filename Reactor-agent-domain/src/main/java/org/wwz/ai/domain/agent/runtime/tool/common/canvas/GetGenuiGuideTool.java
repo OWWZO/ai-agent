@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.canvas;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
@@ -40,6 +39,6 @@ public class GetGenuiGuideTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
-        return ToolResultPayload.text(JSON.toJSONString(GenUiGuidePayload.payload()));
+        return ToolResultPayload.fromData(GenUiGuidePayload.payload());
     }
 }

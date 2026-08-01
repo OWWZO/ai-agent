@@ -136,8 +136,9 @@ export const getProductByType = (type?: string): CHAT.Product => {
   return productList.find((item) => item.type === type) ?? defaultProduct;
 };
 
+/** 输出格式（html/docs/ppt/table）已下线，仅 chat / dataAgent 仍作为协议模式字段 */
 export const toRequestOutputStyle = (type?: string) => {
-  if (type === "chat" || type === "dataAgent" || isOutputProductType(type)) {
+  if (type === "chat" || type === "dataAgent") {
     return type;
   }
   return undefined;

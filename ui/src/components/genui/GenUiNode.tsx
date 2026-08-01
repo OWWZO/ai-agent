@@ -1,4 +1,4 @@
-import { FC, memo } from "react";
+import { FC, memo, useState } from "react";
 import classNames from "classnames";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import GenUiChart from "./GenUiChart";
@@ -32,6 +32,86 @@ const textColor = (color?: string) => {
     default:
       return "text-[var(--chat-text)]";
   }
+};
+
+const GenUiTabs: FC<{ items: GenUiNodeData[]; depth: number }> = ({
+  items,
+  depth,
+}) => {
+  const [active, setActive] = useState(0);
+  const safeActive = Math.min(Math.max(active, 0), Math.max(items.length - 1, 0));
+  const current = items[safeActive];
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--chat-border)]/60">
+      <div className="flex flex-wrap gap-1 border-b border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/50 p-1.5">
+        {items.map((item, index) => {
+          const label =
+            item.props?.label || item.props?.title || `标签 ${index + 1}`;
+          const selected = index === safeActive;
+          return (
+            <button
+              key={item.nodeId || `tab-${index}`}
+              type="button"
+              className={classNames(
+                "rounded-md px-3 py-1.5 text-[12px] transition-colors",
+                selected
+                  ? "bg-white font-medium text-[var(--chat-text)] shadow-sm"
+                  : "text-[var(--chat-text-soft)] hover:bg-white/70"
+              )}
+              onClick={() => setActive(index)}
+            >
+              {String(label)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="p-3">
+        {current ? (
+          <GenUiNode node={current} depth={depth + 1} />
+        ) : (
+          <div className="text-[12px] text-[var(--chat-text-soft)]">暂无内容</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const GenUiAccordion: FC<{ items: GenUiNodeData[]; depth: number }> = ({
+  items,
+  depth,
+}) => {
+  const [open, setOpen] = useState(0);
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => {
+        const label =
+          item.props?.label || item.props?.title || `分组 ${index + 1}`;
+        const expanded = open === index;
+        return (
+          <div
+            key={item.nodeId || `acc-${index}`}
+            className="overflow-hidden rounded-lg border border-[var(--chat-border)]/60"
+          >
+            <button
+              type="button"
+              className="flex w-full items-center justify-between bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-left text-[13px] font-medium text-[var(--chat-text)]"
+              onClick={() => setOpen(expanded ? -1 : index)}
+            >
+              <span>{String(label)}</span>
+              <span className="text-[11px] text-[var(--chat-text-soft)]">
+                {expanded ? "收起" : "展开"}
+              </span>
+            </button>
+            {expanded ? (
+              <div className="border-t border-[var(--chat-border)]/40 p-3">
+                <GenUiNode node={{ ...item, kind: "Stack" }} depth={depth + 1} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
@@ -187,10 +267,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     case "Table": {
       const headers: string[] = Array.isArray(props.headers) ? props.headers : [];
       return (
-        <div key={key} className="overflow-x-auto rounded-lg border border-[var(--chat-border)]/60">
+        <div key={key} className="max-h-[420px] overflow-auto rounded-lg border border-[var(--chat-border)]/60">
           <table className="min-w-full text-left text-[13px]">
             {headers.length ? (
-              <thead className="bg-[var(--chat-surface-muted)]/60 text-[var(--chat-text-soft)]">
+              <thead className="sticky top-0 z-10 bg-[var(--chat-surface-muted)]/90 text-[var(--chat-text-soft)] backdrop-blur">
                 <tr>
                   {headers.map((h) => (
                     <th key={h} className="px-3 py-2 font-medium">
@@ -200,7 +280,20 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
                 </tr>
               </thead>
             ) : null}
-            <tbody>{renderChildren()}</tbody>
+            <tbody>
+              {children.length ? (
+                renderChildren()
+              ) : (
+                <tr>
+                  <td
+                    colSpan={Math.max(headers.length, 1)}
+                    className="px-3 py-6 text-center text-[12px] text-[var(--chat-text-soft)]"
+                  >
+                    暂无表格数据
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </div>
       );
@@ -460,16 +553,35 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         </ol>
       );
     }
-    case "Tabs":
-    case "Accordion":
+    case "Tabs": {
+      const tabItems = children.filter((c) => c.kind === "TabItem");
+      const items = tabItems.length ? tabItems : children;
+      return <GenUiTabs key={key} items={items} depth={depth} />;
+    }
+    case "Accordion": {
+      const accItems = children.filter((c) => c.kind === "AccordionItem");
+      const items = accItems.length ? accItems : children;
+      return <GenUiAccordion key={key} items={items} depth={depth} />;
+    }
     case "ChipGroup":
+      return (
+        <div key={key} className="flex flex-wrap gap-1.5">
+          {renderChildren()}
+        </div>
+      );
     case "ScrollArea":
-      return <div key={key} className="space-y-2">{renderChildren()}</div>;
+      return (
+        <div
+          key={key}
+          className="max-h-[360px] space-y-2 overflow-auto rounded-lg border border-[var(--chat-border)]/40 p-2"
+        >
+          {renderChildren()}
+        </div>
+      );
     case "TabItem":
     case "AccordionItem":
       return (
-        <div key={key} className="rounded-lg border border-[var(--chat-border)]/50 p-2">
-          <div className="mb-1 text-[13px] font-medium">{props.label || props.title || ""}</div>
+        <div key={key} className="space-y-2">
           {renderChildren()}
         </div>
       );
@@ -547,25 +659,131 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           caption={props.caption}
         />
       );
-    case "LiveCamera":
-    case "HostedCanvasFrame":
     case "Video":
-    case "JsonDebug":
+      return props.src ? (
+        <video
+          key={key}
+          src={String(props.src)}
+          controls
+          poster={props.poster}
+          className="w-full rounded-lg border border-[var(--chat-border)]/50"
+        />
+      ) : (
+        <div
+          key={key}
+          className="rounded border border-dashed border-[var(--chat-border)]/70 px-2 py-2 text-[12px] text-[var(--chat-text-soft)]"
+        >
+          视频缺少地址
+        </div>
+      );
+    case "ImageGallery": {
+      const images: string[] = Array.isArray(props.images)
+        ? props.images.map(String)
+        : children
+            .map((c) => c.props?.src)
+            .filter(Boolean)
+            .map(String);
+      if (!images.length) {
+        return (
+          <div
+            key={key}
+            className="rounded border border-dashed border-[var(--chat-border)]/70 px-2 py-2 text-[12px] text-[var(--chat-text-soft)]"
+          >
+            图库为空
+          </div>
+        );
+      }
+      return (
+        <div key={key} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {images.map((src, i) => (
+            <img
+              key={`${src}-${i}`}
+              src={src}
+              alt={props.caption || `image-${i + 1}`}
+              className="h-28 w-full rounded-lg object-cover"
+            />
+          ))}
+        </div>
+      );
+    }
+    case "Chip":
+      return (
+        <span
+          key={key}
+          className="inline-flex items-center rounded-full bg-[var(--chat-surface-soft)] px-2.5 py-0.5 text-[12px] text-[var(--chat-text)]"
+        >
+          {props.label || props.value || props.text || renderChildren()}
+        </span>
+      );
     case "Skeleton":
+      return (
+        <div
+          key={key}
+          className="h-4 animate-pulse rounded bg-[var(--chat-surface-soft)]"
+          style={{ width: props.width || "100%" }}
+        />
+      );
     case "Avatar":
+      return props.src ? (
+        <img
+          key={key}
+          src={String(props.src)}
+          alt={props.alt || props.name || "avatar"}
+          className="h-10 w-10 rounded-full object-cover"
+        />
+      ) : (
+        <div
+          key={key}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--chat-surface-soft)] text-[12px] font-medium text-[var(--chat-text-soft)]"
+        >
+          {String(props.name || props.label || "?").slice(0, 2)}
+        </div>
+      );
     case "Input":
+    case "Textarea":
     case "Select":
+    case "FileInput":
+      return (
+        <div key={key} className="space-y-1">
+          {props.label ? (
+            <div className="text-[12px] text-[var(--chat-text-soft)]">{props.label}</div>
+          ) : null}
+          <div className="rounded-md border border-[var(--chat-border)]/70 bg-white px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+            {props.placeholder || props.value || "（只读展示）"}
+          </div>
+        </div>
+      );
     case "Switch":
     case "Slider":
-    case "FileInput":
-    case "Textarea":
-    case "Chip":
     case "InteractiveButton":
     case "ToggleButton":
-    case "ImageGallery":
       return (
-        <div key={key} className="rounded border border-dashed border-[var(--chat-border)]/70 px-2 py-1 text-[12px] text-[var(--chat-text-soft)]">
-          {node.kind}{props.title || props.label || props.name ? `: ${props.title || props.label || props.name}` : ""}
+        <div
+          key={key}
+          className="inline-flex items-center rounded-md border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/40 px-2.5 py-1 text-[12px] text-[var(--chat-text)]"
+        >
+          {props.label || props.title || props.name || node.kind}
+          {props.value != null ? `: ${String(props.value)}` : ""}
+        </div>
+      );
+    case "JsonDebug":
+      return (
+        <pre
+          key={key}
+          className="max-h-64 overflow-auto rounded-lg bg-[#0f172a] p-3 text-[11px] text-[#e2e8f0]"
+        >
+          {JSON.stringify(props.data ?? props.value ?? props, null, 2)}
+        </pre>
+      );
+    case "LiveCamera":
+    case "HostedCanvasFrame":
+      return (
+        <div
+          key={key}
+          className="rounded border border-dashed border-[var(--chat-border)]/70 px-2 py-2 text-[12px] text-[var(--chat-text-soft)]"
+        >
+          暂不支持交互组件：{node.kind}
+          {props.title || props.label ? `（${props.title || props.label}）` : ""}
           {renderChildren()}
         </div>
       );
@@ -591,7 +809,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     default:
       return (
         <div key={key} className="rounded border border-dashed border-[var(--chat-border)]/70 p-2 text-[12px] text-[var(--chat-text-soft)]">
-          Unsupported kind: {node.kind}
+          暂不支持的组件类型：{node.kind}
           {renderChildren()}
         </div>
       );

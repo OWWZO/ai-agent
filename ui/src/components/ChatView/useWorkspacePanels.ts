@@ -4,10 +4,13 @@ const DEFAULT_LEFT_WIDTH = 50;
 const MIN_LEFT_WIDTH = 24;
 const MAX_LEFT_WIDTH = 56;
 
+/** 沉浸模式：对话区窄列约 24%，工作区主导约 76%（对齐 ClawsGO） */
+const IMMERSIVE_LEFT_WIDTH = 24;
+
 /**
  * 统一收口聊天区 / 工作区的布局状态，避免主组件继续堆叠拖拽与折叠细节。
  * 默认对话区 / 工作区各占 50%，首次进入时分割线处于中间位置；
- * 同时支持专注模式（隐藏对话区，工作区全屏接管）。
+ * 沉浸模式：对话区保留为窄列，工作区主导（侧栏收起由 Home 协同）。
  */
 export function useWorkspacePanels() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_WIDTH);
@@ -15,6 +18,7 @@ export function useWorkspacePanels() {
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const preFocusLeftWidthRef = useRef(DEFAULT_LEFT_WIDTH);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(DEFAULT_LEFT_WIDTH);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -79,7 +83,28 @@ export function useWorkspacePanels() {
   }, []);
 
   const toggleFocusMode = useCallback(() => {
-    setIsFocusMode((previous) => !previous);
+    setIsFocusMode((previous) => {
+      const next = !previous;
+      if (next) {
+        preFocusLeftWidthRef.current = leftPanelWidth;
+        setIsLeftCollapsed(false);
+        setIsRightCollapsed(false);
+        setLeftPanelWidth(IMMERSIVE_LEFT_WIDTH);
+      } else {
+        setLeftPanelWidth(preFocusLeftWidthRef.current || DEFAULT_LEFT_WIDTH);
+      }
+      return next;
+    });
+  }, [leftPanelWidth]);
+
+  const exitFocusMode = useCallback(() => {
+    setIsFocusMode((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      setLeftPanelWidth(preFocusLeftWidthRef.current || DEFAULT_LEFT_WIDTH);
+      return false;
+    });
   }, []);
 
   return {
@@ -98,5 +123,6 @@ export function useWorkspacePanels() {
     toggleLeftPanel,
     toggleRightPanel,
     toggleFocusMode,
+    exitFocusMode,
   };
 }

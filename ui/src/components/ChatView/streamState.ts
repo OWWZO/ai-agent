@@ -275,7 +275,7 @@ function resolveWorkspaceTitle(task?: CHAT.Task) {
 
 const PHASE_HINTS: Record<RunPhase, string> = {
   idle: "",
-  queued: "正在理解任务…",
+  queued: "正在理解问题…",
   thinking: "正在梳理思路…",
   planning: "正在制定计划…",
   working: "正在推进任务…",

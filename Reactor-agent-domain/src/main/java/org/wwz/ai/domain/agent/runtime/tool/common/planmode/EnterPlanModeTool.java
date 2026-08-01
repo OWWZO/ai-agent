@@ -73,7 +73,11 @@ public class EnterPlanModeTool implements BaseTool {
             }
             PlanModeState state = agentContext.requirePlanModeState();
             if (state.isPlanMode()) {
-                return ToolResultPayload.text("Already in plan mode. Continue exploring and writing the plan to .reactor/plan.md.");
+                Map<String, Object> already = new LinkedHashMap<>();
+                already.put("alreadyInPlanMode", Boolean.TRUE);
+                already.put("message", "Already in plan mode. Continue exploring and writing the plan to .reactor/plan.md.");
+                already.put("planFilePath", PlanArtifactStore.RELATIVE_PLAN_PATH);
+                return ToolResultPayload.okData(TaskToolNames.ENTER_PLAN_MODE, already);
             }
             state.enterPlanMode();
 
@@ -93,15 +97,16 @@ public class EnterPlanModeTool implements BaseTool {
                 agentContext.getPrinter().send("plan_mode_entered", payload);
             }
 
-            String text = "Entered plan mode.\n"
-                    + PlanModePromptInjector.PLAN_MODE_INSTRUCTIONS.trim()
-                    + "\nPlan file path: " + planPathHint + "\n"
-                    + "When the plan is ready, call ExitPlanMode to request user approval before implementing.";
-            return ToolResultPayload.text(text);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("entered", Boolean.TRUE);
+            fields.put("message", "Entered plan mode. Write the plan to .reactor/plan.md, then call ExitPlanMode for approval.");
+            fields.put("planFilePath", planPathHint);
+            fields.put("instructions", PlanModePromptInjector.PLAN_MODE_INSTRUCTIONS.trim());
+            return ToolResultPayload.okData(TaskToolNames.ENTER_PLAN_MODE, fields);
         } catch (Exception e) {
             log.warn("EnterPlanMode failed", e);
             String msg = "EnterPlanMode 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 }

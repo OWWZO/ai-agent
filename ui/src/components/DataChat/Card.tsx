@@ -1,35 +1,48 @@
-import { JSX, useRef } from "react";
+import { useMemo } from "react";
+
+type KpiItem = {
+  label?: string;
+  showValue?: string | number;
+  value?: string | number;
+};
 
 const Card: ReactorType.FC<{ data: Record<string, any> }> = (props) => {
   const { data } = props;
-  const { kpiList } = data;
-  const dom = useRef(null);
+  const kpiList: KpiItem[] = Array.isArray(data?.kpiList) ? data.kpiList : [];
 
-  const makeItems = () => {
-    const items: JSX.Element[] = [];
-    kpiList?.forEach((item: any, index: number) => {
-      // 分割线：仅在不是第一个元素时添加
-      if (index > 0) {
-        items.push(<div key={`separator-${index}`} className="border-l-[1px] border-solid border-[#e9e9f0] h-[60px] w-[10px]" />);
-      }
+  const items = useMemo(
+    () =>
+      kpiList.map((item, index) => ({
+        key: `kpi-${index}`,
+        label: item.label || "未命名",
+        value: item.showValue ?? item.value ?? "—",
+      })),
+    [kpiList]
+  );
 
-      // 展示对象：确保key唯一
-      items.push(
-        <div key={`item-${index}`} className="flex-[1] overflow-hidden">
-          <div className="text-[16px] font-medium leading-[26px] whitespace-nowrap text-ellipsis overflow-hidden">
-            {item.label || "未命名"}
-          </div>
-          <div>{item.showValue ?? "-"}</div> 
-        </div>
-      );
-    });
-
-    return items;
-  };
+  if (!items.length) {
+    return (
+      <div className="flex h-[120px] w-full items-center justify-center text-[13px] text-[var(--chat-text-soft)]">
+        暂无指标
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-center gap-[10px] w-full h-full" ref={dom}>
-      {makeItems()}
+    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => (
+        <div
+          key={item.key}
+          className="rounded-xl border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/40 px-4 py-3"
+        >
+          <div className="truncate text-[12px] font-medium text-[var(--chat-text-soft)]">
+            {item.label}
+          </div>
+          <div className="mt-1 truncate text-[22px] font-semibold tracking-[-0.02em] text-[var(--chat-text)] tabular-nums">
+            {item.value}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

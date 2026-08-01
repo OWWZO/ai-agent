@@ -62,8 +62,8 @@ const resolvePlanStepTone = (status?: string) => {
       };
     case "in_progress":
       return {
-        badgeClass: "bg-amber-500/10 text-amber-600",
-        dotClass: "bg-amber-500",
+        badgeClass: "bg-[#f5f5f7] text-[#6b6b70]",
+        dotClass: "bg-[#86868b]",
         label: "进行中",
       };
     default:

@@ -38,11 +38,6 @@ public class DeepSearchStructuredResultBuilder {
      */
     private static final int OBSERVATION_DOC_SUMMARY_MAX_LEN = 180;
 
-    /**
-     * 最终回答摘要最大长度。
-     */
-    private static final int OBSERVATION_ANSWER_MAX_LEN = 240;
-
     private final LinkedHashSet<String> decomposedQueries = new LinkedHashSet<>();
     private final LinkedHashMap<String, List<DeepSearchrResponse.SearchDoc>> searchResults = new LinkedHashMap<>();
     private final Map<String, Set<String>> searchResultDedup = new LinkedHashMap<>();
@@ -99,7 +94,8 @@ public class DeepSearchStructuredResultBuilder {
     }
 
     /**
-     * 同时产出强类型输出与主智能体消费的紧凑 observation。
+     * 同时产出强类型输出与主智能体 observation。
+     * 总结文章（answerSummary）全量返回，不再截断。
      */
     public ToolResultPayload buildPayload(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
@@ -110,14 +106,14 @@ public class DeepSearchStructuredResultBuilder {
                 .query(query)
                 .subQueries(new ArrayList<>(decomposedQueries))
                 .results(buildObservationResults())
-                .answerSummary(truncate(normalizedAnswer, OBSERVATION_ANSWER_MAX_LEN))
+                .answerSummary(normalizedAnswer)
                 .build();
         return ToolResultPayload.fromData(observation, output);
     }
 
     /**
-     * 生成给主智能体使用的紧凑 observation。
-     * 只保留查询拆解、来源标题/链接和内容摘要，不再透传完整 stages payload。
+     * 生成给主智能体使用的 observation。
+     * 来源文档仍做紧凑摘要；总结文章 answerSummary 全量返回。
      */
     public String buildLlmObservation(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
@@ -126,7 +122,7 @@ public class DeepSearchStructuredResultBuilder {
                 .query(query)
                 .subQueries(new ArrayList<>(decomposedQueries))
                 .results(buildObservationResults())
-                .answerSummary(truncate(normalizedAnswer, OBSERVATION_ANSWER_MAX_LEN))
+                .answerSummary(normalizedAnswer)
                 .build();
         return JSON.toJSONString(observation);
     }

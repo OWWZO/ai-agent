@@ -216,8 +216,8 @@ public class DeepSearchTool implements BaseTool {
                                     .content(searchResponse.getAnswer())
                                     .build();
                             fileTool.uploadFile(fileRequest, false, false, artifactSource);
-                            resultRef.set(searchResponse.getAnswer()
-                                    .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolMessageTruncateLen())));
+                            // 总结文章全量回传，供 observation / fallback 使用，不再截断
+                            resultRef.set(searchResponse.getAnswer());
 
                             agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                             return;

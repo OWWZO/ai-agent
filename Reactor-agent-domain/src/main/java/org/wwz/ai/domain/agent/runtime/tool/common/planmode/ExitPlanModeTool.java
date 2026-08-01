@@ -168,27 +168,27 @@ public class ExitPlanModeTool implements BaseTool {
                     state.setPlan(finalPlan, planFilePath);
                 }
                 String restored = state.exitPlanMode();
-                String text = PlanModePromptInjector.buildApprovedPlanToolResult(
-                        finalPlan, state.getPlanFilePath(), restored);
-                Map<String, Object> body = new LinkedHashMap<>();
-                body.put("approved", true);
-                body.put("restoredMode", restored);
-                body.put("plan", finalPlan);
-                body.put("filePath", state.getPlanFilePath());
-                body.put("approvalId", pending.getApprovalId());
-                return ToolResultPayload.text(text + "\n" + JSON.toJSONString(body));
+                Map<String, Object> approved = new LinkedHashMap<>();
+                approved.put("approved", Boolean.TRUE);
+                approved.put("message", PlanModePromptInjector.buildApprovedPlanToolResult(
+                        finalPlan, state.getPlanFilePath(), restored));
+                approved.put("restoredMode", restored);
+                approved.put("plan", finalPlan);
+                approved.put("filePath", state.getPlanFilePath());
+                approved.put("approvalId", pending.getApprovalId());
+                return ToolResultPayload.okData(TaskToolNames.EXIT_PLAN_MODE, approved);
             }
 
             // rejected — 留在 plan mode
             state.clearPendingApproval();
             String feedback = decision == null ? null : decision.getFeedback();
-            String text = PlanModePromptInjector.buildRejectedPlanToolResult(feedback);
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("approved", false);
-            body.put("feedback", feedback);
-            body.put("approvalId", pending.getApprovalId());
-            body.put("stillInPlanMode", true);
-            return ToolResultPayload.text(text + "\n" + JSON.toJSONString(body));
+            Map<String, Object> rejected = new LinkedHashMap<>();
+            rejected.put("approved", Boolean.FALSE);
+            rejected.put("message", PlanModePromptInjector.buildRejectedPlanToolResult(feedback));
+            rejected.put("feedback", feedback);
+            rejected.put("approvalId", pending.getApprovalId());
+            rejected.put("stillInPlanMode", Boolean.TRUE);
+            return ToolResultPayload.okData(TaskToolNames.EXIT_PLAN_MODE, rejected);
         } catch (Exception e) {
             log.warn("ExitPlanMode failed", e);
             return fail("ExitPlanMode 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
@@ -196,7 +196,7 @@ public class ExitPlanModeTool implements BaseTool {
     }
 
     private static ToolResultPayload fail(String msg) {
-        return ToolResultPayload.failure(msg, msg, null, msg);
+        return ToolResultPayload.failureFrom(msg, null);
     }
 
     @SuppressWarnings("unchecked")

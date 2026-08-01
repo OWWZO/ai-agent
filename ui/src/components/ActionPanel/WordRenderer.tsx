@@ -1,8 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRequest } from "ahooks";
 import { Button } from "antd";
 import { Download } from "lucide-react";
-import mammoth from "mammoth";
+import { renderAsync } from "docx-preview";
 import { downloadFile } from "@/utils";
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 import { ViewerPanelShell } from "@/components/ui/viewer-panel-shell";
@@ -18,6 +18,8 @@ interface WordRendererProps {
   missingReason?: string;
   /** true = 老 .doc，不解析 */
   legacyOnly?: boolean;
+  /** 工作区内嵌时隐藏自带 header，避免与外层重复 */
+  hideChrome?: boolean;
   className?: string;
 }
 
@@ -40,8 +42,13 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
     downloadUrl,
     missingReason,
     legacyOnly,
+    hideChrome = false,
     className,
   } = props;
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [renderError, setRenderError] = useState<unknown>(null);
+  const [renderReady, setRenderReady] = useState(false);
 
   const resolvedUrl = useMemo(
     () => normalizeFileUrlForBrowser(fileUrl || ""),
@@ -53,11 +60,8 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
     [downloadUrl, fileUrl, resolvedUrl]
   );
 
-  const { data: html, loading, error } = useRequest(
+  const { data: buffer, error } = useRequest(
     async () => {
-      if (legacyOnly) {
-        return null;
-      }
       if (missingReason) {
         throw new Error(missingReason);
       }
@@ -68,15 +72,64 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
       if (!response.ok) {
         throw new Error("Network response was not ok");
       }
-      const buffer = await response.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
-      return result.value || "<p>（文档无正文内容）</p>";
+      return response.arrayBuffer();
     },
     {
-      refreshDeps: [resolvedUrl, missingReason, legacyOnly],
+      refreshDeps: [resolvedUrl, missingReason],
       ready: !legacyOnly,
     }
   );
+
+  useEffect(() => {
+    if (legacyOnly || !buffer) {
+      setRenderReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRenderError(null);
+    setRenderReady(false);
+
+    const run = async () => {
+      await Promise.resolve();
+      const container = bodyRef.current;
+      if (cancelled || !container) {
+        return;
+      }
+      container.innerHTML = "";
+      try {
+        await renderAsync(buffer, container, undefined, {
+          className: "docx-preview",
+          inWrapper: true,
+          breakPages: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          useBase64URL: true,
+        });
+        if (!cancelled) {
+          setRenderReady(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRenderError(err);
+          setRenderReady(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      if (bodyRef.current) {
+        bodyRef.current.innerHTML = "";
+      }
+    };
+  }, [buffer, legacyOnly]);
 
   if (legacyOnly) {
     return (
@@ -92,24 +145,13 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
     );
   }
 
-  if (loading) {
-    return (
-      <ViewerPanelShell
-        label="DOCX"
-        subtitle={fileName || "Word 预览"}
-        className={className}
-      >
-        <Loading className={LOADING_CLASS} />
-      </ViewerPanelShell>
-    );
-  }
-
-  if (error || !html) {
+  const displayError = error ?? renderError;
+  if (displayError) {
     return (
       <DocumentFallback
         label="DOCX"
         title="Word 不可预览"
-        description={resolveFetchError(error)}
+        description={resolveFetchError(displayError)}
         fileName={fileName}
         downloadUrl={resolvedDownload}
         className={className}
@@ -123,8 +165,9 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
       label="DOCX"
       subtitle={fileName || "Word 预览"}
       className={className}
+      hideHeader={hideChrome}
       headerRight={
-        resolvedDownload ? (
+        !hideChrome && resolvedDownload && renderReady ? (
           <Button
             type="text"
             size="small"
@@ -135,16 +178,19 @@ const WordRenderer: ReactorType.FC<WordRendererProps> = React.memo((props) => {
           </Button>
         ) : null
       }
-      bodyClassName="max-h-[min(72vh,960px)] overflow-auto bg-white"
+      bodyClassName={
+        hideChrome
+          ? "max-h-full min-h-0 flex-1 overflow-auto bg-[#f3f4f6] p-3 sm:p-4"
+          : "max-h-[min(72vh,960px)] overflow-auto bg-[#f3f4f6]"
+      }
     >
-      <p className="mb-3 text-[11px] text-[var(--chat-text-soft)]">
-        近似预览（复杂排版可能与原件有差异），需要精确格式请下载原件。
-      </p>
-      <div
-        className="prose prose-sm max-w-none chat-markdown word-preview-body"
-        // mammoth 输出为文档自身 HTML；仅用于只读预览
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      {!renderReady ? <Loading className={LOADING_CLASS} /> : null}
+      {renderReady ? (
+        <p className="mb-3 text-[11px] text-[var(--chat-text-soft)]">
+          高保真预览（复杂排版仍可能与原件有差异），需要精确格式请下载原件。
+        </p>
+      ) : null}
+      <div ref={bodyRef} className="word-preview-body" hidden={!renderReady} />
     </ViewerPanelShell>
   );
 });

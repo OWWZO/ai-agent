@@ -6,6 +6,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * 工具执行结果载体。
  * 显式区分原始结果、主智能体 observation 和结构化输出，避免多种语义混用一个字段。
@@ -86,6 +89,29 @@ public class ToolResultPayload {
     }
 
     /**
+     * 成功：注入 tool + ok=true，再合并业务字段。
+     */
+    public static ToolResultPayload okData(String toolName, Map<String, Object> fields) {
+        return fromData(envelope(toolName, true, fields));
+    }
+
+    /**
+     * 成功：注入 tool + ok=true + 业务字段，并挂 ledger structuredOutput。
+     */
+    public static ToolResultPayload okData(String toolName,
+                                           Map<String, Object> fields,
+                                           ToolStructuredOutput structuredOutput) {
+        return fromData(envelope(toolName, true, fields), structuredOutput);
+    }
+
+    /**
+     * 业务否决/未找到等：仍走 serialize 路径（failed=false），但 ok=false。
+     */
+    public static ToolResultPayload softFailData(String toolName, Map<String, Object> fields) {
+        return fromData(envelope(toolName, false, fields));
+    }
+
+    /**
      * rich tool 强类型输出快捷工厂。
      * 注意：会预填 llmObservation，BaseAgent 不会再 serialize llmData。
      * 新工具请优先 {@link #fromData(Object, ToolStructuredOutput)}。
@@ -127,5 +153,30 @@ public class ToolResultPayload {
                 .failed(Boolean.TRUE)
                 .errorMsg(error)
                 .build();
+    }
+
+    /**
+     * 失败 + ledger structuredOutput + 可选 llmData detail。
+     */
+    public static ToolResultPayload failureFrom(String error,
+                                                Object detail,
+                                                ToolStructuredOutput structuredOutput) {
+        return ToolResultPayload.builder()
+                .toolResult(error)
+                .llmData(detail)
+                .structuredOutput(structuredOutput)
+                .failed(Boolean.TRUE)
+                .errorMsg(error)
+                .build();
+    }
+
+    private static Map<String, Object> envelope(String toolName, boolean ok, Map<String, Object> fields) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", toolName);
+        data.put("ok", ok);
+        if (fields != null) {
+            data.putAll(fields);
+        }
+        return data;
     }
 }

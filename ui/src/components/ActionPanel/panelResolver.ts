@@ -40,6 +40,16 @@ type FilePanelView = {
   missingReason?: string;
 };
 
+type DownloadOnlyPanelView = {
+  type: "download-only";
+  label: string;
+  title: string;
+  description: string;
+  fileName?: string;
+  downloadUrl?: string;
+  missingReason?: string;
+};
+
 type SearchPanelView = {
   type: "search";
   searchList: SearchListItem[];
@@ -71,6 +81,7 @@ export type PanelView =
   | HtmlPanelView
   | InlineHtmlPanelView
   | FilePanelView
+  | DownloadOnlyPanelView
   | JsonPanelView
   | MarkdownPanelView
   | GenUiPanelView;
@@ -148,7 +159,21 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     };
   }
 
-  if (useHtml || usePpt) {
+  if (usePpt) {
+    return {
+      type: "download-only",
+      label: "PPT",
+      title: "暂不支持在线预览 PPT/PPTX",
+      description:
+        missingReason ||
+        "二进制演示文稿无法在浏览器中直接打开，请下载后用 PowerPoint / WPS 查看。若后端已转为 HTML 演示页，请使用 .html 产物。",
+      fileName: primaryFile?.name,
+      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url || downloadHtmlUrl,
+      missingReason,
+    };
+  }
+
+  if (useHtml) {
     return {
       type: "html",
       htmlUrl,

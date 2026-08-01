@@ -185,4 +185,27 @@ describe("ActionPanel file content rendering", () => {
     });
     expect(panelView.type).toBe("legacy-doc");
   });
+
+  it("should classify ppt as download-only not html", () => {
+    const task = buildBinaryFileTask("路演.pptx");
+    let msgTypes: ReturnType<typeof useMsgTypes> | undefined;
+
+    const HookProbe = () => {
+      msgTypes = useMsgTypes(task as unknown as any);
+      return null;
+    };
+    renderToStaticMarkup(createElement(HookProbe));
+
+    expect(msgTypes?.usePpt).toBe(true);
+    expect(msgTypes?.useHtml).toBe(false);
+    expect(msgTypes?.useFile).toBe(false);
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      msgTypes,
+      markDownContent: "",
+      primaryFile: getPrimaryTaskFile(task as unknown as any),
+    });
+    expect(panelView.type).toBe("download-only");
+  });
 });

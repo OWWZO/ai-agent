@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.application.agent.execute.IExecuteStrategy;
 import org.wwz.ai.application.agent.stream.AgentSessionPrinter;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
@@ -20,8 +19,6 @@ import java.util.List;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
-import java.util.Map;
-
 /**
  * React 应用层执行策略。
  * 负责会话记忆注入与输出端口适配，真正的运行时主循环仍由 domain 内核承接。
@@ -32,9 +29,6 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private DefaultReactAgentExecuteStrategyFactory defaultReactAgentExecuteStrategyFactory;
-
-    @Resource
-    private ReactorConfig reactorConfig;
 
     @Resource
     private SessionContextMemoryService sessionContextMemoryService;
@@ -102,12 +96,20 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
     }
 
+    /**
+     * 输出格式（html/docs/ppt/table）已下线，不再向 query 追加格式提示词。
+     * chat / dataAgent 仅作模式标记，不走 output_style_prompts。
+     */
     private void applyOutputStyle(AgentRequest request) {
-        Map<String, String> outputStyleMap = reactorConfig.getOutputStylePrompts();
-        if (StringUtils.isNotEmpty(request.getOutputStyle())) {
-            String append = outputStyleMap.computeIfAbsent(request.getOutputStyle(), k -> "");
-            request.setQuery(request.getQuery() + append);
+        if (request == null || StringUtils.isBlank(request.getOutputStyle())) {
+            return;
         }
+        String style = request.getOutputStyle().trim();
+        if ("chat".equals(style) || "dataAgent".equals(style) || "task".equals(style)) {
+            return;
+        }
+        // 兼容旧客户端若仍传 html/docs/ppt/table：忽略，不改写 query
+        log.debug("ignore deprecated outputStyle={}", style);
     }
 
     private void enrichWorkingMemory(AgentRequest request) {

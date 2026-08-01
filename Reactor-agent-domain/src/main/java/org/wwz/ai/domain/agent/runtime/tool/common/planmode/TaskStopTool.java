@@ -91,19 +91,18 @@ public class TaskStopTool implements BaseTool {
                         "not_running");
             }
             RuntimeBackgroundTask stopped = agentContext.requireBackgroundTasks().stop(id).orElse(before);
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("message", "Stopped task " + id);
-            body.put("task_id", stopped.getId());
-            body.put("task_type", stopped.getType());
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "已停止后台任务 " + id);
+            fields.put("task_id", stopped.getId());
+            fields.put("task_type", stopped.getType());
             if (StringUtils.isNotBlank(stopped.getCommand())) {
-                body.put("command", stopped.getCommand());
+                fields.put("command", stopped.getCommand());
             }
-            return ToolResultPayload.text(
-                    "已停止后台任务 " + id + "（type=" + stopped.getType() + "）\n" + JSON.toJSONString(body));
+            return ToolResultPayload.okData(TaskToolNames.TASK_STOP, fields);
         } catch (Exception e) {
             log.warn("TaskStop failed", e);
             String msg = "TaskStop 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 

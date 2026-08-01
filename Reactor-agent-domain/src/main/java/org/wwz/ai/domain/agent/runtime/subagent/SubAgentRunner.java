@@ -1,19 +1,17 @@
 package org.wwz.ai.domain.agent.runtime.subagent;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
-import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
-import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 同步子 Agent 执行引擎（对标 cc-haha runAgent 同步路径 + finalizeAgentTool）。
@@ -21,10 +19,22 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SubAgentRunner {
 
     private final SubAgentRegistry registry;
+    private final SubAgentConcurrencyGate concurrencyGate;
+
+    public SubAgentRunner(SubAgentRegistry registry) {
+        this(registry, SubAgentConcurrencyGate.defaults());
+    }
+
+    @Autowired
+    public SubAgentRunner(SubAgentRegistry registry, SubAgentConcurrencyGate concurrencyGate) {
+        this.registry = registry;
+        this.concurrencyGate = concurrencyGate == null
+                ? SubAgentConcurrencyGate.defaults()
+                : concurrencyGate;
+    }
 
     public SubAgentResult run(AgentContext parentContext,
                               String description,
@@ -54,15 +64,36 @@ public class SubAgentRunner {
             return failed(agentId, definition, description, prompt, start, "父 Agent 工具池为空");
         }
 
+        try {
+            SubAgentResult gated = concurrencyGate.runWithPermit(() ->
+                    runUnlocked(parentContext, description, prompt, definition, agentId, start));
+            if (gated == null) {
+                return failed(agentId, definition, description, prompt, start,
+                        "子 Agent 并发已达上限(" + concurrencyGate.getMaxConcurrent()
+                                + ")，等待 " + concurrencyGate.getAcquireTimeoutSeconds() + "s 仍无空闲许可");
+            }
+            return gated;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return failed(agentId, definition, description, prompt, start, "子 Agent 等待并发许可被中断");
+        }
+    }
+
+    private SubAgentResult runUnlocked(AgentContext parentContext,
+                                       String description,
+                                       String prompt,
+                                       SubAgentDefinition definition,
+                                       String agentId,
+                                       long start) {
         boolean parentInPlanMode = parentContext.getPlanModeState() != null
                 && parentContext.getPlanModeState().isPlanMode();
         ToolCollection childTools = SubAgentToolFilter.filter(
                 parentContext.getToolCollection(), definition, parentInPlanMode);
         AgentContext childContext = SubAgentContextFactory.create(
                 parentContext, prompt, description, childTools, agentId, definition.getAgentType());
+        // 每子 Agent 包装工具实例，执行期临时 rebind，避免并行子 Agent 抢共享 agentContext
+        ContextScopedTool.bindAll(childTools, childContext);
 
-        // 同步路径：父 Agent 阻塞等待，可临时 rebind 共享工具实例到子 context
-        rebindTools(childTools, childContext);
         try {
             ReactImplAgent agent = new ReactImplAgent(childContext);
             agent.setName("subagent:" + definition.getAgentType());
@@ -96,11 +127,6 @@ public class SubAgentRunner {
                     parentContext.getRequestId(), definition.getAgentType(), agentId, e);
             return failed(agentId, definition, description, prompt, start,
                     e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-        } finally {
-            rebindTools(childTools, parentContext);
-            if (parentContext.getToolCollection() != null) {
-                parentContext.getToolCollection().setAgentContext(parentContext);
-            }
         }
     }
 
@@ -140,34 +166,6 @@ public class SubAgentRunner {
             }
         }
         return count;
-    }
-
-    private static void rebindTools(ToolCollection tools, AgentContext context) {
-        if (tools == null) {
-            return;
-        }
-        tools.setAgentContext(context);
-        Map<String, BaseTool> toolMap = tools.getToolMap();
-        if (toolMap == null) {
-            return;
-        }
-        for (BaseTool tool : toolMap.values()) {
-            setAgentContextIfPresent(tool, context);
-        }
-    }
-
-    private static void setAgentContextIfPresent(BaseTool tool, AgentContext context) {
-        if (tool == null) {
-            return;
-        }
-        try {
-            Method setter = tool.getClass().getMethod("setAgentContext", AgentContext.class);
-            setter.invoke(tool, context);
-        } catch (NoSuchMethodException ignored) {
-            // 无 agentContext 的工具跳过
-        } catch (Exception e) {
-            throw new IllegalStateException("rebind tool agentContext failed: " + tool.getName(), e);
-        }
     }
 
     private static SubAgentResult failed(String agentId,

@@ -138,28 +138,43 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
     protected Map<String, Object> buildStructuredToolResponse(ToolInvocationView invocation,
                                                               String logicalMessageType,
                                                               Map<String, Object> resultMap) {
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("requestId", invocation == null ? null : invocation.getRequestId());
-        response.put("messageId", resolveMessageId(invocation, logicalMessageType));
-        response.put("messageTime", resolveMessageTime(invocation));
-        response.put("messageType", logicalMessageType);
-        response.put("isFinal", true);
-        response.put("finish", false);
+        decorateToolPayload(resultMap, invocation);
+        Map<String, Object> response = newToolReplayEnvelope(invocation, logicalMessageType);
         response.put("resultMap", resultMap);
+        // 与实时 SSE 一致：嵌套标签也挂在 resultMap 外层，供 resolveParentToolUseId 读取
+        appendSubAgentNestingTags(response, invocation);
         return response;
     }
 
     protected Map<String, Object> buildToolResultResponse(ToolInvocationView invocation,
                                                           Map<String, Object> toolResult) {
+        putToolBindingIfPresent(toolResult, invocation);
+        Map<String, Object> response = newToolReplayEnvelope(invocation, "tool_result");
+        response.put("toolResult", toolResult);
+        appendSubAgentNestingTags(response, invocation);
+        // 镜像进 resultMap，对齐 BaseAgentResponseHandler 实时路径
+        if (StringUtils.isNotBlank(invocation == null ? null : invocation.getParentToolCallId())) {
+            Map<String, Object> nested = new LinkedHashMap<>();
+            decorateToolPayload(nested, invocation);
+            response.put("resultMap", nested);
+        }
+        return response;
+    }
+
+    private Map<String, Object> newToolReplayEnvelope(ToolInvocationView invocation, String messageType) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("requestId", invocation == null ? null : invocation.getRequestId());
-        response.put("messageId", resolveMessageId(invocation, "tool_result"));
+        response.put("messageId", resolveMessageId(invocation, messageType));
         response.put("messageTime", resolveMessageTime(invocation));
-        response.put("messageType", "tool_result");
+        response.put("messageType", messageType);
         response.put("isFinal", true);
         response.put("finish", false);
-        response.put("toolResult", toolResult);
         return response;
+    }
+
+    private void decorateToolPayload(Map<String, Object> target, ToolInvocationView invocation) {
+        putToolBindingIfPresent(target, invocation);
+        appendSubAgentNestingTags(target, invocation);
     }
 
     protected void putToolBindingIfPresent(Map<String, Object> resultMap, ToolInvocationView invocation) {
@@ -171,6 +186,31 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         }
         if (StringUtils.isNotBlank(invocation.getToolName())) {
             resultMap.put("toolName", invocation.getToolName());
+        }
+    }
+
+    /**
+     * 还原子 Agent 嵌套标签，与 SubAgentPrinter / BaseAgentResponseHandler 实时契约一致。
+     */
+    protected void appendSubAgentNestingTags(Map<String, Object> target, ToolInvocationView invocation) {
+        if (target == null || invocation == null) {
+            return;
+        }
+        if (StringUtils.isNotBlank(invocation.getParentToolCallId())) {
+            target.put("parentToolUseId", invocation.getParentToolCallId());
+        }
+        if (StringUtils.isNotBlank(invocation.getSubAgentId())) {
+            target.put("subAgentId", invocation.getSubAgentId());
+        }
+        String subAgentType = invocation.getSubAgentType();
+        if (StringUtils.isBlank(subAgentType) && StringUtils.startsWith(invocation.getAgentName(), "subagent:")) {
+            subAgentType = StringUtils.removeStart(invocation.getAgentName(), "subagent:");
+        }
+        if (StringUtils.isNotBlank(subAgentType)) {
+            target.put("subAgentType", subAgentType);
+        }
+        if (StringUtils.isNotBlank(invocation.getSubAgentDescription())) {
+            target.put("subAgentDescription", invocation.getSubAgentDescription());
         }
     }
 

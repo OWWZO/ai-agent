@@ -20,7 +20,7 @@ describe("DataDialogue", () => {
       />
     );
 
-    expect(html).toContain("正在理解任务");
+    expect(html).toContain("正在理解问题");
     expect(html).not.toContain("思考中");
   });
 });

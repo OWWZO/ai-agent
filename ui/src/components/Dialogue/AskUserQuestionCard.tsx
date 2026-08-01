@@ -139,9 +139,9 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
   }
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-accent)]/30 bg-[var(--chat-surface-soft)]/70 px-4 py-3 shadow-[var(--shadow-xs)]">
+    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50 bg-white px-4 py-3">
       <div className="mb-3 flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-xl bg-[var(--chat-accent)]/12 text-[var(--chat-accent)]">
+        <div className="flex size-8 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           {submitting ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (
@@ -163,7 +163,7 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
           <div key={q.question} className="min-w-0">
             <div className="mb-1.5 flex items-center gap-2">
               {q.header ? (
-                <span className="shrink-0 rounded-md bg-[var(--chat-accent)]/12 px-1.5 py-0.5 text-[11px] font-medium text-[var(--chat-accent)]">
+                <span className="shrink-0 rounded-md border border-[var(--chat-border)]/40 bg-[#f5f5f7] px-1.5 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
                   {q.header}
                 </span>
               ) : null}
@@ -184,8 +184,8 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
                     className={[
                       "rounded-xl border px-3 py-2 text-left transition-colors",
                       selected
-                        ? "border-[var(--chat-accent)] bg-[var(--chat-accent)]/10"
-                        : "border-[var(--chat-border)]/50 hover:border-[var(--chat-accent)]/40 hover:bg-[var(--chat-interactive-hover)]",
+                        ? "border-[#1d1d1f] bg-[#f5f5f7]"
+                        : "border-[var(--chat-border)]/50 hover:border-[var(--chat-border)] hover:bg-[#fafafa]",
                       submitted || submitting ? "cursor-default opacity-80" : "cursor-pointer",
                     ].join(" ")}
                   >
@@ -208,7 +208,7 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
                     setAnswers((prev) => ({ ...prev, [q.question]: value.trim() }));
                   }
                 }}
-                className="mt-1 w-full rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[var(--chat-accent)]/50"
+                className="mt-1 w-full rounded-xl border border-[var(--chat-border)]/50 bg-white px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[#c7c7cc]"
               />
             </div>
           </div>
@@ -224,8 +224,8 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
             className={[
               "rounded-xl px-4 py-2 text-[13px] font-medium transition-colors",
               allAnswered && !submitting
-                ? "bg-[var(--chat-accent)] text-white hover:opacity-90"
-                : "cursor-not-allowed bg-[var(--chat-border)]/40 text-[var(--chat-text-soft)]",
+                ? "bg-[#1d1d1f] text-white hover:opacity-90"
+                : "cursor-not-allowed bg-[#e8e8ed] text-[var(--chat-text-soft)]",
             ].join(" ")}
           >
             {submitting ? "提交中…" : "提交并继续"}

@@ -442,12 +442,20 @@ ol {
 }
 
 .chat-dialogue .chat-markdown code:not(pre code) {
-  border: 1px solid var(--chat-border);
-  border-radius: 0.35rem;
-  background: var(--chat-surface-soft);
-  color: var(--chat-text);
-  font-size: 0.88em;
-  padding: 0.1em 0.35em;
+  border: 0;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #111827;
+  font-size: 0.875em;
+  font-weight: 500;
+  padding: 0.15em 0.45em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.dark .chat-dialogue .chat-markdown code:not(pre code) {
+  background: oklch(30% 0 0);
+  color: oklch(95% 0 0);
 }
 
 .chat-dialogue .chat-markdown pre {
@@ -596,19 +604,17 @@ ol {
   text-wrap: balance;
 }
 
-/* AI Input Components - Clean Single Shadow Style */
+/* AI Input Components — no shadow */
 [data-slot="prompt-input-body"] {
   background: white !important;
   border-radius: 24px !important;
-  box-shadow: 0 4px 24px oklch(0 0 0 / 0.06) !important;
+  box-shadow: none !important;
   border: none !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 [data-slot="prompt-input-body"]:focus-within {
-  box-shadow:
-    0 8px 32px oklch(0.55 0.18 260 / 0.12),
-    0 0 0 2px oklch(0.55 0.18 260 / 0.15) !important;
+  box-shadow: none !important;
 }
 
 [data-slot="prompt-input-textarea"] {
@@ -641,21 +647,32 @@ ol {
 }
 
 [data-slot="prompt-input-submit"] {
-  background: linear-gradient(135deg, oklch(0.55 0.18 260) 0%, oklch(0.6 0.15 270) 100%) !important;
+  background: var(--chat-text, oklch(20.5% 0 0)) !important;
+  color: var(--chat-bg, oklch(98.5% 0 0)) !important;
   border-radius: 9999px !important;
-  box-shadow: 0 4px 14px oklch(0.55 0.18 260 / 0.35) !important;
-  transition: all 0.2s ease !important;
+  box-shadow: none !important;
+  transition: opacity 0.15s ease !important;
 }
 
 [data-slot="prompt-input-submit"]:hover:not(:disabled) {
-  background: linear-gradient(135deg, oklch(0.6 0.15 260) 0%, oklch(0.65 0.12 270) 100%) !important;
-  box-shadow: 0 6px 20px oklch(0.55 0.18 260 / 0.45) !important;
-  transform: translateY(-1px);
+  background: var(--chat-text, oklch(20.5% 0 0)) !important;
+  box-shadow: none !important;
+  opacity: 0.9;
+  transform: none;
 }
 
 [data-slot="prompt-input-submit"]:disabled {
   background: oklch(0.9 0.005 90) !important;
+  color: oklch(0.7 0 0) !important;
   box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.reactor-send-btn[data-slot="prompt-input-submit"],
+.reactor-input-flat [data-slot="prompt-input-submit"] {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
 }
 
 /* Size variants for input */
@@ -667,38 +684,50 @@ ol {
   border-radius: 22px !important;
 }
 
-/* Composer shell — soft layered shadow from reference chat UI */
+/* Composer shell — 单层白底胶囊，内外同色无叠层 */
 .reactor-input-flat {
   background: #ffffff !important;
-  border: none !important;
-  box-shadow: var(--chat-composer-shadow) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 26px !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  transition: border-color 0.15s ease !important;
 }
 
 .reactor-input-flat:focus-within {
-  border: none !important;
-  box-shadow:
-    var(--chat-composer-shadow),
-    0 0 0 2px rgba(231, 229, 228, 0.9) !important;
-}
-
-.reactor-input-flat [data-slot="input-group"] {
-  background: transparent !important;
-  border: none !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   box-shadow: none !important;
 }
 
+.reactor-input-flat [data-slot="input-group"],
+.reactor-input-flat [data-slot="input-group"]:hover,
 .reactor-input-flat [data-slot="input-group"]:focus-within {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border: none !important;
   box-shadow: none !important;
+  border-radius: inherit !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-.reactor-input-flat [data-slot="prompt-input-body"] {
+.reactor-input-flat [data-slot="prompt-input-body"],
+.reactor-input-flat [data-slot="prompt-input-body"]:focus-within {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
 }
 
-.reactor-input-flat [data-slot="prompt-input-body"]:focus-within {
-  box-shadow: none !important;
+.reactor-input-flat [data-slot="prompt-input-textarea"] {
+  font-size: 14.5px !important;
+  line-height: 1.5 !important;
+  min-height: 48px !important;
+}
+
+.reactor-input-flat [data-slot="prompt-input-textarea"]::placeholder {
+  color: color-mix(in oklab, var(--chat-text-muted) 50%, transparent) !important;
 }
 
 /* Framer Motion Performance Optimizations */
@@ -806,11 +835,11 @@ ol {
   }
 }
 
-/* Cursor-style agent timeline (from product demo motion) */
+/* Cursor-style agent timeline (ClawsGO quiet tool rows) */
 .agent-step-timeline {
   --timeline-meta: color-mix(in oklab, var(--chat-text-muted) 92%, transparent);
   --timeline-soft: color-mix(in oklab, var(--chat-text-soft) 88%, transparent);
-  --timeline-rail: color-mix(in oklab, var(--chat-border) 70%, transparent);
+  --timeline-rail: color-mix(in oklab, var(--chat-border) 90%, transparent);
   font-feature-settings: "tnum" 1;
 }
 
@@ -864,41 +893,54 @@ ol {
 }
 
 .timeline-tool-row {
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+  transition: color 0.15s ease;
+  background: transparent;
+  border: none;
+  cursor: default;
+  font-family: inherit;
+  color: var(--chat-text-muted);
 }
 
 .timeline-tool-row:hover {
-  background-color: color-mix(in oklab, var(--chat-interactive-hover) 80%, transparent);
+  background: transparent;
+}
+
+.timeline-tool-row.group:hover {
+  color: var(--chat-text);
 }
 
 .timeline-duration {
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--chat-text-muted);
 }
 
 .timeline-assistant-reply {
   color: var(--chat-text);
-  font-size: 15px;
-  line-height: 1.75;
-  letter-spacing: -0.01em;
+  font-size: 14.5px;
+  line-height: 1.65;
+  letter-spacing: 0;
 }
 
 .timeline-thinking-label {
   font-weight: 500;
-  letter-spacing: -0.01em;
-  color: color-mix(in oklab, var(--chat-text-soft) 95%, var(--chat-text));
+  letter-spacing: 0;
+  color: var(--chat-text-muted);
 }
 
 .timeline-group-title {
   font-weight: 500;
-  letter-spacing: -0.01em;
-  color: color-mix(in oklab, var(--chat-text-soft) 90%, var(--chat-text));
+  letter-spacing: 0;
+  color: var(--chat-text-muted);
 }
 
 .timeline-rail {
   border-left: 1px solid var(--timeline-rail);
+  margin-top: 2px;
+  margin-bottom: 8px;
+  padding-top: 2px;
+  padding-bottom: 4px;
 }
 
 /* Thinking pulse animation */
@@ -906,18 +948,21 @@ ol {
   animation: thinkingPulse 1.5s ease-in-out infinite;
 }
 
-/* Stable shimmer for "Thinking" text */
+/* Stable shimmer for process / thinking text（正在理解问题光效） */
 .thinking-shimmer {
   display: inline-block;
-  color: #6b7280; /* Fallback text color */
+  color: var(--chat-text-muted, #6b7280);
   background-image:
     linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0) 42%,
-      rgba(255, 255, 255, 0.98) 50%,
-      rgba(255, 255, 255, 0) 58%
+      rgba(255, 255, 255, 0) 40%,
+      rgba(255, 255, 255, 0.95) 50%,
+      rgba(255, 255, 255, 0) 60%
     ),
-    linear-gradient(#6b7280, #6b7280);
+    linear-gradient(
+      var(--chat-text-muted, #6b7280),
+      var(--chat-text-muted, #6b7280)
+    );
   background-size: 220% 100%, 100% 100%;
   background-position: 120% 50%, 0 0;
   background-repeat: no-repeat, no-repeat;
@@ -926,6 +971,15 @@ ol {
   -webkit-text-fill-color: transparent;
   animation: thinkingShimmer 1.8s linear infinite;
   will-change: background-position;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-shimmer {
+    animation: none;
+    -webkit-text-fill-color: var(--chat-text-muted, #6b7280);
+    background: none;
+    color: var(--chat-text-muted, #6b7280);
+  }
 }
 
 @keyframes thinkingShimmer {
@@ -1251,11 +1305,21 @@ ol {
 .ai-chat-markdown code:not(pre code),
 .markdown-body code:not(pre code) {
   font-family: var(--font-mono);
-  font-size: 0.82em;
-  background: color-mix(in oklab, var(--chat-surface-soft) 78%, white 22%);
-  border: 1px solid var(--chat-border);
-  border-radius: 0.45rem;
-  padding: 0.12rem 0.35rem;
+  font-size: 0.875em;
+  font-weight: 500;
+  background: #f3f4f6;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.15em 0.45em;
+  color: #111827;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.dark .ai-chat-markdown code:not(pre code),
+.dark .markdown-body code:not(pre code) {
+  background: oklch(30% 0 0);
+  color: oklch(95% 0 0);
 }
 
 /* 最终总结区域 markdown 标题缩小，避免在对话卡片中显得过大 */
@@ -1294,4 +1358,20 @@ ol {
   line-height: 1.85;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+/* docx-preview 页面画布 */
+.word-preview-body {
+  width: 100%;
+}
+
+.word-preview-body .docx-preview-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.word-preview-body .docx-preview {
+  margin: 0 auto 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+  background: #fff !important;
 }

@@ -159,8 +159,8 @@ public class StreamResponseHandler {
         String reasoningMessageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
         int[] intervals = resolveIntervals();
         int[] tokenIndex = new int[]{1};
-        // content 过程文：无 tool_call 的文本是终答，不推 tool_thought；出现 tool_call 后再放行
-        boolean[] thoughtPushArmed = new boolean[]{false};
+        // content 过程文：边生成边推（助手过程回复先于 tool_call 展示）。
+        // 无 tool 的终答仍会走 result；前端会对与 conclusion 同文案的过程回复去重。
 
         Map<String, ToolCallAccumulator> toolCallAccumulators = new LinkedHashMap<>();
 
@@ -176,19 +176,10 @@ public class StreamResponseHandler {
                     Generation generation = response != null ? response.getResult() : null;
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
 
-                    // 收集 tool_call 片段（先于 content 推送 arm）
+                    // 收集 tool_call 片段（仅聚合，不阻塞 content 推送）
                     if (output != null && output.getToolCalls() != null) {
                         toolDeltaCount[0] += output.getToolCalls().size();
                         mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
-                    }
-                    if (!thoughtPushArmed[0] && !toolCallAccumulators.isEmpty()) {
-                        thoughtPushArmed[0] = true;
-                        if (pushToClient && messageId != null && streamBuffer.length() > 0
-                                && context.getPrinter() != null) {
-                            context.getPrinter().send(messageId, context.getStreamMessageType(),
-                                    streamBuffer.toString(), false);
-                            streamBuffer.setLength(0);
-                        }
                     }
 
                     // 流式 delta：禁止 trim（token 常带 leading space）
@@ -222,11 +213,12 @@ public class StreamResponseHandler {
                         }
                     }
 
+                    // content：立即按间隔推送，保证「助手过程文 → 工具调用」时序
                     if (StringUtils.isNotEmpty(chunkContent)) {
                         allContent.append(chunkContent);
-                        if (pushToClient && messageId != null) {
+                        if (pushToClient && messageId != null && context.getPrinter() != null) {
                             streamBuffer.append(chunkContent);
-                            if (thoughtPushArmed[0] && shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
+                            if (shouldFlush(tokenIndex[0], intervals[0], intervals[1])) {
                                 context.getPrinter().send(messageId, context.getStreamMessageType(),
                                     streamBuffer.toString(), false);
                                 streamBuffer.setLength(0);
@@ -275,17 +267,16 @@ public class StreamResponseHandler {
                                 reasoningContent, true);
                     }
 
-                    // content 过程文：仅有 tool_call 时推 tool_thought；纯终答由 result 交付
-                    if (pushToClient && messageId != null && hasToolCalls && context.getPrinter() != null) {
+                    // content 收尾：有正文就 final（有/无 tool 均推）。
+                    // 无 tool 时后续 result 终答与过程文同文案，前端会去重隐藏过程块。
+                    if (pushToClient && messageId != null && hasContent && context.getPrinter() != null) {
                         if (streamBuffer.length() > 0) {
                             context.getPrinter().send(messageId, context.getStreamMessageType(),
                                     streamBuffer.toString(), false);
                             streamBuffer.setLength(0);
                         }
-                        if (hasContent) {
-                            context.getPrinter().send(messageId, context.getStreamMessageType(),
-                                    content, true);
-                        }
+                        context.getPrinter().send(messageId, context.getStreamMessageType(),
+                                content, true);
                     }
 
                     if (!hasContent && !hasToolCalls && !hasReasoning) {

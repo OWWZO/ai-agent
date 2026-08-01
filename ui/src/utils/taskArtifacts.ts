@@ -26,11 +26,37 @@ const toSize = (value: unknown) => {
 };
 
 const toExtension = (name: string, fallbackType?: string) => {
-  const ext = name.split(".").pop()?.toLowerCase();
-  if (ext) {
-    return ext;
+  const base = String(name || "").trim();
+  const fromName = base.includes(".")
+    ? base.split(".").pop()?.toLowerCase() || ""
+    : "";
+  // 避免把「无扩展名的中文名」整段当成 type；也归一化 mime 如 text/html
+  if (fromName && fromName.length <= 8 && !fromName.includes("/") && fromName !== base.toLowerCase()) {
+    return fromName;
   }
-  return (fallbackType || "").toLowerCase();
+  const fallback = String(fallbackType || "").toLowerCase().trim();
+  if (!fallback) {
+    return fromName;
+  }
+  if (fallback.includes("html")) return "html";
+  if (fallback.includes("pdf")) return "pdf";
+  if (fallback.includes("markdown")) return "md";
+  if (fallback.includes("json")) return "json";
+  if (fallback.includes("csv") || fallback.includes("excel") || fallback.includes("spreadsheet")) {
+    return fallback.includes("csv") ? "csv" : "xlsx";
+  }
+  if (fallback.includes("png") || fallback.includes("jpeg") || fallback.includes("jpg") || fallback.includes("image/")) {
+    if (fallback.includes("png")) return "png";
+    if (fallback.includes("jpeg") || fallback.includes("jpg")) return "jpg";
+    return "png";
+  }
+  // text/plain → txt；application/xxx → 取末段
+  if (fallback.includes("/")) {
+    const leaf = fallback.split("/").pop() || "";
+    if (leaf === "plain") return "txt";
+    if (leaf.length <= 8) return leaf;
+  }
+  return fallback.length <= 8 ? fallback : fromName;
 };
 
 const IMAGE_FILE_EXTENSIONS = new Set([
@@ -217,7 +243,7 @@ export const isPdfFileLike = (
 };
 
 /**
- * DOCX：mammoth 转 HTML 只读预览。
+  * DOCX：docx-preview 高保真只读预览。
  */
 export const isDocxFileLike = (
   fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
@@ -281,6 +307,36 @@ export const isExcelFileLike = (
   return name.includes(".csv") || name.includes(".xlsx") || name.includes(".xls");
 };
 
+const PPT_FILE_EXTENSIONS = new Set(["ppt", "pptx", "pps", "ppsx"]);
+const ARCHIVE_MEDIA_EXTENSIONS = new Set([
+  "zip",
+  "rar",
+  "7z",
+  "tar",
+  "gz",
+  "mp3",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "wav",
+  "exe",
+  "dmg",
+  "apk",
+  "wasm",
+  "bin",
+]);
+
+export const isPptFileLike = (
+  fileLike?: Pick<CHAT.TFile, "type" | "name" | "mimeType"> | null
+) => {
+  if (!fileLike) return false;
+  const mime = fileLike.mimeType?.toLowerCase() || "";
+  if (mime.includes("presentation") || mime.includes("powerpoint")) return true;
+  return PPT_FILE_EXTENSIONS.has(resolveFileExtension(fileLike));
+};
+
 /**
  * 二进制/office 等禁止 response.text() 复制。
  */
@@ -290,12 +346,16 @@ export const isBinaryPreviewFileLike = (
   if (!fileLike) {
     return false;
   }
-  return (
+  if (
     isImageFileLike(fileLike) ||
     isPdfFileLike(fileLike) ||
     isWordFileLike(fileLike) ||
-    isExcelFileLike(fileLike)
-  );
+    isExcelFileLike(fileLike) ||
+    isPptFileLike(fileLike)
+  ) {
+    return true;
+  }
+  return ARCHIVE_MEDIA_EXTENSIONS.has(resolveFileExtension(fileLike));
 };
 
 export const isTextCopyableFileLike = (

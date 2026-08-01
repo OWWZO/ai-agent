@@ -59,10 +59,10 @@ type ToolItemProps = {
 };
 
 const taskRowClass =
-  "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 transition-colors duration-200 hover:border-[var(--chat-border)]/70 hover:bg-[var(--chat-interactive-hover)]";
+  "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--chat-border)]/40 bg-white px-2.5 py-2 transition-colors duration-200 hover:border-[var(--chat-border)] hover:bg-[#fafafa]";
 
 const taskIconClass =
-  "flex size-7 shrink-0 items-center justify-center text-[var(--chat-accent)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
+  "flex size-7 shrink-0 items-center justify-center text-[var(--chat-text-muted)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
 
 const taskTitleClass =
   "shrink-0 text-[14px] font-medium text-[var(--chat-text)]";
@@ -244,21 +244,16 @@ export const ToolItem: FC<ToolItemProps> = memo(({
               <LoaderCircleIcon className="size-4 animate-spin" />
             </div>
           ) : (
-            <div
-              className={[
-                "flex size-7 shrink-0 items-center justify-center [&_svg]:drop-shadow-none [&_svg]:[filter:none]",
-                tool.messageType === "code" ? "text-[var(--chat-text)]" : "text-[var(--chat-accent)]",
-              ].join(" ")}
-            >
-              <i
-                className={`font_family ${getIcon(
-                  tool.messageType === "deep_search" &&
-                    tool.resultMap.messageType === "report"
-                    ? "file"
-                    : tool.messageType
-                )} text-[17px] leading-none [text-shadow:none]`}
-              ></i>
-            </div>
+              <div className={taskIconClass}>
+                <i
+                  className={`font_family ${getIcon(
+                    tool.messageType === "deep_search" &&
+                      tool.resultMap.messageType === "report"
+                      ? "file"
+                      : tool.messageType
+                  )} text-[17px] leading-none text-[var(--chat-text-muted)] [text-shadow:none]`}
+                ></i>
+              </div>
           )}
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <span className={taskTitleClass}>
@@ -307,9 +302,9 @@ const SubAgentTimelineCard: FC<{
       <div
         className={[
           taskRowClass,
-          "border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40",
-          subAgentRunning ? "border-[var(--chat-accent)]/35" : "",
-          subAgentFailed ? "border-red-400/40" : "",
+          "border-[var(--chat-border)]/50 bg-white",
+          subAgentRunning ? "border-[var(--chat-border)]" : "",
+          subAgentFailed ? "border-[#d1d1d6]" : "",
         ].join(" ")}
         onClick={() => changeActiveChat(tool, chat)}
       >
@@ -399,10 +394,10 @@ const SubAgentTimelineCard: FC<{
                 }}
               >
                 {childLoading ? (
-                  <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-[var(--chat-accent)]" />
+                  <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-[var(--chat-text-muted)]" />
                 ) : (
                   <i
-                    className={`font_family ${getIcon(child.messageType)} shrink-0 text-[14px] text-[var(--chat-accent)]`}
+                    className={`font_family ${getIcon(child.messageType)} shrink-0 text-[14px] text-[var(--chat-text-muted)]`}
                   />
                 )}
                 <span className="shrink-0 font-medium text-[var(--chat-text)]">
@@ -455,10 +450,10 @@ export const DeepSearchPreviewItem: FC<{
         ease: [0.25, 0.46, 0.45, 0.94],
       }}
       className={[
-        "mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/18",
-        "bg-[var(--chat-surface-soft)]/72 px-4 py-3 shadow-[var(--shadow-xs)] ring-0",
+        "mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50",
+        "bg-white px-4 py-3 ring-0",
         clickable
-          ? "cursor-pointer transition-all duration-200 hover:bg-[var(--chat-surface-muted)]/78 hover:shadow-[var(--shadow-sm)]"
+          ? "cursor-pointer transition-colors duration-200 hover:bg-[#fafafa]"
           : "",
       ].join(" ")}
       onClick={handleClick}
@@ -475,7 +470,7 @@ export const DeepSearchPreviewItem: FC<{
       tabIndex={clickable ? 0 : undefined}
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-surface)]/90 text-[var(--chat-text-muted)]">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           {model.loading ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (
@@ -487,7 +482,7 @@ export const DeepSearchPreviewItem: FC<{
             <span className="truncate text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
               {model.query}
             </span>
-            <span className="inline-flex shrink-0 items-center rounded-full bg-[var(--chat-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
+            <span className="inline-flex shrink-0 items-center rounded-full border border-[var(--chat-border)]/40 bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
               {model.statusLabel}
             </span>
           </div>

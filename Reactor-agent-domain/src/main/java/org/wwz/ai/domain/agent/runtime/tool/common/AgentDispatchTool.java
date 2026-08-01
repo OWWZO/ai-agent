@@ -13,7 +13,6 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,7 @@ import java.util.Map;
 /**
  * 主 Agent 派发同步子 Agent 的工具入口（对标 cc-haha AgentTool 同步路径）。
  * 输入：description / prompt / subagent_type
- * 输出：status=completed 的结论文本，中间工具过程不进入主上下文。
+ * 输出：JSON 结构化 observation（status/content/元数据），中间工具过程不进入主上下文。
  */
 @Slf4j
 @Data
@@ -102,7 +101,7 @@ public class AgentDispatchTool implements BaseTool {
                     ? (Map<String, Object>) input
                     : JSON.parseObject(JSON.toJSONString(input), Map.class);
             if (params == null) {
-                return ToolResultPayload.failure("Agent 执行失败：参数为空", "Agent 执行失败：参数为空", null, "empty input");
+                return ToolResultPayload.failureFrom("Agent 执行失败：参数为空", null);
             }
 
             String description = trimToString(params.get("description"));
@@ -119,38 +118,34 @@ public class AgentDispatchTool implements BaseTool {
             }
 
             if (StringUtils.isBlank(prompt)) {
-                return ToolResultPayload.failure(
-                        "Agent 执行失败：prompt 不能为空",
-                        "Agent 执行失败：prompt 不能为空",
-                        null,
-                        "prompt blank");
+                return ToolResultPayload.failureFrom("Agent 执行失败：prompt 不能为空", null);
             }
             if (StringUtils.isBlank(description)) {
                 description = StringUtils.defaultIfBlank(subagentType, "subagent-task");
             }
             if (subAgentRunner == null) {
-                return ToolResultPayload.failure(
-                        "Agent 执行失败：SubAgentRunner 未注入",
-                        "Agent 执行失败：SubAgentRunner 未注入",
-                        null,
-                        "runner missing");
+                return ToolResultPayload.failureFrom("Agent 执行失败：SubAgentRunner 未注入", null);
             }
 
             SubAgentResult result = subAgentRunner.run(agentContext, description, prompt, subagentType);
-            String observation = formatObservation(result);
+            Map<String, Object> data = buildObservationData(result);
             if (!result.isCompleted()) {
-                return ToolResultPayload.failure(observation, observation, null, result.getErrorMsg());
+                return ToolResultPayload.failureFrom(
+                        StringUtils.defaultIfBlank(result.getErrorMsg(), "Agent 执行失败"),
+                        data);
             }
-            return ToolResultPayload.text(observation);
+            return ToolResultPayload.fromData(data);
         } catch (Exception e) {
             log.error("Agent dispatch tool failed", e);
             String msg = "Agent 执行失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            return ToolResultPayload.failure(msg, msg, null, e.getMessage());
+            return ToolResultPayload.failureFrom(msg, null);
         }
     }
 
-    private static String formatObservation(SubAgentResult result) {
+    private static Map<String, Object> buildObservationData(SubAgentResult result) {
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("tool", NAME);
+        body.put("ok", result.isCompleted());
         body.put("status", result.getStatus());
         body.put("agentId", result.getAgentId());
         body.put("agentType", result.getAgentType());
@@ -161,16 +156,7 @@ public class AgentDispatchTool implements BaseTool {
         if (StringUtils.isNotBlank(result.getErrorMsg())) {
             body.put("errorMsg", result.getErrorMsg());
         }
-        // 主 Agent 优先读 content；附带元数据便于调试
-        if (result.isCompleted() && StringUtils.isNotBlank(result.getContent())) {
-            return "status=completed\n"
-                    + "agentType=" + result.getAgentType() + "\n"
-                    + "agentId=" + result.getAgentId() + "\n"
-                    + "totalToolUseCount=" + result.getTotalToolUseCount() + "\n"
-                    + "totalDurationMs=" + result.getTotalDurationMs() + "\n\n"
-                    + result.getContent();
-        }
-        return JSON.toJSONString(body);
+        return body;
     }
 
     private static String trimToString(Object value) {

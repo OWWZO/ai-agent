@@ -355,6 +355,85 @@ public class ReplayProjectorTest {
     }
 
     @Test
+    public void shouldShareTaskIdForParallelToolsWithoutProcessText() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 10, 0);
+        LlmInvocationView executor = LlmInvocationView.builder()
+                .id(111L)
+                .invocationSeq(1)
+                .agentName("react")
+                .toolCallCount(2)
+                .responseText("")
+                .startedAt(now.minusSeconds(20))
+                .finishedAt(now.minusSeconds(15))
+                .build();
+        ToolInvocationView firstTool = ToolInvocationView.builder()
+                .id(211L)
+                .llmInvocationId(111L)
+                .toolCallId("tool-call-a")
+                .toolName("read_tool")
+                .inputJson("{\"query\":\"A\"}")
+                .llmObservation("A")
+                .startedAt(now.minusSeconds(14))
+                .finishedAt(now.minusSeconds(12))
+                .build();
+        ToolInvocationView secondTool = ToolInvocationView.builder()
+                .id(212L)
+                .llmInvocationId(111L)
+                .toolCallId("tool-call-b")
+                .toolName("read_tool")
+                .inputJson("{\"query\":\"B\"}")
+                .llmObservation("B")
+                .startedAt(now.minusSeconds(11))
+                .finishedAt(now.minusSeconds(9))
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(executor))
+                .toolInvocations(List.of(firstTool, secondTool))
+                .build());
+
+        Assert.assertEquals(2, frames.size());
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(1)).get("messageType"));
+        Assert.assertEquals(eventTaskId(frames.get(0)), eventTaskId(frames.get(1)));
+    }
+
+    @Test
+    public void shouldShareTaskIdWhenOnlyReasoningContentThenTools() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 15, 0);
+        LlmInvocationView executor = LlmInvocationView.builder()
+                .id(121L)
+                .invocationSeq(1)
+                .agentName("react")
+                .toolCallCount(1)
+                .reasoningContent("先读一下文件")
+                .responseText("")
+                .startedAt(now.minusSeconds(10))
+                .finishedAt(now.minusSeconds(8))
+                .build();
+        ToolInvocationView tool = ToolInvocationView.builder()
+                .id(221L)
+                .llmInvocationId(121L)
+                .toolCallId("tool-call-read")
+                .toolName("read_tool")
+                .inputJson("{\"path\":\"a.md\"}")
+                .llmObservation("ok")
+                .startedAt(now.minusSeconds(7))
+                .finishedAt(now.minusSeconds(5))
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(executor))
+                .toolInvocations(List.of(tool))
+                .build());
+
+        Assert.assertEquals(2, frames.size());
+        Assert.assertEquals("llm_reasoning", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(1)).get("messageType"));
+        Assert.assertEquals(eventTaskId(frames.get(0)), eventTaskId(frames.get(1)));
+    }
+
+    @Test
     public void shouldExposePlannerRoundIdOnPlanningThoughtReplayFrame() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 30, 0);
         LlmInvocationView planningInvocation = LlmInvocationView.builder()

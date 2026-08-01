@@ -5,7 +5,7 @@ import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 
 /**
  * GPT 查询应用服务接口。
- * 该 seam 是 trigger 进入查询主链路的唯一入口，不允许再直接依赖已删除的 legacy reactor bridge。
+ * trigger 进入主聊天链路的唯一应用层入口：协议翻译、会话守卫、进程内调度与事件投影。
  */
 public interface IGptQueryApplicationService {
 

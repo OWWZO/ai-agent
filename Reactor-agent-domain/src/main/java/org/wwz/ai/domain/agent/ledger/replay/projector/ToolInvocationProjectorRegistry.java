@@ -18,7 +18,7 @@ public class ToolInvocationProjectorRegistry {
     private final ToolInvocationProjector defaultProjector;
 
     /**
-     * 每个 invocation 单独开启一个任务组，避免历史投影串组。
+     * 孤儿工具（无关联 LLM）：每个 invocation 单独开组，避免无序串组。
      */
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,
@@ -27,9 +27,10 @@ public class ToolInvocationProjectorRegistry {
     }
 
     /**
-     * 历史回放有两种分组模式：
-     * 1. 独立工具回放：每个 invocation 单独开启一个任务组；
-     * 2. 与上一条 thought 绑定：复用当前任务组，保证“先思考、后工具”紧邻展示。
+     * 历史回放分组：
+     * 1. reuseCurrentTaskGroup=true：与 live SSE 一致，复用当前 taskId（同 LLM 轮次工具批量共用）；
+     * 2. reuseCurrentTaskGroup=false：独立开组（孤儿工具默认路径）。
+     * planning 工具由 projector 自行 renew 计划步骤，不受此开关影响。
      */
     public List<ProjectedReplayEvent> project(ToolInvocationView invocation,
                                               List<ArtifactView> artifacts,

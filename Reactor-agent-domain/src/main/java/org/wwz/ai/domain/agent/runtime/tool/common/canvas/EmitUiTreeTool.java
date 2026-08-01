@@ -106,12 +106,16 @@ public class EmitUiTreeTool implements BaseTool {
                 agentContext.getPrinter().send(toolCallId, "ui_tree", streamPayload, digitalEmployee, true);
             }
 
-            String observation = "GenUI tree emitted successfully"
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("message", "GenUI tree emitted successfully"
                     + (salvaged ? " (args salvaged)" : "")
-                    + ". Rendered inline and in the GenUI panel. Prefer emit_ui_patch for small updates.";
-            return ToolResultPayload.structured(
-                    observation,
-                    observation,
+                    + ". Prefer emit_ui_patch for small updates.");
+            fields.put("canvasId", canvasId);
+            fields.put("salvaged", salvaged);
+            fields.put("tree", normalized);
+            return ToolResultPayload.okData(
+                    getName(),
+                    fields,
                     GenUiTreeToolOutput.builder()
                             .tree(normalized)
                             .canvasId(canvasId)
@@ -125,7 +129,7 @@ public class EmitUiTreeTool implements BaseTool {
     }
 
     private ToolResultPayload failure(String message) {
-        return ToolResultPayload.failure(message, message, null, message);
+        return ToolResultPayload.failureFrom(message, null);
     }
 
     private Map<String, Object> castMap(Map<?, ?> map) {

@@ -127,6 +127,7 @@ public class ReplayProjector {
             String messageType = null;
             // 原生 CoT 单独回放为 llm_reasoning（与 content 双路）
             if (StringUtils.isNotBlank(llmInvocation.getReasoningContent())) {
+                messageType = "llm_reasoning";
                 events.add(buildLlmReplayEvent(
                         bundle,
                         state,
@@ -152,15 +153,15 @@ public class ReplayProjector {
                 continue;
             }
 
-            boolean reuseCurrentTaskGroup = "tool_thought".equals(messageType)
-                    || "llm_reasoning".equals(messageType);
+            // 对齐 live SSE：同一 LLM 轮次（及整段 ReAct）工具共享 taskId，不按 invocation 拆组。
+            // 否则历史每个工具独立 taskId → 前端变成 N 个「单步已完成」平铺，折叠组消失。
             for (ToolInvocationView toolInvocation : linkedTools) {
                 List<ArtifactView> artifacts = artifactsByInvocationId.getOrDefault(toolInvocation.getId(), List.of());
                 events.addAll(toolInvocationProjectorRegistry.project(
                         toolInvocation,
                         artifacts,
                         state,
-                        reuseCurrentTaskGroup
+                        true
                 ));
             }
         }
@@ -177,9 +178,16 @@ public class ReplayProjector {
      * 否则会污染历史重放，并导致 PlanSolve plannerRounds 平白增加一版。
      */
     private boolean shouldSkipLlmReplay(LlmInvocationView invocation) {
-        return invocation == null
-                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind())
-                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT.equals(invocation.getCallKind());
+        if (invocation == null) {
+            return true;
+        }
+        if (ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind())
+                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT.equals(invocation.getCallKind())) {
+            return true;
+        }
+        // 对齐 SubAgentPrinter：子 Agent 过程思考不进主时间线
+        String agentName = invocation.getAgentName();
+        return StringUtils.isNotBlank(agentName) && agentName.startsWith("subagent:");
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,

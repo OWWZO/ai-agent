@@ -492,6 +492,78 @@ describe("agentProcessModel", () => {
     }
   });
 
+  it("merges multi-container history tools into one collapsible group for ReAct", () => {
+    // 模拟历史投影：每个工具独立 task 容器（不同 taskId 拆组）
+    const chat = createChat({
+      loading: false,
+      tasks: [
+        [
+          {
+            id: "c1",
+            taskId: "task-1",
+            children: [
+              tool({
+                id: "t1",
+                messageType: "tool_call",
+                messageTime: "1714041601000",
+                resultMap: { toolName: "Read", isFinal: true },
+                isFinal: true,
+                finish: true,
+              }),
+            ],
+          } as unknown as CHAT.Task,
+        ],
+        [
+          {
+            id: "c2",
+            taskId: "task-2",
+            children: [
+              tool({
+                id: "t2",
+                messageType: "tool_call",
+                messageTime: "1714041602000",
+                resultMap: { toolName: "Edit", isFinal: true },
+                isFinal: true,
+                finish: true,
+              }),
+            ],
+          } as unknown as CHAT.Task,
+        ],
+        [
+          {
+            id: "c3",
+            taskId: "task-3",
+            children: [
+              tool({
+                id: "t3",
+                messageType: "tool_call",
+                messageTime: "1714041603000",
+                resultMap: { toolName: "Bash", isFinal: true },
+                isFinal: true,
+                finish: true,
+              }),
+            ],
+          } as unknown as CHAT.Task,
+        ],
+      ],
+    });
+
+    const model = deriveAgentProcessModel({
+      chat,
+      isPlanSolve: false,
+      nowMs: 1714041608000,
+    });
+
+    expect(model.segments.map((s) => s.type)).toEqual(["group"]);
+    const group = model.segments[0];
+    expect(group.type).toBe("group");
+    if (group.type === "group") {
+      expect(group.group.stepCount).toBe(3);
+      expect(group.group.title).toBe("执行了 3 个步骤");
+      expect(group.group.completed).toBe(true);
+    }
+  });
+
   it("does not promote lone assistant-reply to final_reply (终答只走 conclusion)", () => {
     const chat = createChat({
       loading: false,

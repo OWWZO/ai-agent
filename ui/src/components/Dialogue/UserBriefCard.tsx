@@ -69,7 +69,7 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
   return (
     <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface)]/80 px-3.5 py-3 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
       <div className="mb-2 flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-[var(--chat-accent)]/12 text-[var(--chat-accent)]">
+        <div className="flex size-7 items-center justify-center rounded-lg border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           <MessageSquareTextIcon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -78,7 +78,7 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
           </div>
         </div>
         {isProactive ? (
-          <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+          <span className="rounded-full border border-[var(--chat-border)]/40 bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-muted)]">
             proactive
           </span>
         ) : null}

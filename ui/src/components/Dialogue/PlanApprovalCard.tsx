@@ -111,9 +111,9 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         : "审查计划后批准或拒绝；拒绝后 Agent 会继续改计划";
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-accent)]/35 bg-[var(--chat-surface-soft)]/70 px-4 py-3 shadow-[var(--shadow-xs)]">
+    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50 bg-white px-4 py-3">
       <div className="mb-3 flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-xl bg-[var(--chat-accent)]/12 text-[var(--chat-accent)]">
+        <div className="flex size-8 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
           {submitting ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (
@@ -154,14 +154,14 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
             placeholder="可选：拒绝反馈或备注"
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
-            className="mt-3 w-full rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[var(--chat-accent)]/50"
+            className="mt-3 w-full rounded-xl border border-[var(--chat-border)]/50 bg-white px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[#c7c7cc]"
           />
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
               disabled={submitting}
               onClick={() => void reject()}
-              className="rounded-xl border border-[var(--chat-border)]/50 px-4 py-2 text-[13px] font-medium text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-interactive-hover)] disabled:opacity-60"
+              className="rounded-xl border border-[var(--chat-border)]/50 px-4 py-2 text-[13px] font-medium text-[var(--chat-text)] transition-colors hover:bg-[#fafafa] disabled:opacity-60"
             >
               {submitting ? "处理中…" : "拒绝并修订"}
             </button>
@@ -172,8 +172,8 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
               className={[
                 "rounded-xl px-4 py-2 text-[13px] font-medium transition-colors",
                 !submitting && (editedPlan || planContent).trim()
-                  ? "bg-[var(--chat-accent)] text-white hover:opacity-90"
-                  : "cursor-not-allowed bg-[var(--chat-border)]/40 text-[var(--chat-text-soft)]",
+                  ? "bg-[#1d1d1f] text-white hover:opacity-90"
+                  : "cursor-not-allowed bg-[#e8e8ed] text-[var(--chat-text-soft)]",
               ].join(" ")}
             >
               {submitting ? "处理中…" : "批准并开始实现"}
