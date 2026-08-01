@@ -1,9 +1,12 @@
 import { motion } from "motion/react";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 
 /**
  * 访客引导加载界面 — 与登录入口保持一致的视觉语言
  */
 export default function VisitorBootstrapScreen() {
+  const { reduce } = useMotionConfig();
+
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden">
       {/* 背景层 */}
@@ -28,17 +31,17 @@ export default function VisitorBootstrapScreen() {
       {/* 内容 */}
       <motion.div
         className="relative z-10 text-center"
-        initial={{
+        initial={reduce ? { opacity: 0 } : {
           opacity: 0,
-          y: 16
+          y: 10
         }}
         animate={{
           opacity: 1,
           y: 0
         }}
         transition={{
-          duration: 0.5,
-          ease: [0.16, 1, 0.3, 1]
+          duration: reduce ? DURATION.reduced : 0.28,
+          ease: EASE_OUT,
         }}
       >
         <h1

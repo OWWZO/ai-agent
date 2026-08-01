@@ -10,6 +10,7 @@ import {
   PlanContent,
 } from "@/components/ai-elements/plan";
 import { Badge } from "@/components/ui/badge";
+import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 import { getStatusIcon } from "./config";
@@ -45,6 +46,7 @@ const PlanView: ReactorType.FC<{
   const isStreaming = Boolean(
     plan && stepStatus && stepStatus.length > 0 && !stepStatus.every((s) => s === "completed")
   );
+  const { reduce } = useMotionConfig();
 
   if (!plan) {
     return null;
@@ -58,18 +60,12 @@ const PlanView: ReactorType.FC<{
             <motion.div
               initial={false}
               animate={
-                isStreaming
-                  ? {
-                    scale: [1, 1.04, 1],
-                    opacity: [0.85, 1, 0.85],
-                  }
-                  : {
-                    scale: 1,
-                    opacity: 1,
-                  }
+                isStreaming && !reduce
+                  ? {opacity: [0.85, 1, 0.85],}
+                  : {opacity: 1,}
               }
               transition={
-                isStreaming
+                isStreaming && !reduce
                   ? {
                     duration: 2.2,
                     repeat: Number.POSITIVE_INFINITY,
@@ -107,14 +103,18 @@ const PlanView: ReactorType.FC<{
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[var(--chat-surface-muted)]">
                 <motion.div
-                  className="h-full rounded-full bg-[#0071e3]/90"
+                  className="h-full w-full origin-left rounded-full bg-[#0071e3]/90"
                   initial={false}
-                  animate={{ width: `${pct}%` }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 380,
-                    damping: 32,
-                  }}
+                  animate={{ transform: `scaleX(${pct / 100})` }}
+                  transition={
+                    reduce
+                      ? { duration: 0 }
+                      : {
+                        type: "spring",
+                        duration: 0.5,
+                        bounce: 0.15
+                      }
+                  }
                 />
               </div>
             </div>
@@ -129,19 +129,18 @@ const PlanView: ReactorType.FC<{
               return (
                 <motion.div
                   key={`${name}-${index}`}
-                  layout
-                  initial={{
+                  initial={reduce ? { opacity: 0 } : {
                     opacity: 0,
-                    y: 8,
+                    y: 8
                   }}
                   animate={{
                     opacity: 1,
-                    y: 0,
+                    y: 0
                   }}
                   transition={{
-                    delay: Math.min(index * 0.05, 0.35),
-                    duration: 0.22,
-                    ease: [0.25, 0.46, 0.45, 0.94],
+                    delay: reduce ? 0 : Math.min(index * 0.05, 0.2),
+                    duration: reduce ? 0.12 : 0.22,
+                    ease: EASE_OUT,
                   }}
                   className={cn(
                     "flex gap-1 rounded-xl px-2 py-2.5 transition-[background-color,box-shadow] duration-200 md:gap-2 md:px-3",
@@ -151,7 +150,32 @@ const PlanView: ReactorType.FC<{
                     status === "not_started" && "bg-transparent"
                   )}
                 >
-                  <div className="flex w-8 shrink-0 justify-center">{getStatusIcon(status)}</div>
+                  <div className="flex w-8 shrink-0 justify-center">
+                    {done ? (
+                      <motion.span
+                        key={`${name}-${index}-done`}
+                        initial={
+                          reduce ? { opacity: 0 } : {
+                            opacity: 0,
+                            scale: 0.96
+                          }
+                        }
+                        animate={{
+                          opacity: 1,
+                          scale: 1
+                        }}
+                        transition={{
+                          duration: 0.18,
+                          ease: EASE_OUT
+                        }}
+                        className="inline-flex"
+                      >
+                        {getStatusIcon(status)}
+                      </motion.span>
+                    ) : (
+                      getStatusIcon(status)
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1 pt-0.5">
                     <div className="text-[14px] font-medium leading-snug tracking-[-0.01em] text-[var(--chat-text)]">
                       {name}

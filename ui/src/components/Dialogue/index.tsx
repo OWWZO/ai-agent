@@ -140,8 +140,9 @@ const DialogueComponent: FC<Props> = (props) => {
   const showProcessTimeline =
     !showStandaloneResponse &&
     (!!thoughtText || !!displayedPlan || chat.tasks.length > 0);
+  // 仅最新一轮且仍在 loading 时闪动；任务结束后一律静止
   const thoughtStreaming =
-    chat.loading && thoughtVersionIndex === latestRoundIndex;
+    Boolean(chat.loading) && thoughtVersionIndex === latestRoundIndex;
 
   const changeActiveChat = useCallback((task: CHAT.Task, targetChat: CHAT.ChatItem) => {
     changeTask?.(task, targetChat);

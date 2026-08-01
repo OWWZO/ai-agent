@@ -152,7 +152,6 @@ public class StreamResponseHandler {
         StringBuilder allReasoning = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
         StringBuilder reasoningBuffer = new StringBuilder();
-        int[] reasoningEmitted = new int[]{0};
 
         // 流式推送配置
         String messageId = canAllocateStreamMessageId(context) ? StringUtil.getUUID() : null;
@@ -207,7 +206,6 @@ public class StreamResponseHandler {
                                 context.getPrinter().send(reasoningMessageId,
                                         ReasoningContentExtractor.EVENT_TYPE,
                                         reasoningBuffer.toString(), false);
-                                reasoningEmitted[0] += reasoningBuffer.length();
                                 reasoningBuffer.setLength(0);
                             }
                         }
@@ -316,16 +314,6 @@ public class StreamResponseHandler {
         );
 
         return future;
-    }
-
-    private boolean shouldPushStream(AgentContext context, boolean pushToClient) {
-        if (!pushToClient) {
-            return false;
-        }
-        return context != null
-                && Boolean.TRUE.equals(context.getIsStream())
-                && context.getPrinter() != null
-                && StringUtils.isNotBlank(context.getStreamMessageType());
     }
 
     private boolean canAllocateStreamMessageId(AgentContext context) {

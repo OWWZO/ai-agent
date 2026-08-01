@@ -6,7 +6,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import ChatView from "@/components/ChatView";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import WorkspaceSop from "@/pages/WorkspaceSop";
@@ -246,6 +248,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const canRenderChatView =
     activeView === "chat" &&
     (hasConversationContent(currentConversation) || inputInfo.message.length > 0);
+  const { reduce: reduceMotion } = useMotionConfig();
+  const viewFadeDuration = reduceMotion ? DURATION.reduced : 0.22;
 
   const contentContainerClassName =
     activeView === "chat" && canRenderChatView
@@ -891,50 +895,78 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                 embedded
                 initialFeaturedId={featuredEntryId}
               />
-            ) : canRenderChatView ? (
-              <ChatView
-                inputInfo={inputInfo}
-                product={product}
-                conversation={currentConversation}
-                chatRoles={fixRoles}
-                onConversationChange={updateConversation}
-                onRoleSelect={handleRoleSelect}
-                onInputConsumed={onInputConsumed}
-                onTaskListChange={setWorkspaceTaskList}
-                onRegisterApi={(api) => {
-                  chatViewApiRef.current = api;
-                }}
-                onOpenTaskFiles={() => {
-                  setWorkspaceImmersive(false);
-                  setSidebarPanel("task-files");
-                }}
-                onFocusModeChange={setWorkspaceImmersive}
-              />
             ) : (
-              <WelcomeView
-                currentConversation={currentConversation}
-                product={product}
-                displayOutput={displayOutput}
-                currentConversationRole={currentConversationRole}
-                fixRoles={fixRoles}
-                visitorUsername={visitorBootstrap?.username}
-                videoModalOpen={videoModalOpen}
-                onSelectionChange={handleInputSelectionChange}
-                onRoleSelect={handleRoleSelect}
-                onSend={changeInputInfo}
-                onSendQuestion={toSendMessage}
-                onOpenVideo={setVideoModalOpen}
-                onCloseVideo={() => setVideoModalOpen(undefined)}
-                featuredCards={featuredCards}
-                onOpenFeaturedConversations={() => {
-                  setFeaturedEntryId("");
-                  setActiveView("featured");
-                }}
-                onOpenFeaturedDetail={(featuredId) => {
-                  setFeaturedEntryId(featuredId);
-                  setActiveView("featured");
-                }}
-              />
+              <AnimatePresence mode="wait" initial={false}>
+                {canRenderChatView ? (
+                  <motion.div
+                    key="chat"
+                    className="h-full min-h-0 w-full"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      duration: viewFadeDuration,
+                      ease: EASE_OUT
+                    }}
+                  >
+                    <ChatView
+                      inputInfo={inputInfo}
+                      product={product}
+                      conversation={currentConversation}
+                      chatRoles={fixRoles}
+                      onConversationChange={updateConversation}
+                      onRoleSelect={handleRoleSelect}
+                      onInputConsumed={onInputConsumed}
+                      onTaskListChange={setWorkspaceTaskList}
+                      onRegisterApi={(api) => {
+                        chatViewApiRef.current = api;
+                      }}
+                      onOpenTaskFiles={() => {
+                        setWorkspaceImmersive(false);
+                        setSidebarPanel("task-files");
+                      }}
+                      onFocusModeChange={setWorkspaceImmersive}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="welcome"
+                    className="h-full min-h-0 w-full"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      duration: viewFadeDuration,
+                      ease: EASE_OUT
+                    }}
+                  >
+                    <WelcomeView
+                      currentConversation={currentConversation}
+                      product={product}
+                      displayOutput={displayOutput}
+                      currentConversationRole={currentConversationRole}
+                      fixRoles={fixRoles}
+                      visitorUsername={visitorBootstrap?.username}
+                      videoModalOpen={videoModalOpen}
+                      onSelectionChange={handleInputSelectionChange}
+                      onRoleSelect={handleRoleSelect}
+                      onSend={changeInputInfo}
+                      onSendQuestion={toSendMessage}
+                      onOpenVideo={setVideoModalOpen}
+                      onCloseVideo={() => setVideoModalOpen(undefined)}
+                      featuredCards={featuredCards}
+                      onOpenFeaturedConversations={() => {
+                        setFeaturedEntryId("");
+                        setActiveView("featured");
+                      }}
+                      onOpenFeaturedDetail={(featuredId) => {
+                        setFeaturedEntryId(featuredId);
+                        setActiveView("featured");
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             )}
           </div>
         </div>

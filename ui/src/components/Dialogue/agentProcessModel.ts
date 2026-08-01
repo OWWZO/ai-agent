@@ -431,8 +431,10 @@ function buildStepRows(
   return prepared.map((item, index) => {
     const kind = resolveProcessStepKind(item.tool);
     const { title, detail } = resolveStepTitle(item.tool, kind);
-    const active = isTimelineToolActive(item.tool);
-    const completed = isStepCompleted(item.tool) && !active;
+    // 整轮结束后禁止残留 active，否则深度思考/步骤会一直 shimmer
+    const active = options.loading && isTimelineToolActive(item.tool);
+    const completed =
+      !active && (isStepCompleted(item.tool) || !options.loading);
     const durationMs = durations[index];
     const expandable =
       kind === "thinking" ||
@@ -848,8 +850,7 @@ export function deriveAgentProcessModel(
     hasProcess: Boolean(thought || segments.length),
     loading,
     thought,
-    intentLine:
-      intentLine && intentLine !== asText(thoughtText) ? intentLine : intentLine,
+    intentLine,
     segments,
     groups,
     finalReply: finalReplySegment

@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 
 interface AnimatedMessageListProps {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ export const AnimatedMessageList: React.FC<AnimatedMessageListProps> = ({
   className,
 }) => {
   const childrenArray = React.Children.toArray(children);
+  const { reduce, duration, ease, fade } = useMotionConfig();
 
   return (
     <div className={className}>
@@ -22,15 +24,13 @@ export const AnimatedMessageList: React.FC<AnimatedMessageListProps> = ({
         {childrenArray.map((child, index) => (
           <motion.div
             key={index}
-            initial={{ opacity: 0, y: 20, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            initial={fade.initial}
+            animate={fade.animate}
+            exit={reduce ? { opacity: 0 } : fade.exit}
             transition={{
-              duration: 0.4,
-              delay: index === childrenArray.length - 1 ? 0 : 0, // 只给最新消息添加延迟
-              ease: [0.25, 0.46, 0.45, 0.94],
+              duration,
+              ease,
             }}
-            layout
           >
             {child}
           </motion.div>
@@ -51,16 +51,29 @@ interface AnimatedMessageProps {
 
 export const AnimatedMessage = memo(
   ({ children, isNew = false, delay = 0 }: AnimatedMessageProps) => {
+    const { reduce, duration, ease } = useMotionConfig();
+
     return (
       <motion.div
-        initial={isNew ? { opacity: 0, y: 15, scale: 0.99 } : false}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{
-          duration: 0.35,
-          delay,
-          ease: [0.25, 0.46, 0.45, 0.94],
+        initial={
+          isNew
+            ? reduce
+              ? { opacity: 0 }
+              : {
+                opacity: 0,
+                y: 8
+              }
+            : false
+        }
+        animate={{
+          opacity: 1,
+          y: 0
         }}
-        layout
+        transition={{
+          duration,
+          delay: reduce ? 0 : delay,
+          ease,
+        }}
       >
         {children}
       </motion.div>
@@ -83,23 +96,23 @@ export const StreamingContent: React.FC<StreamingContentProps> = ({
   children,
   isStreaming = false,
 }) => {
+  const { reduce } = useMotionConfig();
+
   return (
     <motion.div
       animate={
-        isStreaming
-          ? {
-              opacity: [1, 0.95, 1],
-            }
+        isStreaming && !reduce
+          ? {opacity: [1, 0.95, 1],}
           : { opacity: 1 }
       }
       transition={
-        isStreaming
+        isStreaming && !reduce
           ? {
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }
-          : { duration: 0.3 }
+            duration: 2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }
+          : { duration: DURATION.reduced }
       }
     >
       {children}
@@ -121,27 +134,39 @@ interface FadeInProps {
 export const FadeIn: React.FC<FadeInProps> = ({
   children,
   delay = 0,
-  duration = 0.4,
+  duration = DURATION.panel,
   className,
   direction = "up",
 }) => {
+  const { reduce } = useMotionConfig();
   const directionOffset = {
-    up: { y: 20 },
-    down: { y: -20 },
-    left: { x: 20 },
-    right: { x: -20 },
+    up: { y: 12 },
+    down: { y: -12 },
+    left: { x: 12 },
+    right: { x: -12 },
     none: {},
   };
 
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, ...directionOffset[direction] }}
-      animate={{ opacity: 1, x: 0, y: 0 }}
+      initial={
+        reduce
+          ? { opacity: 0 }
+          : {
+            opacity: 0,
+            ...directionOffset[direction]
+          }
+      }
+      animate={{
+        opacity: 1,
+        x: 0,
+        y: 0
+      }}
       transition={{
-        duration,
-        delay,
-        ease: [0.25, 0.46, 0.45, 0.94],
+        duration: reduce ? DURATION.reduced : Math.min(duration, 0.28),
+        delay: reduce ? 0 : delay,
+        ease: EASE_OUT,
       }}
     >
       {children}
@@ -158,14 +183,16 @@ interface PulseProps {
 }
 
 export const Pulse: React.FC<PulseProps> = ({ children, isActive = true }) => {
+  const { reduce } = useMotionConfig();
+
   return (
     <motion.div
       animate={
-        isActive
+        isActive && !reduce
           ? {
-              scale: [1, 1.02, 1],
-              opacity: [0.9, 1, 0.9],
-            }
+            scale: [1, 1.02, 1],
+            opacity: [0.9, 1, 0.9],
+          }
           : {}
       }
       transition={{
@@ -193,6 +220,8 @@ export const StaggerContainer: React.FC<StaggerContainerProps> = ({
   className,
   staggerDelay = 0.05,
 }) => {
+  const { reduce } = useMotionConfig();
+
   return (
     <motion.div
       className={className}
@@ -202,9 +231,7 @@ export const StaggerContainer: React.FC<StaggerContainerProps> = ({
         hidden: { opacity: 0 },
         visible: {
           opacity: 1,
-          transition: {
-            staggerChildren: staggerDelay,
-          },
+          transition: {staggerChildren: reduce ? 0 : staggerDelay,},
         },
       }}
     >
@@ -222,17 +249,22 @@ interface StaggerItemProps {
 }
 
 export const StaggerItem: React.FC<StaggerItemProps> = ({ children, className }) => {
+  const { reduce } = useMotionConfig();
+
   return (
     <motion.div
       className={className}
       variants={{
-        hidden: { opacity: 0, y: 10 },
+        hidden: reduce ? { opacity: 0 } : {
+          opacity: 0,
+          y: 8
+        },
         visible: {
           opacity: 1,
           y: 0,
           transition: {
-            duration: 0.3,
-            ease: [0.25, 0.46, 0.45, 0.94],
+            duration: reduce ? DURATION.reduced : 0.22,
+            ease: EASE_OUT,
           },
         },
       }}

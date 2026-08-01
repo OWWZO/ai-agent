@@ -17,22 +17,19 @@
   --chat-user-bubble: oklch(26.9% 0 0);
 }
 
-@keyframes slide-up-bounce {
-  0% {
-    transform: translateY(20px);
+@keyframes user-message-enter {
+  from {
     opacity: 0;
+    transform: translateY(8px);
   }
-  60% {
-    transform: translateY(-4px);
-  }
-  100% {
-    transform: translateY(0);
+  to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
 .user-message-enter {
-  animation: slide-up-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: user-message-enter 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
 /* ClawsGO user bubble */
@@ -53,25 +50,20 @@
   word-break: break-word;
 }
 
-@keyframes image-bounce {
-  0% {
-    transform: scale(0);
+@keyframes image-enter {
+  from {
     opacity: 0;
+    transform: scale(0.96);
   }
-  50% {
-    transform: scale(1.1);
-  }
-  70% {
-    transform: scale(0.95);
-  }
-  100% {
-    transform: scale(1);
+  to {
     opacity: 1;
+    transform: scale(1);
   }
 }
 
 .image-bounce {
-  animation: image-bounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* class name kept for call sites; animation is crisp enter, not bounce */
+  animation: image-enter 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
 @keyframes orb-hue-rotate {
@@ -222,25 +214,25 @@
 
 @keyframes orb-intro {
   0% {
-    transform: translateY(-100px) scale(4);
-    filter: blur(30px);
+    transform: translateY(12px) scale(1.06);
+    filter: blur(8px);
     opacity: 0;
   }
   100% {
     transform: translateY(0) scale(1);
-    filter: blur(0px);
+    filter: blur(0);
     opacity: 1;
   }
 }
 
 .orb-intro {
-  animation: orb-intro 4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: orb-intro 500ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
   opacity: 0;
 }
 
 @keyframes composer-intro {
   0% {
-    transform: translateY(100px);
+    transform: translateY(16px);
     opacity: 0;
   }
   100% {
@@ -250,29 +242,29 @@
 }
 
 .composer-intro {
-  animation: composer-intro 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: composer-intro 280ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) 80ms both;
 }
 
 @keyframes text-blur-intro {
   0% {
-    filter: blur(12px);
+    filter: blur(6px);
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   100% {
-    filter: blur(0px);
+    filter: blur(0);
     opacity: 1;
     transform: translateY(0);
   }
 }
 
 .text-blur-intro {
-  animation: text-blur-intro 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: text-blur-intro 320ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
   opacity: 0;
 }
 
 .text-blur-intro-delay {
-  animation: text-blur-intro 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+  animation: text-blur-intro 320ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) 60ms both;
   opacity: 0;
 }
 

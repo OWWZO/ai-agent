@@ -63,7 +63,7 @@ const BrowserDetail: React.FC<{ item: BrowserItem; onBack: () => void }> = ({
         {result.map((ele, idx) => (
           <Card
             key={idx}
-            className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
+            className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-colors duration-150 hover:bg-muted/35"
             onClick={() => jumpUrl(ele.url)}
           >
             <CardContent className="p-3">
@@ -169,7 +169,7 @@ const BrowserList: React.FC<{
         {browserList.map((item) => (
           <Card
             key={item.id}
-            className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
+            className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-colors duration-150 hover:bg-muted/35"
             onClick={() => setActiveItem(item.id)}
           >
             <CardContent className="flex items-center gap-3 p-3">

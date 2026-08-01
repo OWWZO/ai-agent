@@ -7,6 +7,7 @@ import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
 import PlanComposerBar from "./PlanComposerBar";
+import SessionTaskComposerBar from "./SessionTaskComposerBar";
 import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
@@ -446,6 +447,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     structuredPlan={plan}
                     loading={loading}
                   />
+                  <SessionTaskComposerBar
+                    chat={conversation.chatList?.[conversation.chatList.length - 1]}
+                    taskList={taskList}
+                  />
                   <GeneralInput
                     key={`input-${conversation.sessionId}-single`}
                     sessionId={conversation.sessionId}
@@ -498,14 +503,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         <div
           className={classNames(
             "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
-            isDragging ? "transition-none" : "transition-all duration-300",
+            isDragging
+              ? "transition-none"
+              : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
             (!isLeftCollapsed || isFocusMode) && "shrink-0"
           )}
           style={{
             ...((!isLeftCollapsed || isFocusMode)
               ? {
-                width: `${isFocusMode ? leftPanelWidth : leftPanelWidth}%`,
+                width: `${leftPanelWidth}%`,
                 minWidth: isFocusMode ? 280 : undefined,
                 maxWidth: isFocusMode ? "28%" : undefined,
               }
@@ -582,6 +589,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                       structuredPlan={plan}
                       loading={loading}
                     />
+                    <SessionTaskComposerBar
+                      chat={conversation.chatList?.[conversation.chatList.length - 1]}
+                      taskList={taskList}
+                    />
                     <GeneralInput
                       key={`input-${conversation.sessionId}-left`}
                       sessionId={conversation.sessionId}
@@ -641,7 +652,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             <div className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-[#e5e5ea] transition-colors group-hover:bg-[#b9b9c0]" />
             <div
               className={classNames(
-                "relative h-14 w-1 rounded-full transition-all duration-200",
+                "relative h-14 w-1 rounded-full transition-colors duration-150",
                 isDragging
                   ? "bg-[#0071e3]"
                   : "bg-[#d2d2d7] group-hover:bg-[#86868b]"
@@ -654,7 +665,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         <div
           className={classNames(
             "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
-            isDragging ? "transition-none" : "transition-all duration-300",
+            isDragging
+              ? "transition-none"
+              : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}

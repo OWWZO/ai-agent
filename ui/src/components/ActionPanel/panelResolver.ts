@@ -109,6 +109,20 @@ function parseJsonSafely(value?: string) {
   }
 }
 
+function fileView(
+  type: FilePanelView["type"],
+  primaryFile?: CHAT.TFile,
+  missingReason?: string
+): FilePanelView {
+  return {
+    type,
+    fileUrl: primaryFile?.url || "",
+    fileName: primaryFile?.name,
+    downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
+    missingReason,
+  };
+}
+
 export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   const {
     taskItem,
@@ -193,63 +207,27 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   }
 
   if (useExcel) {
-    return {
-      type: "excel",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("excel", primaryFile, missingReason);
   }
 
   if (useImage) {
-    return {
-      type: "image",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("image", primaryFile, missingReason);
   }
 
   if (usePdf) {
-    return {
-      type: "pdf",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("pdf", primaryFile, missingReason);
   }
 
   if (useDocx) {
-    return {
-      type: "docx",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("docx", primaryFile, missingReason);
   }
 
   if (useLegacyDoc) {
-    return {
-      type: "legacy-doc",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("legacy-doc", primaryFile, missingReason);
   }
 
   if (useFile) {
-    return {
-      type: "file",
-      fileUrl: primaryFile?.url || "",
-      fileName: primaryFile?.name,
-      downloadUrl: primaryFile?.downloadUrl || primaryFile?.url,
-      missingReason,
-    };
+    return fileView("file", primaryFile, missingReason);
   }
 
   if (useJSON) {

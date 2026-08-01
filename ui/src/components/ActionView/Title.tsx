@@ -12,7 +12,7 @@ const Title: ReactorType.FC<{
       </h3>
       <button
         onClick={onClose}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-all duration-200 hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+        className="flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-[background-color,color,transform] duration-150 hover:bg-[#f5f5f7] hover:text-[#1d1d1f] active:scale-[0.97]"
         title="关闭智能体工作区"
       >
         <X className="h-4 w-4" />

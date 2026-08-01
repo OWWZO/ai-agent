@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import classNames from "classnames";
+import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   Bot,
   SquarePen,
@@ -117,6 +118,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(
     null
   );
+  const { reduce } = useMotionConfig();
 
   const filteredSessions = searchQuery.trim()
     ? recentSessions.filter((s) =>
@@ -200,49 +202,48 @@ const ConversationSidebar = memo(function ConversationSidebar(
             <span>新建任务</span>
           </button>
 
-          <AnimatePresence>
-            {searchOpen && (
-              <motion.div
-                initial={{
-                  height: 0,
-                  opacity: 0
-                }}
-                animate={{
-                  height: "auto",
-                  opacity: 1
-                }}
-                exit={{
-                  height: 0,
-                  opacity: 0
-                }}
-                transition={{
-                  duration: 0.2,
-                  ease: [0.16, 1, 0.3, 1],
-                }}
-                className="overflow-hidden"
-              >
-                <div className="relative mt-2">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索会话..."
-                    autoFocus
-                    className="w-full rounded-[10px] border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 pr-8 text-[13px] text-[var(--chat-text)] outline-none transition-colors placeholder:text-[var(--chat-text-muted)] focus:border-[#0000004d]"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
+          <div
+            className={classNames(
+              "grid",
+              reduce
+                ? searchOpen
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
+                : "transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+              !reduce &&
+                (searchOpen
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0")
             )}
-          </AnimatePresence>
+          >
+            <div
+              className={classNames(
+                "min-h-0 overflow-hidden",
+                !searchOpen && "pointer-events-none"
+              )}
+            >
+              <div className="relative mt-2">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索会话..."
+                  autoFocus={searchOpen}
+                  tabIndex={searchOpen ? 0 : -1}
+                  className="w-full rounded-[10px] border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-2 pr-8 text-[13px] text-[var(--chat-text)] outline-none transition-colors placeholder:text-[var(--chat-text-muted)] focus:border-[#0000004d]"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--chat-text-muted)] hover:text-[var(--chat-text)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -328,13 +329,23 @@ const ConversationSidebar = memo(function ConversationSidebar(
                         onMouseEnter={() => setHoveredSessionId(session.sessionId)}
                         onMouseLeave={() => setHoveredSessionId(null)}
                       >
+                        {isActive ? (
+                          <motion.div
+                            layoutId={reduce ? undefined : "sidebar-active"}
+                            className="pointer-events-none absolute inset-0 rounded-[10px] bg-black/[0.08]"
+                            transition={{
+                              duration: reduce ? 0 : 0.2,
+                              ease: EASE_OUT,
+                            }}
+                          />
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => onSelectSession(session)}
                           className={classNames(
-                            "group flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors",
+                            "group relative z-[1] flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors",
                             isActive
-                              ? "bg-black/[0.08] text-[var(--chat-text)]"
+                              ? "text-[var(--chat-text)]"
                               : "text-[var(--chat-text)] hover:bg-black/[0.04]"
                           )}
                         >

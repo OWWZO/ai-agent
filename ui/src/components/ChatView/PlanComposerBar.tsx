@@ -56,17 +56,23 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
     }, [model.approvalId, model.planContent, model.source, model.status]);
 
     const status = localStatus || model.status || "pending";
+    const isDecided = status === "approved" || status === "rejected";
     const canApprove =
       model.source === "plan_approval" &&
       Boolean(model.approvalId) &&
       status === "pending" &&
       Boolean((editedPlan || model.planContent).trim());
+    const showActions =
+      model.source === "plan_approval" &&
+      status === "pending" &&
+      Boolean(model.approvalId) &&
+      !isDecided;
 
     const statusLabel =
       status === "approved"
-        ? "已批准"
+        ? "已批准 · 只读"
         : status === "rejected"
-          ? "已拒绝"
+          ? "已拒绝 · 只读"
           : status === "planning"
             ? "规划中"
             : model.source === "plan_approval"
@@ -169,7 +175,7 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
 
         {open ? (
           <div className="border-t border-[var(--chat-border)]/30 px-3 pb-3 pt-2">
-            {model.source === "plan_approval" && status === "pending" ? (
+            {showActions ? (
               <textarea
                 value={editedPlan}
                 onChange={(event) => setEditedPlan(event.target.value)}
@@ -184,7 +190,7 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
               </pre>
             )}
 
-            {model.source === "plan_approval" && status === "pending" && model.approvalId ? (
+            {showActions ? (
               <>
                 <input
                   type="text"

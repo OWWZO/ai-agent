@@ -232,10 +232,21 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
   if (!tool) {
     return false;
   }
+  // 终答/总结类永不作为“进行中”闪动
+  if (
+    tool.messageType === "task_summary" ||
+    tool.messageType === "result" ||
+    tool.messageType === "session_tasks"
+  ) {
+    return false;
+  }
   if (tool.messageType === "ask_user_question" || tool.messageType === "plan_approval") {
     return !isTaskFinal(tool);
   }
   if (tool.messageType === "tool_thought") {
+    return !isTaskFinal(tool);
+  }
+  if (tool.messageType === "llm_reasoning" || tool.messageType === "plan_thought") {
     return !isTaskFinal(tool);
   }
   if (tool.messageType === "tool_call") {
@@ -244,7 +255,7 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
   if (CRAFTING_MESSAGE_TYPES.has(tool.messageType || "")) {
     return !isTaskFinal(tool);
   }
-  return !isTaskFinal(tool) && tool.messageType !== "task_summary";
+  return !isTaskFinal(tool);
 }
 
 function collectTimelineTools(chat?: CHAT.ChatItem): CHAT.Task[] {

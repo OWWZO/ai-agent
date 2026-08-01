@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import RunStatus from "./RunStatus";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
+import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   filterPreviewTaskList,
   resolvePreviewTaskRenderKey,
@@ -16,30 +17,35 @@ import {
 } from "./filePreviewModel";
 
 // 空状态动画组件
-const EmptyState = () => (
-  <div className="flex h-full items-center justify-center">
-    <Card className="w-64 border-dashed">
-      <CardContent className="flex flex-col items-center justify-center py-8 text-center">
-        <motion.div
-          className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]"
-          animate={{
-            scale: [1, 1.05, 1],
-            opacity: [0.8, 1, 0.8],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        >
-          <Clock className="h-5 w-5 text-[#86868b]" />
-        </motion.div>
-        <p className="text-sm font-medium text-[#1d1d1f]">动态</p>
-        <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
-      </CardContent>
-    </Card>
-  </div>
-);
+const EmptyState = () => {
+  const { reduce, loop } = useMotionConfig();
+
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Card className="w-64 border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+          <motion.div
+            className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f5f7]"
+            animate={reduce ? { opacity: 1 } : { opacity: [0.75, 1, 0.75] }}
+            transition={
+              reduce
+                ? { duration: 0 }
+                : {
+                  duration: 2,
+                  repeat: loop > 0 ? loop : 0,
+                  ease: "easeInOut",
+                }
+            }
+          >
+            <Clock className="h-5 w-5 text-[#86868b]" />
+          </motion.div>
+          <p className="text-sm font-medium text-[#1d1d1f]">动态</p>
+          <p className="mt-1 text-xs text-[#86868b]">任务执行过程将在这里实时展示</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 const MissingArtifactState = ({ reason }: { reason?: string }) => (
   <div className="flex h-full items-center justify-center">
@@ -98,6 +104,11 @@ const FilePreview: React.FC<{
   const primaryFile = useMemo(() => getPrimaryTaskFile(taskItem), [taskItem]);
   const artifactMissing = Boolean(primaryFile?.missing);
   const taskRenderKey = useMemo(() => resolvePreviewTaskRenderKey(taskItem), [taskItem]);
+  const { reduce } = useMotionConfig();
+  const swapTransition = {
+    duration: 0.18,
+    ease: EASE_OUT,
+  } as const;
 
   // Empty State
   if (!taskItem) {
@@ -119,22 +130,22 @@ const FilePreview: React.FC<{
             {artifactMissing ? (
               <MissingArtifactState reason={primaryFile?.missingReason} />
             ) : (
-              <AnimatePresence mode="sync" initial={false}>
+              <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={taskRenderKey}
-                  initial={{
+                  initial={reduce ? { opacity: 0 } : {
                     opacity: 0,
-                    y: 8,
+                    y: 6
                   }}
                   animate={{
                     opacity: 1,
-                    y: 0,
+                    y: 0
                   }}
-                  exit={{
+                  exit={reduce ? { opacity: 0 } : {
                     opacity: 0,
-                    y: -6,
+                    y: -4
                   }}
-                  transition={{ duration: 0.2 }}
+                  transition={swapTransition}
                   className="h-full"
                 >
                   <ActionPanel
@@ -153,18 +164,19 @@ const FilePreview: React.FC<{
       <AnimatePresence>
         {!!taskLength && taskLength > 1 && (
           <motion.div
-            initial={{
+            initial={reduce ? { opacity: 0 } : {
               opacity: 0,
-              y: 10,
+              y: 8
             }}
             animate={{
               opacity: 1,
-              y: 0,
+              y: 0
             }}
-            exit={{
+            exit={reduce ? { opacity: 0 } : {
               opacity: 0,
-              y: 10,
+              y: 8
             }}
+            transition={swapTransition}
           >
             <div className="flex items-center justify-between px-4 py-2">
               <Button
@@ -181,15 +193,17 @@ const FilePreview: React.FC<{
               <motion.div
                 className="flex items-center gap-2 text-xs text-[#86868b]"
                 key={realActiveTaskIndex}
-                initial={{
-                  opacity: 0,
-                  scale: 0.9,
-                }}
+                initial={
+                  reduce ? { opacity: 0 } : {
+                    opacity: 0,
+                    scale: 0.96
+                  }
+                }
                 animate={{
                   opacity: 1,
-                  scale: 1,
+                  scale: 1
                 }}
-                transition={{ duration: 0.2 }}
+                transition={swapTransition}
               >
                 <Clock className="h-3 w-3" />
                 <span>

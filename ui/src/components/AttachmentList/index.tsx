@@ -1,6 +1,11 @@
 import { ImageIcon, X } from "lucide-react";
 import { isImageFileLike } from "@/utils/taskArtifacts";
 import { cn } from "@/lib/utils";
+import {
+  FILE_KIND_TONE,
+  type FileKind,
+  resolveFileKind,
+} from "@/utils/fileKind";
 
 type Props = {
   files?: CHAT.TFile[];
@@ -9,31 +14,17 @@ type Props = {
   review?: (file: CHAT.TFile) => void;
 };
 
-type FileKind = "img" | "xlsx" | "md" | "html" | "pdf" | "css" | "code" | "file";
-
 function resolveExt(file: CHAT.TFile): string {
   return (file.type || file.name?.split(".").pop() || "").toLowerCase();
 }
 
+/** Attachment 列表把 py 并入 code 展示。 */
 function resolveKind(file: CHAT.TFile): FileKind {
-  const ext = resolveExt(file);
-  if (
-    isImageFileLike(file) ||
-    ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"].includes(ext)
-  ) {
+  if (isImageFileLike(file)) {
     return "img";
   }
-  if (["csv", "xlsx", "xls"].includes(ext)) return "xlsx";
-  if (["md", "markdown", "txt"].includes(ext)) return "md";
-  if (["html", "htm"].includes(ext)) return "html";
-  if (ext === "pdf") return "pdf";
-  if (["css", "scss", "less"].includes(ext)) return "css";
-  if (
-    ["js", "ts", "tsx", "jsx", "py", "java", "json", "xml", "code"].includes(ext)
-  ) {
-    return "code";
-  }
-  return "file";
+  const kind = resolveFileKind(file.type, file.name);
+  return kind === "py" ? "code" : kind;
 }
 
 function typeLabel(file: CHAT.TFile, kind: FileKind): string {
@@ -52,6 +43,7 @@ function typeLabel(file: CHAT.TFile, kind: FileKind): string {
     case "css":
       return "样式文件 · CSS";
     case "code":
+    case "py":
       return `Code · ${ext || "FILE"}`;
     default:
       return describeFromName(file.name) || (ext ? `File · ${ext}` : "File");
@@ -81,32 +73,21 @@ function KindBadge({ kind, className }: { kind: FileKind; className?: string }) 
       </span>
     );
   }
-  if (kind === "md" || kind === "pdf" || kind === "file") {
+  if (kind === "md" || kind === "pdf" || kind === "file" || kind === "css") {
     return (
       <span className={cn("text-[15px] font-bold tracking-tight", className)}>
         T
       </span>
     );
   }
-  if (kind === "html" || kind === "code") {
+  if (kind === "html" || kind === "code" || kind === "py") {
     return (
       <span className={cn("text-[13px] font-bold tracking-tight", className)}>
         &lt;/&gt;
       </span>
     );
   }
-  if (kind === "css") {
-    return (
-      <span className={cn("text-[15px] font-bold tracking-tight", className)}>
-        T
-      </span>
-    );
-  }
   return <ImageIcon className={cn("h-5 w-5", className)} strokeWidth={1.6} />;
-}
-
-function kindTone(_kind: FileKind) {
-  return "bg-[#f5f5f7] text-[#6b6b70]";
 }
 
 const AttachmentList: ReactorType.FC<Props> = (props) => {
@@ -132,7 +113,7 @@ const AttachmentList: ReactorType.FC<Props> = (props) => {
           <span
             className={cn(
               "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-              kindTone(primaryKind)
+              FILE_KIND_TONE
             )}
           >
             {isImageFileLike(primary) && primary.url ? (
@@ -173,7 +154,7 @@ const AttachmentList: ReactorType.FC<Props> = (props) => {
                   <span
                     className={cn(
                       "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                      kindTone(kind)
+                      FILE_KIND_TONE
                     )}
                   >
                     {isImageFileLike(file) && file.url ? (
@@ -218,7 +199,7 @@ const AttachmentList: ReactorType.FC<Props> = (props) => {
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                kindTone(kind)
+                FILE_KIND_TONE
               )}
             >
               {isImageFileLike(file) && file.url ? (

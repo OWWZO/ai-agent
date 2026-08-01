@@ -56,7 +56,7 @@ public class ReactorRuntimeDependencies {
      */
     Long toolBatchTimeoutSeconds;
 
-    /** 可选：跨轮/中途工作记忆压缩（cc-haha query 循环时机）。 */
+    /** 可选：跨轮/中途工作记忆压缩 */
     SessionContextCompactionService sessionContextCompactionService;
 
     public ReactorConfig requireReactorConfig() {

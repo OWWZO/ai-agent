@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef } from "react";
 import classNames from "classnames";
 import { motion } from "motion/react";
+import { EASE_OUT } from "@/lib/motion";
 import { useMsgTypes } from "./useMsgTypes";
 import HTMLRenderer from "./HTMLRenderer";
 import useContent from "./useContent";
@@ -43,8 +44,8 @@ const ContentWrapper = ({ children }: { children: React.ReactNode }) => (
       y: -6,
     }}
     transition={{
-      duration: 0.22,
-      ease: [0.25, 0.46, 0.45, 0.94],
+      duration: 0.18,
+      ease: EASE_OUT,
     }}
     className="h-full"
   >
@@ -70,7 +71,7 @@ const StreamingMarkdownWrapper = memo(
         />
         <div
           aria-hidden
-          className="shrink-0 transition-[height] duration-300 ease-out"
+          className="shrink-0 transition-[height] duration-200 ease-out"
           style={{ height: isStreaming ? "clamp(180px, 34vh, 320px)" : "24px" }}
         />
       </div>
@@ -245,7 +246,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       case "json":
         return (
           <ContentWrapper key="json">
-            <JsonViewer data={panelView.jsonData} />
+            <JsonViewer className="h-full" data={panelView.jsonData} />
           </ContentWrapper>
         );
       case "markdown":

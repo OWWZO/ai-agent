@@ -64,28 +64,42 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
      * 将 typed output 里的逻辑 fileRefs 与 artifact 账本中的稳定链接进行合并。
      */
     protected List<Map<String, Object>> mergeFileRefs(List<ToolFileRef> fileRefs, List<ArtifactView> artifacts) {
-        List<Map<String, Object>> merged = new ArrayList<>();
-        if (CollectionUtils.isNotEmpty(fileRefs)) {
-            for (ToolFileRef fileRef : fileRefs) {
-                if (fileRef == null) {
-                    continue;
-                }
-                merged.add(toToolFileInfo(fileRef));
-            }
-        }
-
+        List<Map<String, Object>> merged = copyToolFileRefs(fileRefs);
         if (CollectionUtils.isEmpty(artifacts)) {
             return merged;
         }
         if (merged.isEmpty()) {
-            for (ArtifactView artifact : artifacts) {
-                if (artifact != null) {
-                    merged.add(toArtifactInfo(artifact));
-                }
-            }
+            return copyArtifactInfos(artifacts);
+        }
+        enrichFromArtifacts(merged, artifacts);
+        markMissingLinks(merged);
+        return merged;
+    }
+
+    private List<Map<String, Object>> copyToolFileRefs(List<ToolFileRef> fileRefs) {
+        List<Map<String, Object>> merged = new ArrayList<>();
+        if (CollectionUtils.isEmpty(fileRefs)) {
             return merged;
         }
+        for (ToolFileRef fileRef : fileRefs) {
+            if (fileRef != null) {
+                merged.add(toToolFileInfo(fileRef));
+            }
+        }
+        return merged;
+    }
 
+    private List<Map<String, Object>> copyArtifactInfos(List<ArtifactView> artifacts) {
+        List<Map<String, Object>> merged = new ArrayList<>();
+        for (ArtifactView artifact : artifacts) {
+            if (artifact != null) {
+                merged.add(toArtifactInfo(artifact));
+            }
+        }
+        return merged;
+    }
+
+    private void enrichFromArtifacts(List<Map<String, Object>> merged, List<ArtifactView> artifacts) {
         for (Map<String, Object> info : merged) {
             String fileName = String.valueOf(info.getOrDefault("fileName", ""));
             ArtifactView matched = artifacts.stream()
@@ -104,6 +118,9 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
                 info.putIfAbsent("fileSize", matched.getFileSize());
             }
         }
+    }
+
+    private void markMissingLinks(List<Map<String, Object>> merged) {
         for (Map<String, Object> info : merged) {
             boolean hasPreview = StringUtils.isNotBlank(String.valueOf(info.getOrDefault("previewUrl", "")));
             boolean hasDownload = StringUtils.isNotBlank(String.valueOf(info.getOrDefault("downloadUrl", "")));
@@ -114,7 +131,6 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
                 info.putIfAbsent("missing", Boolean.FALSE);
             }
         }
-        return merged;
     }
 
     protected ProjectedReplayEvent buildTaskEvent(EventResult state,
@@ -141,8 +157,8 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         decorateToolPayload(resultMap, invocation);
         Map<String, Object> response = newToolReplayEnvelope(invocation, logicalMessageType);
         response.put("resultMap", resultMap);
-        // 与实时 SSE 一致：嵌套标签也挂在 resultMap 外层，供 resolveParentToolUseId 读取
-        appendSubAgentNestingTags(response, invocation);
+        // 内层 payload + 外层 envelope 都需要嵌套标签（对齐实时 SSE）
+        mirrorNestingToOuter(response, invocation);
         return response;
     }
 
@@ -151,7 +167,7 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
         putToolBindingIfPresent(toolResult, invocation);
         Map<String, Object> response = newToolReplayEnvelope(invocation, "tool_result");
         response.put("toolResult", toolResult);
-        appendSubAgentNestingTags(response, invocation);
+        mirrorNestingToOuter(response, invocation);
         // 镜像进 resultMap，对齐 BaseAgentResponseHandler 实时路径
         if (StringUtils.isNotBlank(invocation == null ? null : invocation.getParentToolCallId())) {
             Map<String, Object> nested = new LinkedHashMap<>();
@@ -159,6 +175,11 @@ abstract class AbstractToolInvocationProjector implements ToolInvocationProjecto
             response.put("resultMap", nested);
         }
         return response;
+    }
+
+    /** 将嵌套标签同步到外层 envelope，供 resolveParentToolUseId 读取。 */
+    private void mirrorNestingToOuter(Map<String, Object> response, ToolInvocationView invocation) {
+        appendSubAgentNestingTags(response, invocation);
     }
 
     private Map<String, Object> newToolReplayEnvelope(ToolInvocationView invocation, String messageType) {

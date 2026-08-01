@@ -255,7 +255,7 @@ export function PromptInputAttachment({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md bg-muted/40 px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md bg-muted/40 px-1.5 font-medium text-sm transition-[background-color,color,opacity] duration-150 hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
             className
           )}
           key={data.id}
@@ -867,7 +867,7 @@ export const PromptInputSpeechButton = ({
   return (
     <PromptInputButton
       className={cn(
-        "relative transition-all duration-200",
+        "relative transition-[background-color,color,opacity,box-shadow] duration-150",
         isListening && "animate-pulse bg-accent text-accent-foreground",
         className
       )}

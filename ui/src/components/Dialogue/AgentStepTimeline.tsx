@@ -15,7 +15,6 @@ import {
   FilePenLineIcon,
   FileTextIcon,
   GlobeIcon,
-  LoaderCircleIcon,
   SearchIcon,
   TerminalIcon,
   BotIcon,
@@ -84,7 +83,50 @@ function asText(value: unknown): string {
 }
 
 function normalizeComparableText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[`*_#>\[\]()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function textsNearlyEqual(left: string, right: string): boolean {
+  const a = normalizeComparableText(left);
+  const b = normalizeComparableText(right);
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  // 终答流式/结果覆盖时文案可能前后缀略有差异
+  const minLen = Math.min(a.length, b.length);
+  if (minLen < 24) {
+    return false;
+  }
+  return a.includes(b) || b.includes(a);
+}
+
+function resolveSegmentComparableText(segment: ProcessSegment): string {
+  if (segment.type === "final_reply" || segment.type === "assistant_reply") {
+    return segment.text;
+  }
+  if (segment.type === "thinking") {
+    return asText(segment.step.tool.toolThought);
+  }
+  if (segment.type === "group") {
+    // 组内 task_summary / 仅一条与终答同文的过程回复
+    for (const step of segment.group.steps) {
+      if (step.tool.messageType === "task_summary") {
+        return resolveTaskSummaryText(step.tool);
+      }
+      if (step.kind === "assistant_reply") {
+        return asText(step.tool.toolThought);
+      }
+    }
+  }
+  return "";
 }
 
 /** 与底部 conclusion 同文案的时间线条目视为重复（终答不当思考/过程） */
@@ -92,20 +134,23 @@ function isDuplicateOfConclusion(
   segment: ProcessSegment,
   conclusionText: string
 ): boolean {
-  const normalizedConclusion = normalizeComparableText(conclusionText);
-  if (!normalizedConclusion) {
+  if (!normalizeComparableText(conclusionText)) {
     return false;
   }
-  if (segment.type === "final_reply" || segment.type === "assistant_reply") {
-    return (
-      normalizeComparableText(segment.text) === normalizedConclusion
-    );
+  // 终答区已有 conclusion 时，时间线不再渲染 final_reply
+  if (segment.type === "final_reply") {
+    return true;
   }
-  if (segment.type === "thinking") {
-    const thought = asText(segment.step.tool.toolThought);
-    return normalizeComparableText(thought) === normalizedConclusion;
+  // task_summary 若已作为底部结论，不再在时间线重复
+  if (
+    segment.type === "group" &&
+    segment.group.steps.every((step) => step.tool.messageType === "task_summary")
+  ) {
+    const summary = resolveTaskSummaryText(segment.group.steps[0]?.tool);
+    return !summary || textsNearlyEqual(summary, conclusionText);
   }
-  return false;
+  const segmentText = resolveSegmentComparableText(segment);
+  return textsNearlyEqual(segmentText, conclusionText);
 }
 
 function isRichInlineStep(step: ProcessStepRow): boolean {
@@ -122,11 +167,8 @@ function isRichInlineStep(step: ProcessStepRow): boolean {
   return false;
 }
 
-const stepKindIcon = (kind: ProcessStepKind, active: boolean) => {
-  const className = cn(
-    "size-[15px] shrink-0",
-    active ? "text-[var(--chat-text-muted)]" : "text-[var(--chat-text-muted)]"
-  );
+const stepKindIcon = (kind: ProcessStepKind, _active?: boolean) => {
+  const className = "size-[15px] shrink-0 text-[var(--chat-text-muted)]";
   switch (kind) {
     case "thinking":
       return <BrainIcon className={className} />;
@@ -152,11 +194,8 @@ const stepKindIcon = (kind: ProcessStepKind, active: boolean) => {
     case "artifact":
       return <PackageIcon className={className} />;
     default:
-      return active ? (
-        <LoaderCircleIcon className={cn(className, "animate-spin")} />
-      ) : (
-        <WrenchIcon className={className} />
-      );
+      // Active state uses text shimmer (thinking-shimmer), not a fast spinner.
+      return <WrenchIcon className={className} />;
   }
 };
 
@@ -377,11 +416,7 @@ const CompactStepRow: FC<{
       }}
     >
       <div className="flex size-[15px] shrink-0 items-center justify-center text-[var(--chat-text-muted)]">
-        {step.active ? (
-          <LoaderCircleIcon className="size-[15px] animate-spin text-[var(--chat-text-muted)]" />
-        ) : (
-          stepKindIcon(step.kind, step.active)
-        )}
+        {stepKindIcon(step.kind, step.active)}
       </div>
       <span
         className={cn(
@@ -579,12 +614,34 @@ const FinalReplySegment: FC<{ text: string }> = memo(({ text }) => (
 
 FinalReplySegment.displayName = "FinalReplySegment";
 
+function filterConclusionDuplicateSteps(
+  steps: ProcessStepRow[],
+  conclusionText: string
+): ProcessStepRow[] {
+  if (!conclusionText) {
+    return steps;
+  }
+  return steps.filter((step) => {
+    if (step.tool.messageType === "task_summary") {
+      return !textsNearlyEqual(
+        resolveTaskSummaryText(step.tool),
+        conclusionText
+      );
+    }
+    if (step.kind === "assistant_reply") {
+      return !textsNearlyEqual(asText(step.tool.toolThought), conclusionText);
+    }
+    return true;
+  });
+}
+
 const ProcessSegmentView: FC<{
   segment: ProcessSegment;
   isLast: boolean;
   loading: boolean;
+  conclusionText?: string;
   ctx: StepRowContext;
-}> = memo(({ segment, isLast, loading, ctx }) => {
+}> = memo(({ segment, isLast, loading, conclusionText = "", ctx }) => {
   if (segment.type === "thinking") {
     return <ThinkingSegment step={segment.step} />;
   }
@@ -602,11 +659,27 @@ const ProcessSegmentView: FC<{
   if (segment.type === "final_reply") {
     return <FinalReplySegment text={segment.text} />;
   }
+
+  const visibleSteps = filterConclusionDuplicateSteps(
+    segment.group.steps,
+    conclusionText
+  );
+  if (!visibleSteps.length) {
+    return null;
+  }
+  const visibleGroup = {
+    ...segment.group,
+    steps: visibleSteps,
+    stepCount: visibleSteps.filter((step) => step.kind !== "thinking" && step.kind !== "assistant_reply").length || visibleSteps.length,
+    active: visibleSteps.some((step) => step.active),
+    completed: visibleSteps.every((step) => step.completed) && !visibleSteps.some((step) => step.active),
+  };
+
   // 单步且已完成：直接展示工具行；进行中/多步走可折叠组，完成后自动收起
-  if (segment.group.stepCount <= 1 && segment.group.completed) {
+  if (visibleGroup.stepCount <= 1 && visibleGroup.completed) {
     return (
       <div className="w-full">
-        {segment.group.steps.map((step) => (
+        {visibleGroup.steps.map((step) => (
           <CompactStepRow key={step.id} step={step} ctx={ctx} />
         ))}
       </div>
@@ -614,9 +687,9 @@ const ProcessSegmentView: FC<{
   }
   return (
     <StepGroupBlock
-      group={segment.group}
-      defaultOpen={segment.group.active || !segment.group.completed}
-      forceOpen={segment.group.active}
+      group={visibleGroup}
+      defaultOpen={visibleGroup.active || !visibleGroup.completed}
+      forceOpen={visibleGroup.active}
       ctx={ctx}
     />
   );
@@ -775,6 +848,7 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
                 segment={segment}
                 isLast={index === model.segments.length - 1}
                 loading={chat.loading}
+                conclusionText={conclusionText}
                 ctx={ctx}
               />
             );

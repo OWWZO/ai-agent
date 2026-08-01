@@ -47,17 +47,14 @@ public class GptQueryAgentRequestFactory {
         if ("chat".equalsIgnoreCase(req.getOutputStyle())) {
             request.setAgentType(AgentType.WORKFLOW.getValue());
             request.setSopPrompt("");
+        } else if (req.getDeepThink() != null && req.getDeepThink() != 0) {
+            request.setAgentType(AgentType.PLAN_SOLVE.getValue());
+            request.setSopPrompt(reactorConfig.getReactorSopPrompt());
+            request.setBasePrompt("");
         } else {
-            Integer agentType = (req.getDeepThink() == null || req.getDeepThink() == 0)
-                    ? AgentType.REACT.getValue()
-                    : AgentType.PLAN_SOLVE.getValue();
-            request.setAgentType(agentType);
-            request.setSopPrompt(agentType.equals(AgentType.PLAN_SOLVE.getValue())
-                    ? reactorConfig.getReactorSopPrompt()
-                    : "");
-            request.setBasePrompt(agentType.equals(AgentType.REACT.getValue())
-                    ? reactorConfig.getReactorBasePrompt()
-                    : "");
+            request.setAgentType(AgentType.REACT.getValue());
+            request.setSopPrompt("");
+            request.setBasePrompt(reactorConfig.getReactorBasePrompt());
         }
 
         request.setIsStream(true);

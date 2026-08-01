@@ -79,13 +79,13 @@
   --status-neutral-bg: oklch(0.94 0.005 80);
   --status-neutral-text: oklch(0.5 0.015 80);
 
-  /* JSON viewer — syntax palette (light) */
-  --json-view-inner-bg: oklch(0.98 0.006 95);
-  --json-syntax-fg: oklch(0.32 0.02 60);
-  --json-syntax-key: oklch(0.45 0.15 278);
-  --json-syntax-string: oklch(0.4 0.11 155);
-  --json-syntax-number: oklch(0.5 0.14 55);
-  --json-syntax-boolean: oklch(0.48 0.17 315);
+  /* JSON viewer — flat chat surface, no warm nested frame */
+  --json-view-inner-bg: var(--chat-surface);
+  --json-syntax-fg: var(--chat-text);
+  --json-syntax-key: var(--chat-accent);
+  --json-syntax-string: oklch(0.42 0.1 155);
+  --json-syntax-number: oklch(0.48 0.12 55);
+  --json-syntax-boolean: var(--chat-accent-muted);
 
   /* Editorial Shadows - refined depth */
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.02);
@@ -131,6 +131,17 @@
 
   /* 全局画布：保留 Manus 灰底 */
   --page-gradient: #f5f5f7;
+
+  /* Motion tokens */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 150ms;
+  --duration-tooltip: 150ms;
+  --duration-dropdown: 200ms;
+  --duration-panel: 250ms;
+  --duration-modal: 300ms;
+  --duration-message: 220ms;
 }
 
 .dark {
@@ -187,13 +198,13 @@
   --status-neutral-bg: oklch(0.2 0.015 80);
   --status-neutral-text: oklch(0.6 0.02 80);
 
-  /* JSON viewer — syntax palette (dark) */
-  --json-view-inner-bg: oklch(0.14 0.02 275);
-  --json-syntax-fg: oklch(0.88 0.01 90);
-  --json-syntax-key: oklch(0.74 0.14 278);
-  --json-syntax-string: oklch(0.73 0.11 160);
-  --json-syntax-number: oklch(0.8 0.12 75);
-  --json-syntax-boolean: oklch(0.75 0.16 320);
+  /* JSON viewer — flat chat surface, no warm nested frame */
+  --json-view-inner-bg: var(--chat-surface);
+  --json-syntax-fg: var(--chat-text);
+  --json-syntax-key: var(--chat-accent);
+  --json-syntax-string: oklch(0.72 0.1 160);
+  --json-syntax-number: oklch(0.78 0.1 75);
+  --json-syntax-boolean: var(--chat-accent-muted);
 
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.3);
   --shadow-sm: 0 2px 8px oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.2);
@@ -285,7 +296,7 @@
 @config '../tailwind.config.js';
 
 @theme {
-  --default-transition-duration: 0.3s;
+  --default-transition-duration: 0.15s;
   @keyframes dot-pulse {
     0%,
     100% {
@@ -533,19 +544,19 @@ ol {
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.22s var(--ease-out) forwards;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease forwards;
+  animation: fadeIn 0.2s var(--ease-out) forwards;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scaleIn 0.22s var(--ease-out) forwards;
 }
 
 .animate-slide-in-right {
-  animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideInRight 0.22s var(--ease-out) forwards;
 }
 
 /* Stagger delays */
@@ -585,17 +596,50 @@ ol {
 
 /* Smooth transitions */
 .transition-apple {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 200ms var(--ease-out),
+    opacity 200ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 200ms ease,
+    color 150ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  html:focus-within {
     scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in-up,
+  .animate-scale-in,
+  .animate-slide-in-right,
+  .animate-fade-in,
+  .message-appear,
+  .timeline-segment-enter,
+  .panel-transition,
+  .transition-apple,
+  .hover-float,
+  .card-editorial,
+  .float-up,
+  .line-reveal,
+  .scale-reveal,
+  .char-reveal,
+  .workspace-fade-in,
+  .tab-content-enter {
+    animation: none !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow !important;
+    transition-duration: 120ms !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .ai-stream-cursor,
+  .thinking-shimmer,
+  .animate-marquee,
+  .animate-blink,
+  .pulse-glow,
+  .shimmer-border {
+    animation: none !important;
   }
 }
 
@@ -610,7 +654,9 @@ ol {
   border-radius: 24px !important;
   box-shadow: none !important;
   border: none !important;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition:
+    border-color 200ms var(--ease-out),
+    box-shadow 200ms var(--ease-out) !important;
 }
 
 [data-slot="prompt-input-body"]:focus-within {
@@ -633,7 +679,11 @@ ol {
   border: none !important;
   background: oklch(0.94 0.003 90) !important;
   box-shadow: none !important;
-  transition: all 0.2s ease !important;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    transform 150ms var(--ease-out) !important;
 }
 
 [data-slot="prompt-input-button"]:hover {
@@ -651,7 +701,9 @@ ol {
   color: var(--chat-bg, oklch(98.5% 0 0)) !important;
   border-radius: 9999px !important;
   box-shadow: none !important;
-  transition: opacity 0.15s ease !important;
+  transition:
+    opacity var(--duration-press) ease,
+    transform var(--duration-press) var(--ease-out) !important;
 }
 
 [data-slot="prompt-input-submit"]:hover:not(:disabled) {
@@ -661,11 +713,21 @@ ol {
   transform: none;
 }
 
+[data-slot="prompt-input-submit"]:active:not(:disabled) {
+  transform: scale(0.97);
+  opacity: 0.92;
+}
+
+.reactor-send-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 [data-slot="prompt-input-submit"]:disabled {
   background: oklch(0.9 0.005 90) !important;
   color: oklch(0.7 0 0) !important;
   box-shadow: none !important;
   opacity: 1 !important;
+  transform: none !important;
 }
 
 .reactor-send-btn[data-slot="prompt-input-submit"],
@@ -816,22 +878,25 @@ ol {
 
 /* Smooth panel transitions */
 .panel-transition {
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition:
+    width var(--duration-panel) var(--ease-in-out),
+    opacity 200ms var(--ease-out),
+    transform var(--duration-panel) var(--ease-in-out);
 }
 
 /* Message appear animation */
 .message-appear {
-  animation: messageAppear 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: messageAppear var(--duration-message) var(--ease-out) both;
 }
 
 @keyframes messageAppear {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.98);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -843,16 +908,21 @@ ol {
   font-feature-settings: "tnum" 1;
 }
 
+/*
+ * Collapsible open/close must NOT permanently lock height to
+ * --radix-collapsible-content-height: streaming reasoning/tool rows grow after open.
+ * Keyframes without animation-fill-mode:forwards so open state ends as height:auto.
+ */
 .agent-step-timeline [data-slot="collapsible-content"] {
   overflow: hidden;
 }
 
 .agent-step-timeline [data-slot="collapsible-content"][data-state="open"] {
-  animation: timelineCollapseOpen 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: timelineCollapseOpen 0.2s var(--ease-out);
 }
 
 .agent-step-timeline [data-slot="collapsible-content"][data-state="closed"] {
-  animation: timelineCollapseClose 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: timelineCollapseClose 0.16s var(--ease-out);
 }
 
 @keyframes timelineCollapseOpen {
@@ -878,7 +948,7 @@ ol {
 }
 
 .timeline-segment-enter {
-  animation: timelineSegmentEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: timelineSegmentEnter 0.2s var(--ease-out) both;
 }
 
 @keyframes timelineSegmentEnter {
@@ -948,16 +1018,16 @@ ol {
   animation: thinkingPulse 1.5s ease-in-out infinite;
 }
 
-/* Stable shimmer for process / thinking text（正在理解问题光效） */
+/* Stable shimmer for process / thinking text — shared by 深度思考 & 步骤执行 */
 .thinking-shimmer {
   display: inline-block;
   color: var(--chat-text-muted, #6b7280);
   background-image:
     linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0) 40%,
-      rgba(255, 255, 255, 0.95) 50%,
-      rgba(255, 255, 255, 0) 60%
+      rgba(255, 255, 255, 0) 38%,
+      rgba(255, 255, 255, 0.92) 50%,
+      rgba(255, 255, 255, 0) 62%
     ),
     linear-gradient(
       var(--chat-text-muted, #6b7280),
@@ -969,7 +1039,7 @@ ol {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: thinkingShimmer 1.8s linear infinite;
+  animation: thinkingShimmer 2.2s linear infinite;
   will-change: background-position;
 }
 
@@ -1141,12 +1211,16 @@ ol {
 
 /* Hover Float Effect */
 .hover-float {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.hover-float:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-elevated);
+@media (hover: hover) and (pointer: fine) {
+  .hover-float:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-elevated);
+  }
 }
 
 /* Shimmer Border Animation */
@@ -1188,15 +1262,21 @@ ol {
 
 /* Card Hover Effect */
 .card-editorial {
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
   box-shadow: 0 2px 8px oklch(0 0 0 / 0.03);
 }
 
-.card-editorial:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 8px 32px oklch(0 0 0 / 0.06),
-    0 0 0 1px oklch(0.9 0.005 90 / 0.5);
+@media (hover: hover) and (pointer: fine) {
+  .card-editorial:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 8px 32px oklch(0 0 0 / 0.06),
+      0 0 0 1px oklch(0.9 0.005 90 / 0.5);
+  }
 }
 
 /* Focus Ring - Editorial */

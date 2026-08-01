@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence, useSpring, useMotionValue } from "motion/react";
 import { Streamdown } from "streamdown";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { memo, useEffect, useRef, useState, useMemo } from "react";
 
@@ -33,7 +34,10 @@ const StreamingTextComponent = ({
   const [displayText, setDisplayText] = useState(children);
   const prevTextRef = useRef(children);
   const cursorOpacity = useMotionValue(1);
-  const smoothCursorOpacity = useSpring(cursorOpacity, { stiffness: 300, damping: 30 });
+  const smoothCursorOpacity = useSpring(cursorOpacity, {
+    stiffness: 300,
+    damping: 30
+  });
 
   // 优化流式文本更新逻辑
   useEffect(() => {
@@ -121,7 +125,10 @@ const StreamingTextComponent = ({
         className={cn("inline-block align-middle ml-0.5", cursorClasses[cursorStyle])}
         style={{ opacity: cursorStyle === "pulse" ? smoothCursorOpacity : 1 }}
         animate={cursorStyle === "pulse" ? {} : { opacity: [1, 0.3, 1] }}
-        transition={cursorStyle === "pulse" ? {} : { duration: 1, repeat: Infinity }}
+        transition={cursorStyle === "pulse" ? {} : {
+          duration: 1,
+          repeat: Infinity
+        }}
       />
     );
   }, [showCursor, isStreaming, cursorStyle, smoothCursorOpacity]);
@@ -158,17 +165,29 @@ const StreamMessageWrapperComponent = ({
   className,
   isNew = false,
 }: StreamMessageWrapperProps) => {
+  const { reduce, duration, ease } = useMotionConfig();
+
   return (
     <motion.div
       className={cn("w-full", className)}
-      initial={isNew ? { opacity: 0, y: 20, scale: 0.98 } : false}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{
-        duration: 0.4,
-        ease: [0.25, 0.46, 0.45, 0.94],
+      initial={
+        isNew
+          ? reduce
+            ? { opacity: 0 }
+            : {
+              opacity: 0,
+              y: 8
+            }
+          : false
+      }
+      animate={{
+        opacity: 1,
+        y: 0
       }}
-      layout
-      layoutId={isNew ? "new-message" : undefined}
+      transition={{
+        duration,
+        ease,
+      }}
     >
       {children}
     </motion.div>
@@ -235,7 +254,11 @@ const TypewriterComponent = ({
             cursorClassName
           )}
           animate={{ opacity: [1, 0.25, 1] }}
-          transition={{ duration: cursorBlinkDuration, repeat: Infinity, ease: "easeInOut" }}
+          transition={{
+            duration: cursorBlinkDuration,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
         />
       )}
     </span>
@@ -370,13 +393,22 @@ const RippleContainerComponent = ({
         {childrenArray.map((child, index) => (
           <motion.div
             key={index}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
+            initial={{
+              opacity: 0,
+              x: -10
+            }}
+            animate={{
+              opacity: 1,
+              x: 0
+            }}
+            exit={{
+              opacity: 0,
+              x: 10
+            }}
             transition={{
-              duration: 0.3,
-              delay: index * staggerDelay,
-              ease: [0.25, 0.46, 0.45, 0.94],
+              duration: DURATION.message,
+              delay: index * Math.min(staggerDelay, 0.06),
+              ease: EASE_OUT,
             }}
           >
             {child}

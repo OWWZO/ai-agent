@@ -52,7 +52,7 @@ const RecentSessionList = memo((props: RecentSessionListProps) => {
               data-session-id={session.sessionId}
               onClick={() => onSelect(session)}
               className={classNames(
-                "flex w-full items-start justify-between gap-4 rounded-[20px] border px-4 py-3 text-left transition-all duration-200",
+                "flex w-full items-start justify-between gap-4 rounded-[20px] border px-4 py-3 text-left transition-[background-color,border-color,box-shadow,color] duration-150",
                 isActive
                   ? "border-[var(--chat-border-strong)] bg-[var(--chat-surface-soft)]"
                   : "border-[var(--chat-border)] hover:border-[var(--chat-border-strong)] hover:bg-[var(--chat-surface-soft)]/70"

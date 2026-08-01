@@ -70,28 +70,33 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
 
         AgentResponseProjectionStream projectingStream =
                 new AgentResponseProjectionStream(stream, agentRequest, handlerMap);
-
         try {
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", () -> {
-                try {
-                    agentDispatchService.dispatch(agentRequest, projectingStream);
-                    projectingStream.complete();
-                } catch (Exception e) {
-                    if (projectingStream.isAborted() || stream.isAborted()) {
-                        log.info("{} dispatch stopped after downstream abort", agentRequest.getRequestId());
-                        projectingStream.complete();
-                        return;
-                    }
-                    log.error("{} direct dispatch error", agentRequest.getRequestId(), e);
-                    projectingStream.completeWithError(e);
-                } finally {
-                    log.info("{}, agent.query.web.singleRequest end, requestId: {}",
-                            params.getRequestId(), JSON.toJSONString(params));
-                }
-            });
+            AgentExecutorSupport.execute(dispatchExecutor, "dispatch",
+                    () -> dispatchOnExecutor(params, agentRequest, projectingStream, stream));
         } catch (AgentExecutorBusyException e) {
             log.warn("{} dispatch rejected", agentRequest.getRequestId(), e);
             stream.completeWithError(e);
+        }
+    }
+
+    private void dispatchOnExecutor(GptQueryReq params,
+                                    AgentRequest agentRequest,
+                                    AgentResponseProjectionStream projectingStream,
+                                    AgentSessionStream stream) {
+        try {
+            agentDispatchService.dispatch(agentRequest, projectingStream);
+            projectingStream.complete();
+        } catch (Exception e) {
+            if (projectingStream.isAborted() || stream.isAborted()) {
+                log.info("{} dispatch stopped after downstream abort", agentRequest.getRequestId());
+                projectingStream.complete();
+                return;
+            }
+            log.error("{} direct dispatch error", agentRequest.getRequestId(), e);
+            projectingStream.completeWithError(e);
+        } finally {
+            log.info("{}, agent.query.web.singleRequest end, requestId: {}",
+                    params.getRequestId(), JSON.toJSONString(params));
         }
     }
 

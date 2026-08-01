@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import classNames from "classnames";
 import { motion } from "motion/react";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   Download,
   ExternalLink,
@@ -30,6 +31,13 @@ import {
   workspaceFileKey,
   type WorkspaceFileItem,
 } from "./workspaceFiles";
+import {
+  FILE_KIND_TONE,
+  fileKindBadge,
+  fileKindLabel,
+  resolveFileKind,
+} from "@/utils/fileKind";
+import { isTextCopyableFileLike } from "@/utils/taskArtifacts";
 
 const iconBtnClass =
   "flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-black/[0.05] hover:text-[#1d1d1f]";
@@ -64,70 +72,6 @@ type ActionViewProps = {
   onClose?: () => void;
   ref?: React.Ref<ActionViewRef>;
 };
-
-type FileKind = "img" | "xlsx" | "md" | "html" | "pdf" | "css" | "code" | "py" | "file";
-
-function resolveKind(type?: string, name?: string): FileKind {
-  const ext = (type || name?.split(".").pop() || "").toLowerCase();
-  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"].includes(ext)) return "img";
-  if (["csv", "xlsx", "xls"].includes(ext)) return "xlsx";
-  if (["md", "markdown", "txt"].includes(ext)) return "md";
-  if (["html", "htm"].includes(ext)) return "html";
-  if (ext === "pdf") return "pdf";
-  if (["css", "scss", "less"].includes(ext)) return "css";
-  if (ext === "py") return "py";
-  if (["js", "ts", "tsx", "jsx", "java", "json", "xml", "code"].includes(ext)) return "code";
-  return "file";
-}
-
-function fileTypeLabel(type?: string, name?: string) {
-  const kind = resolveKind(type, name);
-  const ext = (type || name?.split(".").pop() || "").toUpperCase();
-  switch (kind) {
-    case "img":
-      return `Image · ${ext || "PNG"}`;
-    case "xlsx":
-      return `Spreadsheet · ${ext || "XLSX"}`;
-    case "md":
-      return name?.replace(/\.[^.]+$/, "") || `Document · ${ext || "MD"}`;
-    case "html":
-      return "Web page · HTML";
-    case "pdf":
-      return "PDF · PDF";
-    case "css":
-      return "样式文件 · CSS";
-    case "py":
-      return "Python · PY";
-    case "code":
-      return `Code · ${ext || "FILE"}`;
-    default:
-      return ext ? `File · ${ext}` : "File";
-  }
-}
-
-function kindBadge(kind: FileKind) {
-  if (kind === "xlsx") return "X";
-  if (kind === "py") return "Py";
-  if (kind === "html" || kind === "code") return "</>";
-  if (kind === "img") return "▢";
-  if (kind === "pdf") return "P";
-  return "T";
-}
-
-function kindTone(kind: FileKind) {
-  switch (kind) {
-    case "img":
-    case "xlsx":
-    case "md":
-    case "html":
-    case "code":
-    case "py":
-    case "pdf":
-    case "css":
-    default:
-      return "bg-[#f5f5f7] text-[#6b6b70]";
-  }
-}
 
 const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
   const {
@@ -282,30 +226,9 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   // HTML 默认直接渲染；源码模式仍可看源码
   const canSourceMode = Boolean(
     selectedFile &&
-      [
-        "md",
-        "markdown",
-        "txt",
-        "json",
-        "js",
-        "ts",
-        "tsx",
-        "jsx",
-        "py",
-        "java",
-        "xml",
-        "html",
-        "htm",
-        "css",
-        "yml",
-        "yaml",
-        "sql",
-        "sh",
-        "log",
-        "csv",
-        "code",
-      ].includes(selectedExt)
+      (isTextCopyableFileLike(selectedFile) || selectedExt === "code")
   );
+  const forceSource = viewMode === "source" && canSourceMode;
 
   const handleDownload = useMemoizedFn(() => {
     if (!downloadUrl || !selectedFile) return;
@@ -326,17 +249,19 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
     showMessage()?.success("链接已复制");
   });
 
-  const selectedKind = resolveKind(selectedFile?.type, selectedFile?.name);
+  const selectedKind = resolveFileKind(selectedFile?.type, selectedFile?.name);
   // PDF 对齐浏览器式预览：保留完整文件名（含扩展名）
   const metaTitle =
     selectedKind === "pdf"
       ? selectedFile?.name || ""
       : selectedFile?.name?.replace(/\.[^.]+$/, "") || selectedFile?.name || "";
   const metaSub = selectedFile
-    ? fileTypeLabel(selectedFile.type, selectedFile.name)
+    ? fileKindLabel(selectedFile.type, selectedFile.name)
     : "";
   const selectedPdfIcon =
     selectedKind === "pdf" ? iconType.pdf : undefined;
+
+  const { reduce } = useMotionConfig();
 
   return (
     <motion.div
@@ -347,8 +272,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{
-        duration: 0.35,
-        ease: [0.25, 0.46, 0.45, 0.94],
+        duration: reduce ? DURATION.reduced : 0.22,
+        ease: EASE_OUT,
       }}
     >
       {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览 */}
@@ -375,7 +300,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                 const key = workspaceFileKey(file);
                 const active =
                   panelMode === "file" && key === workspaceFileKey(selectedFile);
-                const kind = resolveKind(file.type, file.name);
+                const kind = resolveFileKind(file.type, file.name);
                 return (
                   <button
                     key={key}
@@ -395,10 +320,10 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                     <span
                       className={classNames(
                         "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md text-[10px] font-bold leading-none",
-                        kindTone(kind)
+                        FILE_KIND_TONE
                       )}
                     >
-                      {kindBadge(kind)}
+                      {fileKindBadge(kind)}
                     </span>
                     <span className="truncate text-[12.5px] font-medium">
                       {file.name}
@@ -498,10 +423,10 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                   <span
                     className={classNames(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold",
-                      kindTone(selectedKind)
+                      FILE_KIND_TONE
                     )}
                   >
-                    {kindBadge(selectedKind)}
+                    {fileKindBadge(selectedKind)}
                   </span>
                 )}
                 <div className="min-w-0">
@@ -558,24 +483,20 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
               className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white"
               key={`${workspaceFileKey(selectedFile)}-${refreshToken}-${viewMode}`}
             >
-              {viewMode === "source" && canSourceMode ? (
-                <div className="min-h-0 flex-1 overflow-auto">
-                  <FileList
-                    taskList={taskList}
-                    activeFile={selectedFile}
-                    embedded
-                    forceSource
-                  />
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <FileList
-                    taskList={taskList}
-                    activeFile={selectedFile}
-                    embedded
-                  />
-                </div>
-              )}
+              <div
+                className={
+                  forceSource
+                    ? "min-h-0 flex-1 overflow-auto"
+                    : "min-h-0 flex-1 overflow-hidden"
+                }
+              >
+                <FileList
+                  taskList={taskList}
+                  activeFile={selectedFile}
+                  embedded
+                  forceSource={forceSource}
+                />
+              </div>
             </div>
           </>
         ) : (

@@ -106,7 +106,7 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
   getThinkingMessage?: (isStreaming: boolean, duration?: number) => ReactNode;
 };
 
-// 动态思考指示器：文字光效，无星星图标
+// 动态思考指示器：与步骤执行共用 thinking-shimmer 节奏
 const ThinkingIndicator = memo(() => (
   <span className="thinking-shimmer text-[13px] font-medium tracking-[0.02em]">
     正在理解问题…
@@ -116,10 +116,10 @@ const ThinkingIndicator = memo(() => (
 ThinkingIndicator.displayName = "ThinkingIndicator";
 
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
-  if (isStreaming || duration === 0) {
+  if (isStreaming) {
     return <ThinkingIndicator />;
   }
-  if (duration === undefined) {
+  if (duration === undefined || duration === 0) {
     return <span className="text-[13px] text-muted-foreground/80">思考完成</span>;
   }
   return <span className="text-[13px] text-muted-foreground/80">已思考 {duration} 秒</span>;

@@ -7,11 +7,12 @@ import ReactJsonPretty from "react-json-pretty";
 
 const jsonPrettyTheme = {
   main:
-    "margin:0;background:transparent;color:var(--json-syntax-fg);font-family:var(--font-mono);font-size:13px;line-height:1.75;letter-spacing:-0.015em;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;tab-size:2",
+    "margin:0;padding:0;background:transparent;color:var(--json-syntax-fg);font-family:var(--font-mono);font-size:13px;line-height:1.75;letter-spacing:-0.015em;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;tab-size:2",
   key: "color:var(--json-syntax-key);font-weight:500",
   string: "color:var(--json-syntax-string)",
   value: "color:var(--json-syntax-number)",
   boolean: "color:var(--json-syntax-boolean);font-weight:500",
+  error: "color:var(--status-failed-text)",
 };
 
 export type JsonViewerProps = {
@@ -38,12 +39,13 @@ const JsonViewerInner = memo(({ data, className }: JsonViewerProps) => {
 
   return (
     <ViewerPanelShell
-      className={className}
+      className={cn("flex h-full min-h-0 flex-col rounded-none shadow-none", className)}
+      bodyClassName="min-h-0 flex-1 overflow-hidden bg-[var(--chat-surface)] p-0"
       headerRight={
         <Button
           aria-label={copied ? "Copied" : "Copy JSON"}
           className={cn(
-            "h-7 w-7 shrink-0 rounded-md bg-[var(--chat-surface)] text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
+            "h-7 w-7 shrink-0 rounded-md bg-transparent text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-muted)] hover:text-[var(--chat-text)]",
             copied && "text-[var(--success)]"
           )}
           onClick={copy}
@@ -57,12 +59,7 @@ const JsonViewerInner = memo(({ data, className }: JsonViewerProps) => {
       label="JSON"
       subtitle="Structured data"
     >
-      <div
-        className={cn(
-          "max-h-[min(70vh,560px)] overflow-auto rounded-lg px-3 py-2.5 sm:px-4 sm:py-3",
-          "shadow-[inset_0_1px_0_oklch(1_0_0_/_0.06)] dark:shadow-[inset_0_1px_0_oklch(1_0_0_/_0.04)]"
-        )}
-      >
+      <div className="h-full min-h-0 overflow-auto px-4 py-3 sm:px-5 sm:py-4">
         <ReactJsonPretty
           data={data}
           space={2}

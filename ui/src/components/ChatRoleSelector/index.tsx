@@ -22,7 +22,7 @@ const ChatRoleSelector: ReactorType.FC<Props> = ({ roles, selectedRole, disabled
           type="button"
           disabled={disabled || !hasRoles}
           className={cn(
-            "group inline-flex h-9 max-w-full items-center gap-2 rounded-full border border-transparent px-3 text-[14px] font-medium transition-all duration-200",
+            "group inline-flex h-9 max-w-full items-center gap-2 rounded-full border border-transparent px-3 text-[14px] font-medium transition-[background-color,border-color,color,box-shadow] duration-150",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d9ff] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
             disabled || !hasRoles ? "cursor-not-allowed opacity-50" : "hover:bg-white",
             unavailable ? "bg-[#fff1f2] text-[#b42318]" : "bg-transparent text-[#111827]"
@@ -30,7 +30,7 @@ const ChatRoleSelector: ReactorType.FC<Props> = ({ roles, selectedRole, disabled
         >
           <span
             className={cn(
-              "flex size-[26px] shrink-0 items-center justify-center rounded-full transition-all duration-200",
+              "flex size-[26px] shrink-0 items-center justify-center rounded-full transition-[background-color,color,box-shadow] duration-150",
               unavailable ? "bg-[#ffe4e6] text-[#b42318]" : "bg-[#e8f2ff] text-[#0a74da]"
             )}
           >
@@ -57,7 +57,7 @@ const ChatRoleSelector: ReactorType.FC<Props> = ({ roles, selectedRole, disabled
                 key={role.agentId}
                 type="button"
                 className={cn(
-                  "flex w-full gap-2 rounded-xl border border-transparent px-2 py-2 text-left transition-all duration-200",
+                  "flex w-full gap-2 rounded-xl border border-transparent px-2 py-2 text-left transition-[background-color,border-color,color] duration-150",
                   active ? "bg-[#e8f2ff]" : "bg-transparent hover:bg-[#f9fafb]"
                 )}
                 onClick={() => onSelect(role)}

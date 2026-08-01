@@ -49,6 +49,8 @@ import java.util.concurrent.TimeoutException;
 @Accessors(chain = true)
 public abstract class BaseAgent {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     /** Agent 名称 */
     private String name;
     /** Agent 描述 */
@@ -399,29 +401,8 @@ public abstract class BaseAgent {
     }
 
         /**
-     * 初始化系统提示词（cache-friendly）。
-     * query/date/history 不进入 system；nextStep 机制已禁用。
-     */
-    protected void initializePrompts(Map<String, String> systemPromptMap,
-                                     Map<String, String> nextStepPromptMap,
-                                     String defaultSystemPrompt,
-                                     String defaultNextStepPrompt,
-                                     String toolPrompt,
-                                     String extraPlaceholder,
-                                     String extraValue) {
-        String promptKey = "default";
-        Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
-        String template = ToolCallPrompt.ensureUserFacingReplyContract(
-                map.getOrDefault(promptKey, defaultSystemPrompt));
-        setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
-        setNextStepPrompt(null);
-    }
-
-
-
-        /**
-     * 初始化系统提示词（cache-friendly）。
-     * 历史上下文进入 memory messages，不再写入 system。
+     * 初始化稳定 system prompt（cache-friendly）。
+     * query/date/history 进入 memory messages，不写入 system；nextStep 已禁用。
      */
     protected void initializePromptsWithHistoryOnlyInSystem(Map<String, String> systemPromptMap,
                                                             Map<String, String> nextStepPromptMap,
@@ -430,10 +411,9 @@ public abstract class BaseAgent {
                                                             String toolPrompt,
                                                             String extraPlaceholder,
                                                             String extraValue) {
-        String promptKey = "default";
         Map<String, String> map = systemPromptMap == null ? Map.of() : systemPromptMap;
         String template = ToolCallPrompt.ensureUserFacingReplyContract(
-                map.getOrDefault(promptKey, defaultSystemPrompt));
+                map.getOrDefault("default", defaultSystemPrompt));
         setSystemPrompt(buildStableSystemPrompt(template, toolPrompt, extraPlaceholder, extraValue));
         setNextStepPrompt(null);
     }
@@ -543,8 +523,7 @@ public abstract class BaseAgent {
             );
         }
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            Object args = parseToolArguments(toolName, command.getFunction().getArguments(), mapper);
+            Object args = parseToolArguments(toolName, command.getFunction().getArguments(), JSON);
 
             // Plan Mode 工具门禁（对标 cc-haha：plan 期禁写业务文件）
             String planDeny = org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy.denyReason(
@@ -579,7 +558,7 @@ public abstract class BaseAgent {
                 );
             }
 
-            ToolResultPayload payload = normalizeToolResultPayload(resultObject, mapper);
+            ToolResultPayload payload = normalizeToolResultPayload(resultObject);
             String toolResult = StringUtils.defaultString(payload.getToolResult());
             String llmObservation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
             if (Boolean.TRUE.equals(payload.getFailed())) {
@@ -848,42 +827,52 @@ public abstract class BaseAgent {
     private Object parseToolCallInput(String arguments) {
         String normalizedPayload = normalizeToolPayload(arguments);
         try {
-            return new ObjectMapper().readValue(normalizedPayload, Object.class);
+            return JSON.readValue(normalizedPayload, Object.class);
         } catch (Exception ignore) {
             return null;
         }
     }
 
     /**
-     * Parse tool arguments; salvage truncated canvas_publish JSON when normal parse fails.
+     * Parse tool arguments; salvage truncated canvas_publish / emit_ui_tree JSON when normal parse fails.
      */
     private Object parseToolArguments(String toolName, String arguments, ObjectMapper mapper) throws Exception {
         String normalizedPayload = normalizeToolPayload(arguments);
         try {
             return mapper.readValue(normalizedPayload, Object.class);
         } catch (Exception parseError) {
-            if (org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage.isCanvasPublish(toolName)) {
-                Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage
-                        .parseOrSalvage(normalizedPayload);
-                if (salvaged != null && !salvaged.isEmpty()) {
-                    log.warn("{} canvas_publish args salvaged after parse failure: {}",
-                            context == null ? "-" : context.getRequestId(),
-                            parseError.getMessage());
-                    return salvaged;
-                }
-            }
-            if (org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage.isEmitUiTree(toolName)) {
-                Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage
-                        .parseOrSalvage(normalizedPayload);
-                if (salvaged != null && !salvaged.isEmpty()) {
-                    log.warn("{} emit_ui_tree args salvaged after parse failure: {}",
-                            context == null ? "-" : context.getRequestId(),
-                            parseError.getMessage());
-                    return salvaged;
-                }
+            Map<String, Object> salvaged = trySalvageToolArguments(toolName, normalizedPayload, parseError);
+            if (salvaged != null) {
+                return salvaged;
             }
             throw parseError;
         }
+    }
+
+    private Map<String, Object> trySalvageToolArguments(String toolName,
+                                                        String normalizedPayload,
+                                                        Exception parseError) {
+        if (org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage.isCanvasPublish(toolName)) {
+            Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage
+                    .parseOrSalvage(normalizedPayload);
+            if (salvaged != null && !salvaged.isEmpty()) {
+                log.warn("{} canvas_publish args salvaged after parse failure: {}",
+                        context == null ? "-" : context.getRequestId(),
+                        parseError.getMessage());
+                return salvaged;
+            }
+        }
+        if (org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage.isEmitUiTree(toolName)) {
+            Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage
+                    .parseOrSalvage(normalizedPayload);
+            if (salvaged != null && !salvaged.isEmpty()) {
+                log.warn("{} emit_ui_tree args salvaged after parse failure: {}",
+                        context == null ? "-" : context.getRequestId(),
+                        parseError.getMessage());
+                return salvaged;
+            }
+        }
+        return null;
     }
 
     private String buildToolCallSummary(String toolName, String status) {
@@ -1044,13 +1033,13 @@ public abstract class BaseAgent {
             return "{}";
         }
         try {
-            return new ObjectMapper().readTree(payload).toString();
+            return JSON.readTree(payload).toString();
         } catch (Exception ignore) {
             return "{}";
         }
     }
 
-    private ToolResultPayload normalizeToolResultPayload(Object rawResult, ObjectMapper mapper) {
+    private ToolResultPayload normalizeToolResultPayload(Object rawResult) {
         if (rawResult instanceof ToolResultPayload payload) {
             // 已预填 llmObservation 的 rich tool 保持原样；仅 llmData 时走 LeAgent serialize_for_llm。
             boolean failed = Boolean.TRUE.equals(payload.getFailed());
@@ -1108,17 +1097,19 @@ public abstract class BaseAgent {
      * 工具批量执行优先走运行时托管执行器；缺少上下文时回退当前线程，兼容单测夹具。
      */
     private Executor resolveToolExecutor() {
-        if (context == null || context.getRuntimeDependencies() == null) {
-            return Runnable::run;
-        }
-        return context.getRuntimeDependencies().requireToolExecutor();
+        return resolveExecutor(deps -> deps.requireToolExecutor());
     }
 
     private Executor resolveTaskExecutor() {
+        return resolveExecutor(deps -> deps.requireTaskExecutor());
+    }
+
+    private Executor resolveExecutor(java.util.function.Function<
+            org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies, Executor> picker) {
         if (context == null || context.getRuntimeDependencies() == null) {
             return Runnable::run;
         }
-        return context.getRuntimeDependencies().requireTaskExecutor();
+        return picker.apply(context.getRuntimeDependencies());
     }
 
     private String resolveStorageKey(File file) {
@@ -1158,7 +1149,7 @@ public abstract class BaseAgent {
             return null;
         }
         try {
-            return new ObjectMapper().writeValueAsString(metadata);
+            return JSON.writeValueAsString(metadata);
         } catch (Exception ignore) {
             return null;
         }

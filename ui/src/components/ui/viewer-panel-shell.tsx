@@ -25,16 +25,16 @@ export function ViewerPanelShell({
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-xl bg-[var(--chat-surface)] shadow-[var(--shadow-md)]",
+        "relative flex w-full min-h-0 flex-col overflow-hidden rounded-xl bg-[var(--chat-surface)] shadow-[var(--shadow-md)]",
         hideHeader && "rounded-none shadow-none",
         className
       )}
       {...props}
     >
       {hideHeader ? null : (
-        <div className="flex items-center justify-between gap-3 bg-[var(--chat-surface-soft)]/75 px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--chat-border)]/40 bg-[var(--chat-surface)] px-3 py-2">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-[var(--chat-surface)] px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--chat-text-soft)] shadow-[var(--shadow-xs)]">
+            <span className="inline-flex items-center rounded-md bg-[var(--chat-surface-muted)] px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--chat-text-soft)]">
               {label}
             </span>
             {subtitle ? (
@@ -50,7 +50,7 @@ export function ViewerPanelShell({
       )}
       <div
         className={cn(
-          "relative bg-[var(--json-view-inner-bg)] px-3 py-3 sm:px-4 sm:py-4",
+          "relative min-h-0 flex-1 bg-[var(--chat-surface)] px-3 py-3 sm:px-4 sm:py-4",
           bodyClassName
         )}
       >

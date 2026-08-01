@@ -23,7 +23,7 @@ const ActionViewFrame: React.FC<ActionViewFrameProps> = ({
         <div className="flex items-center gap-2 border-b border-[#e8e8ed]/80 px-3 py-2">
           <button
             onClick={onClickTitle}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-all duration-200 hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-[background-color,color,transform] duration-150 hover:bg-[#f5f5f7] hover:text-[#1d1d1f] active:scale-[0.97]"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>

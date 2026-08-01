@@ -119,7 +119,7 @@ function ActionButton(props: {
   const { label, icon, onClick, href, loading, disabled, variant = "secondary" } = props;
 
   const className = classNames(
-    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200",
+    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150",
     variant === "primary" &&
       "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-40",
     variant === "secondary" &&
@@ -168,7 +168,7 @@ function KnowledgeBaseItem(props: {
       type="button"
       onClick={onSelect}
       className={classNames(
-        "group relative w-full rounded-xl border px-3.5 py-3 text-left transition-all duration-200",
+        "group relative w-full rounded-xl border px-3.5 py-3 text-left transition-[background-color,border-color,box-shadow,color] duration-150",
         selected
           ? "border-[var(--chat-accent)]/30 bg-[var(--chat-accent-soft)] shadow-[var(--shadow-xs)]"
           : "border-transparent hover:border-[var(--chat-border)] hover:bg-[var(--chat-surface-soft)]/60"

@@ -129,7 +129,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       return <PlanApprovalCard tool={tool} />;
     }
     case "session_tasks": {
-      return <SessionTaskList tool={tool} />;
+      return <SessionTaskList tool={tool} chat={chat} />;
     }
     case "user_brief": {
       return <UserBriefCard tool={tool} />;

@@ -1,4 +1,3 @@
-import { keyBy } from "lodash";
 import { formatTimestamp } from "@/utils";
 import { getTaskFiles } from "@/utils/taskArtifacts";
 import type { PanelItemType } from "../ActionPanel";
@@ -23,22 +22,24 @@ export type WorkspaceFileItem = CHAT.TFile & {
 export function collectWorkspaceFiles(
   taskList?: PanelItemType[]
 ): WorkspaceFileItem[] {
-  let map: Record<string, WorkspaceFileItem> = {};
-  const list = (taskList || []).reduce<WorkspaceFileItem[]>((pre, task) => {
-    if (MESSAGE_TYPES_WITH_FILES.includes(task.messageType)) {
-      const files: WorkspaceFileItem[] = getTaskFiles(task).map((file) => ({
+  const seen = new Map<string, WorkspaceFileItem>();
+  for (const task of taskList || []) {
+    if (!MESSAGE_TYPES_WITH_FILES.includes(task.messageType)) {
+      continue;
+    }
+    for (const file of getTaskFiles(task)) {
+      const key = workspaceFileKey(file);
+      if (!key || seen.has(key)) {
+        continue;
+      }
+      seen.set(key, {
         ...file,
         task,
         messageTime: formatTimestamp(task.messageTime),
-      }));
-      pre.push(
-        ...files.filter((item) => !map[workspaceFileKey(item)])
-      );
-      map = keyBy(pre, (item) => workspaceFileKey(item));
+      });
     }
-    return pre;
-  }, []);
-  return list;
+  }
+  return [...seen.values()];
 }
 
 /**
@@ -50,11 +51,5 @@ export function workspaceFileKey(
   if (!file) {
     return "";
   }
-  return (
-    file.resourceKey ||
-    file.url ||
-    file.downloadUrl ||
-    file.name ||
-    ""
-  );
+  return file.resourceKey || file.url || file.downloadUrl || file.name || "";
 }

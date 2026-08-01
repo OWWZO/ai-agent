@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 
 /**
- * 上下文压缩预算（对齐 cc-haha autoCompact 阈值）。
+ *
  * <p>
  * threshold = contextWindow - min(maxOutput, maxOutputReserve) - bufferTokens
  */

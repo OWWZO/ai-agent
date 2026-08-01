@@ -149,7 +149,7 @@ const FileList: React.FC<{
           {fileList.map((item) => (
             <Card
               key={workspaceFileKey(item)}
-              className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-all duration-200 hover:bg-muted/35"
+              className="group cursor-pointer rounded-xl bg-transparent py-0 shadow-none ring-0 transition-colors duration-150 hover:bg-muted/35"
               onClick={() => setActiveItem(workspaceFileKey(item))}
             >
               <CardContent className="flex items-center gap-2.5 p-2.5">
@@ -196,18 +196,7 @@ const FileList: React.FC<{
   const renderContent = () => {
     const nameExt = (fileItem.name?.split(".").pop() || "").toLowerCase();
     const rawType = (fileItem.type || "").toLowerCase();
-    const resolvedExt = (() => {
-      if (nameExt && nameExt.length <= 8 && !nameExt.includes("/")) {
-        return nameExt;
-      }
-      if (rawType.includes("html")) return "html";
-      if (rawType.includes("pdf")) return "pdf";
-      if (rawType.includes("/")) {
-        const leaf = rawType.split("/").pop() || "";
-        return leaf === "plain" ? "txt" : leaf;
-      }
-      return rawType.replace(/^\./, "");
-    })();
+    const resolvedExt = resolvePreviewExtension(nameExt, rawType);
 
     if (isImageFile) {
       return (
@@ -233,27 +222,14 @@ const FileList: React.FC<{
       );
     }
 
-    if (isLegacyDocFileLike(fileItem)) {
+    if (isLegacyDocFileLike(fileItem) || isDocxFileLike(fileItem)) {
       return (
         <WordRenderer
           fileUrl={fileItem.url}
           fileName={fileItem.name}
           downloadUrl={downloadUrl || fileItem.url}
           missingReason={missingReason}
-          legacyOnly
-          hideChrome={embedded}
-          className="h-full"
-        />
-      );
-    }
-
-    if (isDocxFileLike(fileItem)) {
-      return (
-        <WordRenderer
-          fileUrl={fileItem.url}
-          fileName={fileItem.name}
-          downloadUrl={downloadUrl || fileItem.url}
-          missingReason={missingReason}
+          legacyOnly={isLegacyDocFileLike(fileItem)}
           hideChrome={embedded}
           className="h-full"
         />
@@ -286,23 +262,6 @@ const FileList: React.FC<{
     }
 
     switch (resolvedExt) {
-      case "png":
-      case "jpg":
-      case "jpeg":
-      case "gif":
-      case "webp":
-      case "bmp":
-      case "svg":
-      case "avif":
-      case "ico":
-        return (
-          <ImageRenderer
-            imageUrl={fileItem.url}
-            fileName={fileItem.name}
-            missingReason={missingReason}
-            className="h-full"
-          />
-        );
       case "ppt":
       case "pptx":
         return (
@@ -378,20 +337,15 @@ const FileList: React.FC<{
       "code",
       "log",
     ].includes(ext);
+    const contentShellClass = isSpreadsheet
+      ? "min-h-0 flex-1 overflow-hidden bg-white"
+      : isMedia || isSourceCode
+        ? "min-h-0 flex-1 overflow-auto bg-white"
+        : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8";
 
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div
-          className={
-            isMedia || isSourceCode
-              ? isSpreadsheet
-                ? "min-h-0 flex-1 overflow-hidden bg-white"
-                : "min-h-0 flex-1 overflow-auto bg-white"
-              : "mx-auto min-h-0 w-full max-w-[720px] flex-1 overflow-auto rounded-2xl border border-[var(--chat-border)]/70 bg-white p-6 shadow-[0_1px_2px_oklch(0%_0_0_/_0.03)] sm:p-8"
-          }
-        >
-          {renderContent()}
-        </div>
+        <div className={contentShellClass}>{renderContent()}</div>
       </div>
     );
   }
@@ -478,5 +432,18 @@ const FileList: React.FC<{
     </ActionViewFrame>
   );
 };
+
+function resolvePreviewExtension(nameExt: string, rawType: string) {
+  if (nameExt && nameExt.length <= 8 && !nameExt.includes("/")) {
+    return nameExt;
+  }
+  if (rawType.includes("html")) return "html";
+  if (rawType.includes("pdf")) return "pdf";
+  if (rawType.includes("/")) {
+    const leaf = rawType.split("/").pop() || "";
+    return leaf === "plain" ? "txt" : leaf;
+  }
+  return rawType.replace(/^\./, "");
+}
 
 export default FileList;

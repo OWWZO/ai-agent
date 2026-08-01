@@ -19,6 +19,7 @@ import {
 } from "@/services/mragWorkspace";
 import type { KnowledgeBase, MRagChunkEnvelope } from "@/pages/WorkspaceMRag/types";
 import { loadMRagWorkspaceStoredState } from "@/pages/WorkspaceMRag/utils";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 
 const TOOL_BASE_URL = import.meta.env.VITE_Mrag_TOOL_URL || "";
 
@@ -37,6 +38,7 @@ export default function ChatRagPanel() {
   const [isKbDropdownOpen, setIsKbDropdownOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { reduce } = useMotionConfig();
 
   const selectedKnowledgeBase = useMemo(
     () => knowledgeBases.find((k) => k.id === selectedKnowledgeBaseId) || null,
@@ -186,11 +188,35 @@ export default function ChatRagPanel() {
           <AnimatePresence>
             {isKbDropdownOpen && (
               <motion.div
-                initial={{ opacity: 0, y: -4, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.97 }}
-                transition={{ duration: 0.15 }}
+                initial={
+                  reduce
+                    ? { opacity: 0 }
+                    : {
+                      opacity: 0,
+                      y: -4,
+                      scale: 0.97
+                    }
+                }
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scale: 1
+                }}
+                exit={
+                  reduce
+                    ? { opacity: 0 }
+                    : {
+                      opacity: 0,
+                      y: -4,
+                      scale: 0.97
+                    }
+                }
+                transition={{
+                  duration: 0.15,
+                  ease: EASE_OUT
+                }}
                 className="absolute right-0 top-full z-50 mt-1.5 min-w-[220px] overflow-hidden rounded-xl border border-[var(--chat-border)] bg-[var(--chat-surface)] shadow-[0_16px_48px_-12px_rgba(15,23,42,0.25)]"
+                style={{ transformOrigin: "top right" }}
               >
                 {knowledgeBases.length === 0 ? (
                   <div className="px-4 py-3 text-[13px] text-[var(--chat-text-muted)]">
@@ -229,9 +255,18 @@ export default function ChatRagPanel() {
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
         {/* Query Input Area */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          initial={reduce ? { opacity: 0 } : {
+            opacity: 0,
+            y: 8
+          }}
+          animate={{
+            opacity: 1,
+            y: 0
+          }}
+          transition={{
+            duration: reduce ? DURATION.reduced : 0.25,
+            ease: EASE_OUT,
+          }}
           className="mx-auto w-full max-w-[860px]"
         >
           <div className="rounded-[24px] border border-[var(--chat-border)] bg-[var(--chat-surface)] p-5 shadow-[var(--shadow-sm)]">
@@ -310,9 +345,22 @@ export default function ChatRagPanel() {
           {queryError ? (
             <motion.div
               key="error"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              initial={reduce ? { opacity: 0 } : {
+                opacity: 0,
+                y: 8
+              }}
+              animate={{
+                opacity: 1,
+                y: 0
+              }}
+              exit={reduce ? { opacity: 0 } : {
+                opacity: 0,
+                y: -8
+              }}
+              transition={{
+                duration: 0.2,
+                ease: EASE_OUT
+              }}
               className="mx-auto w-full max-w-[860px] rounded-[20px] border border-rose-200 bg-rose-50 px-5 py-4 text-[14px] leading-6 text-rose-600"
             >
               {queryError}
@@ -320,10 +368,22 @@ export default function ChatRagPanel() {
           ) : queryAnswer || querying ? (
             <motion.div
               key="result"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3 }}
+              initial={reduce ? { opacity: 0 } : {
+                opacity: 0,
+                y: 8
+              }}
+              animate={{
+                opacity: 1,
+                y: 0
+              }}
+              exit={reduce ? { opacity: 0 } : {
+                opacity: 0,
+                y: -8
+              }}
+              transition={{
+                duration: 0.2,
+                ease: EASE_OUT
+              }}
               className="mx-auto w-full max-w-[860px]"
             >
               <div className="rounded-[24px] border border-[var(--chat-border)] bg-[var(--chat-surface)] p-5 shadow-[var(--shadow-sm)]">
@@ -386,7 +446,11 @@ export default function ChatRagPanel() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
+            transition={{
+              delay: reduce ? 0 : 0.05,
+              duration: 0.2,
+              ease: EASE_OUT
+            }}
             className="mx-auto mt-8 flex max-w-[400px] flex-col items-center text-center"
           >
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--chat-surface-soft)]">

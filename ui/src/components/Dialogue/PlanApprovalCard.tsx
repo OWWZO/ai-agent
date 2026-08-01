@@ -1,4 +1,4 @@
-import { FC, memo, useState } from "react";
+import { FC, memo, useEffect, useState } from "react";
 import { ClipboardCheckIcon, LoaderCircleIcon } from "lucide-react";
 import { message } from "antd";
 import { planApprovalApi } from "@/services/planApproval";
@@ -39,6 +39,13 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(
     status === "approved" || status === "rejected" ? (status as "approved" | "rejected") : null
   );
+
+  useEffect(() => {
+    if (status === "approved" || status === "rejected") {
+      setDecision(status);
+    }
+  }, [status]);
+
   const submitted = alreadyDone || decision !== null;
 
   const approve = async () => {
@@ -110,10 +117,12 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         ? "反馈已回传，仍停留在 Plan Mode"
         : "审查计划后批准或拒绝；拒绝后 Agent 会继续改计划";
 
+  const readOnly = submitted;
+
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50 bg-white px-4 py-3">
+    <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] px-4 py-3">
       <div className="mb-3 flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[#f5f5f7] text-[var(--chat-text-muted)]">
+        <div className="flex size-8 items-center justify-center rounded-xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface-soft)] text-[var(--chat-text-muted)]">
           {submitting ? (
             <LoaderCircleIcon className="size-4 animate-spin" />
           ) : (
@@ -121,7 +130,14 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-medium text-[var(--chat-text)]">{title}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[14px] font-medium text-[var(--chat-text)]">{title}</div>
+            {readOnly ? (
+              <span className="rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-soft)]">
+                {decision === "rejected" || status === "rejected" ? "只读 · 已拒绝" : "只读 · 已批准"}
+              </span>
+            ) : null}
+          </div>
           <div className="text-[12px] text-[var(--chat-text-soft)]">{subtitle}</div>
           {planFilePath ? (
             <div className="mt-0.5 truncate text-[11px] text-[var(--chat-text-soft)]">{planFilePath}</div>
@@ -129,8 +145,8 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         </div>
       </div>
 
-      <div className="max-h-[320px] overflow-auto rounded-xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface)] px-3 py-2">
-        {submitted ? (
+      <div className="max-h-[320px] overflow-auto rounded-xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface-soft)]/40 px-3 py-2">
+        {readOnly ? (
           <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-5 text-[var(--chat-text)]">
             {editedPlan || planContent || "(空计划)"}
           </pre>
@@ -146,7 +162,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         )}
       </div>
 
-      {!submitted ? (
+      {!readOnly ? (
         <>
           <input
             type="text"
@@ -154,14 +170,14 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
             placeholder="可选：拒绝反馈或备注"
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
-            className="mt-3 w-full rounded-xl border border-[var(--chat-border)]/50 bg-white px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[#c7c7cc]"
+            className="mt-3 w-full rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] outline-none focus:border-[var(--chat-border-strong)]"
           />
           <div className="mt-3 flex justify-end gap-2">
             <button
               type="button"
               disabled={submitting}
               onClick={() => void reject()}
-              className="rounded-xl border border-[var(--chat-border)]/50 px-4 py-2 text-[13px] font-medium text-[var(--chat-text)] transition-colors hover:bg-[#fafafa] disabled:opacity-60"
+              className="rounded-xl border border-[var(--chat-border)]/50 px-4 py-2 text-[13px] font-medium text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-interactive-hover)] disabled:opacity-60"
             >
               {submitting ? "处理中…" : "拒绝并修订"}
             </button>
@@ -172,8 +188,8 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
               className={[
                 "rounded-xl px-4 py-2 text-[13px] font-medium transition-colors",
                 !submitting && (editedPlan || planContent).trim()
-                  ? "bg-[#1d1d1f] text-white hover:opacity-90"
-                  : "cursor-not-allowed bg-[#e8e8ed] text-[var(--chat-text-soft)]",
+                  ? "bg-[var(--chat-text)] text-[var(--chat-bg)] hover:opacity-90"
+                  : "cursor-not-allowed bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)]",
               ].join(" ")}
             >
               {submitting ? "处理中…" : "批准并开始实现"}

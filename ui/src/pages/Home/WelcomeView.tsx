@@ -6,6 +6,7 @@ import GeneralInput from "@/components/GeneralInput";
 import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import { KeyboardTypewriter } from "@/components/ai-elements/keyboard-typewriter";
 import type { FeaturedConversationCard as FeaturedConversationCardModel } from "@/services/featuredConversation";
+import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
   suggestedQuestionsByProductType,
   type SuggestedQuestion,
@@ -46,6 +47,7 @@ export default function WelcomeView(props: {
     suggestedQuestionsByProductType[props.product.type] ?? [];
   const hasSuggestedQuestions = suggestedQuestions.length > 0;
   const hasFeaturedCards = props.featuredCards.length > 0;
+  const { reduce } = useMotionConfig();
 
   return (
     <div className="h-full w-full overflow-y-auto px-6 md:px-12 lg:px-16">
@@ -84,11 +86,11 @@ export default function WelcomeView(props: {
             initial={false}
             animate={{
               opacity: hasSuggestedQuestions ? 1 : 0,
-              y: hasSuggestedQuestions ? 0 : -10,
+              y: reduce ? 0 : hasSuggestedQuestions ? 0 : -8,
             }}
             transition={{
-              duration: 0.3,
-              ease: [0.16, 1, 0.3, 1],
+              duration: reduce ? DURATION.reduced : 0.22,
+              ease: EASE_OUT,
             }}
             className={classNames(
               "mx-auto w-full max-w-[1180px] overflow-visible",
@@ -115,20 +117,24 @@ export default function WelcomeView(props: {
           </motion.div>
 
           <motion.div
-            initial={{
-              opacity: 0,
-              y: 24,
-              scale: 0.98,
-            }}
+            initial={
+              reduce
+                ? { opacity: 0 }
+                : {
+                  opacity: 0,
+                  y: 12,
+                  scale: 0.98,
+                }
+            }
             animate={{
               opacity: 1,
               y: 0,
               scale: 1,
             }}
             transition={{
-              duration: 0.8,
-              delay: 0.5,
-              ease: [0.16, 1, 0.3, 1],
+              duration: reduce ? DURATION.reduced : 0.28,
+              delay: reduce ? 0 : 0.08,
+              ease: EASE_OUT,
             }}
             className="mb-8 w-full max-w-[920px] lg:mb-10"
           >
@@ -156,18 +162,18 @@ export default function WelcomeView(props: {
 
         {hasFeaturedCards ? (
           <motion.section
-            initial={{
+            initial={reduce ? { opacity: 0 } : {
               opacity: 0,
-              y: 20,
+              y: 10
             }}
             animate={{
               opacity: 1,
               y: 0,
             }}
             transition={{
-              duration: 0.55,
-              delay: 0.15,
-              ease: [0.16, 1, 0.3, 1],
+              duration: reduce ? DURATION.reduced : 0.28,
+              delay: reduce ? 0 : 0.12,
+              ease: EASE_OUT,
             }}
             className="mx-auto mt-4 w-full max-w-[1180px] pb-20"
           >
