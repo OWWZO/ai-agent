@@ -20,17 +20,17 @@ public class HtmlProcessorTool extends AbstractDocReadTool {
 
     @Override
     protected String defaultDescription() {
-        return "HTML processor: operation=read|links|tables|metadata|convert. "
+        return "HTML processor: operation=read|extract_links|extract_tables|extract_metadata|convert. "
                 + "Extract text/links/tables/meta or convert to markdown/plain_text.";
     }
 
     @Override
     protected Map<String, Object> defaultParams() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("operation", stringProp("read | links | tables | metadata | convert"));
+        properties.put("operation", stringProp("read | extract_links | extract_tables | extract_metadata | convert"));
         properties.put("file_path", stringProp("HTML file path under workspace"));
         properties.put("output_path", stringProp("Output path for convert"));
-        properties.put("format", stringProp("For convert: markdown | plain_text"));
+        properties.put("output_format", stringProp("For convert: markdown | plain_text"));
         return objectSchema(properties, List.of("operation", "file_path"));
     }
 }

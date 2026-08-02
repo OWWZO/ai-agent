@@ -34,9 +34,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -469,7 +471,7 @@ public abstract class BaseAgent {
             getMemory().getLastMessage().setContent(content + "\n 工具执行结果为:\n" + observation);
             return observation;
         }
-        getMemory().addMessage(Message.toolMessage(observation, command.getId(), null));
+        getMemory().addMessage(Message.toolMessage(observation, command.getId(), outcome.getBase64Image()));
         return observation;
     }
 
@@ -569,7 +571,8 @@ public abstract class BaseAgent {
                         StringUtils.defaultIfBlank(payload.getErrorMsg(), toolResult)
                 );
             }
-            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput());
+            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput(),
+                     payload.getBase64Image(), payload.getImageMimeType());
         } catch (Exception e) {
             log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
             return ToolExecutionOutcome.failure(
@@ -615,12 +618,18 @@ public abstract class BaseAgent {
         emitToolCallRunningEvents(commands, dispatchIndexMapping);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
+        List<CompletableFuture<?>> executionFutures = new ArrayList<>(commands.size());
         for (ToolCall toolCall : commands) {
             Executor executor = resolveExecutorForTool(toolCall);
             String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
-            CompletableFuture<Void> future = AgentExecutorSupport
-                    .supplyAsync(executor, scene, () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)))
+            CompletableFuture<ToolExecutionOutcome> executionFuture = AgentExecutorSupport
+                    .supplyAsync(executor, scene, () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)));
+            executionFutures.add(executionFuture);
+            CompletableFuture<Void> future = executionFuture
                     .handle((outcome, error) -> {
+                        if (error != null && unwrapExecutionError(error) instanceof CancellationException) {
+                            return null;
+                        }
                         ToolExecutionOutcome finalOutcome = outcome;
                         if (error != null) {
                             Throwable root = unwrapExecutionError(error);
@@ -635,7 +644,7 @@ public abstract class BaseAgent {
             futures.add(future);
         }
 
-        awaitToolBatch(futures);
+        awaitToolBatch(futures, executionFutures);
         for (ToolCall command : commands) {
             if (command == null || StringUtils.isBlank(command.getId()) || result.containsKey(command.getId())) {
                 continue;
@@ -657,7 +666,8 @@ public abstract class BaseAgent {
         return ordered;
     }
 
-    private void awaitToolBatch(List<CompletableFuture<Void>> futures) {
+    private void awaitToolBatch(List<CompletableFuture<Void>> futures,
+                                List<CompletableFuture<?>> executionFutures) {
         if (futures == null || futures.isEmpty()) {
             return;
         }
@@ -665,18 +675,42 @@ public abstract class BaseAgent {
         long timeoutSeconds = resolveToolBatchTimeoutSeconds();
         try {
             if (timeoutSeconds > 0L) {
-                all.orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+                all.get(timeoutSeconds, TimeUnit.SECONDS);
             } else {
-                all.join();
+                all.get();
             }
-        } catch (CompletionException e) {
-            Throwable root = unwrapExecutionError(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("{} tool batch interrupted, cancelling unfinished tools",
+                    context == null ? "-" : context.getRequestId());
+            cancelToolExecutions(executionFutures);
+        } catch (TimeoutException e) {
+            log.error("{} tool batch timed out after {}s",
+                    context == null ? "-" : context.getRequestId(), timeoutSeconds);
+            cancelToolExecutions(executionFutures);
+        } catch (ExecutionException e) {
+            Throwable root = unwrapExecutionError(e.getCause());
             if (root instanceof TimeoutException) {
                 log.error("{} tool batch timed out after {}s",
                         context == null ? "-" : context.getRequestId(), timeoutSeconds);
+                cancelToolExecutions(executionFutures);
             } else {
                 log.error("{} tool batch join failed",
                         context == null ? "-" : context.getRequestId(), root);
+            }
+        }
+    }
+
+    /**
+     * 批次超时后取消底层执行任务；FutureTask 会中断正在运行的工具线程。
+     */
+    private void cancelToolExecutions(List<CompletableFuture<?>> executionFutures) {
+        if (executionFutures == null) {
+            return;
+        }
+        for (CompletableFuture<?> executionFuture : executionFutures) {
+            if (executionFuture != null && !executionFuture.isDone()) {
+                executionFuture.cancel(true);
             }
         }
     }
@@ -1060,6 +1094,8 @@ public abstract class BaseAgent {
                     .llmObservation(llmObservation)
                     .llmData(payload.getLlmData())
                     .structuredOutput(payload.getStructuredOutput())
+                    .base64Image(payload.getBase64Image())
+                    .imageMimeType(payload.getImageMimeType())
                     .failed(failed)
                     .errorMsg(payload.getErrorMsg())
                     .build();
@@ -1178,15 +1214,21 @@ public abstract class BaseAgent {
         private String llmObservation;
         private ToolStructuredOutput structuredOutput;
         private String errorMsg;
+        private String base64Image;
+        private String imageMimeType;
 
         private static ToolExecutionOutcome success(String toolResult,
                                                     String llmObservation,
-                                                    ToolStructuredOutput structuredOutput) {
+                                                    ToolStructuredOutput structuredOutput,
+                                                    String base64Image,
+                                                    String imageMimeType) {
             return new ToolExecutionOutcome()
                     .setSuccess(true)
                     .setToolResult(toolResult)
                     .setLlmObservation(llmObservation)
-                    .setStructuredOutput(structuredOutput);
+                    .setStructuredOutput(structuredOutput)
+                    .setBase64Image(base64Image)
+                    .setImageMimeType(imageMimeType);
         }
 
         private static ToolExecutionOutcome failure(String toolResult,

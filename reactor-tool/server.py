@@ -6,7 +6,6 @@
 # Date:   2025/7/7
 # =====================
 import os
-import sys
 import warnings
 from optparse import OptionParser
 from pathlib import Path
@@ -72,6 +71,17 @@ def register_router(app: FastAPI):
     from reactor_tool.api import api_router
     app.include_router(api_router)
 
+
+def resolve_worker_count(requested_workers: int, reload_enabled: bool = False) -> int:
+    """解析 Uvicorn worker 数；仅 reload 模式要求退回单进程。"""
+    if requested_workers < 1:
+        raise ValueError("workers must be a positive integer")
+    if reload_enabled and requested_workers > 1:
+        print(f"reload mode forces workers=1 (requested {requested_workers})")
+        return 1
+    return requested_workers
+
+
 if __name__ == "__main__":
     parser = OptionParser()
     parser.add_option("--host", dest="host", type="string", default="0.0.0.0")
@@ -84,15 +94,7 @@ if __name__ == "__main__":
     print_logo()
 
     reload_enabled = os.getenv("ENV", "local") == "local"
-    workers = int(options.workers)
-    # Windows 上 uvicorn multiprocess 会在 sock.listen 处抛 WinError 10022。
-    if sys.platform == "win32" and workers > 1:
-        print(f"Windows does not support uvicorn multi-worker; forcing workers=1 (requested {workers})")
-        workers = 1
-    # reload 与 multi-worker 互斥，统一收敛为单进程。
-    if reload_enabled and workers > 1:
-        print(f"reload mode forces workers=1 (requested {workers})")
-        workers = 1
+    workers = resolve_worker_count(options.workers, reload_enabled=reload_enabled)
 
     app_factory_path = "server:create_app"
 

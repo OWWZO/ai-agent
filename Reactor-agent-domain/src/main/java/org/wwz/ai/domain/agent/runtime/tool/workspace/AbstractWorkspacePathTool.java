@@ -50,7 +50,7 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
     }
 
     protected Path requireAllowedPath(Map<String, Object> params) {
-        Object pathValue = params.get("path");
+        Object pathValue = params.containsKey("path") ? params.get("path") : params.get("file_path");
         if (pathValue == null || String.valueOf(pathValue).isBlank()) {
             throw new WorkspaceAccessException("path is required");
         }

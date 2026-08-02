@@ -71,6 +71,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   } = props;
 
   const [activeTask, setActiveTask] = useState<CHAT.Task>();
+  const [workspaceOpenRequested, setWorkspaceOpenRequested] = useState(false);
   /** 打开工作区前缓存要点的文件，避免 ActionView 未挂载时 setFilePreview 丢失 */
   const [pendingPreviewFile, setPendingPreviewFile] = useState<CHAT.TFile>();
   const {
@@ -134,6 +135,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   useEffect(() => {
     setDataLoading(false);
+    setWorkspaceOpenRequested(false);
   }, [conversation.id]);
 
   useEffect(() => {
@@ -202,6 +204,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+    setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
     setPendingPreviewFile(undefined);
@@ -216,6 +219,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
     // 只打开右侧预览 tab；左侧文件管理仅由「查看当前任务的文件」入口进入
+    setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     changeActionStatus(true);
     setActiveRunState({
@@ -241,12 +245,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [changeFile, onRegisterApi]);
 
   const changePlan = () => {
+    setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     changeActionStatus(true);
     actionViewRef.current?.openPlanView();
   };
 
   const toggleRightPanel = useMemoizedFn(() => {
+    setWorkspaceOpenRequested(true);
     changeActionStatus(isRightCollapsed);
     toggleWorkspaceRightPanel();
   });
@@ -398,7 +404,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderMultAgent = () => {
     // 如果没有工作空间内容，显示单面板
-    if (!showAction) {
+    if (!showAction && !workspaceOpenRequested) {
       return (
         <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
           <div
@@ -702,6 +708,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 if (isFocusMode) {
                   exitFocusMode();
                 } else {
+                  setWorkspaceOpenRequested(false);
                   changeActionStatus(false);
                   setIsRightCollapsed(true);
                 }

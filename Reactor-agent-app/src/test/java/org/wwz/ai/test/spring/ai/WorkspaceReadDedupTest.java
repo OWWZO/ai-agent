@@ -13,6 +13,7 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
 
 /**
@@ -82,5 +83,19 @@ public class WorkspaceReadDedupTest {
                 "new_string", "BETA"
         )));
         Assert.assertTrue(editResult.contains("modified since read") || editResult.contains("Read it again"));
+    }
+
+    @Test
+    public void shouldReturnTextMetadataAndImageContentBlock() throws Exception {
+        String text = String.valueOf(readTool.execute(Map.of("file_path", "demo.txt", "offset", 2, "limit", 1)));
+        Assert.assertTrue(text.contains("\"type\":\"text\""));
+        Assert.assertTrue(text.contains("\"startLine\":2"));
+        Assert.assertTrue(text.contains("beta"));
+
+        Path image = workspaceRoot.resolve("pixel.png");
+        Files.write(image, Base64.getDecoder().decode("iVBORw0KGgo="));
+        String result = String.valueOf(readTool.execute(Map.of("path", "pixel.png")));
+        Assert.assertTrue(result.contains("\"type\":\"image\""));
+        Assert.assertTrue(result.contains("data:image/png;base64,"));
     }
 }

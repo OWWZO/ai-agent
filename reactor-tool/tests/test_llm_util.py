@@ -3,9 +3,12 @@ import os
 import unittest
 from unittest.mock import patch
 
+import httpx
+
 from reactor_tool.util.llm_util import (
     OPENAI_COMPAT_DEFAULT_USER_AGENT,
     _build_openai_compat_headers,
+    _build_http_timeout,
     _prepare_litellm_params,
     ask_llm,
 )
@@ -98,6 +101,53 @@ class LlmUtilAsyncHeaderTest(unittest.IsolatedAsyncioTestCase):
             "https://www.openclaudecode.cn/v1/chat/completions",
             captured_raw_call["params"]["api_base"],
         )
+
+    def test_should_use_separate_http_timeout_budgets(self):
+        timeout = _build_http_timeout(600000)
+
+        self.assertEqual(30, timeout.connect)
+        self.assertEqual(300, timeout.read)
+        self.assertEqual(60, timeout.write)
+        self.assertEqual(30, timeout.pool)
+
+    async def test_should_retry_interrupted_stream_without_duplicate_prefix(self):
+        attempts = 0
+
+        async def fake_raw_openai_like_request(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                yield "partial"
+                raise httpx.RemoteProtocolError("incomplete chunked read")
+            yield "partial answer"
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_BASE_URL": "https://gateway.example/v1/chat/completions",
+                "OPENAI_API_KEY": "test-openai-key",
+                "LLM_MAX_RETRIES": "1",
+                "OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK": "false",
+            },
+            clear=False,
+        ), patch(
+            "reactor_tool.util.llm_util._raw_openai_like_request",
+            new=fake_raw_openai_like_request,
+        ):
+            chunks = [
+                chunk
+                async for chunk in ask_llm(
+                    messages="hello",
+                    model="openai/test-model",
+                    stream=True,
+                    only_content=True,
+                    api_base="https://gateway.example/v1/chat/completions",
+                    api_key="test-openai-key",
+                )
+            ]
+
+        self.assertEqual(2, attempts)
+        self.assertEqual("partial answer", "".join(chunks))
 
 
 if __name__ == "__main__":

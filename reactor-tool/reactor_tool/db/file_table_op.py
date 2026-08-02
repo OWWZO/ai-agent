@@ -6,6 +6,7 @@
 - get_file_*_url: 拼预览/下载 URL，供 Java 与前端消费
 """
 import os
+import re
 from typing import List
 
 from fastapi import UploadFile
@@ -30,6 +31,7 @@ class _FileDB(object):
             file_name = os.path.basename(file_name)
         else:
             file_name = f"{file_name}.txt"
+        file_name = normalize_stored_file_name(file_name)
 
         # Windows 目录名不允许 ":" 等字符；request_id 常含冒号，需清洗
         safe_scope = "".join(c if c not in '<>:"/\\|?*' else "_" for c in str(scope))
@@ -37,13 +39,14 @@ class _FileDB(object):
         save_path = os.path.join(self._work_dir, safe_scope)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        with open(f"{save_path}/{file_name}", "w", encoding='utf-8') as f:
+        file_path = os.path.join(save_path, file_name)
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"{save_path}/{file_name}"
+        return file_path
 
     async def save_by_data(self, file: UploadFile, scope: str = None) -> str:
         """将 UploadFile 二进制写入本地，返回落盘路径。"""
-        file_name = file.filename
+        file_name = normalize_stored_file_name(file.filename)
         # 必须二进制读取；await file.read() 兼容已消费/未 seek 的 stream
         try:
             await file.seek(0)
@@ -75,11 +78,32 @@ class _FileDB(object):
 FileDB = _FileDB()
 
 
+_INVALID_FILE_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED_FILE_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+_MAX_STORED_FILE_NAME_LENGTH = 120
+
+
 def normalize_stored_file_name(file_name: str) -> str:
-    """统一文件服务对外暴露的文件名，避免子路径污染 fileId 与预览 URL。"""
+    """统一文件名，避免 Windows 非法字符、保留名和超长路径导致落盘失败。"""
     normalized = os.path.basename((file_name or "").strip())
     if not normalized:
         raise ValueError("file_name is empty")
+
+    normalized = _INVALID_FILE_NAME_CHARS.sub("_", normalized).rstrip(" .")
+    if not normalized:
+        raise ValueError("file_name is empty")
+
+    stem, suffix = os.path.splitext(normalized)
+    if stem.upper() in _WINDOWS_RESERVED_FILE_NAMES:
+        stem = f"_{stem}"
+
+    suffix = suffix[:_MAX_STORED_FILE_NAME_LENGTH - 1]
+    max_stem_length = max(1, _MAX_STORED_FILE_NAME_LENGTH - len(suffix))
+    normalized = f"{stem[:max_stem_length]}{suffix}"
     return normalized
 
 

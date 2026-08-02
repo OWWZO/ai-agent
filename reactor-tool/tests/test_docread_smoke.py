@@ -99,6 +99,29 @@ def test_image_ocr_validates_extension_and_empty():
         assert "empty" in str(e).lower()
 
 
+def test_html_processor_accepts_legacy_metadata_operation_name():
+    import asyncio
+
+    from reactor_tool.tool.docread.service import run_html_processor
+
+    tmp = Path(tempfile.mkdtemp())
+    html_path = tmp / "metadata.html"
+    html_path.write_text(
+        '<html><head><title>Test page</title><meta name="description" content="demo"></head></html>',
+        encoding="utf-8",
+    )
+
+    result = asyncio.run(
+        run_html_processor(
+            "test-html-metadata-alias",
+            {"operation": "metadata", "file_path": str(html_path)},
+        )
+    )
+
+    assert result["success"]
+    assert result["data"]["title"] == "Test page"
+
+
 def test_image_ocr_uses_mock_backend(monkeypatch):
     from reactor_tool.tool import docread
     from reactor_tool.tool.docread import image_ocr as image_ocr_mod

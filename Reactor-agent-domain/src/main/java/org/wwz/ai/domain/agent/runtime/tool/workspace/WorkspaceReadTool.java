@@ -1,9 +1,12 @@
 package org.wwz.ai.domain.agent.runtime.tool.workspace;
 
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +62,12 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                 return failResult("workspace_read 只支持读取文件路径: " + filePath);
             }
 
-            int startLine = Math.max(1, readInt(params, "start_line", 1));
-            int lineCount = Math.max(1, readInt(params, "line_count", 2000));
+            if (isImage(filePath)) {
+                return readImage(filePath);
+            }
+
+            int startLine = Math.max(1, readInt(params, "start_line", readInt(params, "offset", 1)));
+            int lineCount = Math.max(1, readInt(params, "line_count", readInt(params, "limit", 2000)));
             String absolutePath = filePath.toAbsolutePath().normalize().toString();
             long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
             String fullContent = Files.readString(filePath, StandardCharsets.UTF_8);
@@ -73,11 +80,13 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         && existing.getLineCount() == lineCount
                         && isUnchanged(existing, mtimeMs, contentHash)) {
                     Map<String, Object> unchanged = new LinkedHashMap<>();
+                    unchanged.put("type", "file_unchanged");
                     unchanged.put("unchanged", Boolean.TRUE);
                     unchanged.put("path", filePath.toString());
                     unchanged.put("startLine", startLine);
                     unchanged.put("lineCount", lineCount);
                     unchanged.put("message", FILE_UNCHANGED_STUB);
+                    unchanged.put("file", Map.of("filePath", filePath.toString()));
                     return okResult(unchanged);
                 }
             }
@@ -107,10 +116,17 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         .build());
             }
             Map<String, Object> data = new LinkedHashMap<>();
+            data.put("type", "text");
             data.put("path", filePath.toString());
             data.put("startLine", startLine);
             data.put("endLine", fromIndex + (toIndex - fromIndex));
             data.put("content", body);
+            data.put("file", Map.of(
+                    "filePath", filePath.toString(),
+                    "content", body,
+                    "numLines", toIndex - fromIndex,
+                    "startLine", startLine,
+                    "totalLines", lineList.size()));
             if (truncated) {
                 data.put("truncated", Boolean.TRUE);
             }
@@ -125,6 +141,49 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             log.error("{} workspace_read error, input={}", requestId(), input, e);
             return failResult("workspace_read execute failed");
         }
+    }
+
+    private ToolResultPayload readImage(Path filePath) throws IOException {
+        byte[] bytes = Files.readAllBytes(filePath);
+        String mimeType = Files.probeContentType(filePath);
+        if (mimeType == null || !mimeType.startsWith("image/")) {
+            mimeType = switch (extension(filePath)) {
+                case "jpg", "jpeg" -> "image/jpeg";
+                case "gif" -> "image/gif";
+                case "webp" -> "image/webp";
+                default -> "image/png";
+            };
+        }
+        String base64 = Base64.getEncoder().encodeToString(bytes);
+        String dataUrl = "data:" + mimeType + ";base64," + base64;
+        Map<String, Object> file = new LinkedHashMap<>();
+        file.put("filePath", filePath.toString());
+        file.put("base64", base64);
+        file.put("type", mimeType);
+        file.put("originalSize", bytes.length);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("type", "image");
+        data.put("path", filePath.toString());
+        data.put("file", file);
+        return ToolResultPayload.builder()
+                .llmData(data)
+                .base64Image(dataUrl)
+                .imageMimeType(mimeType)
+                .failed(Boolean.FALSE)
+                .build();
+    }
+
+    private boolean isImage(Path filePath) {
+        return switch (extension(filePath)) {
+            case "png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif" -> true;
+            default -> false;
+        };
+    }
+
+    private String extension(Path filePath) {
+        String name = filePath.getFileName().toString().toLowerCase();
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot + 1);
     }
 
     private boolean isUnchanged(WorkspaceFileReadState existing, long mtimeMs, String contentHash) {

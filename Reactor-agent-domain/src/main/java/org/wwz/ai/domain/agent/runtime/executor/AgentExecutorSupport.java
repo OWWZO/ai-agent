@@ -4,7 +4,10 @@ import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Supplier;
 
@@ -23,8 +26,27 @@ public final class AgentExecutorSupport {
      */
     public static <T> CompletableFuture<T> supplyAsync(Executor executor, String scene, Supplier<T> supplier) {
         Objects.requireNonNull(supplier, "supplier must not be null");
+        CancellableCompletableFuture<T> result = new CancellableCompletableFuture<>();
         try {
-            return CompletableFuture.supplyAsync(supplier, requireExecutor(executor, scene));
+            FutureTask<T> task = new FutureTask<>(() -> supplier.get()) {
+                @Override
+                protected void done() {
+                    if (isCancelled()) {
+                        result.cancel(false);
+                        return;
+                    }
+                    try {
+                        result.complete(get());
+                    } catch (CancellationException e) {
+                        result.cancel(false);
+                    } catch (Exception e) {
+                        result.completeExceptionally(e.getCause() == null ? e : e.getCause());
+                    }
+                }
+            };
+            result.bind(task);
+            requireExecutor(executor, scene).execute(task);
+            return result;
         } catch (RejectedExecutionException e) {
             return failedFuture(rejected(scene, e));
         }
@@ -57,5 +79,29 @@ public final class AgentExecutorSupport {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(throwable);
         return future;
+    }
+
+    /**
+     * 把 CompletableFuture 的取消动作传递给底层 FutureTask，以便中断正在执行的线程。
+     */
+    private static final class CancellableCompletableFuture<T> extends CompletableFuture<T> {
+        private volatile Future<?> delegate;
+
+        private void bind(Future<?> delegate) {
+            this.delegate = delegate;
+            if (isCancelled()) {
+                delegate.cancel(true);
+            }
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            boolean cancelled = super.cancel(mayInterruptIfRunning);
+            Future<?> current = delegate;
+            if (cancelled && current != null) {
+                current.cancel(mayInterruptIfRunning);
+            }
+            return cancelled;
+        }
     }
 }

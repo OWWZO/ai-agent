@@ -197,6 +197,34 @@ def _timeout_to_seconds(timeout: Any) -> float:
     return value
 
 
+def _build_http_timeout(timeout: Any) -> httpx.Timeout:
+    """为长流式请求拆分连接、读取、写入和连接池超时。"""
+    total_seconds = max(0.1, _timeout_to_seconds(timeout))
+
+    def _timeout_from_env(name: str, default: float) -> float:
+        value = _safe_float(os.getenv(name))
+        return value if value is not None and value > 0 else default
+
+    return httpx.Timeout(
+        timeout=total_seconds,
+        connect=min(total_seconds, _timeout_from_env("LLM_CONNECT_TIMEOUT", 30)),
+        read=min(total_seconds, _timeout_from_env("LLM_READ_TIMEOUT", 300)),
+        write=min(total_seconds, _timeout_from_env("LLM_WRITE_TIMEOUT", 60)),
+        pool=min(total_seconds, _timeout_from_env("LLM_POOL_TIMEOUT", 30)),
+    )
+
+
+def _strip_retried_stream_prefix(text: str, pending_prefix: str) -> tuple[str, str]:
+    """重试流式请求时去掉已经发送给调用方的前缀，避免重复文本。"""
+    if not pending_prefix:
+        return text, ""
+    if pending_prefix.startswith(text):
+        return "", pending_prefix[len(text):]
+    if text.startswith(pending_prefix):
+        return text[len(pending_prefix):], ""
+    return text, ""
+
+
 def _to_attr_obj(value: Any) -> Any:
     if isinstance(value, dict):
         return SimpleNamespace(**{k: _to_attr_obj(v) for k, v in value.items()})
@@ -300,9 +328,9 @@ async def _raw_openai_like_request(
     headers["Accept"] = "text/event-stream"
 
     payload = _payload_from_litellm_params(messages=messages, stream=transport_stream, params=params)
-    timeout_s = _timeout_to_seconds(params.get("timeout"))
+    timeout = _build_http_timeout(params.get("timeout"))
 
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
             if resp.status_code >= 400:
                 text = (await resp.aread()).decode("utf-8", errors="ignore")
@@ -541,7 +569,8 @@ async def ask_llm(
         merged_headers["Accept"] = "text/event-stream" if stream else "application/json"
     params["extra_headers"] = merged_headers
 
-    max_retries = 1
+    configured_max_retries = _safe_int(os.getenv("LLM_MAX_RETRIES"))
+    max_retries = max(0, configured_max_retries if configured_max_retries is not None else 2)
     fallback_model = (
         os.getenv("OPENAI_COMPAT_FALLBACK_MODEL")
         or os.getenv("OPENAI_FALLBACK_MODEL")
@@ -558,6 +587,7 @@ async def ask_llm(
     fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
+        retry_prefix = "".join(buffered_chunks) if stream and only_content and attempt > 0 else ""
         try:
             if openai_compat_http_primary:
                 provider = params.get("custom_llm_provider")
@@ -571,6 +601,9 @@ async def ask_llm(
                             only_content=only_content,
                         ):
                             if stream and only_content and isinstance(raw_chunk, str):
+                                raw_chunk, retry_prefix = _strip_retried_stream_prefix(raw_chunk, retry_prefix)
+                                if not raw_chunk:
+                                    continue
                                 buffered_chunks.append(raw_chunk)
                             yield raw_chunk
                     return
@@ -595,6 +628,10 @@ async def ask_llm(
                         if only_content:
                             text = extract_stream_chunk_text(chunk)
                             if text:
+                                if stream:
+                                    text, retry_prefix = _strip_retried_stream_prefix(text, retry_prefix)
+                                if not text:
+                                    continue
                                 buffered_chunks.append(text)
                                 yield text
                         else:
@@ -656,6 +693,11 @@ async def ask_llm(
                 continue
 
             if attempt == max_retries:
+                if stream and only_content and buffered_chunks and isinstance(e, httpx.HTTPError):
+                    logger.warning(
+                        f"[ask_llm] Stream interrupted after partial output; returning buffered content: {e}"
+                    )
+                    return
                 logger.error(f"[ask_llm] Request failed after {max_retries + 1} attempts: {e}")
                 raise e
             logger.warning(f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}")

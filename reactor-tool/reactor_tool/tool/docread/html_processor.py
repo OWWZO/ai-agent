@@ -564,7 +564,11 @@ class HTMLProcessorTool(SyncTool):
         return "Processing HTML"
 
     def execute_sync(self, params: dict[str, Any], context: ToolContext) -> dict[str, Any]:
-        op = params["operation"]
+        op = {
+            "links": "extract_links",
+            "tables": "extract_tables",
+            "metadata": "extract_metadata",
+        }.get(params["operation"], params["operation"])
         path = Path(params["file_path"])
         if not path.is_file():
             raise FileNotFoundError(f"HTML file not found: {path}")
@@ -581,7 +585,7 @@ class HTMLProcessorTool(SyncTool):
         if op == "extract_metadata":
             return self._op_meta(html)
         if op == "convert":
-            fmt = params.get("output_format")
+            fmt = params.get("output_format") or params.get("format")
             if not fmt:
                 raise ValueError("convert requires output_format: markdown or plain_text")
             return self._op_convert(html, fmt, params.get("output_path"))

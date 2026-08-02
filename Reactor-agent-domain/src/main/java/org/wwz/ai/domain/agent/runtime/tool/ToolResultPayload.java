@@ -42,6 +42,11 @@ public class ToolResultPayload {
      */
     private ToolStructuredOutput structuredOutput;
 
+    /** 图片工具结果的多模态内容，使用 data URL 以保留 MIME 类型。 */
+    private String base64Image;
+
+    private String imageMimeType;
+
     /**
      * 是否失败。
      */

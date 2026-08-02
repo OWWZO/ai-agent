@@ -13,7 +13,6 @@ import asyncio
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from typing import List, AsyncGenerator, Tuple
 
@@ -241,20 +240,16 @@ class DeepSearch:
             queries: List[str],
             request_id: str,
     ) -> Tuple[List[Doc], List[List[Doc]]]:
-        """异步并行搜索多个查询并去重"""
-        def _run_async(*args, **kwargs):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            s_result = loop.run_until_complete(self._search_single_query(*args, **kwargs))
-            loop.close()
-            return s_result
+        """异步并行搜索多个查询并去重，避免阻塞当前 Uvicorn 事件循环。"""
+        max_concurrent = max(1, int(os.getenv("SEARCH_THREAD_NUM", 5)))
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-        process_list = []
-        with ThreadPoolExecutor(max_workers=int(os.getenv("SEARCH_THREAD_NUM", 5))) as executor:
-            for query in queries:
-                process = executor.submit(_run_async, query, request_id)
-                process_list.append(process)
-        results = [process.result() for process in as_completed(process_list)]
+        async def _search_one(query: str) -> List[Doc]:
+            async with semaphore:
+                return await self._search_single_query(query, request_id)
+
+        # 搜索引擎本身已经是异步实现，这里直接复用当前事件循环并限制并发量。
+        results = await asyncio.gather(*(_search_one(query) for query in queries))
         all_docs = [doc for docs in results for doc in docs]
         # 去重
         seen_content = set()

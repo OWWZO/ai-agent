@@ -90,9 +90,10 @@ public class AgentToolPoolNestingHardeningTest {
     @Test
     public void toolBatchTimeoutShouldMarkUnfinishedFailed() throws Exception {
         ExecutorService hangPool = Executors.newFixedThreadPool(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
         try {
             ToolCollection tools = new ToolCollection();
-            tools.addTool(new HangTool());
+            tools.addTool(new HangTool(interrupted));
 
             ReactorRuntimeDependencies deps = ReactorRuntimeDependencies.builder()
                     .taskExecutor(Runnable::run)
@@ -126,6 +127,8 @@ public class AgentToolPoolNestingHardeningTest {
                     || observation.contains("timeout")
                     || observation.contains("TOOL_BATCH_TIMEOUT")
                     || observation.contains("终止等待"));
+            Assert.assertTrue("批次超时后应中断底层工具任务",
+                    interrupted.await(2, TimeUnit.SECONDS));
         } finally {
             hangPool.shutdownNow();
         }
@@ -294,6 +297,12 @@ public class AgentToolPoolNestingHardeningTest {
     }
 
     private static final class HangTool implements BaseTool {
+        private final CountDownLatch interrupted;
+
+        private HangTool(CountDownLatch interrupted) {
+            this.interrupted = interrupted;
+        }
+
         @Override
         public String getName() {
             return "hang";
@@ -315,6 +324,7 @@ public class AgentToolPoolNestingHardeningTest {
                 Thread.sleep(30_000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                interrupted.countDown();
             }
             return ToolResultPayload.text("late");
         }

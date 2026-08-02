@@ -155,7 +155,8 @@ public class LLM {
             if (StringUtils.isNotBlank(message.getBase64Image())) {
                 List<Map<String, Object>> multimodalContent = new ArrayList<>();
                 Map<String, String> imageUrlMap = new HashMap<>();
-                imageUrlMap.put("url", "data:image/jpeg;base64," + message.getBase64Image());
+                String image = message.getBase64Image();
+                imageUrlMap.put("url", image.startsWith("data:") ? image : "data:image/jpeg;base64," + image);
                 Map<String, Object> imageMap = new HashMap<>();
                 imageMap.put("type", "image_url");
                 imageMap.put("image_url", imageUrlMap);
@@ -207,12 +208,27 @@ public class LLM {
                     Map<String, Object> claudeToolCall = new HashMap<>();
                     claudeToolCall.put("type", "tool_result");
                     claudeToolCall.put("tool_use_id", message.getToolCallId());
-                    claudeToolCall.put("content", content);
+                    if (StringUtils.isNotBlank(message.getBase64Image())) {
+                        List<Map<String, Object>> contentBlocks = new ArrayList<>();
+                        contentBlocks.add(Map.of("type", "text", "text", content));
+                        contentBlocks.add(Map.of("type", "image", "source", imageSource(message.getBase64Image())));
+                        claudeToolCall.put("content", contentBlocks);
+                    } else {
+                        claudeToolCall.put("content", content);
+                    }
                     claudeToolCalls.add(claudeToolCall);
                     messageMap.put("content", claudeToolCalls);
                 } else {
                     messageMap.put("role", message.getRole().getValue());
-                    messageMap.put("content", content);
+                    if (StringUtils.isNotBlank(message.getBase64Image())) {
+                        List<Map<String, Object>> contentBlocks = new ArrayList<>();
+                        contentBlocks.add(Map.of("type", "text", "text", content));
+                        contentBlocks.add(Map.of("type", "image_url", "image_url",
+                                Map.of("url", message.getBase64Image())));
+                        messageMap.put("content", contentBlocks);
+                    } else {
+                        messageMap.put("content", content);
+                    }
                     messageMap.put("tool_call_id", message.getToolCallId());
                 }
             } else {
@@ -225,6 +241,22 @@ public class LLM {
             formattedMessages.add(messageMap);
         }
         return formattedMessages;
+    }
+
+    private Map<String, Object> imageSource(String rawImage) {
+        String normalized = rawImage.trim();
+        String mediaType = "image/jpeg";
+        String data = normalized;
+        if (normalized.startsWith("data:")) {
+            int comma = normalized.indexOf(',');
+            if (comma > 5) {
+                String metadata = normalized.substring(5, comma);
+                int separator = metadata.indexOf(';');
+                mediaType = separator > 0 ? metadata.substring(0, separator) : metadata;
+                data = normalized.substring(comma + 1);
+            }
+        }
+        return Map.of("type", "base64", "media_type", mediaType, "data", data);
     }
 
     /**
