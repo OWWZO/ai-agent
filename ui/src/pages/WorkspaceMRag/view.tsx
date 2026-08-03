@@ -625,6 +625,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
             {!embedded && (
               <Link
                 to={ROUTES.HOME}
+                target="_blank"
+                rel="noreferrer"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-muted)] transition hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
                 title="返回首页"
               >

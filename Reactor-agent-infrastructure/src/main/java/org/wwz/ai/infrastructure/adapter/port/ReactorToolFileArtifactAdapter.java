@@ -6,6 +6,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
@@ -26,9 +27,16 @@ import java.util.concurrent.TimeUnit;
 public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
 
     private final RemoteHttpPort remoteHttpPort;
+    private final OkHttpClient sharedClient;
 
     public ReactorToolFileArtifactAdapter(RemoteHttpPort remoteHttpPort) {
+        this(remoteHttpPort, new OkHttpClient());
+    }
+
+    @Autowired
+    public ReactorToolFileArtifactAdapter(RemoteHttpPort remoteHttpPort, OkHttpClient sharedClient) {
         this.remoteHttpPort = Objects.requireNonNull(remoteHttpPort, "RemoteHttpPort must not be null");
+        this.sharedClient = Objects.requireNonNull(sharedClient, "sharedClient must not be null");
     }
 
     @Override
@@ -94,7 +102,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
             throw new IllegalArgumentException("url must not be blank");
         }
         long timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? 60L : timeoutSeconds;
-        OkHttpClient client = new OkHttpClient.Builder()
+        OkHttpClient client = sharedClient.newBuilder()
                 .connectTimeout(timeout, TimeUnit.SECONDS)
                 .readTimeout(timeout, TimeUnit.SECONDS)
                 .writeTimeout(timeout, TimeUnit.SECONDS)

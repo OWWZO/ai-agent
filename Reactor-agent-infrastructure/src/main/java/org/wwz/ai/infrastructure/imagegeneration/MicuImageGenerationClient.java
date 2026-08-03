@@ -75,6 +75,10 @@ public class MicuImageGenerationClient {
     private final String previewBaseUrl;
 
     public MicuImageGenerationClient(ClientConfig config) {
+        this(config, new OkHttpClient());
+    }
+
+    public MicuImageGenerationClient(ClientConfig config, OkHttpClient sharedClient) {
         this.baseUrl = trimTrailingSlash(Objects.requireNonNull(config.getBaseUrl(), "baseUrl"));
         this.apiKey = Objects.requireNonNull(config.getApiKey(), "apiKey");
         this.defaultModel = StringUtils.hasText(config.getDefaultModel()) ? config.getDefaultModel().trim() : NONPRO_MODEL;
@@ -91,7 +95,7 @@ public class MicuImageGenerationClient {
         long timeoutSeconds = config.getTimeoutSeconds() == null || config.getTimeoutSeconds() <= 0
                 ? 900L
                 : config.getTimeoutSeconds();
-        this.httpClient = new OkHttpClient.Builder()
+        this.httpClient = Objects.requireNonNull(sharedClient, "sharedClient").newBuilder()
                 .connectTimeout(60, TimeUnit.SECONDS)
                 .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)

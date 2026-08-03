@@ -1,6 +1,7 @@
 package org.wwz.ai.infrastructure.gateway;
 
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
@@ -34,6 +35,9 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
 
     @Resource
     private ReactorFileGateway reactorFileGateway;
+
+    @Resource
+    private OkHttpClient sharedHttpClient;
 
     @Override
     public ImageGenerationGatewayResponse generate(ImageGenerationGatewayRequest requestDTO) {
@@ -106,7 +110,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
                 .defaultGrokModel(firstText(reactorConfig.getImageGenerationGrokModel(), "grok-imagine-image-lite"))
                 .previewBaseUrl(reactorConfig.getCodeInterpreterUrl())
                 .timeoutSeconds(timeout)
-                .build());
+                .build(), sharedHttpClient);
     }
 
     private List<ImageGenerationGatewayFile> uploadGeneratedImages(String requestId,

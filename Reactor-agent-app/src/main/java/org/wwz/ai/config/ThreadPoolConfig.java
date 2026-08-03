@@ -1,6 +1,7 @@
 package org.wwz.ai.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +17,10 @@ import java.util.concurrent.*;
 public class ThreadPoolConfig {
 
     @Bean("legacyThreadPoolExecutor")
+    @ConditionalOnProperty(
+            name = "autobots.execution.tool.virtual-threads-enabled",
+            havingValue = "false",
+            matchIfMissing = true)
     @ConditionalOnMissingBean(ThreadPoolExecutor.class)
     public ThreadPoolExecutor legacyThreadPoolExecutor(ThreadPoolConfigProperties properties) throws ClassNotFoundException, InstantiationException, IllegalAccessException {
         // 实例化策略

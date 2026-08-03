@@ -42,6 +42,8 @@ export function FeaturedConversationsView(
           {!props.embedded ? (
             <Link
               to={ROUTES.HOME}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition hover:text-[var(--chat-text)]"
             >
               <ArrowLeft className="h-4 w-4" />

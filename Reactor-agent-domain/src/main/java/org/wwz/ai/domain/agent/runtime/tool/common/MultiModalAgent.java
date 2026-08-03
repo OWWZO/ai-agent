@@ -16,6 +16,7 @@ import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.MultiModalAgentRequest;
 import org.wwz.ai.domain.agent.runtime.dto.MultiModalAgentResponse;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -34,10 +35,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Data
-public class MultiModalAgent implements BaseTool {
+public class MultiModalAgent implements ContextIsolatableTool {
 
     /**
      * 多模态检索整体超时，避免上游流式接口异常时挂住整个 Agent 执行链。
@@ -56,10 +58,15 @@ public class MultiModalAgent implements BaseTool {
 
     private AgentContext agentContext;
 
-    /**
-     * 当前正在执行的 HTTP 调用，用于超时后主动取消。
-     */
-    private volatile RemoteStreamSession activeStreamSession;
+    @Override
+    public BaseTool isolateFor(AgentContext context) {
+        if (context == null) {
+            throw new IllegalArgumentException("MultiModalAgent.isolateFor context 不能为空");
+        }
+        MultiModalAgent copy = new MultiModalAgent();
+        copy.setAgentContext(context);
+        return copy;
+    }
 
     @Override
     public String getName() {
@@ -98,6 +105,7 @@ public class MultiModalAgent implements BaseTool {
     @Override
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
+        final AtomicReference<RemoteStreamSession> streamSession = new AtomicReference<>();
         try {
             Map<String, Object> params = (Map<String, Object>) input;
             String question = params.get("question") == null ? "" : String.valueOf(params.get("question")).trim();
@@ -124,11 +132,13 @@ public class MultiModalAgent implements BaseTool {
                     .build();
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            CompletableFuture<ToolResultPayload> future = callMultiModalAgentStream(request, artifactSource);
+            CompletableFuture<ToolResultPayload> future =
+                    callMultiModalAgentStream(request, artifactSource, streamSession);
             return future.get(MULTIMODAL_AGENT_TIMEOUT_MINUTES, TimeUnit.MINUTES);
         } catch (TimeoutException e) {
-            if (activeStreamSession != null) {
-                activeStreamSession.cancel();
+            RemoteStreamSession session = streamSession.get();
+            if (session != null) {
+                session.cancel();
             }
             log.error("{} multimodalagent_tool timeout after {} minutes",
                     agentContext.getRequestId(), MULTIMODAL_AGENT_TIMEOUT_MINUTES, e);
@@ -136,13 +146,18 @@ public class MultiModalAgent implements BaseTool {
         } catch (Exception e) {
             log.error("{} multimodalagent_tool error", agentContext.getRequestId(), e);
             return buildFailurePayload("multimodalagent_tool 执行失败：" + e.getMessage());
-        } finally {
-            activeStreamSession = null;
         }
     }
 
     public CompletableFuture<ToolResultPayload> callMultiModalAgentStream(MultiModalAgentRequest multiModalAgentRequest,
                                                                           ToolArtifactSource artifactSource) {
+        return callMultiModalAgentStream(multiModalAgentRequest, artifactSource, new AtomicReference<>());
+    }
+
+    private CompletableFuture<ToolResultPayload> callMultiModalAgentStream(
+            MultiModalAgentRequest multiModalAgentRequest,
+            ToolArtifactSource artifactSource,
+            AtomicReference<RemoteStreamSession> streamSession) {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             ReactorConfig reactorConfig = requireReactorConfig();
@@ -153,7 +168,9 @@ public class MultiModalAgent implements BaseTool {
             String[] interval = reactorConfig.getMessageInterval().getOrDefault("knowledge", "1,4").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
-            activeStreamSession = requireRemoteStreamPort().openStream(RemoteStreamRequest.builder()
+            // 单次调用局部 StreamState，避免并行 execute 抢写实例字段
+            StreamState localState = new StreamState(artifactSource, firstInterval, sendInterval, future);
+            RemoteStreamSession session = requireRemoteStreamPort().openStream(RemoteStreamRequest.builder()
                     .method("POST")
                     .url(url)
                     .headers(Map.of("Content-Type", "application/json"))
@@ -173,18 +190,18 @@ public class MultiModalAgent implements BaseTool {
                     if (!line.startsWith("data:")) {
                         return;
                     }
-                    streamState(artifactSource, firstInterval, sendInterval, future).consume(line.substring(5).trim());
+                    localState.consume(line.substring(5).trim());
                 }
 
                 @Override
                 public void onClosed() {
-                    streamState(artifactSource, firstInterval, sendInterval, future).complete();
-                    activeStreamSession = null;
+                    localState.complete();
+                    streamSession.set(null);
                 }
 
                 @Override
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
-                    activeStreamSession = null;
+                    streamSession.set(null);
                     log.error("{} multimodalagent_tool request error, code={}, body={}",
                             agentContext.getRequestId(), statusCode, responseBody, throwable);
                     if (!future.isDone()) {
@@ -196,26 +213,13 @@ public class MultiModalAgent implements BaseTool {
                     }
                 }
             });
+            streamSession.set(session);
         } catch (Exception e) {
             log.error("{} multimodalagent_tool request error", agentContext.getRequestId(), e);
             future.complete(buildFailurePayload("multimodalagent_tool 执行失败：" + e.getMessage()));
         }
         return future;
     }
-
-    private StreamState streamState(ToolArtifactSource artifactSource,
-                                    int firstInterval,
-                                    int sendInterval,
-                                    CompletableFuture<ToolResultPayload> future) {
-        if (streamState == null) {
-            streamState = new StreamState(artifactSource, firstInterval, sendInterval, future);
-        }
-        return streamState;
-    }
-
-    @lombok.Getter(lombok.AccessLevel.NONE)
-    @lombok.Setter(lombok.AccessLevel.NONE)
-    private transient StreamState streamState;
 
     private class StreamState {
         private final ToolArtifactSource artifactSource;

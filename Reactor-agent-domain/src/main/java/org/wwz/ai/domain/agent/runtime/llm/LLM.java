@@ -387,7 +387,7 @@ public class LLM {
 
             String retryLabel = "llm-ask:" + model;
             if (!stream) {
-                return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", () -> {
+                return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
                     try {
                         ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
                         ReasoningContentExtractor.SplitResult split =
@@ -528,17 +528,21 @@ Prompt prompt = buildPrompt(
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
-                CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.supplyAsync(
-                        runtimeDependencies.requireLlmExecutor(),
-                        "llmAskToolFunctionCall",
-                        () -> {
-                    try {
-                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
-                        return responseMapper.toToolCallResponse(response, startTime);
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
-                }).orTimeout(timeout, TimeUnit.SECONDS);
+                CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.withTimeout(
+                        AgentExecutorSupport.supplyAsync(
+                                runtimeDependencies.requireLlmExecutor(),
+                                "llmAskToolFunctionCall",
+                                context,
+                                () -> {
+                                    try {
+                                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                                        return responseMapper.toToolCallResponse(response, startTime);
+                                    } catch (Exception e) {
+                                        throw new CompletionException(e);
+                                    }
+                                }),
+                        timeout,
+                        TimeUnit.SECONDS);
 
                 return withFallback(
                         springFuture,
@@ -572,19 +576,23 @@ Prompt prompt = buildPrompt(
                         }
                         log.warn("{} empty streaming askTool, retry once non-stream, model={}",
                                 context.getRequestId(), model);
-                        return AgentExecutorSupport.supplyAsync(
-                                runtimeDependencies.requireLlmExecutor(),
-                                "llmAskToolFunctionCallEmptyStreamRetry",
-                                () -> {
-                                    try {
-                                        ChatResponse callResponse = LlmRequestRetry.call(
-                                                retryLabel + ":empty-stream-retry",
-                                                () -> chatModel.call(prompt));
-                                        return responseMapper.toToolCallResponse(callResponse, startTime);
-                                    } catch (Exception e) {
-                                        throw new CompletionException(e);
-                                    }
-                                }).orTimeout(timeout, TimeUnit.SECONDS);
+                        return AgentExecutorSupport.withTimeout(
+                                AgentExecutorSupport.supplyAsync(
+                                        runtimeDependencies.requireLlmExecutor(),
+                                        "llmAskToolFunctionCallEmptyStreamRetry",
+                                        context,
+                                        () -> {
+                                            try {
+                                                ChatResponse callResponse = LlmRequestRetry.call(
+                                                        retryLabel + ":empty-stream-retry",
+                                                        () -> chatModel.call(prompt));
+                                                return responseMapper.toToolCallResponse(callResponse, startTime);
+                                            } catch (Exception e) {
+                                                throw new CompletionException(e);
+                                            }
+                                        }),
+                                timeout,
+                                TimeUnit.SECONDS);
                     })
                     .thenCompose(f -> f)
                     .whenComplete((response, throwable) -> {
@@ -627,25 +635,32 @@ Prompt prompt = buildPrompt(
 
         String retryLabel = "llm-askTool-struct:" + model;
         if (!stream) {
-            return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAskToolStructParse", () -> {
-                try {
-                    ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
-                    LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
-                    ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
+            return AgentExecutorSupport.withTimeout(
+                    AgentExecutorSupport.supplyAsync(
+                            runtimeDependencies.requireLlmExecutor(),
+                            "llmAskToolStructParse",
                             context,
-                            responseMapper.toText(response),
-                            resolveFinishReason(response),
-                            usage.getTotalTokens(),
-                            startTime
-                    );
-                    responseMapper.applyUsage(toolCallResponse, usage);
-                    finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
-                    return toolCallResponse;
-                } catch (Exception e) {
-                    finishLlmInvocation(context, invocationHandle, null, e);
-                    throw new CompletionException(e);
-                }
-            }).orTimeout(timeout, TimeUnit.SECONDS);
+                            () -> {
+                                try {
+                                    ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                                    LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
+                                    ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
+                                            context,
+                                            responseMapper.toText(response),
+                                            resolveFinishReason(response),
+                                            usage.getTotalTokens(),
+                                            startTime
+                                    );
+                                    responseMapper.applyUsage(toolCallResponse, usage);
+                                    finishLlmInvocation(context, invocationHandle, toolCallResponse, null);
+                                    return toolCallResponse;
+                                } catch (Exception e) {
+                                    finishLlmInvocation(context, invocationHandle, null, e);
+                                    throw new CompletionException(e);
+                                }
+                            }),
+                    timeout,
+                    TimeUnit.SECONDS);
         }
 
         return streamResponseHandler.handleStringStreamWithUsage(
@@ -694,7 +709,7 @@ Prompt prompt = buildPrompt(
             log.warn("{} fallback askTool to legacy HTTP, model={}, toolCount={}",
                     context.getRequestId(), model, countTools(tools));
 
-            return callOpenAI(params, timeout)
+            return callOpenAI(params, timeout, context)
                     .thenApply(responseJson -> parseLegacyFunctionCallResponse(context, responseJson, startTime));
         } catch (Exception e) {
             return failedFuture(e);
@@ -1307,7 +1322,13 @@ Prompt prompt = buildPrompt(
      * 最小化保留的旧 HTTP 调用能力，仅用于受控回退。
      */
     protected CompletableFuture<String> callOpenAI(Map<String, Object> params, int timeout) {
-        return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "legacyHttpLlm", () -> {
+        return callOpenAI(params, timeout, null);
+    }
+
+    protected CompletableFuture<String> callOpenAI(Map<String, Object> params,
+                                                   int timeout,
+                                                   AgentContext context) {
+        return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "legacyHttpLlm", context, () -> {
             try {
                 return runtimeDependencies.requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
                         .method("POST")

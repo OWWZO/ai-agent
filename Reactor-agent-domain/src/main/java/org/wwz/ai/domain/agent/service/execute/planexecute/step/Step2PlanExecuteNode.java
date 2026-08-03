@@ -336,7 +336,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         for (List<String> taskBatch : partitionTasks(tasks, maxParallelTasks)) {
             List<CompletableFuture<Void>> futures = new ArrayList<>(taskBatch.size());
             for (String task : taskBatch) {
-                futures.add(AgentExecutorSupport.supplyAsync(taskExecutor, "planSolveExecutorTask", () -> {
+                futures.add(AgentExecutorSupport.supplyAsync(taskExecutor, "planSolveExecutorTask", parentContext, () -> {
                     resultMap.put(task, executeSingleParallelTask(parentContext, request, parentExecutor, task));
                     return null;
                 }));

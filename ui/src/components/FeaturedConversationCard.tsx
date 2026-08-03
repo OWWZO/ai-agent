@@ -53,7 +53,12 @@ function CardShell(props: {
   }
 
   return (
-    <Link to={props.href} className={props.className}>
+    <Link
+      to={props.href}
+      target="_blank"
+      rel="noreferrer"
+      className={props.className}
+    >
       {props.children}
     </Link>
   );

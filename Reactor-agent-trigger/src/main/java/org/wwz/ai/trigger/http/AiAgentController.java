@@ -118,7 +118,7 @@ public class AiAgentController implements IAiAgentService {
 
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
         try {
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", () -> {
+            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", request.getRequestId(), () -> {
                 try {
                     // 使用 IAgentDispatchService 进行策略调度
                     // AgentRequest 直接传入，避免不必要的转换

@@ -91,7 +91,7 @@ public class SubAgentRunner {
                 parentContext.getToolCollection(), definition, parentInPlanMode);
         AgentContext childContext = SubAgentContextFactory.create(
                 parentContext, prompt, description, childTools, agentId, definition.getAgentType());
-        // 每子 Agent 包装工具实例，执行期临时 rebind，避免并行子 Agent 抢共享 agentContext
+        // 默认每子 Agent 独占工具实例（ToolIsolation）；仅无法 fork 时才共享锁
         ContextScopedTool.bindAll(childTools, childContext);
 
         try {

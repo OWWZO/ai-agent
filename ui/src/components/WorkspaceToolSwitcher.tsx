@@ -64,6 +64,8 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
           <Link
             key={item.key}
             to={item.to}
+            target="_blank"
+            rel="noreferrer"
             className={classNames(
               "group flex min-w-[180px] flex-1 items-center gap-3 rounded-[16px] px-3.5 py-2.5 transition sm:flex-none",
               active

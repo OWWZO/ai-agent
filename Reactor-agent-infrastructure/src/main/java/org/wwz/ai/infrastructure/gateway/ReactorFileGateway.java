@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,12 +31,17 @@ public class ReactorFileGateway {
     private static final MediaType DEFAULT_MEDIA_TYPE = MediaType.parse("application/octet-stream");
     private static final int STREAM_BUFFER_SIZE = 8 * 1024;
 
-    private final OkHttpClient uploadClient = new OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS)
-            .writeTimeout(300, TimeUnit.SECONDS)
-            .callTimeout(300, TimeUnit.SECONDS)
-            .build();
+    private final OkHttpClient uploadClient;
+
+    @Autowired
+    public ReactorFileGateway(OkHttpClient sharedClient) {
+        this.uploadClient = sharedClient.newBuilder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(300, TimeUnit.SECONDS)
+                .writeTimeout(300, TimeUnit.SECONDS)
+                .callTimeout(300, TimeUnit.SECONDS)
+                .build();
+    }
 
     @Resource
     private ReactorConfig reactorConfig;

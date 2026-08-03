@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import gfm from 'remark-gfm';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, type ComponentProps } from 'react';
 import { Empty } from 'antd';
 import classNames from 'classnames';
 import { usePanelContext } from './PanelProvider';
@@ -60,6 +60,20 @@ const CodeBlock: ReactorType.FC<{
   return <code className={className}>{children}</code>;
 };
 
+// Markdown 中的链接统一在新标签页打开，避免打断当前对话或文档浏览。
+const MarkdownLink = (props: unknown) => {
+  const anchorProps = { ...(props as Record<string, unknown>) };
+  delete anchorProps.node;
+
+  return (
+    <a
+      {...(anchorProps as ComponentProps<'a'>)}
+      target="_blank"
+      rel="noreferrer"
+    />
+  );
+};
+
 const MarkdownRenderer: ReactorType.FC<{
   markDownContent?: string;
   isStreaming?: boolean;
@@ -97,6 +111,7 @@ const MarkdownRenderer: ReactorType.FC<{
           isStreaming
           showStreamingCursor={false}
           disableAutoScroll
+          components={{ a: MarkdownLink }}
         >
           {normalizedContent}
         </MessageResponse>
@@ -106,7 +121,13 @@ const MarkdownRenderer: ReactorType.FC<{
 
   return (
     <div className={classNames('w-full markdown-body', className)}>
-      <ReactMarkdown remarkPlugins={[gfm]} components={{ code: CodeBlock }}>
+      <ReactMarkdown
+        remarkPlugins={[gfm]}
+        components={{
+          code: CodeBlock,
+          a: MarkdownLink,
+        }}
+      >
         {normalizedContent}
       </ReactMarkdown>
     </div>

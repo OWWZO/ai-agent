@@ -182,7 +182,7 @@
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3、Spring AI、MyBatis 、OkHttp SSE
+- 后端：Java 21、Spring Boot 3、Spring AI、MyBatis 、OkHttp SSE
 - 数据层：MySQL、Qdrant
 - 多模态智能检索：RAG、**多路混合**召回、Rerank、多轮检索
 - 前端：React 19、TypeScript、Vite、Ant Design

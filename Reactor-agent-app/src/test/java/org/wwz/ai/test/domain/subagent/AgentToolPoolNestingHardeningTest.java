@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
@@ -145,6 +146,13 @@ public class AgentToolPoolNestingHardeningTest {
         BaseTool toolA = ContextScopedTool.bind(shared, childA);
         BaseTool toolB = ContextScopedTool.bind(shared, childB);
 
+        // SharedContextTool 可反射 fork：应是独立实例，而不是共享锁包装
+        Assert.assertNotSame(shared, toolA);
+        Assert.assertNotSame(shared, toolB);
+        Assert.assertNotSame(toolA, toolB);
+        Assert.assertFalse(toolA instanceof ContextScopedTool);
+        Assert.assertFalse(toolB instanceof ContextScopedTool);
+
         int rounds = 40;
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -165,6 +173,63 @@ public class AgentToolPoolNestingHardeningTest {
         }
         Assert.assertEquals("parent", shared.getAgentContext().getRequestId());
         Assert.assertNull(shared.leakedRequestId.get());
+    }
+
+    @Test
+    public void parallelIsolatedLongToolsShouldOverlapWithoutSharedLock() throws Exception {
+        LongRunningTool prototype = new LongRunningTool();
+        AgentContext parent = AgentContext.builder().requestId("parent").sessionId("s").query("q").build();
+        AgentContext childA = AgentContext.builder().requestId("child-a").sessionId("s").query("qa").build();
+        AgentContext childB = AgentContext.builder().requestId("child-b").sessionId("s").query("qb").build();
+        prototype.setAgentContext(parent);
+
+        BaseTool toolA = ContextScopedTool.bind(prototype, childA);
+        BaseTool toolB = ContextScopedTool.bind(prototype, childB);
+        Assert.assertNotSame(toolA, toolB);
+
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        long startedAt = System.currentTimeMillis();
+        try {
+            Future<?> fa = pool.submit(() -> {
+                bothStarted.countDown();
+                bothStarted.await(2, TimeUnit.SECONDS);
+                return toolA.execute(null);
+            });
+            Future<?> fb = pool.submit(() -> {
+                bothStarted.countDown();
+                bothStarted.await(2, TimeUnit.SECONDS);
+                return toolB.execute(null);
+            });
+            Assert.assertEquals("child-a", fa.get(3, TimeUnit.SECONDS));
+            Assert.assertEquals("child-b", fb.get(3, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+        // 串行约 2x200ms；并行应接近单次耗时（允许调度抖动）
+        long elapsed = System.currentTimeMillis() - startedAt;
+        Assert.assertTrue("expected parallel execution, elapsed=" + elapsed, elapsed < 320L);
+    }
+
+    @Test
+    public void bindAllShouldGiveEachChildIndependentToolInstances() {
+        ToolCollection parentTools = new ToolCollection();
+        LongRunningTool shared = new LongRunningTool();
+        AgentContext parent = AgentContext.builder().requestId("parent").sessionId("s").query("q").build();
+        shared.setAgentContext(parent);
+        parentTools.addTool(shared);
+        parentTools.setAgentContext(parent);
+
+        ToolCollection childTools = new ToolCollection();
+        childTools.addTool(shared);
+        AgentContext child = AgentContext.builder().requestId("child").sessionId("s").query("c").build();
+        ContextScopedTool.bindAll(childTools, child);
+
+        BaseTool bound = childTools.getTool("long_running");
+        Assert.assertNotNull(bound);
+        Assert.assertNotSame(shared, bound);
+        Assert.assertEquals("child", bound.execute(null));
+        Assert.assertEquals("parent", shared.getAgentContext().getRequestId());
     }
 
     private static final class TestAgent extends BaseAgent {
@@ -330,7 +395,7 @@ public class AgentToolPoolNestingHardeningTest {
         }
     }
 
-    private static final class SharedContextTool implements BaseTool {
+    private static final class SharedContextTool implements ContextIsolatableTool {
         private AgentContext agentContext;
         private final AtomicReference<String> leakedRequestId = new AtomicReference<>();
 
@@ -340,6 +405,13 @@ public class AgentToolPoolNestingHardeningTest {
 
         public AgentContext getAgentContext() {
             return agentContext;
+        }
+
+        @Override
+        public BaseTool isolateFor(AgentContext context) {
+            SharedContextTool copy = new SharedContextTool();
+            copy.setAgentContext(context);
+            return copy;
         }
 
         @Override
@@ -370,6 +442,50 @@ public class AgentToolPoolNestingHardeningTest {
                 leakedRequestId.compareAndSet(null, expected + "->" + actual);
             }
             return actual;
+        }
+    }
+
+    private static final class LongRunningTool implements ContextIsolatableTool {
+        private AgentContext agentContext;
+
+        public void setAgentContext(AgentContext agentContext) {
+            this.agentContext = agentContext;
+        }
+
+        public AgentContext getAgentContext() {
+            return agentContext;
+        }
+
+        @Override
+        public BaseTool isolateFor(AgentContext context) {
+            LongRunningTool copy = new LongRunningTool();
+            copy.setAgentContext(context);
+            return copy;
+        }
+
+        @Override
+        public String getName() {
+            return "long_running";
+        }
+
+        @Override
+        public String getDescription() {
+            return "long_running";
+        }
+
+        @Override
+        public Map<String, Object> toParams() {
+            return Collections.emptyMap();
+        }
+
+        @Override
+        public Object execute(Object input) {
+            try {
+                Thread.sleep(200L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return agentContext == null ? null : agentContext.getRequestId();
         }
     }
 

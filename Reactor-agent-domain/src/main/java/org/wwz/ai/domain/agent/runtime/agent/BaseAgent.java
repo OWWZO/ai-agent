@@ -623,7 +623,8 @@ public abstract class BaseAgent {
             Executor executor = resolveExecutorForTool(toolCall);
             String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
             CompletableFuture<ToolExecutionOutcome> executionFuture = AgentExecutorSupport
-                    .supplyAsync(executor, scene, () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)));
+                    .supplyAsync(executor, scene, context,
+                            () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)));
             executionFutures.add(executionFuture);
             CompletableFuture<Void> future = executionFuture
                     .handle((outcome, error) -> {
@@ -725,6 +726,10 @@ public abstract class BaseAgent {
                                      Map<String, Integer> dispatchIndexMapping,
                                      boolean recordArtifacts) {
         if (toolCall == null || StringUtils.isBlank(toolCall.getId()) || outcome == null) {
+            return;
+        }
+        // 幂等保护：防止超时补写与成功回调同时执行导致重复落账
+        if (result.containsKey(toolCall.getId())) {
             return;
         }
         result.put(toolCall.getId(), outcome);

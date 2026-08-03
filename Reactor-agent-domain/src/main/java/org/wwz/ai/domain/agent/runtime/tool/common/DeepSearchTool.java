@@ -16,12 +16,12 @@ import org.wwz.ai.domain.agent.runtime.dto.DeepSearchRequest;
 import org.wwz.ai.domain.agent.runtime.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,8 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Data
-
-public class DeepSearchTool implements BaseTool {
+public class DeepSearchTool implements ContextIsolatableTool {
 
     /**
      * deep_search 保底超时时间，避免外部流式接口异常时导致 future.get() 长时间阻塞。
@@ -51,10 +50,16 @@ public class DeepSearchTool implements BaseTool {
     private static final long DEEP_SEARCH_IO_TIMEOUT_MINUTES = 20L;
 
     private AgentContext agentContext;
-    /**
-     * 当前正在执行的 deep_search SSE 连接，用于超时后主动取消。
-     */
-    private volatile RemoteStreamSession activeStreamSession;
+
+    @Override
+    public BaseTool isolateFor(AgentContext context) {
+        if (context == null) {
+            throw new IllegalArgumentException("DeepSearchTool.isolateFor context 不能为空");
+        }
+        DeepSearchTool copy = new DeepSearchTool();
+        copy.setAgentContext(context);
+        return copy;
+    }
 
     @Override
     public String getName() {
@@ -91,10 +96,12 @@ public class DeepSearchTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
-        long startTime = System.currentTimeMillis();
+        // 单次执行捕获 context，避免并发 rebind 影响回调
+        final AgentContext ctx = requireAgentContext();
+        final AtomicReference<RemoteStreamSession> streamSession = new AtomicReference<>();
 
         try {
-            ReactorConfig reactorConfig = requireReactorConfig();
+            ReactorConfig reactorConfig = requireReactorConfig(ctx);
             Map<String, Object> params = (Map<String, Object>) input;
             String query = (String) params.get("query");
             Map<String, Object> srcConfig = new HashMap<>();
@@ -103,46 +110,48 @@ public class DeepSearchTool implements BaseTool {
             bingConfig.put("count", Integer.parseInt(reactorConfig.getDeepSearchPageCount()));
             srcConfig.put("bing", bingConfig);
             DeepSearchRequest request = DeepSearchRequest.builder()
-                    .request_id(agentContext.getRequestId() + ":" + StringUtil.generateRandomString(5))
+                    .request_id(ctx.getRequestId() + ":" + StringUtil.generateRandomString(5))
                     .query(query)
                     .agent_id("1")
                     .scene_type("auto_agent")
                     .src_configs(srcConfig)
                     .stream(true)
-                    .content_stream(agentContext.getIsStream())
+                    .content_stream(ctx.getIsStream())
                     .build();
-            ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
+            ToolArtifactSource artifactSource = ctx.requireCurrentToolArtifactSource(getName());
 
-            // 调用流式 API
-            Future<ToolResultPayload> future = callDeepSearchStream(request, artifactSource);
-            Object object = future.get(DEEP_SEARCH_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-
-            return object;
+            Future<ToolResultPayload> future = callDeepSearchStream(ctx, request, artifactSource, streamSession);
+            return future.get(DEEP_SEARCH_TIMEOUT_MINUTES, TimeUnit.MINUTES);
         } catch (TimeoutException e) {
-            if (activeStreamSession != null) {
-                activeStreamSession.cancel();
+            RemoteStreamSession session = streamSession.get();
+            if (session != null) {
+                session.cancel();
             }
-            log.error("{} deep_search timeout after {} minutes", agentContext.getRequestId(), DEEP_SEARCH_TIMEOUT_MINUTES, e);
+            log.error("{} deep_search timeout after {} minutes", ctx.getRequestId(), DEEP_SEARCH_TIMEOUT_MINUTES, e);
             return buildFailurePayload("deep_search执行超时，已终止本次搜索，请基于当前已获取的信息继续处理。");
         } catch (Exception e) {
-
-            log.error("{} deep_search agent error", agentContext.getRequestId(), e);
+            log.error("{} deep_search agent error", ctx.getRequestId(), e);
             return buildFailurePayload("deep_search执行失败：" + StringUtils.defaultIfBlank(e.getMessage(), "未知异常"));
-        } finally {
-            activeStreamSession = null;
         }
     }
 
     /**
-     * 调用 DeepSearch
+     * 调用 DeepSearch；流会话仅存于本次调用的 streamSession，不写入实例字段。
      */
     public CompletableFuture<ToolResultPayload> callDeepSearchStream(DeepSearchRequest searchRequest,
                                                                      ToolArtifactSource artifactSource) {
+        return callDeepSearchStream(requireAgentContext(), searchRequest, artifactSource, new AtomicReference<>());
+    }
+
+    private CompletableFuture<ToolResultPayload> callDeepSearchStream(AgentContext ctx,
+                                                                      DeepSearchRequest searchRequest,
+                                                                      ToolArtifactSource artifactSource,
+                                                                      AtomicReference<RemoteStreamSession> streamSession) {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
-            ReactorConfig reactorConfig = requireReactorConfig();
+            ReactorConfig reactorConfig = requireReactorConfig(ctx);
             String url = reactorConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
-            log.info("{} deep_search request {}", agentContext.getRequestId(), JSONObject.toJSONString(searchRequest));
+            log.info("{} deep_search request {}", ctx.getRequestId(), JSONObject.toJSONString(searchRequest));
 
             String[] interval = reactorConfig.getMessageInterval().getOrDefault("search", "5,20").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
@@ -154,8 +163,8 @@ public class DeepSearchTool implements BaseTool {
             StringBuilder stringBuilderIncr = new StringBuilder();
             StringBuilder stringBuilderAll = new StringBuilder();
             DeepSearchStructuredResultBuilder resultBuilder = new DeepSearchStructuredResultBuilder(searchRequest.getQuery());
-            String digitalEmployee = agentContext.getToolCollection().getDigitalEmployee(getName());
-            activeStreamSession = requireRemoteStreamPort().openStream(RemoteStreamRequest.builder()
+            String digitalEmployee = ctx.getToolCollection().getDigitalEmployee(getName());
+            RemoteStreamSession session = requireRemoteStreamPort(ctx).openStream(RemoteStreamRequest.builder()
                     .method("POST")
                     .url(url)
                     .headers(Map.of(
@@ -171,7 +180,7 @@ public class DeepSearchTool implements BaseTool {
                     .build(), new RemoteStreamListener() {
                 @Override
                 public void onOpen() {
-                    log.info("{} deep_search stream opened", agentContext.getRequestId());
+                    log.info("{} deep_search stream opened", ctx.getRequestId());
                 }
 
                 @Override
@@ -189,19 +198,19 @@ public class DeepSearchTool implements BaseTool {
                         }
                         int currentIndex = index.get();
                         if (currentIndex == 1 || currentIndex % 100 == 0) {
-                            log.info("{} deep_search recv data: {}", agentContext.getRequestId(), data);
+                            log.info("{} deep_search recv data: {}", ctx.getRequestId(), data);
                         }
                         DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
                         searchResponse.setToolCallId(toolCallId);
                         FileTool fileTool = new FileTool();
-                        fileTool.setAgentContext(agentContext);
+                        fileTool.setAgentContext(ctx);
                         // 使用标准 SSE 客户端逐条消费事件，避免 extend 被上游缓冲后延迟透传。
                         if (searchResponse.getIsFinal()) {
-                            if (agentContext.getIsStream()) {
+                            if (Boolean.TRUE.equals(ctx.getIsStream())) {
                                 searchResponse.setAnswer(stringBuilderAll.toString());
                             }
                             if (searchResponse.getAnswer().isEmpty()) {
-                                log.error("{} deep search answer empty", agentContext.getRequestId());
+                                log.error("{} deep search answer empty", ctx.getRequestId());
                                 resultRef.set("搜索结果为空");
                                 return;
                             }
@@ -210,7 +219,7 @@ public class DeepSearchTool implements BaseTool {
                             String fileDesc = searchResponse.getAnswer()
                                     .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
                             FileRequest fileRequest = FileRequest.builder()
-                                    .requestId(agentContext.getRequestId())
+                                    .requestId(ctx.getRequestId())
                                     .fileName(fileName)
                                     .description(fileDesc)
                                     .content(searchResponse.getAnswer())
@@ -219,7 +228,7 @@ public class DeepSearchTool implements BaseTool {
                             // 总结文章全量回传，供 observation / fallback 使用，不再截断
                             resultRef.set(searchResponse.getAnswer());
 
-                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                             return;
                         }
 
@@ -238,12 +247,12 @@ public class DeepSearchTool implements BaseTool {
                         if ("extend".equals(searchResponse.getMessageType())) {
                             messageIdRef.set(StringUtil.getUUID());
                             searchResponse.setSearchFinish(false);
-                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                         } else if ("search".equals(searchResponse.getMessageType())) {
                             searchResponse.setSearchFinish(true);
-                            agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
                             FileRequest fileRequest = FileRequest.builder()
-                                    .requestId(agentContext.getRequestId())
+                                    .requestId(ctx.getRequestId())
                                     .fileName(searchResponse.getQuery() + "_search_result.txt")
                                     .description(searchResponse.getQuery() + "...")
                                     .content(JSON.toJSONString(contentMap))
@@ -257,25 +266,26 @@ public class DeepSearchTool implements BaseTool {
                             stringBuilderAll.append(searchResponse.getAnswer());
                             if (currentIndex == firstInterval || currentIndex % sendInterval == 0) {
                                 searchResponse.setAnswer(stringBuilderIncr.toString());
-                                agentContext.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
+                                ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                                 stringBuilderIncr.setLength(0);
                             }
                             index.incrementAndGet();
                         }
                     } catch (Exception e) {
-                            log.error("{} deep_search request error", agentContext.getRequestId(), e);
-                            if (!future.isDone()) {
-                                future.completeExceptionally(e);
-                            }
-                        if (activeStreamSession != null) {
-                            activeStreamSession.cancel();
+                        log.error("{} deep_search request error", ctx.getRequestId(), e);
+                        if (!future.isDone()) {
+                            future.completeExceptionally(e);
+                        }
+                        RemoteStreamSession active = streamSession.get();
+                        if (active != null) {
+                            active.cancel();
                         }
                     }
                 }
 
                 @Override
                 public void onClosed() {
-                    activeStreamSession = null;
+                    streamSession.set(null);
                     if (!future.isDone()) {
                         future.complete(resultBuilder.buildPayload(resultRef.get()));
                     }
@@ -283,7 +293,7 @@ public class DeepSearchTool implements BaseTool {
 
                 @Override
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
-                    activeStreamSession = null;
+                    streamSession.set(null);
                     if (throwable == null && statusCode == null) {
                         if (!future.isDone()) {
                             future.complete(resultBuilder.buildPayload(resultRef.get()));
@@ -291,7 +301,7 @@ public class DeepSearchTool implements BaseTool {
                         return;
                     }
                     log.error("{} deep_search on failure, statusCode={}, body={}",
-                            agentContext.getRequestId(), statusCode, responseBody, throwable);
+                            ctx.getRequestId(), statusCode, responseBody, throwable);
                     if (!future.isDone()) {
                         future.completeExceptionally(throwable instanceof Exception
                                 ? (Exception) throwable
@@ -299,8 +309,9 @@ public class DeepSearchTool implements BaseTool {
                     }
                 }
             });
+            streamSession.set(session);
         } catch (Exception e) {
-            log.error("{} deep_search request error", agentContext.getRequestId(), e);
+            log.error("{} deep_search request error", ctx.getRequestId(), e);
             future.completeExceptionally(e);
         }
 
@@ -319,17 +330,28 @@ public class DeepSearchTool implements BaseTool {
         );
     }
 
-    private ReactorConfig requireReactorConfig() {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
+    private AgentContext requireAgentContext() {
+        if (agentContext == null) {
+            throw new IllegalStateException("DeepSearchTool 缺少 AgentContext");
         }
-        return agentContext.getRuntimeDependencies().requireReactorConfig();
+        return agentContext;
     }
 
-    private RemoteStreamPort requireRemoteStreamPort() {
-        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+    private ReactorConfig requireReactorConfig() {
+        return requireReactorConfig(requireAgentContext());
+    }
+
+    private ReactorConfig requireReactorConfig(AgentContext ctx) {
+        if (ctx == null || ctx.getRuntimeDependencies() == null) {
             throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
         }
-        return agentContext.getRuntimeDependencies().requireRemoteStreamPort();
+        return ctx.getRuntimeDependencies().requireReactorConfig();
+    }
+
+    private RemoteStreamPort requireRemoteStreamPort(AgentContext ctx) {
+        if (ctx == null || ctx.getRuntimeDependencies() == null) {
+            throw new IllegalStateException("DeepSearchTool 缺少 ReactorRuntimeDependencies");
+        }
+        return ctx.getRuntimeDependencies().requireRemoteStreamPort();
     }
 }

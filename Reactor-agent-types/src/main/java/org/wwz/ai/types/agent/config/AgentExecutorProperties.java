@@ -13,6 +13,9 @@ import java.util.List;
 @ConfigurationProperties(prefix = "autobots.execution")
 public class AgentExecutorProperties {
 
+    /** Agent 自定义虚拟线程总开关，默认关闭以保留平台线程回滚路径。 */
+    private boolean virtualThreadsEnabled = false;
+
     private Pool dispatch = Pool.dispatchDefault();
 
     private Pool llm = Pool.llmDefault();
@@ -47,6 +50,10 @@ public class AgentExecutorProperties {
         private Integer maxPoolSize;
         private Integer queueCapacity;
         private Long keepAliveSeconds;
+        /** 虚拟线程模式下的最大同时执行任务数，不等同于队列容量。 */
+        private Integer maxConcurrency;
+        /** 该命名执行器是否参与虚拟线程灰度，需同时开启总开关。 */
+        private boolean virtualThreadsEnabled;
         private String rejectPolicy;
         private String threadNamePrefix;
 
@@ -55,6 +62,7 @@ public class AgentExecutorProperties {
             pool.setCorePoolSize(16);
             pool.setMaxPoolSize(32);
             pool.setQueueCapacity(200);
+            pool.setMaxConcurrency(32);
             pool.setKeepAliveSeconds(60L);
             pool.setRejectPolicy("AbortPolicy");
             pool.setThreadNamePrefix("agent-dispatch-");
@@ -66,6 +74,7 @@ public class AgentExecutorProperties {
             pool.setCorePoolSize(16);
             pool.setMaxPoolSize(32);
             pool.setQueueCapacity(100);
+            pool.setMaxConcurrency(32);
             pool.setKeepAliveSeconds(60L);
             pool.setRejectPolicy("AbortPolicy");
             pool.setThreadNamePrefix("agent-llm-");
@@ -77,6 +86,7 @@ public class AgentExecutorProperties {
             pool.setCorePoolSize(8);
             pool.setMaxPoolSize(16);
             pool.setQueueCapacity(50);
+            pool.setMaxConcurrency(16);
             pool.setKeepAliveSeconds(60L);
             pool.setRejectPolicy("AbortPolicy");
             pool.setThreadNamePrefix("agent-tool-");
@@ -88,11 +98,13 @@ public class AgentExecutorProperties {
             pool.setCorePoolSize(8);
             pool.setMaxPoolSize(16);
             pool.setQueueCapacity(50);
+            pool.setMaxConcurrency(16);
             pool.setKeepAliveSeconds(60L);
             pool.setRejectPolicy("AbortPolicy");
             pool.setThreadNamePrefix("agent-task-");
             return pool;
         }
+
     }
 
     @Data

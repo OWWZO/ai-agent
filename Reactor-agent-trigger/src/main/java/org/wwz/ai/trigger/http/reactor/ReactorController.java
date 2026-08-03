@@ -101,7 +101,7 @@ public class ReactorController {
         SseLifecycleSupport.registerLifecycle(emitter, request.getRequestId(), heartbeatFuture, log);
 
         try {
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", () -> {
+            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", request.getRequestId(), () -> {
                 try {
                     agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
                     emitter.complete();

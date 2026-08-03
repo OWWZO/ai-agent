@@ -198,6 +198,8 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
             <div className="flex items-center gap-3">
               <Link
                 to={ROUTES.HOME}
+                target="_blank"
+                rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
               >
                 <ArrowLeft className="h-4 w-4" />

@@ -7,6 +7,7 @@ import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -25,6 +26,7 @@ public class RootNode extends AbstractArmorySupport {
     @Resource
     private AiClientApiNode aiClientApiNode;
 
+    @Autowired
     public RootNode(Map<String, ILoadDataStrategy> loadDataStrategyMap) {
         this.loadDataStrategyMap = loadDataStrategyMap;
     }

@@ -6,6 +6,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
@@ -27,6 +28,18 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
     private static final long DEFAULT_CONNECT_TIMEOUT_SECONDS = 30L;
     private static final long DEFAULT_READ_TIMEOUT_SECONDS = 300L;
     private static final long DEFAULT_WRITE_TIMEOUT_SECONDS = 300L;
+
+    private final OkHttpClient sharedClient;
+
+    /** 生产环境注入共享连接池；单测保留无参构造以避免依赖 Spring 容器。 */
+    public OkHttpRemoteHttpAdapter() {
+        this(new OkHttpClient());
+    }
+
+    @Autowired
+    public OkHttpRemoteHttpAdapter(OkHttpClient sharedClient) {
+        this.sharedClient = Objects.requireNonNull(sharedClient, "sharedClient must not be null");
+    }
 
     @Override
     public String execute(RemoteHttpRequest request) throws IOException {
@@ -69,7 +82,7 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
 
     private OkHttpClient buildClient(RemoteHttpRequest request) {
         boolean followRedirects = request.getFollowRedirects() == null || Boolean.TRUE.equals(request.getFollowRedirects());
-        return new OkHttpClient.Builder()
+        return sharedClient.newBuilder()
                 .connectTimeout(resolveTimeout(request.getConnectTimeoutSeconds(), DEFAULT_CONNECT_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .readTimeout(resolveTimeout(request.getReadTimeoutSeconds(), DEFAULT_READ_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .writeTimeout(resolveTimeout(request.getWriteTimeoutSeconds(), DEFAULT_WRITE_TIMEOUT_SECONDS), TimeUnit.SECONDS)

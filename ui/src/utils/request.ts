@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { showMessage } from './utils';
+import { jumpUrl, showMessage } from './utils';
 import { getDeviceId } from '@/services/agentConversation';
 import { resolveServiceBaseUrl } from './origin';
 
@@ -27,7 +27,7 @@ request.interceptors.request.use(
 const noAuth = (url?: string) => {
   showMessage()?.error('未登录');
   if (url) {
-    location.href = url;
+    jumpUrl(url);
   }
 };
 

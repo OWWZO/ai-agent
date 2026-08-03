@@ -64,7 +64,12 @@ export function FeaturedConversationDetailView(
         <span>返回</span>
       </button>
     ) : (
-      <Link to={ROUTES.FEATURED_CONVERSATIONS} className={backClassName}>
+      <Link
+        to={ROUTES.FEATURED_CONVERSATIONS}
+        target="_blank"
+        rel="noreferrer"
+        className={backClassName}
+      >
         <ArrowLeft className="h-4 w-4" />
         <span>返回</span>
       </Link>

@@ -15,6 +15,7 @@ import org.wwz.ai.domain.agent.runtime.dto.DataAnalysisRequest;
 import org.wwz.ai.domain.agent.runtime.dto.DataAnalysisResponse;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ContextIsolatableTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -28,8 +29,18 @@ import java.util.concurrent.Future;
 
 @Slf4j
 @Data
-public class DataAnalysisTool implements BaseTool {
+public class DataAnalysisTool implements ContextIsolatableTool {
     private AgentContext agentContext;
+
+    @Override
+    public BaseTool isolateFor(AgentContext context) {
+        if (context == null) {
+            throw new IllegalArgumentException("DataAnalysisTool.isolateFor context 不能为空");
+        }
+        DataAnalysisTool copy = new DataAnalysisTool();
+        copy.setAgentContext(context);
+        return copy;
+    }
 
     @Override
     public String getName() {

@@ -222,6 +222,8 @@ const WorkspaceImageGeneration: ReactorType.FC<WorkspaceImageGenerationProps> = 
         {!embedded ? (
           <Link
             to="/"
+            target="_blank"
+            rel="noreferrer"
             className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text-muted)] shadow-[var(--shadow-xs)] transition hover:text-[var(--chat-text)]"
             title="返回"
           >

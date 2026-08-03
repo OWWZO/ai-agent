@@ -60,6 +60,12 @@ public class AgentRunState {
         currentStepNoHolder.set(stepNo);
     }
 
+    /** 清理任务线程上的 agent/step 视图，避免线程复用时串联上一个任务。 */
+    public void clearExecutionPosition() {
+        currentAgentNameHolder.remove();
+        currentStepNoHolder.remove();
+    }
+
     /**
      * 绑定当前线程的 LLM invocation。
      */

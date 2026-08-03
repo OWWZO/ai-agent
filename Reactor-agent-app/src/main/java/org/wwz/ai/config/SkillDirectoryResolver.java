@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -128,7 +129,7 @@ public class SkillDirectoryResolver {
             }
             Path parent = locationPath.getParent();
             return parent == null ? Collections.emptyList() : List.of(parent);
-        } catch (URISyntaxException | IllegalArgumentException e) {
+        } catch (URISyntaxException | FileSystemNotFoundException | IllegalArgumentException e) {
             log.warn("failed to resolve classpath anchors for skill directory fallback", e);
             return Collections.emptyList();
         }

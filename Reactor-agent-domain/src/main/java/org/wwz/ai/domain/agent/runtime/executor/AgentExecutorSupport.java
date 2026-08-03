@@ -1,7 +1,13 @@
 package org.wwz.ai.domain.agent.runtime.executor;
 
+import org.slf4j.MDC;
+import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
+import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.llm.LlmPromptObservability;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
@@ -9,6 +15,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**
@@ -25,10 +33,21 @@ public final class AgentExecutorSupport {
      * 用受控执行器包装 CompletableFuture，统一把拒绝语义收口为可观测异常。
      */
     public static <T> CompletableFuture<T> supplyAsync(Executor executor, String scene, Supplier<T> supplier) {
+        return supplyAsync(executor, scene, null, supplier);
+    }
+
+    /** 提交带 Agent 运行态的任务，跨平台/虚拟线程边界显式传递上下文。
+     * 修复 DiscardPolicy / DiscardOldestPolicy 导致 Future 永久不 complete 的问题。
+     */
+    public static <T> CompletableFuture<T> supplyAsync(Executor executor,
+                                                       String scene,
+                                                       AgentContext context,
+                                                       Supplier<T> supplier) {
         Objects.requireNonNull(supplier, "supplier must not be null");
         CancellableCompletableFuture<T> result = new CancellableCompletableFuture<>();
+        TaskContextSnapshot snapshot = TaskContextSnapshot.capture(context);
         try {
-            FutureTask<T> task = new FutureTask<>(() -> supplier.get()) {
+            FutureTask<T> task = new FutureTask<>(() -> snapshot.call(supplier)) {
                 @Override
                 protected void done() {
                     if (isCancelled()) {
@@ -45,7 +64,7 @@ public final class AgentExecutorSupport {
                 }
             };
             result.bind(task);
-            requireExecutor(executor, scene).execute(task);
+            submit(executor, scene, snapshot.requestId(), task);
             return result;
         } catch (RejectedExecutionException e) {
             return failedFuture(rejected(scene, e));
@@ -53,15 +72,61 @@ public final class AgentExecutorSupport {
     }
 
     /**
+     * 为受控异步任务增加超时；超时完成对外 Future 后，同时中断底层 FutureTask。
+     */
+    public static <T> CompletableFuture<T> withTimeout(CompletableFuture<T> future,
+                                                        long timeout,
+                                                        TimeUnit unit) {
+        Objects.requireNonNull(future, "future must not be null");
+        Objects.requireNonNull(unit, "unit must not be null");
+        if (future.isDone()) {
+            return future;
+        }
+        CompletableFuture.delayedExecutor(timeout, unit).execute(() -> {
+            TimeoutException timeoutException = new TimeoutException();
+            if (future.completeExceptionally(timeoutException)
+                    && future instanceof CancellableCompletableFuture<?> cancellable) {
+                cancellable.cancelDelegate(true);
+            }
+        });
+        return future;
+    }
+
+    /**
      * 用受控执行器提交异步任务。
      */
     public static void execute(Executor executor, String scene, Runnable runnable) {
+        execute(executor, scene, (String) null, runnable);
+    }
+
+    public static void execute(Executor executor, String scene, String requestId, Runnable runnable) {
         Objects.requireNonNull(runnable, "runnable must not be null");
+        TaskContextSnapshot snapshot = TaskContextSnapshot.capture(null, requestId);
         try {
-            requireExecutor(executor, scene).execute(runnable);
+            submit(executor, scene, snapshot.requestId(), () -> snapshot.run(runnable));
         } catch (RejectedExecutionException e) {
             throw rejected(scene, e);
         }
+    }
+
+    /** 使用 AgentContext 提交 dispatch 之外的任务，保留 AgentRunState 的线程内视图。 */
+    public static void execute(Executor executor, String scene, AgentContext context, Runnable runnable) {
+        Objects.requireNonNull(runnable, "runnable must not be null");
+        TaskContextSnapshot snapshot = TaskContextSnapshot.capture(context);
+        try {
+            submit(executor, scene, snapshot.requestId(), () -> snapshot.run(runnable));
+        } catch (RejectedExecutionException e) {
+            throw rejected(scene, e);
+        }
+    }
+
+    private static void submit(Executor executor, String scene, String requestId, Runnable task) {
+        Executor required = requireExecutor(executor, scene);
+        if (required instanceof AgentWorkExecutor workExecutor) {
+            workExecutor.execute(task, scene, requestId);
+            return;
+        }
+        required.execute(task);
     }
 
     private static Executor requireExecutor(Executor executor, String scene) {
@@ -97,11 +162,158 @@ public final class AgentExecutorSupport {
         @Override
         public boolean cancel(boolean mayInterruptIfRunning) {
             boolean cancelled = super.cancel(mayInterruptIfRunning);
-            Future<?> current = delegate;
-            if (cancelled && current != null) {
-                current.cancel(mayInterruptIfRunning);
+            if (cancelled) {
+                cancelDelegate(mayInterruptIfRunning);
             }
             return cancelled;
+        }
+
+        private boolean cancelDelegate(boolean mayInterruptIfRunning) {
+            Future<?> current = delegate;
+            return current != null && current.cancel(mayInterruptIfRunning);
+        }
+    }
+
+    private record TaskContextSnapshot(String requestId,
+                                       String visitorId,
+                                       Map<String, String> mdc,
+                                       LlmPromptObservability.ObservationBundle observation,
+                                       AgentRunState runState,
+                                       String agentName,
+                                       Integer stepNo,
+                                       Long llmInvocationId) {
+
+        private static TaskContextSnapshot capture(AgentContext context) {
+            return capture(context, context == null ? null : context.getRequestId());
+        }
+
+        private static TaskContextSnapshot capture(AgentContext context, String requestId) {
+            AgentRunState state = context == null ? null : context.getAgentRunState();
+            String resolvedRequestId = requestId == null && context != null ? context.getRequestId() : requestId;
+            Map<String, String> capturedMdc = MDC.getCopyOfContextMap();
+            if (capturedMdc != null) {
+                capturedMdc = Map.copyOf(capturedMdc);
+            }
+            return new TaskContextSnapshot(
+                    resolvedRequestId,
+                    VisitorRequestContext.currentVisitorId(),
+                    capturedMdc,
+                    LlmPromptObservability.current(),
+                    state,
+                    state == null ? null : state.getCurrentAgentName(),
+                    state == null ? null : state.getCurrentStepNo(),
+                    state == null ? null : state.getCurrentLlmInvocationId()
+            );
+        }
+
+        private <T> T call(Supplier<T> supplier) {
+            Scope scope = open();
+            try {
+                return supplier.get();
+            } finally {
+                scope.close();
+            }
+        }
+
+        private void run(Runnable runnable) {
+            Scope scope = open();
+            try {
+                runnable.run();
+            } finally {
+                scope.close();
+            }
+        }
+
+        private Scope open() {
+            String previousVisitorId = VisitorRequestContext.currentVisitorId();
+            Map<String, String> previousMdc = MDC.getCopyOfContextMap();
+            LlmPromptObservability.ObservationBundle previousObservation = LlmPromptObservability.current();
+            String previousAgentName = runState == null ? null : runState.getCurrentAgentName();
+            Integer previousStepNo = runState == null ? null : runState.getCurrentStepNo();
+            Long previousLlmInvocationId = runState == null ? null : runState.getCurrentLlmInvocationId();
+
+            if (visitorId == null) {
+                VisitorRequestContext.clear();
+            } else {
+                VisitorRequestContext.bind(visitorId);
+            }
+            if (mdc == null || mdc.isEmpty()) {
+                MDC.clear();
+            } else {
+                MDC.setContextMap(mdc);
+            }
+            if (observation == null) {
+                LlmPromptObservability.clear();
+            } else {
+                LlmPromptObservability.restore(observation);
+            }
+            if (runState != null) {
+                if (agentName == null && stepNo == null) {
+                    runState.clearExecutionPosition();
+                } else {
+                    runState.markExecutionPosition(agentName, stepNo);
+                }
+                if (llmInvocationId == null) {
+                    runState.clearCurrentLlmInvocationId();
+                } else {
+                    runState.bindCurrentLlmInvocationId(llmInvocationId);
+                }
+            }
+            return new Scope(previousVisitorId, previousMdc, previousObservation,
+                    previousAgentName, previousStepNo, previousLlmInvocationId);
+        }
+
+        private final class Scope {
+            private final String previousVisitorId;
+            private final Map<String, String> previousMdc;
+            private final LlmPromptObservability.ObservationBundle previousObservation;
+            private final String previousAgentName;
+            private final Integer previousStepNo;
+            private final Long previousLlmInvocationId;
+
+            private Scope(String previousVisitorId,
+                          Map<String, String> previousMdc,
+                          LlmPromptObservability.ObservationBundle previousObservation,
+                          String previousAgentName,
+                          Integer previousStepNo,
+                          Long previousLlmInvocationId) {
+                this.previousVisitorId = previousVisitorId;
+                this.previousMdc = previousMdc;
+                this.previousObservation = previousObservation;
+                this.previousAgentName = previousAgentName;
+                this.previousStepNo = previousStepNo;
+                this.previousLlmInvocationId = previousLlmInvocationId;
+            }
+
+            private void close() {
+                if (previousVisitorId == null) {
+                    VisitorRequestContext.clear();
+                } else {
+                    VisitorRequestContext.bind(previousVisitorId);
+                }
+                if (previousMdc == null || previousMdc.isEmpty()) {
+                    MDC.clear();
+                } else {
+                    MDC.setContextMap(previousMdc);
+                }
+                if (previousObservation == null) {
+                    LlmPromptObservability.clear();
+                } else {
+                    LlmPromptObservability.restore(previousObservation);
+                }
+                if (runState != null) {
+                    if (previousAgentName == null && previousStepNo == null) {
+                        runState.clearExecutionPosition();
+                    } else {
+                        runState.markExecutionPosition(previousAgentName, previousStepNo);
+                    }
+                    if (previousLlmInvocationId == null) {
+                        runState.clearCurrentLlmInvocationId();
+                    } else {
+                        runState.bindCurrentLlmInvocationId(previousLlmInvocationId);
+                    }
+                }
+            }
         }
     }
 }

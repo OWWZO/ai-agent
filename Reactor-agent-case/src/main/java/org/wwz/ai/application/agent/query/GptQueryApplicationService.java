@@ -71,7 +71,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         AgentResponseProjectionStream projectingStream =
                 new AgentResponseProjectionStream(stream, agentRequest, handlerMap);
         try {
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch",
+            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", agentRequest.getRequestId(),
                     () -> dispatchOnExecutor(params, agentRequest, projectingStream, stream));
         } catch (AgentExecutorBusyException e) {
             log.warn("{} dispatch rejected", agentRequest.getRequestId(), e);

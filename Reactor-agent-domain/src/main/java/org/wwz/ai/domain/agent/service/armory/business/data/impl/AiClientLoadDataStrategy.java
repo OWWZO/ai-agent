@@ -10,6 +10,7 @@ import org.wwz.ai.domain.agent.model.valobj.enums.AiAgentEnumVO;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.service.armory.business.data.ILoadDataStrategy;
 import org.wwz.ai.domain.agent.service.armory.node.factory.DefaultArmoryStrategyFactory;
+import org.wwz.ai.types.agent.config.AgentExecutorNames;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,7 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
     @Resource
     private IAgentRepository repository;
 
-    @Resource
+    @Resource(name = AgentExecutorNames.TOOL_EXECUTOR)
     protected Executor threadPoolExecutor;
 
     @Override

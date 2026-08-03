@@ -41,7 +41,7 @@ export const getUniqId = (): string => {
  */
 export const jumpUrl = (url?: string): void => {
   if (!url) return;
-  window.open(url);
+  window.open(url, "_blank", "noopener,noreferrer");
 };
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

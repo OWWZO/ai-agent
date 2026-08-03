@@ -254,6 +254,8 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
           <div className="flex min-w-0 items-center gap-3">
             <Link
               to={ROUTES.HOME}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-900"
               title="返回首页"
             >

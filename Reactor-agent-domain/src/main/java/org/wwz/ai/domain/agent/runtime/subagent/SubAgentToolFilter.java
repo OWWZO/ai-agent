@@ -35,7 +35,9 @@ public final class SubAgentToolFilter {
 
     /**
      * 从父工具池筛选出子 Agent 可用工具。
-     * 共享底层工具实例引用；调用方应使用 {@link ContextScopedTool#bindAll} 绑定子 context。
+     * 此处先共享引用；调用方必须 {@link ContextScopedTool#bindAll} /
+     * {@link org.wwz.ai.domain.agent.runtime.tool.ToolIsolation#bindAll}，
+     * 将工具隔离为子 Agent 独占实例（优先）或共享锁 rebind（兜底）。
      */
     public static ToolCollection filter(ToolCollection parentTools, SubAgentDefinition definition) {
         return filter(parentTools, definition, false);

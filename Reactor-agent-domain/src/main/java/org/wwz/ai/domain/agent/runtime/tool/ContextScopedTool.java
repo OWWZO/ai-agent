@@ -7,8 +7,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 将共享工具实例绑定到固定 AgentContext。
- * 执行时在底层工具锁上临时 rebind，结束后恢复，避免并行子 Agent 抢写 agentContext。
+ * 共享工具实例的 context 绑定包装器（并发兜底路径）。
+ * <p>
+ * 正常路径请走 {@link ToolIsolation#bindToContext}：优先 fork 独立实例。
+ * 仅当工具无法 fork 时才使用本类；{@code synchronized} 会串行化同一底层工具的全部 execute。
  */
 public final class ContextScopedTool implements BaseTool {
 
@@ -25,32 +27,41 @@ public final class ContextScopedTool implements BaseTool {
         this.lock = lock;
     }
 
+    /**
+     * 绑定工具到 context：优先隔离实例，失败才走共享锁。
+     */
     public static BaseTool bind(BaseTool tool, AgentContext context) {
-        if (tool == null || context == null) {
-            return tool;
-        }
-        if (tool instanceof ContextScopedTool scoped) {
-            return new ContextScopedTool(scoped.unwrap(), context, scoped.lock);
-        }
-        return new ContextScopedTool(tool, context, tool);
+        return ToolIsolation.bindToContext(tool, context);
     }
 
     /**
-     * 就地包装 ToolCollection 内全部基础工具。
+     * 仅创建共享锁包装（不尝试 fork）。供 {@link ToolIsolation} 兜底使用。
+     */
+    public static BaseTool wrapShared(BaseTool tool, AgentContext context) {
+        if (tool == null || context == null) {
+            return tool;
+        }
+        BaseTool unwrapped = unwrap(tool);
+        Object lock = unwrapped;
+        if (tool instanceof ContextScopedTool scoped) {
+            lock = scoped.lock;
+        }
+        return new ContextScopedTool(unwrapped, context, lock);
+    }
+
+    /**
+     * 就地绑定 ToolCollection 内全部基础工具。
      */
     public static void bindAll(ToolCollection tools, AgentContext context) {
-        if (tools == null || context == null || tools.getToolMap() == null) {
-            return;
-        }
-        tools.setAgentContext(context);
-        Map<String, BaseTool> toolMap = tools.getToolMap();
-        for (Map.Entry<String, BaseTool> entry : toolMap.entrySet()) {
-            entry.setValue(bind(entry.getValue(), context));
-        }
+        ToolIsolation.bindAll(tools, context);
     }
 
     public BaseTool unwrap() {
-        BaseTool current = delegate;
+        return unwrap(delegate);
+    }
+
+    public static BaseTool unwrap(BaseTool tool) {
+        BaseTool current = tool;
         while (current instanceof ContextScopedTool scoped) {
             current = scoped.delegate;
         }
