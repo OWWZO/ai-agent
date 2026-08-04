@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 代码解释器工具请求模型，承载任务、文件和流式执行参数。
+ */
 @Data
 @Builder
 @NoArgsConstructor

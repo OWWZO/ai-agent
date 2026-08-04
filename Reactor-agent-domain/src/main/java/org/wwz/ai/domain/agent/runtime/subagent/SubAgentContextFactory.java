@@ -55,6 +55,10 @@ public final class SubAgentContextFactory {
                 .basePrompt(null)
                 .historyDialogue(null)
                 .workingMemoryMessages(null)
+                // 子代理不继承主会话 LTM 写入权；对齐 Hermes skip_memory=True
+                .skipMemory(Boolean.TRUE)
+                .ltmOwner(null)
+                .ltmMemoryContext(null)
                 .agentType(parent.getAgentType())
                 .templateType(parent.getTemplateType())
                 .productFiles(parent.getProductFiles() == null ? new ArrayList<>() : new ArrayList<>(parent.getProductFiles()))

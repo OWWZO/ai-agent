@@ -13,7 +13,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 工厂类
+ * Agent 运行时装配策略工厂。
+ * <p>
+ * 对外提供装配逻辑树根节点；DynamicContext 保存一次装配过程中的配置快照，避免节点之间共享可变 Bean 状态。
  */
 @Service
 public class DefaultArmoryStrategyFactory {
@@ -25,6 +27,7 @@ public class DefaultArmoryStrategyFactory {
     }
 
     public StrategyHandler<ArmoryCommandEntity, DefaultArmoryStrategyFactory.DynamicContext, String> armoryStrategyHandler(){
+        // 装配入口从根节点开始，后续节点沿固定顺序注册各类运行时对象。
         return rootNode;
     }
 
@@ -34,6 +37,7 @@ public class DefaultArmoryStrategyFactory {
     @NoArgsConstructor
     public static class DynamicContext {
 
+        /** 按 AiAgentEnumVO 的 dataName 保存各装配节点所需的配置列表。 */
         private Map<String, Object> dataObjects = new HashMap<>();
 
         public <T> void setValue(String key, T value) {

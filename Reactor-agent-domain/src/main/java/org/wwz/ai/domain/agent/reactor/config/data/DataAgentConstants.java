@@ -1,5 +1,8 @@
 package org.wwz.ai.domain.agent.reactor.config.data;
 
+/**
+ * 延期保留的数据 Agent 配置键和协议常量。
+ */
 public class DataAgentConstants {
 
     //nl2sql服务地址

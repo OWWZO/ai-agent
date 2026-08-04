@@ -24,6 +24,9 @@ import java.util.Map;
 
 /**
  * 会话历史详情聚合服务。
+ * <p>
+ * 查询只读取 Execution Ledger，再交给 ReplayProjector 生成前端事件；working memory
+ * 仅服务下一轮 prompt，不参与用户可见历史回放。
  */
 @RequiredArgsConstructor
 public class ConversationHistoryReplayService {
@@ -40,6 +43,7 @@ public class ConversationHistoryReplayService {
         if (session == null) {
             return null;
         }
+        // session 只提供会话头，具体 run/LLM/tool/artifact 事实由 projector 统一组装。
         List<DialogueRunView> runs = executionLedgerQueryService.querySessionRuns(sessionId);
         List<ConversationHistoryDetail.ConversationRunDetail> runDetails = new ArrayList<>();
         HistoryModeSnapshot historyModeSnapshot = HistoryModeSnapshot.defaultChat();

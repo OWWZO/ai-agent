@@ -4,6 +4,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
+/**
+ * Agent 提示词使用的日期格式化工具。
+ */
 public class DateUtil {
 
     public static String CurrentDateInfo() {

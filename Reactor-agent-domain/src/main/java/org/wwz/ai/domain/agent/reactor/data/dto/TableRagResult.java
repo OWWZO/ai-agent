@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * 表级 RAG 召回结果模型。
+ */
 @Data
 public class TableRagResult {
     private Integer code;

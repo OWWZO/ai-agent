@@ -17,7 +17,11 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-
+/**
+ * 按模型 ID 加载模型及其关联 API 配置的策略。
+ * <p>
+ * 模型节点创建 OpenAiChatModel 需要 API 对象，因此这里同时加载两类配置。
+ */
 @Slf4j
 @Service("aiClientModelLoadDataStrategy")
 public class AiClientModelLoadDataStrategy implements ILoadDataStrategy {

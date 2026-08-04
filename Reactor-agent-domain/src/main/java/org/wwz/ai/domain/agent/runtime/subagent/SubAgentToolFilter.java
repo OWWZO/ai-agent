@@ -4,7 +4,10 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 
 import java.util.HashSet;
@@ -63,6 +66,11 @@ public final class SubAgentToolFilter {
         disallowed.add(TaskToolNames.ENTER_PLAN_MODE);
         disallowed.add(TaskToolNames.EXIT_PLAN_MODE);
         disallowed.add(org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool.NAME);
+        // skip_memory：子代理禁止写长期记忆工具（及深度 Provider 写工具）
+        disallowed.add(MemoryTool.TOOL_NAME);
+        disallowed.addAll(LtmMemoryGuard.MEMORY_WRITE_TOOLS);
+        // session_search 只读可保留；若希望子代理完全无 LTM 面，一并剥离
+        disallowed.add(SessionSearchTool.TOOL_NAME);
         if (definition.getDisallowedTools() != null) {
             disallowed.addAll(definition.getDisallowedTools());
         }

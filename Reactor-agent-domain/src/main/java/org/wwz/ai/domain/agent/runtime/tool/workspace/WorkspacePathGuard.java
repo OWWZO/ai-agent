@@ -28,6 +28,7 @@ public class WorkspacePathGuard {
             throw new WorkspaceAccessException("path is required");
         }
         Path normalizedCandidate = candidatePath.toAbsolutePath().normalize();
+        // 统一绝对化并归一化后再比较，既处理 .. 路径，也避免相对路径绕过根目录校验。
         for (Path root : roots) {
             if (root == null) {
                 continue;

@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
+/**
+ * 延期保留的增量事件消息模型，用于描述任务内消息顺序和前端事件载荷。
+ */
 @Data
 @Builder
 @NoArgsConstructor

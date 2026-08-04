@@ -13,6 +13,14 @@ import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactionEvent;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactor;
+import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
+import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
+import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushPolicy;
+import org.wwz.ai.domain.agent.memory.ltm.LtmServices;
+import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -24,7 +32,9 @@ import org.wwz.ai.domain.agent.runtime.printer.LogPrinter;
 import org.wwz.ai.infrastructure.dao.reactor.IWorkingMemoryCompactionDao;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -155,6 +165,9 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             return current;
         }
 
+        // 即将重压缩：独立 Memory Flush 小回合 + Provider onPreCompress（失败不阻断）
+        current = applyLtmPreCompactHooks(sessionId, requestId, current);
+
         int beforeAuto = compactor.estimateTokens(current);
         log.info("auto-compact triggered sessionId={} requestId={} tokens={} threshold={}",
                 sessionId, requestId, beforeAuto, budget.threshold());
@@ -206,7 +219,66 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
 
         String compactRequestId = maybePersistIfChanged(sessionId, requestId, messages, compacted, originalTokens, strategy, budget);
         recordCompactionEvent(sessionId, requestId, messages, compacted, originalTokens, strategy, budget, error, compactRequestId);
-        return compacted == null ? current : compacted;
+        List<Message> result = compacted == null ? current : compacted;
+        // 压缩后提醒：可用 memory / session_search 找回耐久事实与账本细节
+        return MemoryFlushPolicy.prependPostCompactReminder(result);
+    }
+
+    /**
+     * ① 独立 Memory Flush 小回合（写 curated）
+     * ② Provider onPreCompress insight
+     * 失败均不阻断后续压缩。
+     */
+    private List<Message> applyLtmPreCompactHooks(String sessionId, String requestId, List<Message> current) {
+        List<Message> working = current;
+        try {
+            ReactorRuntimeDependencies deps = runtimeDependencies();
+            if (deps == null) {
+                return working;
+            }
+            // ① 独立 flush 小回合（对齐 Hermes）；优先运行时绑定
+            MemoryFlushService flushService = LtmServices.memoryFlush();
+            if (flushService == null) {
+                flushService = deps.getOptionalMemoryFlushService();
+            }
+            if (flushService != null) {
+                int applied = flushService.flushBeforeCompact(sessionId, requestId, null, working);
+                if (applied > 0) {
+                    log.info("memory-flush wrote {} curated entries before compact sessionId={}",
+                            applied, sessionId);
+                }
+            } else {
+                int userTurns = MemoryFlushPolicy.countUserTurns(working);
+                if (MemoryFlushPolicy.shouldFlush(userTurns, deps.resolveLtmFlushMinTurns(), true)) {
+                    working = MemoryFlushPolicy.prependFlushNudge(working);
+                }
+            }
+            // ② Provider insight
+            LtmManager ltmManager = deps.getOptionalLtmManager();
+            if (ltmManager != null) {
+                List<Map<String, Object>> payload = new ArrayList<>();
+                for (Message message : working) {
+                    if (message == null) {
+                        continue;
+                    }
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("role", message.getRole() == null ? null : message.getRole().name());
+                    row.put("content", message.getContent());
+                    payload.add(row);
+                }
+                String insight = ltmManager.onPreCompress(payload);
+                if (StringUtils.isNotBlank(insight)) {
+                    List<Message> withInsight = new ArrayList<>(working.size() + 1);
+                    withInsight.add(Message.userMessage(
+                            "[memory-pre-compress] " + insight.trim(), null));
+                    withInsight.addAll(working);
+                    working = withInsight;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("LTM pre-compact hooks failed sessionId={}: {}", sessionId, e.toString());
+        }
+        return working;
     }
 
     @Override

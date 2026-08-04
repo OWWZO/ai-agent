@@ -17,6 +17,11 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 问数 schema 元数据服务。
+ * <p>
+ * 把数据库列信息转换为模型可理解的字段描述，并根据配置维护忽略、默认召回、分析建议和禁止字段集合。
+ */
 @Service
 @RequiredArgsConstructor
 public class ChatModelSchemaService {
@@ -41,6 +46,7 @@ public class ChatModelSchemaService {
     }
 
     public List<ChatModelSchema> saveModelSchema(String modelCode, DataAgentModelConfig modelConfig, List<TableColumn> columnList, Map<String, Set<String>> fewShotMap) {
+        // 先解析字段策略，再逐列生成 schema，避免把配置判断散落在列循环内部。
         Set<String> ignoreFields = getIgnoreFields(modelConfig.getIgnoreFields());
         Set<String> defaultRecallFields = getDefaultRecallFields(modelConfig.getDefaultRecallFields());
         Set<String> analyzeSuggestFields = getAnalyzeSuggestFields(modelConfig.getAnalyzeSuggestFields());

@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * HTML 文件读取、链接/表格/元数据提取和格式转换工具。
+ */
 public class HtmlProcessorTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "html_processor";

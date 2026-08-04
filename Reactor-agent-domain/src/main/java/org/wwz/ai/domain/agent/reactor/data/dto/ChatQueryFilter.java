@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * 问数查询过滤条件传输对象。
+ */
 @Data
 public class ChatQueryFilter {
     private String col;

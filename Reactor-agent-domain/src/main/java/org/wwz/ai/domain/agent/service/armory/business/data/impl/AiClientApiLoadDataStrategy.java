@@ -17,7 +17,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
- * API 数据加载
+ * 按 API ID 加载 API 配置的策略。
+ * <p>
+ * 该策略用于局部刷新 API 运行时对象，不需要读取客户端、模型等无关配置。
  */
 @Slf4j
 @Service("aiClientApiLoadDataStrategy")

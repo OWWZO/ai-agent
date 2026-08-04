@@ -84,6 +84,7 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
             throw new IllegalStateException("PlanSolve Step2: agentContext is null, Step1 must run first.");
         }
 
+        // 当前主路径是单个 ReactImplAgent 完成规划、工具执行和终答，不再套 Planning/Executor/Summary 外循环。
         ReactImplAgent planner = createPlanSolvePlanner(agentContext);
         String runResult = planner.run(agentContext.getQuery());
         String finalAnswer = resolveFinalAnswer(planner, runResult);
@@ -92,8 +93,10 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
         dynamicContext.setFinalAnswer(finalAnswer);
         dynamicContext.setStep(2);
 
+        // 先向前端发送规范化结果并结束账本，再把本轮增量投影为下一轮工作记忆。
         sendFinalResult(agentContext, finalAnswer);
         persistWorkingMemory(agentContext, planner, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
+        org.wwz.ai.domain.agent.memory.ltm.LtmTurnSyncSupport.syncSuccessfulTurn(agentContext, planner);
         persistWorkspaceReadState(agentContext);
         return "success";
     }

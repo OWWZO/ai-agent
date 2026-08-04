@@ -6,6 +6,10 @@ import lombok.Data;
 
 import java.io.Serializable;
 
+/**
+ * 问数模型字段元数据实体。
+ * <p>字段注释、同义词、类型和召回开关共同构成 schema RAG 的可检索知识。</p>
+ */
 @Data
 @TableName("chat_model_schema")
 public class ChatModelSchema implements Serializable {

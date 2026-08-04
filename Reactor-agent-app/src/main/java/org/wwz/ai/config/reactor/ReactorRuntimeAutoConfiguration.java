@@ -18,7 +18,13 @@ import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
+import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
+import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
+import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
+import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
+import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.springframework.beans.factory.ObjectProvider;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
@@ -62,8 +68,14 @@ public class ReactorRuntimeAutoConfiguration {
                                                                   @Qualifier(AgentExecutorNames.TASK_EXECUTOR) Executor taskExecutor,
                                                                   @Qualifier(AgentExecutorNames.TOOL_EXECUTOR) Executor toolExecutor,
                                                                   @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler,
-                                                                  @Lazy SessionContextCompactionService sessionContextCompactionService,
-                                                                  AgentExecutorProperties agentExecutorProperties) {
+                                                                   @Lazy SessionContextCompactionService sessionContextCompactionService,
+                                                                   ObjectProvider<LtmManager> ltmManagerProvider,
+                                                                   ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider,
+                                                                   ObjectProvider<SessionSearchService> sessionSearchServiceProvider,
+                                                                   ObjectProvider<MemoryFlushService> memoryFlushServiceProvider,
+                                                                   ObjectProvider<BackgroundReviewService> backgroundReviewServiceProvider,
+                                                                   ObjectProvider<LtmProperties> ltmPropertiesProvider,
+                                                                   AgentExecutorProperties agentExecutorProperties) {
         // SessionContextCompactionService 是接口，@Lazy 可走 JDK 代理；
         // 反向依赖用 ObjectProvider，避免对 final 的 ReactorRuntimeDependencies 做 CGLIB 代理。
         return ReactorRuntimeDependencies.builder()
@@ -81,6 +93,14 @@ public class ReactorRuntimeAutoConfiguration {
                 .heartbeatScheduler(heartbeatScheduler)
                 .toolBatchTimeoutSeconds(agentExecutorProperties.getToolBatchTimeoutSeconds())
                 .sessionContextCompactionService(sessionContextCompactionService)
+                .ltmManager(ltmManagerProvider.getIfAvailable())
+                .curatedMemoryStore(curatedMemoryStoreProvider.getIfAvailable())
+                .sessionSearchService(sessionSearchServiceProvider.getIfAvailable())
+                .memoryFlushService(memoryFlushServiceProvider.getIfAvailable())
+                .backgroundReviewService(backgroundReviewServiceProvider.getIfAvailable())
+                .ltmFlushMinTurns(ltmPropertiesProvider.getIfAvailable() == null
+                        ? 6
+                        : ltmPropertiesProvider.getIfAvailable().getFlushMinTurns())
                 .build();
     }
 

@@ -23,6 +23,7 @@ import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
+import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +64,7 @@ public class RootNode extends AbstractExecuteSupport {
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step1: Prepare context and tools for requestId: {}", request.getRequestId());
 
+        // 根节点只负责把请求翻译成运行时上下文，并把后续节点需要的能力装配齐。
         dynamicContext.setStep(0);
         Printer printer = dynamicContext.getPrinter();
 
@@ -89,7 +91,9 @@ public class RootNode extends AbstractExecuteSupport {
 
         materializeSessionFiles(agentContext, request.getSessionFiles());
         hydrateWorkspaceReadState(agentContext);
+        LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
+        // 运行账本记录本轮执行事实；working memory 只在本轮结束后作为下一轮 prompt 投影。
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,

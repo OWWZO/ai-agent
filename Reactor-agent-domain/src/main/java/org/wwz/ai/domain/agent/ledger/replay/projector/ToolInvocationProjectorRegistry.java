@@ -9,7 +9,8 @@ import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
 import java.util.List;
 
 /**
- * 按 tool_name 分发 projector。
+ * 工具调用历史回放投影器注册表。
+ * <p>按 tool_name 选择专用 projector，并在没有匹配实现时使用兜底 projector。</p>
  */
 @RequiredArgsConstructor
 public class ToolInvocationProjectorRegistry {

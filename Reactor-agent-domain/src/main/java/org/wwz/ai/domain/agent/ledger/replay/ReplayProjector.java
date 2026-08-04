@@ -39,6 +39,7 @@ public class ReplayProjector {
         boolean hasLlm = bundle.getLlmInvocations() != null && !bundle.getLlmInvocations().isEmpty();
         boolean hasTool = bundle.getToolInvocations() != null && !bundle.getToolInvocations().isEmpty();
 
+        // 优先走混合回放，因为只有它能按 LLM -> tool 的真实时间线恢复折叠任务；缺少一类事实时再降级。
         if (hasLlm && hasTool) {
             events.addAll(projectMixedHistory(bundle, state));
             appendRunSummaryFallback(events, bundle, state);
@@ -125,6 +126,7 @@ public class ReplayProjector {
 
             List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             String messageType = null;
+            // LLM content 不是天然的最终答案：有工具调用时它是过程文，无工具时由 run summary 负责交付。
             // 原生 CoT 单独回放为 llm_reasoning（与 content 双路）
             if (StringUtils.isNotBlank(llmInvocation.getReasoningContent())) {
                 messageType = "llm_reasoning";

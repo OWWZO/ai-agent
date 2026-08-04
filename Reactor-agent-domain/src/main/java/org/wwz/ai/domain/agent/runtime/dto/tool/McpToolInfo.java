@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpServerDescriptor;
 
+/**
+ * MCP 工具元数据模型，描述工具名称、说明和输入 schema。
+ */
 @Data
 @Builder
 @NoArgsConstructor

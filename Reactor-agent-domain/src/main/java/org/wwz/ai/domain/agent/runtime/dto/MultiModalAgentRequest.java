@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
+/**
+ * 多模态 Agent 请求模型，承载文本、图片/文件引用及运行参数。
+ */
 @Data
 @Builder
 @NoArgsConstructor

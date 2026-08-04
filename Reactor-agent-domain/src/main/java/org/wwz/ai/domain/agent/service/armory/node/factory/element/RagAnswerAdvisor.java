@@ -26,6 +26,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 基于向量召回增强回答的 Spring AI Advisor。
+ * <p>前置阶段召回知识并注入提示词，后置阶段把召回文档附加到响应元数据；不负责执行账本持久化。</p>
+ */
 @Slf4j
 public class RagAnswerAdvisor implements BaseAdvisor {
 

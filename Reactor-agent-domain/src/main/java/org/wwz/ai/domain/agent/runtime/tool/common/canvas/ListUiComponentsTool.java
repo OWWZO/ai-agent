@@ -11,6 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * GenUI 组件目录查询工具。
+ * <p>只读返回当前支持的组件种类和属性提示，不创建或修改画布内容。</p>
+ */
 @Data
 public class ListUiComponentsTool implements BaseTool {
 

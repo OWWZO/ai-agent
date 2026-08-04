@@ -60,4 +60,7 @@ public class DialogueRunView {
     private LocalDateTime createTime;
 
     private List<ArtifactView> artifactSummaries;
+
+    /** session_search FULLTEXT 相关度分数（非检索场景为 null） */
+    private Double searchScore;
 }

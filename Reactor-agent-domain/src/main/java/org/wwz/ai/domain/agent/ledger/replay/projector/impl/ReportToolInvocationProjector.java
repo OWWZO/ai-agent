@@ -14,6 +14,9 @@ import java.util.Map;
 /**
  * report_tool projector。
  */
+/**
+ * 报告工具的历史回放投影器，恢复报告内容和输出文件信息。
+ */
 public class ReportToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

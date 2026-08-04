@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * 多模态 Agent 响应模型，承载模型文本结果和相关文件信息。
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -73,6 +73,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 .startedAt(startedAt)
                 .build();
         try {
+            // run 是整条执行账本的根事实，必须先落库，后续 LLM、tool 和 artifact 才能挂载到 runId。
             executionLedgerWriteRepository.insertRun(entity);
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(record.getSessionId())
@@ -110,6 +111,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             List<ToolInvocation> toolInvocations = executionLedgerWriteRepository.queryToolInvocationsByRunId(existing.getId());
             List<ArtifactRecord> artifacts = executionLedgerWriteRepository.queryArtifactsByRunId(existing.getId());
             LocalDateTime finishedAt = defaultNow(record.getFinishedAt());
+            // 终态统计从子事实实时汇总，避免并发调用过程中依赖可能过期的计数器。
             DialogueRun updateEntity = DialogueRun.builder()
                     .id(existing.getId())
                     .status(record.getStatus())
@@ -253,6 +255,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .startedAt(defaultNow(item.getStartedAt()))
                     .build();
             try {
+                // 每个 toolCall 独立写入，单个工具失败不应阻止同批其他工具获得 invocationId。
                 executionLedgerWriteRepository.insertToolInvocation(entity);
                 mapping.put(item.getToolCallId(), entity.getId());
                 markSuccess("createToolInvocation", null);
@@ -293,6 +296,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                 || record.getStructuredOutput() == null) {
             return;
         }
+        // 主表只保存通用状态和 observation；rich output 按工具类型落到专用表，便于查询和演进。
         toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .toolInvocationId(record.getToolInvocationId())
                 .runId(record.getRunId())
@@ -359,6 +363,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         if (entities.isEmpty()) {
             return;
         }
+        // artifact 是工具输出可回放的稳定引用，写入失败由调用方选择 fail-open 或显式抛出。
         int inserted = executionLedgerWriteRepository.batchInsertArtifacts(entities);
         if (inserted < entities.size()) {
             throw new IllegalStateException(String.format(

@@ -16,6 +16,7 @@ import java.util.List;
 public class WorkingMemoryProjector {
 
     public List<WorkingMemoryMessage> project(List<Message> messages, String sessionId, String requestId, Long runId) {
+        // working_memory 是跨轮 prompt 的投影，不是历史回放账本；这里只保存下一轮 hydrate 所需字段。
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
@@ -49,6 +50,7 @@ public class WorkingMemoryProjector {
     }
 
     public List<Message> hydrate(List<WorkingMemoryMessage> rows) {
+        // 行表按 sequence 恢复为 Memory 消息，未知 kind 仍保留正文，避免投影升级导致历史内容丢失。
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }

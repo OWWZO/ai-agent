@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Agent 文件值对象，统一表示输入附件和生成 artifact 的稳定引用。
+ */
 @Data
 @Builder
 @NoArgsConstructor

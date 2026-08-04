@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * 代码解释器工具响应模型，承载执行结果、输出文件和错误信息。
+ */
 @Data
 @Builder
 @NoArgsConstructor

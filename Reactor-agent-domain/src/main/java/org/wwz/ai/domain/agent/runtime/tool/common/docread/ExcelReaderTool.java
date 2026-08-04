@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Excel 工作簿读取工具，支持工作表、单元格范围和表头配置。
+ */
 public class ExcelReaderTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "excel_reader";

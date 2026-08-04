@@ -15,7 +15,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 /**
- * 根节点，数据加载
+ * 装配逻辑树根节点。
+ * <p>
+ * 根据命令选择数据加载策略，把配置快照放入 DynamicContext，再交给后续运行时对象节点处理。
  */
 @Slf4j
 @Service
@@ -33,7 +35,7 @@ public class RootNode extends AbstractArmorySupport {
 
     @Override
     protected void multiThread(ArmoryCommandEntity requestParameter, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws ExecutionException, InterruptedException, TimeoutException {
-        // 加载数据
+        // 数据查询可以并行执行，但结果必须在策略返回前写入同一个动态上下文。
         ILoadDataStrategy loadDataStrategy = loadDataStrategyMap.get(requestParameter.getLoadDataStrategy());
         loadDataStrategy.loadData(requestParameter, dynamicContext);
     }
@@ -41,6 +43,7 @@ public class RootNode extends AbstractArmorySupport {
     @Override
     protected String doApply(ArmoryCommandEntity requestParameter, DefaultArmoryStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("Ai Agent 构建，数据加载节点{}", JSON.toJSONString(requestParameter));
+        // 当前节点只负责路由，实际加载由 multiThread 中选中的 ILoadDataStrategy 完成。
         return router(requestParameter, dynamicContext);
     }
 

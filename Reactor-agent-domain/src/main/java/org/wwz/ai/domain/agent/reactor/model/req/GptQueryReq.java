@@ -8,6 +8,9 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 
 import java.util.List;
 
+/**
+ * 浏览器 GptQuery 请求契约，作为运行时 AgentRequest 的上游输入。
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -20,9 +20,14 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRefMapper;
 import java.io.IOException;
 import java.util.*;
 
+/**
+ * 文件工具。
+ * <p>
+ * 负责上传当前请求产生的文件、查询已有文件并把稳定文件引用登记到当前 tool artifact source，
+ * 使实时结果、Execution Ledger 和历史回放使用同一份产物元数据。
+ */
 @Slf4j
 @Data
-
 public class FileTool implements BaseTool {
     private AgentContext agentContext;
 
@@ -118,6 +123,7 @@ public class FileTool implements BaseTool {
         ReactorConfig reactorConfig = requireReactorConfig();
         FileArtifactPort fileArtifactPort = requireFileArtifactPort();
 
+        // 上传成功后先登记 artifact，再构造返回 payload，避免只返回 URL 而丢失账本关联信息。
         // 构建请求体 多轮对话替换requestId为sessionId
         fileRequest.setRequestId(agentContext.getSessionId());
         // 清理文件名中的特殊字符

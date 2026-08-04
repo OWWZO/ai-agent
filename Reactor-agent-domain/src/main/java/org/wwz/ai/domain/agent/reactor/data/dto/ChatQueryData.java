@@ -5,6 +5,9 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 问数查询数据传输对象，承载查询结果中的表格数据。
+ */
 @Data
 public class ChatQueryData {
 

@@ -14,6 +14,11 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.Map;
 
+/**
+ * 兼容旧协议的 MCP 工具适配器。
+ * <p>
+ * 新主路径优先使用 {@code McpRegistry/McpToolExecutor}，本类仅保留旧的单次 HTTP 调用契约。
+ */
 @Slf4j
 @Data
 public class McpTool implements BaseTool {

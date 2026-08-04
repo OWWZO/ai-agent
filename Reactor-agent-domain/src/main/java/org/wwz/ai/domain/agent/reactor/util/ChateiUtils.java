@@ -7,6 +7,9 @@ import org.wwz.ai.domain.agent.reactor.model.dto.AutoBotsResult;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 
+/**
+ * 延期保留的聊天/数据查询辅助工具。
+ */
 public class ChateiUtils {
     public static final String SOURCE_MOBILE = "mobile";
     public static final String SOURCE_PC = "pc";

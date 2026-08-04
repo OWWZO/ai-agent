@@ -6,6 +6,9 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.EnumSet;
 import java.util.Set;
 
+/**
+ * 问数过滤条件的比较运算类型。
+ */
 public enum ComparisonType {
 
     IN("IN", "包含","",""),

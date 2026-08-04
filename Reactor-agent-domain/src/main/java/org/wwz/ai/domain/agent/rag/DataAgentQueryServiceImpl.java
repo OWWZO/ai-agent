@@ -88,6 +88,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     public void chatQuery(DataAgentChatReq req, AgentMessageStream stream) throws Exception {
         NL2SQLReq nl2SqlReq = prepareNl2SqlReq(req.getContent(), null);
         stream.send(ChatDataMessage.ofStatus(EventTypeEnum.DEBUG.name(), nl2SqlReq.getRequestId()));
+        // 远端 NL2SQL 和数据库查询可能较慢，放入受控工具执行器；无论成功失败都发送 ready 并关闭流。
         AgentExecutorSupport.execute(toolExecutor, "dataAgentChatQuery", () -> {
             try {
                 List<ChatQueryData> result = nl2SqlQueryService.runNL2SQLSse(nl2SqlReq, stream);
@@ -177,6 +178,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     private List<ChatSchemaDto> recallModelSchema(NL2SQLReq baseNl2SqlReq) throws IOException {
         List<ChatSchemaDto> recallSchema = null;
         try {
+            // 先用 RAG 缩小 schema，召回失败或为空时回退数据库全量 schema，保证问数仍可执行。
             recallSchema = tableRagService.tableRag(baseNl2SqlReq);
         } catch (Exception e) {
             log.warn("{},{} tableRag 异常：{}", baseNl2SqlReq.getTraceId(),
@@ -196,6 +198,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
         }
 
         List<ChatModelSchema> defaultRecallSchema = chatModelSchemaService.queryDefaultRecallFields();
+        // 默认字段是确定性补集，只补缺失列，不覆盖 RAG 对同一列的描述。
         mergeSchema(recallSchema, defaultRecallSchema);
         return recallSchema;
     }

@@ -22,6 +22,7 @@ import org.wwz.ai.domain.agent.reactor.model.dto.FileInformation;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.memory.ltm.LtmRuntimeBootstrap;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.rag.SopRecallService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -72,6 +73,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
     protected String doApply(AgentRequest request, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve Step1: SOP recall and prepare for requestId: {}", request.getRequestId());
 
+        // 先构造上下文，再执行 SOP 召回和 plan mode 初始化，后续主代理只依赖 AgentContext。
         Printer printer = dynamicContext.getPrinter();
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
@@ -96,7 +98,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
 
         materializeSessionFiles(agentContext, request.getSessionFiles());
         hydrateWorkspaceReadState(agentContext);
+        LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
+        // Execution Ledger 保存本轮事实；SOP、工作区读取状态和工作记忆分别服务当前执行或下一轮上下文。
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,

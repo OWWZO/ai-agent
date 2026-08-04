@@ -89,6 +89,7 @@ public class StreamResponseHandler {
                 }
                 allContent.append(chunkContent);
                 if (pushToClient && messageId != null) {
+                    // 先在完整内容上处理隐藏标记，再按 emittedLength 只发送新增区间，避免重复或泄露内部前缀。
                     String visibleContent = extractVisibleContent(allContent.toString(), hiddenStartMarker);
                     if (visibleContent.length() > emittedLength[0]) {
                         streamBuffer.append(visibleContent, emittedLength[0], visibleContent.length());
@@ -105,6 +106,7 @@ public class StreamResponseHandler {
             }
         }, future::completeExceptionally, () -> {
             try {
+                // onComplete 负责冲刷最后不足一个 interval 的增量，并发送可选的最终快照。
                 if (pushToClient && messageId != null && streamBuffer.length() > 0) {
                     context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
                 }
@@ -171,6 +173,7 @@ public class StreamResponseHandler {
         flux.subscribe(
             response -> {
                 try {
+                    // 每个 chunk 同时可能包含正文、reasoning 和 tool_call delta，三类内容必须独立累积。
                     chunkCount[0]++;
                     Generation generation = response != null ? response.getResult() : null;
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
@@ -252,6 +255,7 @@ public class StreamResponseHandler {
                     boolean hasReasoning = StringUtils.isNotBlank(reasoningContent);
                     boolean hasContent = StringUtils.isNotBlank(content);
 
+                    // 只有整轮结束后才能确定工具参数是否完整；因此中间 chunk 只做聚合，不提前执行工具。
                     // reasoning 收尾：有就推 final（有/无 tool_call 均推）
                     if (pushToClient && reasoningMessageId != null && context.getPrinter() != null && hasReasoning) {
                         if (reasoningBuffer.length() > 0) {

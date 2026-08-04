@@ -21,6 +21,9 @@ import java.util.function.Supplier;
 
 /**
  * Agent 主链路执行器公共提交工具。
+ * <p>
+ * 这里同时解决两个容易被忽略的问题：把拒绝转换成已完成的失败 Future，
+ * 以及把请求、访客、MDC、LLM 观测和 Agent 运行位置带过线程池边界。
  */
 public final class AgentExecutorSupport {
 
@@ -47,6 +50,7 @@ public final class AgentExecutorSupport {
         CancellableCompletableFuture<T> result = new CancellableCompletableFuture<>();
         TaskContextSnapshot snapshot = TaskContextSnapshot.capture(context);
         try {
+            // 用 FutureTask 作为底层委托，保证 CompletableFuture 的 cancel/timeout 能真正中断执行任务。
             FutureTask<T> task = new FutureTask<>(() -> snapshot.call(supplier)) {
                 @Override
                 protected void done() {
@@ -84,6 +88,7 @@ public final class AgentExecutorSupport {
         }
         CompletableFuture.delayedExecutor(timeout, unit).execute(() -> {
             TimeoutException timeoutException = new TimeoutException();
+            // 先完成对外 Future，再取消底层任务；调用方不会因为执行器线程迟迟不退出而永久等待。
             if (future.completeExceptionally(timeoutException)
                     && future instanceof CancellableCompletableFuture<?> cancellable) {
                 cancellable.cancelDelegate(true);
@@ -225,6 +230,7 @@ public final class AgentExecutorSupport {
         }
 
         private Scope open() {
+            // 线程池线程可能复用上一个请求的 ThreadLocal，进入任务前先保存并覆盖所有运行态。
             String previousVisitorId = VisitorRequestContext.currentVisitorId();
             Map<String, String> previousMdc = MDC.getCopyOfContextMap();
             LlmPromptObservability.ObservationBundle previousObservation = LlmPromptObservability.current();
@@ -286,6 +292,7 @@ public final class AgentExecutorSupport {
             }
 
             private void close() {
+                // 无论任务成功、失败还是取消，都恢复线程原有上下文，避免请求之间互相污染。
                 if (previousVisitorId == null) {
                     VisitorRequestContext.clear();
                 } else {

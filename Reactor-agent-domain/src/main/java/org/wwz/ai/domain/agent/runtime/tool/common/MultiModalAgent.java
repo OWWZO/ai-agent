@@ -37,6 +37,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * 多模态 Agent 工具。
+ * <p>
+ * 通过远端流式接口完成图片/文件理解，保留阶段性文本、最终文件和取消句柄，
+ * 并把生成产物绑定到当前 tool call。
+ */
 @Slf4j
 @Data
 public class MultiModalAgent implements ContextIsolatableTool {

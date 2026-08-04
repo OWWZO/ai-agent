@@ -9,6 +9,11 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
+import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
+import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
+import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
+import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
+import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.springframework.scheduling.TaskScheduler;
@@ -58,6 +63,22 @@ public class ReactorRuntimeDependencies {
 
     /** 可选：跨轮/中途工作记忆压缩 */
     SessionContextCompactionService sessionContextCompactionService;
+
+    /** 可选：长期记忆编排（策展 + 深度 Provider） */
+    LtmManager ltmManager;
+
+    /** 可选：用户级策展记忆存储 */
+    CuratedMemoryStore curatedMemoryStore;
+
+    /** 可选：情节按需检索（ledger） */
+    SessionSearchService sessionSearchService;
+
+    /** LTM flush-min-turns（0=关闭） */
+    Integer ltmFlushMinTurns;
+
+    MemoryFlushService memoryFlushService;
+
+    BackgroundReviewService backgroundReviewService;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -119,6 +140,30 @@ public class ReactorRuntimeDependencies {
 
     public SessionContextCompactionService getOptionalSessionContextCompactionService() {
         return sessionContextCompactionService;
+    }
+
+    public LtmManager getOptionalLtmManager() {
+        return ltmManager;
+    }
+
+    public CuratedMemoryStore getOptionalCuratedMemoryStore() {
+        return curatedMemoryStore;
+    }
+
+    public SessionSearchService getOptionalSessionSearchService() {
+        return sessionSearchService;
+    }
+
+    public int resolveLtmFlushMinTurns() {
+        return ltmFlushMinTurns == null ? 6 : ltmFlushMinTurns;
+    }
+
+    public MemoryFlushService getOptionalMemoryFlushService() {
+        return memoryFlushService;
+    }
+
+    public BackgroundReviewService getOptionalBackgroundReviewService() {
+        return backgroundReviewService;
     }
 
     /**

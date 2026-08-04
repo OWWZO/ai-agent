@@ -23,7 +23,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LeAgent-aligned document read tools (HTTP → reactor-tool /v1/tool/*).
+ * 文档读取工具的通用远端适配基类。
+ * <p>
+ * Java 领域层负责参数规范化、工作区上下文注入、远端调用结果解析和产物登记；具体文件解析由 reactor-tool 完成。
+ * 成功结果会压缩为适合 LLM 观察的 data，同时将生成文件登记到本轮 artifact source。
  */
 @Slf4j
 @Data
@@ -59,6 +62,7 @@ public abstract class AbstractDocReadTool implements BaseTool {
     @Override
     public Object execute(Object input) {
         try {
+            // 工具输入可能来自 JSON 字符串或结构化 Map，先统一成字符串键的参数表。
             Map<String, Object> params = coerceMap(input);
             ReactorConfig config = requireReactorConfig();
             String base = StringUtils.trimToEmpty(config.getCodeInterpreterUrl());
@@ -69,6 +73,7 @@ public abstract class AbstractDocReadTool implements BaseTool {
                     ? base.substring(0, base.length() - 1) + endpointPath()
                     : base + endpointPath();
 
+            // requestId 和 workspace_root 是领域侧注入的运行时元数据，不依赖模型自行传入。
             Map<String, Object> body = new LinkedHashMap<>(params);
             body.put("requestId", StringUtils.defaultIfBlank(agentContext.getSessionId(), agentContext.getRequestId()));
             if (StringUtils.isNotBlank(agentContext.getWorkspaceRoot()) && !body.containsKey("workspace_root")) {
@@ -97,11 +102,12 @@ public abstract class AbstractDocReadTool implements BaseTool {
                         + StringUtils.defaultIfBlank(json.getString("message"), responseText));
             }
 
+            // fileInfo 先登记到账本关联的 artifact source，再向前端发送文件事件。
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             List<File> files = registerFiles(json.getJSONArray("fileInfo"), artifactSource);
             emitFileMessage(files, artifactSource);
 
-            // 对齐 LeAgent：成功 data 走 serialize_for_llm（JSON）。
+            // 对齐工具协议：返回给 LLM 的 data 受长度上限保护，完整文件通过 artifact 引用交付。
             return ToolResultPayload.fromData(buildLlmData(json, files));
         } catch (Exception e) {
             log.error("{} {} error, input={}", agentContext == null ? "-" : agentContext.getRequestId(),

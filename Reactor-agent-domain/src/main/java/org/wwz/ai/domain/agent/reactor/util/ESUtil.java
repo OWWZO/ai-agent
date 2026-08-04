@@ -31,6 +31,12 @@ import java.net.URI;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Elasticsearch 低层访问工具。
+ * <p>
+ * 封装客户端创建、索引管理、批量写入和兼容响应解析；索引存在缓存仅用于减少重复探测，
+ * 具体数据同步由 ColumnValueSyncService 负责。
+ */
 @Slf4j
 public class ESUtil {
     private static final Map<String, Boolean> indexExistMap = new ConcurrentHashMap<>();
@@ -45,6 +51,7 @@ public class ESUtil {
     }
 
     public static RestHighLevelClient buildRestClient(String esClusterHost, String esClusterUser, String esClusterPassword, String esClusterApiKey, int timeout, String scheme) {
+        // 先规范化 host/scheme，再构造 HttpHost，避免把空配置传给 ES 客户端后才得到难定位的异常。
         String normalizedHost = StringUtils.trimToNull(esClusterHost);
         String normalizedScheme = StringUtils.trimToNull(scheme);
         if (normalizedHost == null) {
@@ -406,4 +413,3 @@ public class ESUtil {
         return CollectionUtils.isEmpty(failures) ? "bulk response contains errors" : String.join("; ", failures);
     }
 }
-

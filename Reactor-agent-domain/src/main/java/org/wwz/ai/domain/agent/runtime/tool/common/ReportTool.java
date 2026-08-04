@@ -25,9 +25,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
+/**
+ * 报告生成工具。
+ * <p>
+ * 负责调用受控文档/报告生成服务，并把 HTML、Markdown 等输出文件接入统一产物登记链路。
+ */
 @Slf4j
 @Data
-
 public class ReportTool implements BaseTool {
     private AgentContext agentContext;
 

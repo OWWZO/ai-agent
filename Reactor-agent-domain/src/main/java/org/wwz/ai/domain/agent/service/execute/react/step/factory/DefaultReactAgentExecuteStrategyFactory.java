@@ -13,7 +13,9 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.react.step.RootNode;
 
 /**
- * React 执行策略工厂，与 flow/auto 同构：树形节点 + 专用 DynamicContext
+ * React 执行策略工厂。
+ * <p>
+ * 工厂只暴露逻辑树入口，节点之间的状态通过专用 DynamicContext 传递，避免把执行状态散落到 Spring Bean 字段中。
  */
 @Service
 public class DefaultReactAgentExecuteStrategyFactory {
@@ -25,6 +27,7 @@ public class DefaultReactAgentExecuteStrategyFactory {
     }
 
     public StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> armoryStrategyHandler() {
+        // 调用方从根节点启动，后续节点由各自的 get 方法决定。
         return reactRootNode;
     }
 

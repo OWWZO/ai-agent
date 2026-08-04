@@ -4,6 +4,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 学术 PDF 引用和参考文献提取工具。
+ * <p>具体解析在远端文档服务执行，本类只声明工具名称、端点和参数契约。</p>
+ */
 public class CitationExtractorTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "citation_extractor";

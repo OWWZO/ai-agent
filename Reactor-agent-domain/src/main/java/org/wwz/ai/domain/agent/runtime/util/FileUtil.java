@@ -7,6 +7,10 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Agent 文件信息格式化工具。
+ * <p>用于把可见产物转换成提示词文本，内部文件可按调用方要求过滤。</p>
+ */
 @Slf4j
 public class FileUtil {
 

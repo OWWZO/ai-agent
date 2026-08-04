@@ -27,6 +27,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+/**
+ * 代码解释器工具。
+ * <p>
+ * 将 Python 源码提交到受控执行服务，消费流式结果并把新生成文件转换为稳定 artifact 引用。
+ */
 @Slf4j
 @Data
 public class CodeInterpreterTool implements BaseTool {

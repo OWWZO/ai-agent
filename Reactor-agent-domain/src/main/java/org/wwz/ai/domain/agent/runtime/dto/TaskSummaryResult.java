@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * 任务摘要解析结果，包含最终文本和模型勾选的 artifact 文件。
+ */
 @Data
 @Builder
 @AllArgsConstructor

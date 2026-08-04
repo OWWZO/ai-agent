@@ -47,6 +47,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         List<LlmInvocation> llmInvocations = executionLedgerReadRepository.queryLlmInvocationsByRunId(run.getId());
         List<ToolInvocation> toolInvocations = executionLedgerReadRepository.queryToolInvocationsByRunId(run.getId());
         List<ArtifactRecord> artifacts = executionLedgerReadRepository.queryArtifactsByRunId(run.getId());
+        // 先聚合三类通用事实，再补 rich tool output；查询层不读取旧 message/transcript 表。
         return ExecutionRunDetail.builder()
                 .run(toRunView(run))
                 .llmInvocations(toLlmViews(llmInvocations))
@@ -256,6 +257,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (views == null || toolOutputReader == null) {
             return views == null ? List.of() : views;
         }
+        // 结构化输出按 tool invocation 延迟读取，避免普通历史列表预加载无关大字段。
         for (ToolInvocationView view : views) {
             if (view == null
                     || view.getId() == null

@@ -23,4 +23,18 @@ public interface IDialogueRunLedgerDao {
                                                  @Param("limit") int limit);
 
     List<DialogueRunView> queryBySessionId(@Param("sessionId") String sessionId);
+
+    /**
+     * ngram FULLTEXT：按 visitor 跨会话检索 query_text / final_summary_text。
+     */
+    List<DialogueRunView> searchFullTextByVisitor(@Param("visitorId") String visitorId,
+                                                 @Param("query") String query,
+                                                 @Param("limit") int limit);
+
+    /**
+     * ngram FULLTEXT：仅当前 session。
+     */
+    List<DialogueRunView> searchFullTextBySession(@Param("sessionId") String sessionId,
+                                                 @Param("query") String query,
+                                                 @Param("limit") int limit);
 }

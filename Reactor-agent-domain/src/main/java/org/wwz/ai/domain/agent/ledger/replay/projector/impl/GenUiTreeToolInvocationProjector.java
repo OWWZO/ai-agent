@@ -18,6 +18,9 @@ import java.util.Map;
 /**
  * emit_ui_tree projector.
  */
+/**
+ * UI tree 工具的历史回放投影器，恢复生成式 UI 树及其前端渲染事件。
+ */
 public class GenUiTreeToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
+/**
+ * DeepSearch 工具请求模型，描述搜索问题、会话上下文和执行选项。
+ */
 @Data
 @Builder
 @NoArgsConstructor

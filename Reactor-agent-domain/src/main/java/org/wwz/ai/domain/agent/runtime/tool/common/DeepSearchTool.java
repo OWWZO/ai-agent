@@ -32,6 +32,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * DeepSearch 外部流式工具。
+ * <p>
+ * 负责把远端阶段事件转成 Agent 可消费的结构化结果，并把远端会话句柄绑定到当前请求，
+ * 这样用户取消或超时时可以主动中断上游连接。
+ */
 @Slf4j
 @Data
 public class DeepSearchTool implements ContextIsolatableTool {

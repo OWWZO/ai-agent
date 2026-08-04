@@ -2,14 +2,17 @@ package org.wwz.ai.application.agent.visitor;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 会话归属应用服务。
@@ -20,6 +23,7 @@ public class ConversationSessionOwnershipApplicationService {
 
     private final IExecutionLedgerReadRepository executionLedgerReadRepository;
     private final IExecutionLedgerWriteRepository executionLedgerWriteRepository;
+    private final ObjectProvider<LtmManager> ltmManagerProvider;
 
     /**
      * 首次访问时绑定 session 归属，已有归属时校验是否仍属于当前访客。
@@ -59,6 +63,8 @@ public class ConversationSessionOwnershipApplicationService {
                     .startedAt(now)
                     .lastActiveAt(now)
                     .build());
+            // 新会话：LTM 边界 end→switch（用户级 curated 不清空）
+            notifyLtmNewSession(sessionId);
             return executionLedgerWriteRepository.querySessionBySessionId(sessionId);
         }
         if (StringUtils.isBlank(existing.getVisitorId())) {
@@ -93,5 +99,17 @@ public class ConversationSessionOwnershipApplicationService {
             return "新对话";
         }
         return normalized.length() <= 30 ? normalized : normalized.substring(0, 30);
+    }
+
+    private void notifyLtmNewSession(String newSessionId) {
+        LtmManager ltmManager = ltmManagerProvider == null ? null : ltmManagerProvider.getIfAvailable();
+        if (ltmManager == null || StringUtils.isBlank(newSessionId)) {
+            return;
+        }
+        try {
+            ltmManager.commitSessionBoundaryAsync(List.of(), newSessionId, "", true);
+        } catch (Exception ignored) {
+            // LTM 边界失败不阻断会话创建
+        }
     }
 }

@@ -5,6 +5,9 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 自然语言转 SQL 结果模型，承载生成 SQL、解释信息和校验结果。
+ */
 @Data
 public class NL2SQLResult {
     private Integer code;

@@ -26,6 +26,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 问数 schema/列值召回服务。
+ * <p>
+ * 统一承接向量召回与 Elasticsearch 列值召回，具体客户端由基础设施层装配；客户端不可用时返回可处理的空结果。
+ */
 @Slf4j
 @Service
 public class SchemaRecallService {
@@ -37,6 +42,7 @@ public class SchemaRecallService {
 
 
     public List<Map<String, Object>> vectorRecall(ColumnVectorRecallReq recallReq) {
+        // 对外请求转换成统一 VectorRecallReq，保证 Qdrant 查询参数只在一个入口解释。
         VectorRecallReq req = new VectorRecallReq();
         req.setQuery(recallReq.getQuery());
         req.setCollectionName(DataAgentConstants.SCHEMA_COLLECTION_NAME);
@@ -50,6 +56,7 @@ public class SchemaRecallService {
     }
 
     public List<Map<String, Object>> esValueRecall(ColumnEsRecallReq req) throws IOException {
+        // ES 是可选召回源；未装配客户端时降级为空列表，由上层继续使用其他 schema 来源。
         if (dataAgentEsClient == null) {
             log.warn("ES 客户端不可用，返回空的列值召回结果");
             return new ArrayList<>();

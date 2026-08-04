@@ -16,7 +16,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * 文本 embedding 远端适配服务。
+ * <p>
+ * 统一解析纯数组和 {@code {vectors: ...}} 两种兼容响应格式，供 Qdrant 写入与查询复用。
+ */
 @Slf4j
 @Service
 public class EmbeddingService {
@@ -40,6 +44,7 @@ public class EmbeddingService {
             return null;
         }
         String normalized = res.trim();
+        // 不同 embedding 服务返回的顶层结构不同，先按数组判断，再读取 vectors 字段。
         if (normalized.startsWith("[")) {
             return JSONObject.parseObject(normalized, new TypeReference<>() {
             });

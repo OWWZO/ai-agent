@@ -53,7 +53,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * LLM主体类。
+ * LLM 领域门面。
+ * <p>
+ * 统一处理消息转换、模型调用、工具调用、流式增量、重试和 LLM invocation 账本。
+ * 正式主路径优先使用 Spring AI；旧的 HTTP/function-call 与 struct_parse 逻辑只作为兼容回退。
  */
 @Slf4j
 @Data
@@ -362,7 +365,7 @@ public class LLM {
             String callKind
     ) {
         try {
-            // ask 链路也要先产出 request 观测，否则 prompt/cache 快照不会进入 llm invocation 账本。
+            // 先记录完整 prompt 观测，再创建 invocation，保证请求快照与实际发送内容一致。
             LlmPromptObservability.logRequest(
                     context,
                     model,
@@ -387,6 +390,7 @@ public class LLM {
 
             String retryLabel = "llm-ask:" + model;
             if (!stream) {
+                // 非流式调用在受控 LLM 执行器中完成，避免阻塞请求线程或公共 ForkJoinPool。
                 return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
                     try {
                         ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
@@ -502,6 +506,7 @@ public class LLM {
 
             Message effectiveSystem = systemMsgs;
             if (isStructParseMode()) {
+                // struct_parse 没有原生 tools[]，先把工具 schema 编入 system，再沿用文本响应解析。
                 effectiveSystem = buildStructParseSystemMessage(systemMsgs, tools);
             }
             // 与正式发送一致的 system+messages+tools 快照（先观测再落账本 start）
@@ -517,6 +522,7 @@ public class LLM {
                 return askToolWithStructParse(
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
+            // function_call 主路径让 Spring AI 负责工具 schema 与 tool choice；兼容路径只在该模式显式开启时使用。
 Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)

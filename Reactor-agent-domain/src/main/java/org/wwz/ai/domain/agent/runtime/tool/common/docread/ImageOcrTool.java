@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Cloud OCR for images (MRAG OCR_TYPE: vlm-ocr / deepseek-ocr / paddleocr-vl).
+ * 图片云端 OCR 工具。
+ * <p>后端 OCR 类型由 reactor-tool 配置选择，领域侧只传递工作区文件和 OCR 参数。</p>
  */
 public class ImageOcrTool extends AbstractDocReadTool {
 

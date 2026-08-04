@@ -19,6 +19,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * 兼容保留的总结 Agent。
+ * <p>
+ * 负责把任务历史和 artifact 协议整理成最终摘要；当前 React/PlanSolve 主路径已直接完成终答，
+ * 新代码应优先复用 {@link org.wwz.ai.domain.agent.runtime.artifact.TaskSummaryArtifactProtocol}。
+ */
 @Data
 @Slf4j
 @EqualsAndHashCode(callSuper = true)

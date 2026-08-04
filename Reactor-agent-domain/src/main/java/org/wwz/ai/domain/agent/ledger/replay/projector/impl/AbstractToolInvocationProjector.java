@@ -17,7 +17,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * projector 公共基类。
+ * 工具调用历史回放投影基类。
+ * <p>
+ * 统一处理账本事实到前端 eventData 的外壳、artifact 合并、tool binding 和子 Agent 嵌套信息；
+ * 具体工具只实现自身 payload 的解释，不直接读取数据库。
  */
 abstract class AbstractToolInvocationProjector implements ToolInvocationProjector {
 

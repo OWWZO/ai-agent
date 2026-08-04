@@ -37,6 +37,12 @@ import java.util.stream.Collectors;
 import static io.qdrant.client.ConditionFactory.matchKeyword;
 import static io.qdrant.client.ConditionFactory.matchKeywords;
 
+/**
+ * 问数模型元数据领域服务。
+ * <p>
+ * 负责模型配置初始化、表结构同步、schema 向量化和数据预览；持久化通过领域仓储端口完成，
+ * 不在 domain 中直接依赖 Mapper 或 DAO。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -52,6 +58,7 @@ public class ChatModelInfoService {
     private final QdrantService qdrantService;
 
     public void initModelInfo(DataAgentConfig dataAgentConfig) throws Exception {
+        // 初始化顺序先建立模型和 schema 元数据，再同步检索索引，保证向量数据有稳定的 modelCode/columnId。
         initModelInfo(dataAgentConfig, false);
     }
 

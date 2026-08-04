@@ -24,6 +24,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 问数列值索引同步服务。
+ * <p>
+ * 从业务数据库读取需检索的列值并同步到 Elasticsearch，供列值召回使用；索引初始化保持幂等。
+ */
 @Service
 @Slf4j
 public class ColumnValueSyncService {
@@ -37,6 +42,7 @@ public class ColumnValueSyncService {
 
     public void initColumnValueIndex() {
         requireEsClient();
+        // 创建索引前先检查存在性，重复启动不会覆盖已有 mapping。
         if (ESUtil.isExistsIndex(dataAgentEsClient, DataAgentConstants.COLUMN_VALUE_ES_INDEX)) {
             log.info("es index 已存在，无需创建");
             return;

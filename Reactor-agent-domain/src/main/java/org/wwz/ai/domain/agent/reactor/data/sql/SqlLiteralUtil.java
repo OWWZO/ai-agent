@@ -6,6 +6,9 @@ import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.Set;
 
+/**
+ * SQL 字面量类型判断工具。
+ */
 public class SqlLiteralUtil {
 
     private static final Set<SqlTypeName> numericType =

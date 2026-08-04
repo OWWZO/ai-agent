@@ -5,6 +5,9 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 运行时字符串工具，集中处理随机标识、敏感信息脱敏和常见文本归一化。
+ */
 public class StringUtil {
     private static final String CHAR_LOWER = "abcdefghijklmnopqrstuvwxyz";
     private static final String NUMBER = "0123456789";

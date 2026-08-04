@@ -10,6 +10,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * GenUI 指南查询工具。
+ * <p>只读返回组件树协议、布局约束和常见反模式，帮助模型在生成复杂 UI 前建立正确结构。</p>
+ */
 @Data
 public class GetGenuiGuideTool implements BaseTool {
 

@@ -18,6 +18,9 @@ import java.util.Map;
 /**
  * emit_ui_patch projector.
  */
+/**
+ * UI patch 工具的历史回放投影器，恢复对既有画布节点的增量修改事件。
+ */
 public class GenUiPatchToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

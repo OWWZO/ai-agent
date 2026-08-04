@@ -4,6 +4,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * CSV/TSV 文件读写、查询、统计和格式转换工具。
+ * <p>数据处理由远端工具执行，领域侧保留统一的工作区文件和产物协议。</p>
+ */
 public class CsvProcessorTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "csv_processor";

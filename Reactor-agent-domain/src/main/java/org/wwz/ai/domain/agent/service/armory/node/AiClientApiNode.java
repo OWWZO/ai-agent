@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * OpenAI API配置节点
+ * OpenAI API 运行时对象装配节点。
+ * <p>
+ * 把 API 配置值对象转换成可复用的 OpenAiApi，并按业务 ID 注册到运行时注册表，供模型节点取用。
  */
 @Slf4j
 @Service
@@ -36,7 +38,7 @@ public class AiClientApiNode extends AbstractArmorySupport {
         }
 
         for (AiClientApiVO aiClientApiVO : aiClientApiList) {
-            // 构建 OpenAiApi
+            // 先构建底层 API 连接对象，后续模型只通过业务 ID 获取它，不直接依赖配置查询。
             OpenAiApi openAiApi = OpenAiApi.builder()
                     .baseUrl(aiClientApiVO.getBaseUrl())
                     .apiKey(aiClientApiVO.getApiKey())

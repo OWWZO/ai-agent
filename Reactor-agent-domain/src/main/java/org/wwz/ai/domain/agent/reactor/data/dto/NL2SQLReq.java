@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * 自然语言转 SQL 请求模型，承载查询文本、模型 schema 和召回开关。
+ */
 @Data
 public class NL2SQLReq {
     private String requestId;

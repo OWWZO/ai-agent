@@ -21,8 +21,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * ai agent 客户端对话对象节点
- * 2025/7/19 09:17
+ * ChatClient 运行时对象装配节点。
+ * <p>
+ * 将系统提示词、模型、MCP 工具和 Advisor 合并成一个客户端，并按 clientId 注册；请求期只取已装配对象。
  */
 @Slf4j
 @Service
@@ -44,7 +45,7 @@ public class AiClientNode extends AbstractArmorySupport {
         Map<String, AiClientSystemPromptVO> systemPromptMap = dynamicContext.getValue(AiAgentEnumVO.AI_CLIENT_SYSTEM_PROMPT.getDataName());
 
         for (AiClientVO aiClientVO : aiClientList) {
-            // 1. 预设话术
+            // 1. 拼装客户端级系统提示词。
             StringBuilder defaultSystem = new StringBuilder("Ai 智能体 \r\n");
             List<String> promptIdList = aiClientVO.getPromptIdList();
             for (String promptId : promptIdList) {
@@ -52,13 +53,13 @@ public class AiClientNode extends AbstractArmorySupport {
                 defaultSystem.append(aiClientSystemPromptVO.getPromptContent());
             }
 
-            // 2. 对话模型
+            // 2. 取模型运行时对象。
             ChatModel chatModel = aiClientRuntimeRegistry.getRequiredModel(aiClientVO.getModelId());
 
-            // 3. MCP 服务
+            // 3. 取客户端绑定的 MCP 工具快照。
             List<ToolCallback> toolCallbacks = mcpRegistry.getToolCallbacksByMcpIds(aiClientVO.getMcpIdList());
 
-            // 4. advisor 顾问角色
+            // 4. 组装 Advisor 顾问链。
             List<Advisor> advisors = new ArrayList<>();
             List<String> advisorIdList = aiClientVO.getAdvisorIdList();
             if (advisorIdList != null) {
@@ -70,7 +71,7 @@ public class AiClientNode extends AbstractArmorySupport {
 
             Advisor[] advisorArray = advisors.toArray(new Advisor[]{});
 
-            // 6. 构建对话客户端
+            // 5. 在装配阶段构建并缓存 ChatClient，避免请求期重复发现工具。
             ChatClient.Builder chatClientBuilder = ChatClient.builder(chatModel)
                     .defaultSystem(defaultSystem.toString())
                     .defaultAdvisors(advisorArray);

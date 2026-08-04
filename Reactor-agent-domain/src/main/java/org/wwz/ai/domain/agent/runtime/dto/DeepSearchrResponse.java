@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * DeepSearch 工具响应模型，承载搜索阶段结果和最终摘要。
+ */
 @Data
 @Builder
 @NoArgsConstructor

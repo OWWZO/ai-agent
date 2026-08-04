@@ -6,6 +6,10 @@ import lombok.Data;
 
 import java.io.Serializable;
 
+/**
+ * 问数场景的聊天模型元数据实体。
+ * <p>该对象描述模型名称、业务提示词和用途，供 RAG/问数装配链读取。</p>
+ */
 @Data
 @TableName("chat_model_info")
 public class ChatModelInfo implements Serializable {

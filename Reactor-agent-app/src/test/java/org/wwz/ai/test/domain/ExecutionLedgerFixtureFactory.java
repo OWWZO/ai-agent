@@ -440,6 +440,42 @@ public final class ExecutionLedgerFixtureFactory {
                     .map(ExecutionLedgerFixtureFactory::toRunView)
                     .toList();
         }
+
+        @Override
+        public List<DialogueRunView> searchFullTextByVisitor(String visitorId, String query, int limit) {
+            if (visitorId == null || query == null) {
+                return List.of();
+            }
+            String q = query.toLowerCase();
+            return store.runs.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && visitorId.equals(item.getVisitorId()))
+                    .filter(item -> containsIgnoreCase(item.getQueryText(), q)
+                            || containsIgnoreCase(item.getFinalSummaryText(), q))
+                    .sorted(Comparator.comparing(DialogueRun::getCreateTime, Comparator.reverseOrder()))
+                    .limit(Math.max(1, limit))
+                    .map(ExecutionLedgerFixtureFactory::toRunView)
+                    .toList();
+        }
+
+        @Override
+        public List<DialogueRunView> searchFullTextBySession(String sessionId, String query, int limit) {
+            if (sessionId == null || query == null) {
+                return List.of();
+            }
+            String q = query.toLowerCase();
+            return store.runs.values().stream()
+                    .filter(item -> item.getDeleted() == 0 && sessionId.equals(item.getSessionId()))
+                    .filter(item -> containsIgnoreCase(item.getQueryText(), q)
+                            || containsIgnoreCase(item.getFinalSummaryText(), q))
+                    .sorted(Comparator.comparing(DialogueRun::getCreateTime, Comparator.reverseOrder()))
+                    .limit(Math.max(1, limit))
+                    .map(ExecutionLedgerFixtureFactory::toRunView)
+                    .toList();
+        }
+
+        private static boolean containsIgnoreCase(String text, String needle) {
+            return text != null && text.toLowerCase().contains(needle);
+        }
     }
 
     static final class InMemoryDialogueSessionLedgerDao implements IDialogueSessionLedgerDao {

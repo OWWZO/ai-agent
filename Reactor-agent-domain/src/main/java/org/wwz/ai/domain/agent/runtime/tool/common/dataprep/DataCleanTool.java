@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据清洗工具，按操作列表执行去重、缺失值处理、空白清理和类型规范化。
+ */
 public class DataCleanTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "data_clean";

@@ -28,7 +28,11 @@ import java.util.stream.Collectors;
 
 import static io.qdrant.client.ConditionFactory.*;
 
-
+/**
+ * 问数向量服务。
+ * <p>
+ * 负责 embedding 生成、Qdrant schema 写入和召回请求编排；耗时调用使用受控工具执行器，避免阻塞 Agent 主线程。
+ */
 @Service
 @Slf4j
 public class VectorService {

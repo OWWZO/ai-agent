@@ -16,7 +16,9 @@ import org.wwz.ai.domain.agent.reactor.service.VectorService;
 import java.util.List;
 
 /**
- * 顾问角色节点
+ * Advisor 运行时对象装配节点。
+ * <p>
+ * 根据配置中的 advisor 类型创建 Spring AI Advisor；RAG Advisor 通过领域向量服务获取检索能力。
  */
 @Slf4j
 @Service
@@ -64,6 +66,7 @@ public class AiClientAdvisorNode extends AbstractArmorySupport {
     }
 
     private Advisor createAdvisor(AiClientAdvisorVO aiClientAdvisorVO) {
+        // 类型枚举集中维护 Advisor 的创建差异，节点只负责完成配置到运行时对象的转换。
         String advisorType = aiClientAdvisorVO.getAdvisorType();
         AiClientAdvisorTypeEnumVO advisorTypeEnum = AiClientAdvisorTypeEnumVO.getByCode(advisorType);
         return advisorTypeEnum.createAdvisor(aiClientAdvisorVO, vectorService);

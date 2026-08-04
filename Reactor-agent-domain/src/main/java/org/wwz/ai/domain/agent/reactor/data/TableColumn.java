@@ -5,6 +5,9 @@ import lombok.Data;
 
 @Builder
 @Data
+/**
+ * 表格列描述模型，统一表达列名、显示名和数据类型。
+ */
 public class TableColumn {
     private String name;
 

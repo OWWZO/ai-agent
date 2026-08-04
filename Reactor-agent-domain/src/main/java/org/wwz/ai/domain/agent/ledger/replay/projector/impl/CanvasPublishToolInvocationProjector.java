@@ -15,6 +15,9 @@ import java.util.Map;
 /**
  * canvas_publish projector — replay as HTML preview task.
  */
+/**
+ * Canvas 发布工具的历史回放投影器，将发布结果转换为前端可展示的画布事件。
+ */
 public class CanvasPublishToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

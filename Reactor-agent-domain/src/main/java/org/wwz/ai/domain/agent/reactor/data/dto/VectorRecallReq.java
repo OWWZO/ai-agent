@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 
+/**
+ * 通用向量召回请求模型，承载查询文本、过滤条件和召回数量。
+ */
 @Data
 public class VectorRecallReq {
     private String query;

@@ -20,6 +20,7 @@ public class RootNode extends AbstractExecuteSupport {
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("PlanSolve RootNode start for requestId: {}", requestParameter.getRequestId());
+        // 根节点不执行业务，只初始化步骤游标并把请求交给 SOP/上下文准备节点。
         dynamicContext.setStep(0);
         return router(requestParameter, dynamicContext);
     }

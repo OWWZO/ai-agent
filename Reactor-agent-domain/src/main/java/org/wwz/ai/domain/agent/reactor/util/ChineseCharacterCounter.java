@@ -3,6 +3,9 @@ package org.wwz.ai.domain.agent.reactor.util;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 中文字符计数工具，用于估算提示词或回答的中文内容规模。
+ */
 public class ChineseCharacterCounter {
     public static boolean isChineseCharacter(char ch) {
         // 中文字符的 Unicode 范围为 \u4E00 到 \u9FA5

@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * PDF 结构分析工具，用于提取页数、目录、章节标题及图表等论文结构信息。
+ */
 public class PdfStructureTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "pdf_structure";

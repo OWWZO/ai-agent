@@ -9,6 +9,9 @@ import org.wwz.ai.domain.agent.reactor.model.enums.EventTypeEnum;
 
 import java.io.Serializable;
 
+/**
+ * 延期保留的聊天增量消息模型，承载消息类型、顺序和事件数据。
+ */
 @Data
 @Builder
 @NoArgsConstructor

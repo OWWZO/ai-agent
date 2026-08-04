@@ -4,6 +4,9 @@ import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+/**
+ * MySQL SQL 方言适配器，统一字符串字面量转义行为。
+ */
 public class MysqlCustomSqlDialect extends MysqlSqlDialect {
 
     public static final SqlDialect DEFAULT = new MysqlCustomSqlDialect(DEFAULT_CONTEXT);

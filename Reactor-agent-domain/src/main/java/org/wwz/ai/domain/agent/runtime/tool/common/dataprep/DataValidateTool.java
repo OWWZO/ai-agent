@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据校验工具，输出规则校验报告，不直接修改输入数据。
+ */
 public class DataValidateTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "data_validate";

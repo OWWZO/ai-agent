@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * Elasticsearch 列值召回请求模型。
+ */
 @Data
 public class ColumnEsRecallReq {
     private String query;

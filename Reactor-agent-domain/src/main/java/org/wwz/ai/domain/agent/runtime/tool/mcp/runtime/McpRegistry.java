@@ -190,6 +190,7 @@ public class McpRegistry {
             return "Tool" + StringUtils.defaultIfBlank(toolName, "Unknown") + " Error.";
         }
 
+        // 懒加载保证按客户端绑定调用时也能工作；真正执行仍复用已缓存的 runtime 和串行锁。
         ensureMcpsLoaded(Collections.singletonList(mcpId));
         McpClientRuntime runtime = runtimeCache.get(mcpId);
         if (runtime == null) {
@@ -225,6 +226,7 @@ public class McpRegistry {
                 McpClientRuntime runtime = runtimeFactory.createRuntime(descriptor);
                 List<McpToolInfo> tools = discoverTools(runtime);
 
+                // 先替换缓存，再关闭旧连接，避免并发读线程拿到已关闭的客户端。
                 McpClientRuntime oldRuntime = runtimeCache.put(mcpVO.getMcpId(), runtime);
                 toolCache.put(mcpVO.getMcpId(), tools);
                 toolCallbackCache.remove(mcpVO.getMcpId());
@@ -400,6 +402,7 @@ public class McpRegistry {
                 .toList();
 
         if (!missingIds.isEmpty()) {
+            // 当前注册中心以全量配置预热作为刷新边界，避免只加载部分 MCP 导致全局快照不一致。
             preloadAllEnabledMcps();
         }
     }

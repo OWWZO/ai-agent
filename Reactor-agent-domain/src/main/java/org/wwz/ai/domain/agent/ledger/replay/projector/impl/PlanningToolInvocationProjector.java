@@ -20,6 +20,9 @@ import java.util.Map;
  * planning 工具历史回放投影。
  * 直接根据工具入参重建 plan / task 事件，避免历史里退化成普通 tool_result。
  */
+/**
+ * 规划工具的历史回放投影器，负责按规划步骤组织任务事件。
+ */
 public class PlanningToolInvocationProjector extends AbstractToolInvocationProjector {
 
     private static final String PLAN_STATE_KEY = "__history_planning_tool_plan";

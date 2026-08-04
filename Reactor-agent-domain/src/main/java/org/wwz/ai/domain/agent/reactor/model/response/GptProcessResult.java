@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 延期保留的 GPT 处理结果模型，用于兼容旧增量响应协议。
+ */
 @Data
 @Builder
 @NoArgsConstructor

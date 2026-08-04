@@ -6,6 +6,9 @@ import java.io.Serializable;
 import java.util.List;
 
 @Data
+/**
+ * SQL WHERE 条件模型，表示字段、比较运算和参数值。
+ */
 public class WhereCondition  implements Serializable {
     private String operator;
     private List<WhereCondition> conditionList;

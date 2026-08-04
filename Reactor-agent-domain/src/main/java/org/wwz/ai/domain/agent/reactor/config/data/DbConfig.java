@@ -3,6 +3,9 @@ package org.wwz.ai.domain.agent.reactor.config.data;
 import lombok.Data;
 
 @Data
+/**
+ * 延期保留的数据库连接配置。
+ */
 public class DbConfig {
     private String type;
     /**

@@ -20,7 +20,11 @@ import java.util.Objects;
 import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.RUNNING;
 import static org.wwz.ai.domain.agent.reactor.model.constant.Constants.SUCCESS;
 
-
+/**
+ * Agent 增量响应兼容处理器。
+ * <p>
+ * 把运行时事件转换为旧前端协议，同时复用历史回放 projector 的 canonical event 结构。
+ */
 @Slf4j
 public class BaseAgentResponseHandler {
     private final ReplayProjector replayProjector;
@@ -30,6 +34,7 @@ public class BaseAgentResponseHandler {
     }
 
     protected GptProcessResult buildCanonicalIncrResult(AgentRequest request, EventResult eventResult, AgentResponse agentResponse) {
+        // 实时输出和历史回放必须共享同一种 eventData 结构，避免两条链路产生不同前端协议。
         GptProcessResult streamResult = buildIncrResult(request, eventResult, agentResponse);
         return streamResult;
     }

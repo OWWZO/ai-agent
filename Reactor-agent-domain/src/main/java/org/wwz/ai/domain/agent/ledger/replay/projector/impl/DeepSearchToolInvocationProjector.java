@@ -19,6 +19,9 @@ import java.util.stream.Collectors;
 /**
  * deep_search projector。
  */
+/**
+ * DeepSearch 工具的历史回放投影器，恢复搜索阶段、查询结果和引用信息。
+ */
 public class DeepSearchToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

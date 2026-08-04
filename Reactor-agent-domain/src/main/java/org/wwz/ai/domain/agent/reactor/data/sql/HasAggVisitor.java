@@ -9,6 +9,9 @@ import org.apache.commons.collections4.CollectionUtils;
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * Calcite SQL 聚合函数访问器，用于判断查询是否包含聚合表达式。
+ */
 public class HasAggVisitor extends SqlBasicVisitor<Boolean> {
 
     public static final String COUNT_DISTINCT = "count_distinct";

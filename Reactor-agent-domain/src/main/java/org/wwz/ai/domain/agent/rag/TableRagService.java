@@ -20,6 +20,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * 表级 schema RAG 服务。
+ * <p>
+ * 调用 reactor-tool 的 table_rag 接口并把返回结构转换为 NL2SQL 使用的 schema DTO；
+ * ES/Qdrant 未启用时主动返回空结果，由问数服务执行数据库 schema 回退。
+ */
 @Slf4j
 @Service
 public class TableRagService {
@@ -32,6 +38,7 @@ public class TableRagService {
     RemoteHttpPort remoteHttpPort;
 
     public List<ChatSchemaDto> tableRag(NL2SQLReq req) throws IOException {
+        // 召回源是可选能力，关闭时不发起远端请求，避免把配置关闭误判成服务故障。
         if (!dataAgentConfig.getEsConfig().getEnable() && !dataAgentConfig.getQdrantConfig().getEnable()) {
             log.info("{},{} 未开启向量和es，不进行tableRag",req.getTraceId(),req.getRequestId());
             return new ArrayList<>();
@@ -40,6 +47,7 @@ public class TableRagService {
         try {
             res = postTableRag(req);
         } catch (Exception e) {
+            // table_rag 是查询前置步骤，保留一次重试以覆盖短暂网络抖动；持续失败交给上层回退。
             log.warn("{},{} tableRag server error,retry:{}",req.getTraceId(),req.getRequestId(), e.getMessage());
             res = postTableRag(req);
         }

@@ -5,6 +5,9 @@ import lombok.Data;
 import java.util.List;
 
 @Data
+/**
+ * 问数模型字段描述，连接自然语言列语义与物理列信息。
+ */
 public class ModelColumn {
 
     private String columnKey;

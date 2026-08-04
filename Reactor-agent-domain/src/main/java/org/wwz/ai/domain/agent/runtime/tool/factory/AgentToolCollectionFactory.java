@@ -60,6 +60,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.canvas.EmitUiTreeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetGenuiGuideTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.GetHtmlCanvasGuideTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.canvas.ListUiComponentsTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
@@ -126,6 +128,20 @@ public class AgentToolCollectionFactory {
         toolCollection.setAgentContext(agentContext);
         toolCollection.setMcpToolExecutor(runtimeDependencies.getOptionalMcpToolExecutor());
 
+        // Hermes 风格长期记忆工具（有界策展）；依赖 LTM 装配时可用
+        if (runtimeDependencies.getOptionalCuratedMemoryStore() != null
+                || runtimeDependencies.getOptionalLtmManager() != null) {
+            MemoryTool memoryTool = new MemoryTool();
+            memoryTool.setAgentContext(agentContext);
+            toolCollection.addTool(memoryTool);
+        }
+        if (runtimeDependencies.getOptionalSessionSearchService() != null) {
+            SessionSearchTool sessionSearchTool = new SessionSearchTool();
+            sessionSearchTool.setAgentContext(agentContext);
+            toolCollection.addTool(sessionSearchTool);
+        }
+
+        // dataAgent 只暴露问数工具；普通 Agent 按配置装配 workspace、文档、数据处理、画布和外部检索工具。
         if ("dataAgent".equals(request.getOutputStyle())) {
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             dataAnalysisTool.setAgentContext(agentContext);
@@ -290,6 +306,7 @@ public class AgentToolCollectionFactory {
         }
 
         try {
+            // MCP 工具属于动态配置，发现失败只影响远程工具，不阻断本地工具集合构建。
             for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
                 toolCollection.addMcpTool(toolInfo);
             }
@@ -299,6 +316,7 @@ public class AgentToolCollectionFactory {
 
         // 主 Agent 可派发同步子 Agent；dataAgent 场景不挂载
         if (!"dataAgent".equals(request.getOutputStyle()) && subAgentRunner != null && subAgentRegistry != null) {
+            // 子 Agent 派发工具只挂在主 Agent 上，避免 dataAgent 或子任务再次无限扩散执行边界。
             AgentDispatchTool agentDispatchTool = new AgentDispatchTool(subAgentRunner, subAgentRegistry);
             agentDispatchTool.setAgentContext(agentContext);
             toolCollection.addTool(agentDispatchTool);

@@ -14,6 +14,9 @@ import java.util.Map;
 /**
  * code_interpreter projector。
  */
+/**
+ * 代码解释器工具的历史回放投影器，恢复执行状态和生成文件引用。
+ */
 public class CodeInterpreterToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

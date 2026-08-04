@@ -36,6 +36,7 @@ public final class WorkingMemoryCompactor {
         if (budget == null || !budget.isEnabled() || messages == null || messages.isEmpty()) {
             return false;
         }
+        // 阈值按估算 token 判断，而不是按消息条数判断；一条很长的工具结果也必须触发压缩。
         return estimateTokens(messages) >= budget.threshold();
     }
 
@@ -61,6 +62,7 @@ public final class WorkingMemoryCompactor {
         }
 
         Set<Integer> keepFull = new HashSet<>();
+        // 只保留最近的工具结果正文，其余结果清空但保留 toolCallId，保证消息协议仍然成对。
         int from = Math.max(0, toolIndexes.size() - keepRecent);
         for (int i = from; i < toolIndexes.size(); i++) {
             keepFull.add(toolIndexes.get(i));
@@ -133,6 +135,7 @@ public final class WorkingMemoryCompactor {
         } else if (!keep.isEmpty() && !notes.contains("Recent messages are preserved verbatim")) {
             reinject = notes + "\n\nRecent messages are preserved verbatim.";
         }
+        // 摘要放在前缀、最近消息原样保留在后缀，既缩短上下文又维持最近工具调用的可解释性。
         List<Message> post = buildPostCompactMessages(reinject, keep);
         if (estimateTokens(post) >= budget.threshold()) {
             return null;
@@ -174,6 +177,7 @@ public final class WorkingMemoryCompactor {
         // 至少保留尾部 keepMin 规模；若仍超阈值则继续砍到至少 1 条
         int floor = Math.max(1, findKeepStartIndex(current, budget));
         while (estimateTokens(current) > threshold && current.size() > floor) {
+            // 每轮按 tool pair 计算安全删除长度，不能只删除 assistant tool_use 而留下孤立 tool_result。
             int cut = nextSafeDropCount(current);
             if (cut <= 0) {
                 break;
@@ -346,6 +350,7 @@ public final class WorkingMemoryCompactor {
             }
         }
         while (expanded > 0 && !provided.containsAll(neededToolCallIds)) {
+            // keep 区间如果从 tool_result 开始，就向前扩展到对应 assistant tool_use。
             expanded--;
             Message m = messages.get(expanded);
             if (m != null && m.getRole() == RoleType.ASSISTANT && m.getToolCalls() != null) {

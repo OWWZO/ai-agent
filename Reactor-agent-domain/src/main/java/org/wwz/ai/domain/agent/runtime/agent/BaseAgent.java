@@ -45,6 +45,9 @@ import java.util.concurrent.TimeoutException;
 /**
  * 所有 Agent 的抽象基类。
  * 固定执行主循环，并统一承接记忆管理、工具执行和执行账本接入。
+ * <p>
+ * 子类只需要实现 {@link #step()}，本类负责保证每一步都经过取消检查、运行位置刷新、
+ * 工作记忆压缩和最大步数保护；工具执行则统一经过 observation、账本和产物收口。
  */
 @Slf4j
 @Data
@@ -112,11 +115,19 @@ public abstract class BaseAgent {
             seedSessionContextMessages();
         }
         if (query != null && !query.isEmpty()) {
-            updateMemory(RoleType.USER, query, null);
+            String userContent = query;
+            // 深度记忆 prefetch 挂在 user 侧围栏；skip_memory 不注入
+            if (context != null
+                    && !Boolean.TRUE.equals(context.getSkipMemory())
+                    && StringUtils.isNotBlank(context.getLtmMemoryContext())) {
+                userContent = context.getLtmMemoryContext().trim() + "\n\n" + query;
+            }
+            updateMemory(RoleType.USER, userContent, null);
         }
 
         List<String> results = new ArrayList<>();
         try {
+            // 每次循环只推进一个逻辑步骤；step() 可以触发多次 LLM/tool 调用，但不能绕过这里的边界检查。
             while (currentStep < maxSteps && state != AgentState.FINISHED) {
                 if (context != null && context.isRunCancelled()) {
                     state = AgentState.FINISHED;
@@ -139,11 +150,13 @@ public abstract class BaseAgent {
             }
 
             if (currentStep >= maxSteps && state != AgentState.FINISHED) {
+                // 达到步数上限时以可识别的终止结果结束本轮，避免调用方误以为仍可继续执行。
                 currentStep = 0;
                 state = AgentState.IDLE;
                 results.add("Terminated: Reached max steps (" + maxSteps + ")");
             }
         } catch (Exception e) {
+            // 状态先切换为 ERROR，再把异常交给上层处理；账本最终状态由应用编排层统一写回。
             state = AgentState.ERROR;
             throw e;
         }
@@ -243,6 +256,18 @@ public abstract class BaseAgent {
                 context == null ? null : context.getQuery(),
                 context == null ? null : context.getToolCollection());
         systemTemplate = intentPolicy.appendTo(systemTemplate);
+        // LTM 策展冻结块：会话开始快照；skip_memory 路径不注入（子代理等）
+        if (context != null
+                && !Boolean.TRUE.equals(context.getSkipMemory())
+                && context.getRuntimeDependencies() != null) {
+            var ltmManager = context.getRuntimeDependencies().getOptionalLtmManager();
+            if (ltmManager != null) {
+                String ltmBlock = ltmManager.buildSystemPrompt();
+                if (StringUtils.isNotBlank(ltmBlock) && !systemTemplate.contains(ltmBlock)) {
+                    systemTemplate = systemTemplate.trim() + "\n\n" + ltmBlock.trim() + "\n";
+                }
+            }
+        }
         systemTemplate = canonicalizeSystemText(systemTemplate);
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider.buildToolSignature(
@@ -487,6 +512,7 @@ public abstract class BaseAgent {
      * 包含预登记、执行、observation 收口、账本落库与产物登记。
      */
     protected ToolExecutionOutcome executeToolOutcome(ToolCall command) {
+        // 单工具路径也复用完整收口流程：先登记调用，再执行，最后写终态、产物和前端完成事件。
         List<ToolCall> commands = command == null ? List.of() : List.of(command);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
         if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
@@ -517,6 +543,7 @@ public abstract class BaseAgent {
 
         String toolName = command.getFunction().getName();
         if (context != null && context.isRunCancelled()) {
+            // 用户取消后不再启动工具；返回失败 outcome 让调用链仍能完成账本和 UI 收口。
             return ToolExecutionOutcome.failure(
                     "工具未执行：用户已停止本轮对话",
                     "工具未执行：用户已停止本轮对话",
@@ -620,6 +647,7 @@ public abstract class BaseAgent {
         List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
         List<CompletableFuture<?>> executionFutures = new ArrayList<>(commands.size());
         for (ToolCall toolCall : commands) {
+            // 子 Agent 派发和普通工具使用不同执行器，避免同一个受限线程池中出现嵌套等待导致自死锁。
             Executor executor = resolveExecutorForTool(toolCall);
             String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
             CompletableFuture<ToolExecutionOutcome> executionFuture = AgentExecutorSupport
@@ -658,6 +686,7 @@ public abstract class BaseAgent {
                     false);
         }
 
+        // 按模型返回的原始顺序重新组装结果；ConcurrentHashMap 只负责并发写入，不承担展示顺序。
         Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
         for (ToolCall command : commands) {
             if (command != null && StringUtils.isNotBlank(command.getId())) {
@@ -988,6 +1017,7 @@ public abstract class BaseAgent {
         if (items.isEmpty()) {
             return Map.of();
         }
+        // 先写入调用开始事实，再启动工具执行，确保快速完成或并发执行也不会丢失 tool invocation。
         return context.getExecutionRecorder().createToolInvocations(ToolInvocationBatchStartRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
                 .requestId(context.getRequestId())
@@ -1268,6 +1298,7 @@ public abstract class BaseAgent {
         if (preloadSize >= all.size()) {
             return List.of();
         }
+        // 持久化只写本轮新增后缀，避免把跨轮前缀重复写入 working_memory 投影表。
         return new ArrayList<>(all.subList(preloadSize, all.size()));
     }
 
@@ -1298,6 +1329,7 @@ public abstract class BaseAgent {
             if (compacted == null || compacted == current || compacted.equals(current)) {
                 return;
             }
+            // 压缩后的列表同时替换 Agent Memory 和上下文快照，否则后续导出 delta 会从旧前缀计算。
             memory.replaceMessages(new ArrayList<>(compacted));
             context.setWorkingMemoryMessages(new ArrayList<>(compacted));
             log.info("{} {} mid-run compact phase={} beforeMsgs={} afterMsgs={}",

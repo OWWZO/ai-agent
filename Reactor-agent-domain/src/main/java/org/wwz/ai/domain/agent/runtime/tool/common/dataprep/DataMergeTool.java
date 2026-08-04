@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据合并工具，支持连接和纵向/横向拼接多组数据集。
+ */
 public class DataMergeTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "data_merge";

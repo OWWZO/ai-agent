@@ -5,6 +5,10 @@ import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 
 import java.util.Map;
 
+/**
+ * Agent 输出端口。
+ * <p>领域执行器通过该接口发送增量事件，具体实现负责适配 SSE、日志或测试输出。</p>
+ */
 public interface Printer {
     /**
      * 发送消息

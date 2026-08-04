@@ -6,6 +6,9 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 向量索引写入请求模型。
+ */
 @Data
 public class VectorSaveReq {
     private String collectionName;

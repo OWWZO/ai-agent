@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 
+/**
+ * 延期保留的 Agent 事件传输模型，承载任务消息类型、结果和完成标记。
+ */
 @Data
 @Builder
 @AllArgsConstructor

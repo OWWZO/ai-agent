@@ -12,7 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Fix 角色领域服务 todo:后续开发功能点：基于角色特有提示词模板 通过拖拉编排的方式动态组装agent
+ * Fix 角色领域服务。
+ * <p>
+ * 角色来源于仓储，默认角色由配置优先决定；配置不存在或角色不存在时，按仓储返回的第一项兜底。
  */
 @Slf4j
 @Service
@@ -45,6 +47,7 @@ public class FixRoleService implements IFixRoleService {
         }
 
         if (configuredDefaultRole != null) {
+            // 配置命中的角色固定排在第一位，其余角色保持仓储顺序，避免前端每次展示顺序抖动。
             configuredDefaultRole.setDefaultRole(true);
             configuredDefaultRole.setSortIndex(0);
             List<FixRoleVO> result = new ArrayList<>();
@@ -56,6 +59,7 @@ public class FixRoleService implements IFixRoleService {
             return result;
         }
 
+        // 配置为空或配置角色不可用时，仓储首项作为稳定兜底默认角色。
         FixRoleVO fallbackDefaultRole = sortedRoles.get(0);
         fallbackDefaultRole.setDefaultRole(true);
         fallbackDefaultRole.setSortIndex(0);

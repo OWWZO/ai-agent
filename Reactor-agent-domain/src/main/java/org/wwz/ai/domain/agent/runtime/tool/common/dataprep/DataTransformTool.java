@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据转换工具，支持重命名、类型转换、值映射、派生列和列选择等操作。
+ */
 public class DataTransformTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "data_transform";

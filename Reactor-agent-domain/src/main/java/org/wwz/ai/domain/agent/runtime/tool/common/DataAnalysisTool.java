@@ -27,6 +27,12 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
+/**
+ * 数据分析工具。
+ * <p>
+ * 通过 RemoteStreamPort 调用受控分析服务，边接收阶段事件边向 Agent 汇报，最终把生成文件
+ * 绑定到当前工具调用，避免把长耗时分析阻塞在请求线程上。
+ */
 @Slf4j
 @Data
 public class DataAnalysisTool implements ContextIsolatableTool {
@@ -119,6 +125,7 @@ public class DataAnalysisTool implements ContextIsolatableTool {
                                                                        ToolArtifactSource artifactSource) {
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
+            // 返回 Future 让调用方可以把流式分析纳入统一工具超时和取消机制。
             ReactorConfig duccConfig = requireReactorConfig();
             String url = duccConfig.getDataAnalysisUrl() + "/v1/tool/auto_analysis";
             log.info("{} auto_analysis request {}", agentContext.getRequestId(), JSONObject.toJSONString(analysisRequest));

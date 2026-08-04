@@ -22,6 +22,12 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * NL2SQL 的 SQL 解析与结构化工具。
+ * <p>
+ * 基于 Calcite 解析 MySQL/ClickHouse 方言，把查询拆成表、列、过滤条件和聚合信息，
+ * 供问数结果转换与安全校验复用；本类不负责执行 SQL。
+ */
 @Slf4j
 public class SqlParserUtils {
 
@@ -35,6 +41,7 @@ public class SqlParserUtils {
     }
 
     private static SqlParser.Config parserConfig(@NonNull String dialectString) {
+        // 方言只影响解析器配置和少量语法兼容，不改变后续统一的 SqlModel 结构。
         if (isClickHouseDialect(dialectString)) {
             return ClickHouseSqlDialect2.DEFAULT.configureParser(SqlParser.config())
                     .withConformance(SqlConformanceEnum.LENIENT);

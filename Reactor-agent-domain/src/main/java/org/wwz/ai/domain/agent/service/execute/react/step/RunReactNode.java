@@ -44,9 +44,11 @@ public class RunReactNode extends AbstractExecuteSupport {
             throw new IllegalStateException("React Step2: agentContext is null, Step1 must run first.");
         }
 
+        // ReActAgent 内部负责 LLM 轮次、工具调用、取消和账本事件；节点只负责传递执行结果。
         ReactImplAgent executor = new ReactImplAgent(agentContext);
         PlanModePromptInjector.applyIfPlanMode(agentContext, executor);
         String runResult = executor.run(requestParameter.getQuery());
+        // 只有无 tool_calls 的 assistant 文本才可作为用户终答，避免把中间观察结果泄露到结果区。
         String finalAnswer = resolveFinalAnswer(executor, runResult);
 
         dynamicContext.setExecutor(executor);

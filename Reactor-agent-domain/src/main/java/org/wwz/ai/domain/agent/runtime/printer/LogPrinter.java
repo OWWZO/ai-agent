@@ -8,6 +8,9 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 
 import java.util.Map;
 
+/**
+ * 面向日志的 Printer 实现，主要用于非流式执行、测试和本地诊断。
+ */
 @Slf4j
 public class LogPrinter implements Printer {
     private final AgentRequest request;

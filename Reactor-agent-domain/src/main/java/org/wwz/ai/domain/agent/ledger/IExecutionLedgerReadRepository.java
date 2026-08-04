@@ -31,6 +31,16 @@ public interface IExecutionLedgerReadRepository {
 
     List<DialogueRunView> queryRunsBySessionId(String sessionId);
 
+    /**
+     * FULLTEXT 检索 run（visitor 范围）；索引不可用时应由调用方降级。
+     */
+    List<DialogueRunView> searchRunsFullTextByVisitor(String visitorId, String query, int limit);
+
+    /**
+     * FULLTEXT 检索 run（单 session）。
+     */
+    List<DialogueRunView> searchRunsFullTextBySession(String sessionId, String query, int limit);
+
     DialogueSessionView querySession(String sessionId);
 
     List<DialogueSessionView> queryRecentSessions(int limit);

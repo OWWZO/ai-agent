@@ -14,6 +14,9 @@ import java.util.Map;
 /**
  * file_tool projector。
  */
+/**
+ * 文件工具的历史回放投影器，恢复文件操作事件和 artifact 引用。
+ */
 public class FileToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

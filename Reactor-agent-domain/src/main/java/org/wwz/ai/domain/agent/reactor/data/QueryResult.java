@@ -11,6 +11,9 @@ import java.util.Map;
 @Data
 @Builder
 @AllArgsConstructor
+/**
+ * 数据查询结果模型，承载列定义、行数据和分页/统计信息。
+ */
 public class QueryResult {
     private String querySql;
     private Long dataSize;

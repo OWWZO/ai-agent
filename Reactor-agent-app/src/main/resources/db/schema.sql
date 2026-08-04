@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     UNIQUE KEY uk_dialogue_request_id (request_id),
     KEY idx_dialogue_session_create (session_id, deleted, create_time DESC),
     KEY idx_dialogue_run_visitor_create (visitor_id, deleted, create_time DESC),
-    KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC)
+    KEY idx_dialogue_entry_status (entry_agent, status, deleted, create_time DESC),
+    FULLTEXT KEY ft_dialogue_run_query_summary (query_text, final_summary_text) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话执行总账表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_dialogue_session (
@@ -569,8 +570,10 @@ CREATE TABLE IF NOT EXISTS ai_agent_featured_conversation (
 
 CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_stream (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    session_id          VARCHAR(64)  NOT NULL COMMENT '会话ID',
-    memory_scope        VARCHAR(32)  NOT NULL COMMENT '记忆作用域',
+    session_id          VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '会话ID（策展流可作来源元数据）',
+    owner_type          VARCHAR(16)  NOT NULL DEFAULT 'SESSION' COMMENT 'USER/VISITOR/SESSION',
+    owner_id            VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '用户级归属键；SESSION 模式可等于 session_id',
+    memory_scope        VARCHAR(32)  NOT NULL COMMENT '记忆作用域 curated/user/react...',
     prompt_contract_id  VARCHAR(128) NOT NULL COMMENT '提示词契约ID',
     tool_contract_id    VARCHAR(128) NOT NULL COMMENT '工具契约ID',
     latest_turn_seq     INT          NOT NULL DEFAULT 0 COMMENT '最近已发布轮次',
@@ -581,9 +584,29 @@ CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_stream (
     update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_prompt_memory_stream_identity (session_id, memory_scope, prompt_contract_id, tool_contract_id),
+    UNIQUE KEY uk_prompt_memory_stream_owner (owner_type, owner_id, memory_scope, prompt_contract_id, tool_contract_id),
+    KEY idx_prompt_memory_stream_session (session_id, memory_scope, deleted),
     KEY idx_prompt_memory_stream_lease (active_request_id, lease_expire_at, deleted)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提示词记忆流头';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提示词记忆流头（含用户级策展）';
+
+CREATE TABLE IF NOT EXISTS ai_agent_ltm_curated_entry (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    stream_id           BIGINT       NULL COMMENT '可选 FK -> prompt_memory_stream.id',
+    owner_type          VARCHAR(16)  NOT NULL COMMENT 'USER/VISITOR',
+    owner_id            VARCHAR(64)  NOT NULL COMMENT '归属键',
+    scope               VARCHAR(32)  NOT NULL COMMENT 'curated/user',
+    content             TEXT         NOT NULL COMMENT '条目正文',
+    status              VARCHAR(32)  NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/PENDING_APPROVAL/DELETED',
+    source_session_id   VARCHAR(64)  NULL COMMENT '写入来源 session',
+    source_request_id   VARCHAR(64)  NULL COMMENT '写入来源 request',
+    write_origin        VARCHAR(32)  NULL COMMENT 'tool/background_review/system',
+    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted             TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    KEY idx_ltm_curated_owner_scope (owner_type, owner_id, scope, deleted, status),
+    KEY idx_ltm_curated_stream (stream_id, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户级策展记忆条目（无向量）';
 
 CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_turn (
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',

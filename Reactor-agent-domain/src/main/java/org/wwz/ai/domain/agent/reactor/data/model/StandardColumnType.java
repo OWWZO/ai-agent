@@ -1,5 +1,8 @@
 package org.wwz.ai.domain.agent.reactor.data.model;
 
+/**
+ * 问数链路统一使用的标准列类型。
+ */
 public enum StandardColumnType {
     // 字符串
     VARCHAR(1),

@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据聚合工具，支持分组、透视、描述统计、频次统计和滚动计算。
+ */
 public class DataAggregateTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "data_aggregate";

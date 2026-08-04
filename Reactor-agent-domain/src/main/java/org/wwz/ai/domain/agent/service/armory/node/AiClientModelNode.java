@@ -17,7 +17,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 对话模型节点配置
+ * 对话模型运行时对象装配节点。
+ * <p>
+ * 使用前置 API 节点注册的 OpenAiApi 创建 ChatModel，并按模型业务 ID 写入运行时注册表。
  */
 @Slf4j
 @Service
@@ -38,7 +40,6 @@ public class AiClientModelNode extends AbstractArmorySupport {
         }
 
         for (AiClientModelVO modelVO : aiClientModelList) {
-
             // 获取当前模型关联的 API 运行时对象。
             OpenAiApi openAiApi = aiClientRuntimeRegistry.getRequiredApi(modelVO.getApiId());
 
@@ -51,7 +52,7 @@ public class AiClientModelNode extends AbstractArmorySupport {
                                     .build())
                     .build();
 
-            // 注册模型运行时对象。
+            // 注册模型运行时对象，后续 ChatClient 装配不再重复创建模型。
             aiClientRuntimeRegistry.registerModel(modelVO.getModelId(), chatModel);
         }
 

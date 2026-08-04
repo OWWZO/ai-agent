@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * 向量列召回请求模型。
+ */
 @Data
 public class ColumnVectorRecallReq {
     private String query;

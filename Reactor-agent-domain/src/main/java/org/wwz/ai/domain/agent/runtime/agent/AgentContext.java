@@ -18,6 +18,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -184,6 +185,29 @@ public class AgentContext {
      * 跨轮工作记忆消息链（ledger hydrate 结果），run 前 preload 进 Memory。
      */
     List<Message> workingMemoryMessages;
+
+    /**
+     * 用户级策展记忆归属（LTM）。
+     */
+    LtmOwner ltmOwner;
+
+    /**
+     * 本轮深度记忆 prefetch 围栏文本（user 侧注入，非 system）。
+     */
+    String ltmMemoryContext;
+
+    /**
+     * 对齐 Hermes skip_memory：为 true 时禁止 memory tool 写用户画像（子代理等）。
+     */
+    @Builder.Default
+    Boolean skipMemory = Boolean.FALSE;
+
+    /**
+     * LTM fork（flush/review）专用：允许 memory tool 写入，但禁止再 sync/再调度 review/prefetch 副作用。
+     * 对齐 Hermes review fork 的 skip 外部 provider 污染，同时仍可写 builtin memory。
+     */
+    @Builder.Default
+    Boolean ltmSideEffectsDisabled = Boolean.FALSE;
 
     /**
      * 智能体类型标识

@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Markdown 读写、章节编辑、合并、转换和模板处理工具。
+ */
 public class MarkdownProcessorTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "markdown_processor";

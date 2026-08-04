@@ -4,6 +4,10 @@ import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
 import java.util.concurrent.*;
 
+/**
+ * 延期保留的线程工具类。
+ * <p>主链路优先使用 AgentExecutorSupport 的受控执行器，本类仅服务历史调用方。</p>
+ */
 public class ThreadUtil {
     private static ThreadPoolExecutor executor = null;
 

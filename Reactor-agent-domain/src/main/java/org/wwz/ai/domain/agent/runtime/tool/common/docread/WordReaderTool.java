@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Word 文档结构读取工具，支持段落、标题、表格以及可选页眉页脚提取。
+ */
 public class WordReaderTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "word_reader";

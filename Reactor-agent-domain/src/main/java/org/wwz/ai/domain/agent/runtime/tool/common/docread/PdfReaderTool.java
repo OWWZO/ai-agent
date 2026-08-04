@@ -4,6 +4,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 通用 PDF 读取与文件操作工具。
+ * <p>学术论文结构分析由 PdfStructureTool 负责，本类提供文本、页面和文件级操作。</p>
+ */
 public class PdfReaderTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "pdf_reader";

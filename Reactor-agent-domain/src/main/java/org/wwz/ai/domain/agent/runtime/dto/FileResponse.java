@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * 文件工具响应模型，承载文件操作结果和产物信息。
+ */
 @Data
 @Builder
 @NoArgsConstructor

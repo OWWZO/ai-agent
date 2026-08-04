@@ -5,6 +5,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * 文件工具请求模型，承载文件操作参数和工作区上下文。
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -6,6 +6,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 表格数据只读 SQL 查询工具。
+ * <p>领域侧声明 SELECT 查询契约，远端执行器负责加载数据并拒绝破坏性 SQL。</p>
+ */
 public class SqlQueryTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "sql_query";

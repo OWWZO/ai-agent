@@ -16,9 +16,10 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.RootNode;
 
 /**
- * PlanSolve 执行策略工厂，与 react 同构。
- * 主路径仅使用 {@link #executor}（ReactImplAgent）+ {@link #finalAnswer}；
- * planning / summary 字段保留兼容，主链路不再填充。
+ * PlanSolve 执行策略工厂。
+ * <p>
+ * 工厂只负责暴露树根和承载节点间状态；主路径使用 {@link #executor}（ReactImplAgent）与 {@link #finalAnswer}，
+ * planning / summary 字段仅为已有调用方兼容保留。
  */
 @Service
 public class DefaultPlanSolveAgentExecuteStrategyFactory {
@@ -30,6 +31,7 @@ public class DefaultPlanSolveAgentExecuteStrategyFactory {
     }
 
     public StrategyHandler<AgentRequest, DynamicContext, String> armoryStrategyHandler() {
+        // 从根节点进入，节点路由由当前 DynamicContext 的 step 和各节点 get 方法共同推进。
         return planSolveRootNode;
     }
 

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerRunSupport;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.memory.ltm.LtmTurnSyncSupport;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
@@ -57,6 +58,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         }
         persistWorkspaceReadState(agentContext);
 
+        // 终答中的 artifactKey 由协议解析为可交付文件；未显式勾选时回退到本轮全部可见产物。
         String rawFinalAnswer = StringUtils.defaultString(dynamicContext.getFinalAnswer());
         TaskSummaryResult result = TaskSummaryArtifactProtocol.parse(
                 rawFinalAnswer,
@@ -78,6 +80,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
         }
 
         agentContext.getPrinter().send("result", taskResult);
+        // 先结束 Execution Ledger，再写 working memory，确保两者都只由本轮成功结果驱动。
         ExecutionLedgerRunSupport.finishRun(
                 agentContext,
                 ExecutionLedgerConstants.STATUS_SUCCESS,
@@ -86,6 +89,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
                 null
         );
         persistWorkingMemory(agentContext, dynamicContext, ExecutionLedgerConstants.ENTRY_AGENT_REACT);
+        LtmTurnSyncSupport.syncSuccessfulTurn(agentContext, dynamicContext.getExecutor());
         dynamicContext.setStep(3);
 
         return "success";

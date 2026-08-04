@@ -11,7 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * MCP客户端配置节点
+ * MCP 工具配置装配节点。
+ * <p>
+ * 预热全局启用的 MCP 快照，并为按客户端绑定的旧策略刷新对应子集，供后续 ChatClient 或工具工厂复用。
  */
 @Slf4j
 @Service

@@ -14,6 +14,9 @@ import java.util.Map;
 /**
  * script_runner_tool projector。
  */
+/**
+ * 脚本执行工具的历史回放投影器，恢复脚本状态、标准输出和产物引用。
+ */
 public class ScriptRunnerToolInvocationProjector extends AbstractToolInvocationProjector {
 
     @Override

@@ -2,6 +2,9 @@ package org.wwz.ai.domain.agent.reactor.data.dto;
 
 import lombok.Data;
 
+/**
+ * 向量索引中的问数模型 schema 模型。
+ */
 @Data
 public class VectorModelSchema {
     private String modelCode;

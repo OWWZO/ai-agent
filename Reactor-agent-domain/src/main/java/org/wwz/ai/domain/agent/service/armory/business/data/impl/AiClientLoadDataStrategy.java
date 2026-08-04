@@ -18,7 +18,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
- * 以客户端串联，加载数据策略
+ * 按客户端 ID 加载完整装配配置的策略。
+ * <p>
+ * API、模型、MCP、提示词、Advisor 和客户端配置相互独立查询，全部完成后才一次性写入动态上下文。
  */
 @Slf4j
 @Service("aiClientLoadDataStrategy")
@@ -35,7 +37,7 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
         //获取指定agent的id列表
         List<String> clientIdList = armoryCommandEntity.getCommandIdList();
 
-        //根据id列表 运用CompletableFuture 进行多线程查询 然后收集结果
+        // 各配置表互不依赖，使用受控执行器并行查询，最后统一汇总到 DynamicContext。
 
         //api查询 根据每个clientId查询出modelId 再根据modelId来查询api的id 然后将api的信息封装成apiVO的形式返回 所有client的apiId都装在一起
         CompletableFuture<List<AiClientApiVO>> aiClientApiListFuture = AgentExecutorSupport.supplyAsync(threadPoolExecutor, "armoryAiClientApi", () -> {
@@ -67,7 +69,6 @@ public class AiClientLoadDataStrategy implements ILoadDataStrategy {
             return repository.AiClientAdvisorVOByClientIds(clientIdList);
         });
 
-        //
         CompletableFuture<List<AiClientVO>> aiClientListFuture = AgentExecutorSupport.supplyAsync(threadPoolExecutor, "armoryAiClient", () -> {
             log.info("查询配置数据(ai_client) {}", clientIdList);
             return repository.AiClientVOByClientIds(clientIdList);

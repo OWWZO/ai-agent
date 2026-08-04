@@ -4,6 +4,9 @@ import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.dialect.ClickHouseSqlDialect;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+/**
+ * ClickHouse SQL 方言适配器，补充项目问数链路需要的字面量和标识符规则。
+ */
 public class ClickHouseSqlDialect2 extends ClickHouseSqlDialect {
 
     public static final SqlDialect DEFAULT = new ClickHouseSqlDialect2(DEFAULT_CONTEXT);

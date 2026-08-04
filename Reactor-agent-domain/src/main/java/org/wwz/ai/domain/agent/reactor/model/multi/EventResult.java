@@ -9,6 +9,10 @@ import lombok.NoArgsConstructor;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 增量事件组装状态。
+ * <p>维护任务 ID、消息序号和回放结果容器，负责协议层的顺序分配，不承担账本持久化。</p>
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -11,6 +11,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
+/**
+ * SQL 查询 FROM 表描述，承载表名、别名及来源类型。
+ */
 public class FromTable {
     /**
      * from表名

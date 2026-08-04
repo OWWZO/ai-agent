@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 文本文件读取、编辑、搜索、转换、统计和差异比较工具。
+ */
 public class TextProcessorTool extends AbstractDocReadTool {
 
     public static final String TOOL_NAME = "text_processor";

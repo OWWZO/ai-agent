@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * Web 搜索工具响应模型，承载搜索条目、摘要和来源信息。
+ */
 @Data
 @Builder
 @NoArgsConstructor

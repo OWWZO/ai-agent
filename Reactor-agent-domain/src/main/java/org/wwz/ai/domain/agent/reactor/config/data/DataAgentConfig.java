@@ -9,6 +9,9 @@ import java.util.List;
 @Data
 @Component
 @ConfigurationProperties(prefix = "autobots.data-agent")
+/**
+ * 延期保留的数据 Agent 总配置，聚合数据库、向量库和模型查询参数。
+ */
 public class DataAgentConfig {
     private String agentUrl;
     private Boolean forceRefresh = false;
