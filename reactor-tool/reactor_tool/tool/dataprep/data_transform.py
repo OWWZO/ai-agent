@@ -18,6 +18,8 @@ logger = get_struct_logger(__name__)
 class DataTransformTool(SyncTool):
     """Transform and reshape DataFrame data.
 
+    中文说明：按 transformations 数组顺序演进 DataFrame，并记录每步摘要。
+
     Features:
     - Column renaming
     - Type casting with format options
@@ -180,6 +182,7 @@ class DataTransformTool(SyncTool):
         except ImportError as e:
             raise RuntimeError("pandas is not installed. Install with: pip install pandas") from e
 
+        # 先完成输入解析和空数据短路，保证后续每个操作都面对统一的 DataFrame。
         data = resolve_input(params, context, required=False)
         transformations = params.get("transformations") or params.get("operations")
         if transformations is None:
@@ -206,6 +209,7 @@ class DataTransformTool(SyncTool):
 
         logger.info("Starting data transformation", rows=len(df), columns=len(columns_before))
 
+        # 操作是有序的：前一步的改名、选列或派生列可能是后一步的输入。
         for transform in transformations:
             t_type = transform["type"]
 
@@ -293,6 +297,7 @@ class DataTransformTool(SyncTool):
                     local_vars = {col: df[col] for col in df.columns}
                     local_vars.update(safe_funcs)
 
+                    # 仅暴露列 Series 和白名单函数，禁止表达式访问 Python 内建对象。
                     try:
                         df[new_column] = eval(expression, {"__builtins__": {}}, local_vars)
                     except Exception as e:
@@ -432,6 +437,7 @@ class DataTransformTool(SyncTool):
             if hasattr(df[col].dtype, "name") and "datetime" in df[col].dtype.name:
                 df[col] = df[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
 
+        # 统一通过 build_result 输出，协议层负责记录 schema、大小和 artifact spill。
         output_records = df.to_dict(orient="records")
         logger.info(
             "Data transformation complete",

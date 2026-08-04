@@ -10,7 +10,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Lightweight GenUI tree/patch validation for the high-frequency subset.
+ * GenUI 树和增量补丁的轻量级规范化器。
+ *
+ * <p>模型输出的字段形态可能是完整 envelope、裸 root 或带有历史别名的节点，
+ * 因此这里先收敛成前端稳定消费的结构，再执行节点种类、层级和数量校验。
+ * 这个类只负责输入边界，不负责保存 canvas 状态或应用 JSON Patch。</p>
  */
 public final class GenUiSchema {
 
@@ -33,6 +37,7 @@ public final class GenUiSchema {
         if (!(raw instanceof Map<?, ?>)) {
             throw new IllegalArgumentException("tree must be an object");
         }
+        // 先把非字符串 key 转成字符串，避免模型输出的 Map 实现把边界校验绕开。
         Map<String, Object> tree = castMap((Map<?, ?>) raw);
         Map<String, Object> envelope = normalizeEnvelope(tree);
         Object rootObj = envelope.get("root");
@@ -41,6 +46,7 @@ public final class GenUiSchema {
         }
         Map<String, Object> root = normalizeNode(castMap((Map<?, ?>) rootObj));
         envelope.put("root", root);
+        // 深度和节点数是输入资源上限，防止异常树拖垮递归校验和前端渲染。
         int[] count = countNodesDepth(root, 1);
         if (count[1] > maxDepth) {
             throw new IllegalArgumentException("tree depth " + count[1] + " exceeds max " + maxDepth);
@@ -64,6 +70,7 @@ public final class GenUiSchema {
         if (patches.size() > 200) {
             throw new IllegalArgumentException("patches exceeds max 200");
         }
+        // 只保留 RFC 6901 所需字段，避免把模型附带的未知字段继续传播到前端。
         List<Map<String, Object>> normalized = new ArrayList<>();
         for (Object item : patches) {
             if (!(item instanceof Map<?, ?>)) {
@@ -101,7 +108,7 @@ public final class GenUiSchema {
     }
 
     private static Map<String, Object> normalizeEnvelope(Map<String, Object> tree) {
-        // Accept {schemaVersion, root}, {root}, {tree:{...}}, or bare root node.
+        // 兼容 {schemaVersion, root}、{root}、{tree:{...}} 和裸 root，统一输出单一 envelope。
         if (tree.containsKey("tree") && tree.get("tree") instanceof Map<?, ?> nested
                 && tree.keySet().stream().allMatch(k -> "tree".equals(k) || "canvas_id".equals(k))) {
             return normalizeEnvelope(castMap((Map<?, ?>) nested));
@@ -116,7 +123,7 @@ public final class GenUiSchema {
             out.put("root", castMap((Map<?, ?>) root));
             return out;
         }
-        // Bare root
+        // 裸 root 只要能识别出 kind/type，就可以进入同一套节点规范化流程。
         if (tree.containsKey("kind") || tree.containsKey("type")) {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("schemaVersion", "1");
@@ -150,7 +157,7 @@ public final class GenUiSchema {
         if (node.get("props") instanceof Map<?, ?> p) {
             props.putAll(castMap(p));
         }
-        // Lift accidental top-level prop keys (except reserved).
+        // 模型经常把 props 里的字段误放到节点顶层；提升它们可以兼容输出偏差，保留保留字不被覆盖。
         for (Map.Entry<String, Object> e : node.entrySet()) {
             String key = e.getKey();
             if (NODE_KEYS.contains(key)) {
@@ -158,7 +165,7 @@ public final class GenUiSchema {
             }
             props.putIfAbsent(key, e.getValue());
         }
-        // Common aliases
+        // 将常见自然语言别名收敛为渲染器约定的属性名。
         liftAlias(props, "text", "value");
         liftAlias(props, "title", "value");
         liftAlias(props, "content", "value");

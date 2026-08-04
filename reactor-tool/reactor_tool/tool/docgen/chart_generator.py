@@ -54,6 +54,7 @@ CHART_THEMES: dict[str, dict[str, Any]] = {
 
 
 def generate_chart(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
+    # 先校验图表类型、数据和输出格式，再创建 matplotlib 对象，避免失败时留下空文件。
     import matplotlib
 
     matplotlib.use("Agg")
@@ -110,6 +111,7 @@ def generate_chart(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
     values = data.get("values") or []
     labels = data.get("labels") or categories
 
+    # 各图表分支只负责把统一 data 契约映射为 matplotlib primitive，主题和输出在公共尾部处理。
     if chart_type in ("bar", "horizontal_bar"):
         x = np.arange(len(categories))
         width = 0.8 / max(len(series_list), 1)

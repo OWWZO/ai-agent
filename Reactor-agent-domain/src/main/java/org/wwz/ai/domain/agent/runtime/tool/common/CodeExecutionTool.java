@@ -83,6 +83,7 @@ public class CodeExecutionTool implements BaseTool {
             // 与 workspace_write 同一会话目录：reactor-tool/skilloutput/{sessionId}
             request.put("workspaceRoot", WorkspacePaths.skillOutputSessionRoot(agentContext.getSessionId()).toString());
             request.put("source", source);
+            // 远端执行统一绑定当前会话工作区；返回文件再登记到当前 tool artifact source，形成可回放的产物链。
             String body = agentContext.getRuntimeDependencies().requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
                     .method("POST").url(config.getCodeInterpreterUrl() + "/v1/tool/code_execution")
                     .headers(Map.of("Content-Type", "application/json")).body(JSON.toJSONString(request))
@@ -91,6 +92,7 @@ public class CodeExecutionTool implements BaseTool {
             List<CodeInterpreterResponse.FileInfo> fileInfo = JSON.parseArray(response.getString("fileInfo"), CodeInterpreterResponse.FileInfo.class);
             if (fileInfo == null) fileInfo = List.of();
             for (CodeInterpreterResponse.FileInfo info : fileInfo) {
+                // 只登记执行服务明确返回的文件，不扫描整个工作区，避免把历史产物误归入本次调用。
                 agentContext.registerGeneratedArtifact(artifactSource, File.builder().fileName(info.getFileName())
                         .ossUrl(info.getOssUrl()).domainUrl(info.getDomainUrl()).fileSize(info.getFileSize())
                         .description(info.getFileName()).isInternalFile(false).build());
@@ -133,6 +135,7 @@ public class CodeExecutionTool implements BaseTool {
                 data.put("hint", "Use produced_files.url as image.url for document_generate when needed.");
             }
             if (!"ok".equals(response.getString("status"))) {
+                // stdout/stderr/result 仍保留在失败 payload 中，模型需要这些上下文才能决定是否重试。
                 data.put("ok", Boolean.FALSE);
                 return ToolResultPayload.failureFrom(
                         StringUtils.defaultIfBlank(response.getString("error"), "code_execution failed"),

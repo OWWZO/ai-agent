@@ -82,6 +82,8 @@ const PdfPageView: React.FC<{
 
   useEffect(() => {
     let cancelled = false;
+    // 页面渲染和文字层共享同一 viewport；scale/page 变化时旧 canvas 任务可能仍在
+    // 运行，cancelled 只阻止旧任务写入 React/DOM，不影响新页面继续渲染。
     const render = async () => {
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
@@ -114,6 +116,8 @@ const PdfPageView: React.FC<{
       textLayerEl.style.setProperty("--scale-factor", String(viewport.scale));
 
       try {
+        // 优先使用 pdfjs 原生 TextLayer，旧版本没有该 API 时退回手工 span 定位；
+        // 文字层只是可选增强，失败不能阻断 canvas 的视觉预览。
         const textContent = await page.getTextContent();
         if (typeof (pdfjs as any).TextLayer === "function") {
           const layer = new (pdfjs as any).TextLayer({
@@ -331,6 +335,8 @@ const PdfRenderer: ReactorType.FC<PdfRendererProps> = React.memo((props) => {
 
   const { data: pdfDoc, loading, error } = useRequest(
     async () => {
+      // URL/缺失原因变化会重新获取文档；先读完整 buffer 再交给 pdfjs，避免把
+      // 远端响应流的生命周期泄漏到页面组件。
       if (missingReason) throw new Error(missingReason);
       if (!resolvedUrl) throw new Error("引用资源不存在或已失效");
       const response = await fetch(resolvedUrl);
@@ -342,6 +348,8 @@ const PdfRenderer: ReactorType.FC<PdfRendererProps> = React.memo((props) => {
     {
       refreshDeps: [resolvedUrl, missingReason],
       onSuccess: async (doc) => {
+        // 只预加载前 MAX_AUTO_PAGES 页，保留页数用于导航；超大 PDF 通过下载原件
+        // 获取完整内容，避免首次打开一次性创建过多 PDFPageProxy。
         setPageCount(doc.numPages);
         setJumpPage(1);
         const limit = Math.min(doc.numPages, MAX_AUTO_PAGES);
@@ -355,6 +363,8 @@ const PdfRenderer: ReactorType.FC<PdfRendererProps> = React.memo((props) => {
   );
 
   const scrollToPage = (pageNum: number) => {
+    // 页码输入统一夹在 [1, pageCount]，并通过 DOM data-page 定位已经加载的页；
+    // 未预加载的页不伪造内容，用户可通过下载入口取得完整文档。
     const safe = Math.min(Math.max(pageNum, 1), pageCount || 1);
     setJumpPage(safe);
     const root = scrollRef.current;

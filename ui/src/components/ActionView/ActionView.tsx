@@ -97,7 +97,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   /** follow=工具动态预览；file=文件 tab 预览。点工具切 follow，点文件切 file */
   const [panelMode, setPanelMode] = useState<"follow" | "file">("follow");
 
-  // 全量产物仅作数据源；tab 只展示用户点开过的文件
+  // 全量产物仅作数据源；tab 只展示用户点开过的文件。动态流持续增加文件时
+  // 不强行改变用户当前预览，用户选择才是 openTabs 的生命周期入口。
   const catalog = useMemo(() => collectWorkspaceFiles(taskList), [taskList]);
   const catalogMap = useMemo(() => {
     const map = new Map<string, WorkspaceFileItem>();
@@ -109,6 +110,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   }, [catalog]);
 
   const files = useMemo(() => {
+    // tab 优先保留用户刚点击时的 URL/文件信息，catalog 只补充任务等元数据；
+    // 这是应对流式产物后续补全、但同一资源 key 已在预览中的合并边界。
     return openTabs.map((tab) => {
       const key = workspaceFileKey(tab);
       const catalogHit = catalogMap.get(key);
@@ -129,6 +132,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   }, [openTabs, catalogMap]);
 
   const openFileInTab = useMemoizedFn((file: CHAT.TFile) => {
+    // 打开文件是幂等操作：按稳定资源 key 更新已有 tab，否则追加新 tab；同时
+    // 切到 file/preview 模式，让父级 pending 文件和用户点击走同一条路径。
     const key = workspaceFileKey(file);
     if (!key) return;
 
@@ -168,14 +173,16 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
     setPanelMode("file");
   });
 
-  // 父级 pending 文件：ActionView 刚挂载/展开时补开 tab
+  // ChatView 可能先收到文件点击、后挂载 ActionView，因此 pending 文件必须在
+  // 子视图挂载后消费一次，消费完成由父级清空，避免重复打开。
   useEffect(() => {
     if (!pendingPreviewFile) return;
     openFileInTab(pendingPreviewFile);
     onPendingPreviewFileConsumed?.();
   }, [pendingPreviewFile, openFileInTab, onPendingPreviewFileConsumed]);
 
-  // 会话切换 / 产物清空时重置已打开 tab
+  // 没有任务产物时认为会话工作区已清空，关闭旧 tab；有产物时保留用户已打开
+  // 的 tab，避免每次流式 taskList 更新都重置预览位置。
   useEffect(() => {
     if (!taskList?.length && !catalog.length) {
       setOpenTabs([]);
@@ -189,6 +196,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   }, [selectedKey]);
 
   useImperativeHandle(ref, () => {
+    // 暴露给 ChatView 的命令只改变 ActionView 自己的视图状态，不把文件目录
+    // 逻辑泄漏到父组件；follow/file 两种模式对应动态流和用户文件预览边界。
     return {
       ...planRef.current!,
       setFilePreview: (file) => {
@@ -210,6 +219,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   });
 
   const selectedFile: WorkspaceFileItem | undefined = useMemo(() => {
+    // selectedKey 失效时回退到最新 tab，保证目录更新或删除后仍有稳定的可视内容。
     if (!files.length) return undefined;
     if (!selectedKey) return files[files.length - 1];
     return files.find((f) => workspaceFileKey(f) === selectedKey) || files[files.length - 1];

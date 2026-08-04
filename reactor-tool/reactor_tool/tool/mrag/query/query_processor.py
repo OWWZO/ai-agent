@@ -110,6 +110,7 @@ class QueryProcessor:
     @staticmethod
     @time_it
     def extend_questions(question: str):
+        # 子问题扩展只负责拆分查询，不在这里做 JSON 解析；后续总结/规划阶段使用各自的结构化协议。
         prompt = PromptManager.QUERY_EXTEND_PROMPT.format(question=question)
         messages = LLMClient.convert_messages(prompt)
         response = LLMClient().completions(messages,
@@ -183,6 +184,7 @@ class QueryProcessor:
 
     @staticmethod
     def expand_question_with_images(question: str, image_descs: List[str]):
+        # 图片先转成文本描述再参与子问题扩展，检索层因此仍可复用文本向量和关键词召回。
         logger.info("开始前置的思考")
         pre_think_results = QueryProcessor.get_pre_think_results(question)
         logger.info(f"前置思考结果: {pre_think_results}")
@@ -209,6 +211,7 @@ class QueryProcessor:
     @staticmethod
     @time_it
     def simple_query_check(question: str):
+        # 该检查是回答路由的第一道闸门；命中简单问题时直接走 LLM，跳过昂贵的多轮检索。
         prompt = PromptManager.SIMPLE_QUERY_CHECK_PROMPT.format(question=question)
         client = LLMClient()
         messages = client.convert_messages(prompt)

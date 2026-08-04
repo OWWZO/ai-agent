@@ -40,6 +40,7 @@ export class ImageGenerationRequestError extends Error {
 export async function requestImageGenerationTool(
   payload: ToolRequest
 ): Promise<ImageGenerationToolResponse> {
+  // 代理请求沿用统一 api 客户端和长超时，错误统一包装为可识别的领域异常。
   try {
     return (await api.post<ImageGenerationToolResponse>("/api/agent/image-generation/generate", {
       requestId: payload.requestId,
@@ -63,6 +64,7 @@ export async function requestImageGenerationTool(
 }
 
 export async function requestDirectChat(payload: DirectChatRequest) {
+  // 直连模式不经过后端 api 封装，因此在这里显式处理鉴权、JSON 解析和 HTTP 状态。
   const response = await fetch(`${trimTrailingSlash(payload.baseUrl)}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -82,6 +84,7 @@ export async function requestDirectChat(payload: DirectChatRequest) {
   });
 
   const rawText = await response.text();
+  // 同时保留原始文本和可解析对象，便于兼容不同 OpenAI-compatible 服务的错误格式。
   let rawResponse: unknown = rawText;
   try {
     rawResponse = JSON.parse(rawText);
@@ -107,6 +110,7 @@ export async function requestImageGenerationHistory(params: {
   pageNo: number;
   pageSize: number;
 }): Promise<ImageGenerationHistoryPage> {
+  // 历史查询与生成请求使用同一异常类型，页面只需统一处理 message 展示。
   try {
     return (await api.get<ImageGenerationHistoryPage>("/api/agent/image-generation/history", params)) as unknown as ImageGenerationHistoryPage;
   } catch (error) {

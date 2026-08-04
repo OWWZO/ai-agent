@@ -6,6 +6,7 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 
 import java.util.Map;
@@ -33,9 +34,30 @@ public class SessionSearchToolTest {
         SessionSearchTool tool = new SessionSearchTool();
         tool.setAgentContext(ctx);
         Object out = tool.execute(Map.of("query", "小猫", "limit", 5));
-        Assert.assertTrue(String.valueOf(out).contains("小猫"));
+        Assert.assertTrue(out instanceof ToolResultPayload);
+        ToolResultPayload payload = (ToolResultPayload) out;
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> data = (Map<?, ?>) payload.getLlmData();
+        Assert.assertEquals("session_search", data.get("tool"));
+        Assert.assertEquals(Boolean.TRUE, data.get("ok"));
+        Assert.assertTrue(String.valueOf(data.get("result")).contains("小猫"));
         Assert.assertEquals("visitor-abc", capturedVisitor.get());
         Assert.assertEquals("user", capturedScope.get());
+    }
+
+    @Test
+    public void unavailableSearchReturnsStructuredFailure() {
+        SessionSearchTool tool = new SessionSearchTool();
+        tool.setAgentContext(AgentContext.builder().sessionId("sess-1").build());
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "小猫"));
+
+        Assert.assertTrue(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> detail = (Map<?, ?>) payload.getLlmData();
+        Assert.assertEquals("session_search", detail.get("tool"));
+        Assert.assertEquals("小猫", detail.get("query"));
     }
 
     @Test

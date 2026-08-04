@@ -30,12 +30,14 @@ public class AgentPlanApprovalController {
     @PostMapping("/approve")
     public Response<Map<String, Object>> approve(@RequestBody PlanApprovalReqVO req) {
         try {
+            // approvalId 是挂起的 ExitPlanMode 与用户操作之间的关联键，不能用 sessionId 猜测目标审批。
             if (req == null || StringUtils.isBlank(req.getApprovalId())) {
                 return Response.<Map<String, Object>>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
                         .info("approvalId 不能为空")
                         .build();
             }
+            // editedPlanContent 和 feedback 一并交给应用服务，保留“用户修改后批准”的完整语义。
             Map<String, Object> data = planApprovalApplicationService.approve(
                     req.getApprovalId(), req.getEditedPlanContent(), req.getFeedback());
             return Response.<Map<String, Object>>builder()
@@ -54,6 +56,7 @@ public class AgentPlanApprovalController {
     @PostMapping("/reject")
     public Response<Map<String, Object>> reject(@RequestBody PlanApprovalReqVO req) {
         try {
+            // 拒绝同样按 approvalId 定位单次待审批计划，避免误操作同一会话中的其它轮次。
             if (req == null || StringUtils.isBlank(req.getApprovalId())) {
                 return Response.<Map<String, Object>>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -78,6 +81,7 @@ public class AgentPlanApprovalController {
     @GetMapping("/pending")
     public Response<List<Map<String, Object>>> pending(@RequestParam("sessionId") String sessionId) {
         try {
+            // 查询是会话维度的列表操作，与 approve/reject 的单审批操作使用不同查询边界。
             List<Map<String, Object>> data = planApprovalApplicationService.listPending(sessionId);
             return Response.<List<Map<String, Object>>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -95,6 +99,7 @@ public class AgentPlanApprovalController {
     @PostMapping("/cancel")
     public Response<Map<String, Object>> cancel(@RequestBody PlanApprovalReqVO req) {
         try {
+            // 取消用于清理前端放弃的挂起审批，固定原因交给应用服务记录状态转换。
             Map<String, Object> data = planApprovalApplicationService.cancel(
                     req == null ? null : req.getApprovalId(), "user_cancelled");
             return Response.<Map<String, Object>>builder()

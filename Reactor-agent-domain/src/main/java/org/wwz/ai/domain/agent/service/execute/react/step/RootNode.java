@@ -64,7 +64,8 @@ public class RootNode extends AbstractExecuteSupport {
     protected String doApply(AgentRequest request, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step1: Prepare context and tools for requestId: {}", request.getRequestId());
 
-        // 根节点只负责把请求翻译成运行时上下文，并把后续节点需要的能力装配齐。
+        // 根节点只负责把请求翻译成运行时上下文，并把后续节点需要的能力装配齐；它是
+        // 请求边界进入 runtime 的唯一准备点，后续节点不应重新读取原始请求来拼装上下文。
         dynamicContext.setStep(0);
         Printer printer = dynamicContext.getPrinter();
 
@@ -77,7 +78,6 @@ public class RootNode extends AbstractExecuteSupport {
                 .dateInfo(DateUtil.CurrentDateInfo())
                 .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
                 .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
-                .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
                 .historyDialogue(request.getHistoryDialogue())
@@ -93,7 +93,8 @@ public class RootNode extends AbstractExecuteSupport {
         hydrateWorkspaceReadState(agentContext);
         LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
-        // 运行账本记录本轮执行事实；working memory 只在本轮结束后作为下一轮 prompt 投影。
+        // 运行账本记录本轮执行事实；working memory 只在本轮结束后作为下一轮 prompt 投影，
+        // 因此这里初始化 run 但不把历史消息重新写入旧 message/transcript 主账本。
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,
@@ -116,6 +117,8 @@ public class RootNode extends AbstractExecuteSupport {
     }
 
     private ToolCollection buildToolCollection(AgentContext agentContext, AgentRequest request) {
+        // 工具集合必须以已完成初始化的 AgentContext 为输入，确保工具看到相同的 session、
+        // workspace、取消信号和执行记录器，而不是各自从请求参数重新推导运行状态。
         return agentToolCollectionFactory.buildForReact(agentContext, request);
     }
 
@@ -138,6 +141,8 @@ public class RootNode extends AbstractExecuteSupport {
             return;
         }
         try {
+            // 文件物化是 best-effort：文件服务异常不应阻止纯文本请求继续执行，工具后续仍可
+            // 通过稳定引用或显式错误信息决定是否使用该文件。
             workspaceSessionFileMaterializer.materialize(agentContext, sessionFiles);
         } catch (Exception e) {
             log.warn("materialize session files failed, requestId={}", agentContext == null ? null : agentContext.getRequestId(), e);

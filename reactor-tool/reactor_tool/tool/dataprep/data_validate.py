@@ -187,6 +187,8 @@ class DataValidateTool(SyncTool):
         invalid_row_indices: set[int] = set()
 
         logger.info("Starting data validation", rows=len(df), columns=len(df.columns))
+        # 校验过程统一累积结构化 errors 和违规行索引；fail_fast 只改变提前返回时机，
+        # 不改变结果格式。这样调用方既能展示列级原因，也能选择继续处理合法行。
 
         if "required_columns" in schema:
             missing_cols = set(schema["required_columns"]) - set(df.columns)
@@ -243,6 +245,8 @@ class DataValidateTool(SyncTool):
                     return self._build_result(df, errors, warnings, invalid_row_indices, return_valid_rows, context, params)
 
         if "unique_together" in schema:
+            # 组合唯一性必须在列级规则之后执行，因为它依赖完整的 DataFrame 行集合，
+            # 同一行可能同时命中多个错误，但 invalid_row_indices 仍保持集合去重。
             for col_group in schema["unique_together"]:
                 valid_cols = [c for c in col_group if c in df.columns]
                 if len(valid_cols) != len(col_group):
@@ -270,6 +274,8 @@ class DataValidateTool(SyncTool):
         col = df[col_name]
 
         nullable = rules.get("nullable", True)
+        # 单列规则按“空值 -> 类型 -> 范围/长度/模式/枚举 -> 唯一”展开；每个检查独立产出
+        # 错误，避免一个类型错误阻断其他可诊断约束（除非 execute_sync 启用了 fail_fast）。
         if not nullable:
             null_mask = col.isna()
             if null_mask.any():
@@ -534,6 +540,8 @@ class DataValidateTool(SyncTool):
         """Build validation result."""
         valid_rows = len(df) - len(invalid_row_indices)
         is_valid = len(errors) == 0
+        # valid_rows 只有在调用方明确要求 return_valid_rows 时才物化并按 artifact 阈值
+        # 选择 inline 或 spill；默认结果保持轻量，只返回统计和错误摘要。
 
         result: dict[str, Any] = {
             "valid": is_valid,

@@ -648,7 +648,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_message (
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_turn (
     id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)  NOT NULL COMMENT '会话ID',
-    request_id         VARCHAR(64)  NOT NULL COMMENT '请求ID',
+    request_id         VARCHAR(128) NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
     run_id             BIGINT       NULL COMMENT '关联 dialogue_run.id',
     turn_seq           INT          NOT NULL COMMENT 'session 内从 1 递增',
     entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve',
@@ -672,7 +672,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id           VARCHAR(64)   NOT NULL COMMENT '会话ID',
     turn_id              BIGINT        NOT NULL COMMENT 'FK -> working_memory_turn.id',
-    request_id           VARCHAR(64)   NOT NULL COMMENT '请求ID',
+    request_id           VARCHAR(128)  NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
     run_id               BIGINT        NULL COMMENT '关联 dialogue_run.id',
     seq_no               INT           NOT NULL COMMENT 'turn 内从 0 递增',
     role                 VARCHAR(16)   NOT NULL COMMENT 'USER/ASSISTANT/TOOL/SYSTEM',
@@ -719,3 +719,34 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_compaction (
     KEY idx_wm_compaction_trigger (trigger_request_id, deleted),
     KEY idx_wm_compaction_strategy (session_id, strategy, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='��������ѹ���¼���Ʊ�';
+
+-- LTM memory-only fork 执行观测（压缩前 flush / background review）
+CREATE TABLE IF NOT EXISTS ai_agent_ltm_fork_execution (
+    id                      BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id              VARCHAR(64)   NOT NULL COMMENT '会话ID',
+    trigger_request_id      VARCHAR(64)   NULL COMMENT '触发本 fork 的父 requestId',
+    fork_request_id         VARCHAR(128)  NULL COMMENT 'fork 自身 requestId',
+    fork_kind               VARCHAR(32)   NOT NULL COMMENT 'flush / bg-review',
+    status                  TINYINT       NOT NULL DEFAULT 1 COMMENT '1=SUCCESS 2=FAILED 3=SKIPPED 4=TIMEOUT',
+    skip_reason             VARCHAR(64)   NULL COMMENT '跳过原因',
+    owner_type              VARCHAR(16)   NULL COMMENT 'USER/VISITOR',
+    owner_id                VARCHAR(64)   NULL COMMENT '归属键',
+    user_turns              INT           NULL COMMENT '触发时 user turn 数（flush）',
+    snapshot_message_count  INT           NULL COMMENT '重放消息条数',
+    max_steps               INT           NULL COMMENT 'fork 最大步数',
+    timeout_seconds         BIGINT        NULL COMMENT 'fork 超时秒数',
+    duration_ms             BIGINT        NULL COMMENT '执行耗时毫秒',
+    entries_before          INT           NULL COMMENT 'fork 前 curated+user 活跃条数',
+    entries_after           INT           NULL COMMENT 'fork 后 curated+user 活跃条数',
+    applied_count           INT           NOT NULL DEFAULT 0 COMMENT '估算新增条数 after-before',
+    error_message           VARCHAR(1024) NULL COMMENT '失败/超时信息',
+    detail_json             MEDIUMTEXT    NULL COMMENT '扩展观测 JSON',
+    create_time             DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time             DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted                 TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    KEY idx_ltm_fork_session (session_id, deleted, id DESC),
+    KEY idx_ltm_fork_trigger (trigger_request_id, deleted),
+    KEY idx_ltm_fork_kind_status (fork_kind, status, deleted),
+    KEY idx_ltm_fork_owner (owner_type, owner_id, deleted, id DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='LTM memory-only fork 执行观测';

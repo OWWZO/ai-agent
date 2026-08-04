@@ -24,6 +24,8 @@ public class TaskJob {
      */
     @Scheduled(fixedRateString = "${xfg.wrench.task.job.refresh-interval:60000}")
     public void refreshTasks() {
+        // 刷新是配置到运行时任务的同步边界：关闭开关时不触碰现有调度器，开启后由
+        // service 负责增量创建/更新，避免定时器自身持有任务状态。
         if (!properties.isEnabled()) {
             return;
         }
@@ -35,6 +37,8 @@ public class TaskJob {
      */
     @Scheduled(cron = "${xfg.wrench.task.job.clean-invalid-tasks-cron:0 0/10 * * * ?}")
     public void cleanInvalidTasks() {
+        // 清理与刷新分开调度，先由配置开关短路；具体失效判定和取消动作留在 service，
+        // 保持 Job 只负责触发时机，不承担任务生命周期管理。
         if (!properties.isEnabled()) {
             return;
         }

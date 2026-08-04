@@ -62,6 +62,7 @@ public class AgentRepository implements IAgentRepository {
             return List.of();
         }
 
+        // client -> model -> api 是多级配置关系；这里只返回启用链路，并按 apiId 去重供运行时复用。
         List<AiClientApiVO> result = new ArrayList<>();
 
         for (String clientId : clientIdList) {
@@ -108,6 +109,7 @@ public class AgentRepository implements IAgentRepository {
             return List.of();
         }
 
+        // 模型 VO 同时带出该模型启用的 MCP id，避免装配层再次遍历 client-config 关系。
         List<AiClientModelVO> result = new ArrayList<>();
 
         for (String clientId : clientIdList) {
@@ -213,6 +215,7 @@ public class AgentRepository implements IAgentRepository {
             return Collections.emptyMap();
         }
 
+        // 先建立全局启用 MCP 集合，再过滤每个 client 的关联配置，避免把已禁用工具带入运行时。
         Set<String> enabledMcpIdSet = aiClientToolMcpDao.queryEnabledMcps().stream()
                 .map(AiClientToolMcp::getMcpId)
                 .filter(Objects::nonNull)
@@ -379,6 +382,7 @@ public class AgentRepository implements IAgentRepository {
             return List.of();
         }
 
+        // 一个 client 的配置可能包含 model/prompt/mcp/advisor 多种 target；先按类型拆分，再组装为运行时入口 VO。
         List<AiClientVO> result = new ArrayList<>();
         Set<String> processedClientIds = new HashSet<>();
 
@@ -514,6 +518,7 @@ public class AgentRepository implements IAgentRepository {
         }
 
         try {
+            // flow 配置只保留指向启用 client 的节点，并按 clientType 建索引，供策略装配按角色快速取用。
             // 根据智能体id 查询流程配置列表
             List<AiAgentFlowConfig> flowConfigs = aiAgentFlowConfigDao.queryByAgentId(aiAgentId);
 
@@ -719,6 +724,7 @@ public class AgentRepository implements IAgentRepository {
         String transportType = toolMcp.getTransportType();
 
         try {
+            // transportConfig 是按 transportType 分支解析的多态 JSON；解析失败只影响该 MCP 的详细配置，不丢失基础元数据。
             if ("sse".equals(transportType)) {
                 ObjectMapper objectMapper = new ObjectMapper();
                 AiClientToolMcpVO.TransportConfigSse transportConfigSse =
@@ -747,6 +753,7 @@ public class AgentRepository implements IAgentRepository {
                     transportConfigStreamableHttp.setResumableStreams(false);
                 }
                 if (transportConfigStreamableHttp.getOpenConnectionOnStartup() == null) {
+                    // 新增字段缺省值在仓储边界补齐，保持旧数据库配置也能生成完整运行时配置。
                     transportConfigStreamableHttp.setOpenConnectionOnStartup(true);
                 }
                 mcpVO.setTransportConfigStreamableHttp(transportConfigStreamableHttp);

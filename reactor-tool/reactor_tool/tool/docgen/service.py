@@ -29,6 +29,8 @@ def _safe_filename(name: str, default_ext: str) -> str:
 def resolve_output_path(request_id: str, output_path: str | None, default_ext: str) -> Path:
     rid = (request_id or "default").strip() or "default"
     root = OUTPUT_DIR / rid
+    # 所有生成产物按 request_id 隔离，文件名只保留 basename 并做 Windows 保留字符清洗；
+    # 这样调用方可以传入用户文件名，但不能借 output_path 穿越到 request 目录之外。
     root.mkdir(parents=True, exist_ok=True)
     if output_path:
         name = _safe_filename(output_path, default_ext)
@@ -40,6 +42,8 @@ def resolve_output_path(request_id: str, output_path: str | None, default_ext: s
 
 
 async def _upload_result(request_id: str, output_path: Path, result: dict[str, Any]) -> dict[str, Any]:
+    # 本地渲染成功与文件服务上传成功是两个独立结果：上传不可用时仍返回 outputPath 和
+    # 渲染统计，便于本地开发或离线任务继续消费产物。
     file_info = None
     try:
         file_info = await upload_file_by_path(str(output_path), request_id=request_id)
@@ -578,6 +582,7 @@ async def run_document_generate(request_id: str, params: dict[str, Any]) -> dict
     fmt = (params.get("format") or "").strip().lower() or "pdf"
     path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), ext_map.get(fmt, ".pdf"))
     result = generate_document(params, path)
+    # renderer 可能因格式或后缀修正返回新路径，上传必须以 renderer 的最终路径为准。
     # renderers may write a different final path
     final = Path(result.get("output_path") or path)
     return await _upload_result(request_id, final, result)
@@ -613,7 +618,7 @@ async def run_template_filler(request_id: str, params: dict[str, Any]) -> dict[s
     path = resolve_output_path(request_id, out_name, ".txt") if out_name else resolve_output_path(request_id, "template_output.txt", ".txt")
     result = fill_template(params, path)
     final = Path(result.get("output_path") or path)
-    # also return rendered text for agent
+    # 文件引用服务于下载/预览，rendered 文本服务于当前 Agent 立即读取；两者都保留。
     payload = await _upload_result(request_id, final, result)
     payload["rendered"] = result.get("rendered", "")
     return payload
@@ -637,6 +642,8 @@ async def run_document_template(request_id: str, params: dict[str, Any]) -> dict
         raise ValueError(f"Unknown action: {action!r}. Use one of {actions}.")
 
     if action == "list":
+        # list/get/preview 是元数据或内存操作，不强制创建文件；只有 generate 进入统一
+        # output_path + upload_result 流程。
         return {"success": True, "message": "ok", "templates": store.list_templates(), "fileInfo": []}
 
     name = params.get("name")

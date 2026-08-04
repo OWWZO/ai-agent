@@ -28,7 +28,7 @@ from reactor_tool.model.document import Doc
 @timer()
 async def get_file_content(file_name: str) -> str:
     """读取文件正文：本地路径直接读，否则按 URL 从文件服务下载。"""
-    # local file
+    # 工具调用既可能拿到工作区路径，也可能拿到文件服务 URL；先判定来源，避免把本地路径当成 HTTP 地址。
     if _is_local_file_reference(file_name):
         local_path = _normalize_local_path(file_name)
         try:
@@ -38,7 +38,7 @@ async def get_file_content(file_name: str) -> str:
             # UTF-8失败时尝试GBK
             with open(local_path, "r", encoding='gbk') as rf:
                 return rf.read()
-    # file server
+    # 远端响应按块读取，统一在内存中解码；UTF-8 失败时兼容历史中文文件常见的 GBK 编码。
     else:
         b_content = b""
         async with aiohttp.ClientSession() as session:
@@ -59,6 +59,7 @@ async def download_all_files(file_names: list[str]) -> List[Dict[str, Any]]:
     """批量下载文件内容，单文件失败时写入占位文案，不中断整体。"""
     file_contents = []
     for file_name in file_names:
+        # 单个附件不可用不应吞掉整个请求，调用方仍能看到原文件名和失败占位内容。
         try:
             file_contents.append(
                 {
@@ -85,6 +86,7 @@ def truncate_files(
     truncated_files = []
     token_size = 0
     for f_a in files:
+        # 深拷贝后再截断，避免上下文裁剪反向修改会话中仍需复用的原始文档。
         f = deepcopy(f_a)
         if token_size >= max_tokens:
             break
@@ -114,6 +116,7 @@ async def upload_file(
         file_name = f"{file_name}.{file_type}"
     storage_target = _get_file_storage_target()
     if _is_http_endpoint(storage_target):
+        # 生产环境由文件服务生成稳定 URL；本地模式只返回可直接访问的落盘路径，保持同一响应结构。
         body = {
             "requestId": request_id,
             "fileName": file_name,
@@ -161,6 +164,7 @@ async def upload_file_by_path(
     file_size = os.path.getsize(file_path)
     storage_target = _get_file_storage_target()
     if _is_http_endpoint(storage_target):
+        # 二进制产物必须走 multipart；文件服务负责登记元数据并返回前端可消费的地址。
         data = aiohttp.FormData()
         data.add_field("requestId", request_id)
         data.add_field(
@@ -224,8 +228,10 @@ def flatten_search_file(s_file: Dict[str, Any]) -> List[Dict[str, Any]]:
 @timer()
 async def get_file_path(file_name: str, word_dir: str) -> str:
     if _is_local_file_reference(file_name):
+        # 本地引用已经是可用路径，不重复复制，避免同一文件在工作区产生无意义副本。
         return str(_normalize_local_path(file_name))
     else:
+        # 远端文件只取 basename 写入调用方工作目录，避免 URL 中的路径层级改变落盘位置。
         b_content = b""
         file_path = os.path.join(word_dir, os.path.basename(file_name))
         async with aiohttp.ClientSession() as session:
@@ -252,6 +258,7 @@ async def get_file_path(file_name: str, word_dir: str) -> str:
 async def download_all_files_in_path(file_names: list[str], work_dir: str) -> List[Dict[str, Any]]:
     file_paths = []
     for file_name in file_names:
+        # 保持输入顺序并逐项记录失败，权限策略可以据此只允许访问成功落盘的文件。
         try:
             file_paths.append(
                 {
@@ -307,6 +314,7 @@ def _normalize_local_path(file_name: str) -> Path:
 
 def _build_local_storage_path(storage_root: str, request_id: str, file_name: str) -> Path:
     """按 requestId 隔离本地产物目录，避免不同会话互相覆盖。"""
+    # requestId 只参与目录层级，文件名由调用方先完成扩展名/路径规范化。
     target_directory = Path(storage_root).expanduser().resolve() / _sanitize_local_request_scope(request_id)
     target_directory.mkdir(parents=True, exist_ok=True)
     return target_directory / file_name
@@ -317,12 +325,14 @@ def _sanitize_local_request_scope(request_id: str) -> str:
     sanitized = _sanitize_local_path_segment(request_id, fallback="request")
     if sanitized == request_id:
         return sanitized
+    # 清洗可能让不同 requestId 变成同名目录，追加摘要保留可读名并降低碰撞风险。
     digest = hashlib.md5(request_id.encode("utf-8")).hexdigest()[:8]
     return f"{sanitized}-{digest}"
 
 
 def _sanitize_local_path_segment(segment: str, fallback: str) -> str:
     """清洗单个路径片段，兼容 Windows 非法字符与保留名称。"""
+    # 这里处理的是目录片段而不是完整路径，禁止分隔符和 Windows 保留设备名穿透目录边界。
     invalid_chars = '<>:"/\\|?*'
     translated = "".join("_" if char in invalid_chars or ord(char) < 32 else char for char in segment)
     sanitized = translated.strip().rstrip(". ")

@@ -83,6 +83,7 @@ class WebFetcher:
 
     async def fetch(self, request: WebFetchRequest) -> WebFetchResult:
         """抓取网页、提取正文，并生成统一返回结果。"""
+        # full_content 用于文件产物，inline_content 用于 LLM；截断只作用于内联副本，不能破坏可下载全文。
         page = await self._download_page(request.url, request.timeout_seconds)
         extracted = self._extract_content(page)
         if not extracted.content:
@@ -106,6 +107,7 @@ class WebFetcher:
 
     async def _download_page(self, url: str, timeout_seconds: int) -> DownloadedPage:
         """下载网页或文本内容，供后续按内容类型分流处理。"""
+        # 下载阶段只负责状态码、内容类型和空响应校验，不在这里混入 HTML/Markdown 的正文提取规则。
         client_timeout = aiohttp.ClientTimeout(total=timeout_seconds or DEFAULT_TIMEOUT_SECONDS)
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         async with aiohttp.ClientSession(timeout=client_timeout, headers=headers) as session:
@@ -125,6 +127,7 @@ class WebFetcher:
 
     def _extract_content(self, page: DownloadedPage) -> ExtractedContent:
         """按响应类型选择提取策略，HTML 走正文提取，文本直接复用原文。"""
+        # 内容类型决定解析器：HTML 需要去导航噪声，纯文本/Markdown 应保留原始语义和格式。
         if self._is_html_content_type(page.content_type):
             return self._extract_html_content(page.raw_content, page.final_url)
         return self._extract_text_content(page.raw_content, page.final_url, page.content_type)
@@ -153,6 +156,7 @@ class WebFetcher:
                 metadata=metadata,
             )
 
+        # trafilatura 没有提取到正文时再走 BeautifulSoup，保证简单页面仍可返回可读内容。
         fallback_content = self._extract_with_beautifulsoup(soup)
         return ExtractedContent(
             title=title,

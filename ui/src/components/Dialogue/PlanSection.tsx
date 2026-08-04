@@ -17,6 +17,7 @@ const normalizePlanForDisplay = (plan?: CHAT.Plan) => {
     return null;
   }
 
+  // 兼容旧协议：没有 stages 时用 steps 作为展示标题，没有状态时按历史完成快照处理。
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   const stages =
     Array.isArray(plan.stages) && plan.stages.length ? plan.stages : steps;
@@ -41,6 +42,7 @@ const resolvePlanStepDetail = (
     return "";
   }
 
+  // stage 与 step 相同表示没有额外说明，避免重复渲染同一段文本。
   if (
     Array.isArray(plan.stages) &&
     Array.isArray(plan.steps) &&
@@ -53,6 +55,7 @@ const resolvePlanStepDetail = (
 };
 
 const resolvePlanStepTone = (status?: string) => {
+  // 状态只决定颜色、圆点和文案，未知值按未开始处理以保持安全默认值。
   switch (status) {
     case "completed":
       return {

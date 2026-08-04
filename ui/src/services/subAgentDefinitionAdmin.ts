@@ -1,5 +1,6 @@
 import api from "./index";
 
+// 子 Agent 管理 API：页面只组装定义和工具白名单，后端负责校验、持久化及运行时 reload。
 export interface SubAgentDefinitionRecord {
   agentKey: string;
   displayName?: string;

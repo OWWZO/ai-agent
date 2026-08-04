@@ -20,6 +20,25 @@ describe("prompt-input attachment helpers", () => {
     expect(result.error?.code).toBe("accept");
   });
 
+  it("扩展名 accept 支持 pptx/json/py/html", () => {
+    const files = [
+      new File(["{}"], "a.json", { type: "application/json" }),
+      new File(["print(1)"], "b.py", { type: "text/x-python" }),
+      new File(["<html/>"], "c.html", { type: "text/html" }),
+      new File(["deck"], "d.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    ];
+
+    const result = validatePromptInputFiles(files, {
+      accept:
+        "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html",
+    });
+
+    expect(result.accepted).toHaveLength(4);
+    expect(result.error).toBeUndefined();
+  });
+
   it("超过 maxFiles 时会截断并返回 max_files 错误", () => {
     const files = [
       new File(["1"], "a.png", { type: "image/png" }),

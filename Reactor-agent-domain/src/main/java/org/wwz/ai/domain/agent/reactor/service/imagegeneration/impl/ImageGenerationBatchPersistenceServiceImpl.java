@@ -38,6 +38,7 @@ public class ImageGenerationBatchPersistenceServiceImpl implements IImageGenerat
             throw new IllegalArgumentException("工作台生图批次持久化参数不完整");
         }
         String toolCallId = buildWorkspaceToolCallId(requestId);
+        // 工具输出承载结构化批次，artifact 记录承载文件索引；两者共用稳定 toolCallId 才能被历史投影重新关联。
         toolOutputWriter.writeOrThrow(ToolOutputPersistCommand.builder()
                 .requestId(requestId)
                 .requestSource(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE)
@@ -111,6 +112,7 @@ public class ImageGenerationBatchPersistenceServiceImpl implements IImageGenerat
     }
 
     private String resolveStorageKey(WorkspaceImageFile file) {
+        // 优先使用稳定下载/对象存储引用，最后才退回文件名，避免 artifact 只有展示字段而无法定位资源。
         return StringUtils.firstNonBlank(file.getDownloadUrl(), file.getOssUrl(), file.getPreviewUrl(), file.getDomainUrl(), file.getFileName());
     }
 

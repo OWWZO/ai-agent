@@ -27,10 +27,12 @@ export default function FeaturedConversationsPage(props: FeaturedConversationsPa
   const [selectedFeaturedId, setSelectedFeaturedId] = useState(initialFeaturedId);
 
   useEffect(() => {
+    // initialFeaturedId 由嵌入容器控制，变化时同步清除/切换详情视图。
     setSelectedFeaturedId(initialFeaturedId);
   }, [initialFeaturedId]);
 
   useEffect(() => {
+    // 请求结束前用 disposed 丢弃旧分页响应，避免快速翻页时后返回的数据覆盖新页。
     let disposed = false;
     setLoading(true);
 
@@ -64,6 +66,7 @@ export default function FeaturedConversationsPage(props: FeaturedConversationsPa
   }, [pageNo]);
 
   if (embedded && selectedFeaturedId) {
+    // 嵌入模式在同一页面内切换详情；独立模式交给路由页面处理。
     return (
       <FeaturedConversationDetailPage
         embedded

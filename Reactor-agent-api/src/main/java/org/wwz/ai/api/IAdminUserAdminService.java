@@ -9,6 +9,12 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * 管理员用户配置的应用服务契约。
+ *
+ * <p>接口同时提供主键、业务用户 ID 和用户名三类查询入口；调用方应根据已有标识选择对应方法，
+ * 不把业务 ID 当作数据库主键使用。</p>
+ */
 public interface IAdminUserAdminService {
 
     /**

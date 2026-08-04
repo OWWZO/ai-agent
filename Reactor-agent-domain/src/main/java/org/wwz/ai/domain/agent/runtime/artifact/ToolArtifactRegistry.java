@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * 当前请求运行期内的工具产物登记簿。
- * registry 是生成文件来源的唯一事实来源，productFiles/taskProductFiles 仅作为兼容视图维护。
+ * registry 是生成文件来源的唯一事实来源，productFiles 仅作为兼容视图维护。
  */
 public class ToolArtifactRegistry {
 
@@ -21,14 +21,12 @@ public class ToolArtifactRegistry {
      * 登记一个生成的文件
      * @param source           文件来源（哪个工具调用产生的）
      * @param file             要登记的文件
-     * @param productFiles     兼容视图：所有产物文件（外部传入的列表，会被修改）
-     * @param taskProductFiles 兼容视图：非内部产物文件（外部传入的列表，会被修改）
+     * @param productFiles 兼容视图：所有产物文件（外部传入的列表，会被修改）
      * @return 创建或已存在的绑定对象
      */
     public synchronized ToolArtifactBinding registerGeneratedFile(ToolArtifactSource source,
                                                                   File file,
-                                                                  List<File> productFiles,
-                                                                  List<File> taskProductFiles) {
+                                                                  List<File> productFiles) {
         // 参数校验
         Objects.requireNonNull(source, "toolArtifactSource must not be null");
         Objects.requireNonNull(file, "file must not be null");
@@ -44,11 +42,8 @@ public class ToolArtifactRegistry {
             bindings.add(binding);
         }
 
-        // 同步更新兼容视图
-        addFileIfAbsent(productFiles, file);           // 所有文件进 productFiles
-        if (!Boolean.TRUE.equals(file.getIsInternalFile())) {
-            addFileIfAbsent(taskProductFiles, file);   // 非内部文件进 taskProductFiles
-        }
+        // 同步更新会话级兼容视图；内部文件也要保留，供后续工具继续引用。
+        addFileIfAbsent(productFiles, file);
         return binding;
     }
 

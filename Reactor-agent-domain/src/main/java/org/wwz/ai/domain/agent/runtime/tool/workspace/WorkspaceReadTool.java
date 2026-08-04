@@ -32,9 +32,10 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
     @Override
     public String getDescription() {
         return withWorkspaceHint(
-                "读取会话工作区内的文本文件。path 可为绝对路径或相对工作区根的相对路径；"
-                        + "默认从第 1 行起读取，可用 start_line/line_count 截取。"
+                "读取会话工作区内的文件。path 可为绝对路径或相对工作区根的相对路径。"
+                        + "文本：默认从第 1 行起读取，可用 start_line/line_count 截取；"
                         + "若文件自上次同范围读取后未变化（含跨轮），将返回 unchanged stub，请复用更早的读取结果。"
+                        + "图片（png/jpg/gif/webp 等）：返回短元数据，图片本体作为多模态内容供模型阅读。"
                         + "不要用 shell cat/head 代替本工具。"
         );
     }
@@ -63,6 +64,7 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             }
 
             if (isImage(filePath)) {
+                // 图片不走文本截断；返回文件内容引用，文本读取状态仅用于后续可编辑文件的并发检查。
                 return readImage(filePath);
             }
 
@@ -72,6 +74,7 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
             String fullContent = Files.readString(filePath, StandardCharsets.UTF_8);
             String contentHash = WorkspaceReadStateStore.sha256Hex(fullContent);
+            // 读取状态绑定 mtime、范围和内容 hash，workspace_edit 据此拒绝基于过期内容的覆盖写。
 
             if (agentContext != null) {
                 WorkspaceFileReadState existing = agentContext.getWorkspaceFileReadState(absolutePath);
@@ -154,17 +157,18 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                 default -> "image/png";
             };
         }
-        String base64 = Base64.getEncoder().encodeToString(bytes);
-        String dataUrl = "data:" + mimeType + ";base64," + base64;
-        Map<String, Object> file = new LinkedHashMap<>();
-        file.put("filePath", filePath.toString());
-        file.put("base64", base64);
-        file.put("type", mimeType);
-        file.put("originalSize", bytes.length);
+        // observation 只保留元数据；整图走 base64Image，由 DomainMessageConverter 转成 Spring AI Media。
+        String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("type", "image");
         data.put("path", filePath.toString());
-        data.put("file", file);
+        data.put("mimeType", mimeType);
+        data.put("size", bytes.length);
+        data.put("file", Map.of(
+                "filePath", filePath.toString(),
+                "type", mimeType,
+                "originalSize", bytes.length));
+        data.put("message", "Image loaded as multimodal content; inspect the attached image media.");
         return ToolResultPayload.builder()
                 .llmData(data)
                 .base64Image(dataUrl)

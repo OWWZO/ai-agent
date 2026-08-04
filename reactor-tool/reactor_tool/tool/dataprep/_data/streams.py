@@ -25,6 +25,7 @@ def iter_chunks(
         raise ValueError("chunk_size must be positive")
 
     if isinstance(items, list):
+        # 列表可按切片快速分块；其它 iterator 必须逐项消费，避免一次性复制全部输入。
         for start in range(0, len(items), chunk_size):
             yield items[start:start + chunk_size]
         return
@@ -33,6 +34,7 @@ def iter_chunks(
     for item in items:
         buffer.append(item)
         if len(buffer) >= chunk_size:
+            # 交出当前批次后立刻换新 buffer，调用方处理批次时不会修改下一批数据。
             yield buffer
             buffer = []
     if buffer:
@@ -48,5 +50,6 @@ def iter_chunks_df(df: Any, chunk_size: int = 5_000) -> Iterator[Any]:
         raise ValueError("chunk_size must be positive")
 
     total = len(df)
+    # 使用 iloc 保留 DataFrame 的列结构，同时把内存上限绑定到 chunk_size。
     for start in range(0, total, chunk_size):
         yield df.iloc[start:start + chunk_size]

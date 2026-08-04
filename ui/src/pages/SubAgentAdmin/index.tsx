@@ -31,6 +31,7 @@ const EMPTY_DRAFT = (): Draft => ({
 });
 
 function recordToDraft(record: SubAgentDefinitionRecord): Draft {
+  // 编辑时复制数组字段，避免表单修改直接污染列表缓存中的服务端快照。
   return {
     isNew: false,
     agentKey: record.agentKey,
@@ -57,6 +58,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT());
 
   const refresh = useCallback(async () => {
+    // 列表和工具目录并行加载；目录失败可降级为通配符，不阻断定义列表展示。
     setLoading(true);
     try {
       const [list, tools] = await Promise.all([
@@ -85,6 +87,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   }, [refresh]);
 
   useEffect(() => {
+    // 列表刷新后重新把当前 key 映射到 draft，保证外部更新能反映到编辑表单。
     if (!selectedKey) {
       return;
     }
@@ -108,6 +111,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   };
 
   const onSave = async () => {
+    // 先校验最小可运行契约，再统一 trim 文本并把空数组转为未配置。
     if (!draft.agentKey.trim()) {
       showMessage()?.error("agentKey 不能为空");
       return;
@@ -131,6 +135,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
         status: draft.status ?? 1,
       };
       if (draft.isNew) {
+        // 新建和更新共用 payload，但分别调用后端生命周期操作。
         await subAgentDefinitionAdminApi.create(payload);
         showMessage()?.success("已创建并热加载");
       } else {
@@ -149,6 +154,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   };
 
   const onDelete = () => {
+    // 删除是软删除且会影响运行时 Registry，因此必须绑定当前已保存定义并二次确认。
     if (!selectedKey || draft.isNew) {
       return;
     }
@@ -174,6 +180,7 @@ const SubAgentAdmin: ReactorType.FC<SubAgentAdminProps> = ({ embedded }) => {
   };
 
   const onReload = async () => {
+    // Registry 重载完成后重新拉取列表，让管理页显示运行时实际生效的定义数量。
     try {
       const count = await subAgentDefinitionAdminApi.reload();
       showMessage()?.success(`Registry 已重载，配置条数 ${count}`);

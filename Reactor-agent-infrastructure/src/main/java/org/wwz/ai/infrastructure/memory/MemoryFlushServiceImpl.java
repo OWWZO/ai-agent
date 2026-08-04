@@ -9,12 +9,15 @@ import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.LtmAgentForkSupport;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkRunResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushPolicy;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +35,7 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
     private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
     private final ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider;
     private final ObjectProvider<IExecutionLedgerReadRepository> ledgerReadRepositoryProvider;
+    private final ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider;
 
     private final Set<String> flushedRequests = ConcurrentHashMap.newKeySet();
 
@@ -61,44 +65,137 @@ public class MemoryFlushServiceImpl implements MemoryFlushService {
                                   LtmOwner owner,
                                   List<Message> messagesAboutToCompact) {
         if (!enabled || messagesAboutToCompact == null || messagesAboutToCompact.isEmpty()) {
+            recordSkip(sessionId, requestId, owner, messagesAboutToCompact,
+                    !enabled ? "disabled" : "empty-messages", 0);
+            return 0;
+        }
+        // 防止 flush fork 自身 mid-run compact 再触发 flush（历史上会变成 -flush-flush-... 风暴）
+        if (StringUtils.isNotBlank(requestId)
+                && (requestId.contains("-flush") || requestId.contains("-bg-review"))) {
+            recordSkip(sessionId, requestId, owner, messagesAboutToCompact, "nested-fork", 0);
             return 0;
         }
         LtmOwner resolvedOwner = owner != null ? owner : resolveOwner(sessionId);
         if (resolvedOwner == null) {
+            recordSkip(sessionId, requestId, null, messagesAboutToCompact, "null-owner", 0);
             return 0;
         }
+        // request 级去重 + session 级 in-flight，避免并发 compact 同时拉起多个 flush
+        String sessionKey = "s:" + StringUtils.defaultIfBlank(sessionId, "unknown");
         String reqKey = StringUtils.defaultIfBlank(requestId, sessionId);
         if (StringUtils.isNotBlank(reqKey) && !flushedRequests.add(reqKey)) {
+            recordSkip(sessionId, requestId, resolvedOwner, messagesAboutToCompact, "duplicate-request", 0);
             return 0;
         }
-        int userTurns = MemoryFlushPolicy.countUserTurns(messagesAboutToCompact);
-        if (!MemoryFlushPolicy.shouldFlush(userTurns, flushMinTurns, true)) {
+        if (!flushedRequests.add(sessionKey)) {
+            recordSkip(sessionId, requestId, resolvedOwner, messagesAboutToCompact, "session-in-flight", 0);
             return 0;
         }
-        CuratedMemoryStore store = curatedMemoryStoreProvider.getIfAvailable();
-        ReactorRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
-        if (store == null || deps == null) {
-            return 0;
-        }
+        try {
+            int userTurns = MemoryFlushPolicy.countUserTurns(messagesAboutToCompact);
+            if (!MemoryFlushPolicy.shouldFlush(userTurns, flushMinTurns, true)) {
+                recordSkip(sessionId, requestId, resolvedOwner, messagesAboutToCompact, "min-turns", userTurns);
+                return 0;
+            }
+            CuratedMemoryStore store = curatedMemoryStoreProvider.getIfAvailable();
+            ReactorRuntimeDependencies deps = runtimeDependenciesProvider.getIfAvailable();
+            if (store == null || deps == null) {
+                recordSkip(sessionId, requestId, resolvedOwner, messagesAboutToCompact,
+                        store == null ? "store-null" : "deps-null", userTurns);
+                return 0;
+            }
 
-        // 全量窗口重放（截断单条过长 content，保留前缀结构以利 cache）
-        List<Message> snapshot = truncateSnapshot(messagesAboutToCompact, materialMaxMessages, materialMaxCharsPerMsg);
-        log.info("memory-flush fork start sessionId={} userTurns={} snapshotMsgs={}",
-                sessionId, userTurns, snapshot.size());
-        int applied = LtmAgentForkSupport.runMemoryOnlyFork(
-                deps,
-                store,
-                resolvedOwner,
-                sessionId,
-                requestId,
-                null, // 使用 React 默认 system + fork directive；无父 system 时仍可跑
-                snapshot,
-                LtmAgentForkSupport.FLUSH_DIRECTIVE,
-                maxSteps,
-                timeoutSeconds,
-                "flush");
-        log.info("memory-flush fork done sessionId={} appliedApprox={}", sessionId, applied);
-        return applied;
+            // 全量窗口重放（截断单条过长 content，保留前缀结构以利 cache）
+            List<Message> snapshot = truncateSnapshot(messagesAboutToCompact, materialMaxMessages, materialMaxCharsPerMsg);
+            log.info("memory-flush fork start sessionId={} userTurns={} snapshotMsgs={}",
+                    sessionId, userTurns, snapshot.size());
+            LtmForkRunResult result = LtmAgentForkSupport.runMemoryOnlyFork(
+                    deps,
+                    store,
+                    resolvedOwner,
+                    sessionId,
+                    requestId,
+                    null, // 使用 React 默认 system + fork directive；无父 system 时仍可跑
+                    snapshot,
+                    LtmAgentForkSupport.FLUSH_DIRECTIVE,
+                    maxSteps,
+                    timeoutSeconds,
+                    "flush");
+            log.info("memory-flush fork done sessionId={} status={} appliedApprox={} durationMs={}",
+                    sessionId, result.getStatus(), result.appliedOrZero(), result.getDurationMs());
+            recordResult(sessionId, requestId, resolvedOwner, userTurns, snapshot.size(), result);
+            return result.appliedOrZero();
+        } finally {
+            flushedRequests.remove(sessionKey);
+        }
+    }
+
+    private void recordSkip(String sessionId,
+                            String requestId,
+                            LtmOwner owner,
+                            List<Message> messages,
+                            String reason,
+                            int userTurns) {
+        LtmForkExecutionEvent event = baseEvent(sessionId, requestId, owner)
+                .forkKind(LtmForkExecutionEvent.KIND_FLUSH)
+                .status(LtmForkExecutionEvent.STATUS_SKIPPED)
+                .skipReason(reason)
+                .userTurns(userTurns)
+                .snapshotMessageCount(messages == null ? 0 : messages.size())
+                .maxSteps(maxSteps)
+                .timeoutSeconds(timeoutSeconds)
+                .appliedCount(0)
+                .build();
+        persist(event);
+    }
+
+    private void recordResult(String sessionId,
+                              String requestId,
+                              LtmOwner owner,
+                              int userTurns,
+                              int snapshotMsgs,
+                              LtmForkRunResult result) {
+        LtmForkExecutionEvent event = baseEvent(sessionId, requestId, owner)
+                .forkKind(LtmForkExecutionEvent.KIND_FLUSH)
+                .forkRequestId(result.getForkRequestId())
+                .status(result.getStatus())
+                .skipReason(result.getSkipReason())
+                .userTurns(userTurns)
+                .snapshotMessageCount(snapshotMsgs)
+                .maxSteps(maxSteps)
+                .timeoutSeconds(timeoutSeconds)
+                .durationMs(result.getDurationMs())
+                .entriesBefore(result.getEntriesBefore())
+                .entriesAfter(result.getEntriesAfter())
+                .appliedCount(result.appliedOrZero())
+                .errorMessage(StringUtils.left(result.getErrorMessage(), 1000))
+                .detailJson(StringUtils.left(result.getWrittenEntriesJson(), 500_000))
+                .build();
+        persist(event);
+    }
+
+    private LtmForkExecutionEvent.LtmForkExecutionEventBuilder baseEvent(String sessionId,
+                                                                         String requestId,
+                                                                         LtmOwner owner) {
+        return LtmForkExecutionEvent.builder()
+                .sessionId(StringUtils.defaultIfBlank(sessionId, "unknown"))
+                .triggerRequestId(StringUtils.defaultIfBlank(requestId, "unknown"))
+                .ownerType(owner == null || owner.getType() == null ? null : owner.getType().name())
+                .ownerId(owner == null ? null : owner.getId())
+                .deleted(0);
+    }
+
+    private void persist(LtmForkExecutionEvent event) {
+        try {
+            ILtmForkExecutionDao dao = ltmForkExecutionDaoProvider.getIfAvailable();
+            if (dao == null || event == null) {
+                return;
+            }
+            dao.insertEvent(event);
+        } catch (Exception e) {
+            log.warn("record ltm fork flush event failed sessionId={}: {}",
+                    event == null ? null : event.getSessionId(), e.toString());
+        }
     }
 
     private static List<Message> truncateSnapshot(List<Message> messages, int maxMessages, int maxCharsPerMsg) {

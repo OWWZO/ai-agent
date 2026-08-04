@@ -127,6 +127,8 @@ async function requestWrappedData<T>(
   path: string,
   body: Record<string, unknown>
 ): Promise<T> {
+  // SOP 管理接口既可能返回包装体，也兼容直接返回 data；协议差异在 service 层吸收，
+  // 页面组件只接收已完成 snake_case/camelCase 映射的领域类型。
   const response = await fetch(`${normalizeToolBaseUrl(toolBaseUrl)}${path}`, {
     method: "POST",
     headers: {
@@ -189,6 +191,7 @@ export async function upsertSop(
     status: SopStatus;
   }
 ): Promise<SopItem> {
+  // 保存请求保留 sopId 以区分更新和新建，步骤结构在接口边界保持可回放的嵌套形态。
   const data = await requestWrappedData<RawSopItem>(toolBaseUrl, "/v1/sop/upsert", {
     requestId: `sop-upsert-${Date.now()}`,
     sopId: payload.sopId || null,

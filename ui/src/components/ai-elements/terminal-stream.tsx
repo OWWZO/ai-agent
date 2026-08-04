@@ -16,10 +16,8 @@ export type TerminalStreamTextProps = {
 };
 
 /**
- * Lightweight terminal-like streaming text:
- * - incrementally reveals characters at a steady rate
- * - shows a soft caret (pulse while streaming)
- * - avoids Streamdown/Markdown re-parsing during streaming for better performance
+ * 轻量终端式流式文本：按固定速度逐字显示，并在流式期间显示光标。
+ * 流式阶段不重复跑 Markdown 解析，完成后一次性接管完整文本。
  */
 const TerminalStreamTextComponent = ({
   text,
@@ -30,6 +28,7 @@ const TerminalStreamTextComponent = ({
   caretWidthClassName = "w-[3px]",
   caretHeightClassName = "h-[0.9em]",
 }: TerminalStreamTextProps) => {
+  // 文本事件持续到达时只更新 ref，动画 effect 无需因每个 chunk 重启。
   const latestTextRef = useRef(text);
   const displayedRef = useRef("");
   const prevIsStreamingRef = useRef(isStreaming);
@@ -53,6 +52,7 @@ const TerminalStreamTextComponent = ({
     };
 
     if (!isStreaming) {
+      // 结束时立即补齐完整文本，避免动画速度导致最终内容缺字。
       stop();
       displayedRef.current = text;
       setDisplayed(text);
@@ -60,7 +60,7 @@ const TerminalStreamTextComponent = ({
       return;
     }
 
-    // Only reset when we enter streaming mode.
+    // 只有从非流式切入流式时清空；同一轮的新 chunk 应从已展示长度继续播放。
     if (!prevIsStreamingRef.current) {
       displayedRef.current = "";
       setDisplayed("");
@@ -83,6 +83,7 @@ const TerminalStreamTextComponent = ({
         setDisplayed(displayedRef.current);
       }
 
+      // 每帧最多追加本轮目标长度，文本增长后下一帧会继续追赶最新目标。
       if (isStreaming) {
         rafId = requestAnimationFrame(tick);
       }
@@ -121,4 +122,3 @@ const TerminalStreamTextComponent = ({
 };
 
 export const TerminalStreamText = memo(TerminalStreamTextComponent);
-

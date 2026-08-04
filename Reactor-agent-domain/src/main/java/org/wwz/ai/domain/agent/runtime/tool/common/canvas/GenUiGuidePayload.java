@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * On-demand GenUI guide (wire format + layout) for the high-frequency subset.
+ * 按需返回高频 GenUI 子集的协议与布局指南。
+ *
+ * 该类维护的是给模型阅读的稳定提示数据，而不是运行时组件注册表；组件能力的
+ * 真正校验仍由 list_ui_components 和 emit_ui_tree/patch 的执行链负责。
  */
 public final class GenUiGuidePayload {
 
@@ -14,6 +17,7 @@ public final class GenUiGuidePayload {
 
     public static Map<String, Object> payload() {
         Map<String, Object> guide = new LinkedHashMap<>();
+        // 按 wire format、调用顺序、路由和视觉约束组织，减少模型在不同阶段混用字段。
         guide.put("purpose",
                 "Ship polished, scannable gen UI with clear hierarchy — not noisy decoration.");
         guide.put("wire_format_and_syntax", List.of(

@@ -39,6 +39,8 @@ public class AgentImageGenerationController {
     @PostMapping("/generate")
     public Response<WorkspaceImageGenerationRespVO> generate(@RequestBody WorkspaceImageGenerationReqVO reqVO) {
         try {
+            // Controller 只完成请求 VO -> domain command -> response VO 的协议转换；生成、
+            // fallback 和文件持久化由 workspace service 负责，避免入口层复制生图策略。
             if (reqVO == null) {
                 throw new IllegalArgumentException("请求体不能为空");
             }
@@ -88,6 +90,8 @@ public class AgentImageGenerationController {
     public Response<PageRespVO<WorkspaceImageHistoryBatchRespVO>> history(@RequestParam(name = "pageNo", defaultValue = "1") int pageNo,
                                                                           @RequestParam(name = "pageSize", defaultValue = "10") int pageSize) {
         try {
+            // 历史查询返回批次级分页，再把稳定文件引用映射成前端 VO；这里不重新请求图片
+            // 内容，也不把历史记录混入当前 Agent run。
             WorkspaceImageGenerationHistoryPage historyPage =
                     workspaceImageGenerationService.queryHistory(pageNo, pageSize);
 

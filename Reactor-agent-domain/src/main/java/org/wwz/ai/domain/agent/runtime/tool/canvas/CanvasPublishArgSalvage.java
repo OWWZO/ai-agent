@@ -11,8 +11,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Recover truncated / malformed canvas_publish tool-call JSON before execute.
- * Inspired by LeAgent canvas_publish salvage path.
+ * 在 {@code canvas_publish} 执行前抢救被截断或格式损坏的工具参数。
+ *
+ * <p>正常输入优先走 Jackson 的结构化解析；只有解析失败时才提取关键字段。
+ * 抢救路径允许 HTML 字符串未闭合，但必须至少得到 html 或 html_path，避免把
+ * 不完整的无效参数伪装成成功调用。</p>
  */
 public final class CanvasPublishArgSalvage {
 
@@ -46,6 +49,7 @@ public final class CanvasPublishArgSalvage {
         if (raw.isEmpty()) {
             return null;
         }
+        // 完整 JSON 保留原始字段，抢救逻辑只作为损坏输入的降级路径。
         try {
             Object parsed = MAPPER.readValue(raw, Object.class);
             if (parsed instanceof Map<?, ?> map) {
@@ -68,6 +72,7 @@ public final class CanvasPublishArgSalvage {
             return null;
         }
         Map<String, Object> out = new LinkedHashMap<>();
+        // 标量字段用正则提取，HTML 单独按转义状态扫描，避免内容中的引号误截断。
         String title = extractQuoted(TITLE_PATTERN, raw);
         String mode = extractQuoted(MODE_PATTERN, raw);
         String htmlPath = extractQuoted(HTML_PATH_PATTERN, raw);
@@ -91,6 +96,7 @@ public final class CanvasPublishArgSalvage {
         if (StringUtils.isNotBlank(html)) {
             out.put("html", html);
         }
+        // 没有可发布的内容时返回 null，让上层按普通参数错误处理。
         if (out.isEmpty() || (!out.containsKey("html") && !out.containsKey("html_path"))) {
             return null;
         }
@@ -120,6 +126,7 @@ public final class CanvasPublishArgSalvage {
         int i = m.end();
         StringBuilder sb = new StringBuilder();
         boolean escaped = false;
+        // 允许扫描到输入末尾；工具调用被截断时，末尾没有闭合引号也仍可发布已有片段。
         while (i < raw.length()) {
             char c = raw.charAt(i);
             if (escaped) {
@@ -154,6 +161,7 @@ public final class CanvasPublishArgSalvage {
         }
         StringBuilder sb = new StringBuilder(value.length());
         boolean escaped = false;
+        // 这里只处理 JSON 常见转义，未知转义保留其字符，尽量不破坏模型生成的 HTML。
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (escaped) {

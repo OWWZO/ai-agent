@@ -24,6 +24,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
 
   const refreshKnowledgeBases = useCallback(
     async (options?: RefreshKnowledgeBaseOptions) => {
+      // silent 刷新保留页面交互，非 silent 刷新才显示全局 loading；失败时清空旧列表避免误操作。
       if (!options?.silent) {
         setKnowledgeBasesLoading(true);
       }
@@ -45,6 +46,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
   );
 
   const handleCreateKnowledgeBase = useCallback(async () => {
+    // 名称在请求前 trim，创建成功后清空草稿但把新对象交给页面决定是否选中。
     const kbName = createKnowledgeBaseName.trim();
     if (!kbName) {
       showMessage()?.error("请输入知识库名称");
@@ -71,6 +73,7 @@ export function useKnowledgeBaseCatalog(toolBaseUrl: string) {
 
   const deleteKnowledgeBaseById = useCallback(
     async (kbId: string) => {
+      // 删除状态只记录当前 id，使列表中的其它操作仍能保持可用。
       if (!kbId) {
         return null;
       }

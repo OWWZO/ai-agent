@@ -30,6 +30,7 @@ public class AgentFileController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<AgentFileUploadRespVO> upload(@RequestParam("sessionId") String sessionId,
                                                   @RequestParam("file") MultipartFile file) {
+        // 先拒绝无会话或空文件，避免无效请求进入文件网关并产生孤立元数据。
         if (!StringUtils.hasText(sessionId)) {
             return Response.<AgentFileUploadRespVO>builder()
                     .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -44,6 +45,7 @@ public class AgentFileController {
         }
 
         try {
+            // 访客身份从请求上下文取得，Controller 不信任客户端自行提交的 owner；文件落库交给 case 层。
             ConversationUploadedFile uploaded = conversationFileApplicationService.upload(
                     VisitorRequestContext.requireVisitorId(),
                     sessionId,
@@ -52,6 +54,7 @@ public class AgentFileController {
                     file.getSize(),
                     file.getInputStream()
             );
+            // 领域对象与 HTTP VO 分离，防止基础设施字段直接泄露为外部协议。
             AgentFileUploadRespVO respVO = new AgentFileUploadRespVO();
             BeanUtils.copyProperties(uploaded, respVO);
             return Response.<AgentFileUploadRespVO>builder()

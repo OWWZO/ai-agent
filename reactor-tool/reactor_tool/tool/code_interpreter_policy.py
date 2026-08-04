@@ -209,6 +209,7 @@ def build_permission_policy(
     input_files: list[dict[str, str]] | None,
 ) -> CodeInterpreterPermissionPolicy:
     """根据权限档位构建固定策略。"""
+    # 先把所有路径归一化成绝对路径，再冻结为不可变快照；后续静态检查和运行时守卫必须使用同一份边界。
     normalized_profile = _normalize_profile(profile)
     workspace_path = str(Path(workspace_root).resolve())
     output_path = str(Path(output_dir).resolve())
@@ -243,6 +244,7 @@ def validate_authorized_path(
     access_mode: PathAccessMode,
 ) -> str:
     """按当前权限档位校验并规范化路径。"""
+    # 相对路径的解释依赖权限档位，不能直接用当前进程工作目录解析，否则 analysis 档位可能越过输出目录。
     normalized_path = _resolve_policy_path(file_path, policy=policy, access_mode=access_mode)
     if not is_path_sandbox_enabled():
         return normalized_path
@@ -280,6 +282,7 @@ def validate_authorized_path(
 
 def build_runtime_helpers(policy: CodeInterpreterPermissionPolicy) -> dict[str, Callable]:
     """构建注入解释器的受控 helper。"""
+    # helper 是用户代码接触文件系统的推荐入口；闭包捕获策略快照，避免执行期间被外部修改授权范围。
     input_name_mapping = dict(policy.input_file_paths)
 
     def build_output_path(file_name: str) -> str:
@@ -341,6 +344,7 @@ def validate_code_against_policy(code: str, policy: CodeInterpreterPermissionPol
     resolved_names: dict[str, Any] = policy.to_runtime_variables()
     helper_functions = build_runtime_helpers(policy)
 
+    # 按顶层语句扫描并同步简单赋值结果，使 file_path = build_output_path(...) 这类常见写法也能被追踪。
     for statement in tree.body:
         _validate_statement(
             statement=statement,
@@ -383,6 +387,7 @@ def _validate_statement(
     resolved_names: dict[str, Any],
     helper_functions: dict[str, Callable],
 ) -> None:
+    # 一条语句同时检查名称劫持、导入和调用；其中路径参数单独解析，避免把普通字符串误判为文件访问。
     _ensure_helper_names_not_overridden(statement, policy)
 
     if isinstance(statement, ast.Import):
@@ -501,6 +506,7 @@ def _validate_path_call(
     if function_name not in _READ_CALLS and function_name not in _WRITE_CALLS and function_name != "open":
         return
 
+    # 只对已知读写 API 做路径推导；无法静态解析的动态表达式留给运行时二次守卫，避免静态检查误杀合法代码。
     access_mode = _infer_access_mode(node, function_name)
     target_path_node = _extract_path_node(node, function_name)
     if target_path_node is None:
@@ -620,6 +626,7 @@ def _resolve_path_expression(
     resolved_names: dict[str, Any],
     helper_functions: dict[str, Callable],
 ) -> str | HelperPathReference | None:
+    # 这里是一个有意收敛的 AST 路径解析器，只支持常量、变量、拼接、下标和受控 helper，拒绝执行任意用户表达式。
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
 
@@ -732,6 +739,7 @@ def _resolve_policy_path(
     if candidate_path.is_absolute():
         return str(candidate_path.resolve())
 
+    # 读取时先尝试输入文件逻辑名；其它相对路径才落到 workspace/output 根目录，写入不会把逻辑名当作可写文件。
     if access_mode == "read":
         mapped_input_path = _resolve_input_file_name(raw_path, policy)
         if mapped_input_path is not None:
@@ -753,6 +761,7 @@ def _resolve_input_file_name(
 
 def _is_within_roots(file_path: str, allowed_roots: tuple[str, ...]) -> bool:
     candidate_path = Path(file_path).resolve()
+    # 使用 Path.parents 判断目录边界，避免简单字符串前缀把 /workspace-a 错认成 /workspace 的子目录。
     for root in allowed_roots:
         root_path = Path(root).resolve()
         if candidate_path == root_path or root_path in candidate_path.parents:

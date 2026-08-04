@@ -107,6 +107,7 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             }
 
             int occurrences = countOccurrences(original, oldString);
+            // 默认要求唯一匹配，避免模型提供过短上下文时误改多个位置；replace_all 是显式放宽。
             if (occurrences == 0) {
                 return failResult("old_string not found in file. Re-read the file with workspace_read and ensure exact match "
                         + "(do not include line-number prefixes).");

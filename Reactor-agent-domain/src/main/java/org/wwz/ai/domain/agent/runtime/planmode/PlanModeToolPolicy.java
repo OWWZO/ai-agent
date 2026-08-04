@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Plan Mode 工具门禁（对标 cc-haha：主 agent prompt 约束 + 写操作仅 plan 文件）。
+ * Plan Mode 工具门禁（主 agent prompt 约束 + 写操作仅 plan 文件）。
  */
 public final class PlanModeToolPolicy {
 

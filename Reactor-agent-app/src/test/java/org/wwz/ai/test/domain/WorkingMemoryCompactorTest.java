@@ -91,10 +91,66 @@ public class WorkingMemoryCompactorTest {
         String raw = "<analysis>scratch</analysis>\n<summary>\n1. Primary Request: do X\n</summary>";
         String formatted = CompactionPrompt.formatCompactSummary(raw);
         Assert.assertFalse(formatted.contains("<analysis>"));
-        Assert.assertTrue(formatted.contains("Primary Request") || formatted.contains("Summary:"));
+        Assert.assertFalse(formatted.contains("<summary>"));
+        Assert.assertTrue(formatted.contains("Primary Request"));
         String wrapped = CompactionPrompt.wrapSummaryForReinject(formatted, true);
         Assert.assertTrue(wrapped.contains("This session is being continued"));
         Assert.assertTrue(wrapped.contains("Recent messages are preserved verbatim"));
+        Assert.assertTrue(wrapped.contains("NOT a context-compaction"));
+        Assert.assertFalse(wrapped.contains("<analysis>"));
+        Assert.assertFalse(wrapped.contains("<summary>"));
+    }
+
+    @Test
+    public void shouldStripUnclosedAnalysisAndInstructionLeakBeforeReinject() {
+        String raw = """
+                CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
+                <analysis>
+                I am summarizing the conversation without closing analysis
+                <summary>
+                1. Primary Request and Intent:
+                   fix the login bug
+                </summary>
+                """;
+        String formatted = CompactionPrompt.formatCompactSummary(raw);
+        Assert.assertFalse(formatted.toLowerCase().contains("<analysis"));
+        Assert.assertFalse(formatted.toLowerCase().contains("<summary"));
+        Assert.assertFalse(formatted.contains("CRITICAL: Respond with TEXT ONLY"));
+        Assert.assertTrue(formatted.contains("fix the login bug"));
+
+        String polluted = "This session is being continued from a previous conversation that ran out of context. "
+                + "The summary below covers the earlier portion of the conversation.\n\n"
+                + "<analysis>leak</analysis>\n"
+                + "1. Primary Request: keep working\n";
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.userMessage(polluted, null));
+        messages.add(Message.userMessage("latest question " + "z".repeat(200), null));
+        messages.add(Message.assistantMessage("latest answer", null));
+
+        CompactionBudget budget = CompactionBudget.builder()
+                .enabled(true)
+                .sessionMemoryEnabled(true)
+                .contextWindow(2_000)
+                .maxOutputTokens(400)
+                .bufferTokens(400)
+                .maxOutputReserve(400)
+                .keepMinTokens(20)
+                .keepMinTextMessages(1)
+                .keepMaxTokens(400)
+                .build();
+        // 直接验证清洗路径；不依赖是否超阈
+        List<Message> sm = compactor.trySessionMemoryCompact(messages, null, budget);
+        if (sm == null) {
+            // 未超阈时仍可验证 format/wrap 清洗
+            String cleaned = CompactionPrompt.wrapSummaryForReinject(
+                    CompactionPrompt.formatCompactSummary(polluted), true);
+            Assert.assertFalse(cleaned.toLowerCase().contains("<analysis"));
+            Assert.assertTrue(cleaned.contains("NOT a context-compaction"));
+        } else {
+            Assert.assertTrue(compactor.isCompactSummaryMessage(sm.get(0)));
+            Assert.assertFalse(sm.get(0).getContent().toLowerCase().contains("<analysis"));
+            Assert.assertTrue(sm.get(0).getContent().contains("NOT a context-compaction"));
+        }
     }
 
     @Test
@@ -164,33 +220,38 @@ public class WorkingMemoryCompactorTest {
 
     @Test
     public void shouldSessionMemoryCompactWithExistingNotes() {
+        // threshold ≈ 1200; 多段长正文保证超阈，压缩后 notes+tail 应回落到阈值下
         CompactionBudget budget = CompactionBudget.builder()
                 .enabled(true)
                 .sessionMemoryEnabled(true)
-                .contextWindow(5_000)
-                .maxOutputTokens(500)
-                .bufferTokens(500)
-                .maxOutputReserve(500)
-                .keepMinTokens(50)
+                .contextWindow(2_000)
+                .maxOutputTokens(400)
+                .bufferTokens(400)
+                .maxOutputReserve(400)
+                .keepMinTokens(40)
                 .keepMinTextMessages(1)
-                .keepMaxTokens(800)
+                .keepMaxTokens(400)
                 .build();
 
         String notes = CompactionPrompt.wrapSummaryForReinject("1. Primary Request: build compact\n", false);
         List<Message> messages = new ArrayList<>();
         messages.add(Message.userMessage(notes, null));
-        for (int i = 0; i < 8; i++) {
-            messages.add(Message.userMessage("old turn " + i + " " + "z".repeat(400), null));
-            messages.add(Message.assistantMessage("old ans " + i + " " + "y".repeat(400), null));
+        for (int i = 0; i < 12; i++) {
+            messages.add(Message.userMessage("old turn " + i + " " + "z".repeat(800), null));
+            messages.add(Message.assistantMessage("old ans " + i + " " + "y".repeat(800), null));
         }
         messages.add(Message.userMessage("latest question", null));
         messages.add(Message.assistantMessage("latest answer", null));
 
+        Assert.assertTrue("precondition tokens=" + compactor.estimateTokens(messages)
+                        + " threshold=" + budget.threshold(),
+                compactor.estimateTokens(messages) >= budget.threshold());
         Assert.assertTrue(compactor.shouldCompact(messages, budget));
         List<Message> sm = compactor.trySessionMemoryCompact(messages, null, budget);
-        Assert.assertNotNull(sm);
+        Assert.assertNotNull("session-memory compact should succeed", sm);
         Assert.assertTrue(compactor.isCompactSummaryMessage(sm.get(0)));
         Assert.assertTrue(compactor.estimateTokens(sm) < budget.threshold());
+        Assert.assertTrue(sm.get(0).getContent().contains("NOT a context-compaction"));
         Assert.assertTrue(sm.stream().anyMatch(m -> m.getContent() != null && m.getContent().contains("latest")));
     }
 }

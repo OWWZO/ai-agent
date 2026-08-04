@@ -37,6 +37,7 @@ public final class SseLifecycleSupport {
                                                     long heartbeatIntervalMillis,
                                                     Logger log,
                                                     Object heartbeatPayload) {
+        // 心跳只是连接保活，不参与 Agent 业务；客户端断开或发送失败时必须关闭 emitter 让调度资源回收。
         return scheduler.scheduleAtFixedRate(() -> {
             try {
                 log.info("{} send heartbeat", requestId);
@@ -57,6 +58,7 @@ public final class SseLifecycleSupport {
                                          String requestId,
                                          ScheduledFuture<?> heartbeatFuture,
                                          Logger log) {
+        // 三类生命周期回调共享同一个 heartbeatFuture，保证正常结束、超时、异常都不会留下后台定时任务。
         emitter.onCompletion(() -> {
             log.info("{} SSE connection completed normally", requestId);
             cancelHeartbeat(heartbeatFuture);

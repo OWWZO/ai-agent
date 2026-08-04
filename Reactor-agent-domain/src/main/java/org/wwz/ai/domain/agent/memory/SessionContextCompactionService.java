@@ -8,7 +8,7 @@ import java.util.List;
  * 会话工作记忆压缩服务。
  * 入口时机：
  * 1) 每轮请求 enrichWorkingMemory（pre-run）
- * 2) BaseAgent 每 step 主模型调用前（mid-run，对齐 cc-haha query 循环）
+ * 2) BaseAgent 每 step 主模型调用前（mid-run）
  */
 public interface SessionContextCompactionService {
 

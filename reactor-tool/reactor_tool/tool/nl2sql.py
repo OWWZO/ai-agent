@@ -76,6 +76,8 @@ class NL2SQLAgent:
         top_p: float
     ) -> str:
         """收集think的完整结果"""
+        # think 阶段同时承担两件事：累积完整推理供 SQL 生成，以及把增量事件写入
+        # queue 供 API 层实时消费；队列事件不是最终结果，finished_stream 才表示阶段结束。
         response = {
                     "code": 200,
                     "err_msg": "",
@@ -266,6 +268,8 @@ class NL2SQLAgent:
         column_info = body.column_info
         dialect = body.dialect
         try:
+            # rank 和 rewrite 互不依赖，先并行启动以缩短首阶段耗时；只有二者都完成后
+            # 才能构造 schema prompt，再按 think -> SQL 的顺序推进后续模型调用。
             logger.info(f"[NL2SQL] request_id={request_id}, {query=}")
             # 精排任务：rank
             rank_module = ColumnFilterModule(request_id=request_id,
@@ -307,6 +311,8 @@ class NL2SQLAgent:
             logger.info(f"[NL2SQL] [run_nl2sql], nl2sql_response={json.dumps(nl2sql_response, ensure_ascii=False)}")
             return nl2sql_response
         except Exception as e:
+            # 异常也通过同一 queue 协议通知 API 层，finally 追加 [DONE] 保证流式消费端
+            # 能结束等待；返回字典供非流式调用方直接读取，避免只依赖日志排障。
             # 异常对象（如 litellm.BadRequestError）不能直接 JSON 序列化，需转为字符串
             err_msg_str = str(e) if e else ""
             if hasattr(e, "message") and e.message:

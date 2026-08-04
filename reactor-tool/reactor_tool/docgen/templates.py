@@ -96,6 +96,7 @@ def _jinja_env() -> Any:
     from jinja2 import StrictUndefined
     from jinja2.sandbox import SandboxedEnvironment
 
+    # StrictUndefined 让拼写错误尽早失败，沙箱环境阻止模板访问任意 Python 对象。
     return SandboxedEnvironment(
         undefined=StrictUndefined,
         autoescape=False,
@@ -107,6 +108,7 @@ def _jinja_env() -> Any:
 def _resolve_variables(
     template: DocTemplate, variables: dict[str, Any] | None
 ) -> dict[str, Any]:
+    # 先按声明处理默认值和必填项，再保留额外变量以兼容模板渐进演进。
     supplied = dict(variables or {})
     resolved: dict[str, Any] = {}
     missing: list[str] = []
@@ -150,6 +152,7 @@ def render_template(
     """
     from jinja2 import TemplateError
 
+    # 渲染结果直接构造成 document_generate/slides_generate 的 payload，避免再次转换协议。
     env = _jinja_env()
     resolved = _resolve_variables(template, variables)
 

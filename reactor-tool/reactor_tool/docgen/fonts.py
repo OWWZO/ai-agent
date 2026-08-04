@@ -173,6 +173,7 @@ class FontManager:
     def resolve(self, *, allow_download: bool = True, refresh: bool = False) -> ResolvedFonts:
         """Resolve regular/bold font paths using the guaranteed pipeline."""
         with self._lock:
+            # 解析结果按进程缓存；refresh 只用于测试或配置变更，避免每次渲染重复扫描和下载。
             if (
                 self._resolved is not None
                 and not refresh
@@ -186,7 +187,7 @@ class FontManager:
     def _resolve_locked(self, *, allow_download: bool) -> ResolvedFonts:
         out = ResolvedFonts()
 
-        # 1. Env overrides (explicit user intent always wins).
+        # 1. 环境变量是最高优先级，显式指定的字体即使与系统默认不同也必须尊重。
         env_r = os.environ.get("LEAGENT_CJK_FONT", "").strip()
         env_b = os.environ.get("LEAGENT_CJK_FONT_BOLD", "").strip()
         if env_r and Path(env_r).is_file():
@@ -197,7 +198,7 @@ class FontManager:
         if env_r:
             out.warnings.append(f"LEAGENT_CJK_FONT points to a missing file: {env_r}")
 
-        # 2. Managed download dir.
+        # 2. 复用已下载并缓存的字体，保证离线重复渲染不会再次访问网络。
         managed_r = self._managed_path("regular")
         if managed_r:
             out.regular_path = managed_r
@@ -205,7 +206,7 @@ class FontManager:
             out.source = "managed"
             return out
 
-        # 3. System scan.
+        # 3. 扫描系统字体，优先使用宿主机已有的 CJK 字体。
         system_r = discover_cjk_font_file(is_bold=False)
         if system_r:
             out.regular_path = system_r
@@ -213,7 +214,7 @@ class FontManager:
             out.source = "system"
             return out
 
-        # 4. Auto-download pinned Noto faces.
+        # 4. 允许联网时下载带 SHA-256 校验的固定字体；关闭开关则直接记录告警。
         if allow_download and _auto_download_enabled():
             downloaded = self._download_faces(("regular", "bold"), warnings=out.warnings)
             if downloaded.get("regular"):
@@ -227,7 +228,7 @@ class FontManager:
                 "(LEAGENT_FONT_AUTO_DOWNLOAD=0)."
             )
 
-        # 5. Nothing available.
+        # 5. 所有来源都不可用时保留 Helvetica，并把中文缺字风险交给调用方展示。
         out.warnings.append(
             "No pan-Unicode font available; CJK text will render as boxes. "
             "Install fonts-noto-cjk, set LEAGENT_CJK_FONT, or enable "
@@ -309,6 +310,7 @@ class FontManager:
         tmp = target.with_suffix(target.suffix + ".part")
         for url in asset.urls:
             try:
+                # 先写临时文件并流式计算摘要，校验通过后再原子替换正式文件。
                 logger.info("docgen_font_download_start", url=url, target=str(target))
                 self._fonts_dir.mkdir(parents=True, exist_ok=True)
                 with (
@@ -361,6 +363,7 @@ class FontManager:
         outlines, which covers many distro Noto CJK OTF/TTCs. In that case we
         fall through to downloading the pinned TrueType faces.
         """
+        # 解析路径成功不代表 ReportLab 一定能注册；CFF/TTC 等格式失败时还要尝试固定 TTF 或内置字体。
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
 
@@ -418,6 +421,7 @@ class FontManager:
                     boldItalic=bold,
                 )
 
+        # 代码块优先复用已嵌入的泛 Unicode 字体，避免中文注释/字符串在等宽字体中变成方框。
         # Code blocks: an embedded pan-Unicode face beats a Latin-only
         # monospace — CJK comments/strings in code must not tofu.
         mono = regular if embedded else "Courier"

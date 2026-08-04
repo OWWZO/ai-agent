@@ -30,6 +30,8 @@ export function upsertPlannerRound(
   plannerRoundId: string,
   updater: (round: CHAT.PlannerRound) => void
 ) {
+  // plannerRound 是 replan 的隔离边界：更新时复制已有 round，再由 updater 修改，
+  // 最后按 id 替换/追加，避免同一对象被多个流式事件共享导致 React 状态难以追踪。
   if (!plannerRoundId) {
     return undefined;
   }
@@ -53,6 +55,8 @@ export function upsertPlannerRound(
 }
 
 export function syncLatestPlannerAlias(currentChat: CHAT.ChatItem) {
+  // 旧 UI 仍读取 multiAgent.plan/plan_thought；round 列表是新事实结构，末轮别名只是
+  // 向后兼容投影，不能反过来作为 planner round 的持久状态来源。
   const plannerRounds = currentChat.multiAgent.plannerRounds || [];
   const latestRound = plannerRounds[plannerRounds.length - 1];
   if (!latestRound) {
@@ -90,6 +94,8 @@ export function handlePlanThoughtMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
+  // plan_thought 可能是增量片段，也可能是 final 快照；非 final 追加，final 覆盖，
+  // 然后统一刷新旧别名，保证流式过程和历史完整帧使用同一合并规则。
   const plannerRoundId = resolveLegacyPlannerRoundId(eventData);
   if (!plannerRoundId) {
     return;

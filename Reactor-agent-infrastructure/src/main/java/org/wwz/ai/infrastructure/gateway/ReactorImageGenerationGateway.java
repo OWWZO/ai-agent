@@ -48,6 +48,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
             throw new IllegalArgumentException("prompt 不能为空");
         }
 
+        // 网关屏蔽具体提供方和文件服务：先完成模型调用，再把远端/内联图片物化并上传到统一文件服务。
         MicuImageGenerationClient client = buildClient(requestDTO.getTimeoutSeconds());
         MicuImageGenerationClient.GenerationResult result = client.generate(
                 MicuImageGenerationClient.GenerationRequest.builder()
@@ -124,6 +125,7 @@ public class ReactorImageGenerationGateway implements IReactorImageGenerationGat
         List<ImageGenerationGatewayFile> files = new ArrayList<>(images.size());
         for (int i = 0; i < images.size(); i++) {
             MicuImageGenerationClient.GeneratedImage image = images.get(i);
+            // 生成结果可能是 URL、data URL 或模型返回的 Base64；materialize 统一成字节后再上传。
             byte[] bytes = client.materialize(image);
             String mimeType = client.guessMime(bytes);
             String extension = extensionFromMime(mimeType);

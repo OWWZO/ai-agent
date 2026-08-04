@@ -74,6 +74,7 @@ def math_vector_path(latex: str, *, font_size: float = 11.0) -> MathVector | Non
     promoted to cubic Béziers so callers (ReportLab) can draw them directly.
     Returns ``None`` when the expression cannot be parsed.
     """
+    # vector path 和 PNG 共用 mathtext；这里把 glyph path 转成渲染器可消费的基线坐标。
     expr = latex.strip().strip("$").strip()
     if not expr:
         return None
@@ -117,7 +118,7 @@ def math_vector_path(latex: str, *, font_size: float = 11.0) -> MathVector | Non
             elif code == Path.CURVE3:
                 qx, qy = float(verts[i, 0]) - x_min, float(verts[i, 1])
                 ex, ey = float(verts[i + 1, 0]) - x_min, float(verts[i + 1, 1])
-                # Quadratic (P0,Q,P2) → cubic control points.
+                # 二次 Bézier 需要提升为三次控制点，ReportLab 只消费后者。
                 p0x, p0y = cur_pt
                 c1x = p0x + 2.0 / 3.0 * (qx - p0x)
                 c1y = p0y + 2.0 / 3.0 * (qy - p0y)
@@ -167,6 +168,7 @@ def render_math_png(
     are in points at ``font_size`` (depth = distance the image extends below
     the text baseline), or ``None`` when the expression cannot be parsed.
     """
+    # PNG 只作为可移植 fallback；宽高和 depth 仍保留给调用方对齐文本基线。
     expr = latex.strip().strip("$").strip()
     if not expr:
         return None
@@ -212,6 +214,7 @@ def latex_lines(latex: str) -> list[str]:
     Environment wrappers are stripped, alignment tabs (``&``) removed, and
     rows split on ``\\\\`` — mathtext renders one line at a time.
     """
+    # mathtext 按单行解析，先剥掉 AMS wrapper 和对齐符号再拆行。
     s = _ENV_RE.sub("", latex.strip().strip("$"))
     s = s.replace("&", " ")
     rows = [row.strip() for row in _ROW_SPLIT_RE.split(s)]
@@ -262,6 +265,7 @@ _SUB_RE = re.compile(r"_\{([^{}]*)\}|_(\S)")
 
 def latex_to_unicode(latex: str) -> str:
     """Best-effort LaTeX → plain Unicode (fallback for text-only contexts)."""
+    # 文本 fallback 只做有限、可预测的替换，不尝试完整实现 LaTeX 语法。
     s = latex.strip().strip("$")
     s = _ENV_RE.sub("", s).replace("&", " ")
     s = _ROW_SPLIT_RE.sub("; ", s)

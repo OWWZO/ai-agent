@@ -94,8 +94,16 @@ public class WorkspaceReadDedupTest {
 
         Path image = workspaceRoot.resolve("pixel.png");
         Files.write(image, Base64.getDecoder().decode("iVBORw0KGgo="));
-        String result = String.valueOf(readTool.execute(Map.of("path", "pixel.png")));
-        Assert.assertTrue(result.contains("\"type\":\"image\""));
-        Assert.assertTrue(result.contains("data:image/png;base64,"));
+        Object raw = readTool.execute(Map.of("path", "pixel.png"));
+        Assert.assertTrue(raw instanceof org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload);
+        org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload payload =
+                (org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload) raw;
+        Assert.assertNotNull(payload.getBase64Image());
+        Assert.assertTrue(payload.getBase64Image().startsWith("data:image/png;base64,"));
+        Assert.assertEquals("image/png", payload.getImageMimeType());
+        String llmData = String.valueOf(payload.getLlmData());
+        Assert.assertTrue(llmData.contains("type=image") || llmData.contains("\"type\":\"image\""));
+        Assert.assertFalse("observation must not embed full image base64",
+                llmData.contains("base64=") || llmData.contains("\"base64\""));
     }
 }

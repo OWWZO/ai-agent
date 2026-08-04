@@ -38,6 +38,8 @@ const GenUiTabs: FC<{ items: GenUiNodeData[]; depth: number }> = ({
   items,
   depth,
 }) => {
+  // Tabs/Accordion 自己持有展示状态，节点树只描述内容；切换面板不会修改模型生成的树，
+  // 从而保证历史回放和重新渲染仍使用同一份 GenUI 数据。
   const [active, setActive] = useState(0);
   const safeActive = Math.min(Math.max(active, 0), Math.max(items.length - 1, 0));
   const current = items[safeActive];
@@ -80,6 +82,7 @@ const GenUiAccordion: FC<{ items: GenUiNodeData[]; depth: number }> = ({
   items,
   depth,
 }) => {
+  // Accordion 只允许一个分组展开，避免深层 GenUI 在消息流中同时展开造成高度失控。
   const [open, setOpen] = useState(0);
   return (
     <div className="space-y-2">
@@ -120,6 +123,8 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
   const children = Array.isArray(node.children) ? node.children : [];
   const key = node.nodeId || `${node.kind}-${depth}`;
 
+  // 组件按 kind 做纯渲染分派，所有子节点都通过 renderChildren 递归进入同一安全边界；
+  // 未知 kind 的处理位于 switch 默认分支，保证新增节点至少能展示文本和子树。
   const renderChildren = () =>
     children.map((child, index) => (
       <GenUiNode key={child.nodeId || `${key}-${index}`} node={child} depth={depth + 1} />

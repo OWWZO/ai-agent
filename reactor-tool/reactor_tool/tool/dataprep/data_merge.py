@@ -19,6 +19,8 @@ logger = get_struct_logger(__name__)
 class DataMergeTool(SyncTool):
     """Merge and join multiple DataFrames.
 
+    中文说明：支持基于键的 join 和按行拼接，输入来源可以是多个 inline/artifact 数据集。
+
     Features:
     - Inner, outer, left, right join types
     - Single or multiple key column matching
@@ -170,6 +172,7 @@ class DataMergeTool(SyncTool):
         except ImportError as e:
             raise RuntimeError("pandas is not installed. Install with: pip install pandas") from e
 
+        # 先统一读取所有数据集，再根据 operation 选择 join 或 concat，避免分支各自处理输入协议。
         operation = params.get("operation", "merge")
         output_format = params.get("output_format", "records")
 
@@ -195,6 +198,7 @@ class DataMergeTool(SyncTool):
         if not left_data or not right_data:
             raise ValueError("Both left_data and right_data are required for merge operations")
 
+        # DataFrame 化后由 pandas 负责 join 语义；本层只负责键、方向和列冲突参数校验。
         left_df = pd.DataFrame(left_data)
         right_df = pd.DataFrame(right_data)
 

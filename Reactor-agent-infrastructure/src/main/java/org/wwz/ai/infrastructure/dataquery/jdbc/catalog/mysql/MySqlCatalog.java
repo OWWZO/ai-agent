@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** MySQL 元数据目录，使用 INFORMATION_SCHEMA 读取列注释和原始类型。 */
 @Slf4j
 public class MySqlCatalog extends AbstractJdbcCatalog {
 
@@ -32,6 +33,7 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
 
     @Override
     public List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException {
+        // MySQL 的 show tables 结果比通用 DatabaseMetaData 更稳定，表名直接取第一列。
         String sql = "show tables ";
         try (PreparedStatement prepared = connection.prepareStatement(sql);
              ResultSet rs = prepared.executeQuery()) {
@@ -48,6 +50,7 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
     }
 
     public String typeConvertMysql(String type) {
+        // MySQL 类型名按大写处理，输出统一类型供 NL2SQL 和列值召回共用。
         return switch (type) {
             case "DATE", "TIME", "TIMESTAMP" -> StandardColumnType.DATE.name();
             case "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "DOUBLE", "NUMERIC", "DECIMAL" ->
@@ -58,6 +61,7 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
 
     @Override
     public List<TableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
+        // INFORMATION_SCHEMA 同时提供字段注释、可空性和原始类型，是模型上下文的主要来源。
         String sql = String.format(
                 SELECT_COLUMNS_SQL_TEMPLATE, schema, tablePath);
 
@@ -87,4 +91,3 @@ public class MySqlCatalog extends AbstractJdbcCatalog {
         }
     }
 }
-

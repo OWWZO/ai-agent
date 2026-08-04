@@ -63,6 +63,7 @@ public class Nl2SqlQueryService {
     private final RemoteStreamPort remoteStreamPort;
 
     public List<ChatQueryData> runNL2SQLSync(NL2SQLReq request) throws Exception {
+        // 同步路径只负责取得完整 NL2SQL 结果；SQL 解析、模型表名替换和数据库执行统一交给 nl2sqlQueryData。
         AtomicReference<Throwable> err = new AtomicReference<>();
         request.setStream(false);
         String jsonResult = remoteHttpPort.execute(RemoteHttpRequest.builder()
@@ -80,6 +81,7 @@ public class Nl2SqlQueryService {
     }
 
     public List<ChatQueryData> runNL2SQLSse(NL2SQLReq request, AgentMessageStream stream) throws Exception {
+        // 远端 SSE 在回调线程接收，调用线程通过 listener 的 latch 等待终态，避免返回半成品查询结果。
         AtomicReference<Throwable> err = new AtomicReference<>();
         Nl2SqlSseListener sqlSseListener = new Nl2SqlSseListener(stream, request.getRequestId(), request.getTraceId());
         remoteStreamPort.openStream(RemoteStreamRequest.builder()
@@ -135,6 +137,7 @@ public class Nl2SqlQueryService {
         }
 
         nl2SQLResult.setRootQuery(request.getQuery());
+        // 模型可能直接返回未加反引号的模型编码，先做确定性包裹，再交给 SQL parser 校验和执行。
         for (NL2SQLResult.NL2SQLData nl2SQLData : nl2SQLResult.getData()) {
             String prettySql = replaceFirstMatchedOrThrow(nl2SQLData.getNl2sql(), request.getModelCodeList());
             nl2SQLData.setNl2sql(prettySql);
@@ -161,6 +164,7 @@ public class Nl2SqlQueryService {
                 .collect(Collectors.toMap(ChatModelInfoDto::getModelCode, value -> value));
 
         for (NL2SQLResult.NL2SQLData nl2SQLData : data) {
+            // 每条模型生成的 SQL 都独立完成解析、字段/过滤器投影和数据库查询，避免一条错误污染其他结果。
             SqlModel sqlModel = SqlParserUtils.parseSelectSql(
                     nl2SQLData.getNl2sql(),
                     dataAgentConfig.getDbConfig().getType()
@@ -397,6 +401,7 @@ public class Nl2SqlQueryService {
         @Override
         public void onLine(String data) {
             try {
+                // listener 只消费 think、data、finished_stream 三类协议事件；heartbeat/DONE 不改变查询状态。
                 if (data.startsWith("data:")) {
                     data = data.substring(5).trim();
                 }
@@ -432,6 +437,7 @@ public class Nl2SqlQueryService {
         @Override
         public void onClosed() {
             log.info("{},{} SSE 连接关闭", traceId, requestId);
+            // 正常关闭也必须释放等待方；否则远端已经结束而调用线程仍会永久阻塞。
             countDownLatch.countDown();
         }
 
@@ -446,6 +452,7 @@ public class Nl2SqlQueryService {
                 errorMessage += ", statusCode=" + statusCode;
             }
             log.error(errorMessage, throwable);
+            // 失败同样唤醒等待方，并通过 success/errorMessage 把异步错误转换为同步异常。
             countDownLatch.countDown();
         }
 

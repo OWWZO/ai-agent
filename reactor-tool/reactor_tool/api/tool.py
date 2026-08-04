@@ -106,6 +106,8 @@ async def post_code_interpreter(
         acc_token = 0
         acc_time = time.time()
         try:
+            # 上游同时可能产出代码快照、动作结果和普通文本；协议层保留三种事件的语义，
+            # 只把普通文本按客户端要求聚合，避免 Java 侧丢失中间产物或把代码当正文重复拼接。
             async for chunk in code_interpreter_agent(
                 task=body.task,
                 file_names=body.file_names,
@@ -194,6 +196,8 @@ async def post_code_interpreter(
                             )
                         )
         except CodeExecutionPermissionError as exc:
+            # 权限拒绝是可预期的业务终态，仍通过 SSE 发出结构化错误和 DONE，确保 Java
+            # 侧能结束流并把拒绝原因展示给用户，而不是把它误判成网络断流。
             yield ServerSentEvent(
                 data=json.dumps(
                     {
@@ -208,6 +212,8 @@ async def post_code_interpreter(
 
 
     if body.stream:
+        # SSE 分支由生成器负责最终事件；非流式分支则消费完整结果并统一上传 markdown/HTML
+        # 产物，两条路径共享同一工具调用但不混用响应协议。
         return EventSourceResponse(
             _stream(),
             ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),
@@ -757,6 +763,8 @@ async def post_mrag_query(body: MultimodalRAGRequest):
         error_message = ""
         request_id = (getattr(body, "request_id", None) or session_id or "").strip()
         try:
+            # MRAG 的 stage 事件直接透传，普通 OpenAI chunk 统一转成同一 JSON 形状；同时
+            # 累积 answer/raw_chunks，流结束后写入 turn，保证实时显示和历史回放使用同一事实。
             for chunk in agent.run(body.question, body.image_urls):
                 payload = _normalize_mrag_chunk(chunk)
                 if not payload:
@@ -836,6 +844,8 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                 yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
         finally:
             if turn and turn_store:
+                # 持久化放在 finally，覆盖成功、超时、异常和无有效输出四种终态；session 摘要
+                # 只引用本轮最终答案预览，不把完整原始 chunk 塞进会话头记录。
                 answer_markdown = "".join(answer_parts)
                 turn.answer_markdown = answer_markdown
                 turn.status = final_status
@@ -869,6 +879,8 @@ async def post_mrag_query(body: MultimodalRAGRequest):
 
 
 def _docgen_params(body: DocgenRequest) -> dict:
+    # Pydantic 请求模型是外部协议边界；内部 service 使用 snake_case，因此在路由层一次性
+    # 去掉 request_id/extra，避免每个生成器重复做字段清洗。
     data = body.model_dump(by_alias=False, exclude_none=False)
     request_id = data.pop("request_id", None) or getattr(body, "request_id", None)
     # drop response-only noise if any
@@ -1040,6 +1052,8 @@ async def _post_docread(tool_name: str, body: DocgenRequest):
     if runner is None:
         return _error_response(404, f"unknown docread tool: {tool_name}")
     try:
+        # docread 工具共享 runner 注册表和统一 camelCase 响应，新增具体解析器只需登记 runner，
+        # 不需要为每个格式复制 HTTP 错误、文件引用和状态码处理。
         request_id, params = _docread_params(body)
         result = await runner(request_id, params)
         if not result.get("success", True):
@@ -1138,6 +1152,8 @@ async def _post_dataprep(tool_name: str, body: DocgenRequest):
     if runner is None:
         return _error_response(404, f"unknown dataprep tool: {tool_name}")
     try:
+        # dataprep 与 docread 共用相同的请求/文件协议，但保留独立 runner 表，避免文档解析
+        # 和数据处理在工具注册层发生隐式耦合。
         request_id, params = _dataprep_params(body)
         result = await runner(request_id, params)
         if not result.get("success", True):

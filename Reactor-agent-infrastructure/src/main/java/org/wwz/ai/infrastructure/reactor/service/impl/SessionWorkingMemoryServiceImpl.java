@@ -20,6 +20,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 会话工作记忆的持久化适配器。
+ *
+ * <p>服务以 turn 为父记录、message 为子记录，将运行时消息投影到可重建的 ready
+ * 工作记忆。普通回合采用幂等追加；压缩不会改写旧消息，而是使旧 ready 投影失效并
+ * 追加 compaction turn，从而保留 append-only 历史并维护提示词缓存前缀稳定性。</p>
+ *
+ * <p>读取失败按 best-effort 返回空列表，避免记忆存储故障阻断主 Agent 请求；写入
+ * 失败同样只记录日志，主执行链路不依赖记忆投影的成功。</p>
+ */
 @Slf4j
 @Service
 public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryService {
@@ -61,6 +71,7 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
                     .collect(Collectors.groupingBy(WorkingMemoryMessage::getTurnId, LinkedHashMap::new, Collectors.toCollection(ArrayList::new)));
 
             // Append-only: do not drop oldest turns (prefix rewrite kills prompt cache).
+            // 按 turn 顺序重新投影消息，数据库行顺序不直接暴露给 LLM，避免跨轮次交错。
             List<Message> all = new ArrayList<>();
             for (WorkingMemoryTurn turn : filtered) {
                 List<WorkingMemoryMessage> turnRows = byTurn.getOrDefault(turn.getId(), List.of());
@@ -86,6 +97,7 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             if (existing != null) {
                 return; // idempotent
             }
+            // 先投影成可持久化行，再插入 turn；turnId 回填后批量写消息，形成完整的父子关系。
             List<WorkingMemoryMessage> rows = projector.project(turnMessages, sessionId, requestId, runId);
             if (rows.isEmpty()) {
                 return;
@@ -131,6 +143,7 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             if (existing != null) {
                 return;
             }
+            // 压缩不是修改历史行，而是把旧 ready 投影标 invalid，再追加一个新的 compaction turn。
             List<WorkingMemoryMessage> rows = projector.project(compactedMessages, sessionId, compactRequestId, null);
             if (rows.isEmpty()) {
                 return;
@@ -173,6 +186,7 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             return 0;
         }
         StringBuilder sb = new StringBuilder();
+        // 估算只拼装会进入提示词的角色、正文和工具调用字段，作为容量元数据而非计费精确值。
         for (Message message : messages) {
             if (message == null) {
                 continue;

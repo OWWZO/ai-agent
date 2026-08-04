@@ -80,6 +80,9 @@ public class BaseAgentResponseHandler {
     }
 
     private ProjectedReplayEvent buildProjectedEvent(EventResult eventResult, AgentResponse agentResponse) {
+        // 先同步 planner round 和公共 payload，再按 messageType 投影为 canonical event；
+        // eventResult 保存当前任务的聚合状态，ProjectedReplayEvent 只描述本次可回放事件。
+        // 因此实时增量和历史 replay 可以共享同一套事件结构，而不共享可变状态对象。
         boolean isFinal = Boolean.TRUE.equals(agentResponse.getIsFinal());
         boolean isFilterFinal = (Objects.nonNull(agentResponse.getResultMap())
                 && "deep_search".equals(agentResponse.getMessageType())

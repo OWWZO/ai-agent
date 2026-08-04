@@ -77,6 +77,7 @@ public class WorkspaceSessionFileMaterializer {
             }
             try {
                 // 始终二进制下载，避免 xlsx/pdf/png 被当文本 UTF-8 转码损坏
+                // 文件名先经过 basename、字符清洗和去重，再交给 workspace guard 做根目录校验。
                 byte[] bytes = fileArtifactPort.readBytes(sourceUrl, READ_TIMEOUT_SECONDS);
                 if (bytes == null || bytes.length == 0) {
                     log.warn("{} materialize empty content, fileName={}, url={}",
@@ -108,6 +109,7 @@ public class WorkspaceSessionFileMaterializer {
         }
 
         // 同步一份到 productFiles 描述，便于后续工具侧感知“本地路径”
+        // 这里只补充 workspace 标记，不覆盖原始 URL 或文件元数据。
         annotateProductFiles(agentContext, written);
         return written;
     }

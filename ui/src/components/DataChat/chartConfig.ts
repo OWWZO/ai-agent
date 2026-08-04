@@ -2,6 +2,8 @@ import type { EChartsOption } from "echarts";
 
 import { defaultChartPresets } from "./chartPresets";
 
+// 数据对话先在这里把后端列/行契约转换成表格、KPI 或 ECharts option，组件只负责渲染。
+
 export type DataChatChartType =
   | "line"
   | "bar"
@@ -142,6 +144,7 @@ function attachHorizontalZoom(option: Record<string, unknown>, labels: unknown[]
 function formatData(cfg: DataChatSourceConfig) {
   const { dataFormat } = defaultChartPresets;
   const dataList = cfg.dataList || [];
+  // 格式化值和原始值并存，图表计算使用原始字段，展示层使用 *_format 字段。
   dataList.forEach((row) => {
     Object.keys(row).forEach((key) => {
       if (key.endsWith("_format")) {
@@ -236,6 +239,7 @@ function initChartOption(
   cfg: DataChatSourceConfig,
   chartType: DataChatChartType
 ): EChartsOption | Record<string, unknown> {
+  // 各图表分支共享主题模板，但分别构造坐标轴、series 和 tooltip 所需的数据形状。
   const dimCols = cfg.dimCols || [];
   const measureCols = cfg.measureCols || [];
   const dataList = cfg.dataList || [];
@@ -425,6 +429,7 @@ function initChartOption(
 }
 
 export function resolveChartType(cfg: DataChatSourceConfig): DataChatChartType {
+  // 决策优先保证可读性：无法满足稳定维度/度量关系时退回表格，而不是猜测图表。
   let chartType: DataChatChartType = "table";
   const dimCols = cfg.dimCols || [];
   const measureCols = cfg.measureCols || [];
@@ -456,6 +461,7 @@ export function resolveChartType(cfg: DataChatSourceConfig): DataChatChartType {
 }
 
 export function buildChartConfig(chartCfg: DataChatSourceConfig): DataChatTransformedConfig {
+  // 克隆输入避免格式化函数修改上游 SSE/缓存对象，随后只生成当前视图需要的字段。
   const nextConfig = clonePlainObject(chartCfg);
   formatData(nextConfig);
   const chartType = nextConfig.chartSuggest || "table";

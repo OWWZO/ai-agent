@@ -58,10 +58,14 @@ public class OpenAiChatOptionsFactory {
     }
 
     private OpenAiChatOptions.Builder baseBuilder(LLMSettings settings, Double overrideTemperature) {
-        return OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(settings.getModel())
                 .maxTokens(settings.getMaxTokens())
                 .temperature(overrideTemperature != null ? overrideTemperature : settings.getTemperature());
+        if (StringUtils.isNotBlank(settings.getReasoningEffort())) {
+            builder.reasoningEffort(settings.getReasoningEffort());
+        }
+        return builder;
     }
 
     /**

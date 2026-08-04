@@ -13,6 +13,8 @@ export function ensureTimelineTaskGroup(
   chatList: TimelineTaskContainer[][],
   groupIndex: number
 ) {
+  // 事件到达顺序不保证先有父组；这里先补空数组，让后续事件可以按原始 groupIndex
+  // 落位，避免因 UI 初始化滞后而丢失过程事件。
   if (!Array.isArray(chatList[groupIndex])) {
     chatList[groupIndex] = [];
   }
@@ -28,6 +30,8 @@ export function ensureTimelineTaskContainer(
   taskGroup: TimelineTaskContainer[],
   task?: MESSAGE.Task
 ): TimelineTaskContainer {
+  // 子工具可能先于 task 父事件到达，因此占位容器只保存承载关系和可用元数据；
+  // 正式 task 到达后由 upsertTimelineTaskContainer 原地回填，不重建 children。
   const lastContainer = taskGroup[taskGroup.length - 1];
   if (lastContainer) {
     return lastContainer;
@@ -54,6 +58,8 @@ export function upsertTimelineTaskContainer(
   taskGroup: TimelineTaskContainer[],
   task: MESSAGE.Task
 ): TimelineTaskContainer {
+  // 优先识别末尾占位容器，保留已接收的工具事件；没有占位时才创建正式容器，
+  // 保证实时流和历史回放都得到稳定的父子结构。
   const lastContainer = taskGroup[taskGroup.length - 1];
   if (lastContainer?.__placeholder) {
     const children = lastContainer.children || [];

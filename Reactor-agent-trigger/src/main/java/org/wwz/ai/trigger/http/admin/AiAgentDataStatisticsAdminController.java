@@ -11,7 +11,14 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 
 /**
- * 数据统计
+ * 管理端数据统计控制器。
+ *
+ * <p>该入口聚合多个管理 DAO 的数量信息，向前端提供一次请求可消费的总览数据。
+ * 控制器只做跨 DAO 的读取和响应组装，不把统计结果写入数据库，也不改变各 DAO 的
+ * 查询语义。</p>
+ *
+ * <p>当前请求量、成功率和运行中任务数仍是占位指标，不能当作实时运行监控数据；
+ * 真实统计能力接入后应替换这些字段的来源，而不是改变 HTTP 响应结构。</p>
  */
 @Slf4j
 @RestController
@@ -47,6 +54,8 @@ public class AiAgentDataStatisticsAdminController implements IAiAgentDataStatist
     @Override
     @GetMapping("/get-data-statistics")
     public Response<DataStatisticsResponseDTO> getDataStatistics() {
+        // 各类资源分别查询后再组装，任一 DAO 失败都会让本次总览返回统一失败响应，
+        // 避免把部分成功的数据伪装成完整统计结果。
         try {
             log.info("开始获取系统数据统计");
 

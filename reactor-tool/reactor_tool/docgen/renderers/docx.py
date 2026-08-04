@@ -69,7 +69,7 @@ def _hex(value: str, fallback: str = "000000") -> str:
 
 
 def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
-    """Render a document spec to a .docx file."""
+    """将文档规格渲染为 DOCX，并返回内容统计与降级警告。"""
     from docx import Document
     from docx.enum.section import WD_ORIENT
     from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -77,6 +77,8 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
     from docx.oxml.ns import qn
     from docx.shared import Emu, Pt, RGBColor
 
+    # 主题和统计信息贯穿整个渲染过程：块渲染器只负责产生 OOXML，
+    # 最终由统一出口把警告、计数和实际文件大小交给调用方。
     theme = get_theme(spec.theme, kind="document")
     fonts = theme.fonts
     warnings: list[str] = []
@@ -109,6 +111,8 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
     if spec.keywords:
         props.keywords = ", ".join(spec.keywords)
 
+    # 表格和图片宽度都依赖正文可用区域，所以必须先完成 section 设置，
+    # 再定义和执行各类块渲染器。
     # -- page setup ------------------------------------------------------
     section = doc.sections[0]
     _apply_page_setup(section, spec, WD_ORIENT, Emu)
@@ -159,8 +163,8 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
                 _add_hyperlink(paragraph, span.text, span.link, qn=qn)
                 continue
             if span.math:
-                # Prefer a native, editable OMML equation; fall back to a
-                # high-DPI image, then to Unicode text.
+                # 公式按“可编辑 OMML -> 高清图片 -> Unicode 文本”的顺序降级，
+                # 既尽量保留 Word 中的可编辑性，也能在公式依赖缺失时继续出文档。
                 omath = latex_to_omml_element(span.text, display=False)
                 if omath is not None:
                     paragraph._p.append(omath)
@@ -209,6 +213,8 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
         _add_rich_text(p, text, size=theme.sizes.body)
         return p
 
+    # 块渲染器共享同一个 doc 和 section，但各自维护独立的块级统计；不转成
+    # 中间 HTML，避免丢失 Word 的表格、域和 OMML 能力。
     # -- block renderers -------------------------------------------------
 
     zh = _looks_chinese(spec)
@@ -770,7 +776,8 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
         elif isinstance(block, FootnotesBlock):
             _add_footnotes(block)
         elif isinstance(block, ColumnsBlock):
-            # Word flows columns sequentially (graceful degradation).
+            # 当前渲染器不创建真正的多栏 section，因此按原顺序展开；这是
+            # 有意的布局降级，内容仍会保留且嵌套目录/分页不会重复插入。
             for col in block.columns:
                 for nested in col:
                     if isinstance(nested, (PageBreakBlock, TocBlock)):
@@ -791,12 +798,15 @@ def render_docx(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
                 toc_placed = True
                 body_started = False
             return
+        # PageBreak/Toc 会主动重置 body_started；普通顶层块完成后再标记正文已开始，
+        # 供后续一级标题判断是否需要插入 section page。
         if top_level:
             body_started = True
 
     for block in spec.blocks:
         _render_block(block)
 
+    # 所有 block 完成分派后才保存，避免把半渲染文档误当成成功产物。
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
 

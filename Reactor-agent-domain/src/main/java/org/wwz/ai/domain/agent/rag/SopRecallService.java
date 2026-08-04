@@ -53,6 +53,7 @@ public class SopRecallService {
             
             if (StringUtils.isBlank(responseBody)) {
                 log.error("{} SOP召回服务返回空响应", requestId);
+                // SOP 只提供增强上下文，空响应按无召回处理，不能阻断调用方的普通问答回退路径。
                 return null;
             }
             
@@ -63,6 +64,7 @@ public class SopRecallService {
             
             if (response == null || response.getCode() == null || !response.getCode().equals(200)) {
                 log.error("{} SOP召回服务调用失败，响应码：{}", requestId, response != null ? response.getCode() : "null");
+                // HTTP 成功不等于业务成功，必须同时校验响应体和业务码，避免把错误信息当作 SOP 内容使用。
                 return null;
             }
             

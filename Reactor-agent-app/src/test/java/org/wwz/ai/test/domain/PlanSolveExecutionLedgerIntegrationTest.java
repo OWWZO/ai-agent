@@ -536,7 +536,6 @@ public class PlanSolveExecutionLedgerIntegrationTest {
                 .printer(new SilentPrinter())
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .executionRecorder(recorder)
                 .isStream(false)
                 .runtimeDependencies(runtimeDependencies)

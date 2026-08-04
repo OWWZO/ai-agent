@@ -52,6 +52,8 @@ public class ESUtil {
 
     public static RestHighLevelClient buildRestClient(String esClusterHost, String esClusterUser, String esClusterPassword, String esClusterApiKey, int timeout, String scheme) {
         // 先规范化 host/scheme，再构造 HttpHost，避免把空配置传给 ES 客户端后才得到难定位的异常。
+        // host 可以包含多个逗号/分号分隔的节点，但 path prefix 只取首个有效值，保持同一
+        // 集群的代理前缀一致；认证优先使用 API Key，其次才回退到 Basic。
         String normalizedHost = StringUtils.trimToNull(esClusterHost);
         String normalizedScheme = StringUtils.trimToNull(scheme);
         if (normalizedHost == null) {
@@ -167,6 +169,8 @@ public class ESUtil {
     }
 
     public static boolean isExistsIndex(RestHighLevelClient client, String index) {
+        // 该缓存只缓存“存在”，不缓存“不存在”：索引可能由其他进程刚创建，负缓存会造成
+        // 不必要的长期误判；创建/删除逻辑仍以 ES 实际响应为准。
         if (Optional.ofNullable(indexExistMap.get(index)).orElse(false)) {
             return true;
         }
@@ -184,6 +188,8 @@ public class ESUtil {
     }
 
     public static boolean createIndex(RestHighLevelClient client, String index, String body) {
+        // 先清理 ES Cloud/serverless 不接受的 settings，再尝试原始 analyzer；仅在明确识别
+        // ik_max_word 未配置时回退 standard，避免把真实的映射错误误吞成“创建成功”。
         String sanitizedBody = sanitizeIndexDefinition(body);
         try {
             return performIndexManagementRequest(client, "PUT", index, sanitizedBody);
@@ -288,6 +294,8 @@ public class ESUtil {
     }
 
     private static boolean performIndexManagementRequest(RestHighLevelClient client, String method, String indexName, String body) throws IOException {
+        // 索引管理统一走低层请求，以兼容不同 ES 版本对 High Level API 的差异；调用方只接收
+        // 2xx 成功标记，具体响应体由异常日志保留给诊断。
         Request request = new Request(method, "/" + indexName);
         if (StringUtils.isNotBlank(body)) {
             request.setJsonEntity(body);
@@ -358,6 +366,8 @@ public class ESUtil {
 
         // Elastic Cloud/serverless 返回的 bulk 响应与旧版 HighLevelClient 存在兼容问题，
         // 这里统一走低层 REST 接口并自行解析结果，避免“写成功但响应解析失败”的误报。
+        // bulk body 必须保持 NDJSON；每条数据前的 action 行可选带业务主键，未提供主键时
+        // 交给 ES 生成文档 id。
         Response response = client.getLowLevelClient().performRequest(request);
         String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
         JSONObject responseJson = JSON.parseObject(responseBody);

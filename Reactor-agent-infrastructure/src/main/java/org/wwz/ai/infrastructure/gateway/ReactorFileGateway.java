@@ -139,6 +139,7 @@ public class ReactorFileGateway {
                                                    RequestBody fileBody,
                                                    long fileSize,
                                                    String contentType) throws IOException {
+        // gateway 只负责把 domain 文件对象翻译成 reactor-tool 的 multipart 协议，不在此处持久化文件内容。
         String baseUrl = reactorConfig.getCodeInterpreterUrl();
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalStateException("autobots.autoagent.code_interpreter_url 未配置");
@@ -146,6 +147,7 @@ public class ReactorFileGateway {
         String uploadUrl = trimTrailingSlash(baseUrl) + "/v1/file_tool/upload_file_data";
         MultipartBody requestBody = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
+                // 下游用 requestId 作为文件归属范围；这里传 sessionId 以保持会话内附件隔离。
                 .addFormDataPart("requestId", sessionId)
                 .addFormDataPart("file", originalFileName, fileBody)
                 .build();
@@ -164,6 +166,7 @@ public class ReactorFileGateway {
                 throw new IllegalStateException("文件服务返回为空");
             }
             JSONObject result = JSON.parseObject(responseText);
+            // URL 只是访问入口，resourceKey 用会话、文件名和内容特征构造，供上层稳定去重与回放。
             String previewUrl = firstText(result.getString("domainUrl"), result.getString("downloadUrl"));
             String downloadUrl = firstText(result.getString("downloadUrl"), result.getString("domainUrl"));
             String sha256Hex = fileBody instanceof StreamingInputStreamRequestBody streamingBody
@@ -171,17 +174,17 @@ public class ReactorFileGateway {
                     : null;
             String resourceKey = buildStableResourceKey(sessionId, originalFileName, fileSize, sha256Hex);
             Long responseSize = result.getLong("fileSize");
-            return ConversationUploadFileDTO.builder()
-                    .name(originalFileName)
-                    .url(previewUrl)
-                    .type(resolveFileExtension(originalFileName))
-                    .size(responseSize == null ? fileSize : responseSize)
-                    .downloadUrl(downloadUrl)
-                    .previewUrl(previewUrl)
-                    .resourceKey(resourceKey)
-                    .mimeType(contentType)
-                    .originFileName(originalFileName)
-                    .build();
+            return ConversationUploadFileDTO.of(
+                    originalFileName,
+                    previewUrl,
+                    resolveFileExtension(originalFileName),
+                    responseSize == null ? fileSize : responseSize,
+                    downloadUrl,
+                    previewUrl,
+                    resourceKey,
+                    contentType,
+                    originalFileName
+            );
         }
     }
 
@@ -263,6 +266,7 @@ public class ReactorFileGateway {
 
         @Override
         public void writeTo(BufferedSink sink) throws IOException {
+            // 上传和 SHA-256 在同一遍读取中完成，避免为大附件额外缓存完整 byte[]。
             MessageDigest messageDigest = newSha256Digest();
             byte[] buffer = new byte[STREAM_BUFFER_SIZE];
             int readLength;

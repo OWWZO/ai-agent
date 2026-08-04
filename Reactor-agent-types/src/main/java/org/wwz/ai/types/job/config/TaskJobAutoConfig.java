@@ -18,8 +18,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import java.util.List;
 
 /**
- * 任务调度器自动配置类
+ * 任务调度器自动配置。
  *
+ * <p>配置启用后先创建共享 {@link TaskScheduler}，再创建并初始化任务服务，最后注册刷新/清理协调对象；
+ * 该顺序保证任务服务不会在调度器尚未准备好时开始装载任务。</p>
  */
 @Configuration
 @EnableScheduling
@@ -50,7 +52,7 @@ public class TaskJobAutoConfig {
     @Bean
     public ITaskJobService taskJobService(@Qualifier("xfgWrenchTaskScheduler") TaskScheduler xfgWrenchTaskScheduler,
                                           List<ITaskDataProvider> taskDataProviders) {
-        // 实例化任务并初始化调度
+        // 先注入所有任务数据提供者，再立即加载有效任务；后续刷新由 TaskJob 负责触发。
         TaskJobService taskJobService = new TaskJobService(xfgWrenchTaskScheduler, taskDataProviders);
         taskJobService.initializeTasks();
 

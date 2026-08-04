@@ -50,6 +50,7 @@ def resolve_sop_collection_name() -> str:
 
 
 def build_sop_string(sop_name: str, sop_desc: str, sop_steps: List[Dict[str, Any]]) -> str:
+    # name/description/步骤共同组成语义检索文本；字段顺序固定，保证相同 SOP 重建向量时输入稳定。
     parts = [sop_name or "", sop_desc or ""]
     for step in sop_steps or []:
         title = str(step.get("title") or "").strip()
@@ -101,6 +102,7 @@ def payload_to_sop_record(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     steps: List[Dict[str, Any]] = []
     raw_json = payload.get("sop_json_string")
+    # 优先读取结构化 JSON，解析失败或缺失时回退到扁平 sop_steps，兼容历史点和管理台新点。
     if isinstance(raw_json, str) and raw_json.strip():
         try:
             parsed = json.loads(raw_json)
@@ -146,6 +148,7 @@ class SopWorkspaceService:
             )
 
         timeout = float(os.getenv("QDRANT_TIMEOUT", "30") or 30)
+        # client 延迟初始化并缓存；首次使用同时确保 collection/index，避免启动时无条件连接外部服务。
         self._client = build_qdrant_client(
             url=config.get("url"),
             host=config.get("host"),
@@ -161,6 +164,7 @@ class SopWorkspaceService:
         try:
             client.get_collection(self.collection_name)
         except Exception:
+            # collection 不存在时创建，存在时继续补 payload index；两者都是幂等的启动准备动作。
             logger.info(f"创建 SOP collection: {self.collection_name}")
             client.create_collection(
                 collection_name=self.collection_name,
@@ -217,6 +221,7 @@ class SopWorkspaceService:
         )
         records: List[Dict[str, Any]] = []
         next_offset = None
+        # Qdrant scroll 使用 offset 分页；每页最多 100 条，并以 limit 截断，避免管理台列表无限读取。
         while True:
             points, next_offset = client.scroll(
                 collection_name=self.collection_name,
@@ -328,6 +333,7 @@ class SopWorkspaceService:
 
         name_vec, string_vec = self._embed_texts([name, sop_string])
         client = self._require_client()
+        # 一个 SOP 保留两个确定性 point id；先删除旧点再 upsert，确保修改后不会遗留旧向量或旧状态。
         name_payload = {**base_payload, "vector_type": "name"}
         string_payload = {**base_payload, "vector_type": "sop_string"}
 
@@ -362,6 +368,7 @@ class SopWorkspaceService:
             point_id_for(sop_id, "name"),
             point_id_for(sop_id, "sop_string"),
         ]
+        # 先按稳定 point id 删除，再按 payload 过滤删除历史异常点；第二种 selector 兼容不同 Qdrant 客户端版本。
         try:
             client.delete(
                 collection_name=self.collection_name,
@@ -409,6 +416,7 @@ class SopWorkspaceService:
         from reactor_tool.tool.plan_sop import PlanSOP
 
         plan = PlanSOP(self.request_id)
+        # 管理台试召回复用正式 PlanSOP 选择逻辑，只额外返回命中明细，不写入运行时状态。
         mode, choosed = plan.sop_choose(query=query, sop_list=[])
         hits: List[Dict[str, Any]] = []
         try:

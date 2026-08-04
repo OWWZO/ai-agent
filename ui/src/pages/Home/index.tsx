@@ -158,6 +158,8 @@ const createInitialState = (): InitialState => {
 };
 
 const Home: ReactorType.FC<HomeProps> = memo(() => {
+  // Home 持有跨页面的会话壳状态：当前 conversation 负责聊天，侧栏/工作区
+  // 状态负责视图切换，访客 bootstrap 则决定哪些受保护数据可以开始加载。
   const initialRef = useRef<InitialState>(createInitialState());
   const initializedVisitorIdRef = useRef<string | null>(null);
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
@@ -263,6 +265,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         : "min-h-0 flex-1 overflow-auto";
 
   useEffect(() => {
+    // 角色库是会话创建和输入渲染的前置数据；失败时保留空列表，让页面仍可
+    // 展示已有会话，而不是把角色接口故障扩散成整个 Home 不可用。
     roleLibraryApi
       .list()
       .then((data: any) => {
@@ -274,6 +278,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   }, []);
 
   const loadFeaturedCards = useCallback(async () => {
+    // 精品对话属于首页附属内容，单独维护失败边界，不影响当前会话主链路。
     try {
       const cards = await featuredConversationApi.listHome(6);
       setFeaturedCards(cards || []);
@@ -294,6 +299,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     })) {
       return;
     }
+    // bootstrap 只允许一次在途请求；加载态由状态机控制，避免 effect 依赖变化
+    // 时重复初始化访客身份。
     setVisitorBootstrapLoading(true);
     visitorApi
       .bootstrap()
@@ -319,6 +326,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       return;
     }
 
+    // 访客身份确认后才加载会话列表。disposed 保护异步结果，防止组件卸载或
+    // 身份切换后，旧请求把 currentConversation 写回新的页面状态。
     let disposed = false;
     initializedVisitorIdRef.current = visitorId;
     setConversationBootstrapLoading(true);
@@ -424,6 +433,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         ...nextConversation,
         updatedAt: Date.now(),
       };
+      // ChatView 通过 ID 回写草稿；只有当前会话接收更新，历史会话则更新本地
+      // 最近列表，避免切换会话期间的流式事件覆盖当前输入。
       // 后台流式更新只刷新本地缓存；仅当前展示的会话才写入主视图，避免其它会话活跃时界面被切走。
       upsertLocalRecentSession(nextState);
       setCurrentConversation((prev) =>
@@ -437,6 +448,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const createNewChat = useCallback(
     (override?: Partial<CHAT.ConversationHistory>) => {
+      // 创建新会话同时清空输入、任务文件和视图壳状态；override 只用于恢复
+      // 已存在的 session 元数据，默认路径始终生成新的 sessionId。
       const nextSessionId = override?.sessionId || createSessionId();
       const defaultStructuredProduct = getProductByType(initialRef.current.productType);
       const nextProductType =
@@ -481,6 +494,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
   const handleSelectRecentSession = useCallback(
     (session: ConversationSessionItem) => {
+      // 先切换壳状态，再异步加载详情；本地草稿优先，避免已在内存中的流式会话
+      // 被历史接口返回的旧快照覆盖。
       const localConversation = localRecentConversations.find(
         (item) => item.sessionId === session.sessionId
       );

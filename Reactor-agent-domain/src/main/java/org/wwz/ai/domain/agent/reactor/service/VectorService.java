@@ -64,6 +64,7 @@ public class VectorService {
 
         CompletableFuture<List<Map<String, Object>>> future = null;
         try {
+            // 向量召回在受控工具线程执行，并由请求 timeout 约束等待；超时后取消根 future，避免继续占用工具线程。
             future = AgentExecutorSupport.supplyAsync(toolExecutor, "vectorRecall", () -> recall(req));
             future.exceptionally(throwable -> null);
             List<Map<String, Object>> maps = future.get(req.getTimeout(), TimeUnit.MILLISECONDS);
@@ -96,6 +97,7 @@ public class VectorService {
 
             Points.Filter filter = null;
             if (Objects.nonNull(req.getKeywordFilterMap()) && !req.getKeywordFilterMap().isEmpty()) {
+                // 将统一 Map 过滤条件映射为 Qdrant typed filter，列表类型按首元素判断字符串/数值集合。
                 Points.Filter.Builder filterBuilder = Points.Filter.newBuilder();
                 req.getKeywordFilterMap().forEach((k, v) -> {
                     if (v instanceof String) {
@@ -146,6 +148,7 @@ public class VectorService {
             }
 
             List<String> textList = vectorSaveReq.getDataList().stream().map(VectorSaveReq.VectorData::getEmbeddingText).collect(Collectors.toList());
+            // embedding、id、payload 都按 dataList 原顺序生成，确保向量和业务 schema 不发生错位。
             List<List<Float>> vector = embeddingService.getVectorBatch(textList);
             List<String> idList = vectorSaveReq.getDataList().stream().map(data -> {
                 if (StringUtils.isNotBlank(data.getUuid()) && isUuid(data.getUuid())) {

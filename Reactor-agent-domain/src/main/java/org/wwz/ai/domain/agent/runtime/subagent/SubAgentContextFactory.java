@@ -62,7 +62,6 @@ public final class SubAgentContextFactory {
                 .agentType(parent.getAgentType())
                 .templateType(parent.getTemplateType())
                 .productFiles(parent.getProductFiles() == null ? new ArrayList<>() : new ArrayList<>(parent.getProductFiles()))
-                .taskProductFiles(new ArrayList<>())
                 // 账本 + 重放：与 SubAgentPrinter SSE 标签同契约
                 .parentToolUseId(parentToolUseId)
                 .subAgentId(agentId)

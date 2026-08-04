@@ -33,6 +33,7 @@ router = APIRouter(route_class=RequestHandlerRoute)
 
 async def _get_file_info_by_request_and_name(request_id: str, raw_file_name: str):
     """优先命中新的 basename 规则，同时兼容历史带子路径的 fileId。"""
+    # 新规则先把文件名归一化后计算 ID；只有未命中时才回退旧算法，避免迁移期历史文件失联。
     normalized_file_name = normalize_stored_file_name(raw_file_name)
     file_info = await FileInfoOp.get_by_file_id(file_id=get_file_id(request_id, normalized_file_name))
     if file_info:
@@ -48,6 +49,7 @@ async def get_file(
         body: FileRequest
 ):
     """按 file_id 查询单个文件的预览/下载地址。"""
+    # 查询接口只返回稳定地址和元数据，不把文件内容再次放进 JSON 响应。
     file_info = await FileInfoOp.get_by_file_id(file_id=body.file_id)
     if file_info:
         preview_url = get_file_preview_url(file_id=file_info.request_id, file_name=file_info.filename)
@@ -64,6 +66,7 @@ async def upload_file(
         body: FileUploadRequest
 ):
     """JSON 方式上传文本内容并登记元数据。"""
+    # 存储名必须先归一化，再参与 file_id 计算，保证同名文件在不同入口生成一致主键。
     body.file_name = normalize_stored_file_name(body.file_name)
     body.request_id = body.request_id
     file_info = await FileInfoOp.add_by_content(
@@ -77,6 +80,7 @@ async def upload_file(
 @router.post("/upload_file_data")
 async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(alias="requestId")):
     """multipart 二进制上传（工具产物、用户附件等）。"""
+    # URL 解码后再清洗文件名，避免客户端编码差异导致落盘名和 file_id 不一致。
     file.filename = unquote(file.filename)
     file.filename = normalize_stored_file_name(file.filename)
     file_id = get_file_id(request_id, file.filename)
@@ -89,6 +93,7 @@ async def upload_file_data(file: UploadFile = File(...), request_id: str = Form(
 @router.post("/register_file")
 async def register_file(body: FileRegisterRequest):
     """登记本地已有文件：不拷贝内容，只写元数据并返回预览/下载 URL。"""
+    # register 只建立元数据指针，真实内容仍由 local_path 指向的文件提供。
     body.file_name = normalize_stored_file_name(body.file_name)
     file_id = get_file_id(body.request_id, body.file_name)
     file_info = await FileInfoOp.add_by_existing_path(
@@ -115,6 +120,7 @@ async def register_file(body: FileRegisterRequest):
 @router.post("/get_file_list")
 async def get_file_list(body: FileListRequest):
     """列出会话下全部文件，或按 filters 中的 file_id 过滤。"""
+    # 没有 filters 时按会话聚合；有 filters 时按精确 file_id 查询，分别对应历史两种调用方式。
     if not body.filters:
         file_infos = await FileInfoOp.get_by_request_id(body.request_id)
     else:
@@ -137,6 +143,7 @@ async def get_file_list(body: FileListRequest):
 @router.get("/download/{file_id}/{file_name:path}")
 async def download_file(file_id: str, file_name: str):
     """下载文件。TODO：路径 file_id 实际是 request_id，后续统一改名。"""
+    # file_id 参数在协议上仍承载 request_id，查询函数负责兼容新旧文件名算法。
     file_info, file_name = await _get_file_info_by_request_and_name(file_id, file_name)
     if not file_info or not os.path.exists(file_info.file_path):
         return Response(content="File not found", status_code=404)
@@ -151,6 +158,7 @@ async def preview_file(file_id: str, file_name: str):
     if not file_info or not os.path.exists(file_info.file_path):
         return Response(content="File not found", status_code=404)
 
+    # 可识别类型以内联方式交给浏览器；未知类型改为附件，避免浏览器误把任意二进制当页面执行。
     disposition = "inline"
     if file_name.endswith(".md"):
         content_type = "text/markdown"

@@ -24,6 +24,7 @@ logger = structlog.get_logger(__name__)
 
 def styles_dir() -> Path:
     """Custom-theme YAML directory (honors ``LEAGENT_HOME``)."""
+    # 环境变量允许部署把主题与代码分离；未配置时落到用户目录，避免写入仓库。
     home = Path(os.getenv("REACTOR_DOCGEN_HOME") or os.getenv("LEAGENT_HOME") or str(Path.home() / ".reactor-docgen"))
     return home / "templates" / "styles"
 
@@ -386,12 +387,14 @@ def get_theme(
     kind: Literal["document", "deck"] = "document",
 ) -> Theme:
     """Resolve a theme by name / inline dict, falling back to the kind default."""
+    # 解析优先级是内置主题/内联覆盖/磁盘主题，所有失败都回退到文档或演示默认主题。
     default_name = "professional" if kind == "document" else "executive_light"
 
     if name is None:
         return BUILTIN_THEMES[default_name]
 
     if isinstance(name, dict):
+        # 内联主题只覆盖传入字段，并保留默认主题中未覆盖的字体、尺寸和颜色。
         base = BUILTIN_THEMES[default_name].model_dump()
         _deep_merge(base, name)
         base["kind"] = kind
@@ -416,6 +419,7 @@ def get_theme(
 def _load_custom_theme(
     name: str, *, default_name: str, kind: Literal["document", "deck"]
 ) -> Theme | None:
+    # 缓存键包含主题类型，避免同名 document/deck 主题互相污染；文件解析成功后才入缓存。
     cache_key = f"{kind}:{name}"
     with _cache_lock:
         if cache_key in _custom_cache:
@@ -430,6 +434,7 @@ def _load_custom_theme(
         if not path.is_file():
             continue
         try:
+            # 统一按 UTF-8 读取 YAML，再深合并到对应格式的内置基线。
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             logger.exception("docgen_theme_load_failed", path=str(path))
@@ -452,6 +457,7 @@ def _load_custom_theme(
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
+    # 仅对嵌套字典递归合并，标量和列表按用户覆盖值整体替换。
     for key, value in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             _deep_merge(base[key], value)

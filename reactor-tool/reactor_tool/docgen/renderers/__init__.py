@@ -14,6 +14,7 @@ __all__ = ["render_pdf", "render_docx", "render_pptx", "render_html", "render_ma
 
 
 def __getattr__(name: str) -> Any:
+    # 按格式延迟导入，某个可选渲染依赖缺失时不影响其它格式继续启动。
     if name == "render_pdf":
         from reactor_tool.docgen.renderers.pdf import render_pdf
 

@@ -53,6 +53,7 @@ public class OkHttpRemoteStreamAdapter implements RemoteStreamPort {
         Objects.requireNonNull(request, "RemoteStreamRequest must not be null");
         Objects.requireNonNull(listener, "RemoteStreamListener must not be null");
 
+        // 异步回调负责完整的 open → line → close/failure 生命周期，返回的 session 只暴露取消能力。
         OkHttpClient client = buildClient(request);
         Request.Builder requestBuilder = new Request.Builder()
                 .url(request.getUrl())
@@ -62,6 +63,7 @@ public class OkHttpRemoteStreamAdapter implements RemoteStreamPort {
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
+                // 建连失败没有 HTTP 状态码，统一通过 listener 传递异常和空响应体。
                 listener.onFailure(e, null, null);
             }
 
@@ -79,6 +81,7 @@ public class OkHttpRemoteStreamAdapter implements RemoteStreamPort {
                         return;
                     }
                     listener.onOpen();
+                    // 逐行转发同时兼容 SSE 和普通 chunked 文本；listener 解析失败时立即取消底层 Call。
                     try (BufferedReader reader = new BufferedReader(
                             new InputStreamReader(responseBody.byteStream(), StandardCharsets.UTF_8))) {
                         String line;
@@ -86,6 +89,7 @@ public class OkHttpRemoteStreamAdapter implements RemoteStreamPort {
                             try {
                                 listener.onLine(line);
                             } catch (Exception e) {
+                                // 消费方失败后继续读取没有意义，主动 cancel 可尽快释放连接和线程。
                                 listener.onFailure(e, response.code(), null);
                                 call.cancel();
                                 return;

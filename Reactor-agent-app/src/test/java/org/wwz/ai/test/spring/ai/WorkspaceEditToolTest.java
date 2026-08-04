@@ -4,6 +4,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
@@ -67,12 +68,13 @@ public class WorkspaceEditToolTest {
     @Test
     public void shouldEditAfterReadWhenUnique() throws Exception {
         readTool.execute(Map.of("path", "demo.txt"));
-        String result = String.valueOf(editTool.execute(Map.of(
+        ToolResultPayload payload = (ToolResultPayload) editTool.execute(Map.of(
                 "path", "demo.txt",
                 "old_string", "beta",
                 "new_string", "BETA"
-        )));
-        Assert.assertTrue(result.contains("已编辑文件") || result.contains("替换次数"));
+        ));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertEquals(1, ((Map<?, ?>) payload.getLlmData()).get("replacements"));
         Assert.assertEquals("alpha\nBETA\ngamma\n", Files.readString(targetFile, StandardCharsets.UTF_8));
     }
 
@@ -88,24 +90,29 @@ public class WorkspaceEditToolTest {
         )));
         Assert.assertTrue(uniqueFail.contains("occurrences") || uniqueFail.contains("replace_all"));
 
-        String replaceAll = String.valueOf(editTool.execute(Map.of(
+        ToolResultPayload replaceAll = (ToolResultPayload) editTool.execute(Map.of(
                 "path", "demo.txt",
                 "old_string", "x",
                 "new_string", "z",
                 "replace_all", true
-        )));
-        Assert.assertTrue(replaceAll.contains("替换次数") || replaceAll.contains("已编辑"));
+        ));
+        Assert.assertFalse(Boolean.TRUE.equals(replaceAll.getFailed()));
+        Assert.assertEquals(2, ((Map<?, ?>) replaceAll.getLlmData()).get("replacements"));
         Assert.assertEquals("z y z\n", Files.readString(targetFile, StandardCharsets.UTF_8));
     }
 
     @Test
     public void shouldFailWhenOldStringMissing() throws Exception {
         readTool.execute(Map.of("path", "demo.txt"));
-        String result = String.valueOf(editTool.execute(Map.of(
+        ToolResultPayload payload = (ToolResultPayload) editTool.execute(Map.of(
                 "path", "demo.txt",
                 "old_string", "not-exist",
                 "new_string", "x"
-        )));
-        Assert.assertTrue(result.contains("not found") || result.contains("old_string"));
+        ));
+        Assert.assertTrue(Boolean.TRUE.equals(payload.getFailed()));
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        Map<?, ?> detail = (Map<?, ?>) payload.getLlmData();
+        Assert.assertEquals("workspace_edit", detail.get("tool"));
+        Assert.assertTrue(String.valueOf(detail.get("message")).contains("not found"));
     }
 }

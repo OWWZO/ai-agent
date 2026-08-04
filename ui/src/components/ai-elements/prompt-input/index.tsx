@@ -156,6 +156,8 @@ export function PromptInputProvider({
   initialInput: initialTextInput = "",
   children,
 }: PromptInputProviderProps) {
+  // Provider 模式把文本、附件和隐藏 input 的打开动作提升到外层，允许工具菜单
+  // 在 PromptInput 外部触发上传；未使用 Provider 时，PromptInput 会退回本地状态。
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
   const clearInput = useCallback(() => setTextInput(""), []);
@@ -423,6 +425,8 @@ export const PromptInput = ({
   children,
   ...props
 }: PromptInputProps) => {
+  // 同一个输入组件支持两种生命周期：Provider 模式由外部持有状态，本地模式由
+  // 当前表单持有状态。下面所有附件操作都先选择对应实现，避免两套提交逻辑分叉。
   // Try to use a provider controller if present
   const controller = useOptionalPromptInputController();
   const usingProvider = !!controller;
@@ -455,6 +459,8 @@ export const PromptInput = ({
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
+    // 文件 input 仍由 PromptInput 实际渲染；Provider 只保存 ref 和 click 回调，
+    // 从而既能让外部菜单打开系统选择器，又不把 DOM 生命周期泄漏到 Provider。
     if (!usingProvider) return;
     controller.__registerFileInput(inputRef, () => inputRef.current?.click());
   }, [usingProvider, controller]);
@@ -503,6 +509,8 @@ export const PromptInput = ({
           return (formData.get("message") as string) || "";
         })();
 
+    // 先捕获文本和文件快照，再清空本地表单。blob URL 转 data URL 可能异步等待，
+    // 如果先依赖表单状态，用户在转换期间的输入会与本次提交互相覆盖。
     // Reset form immediately after capturing text to avoid race condition
     // where user input during async blob conversion would be lost
     if (!usingProvider) {
@@ -530,6 +538,8 @@ export const PromptInput = ({
     prepareFiles
       .then((convertedFiles: FileUIPart[]) => {
         try {
+          // 只有提交成功（同步返回或 Promise fulfilled）才清理附件；异常时保留
+          // 原始选择，方便用户修正后重试。转换失败同样不能丢失用户输入。
           const result = onSubmit({ text, files: convertedFiles }, event);
 
           // Handle both sync and async onSubmit
@@ -619,6 +629,8 @@ export const PromptInputTextarea = ({
   const [isComposing, setIsComposing] = useState(false);
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    // Enter 提交、Shift+Enter 换行、IME composing 保持输入；空文本退格则删除
+    // 最后一个附件，这是聊天输入框与普通 textarea 不同的交互状态机。
     if (e.key === "Enter") {
       if (isComposing || e.nativeEvent.isComposing) {
         return;
@@ -655,6 +667,8 @@ export const PromptInputTextarea = ({
   };
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+    // 粘贴板中的文件由附件状态统一校验和落盘，不能让浏览器把它当成普通文本
+    // 直接插入 textarea；纯文本粘贴则继续沿用浏览器默认行为。
     const items = event.clipboardData?.items;
 
     if (!items) {

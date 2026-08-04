@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * theme_designer — create/list/get/delete custom docgen themes from brand colors.
+ * theme_designer 工具契约。
+ *
+ * 这里仅描述主题的生命周期操作和输入字段；主题生成、对比度检查及持久化属于
+ * reactor-tool 文档生成服务，避免 domain 层直接依赖文件或 Python 存储细节。
  */
 public class ThemeDesignerTool extends AbstractDocGenTool {
 
@@ -30,6 +33,7 @@ public class ThemeDesignerTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // action 决定后端所需字段；其余字段按 create/save/list 等操作按需解释。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("action", stringProp("create | save | list | get | delete"));
         properties.put("name", stringProp("Theme name (required except list)"));

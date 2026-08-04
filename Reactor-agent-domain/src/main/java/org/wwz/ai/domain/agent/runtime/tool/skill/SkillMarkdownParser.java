@@ -29,6 +29,7 @@ public class SkillMarkdownParser {
         }
 
         try {
+            // 统一按 UTF-8 读取；front matter 只解析元数据，正文原样保留供 skill_tool 返回。
             String markdown = Files.readString(skillMarkdownPath, StandardCharsets.UTF_8);
             ParsedMarkdown parsedMarkdown = parseMarkdown(markdown, skillMarkdownPath);
             String name = readRequiredField(parsedMarkdown.frontMatter(), "name", skillMarkdownPath);
@@ -53,6 +54,7 @@ public class SkillMarkdownParser {
 
         Matcher matcher = FRONT_MATTER_PATTERN.matcher(markdown);
         if (!matcher.matches()) {
+            // 没有 front matter 时仍允许正文进入解析流程，必填字段由注册阶段给出明确错误。
             return new ParsedMarkdown(new LinkedHashMap<>(), markdown.strip());
         }
 

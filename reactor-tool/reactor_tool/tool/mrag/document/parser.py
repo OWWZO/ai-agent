@@ -54,6 +54,8 @@ class DocumentParser:
     """文档解析器基类：输出 md + images/ + pages/ 目录结构。"""
 
     def __init__(self, work_dir: str, file_path: str):
+        # 各具体解析器只负责生成内容，基类集中定义 md/images/pages 三类稳定
+        # 产物位置，供后续入库和预览阶段按约定读取。
         self._work_dir = work_dir
         self._file_path = file_path
         basename = os.path.basename(file_path)
@@ -125,7 +127,8 @@ class DocxDocumentParser(DocumentParser):
         try:
             logger.info(f"开始解析 docx 文档: {self._file_path}")
 
-            # 解析内容（文本和图片）
+            # 先落地 Markdown 和图片，再生成页面预览；预览失败不会改变已经
+            # 生成的文本产物，两个阶段因此可以分别观察和重试。
             self.parse_content()
 
             # 解析页面（每页转为图片）
@@ -990,7 +993,7 @@ class PlainTextDocumentParser(MarkdownDocumentParser):
 
 
 class PdfParser(DocumentParser):
-    """PDF 解析：走 MinerU API，输出 md + images + pages。"""
+    """PDF 解析：优先走 MinerU，失败时回退到本地直接提取。"""
 
     def __init__(self, work_dir: str, file_path: str):
         super().__init__(work_dir, file_path)
@@ -1039,6 +1042,8 @@ class PdfParser(DocumentParser):
 
     def _call_mineru_api(self, file_url: str) -> str:
         """调用MinerU API处理单个PDF文件"""
+        # 旧 API 只负责创建任务并返回 task_id，结果内容不在本次响应中；
+        # 调用方必须继续走轮询阶段，不能把提交成功当成解析完成。
         data = {
             "url": file_url,
             "model_version": "vlm"
@@ -1053,6 +1058,8 @@ class PdfParser(DocumentParser):
 
     def _wait_for_mineru_result(self, task_id: str) -> Optional[str]:
         """等待MinerU处理完成并返回结果URL"""
+        # 轮询只接受 done/failed 两个终态；中间状态按固定间隔等待，并设置
+        # 总超时，避免外部服务卡住时占用整个文档解析任务。
         start_time = time.time()
 
         while True:
@@ -1081,6 +1088,8 @@ class PdfParser(DocumentParser):
 
     def _submit_pdf_to_mineru(self, pdf_path: str, request_key: str) -> Optional[str]:
         """按配置选择 MinerU 托管上传或历史外部 URL 模式。"""
+        # 托管模式由 MinerU 负责文件接收和批任务；兼容模式先上传对象存储，
+        # 再调用旧的 URL API。两条路径最终都收敛为结果 ZIP URL。
         upload_mode = self._resolve_mineru_upload_mode()
         if upload_mode == "mineru_managed":
             file_name = os.path.basename(pdf_path)
@@ -1139,6 +1148,8 @@ class PdfParser(DocumentParser):
 
     def _download_and_extract_mineru_result(self, full_zip_url: str, output_dir: str) -> Optional[str]:
         """下载并解压MinerU处理结果"""
+        # ZIP 只是传输容器，解析阶段真正消费的是其中的 Markdown；临时 ZIP
+        # 无论成功或失败都在 finally 删除，避免长任务污染共享临时目录。
         tmp_file_path = os.path.join(output_dir, f"{uuid.uuid4().hex}.zip")
         try:
             download_utils.download_file(full_zip_url, tmp_file_path)
@@ -1165,6 +1176,8 @@ class PdfParser(DocumentParser):
 
     def _process_single_pdf_chunk(self, pdf_path: str, chunk_index: int) -> Optional[str]:
         """处理单个PDF分块，直接返回处理后的markdown内容"""
+        # 分块结果先在独立临时目录中解压，再把图片复制到主产物目录并改写
+        # Markdown 相对路径；这样不同分块的同名图片不会互相覆盖。
         try:
             # 提交分块给 MinerU，返回统一的结果包地址
             full_zip_url = self._submit_pdf_to_mineru(pdf_path, request_key=f"chunk_{chunk_index}")
@@ -1228,6 +1241,8 @@ class PdfParser(DocumentParser):
 
     def mineru_parse(self):
         """优化的MinerU解析方法，支持智能分页处理"""
+        # 小文件走一次完整 MinerU 任务；大文件按页切块并逐块合并。每个
+        # 分块都允许局部回退到 fitz 文本提取，只有全部分块失败才终止。
         try:
             # 获取PDF页数
             total_pages = self._get_pdf_page_count()
@@ -1285,6 +1300,8 @@ class PdfParser(DocumentParser):
                     raise Exception("MinerU processing failed: no result URL")
 
             else:
+                # 大文件的临时 PDF 只在本次解析期间存在，finally 会统一清理；
+                # all_content 保留分页标记，方便后续检索定位原始页段。
                 # 大PDF文件，分页处理
                 logger.info(f"PDF页数 {total_pages} 超过阈值 {SMALL_PDF_THRESHOLD}，将按每 {CHUNK_SIZE} 页进行分页处理")
 
@@ -1402,6 +1419,8 @@ class PdfParser(DocumentParser):
 
     def parse(self):
         """优化的PDF解析方法，支持智能切分调度"""
+        # MinerU 是主路径，直接提取是可用性兜底；无论哪条路径完成，后续
+        # 调用方都读取同一组 md/images/pages 产物，不感知具体解析引擎。
         try:
             logger.info(f"开始解析PDF文档: {self._file_path}")
 

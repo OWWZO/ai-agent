@@ -41,6 +41,7 @@ class ImageRetriever:
     def text2image_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                           filter_conditions: Optional[Dict] = None):
         """文本到图像检索（跨模态）。"""
+        # 返回结果始终与 queries 一一对齐；功能关闭、向量为空或兼容性失败时用空槽位保持上层合并稳定。
         if not self.image_vector_enabled:
             logger.info("text2image_search skipped because MRAG image vector index is disabled")
             return self._empty_results(len(queries))
@@ -66,6 +67,7 @@ class ImageRetriever:
                            kb_id: str | list[str], image: Image.Image, limit: int = 10, score_threshold: float = 0.0,
                            filter_conditions: Optional[Dict] = None):
         """图像检索"""
+        # 单图查询返回第一组结果，而批量文本查询返回按 query 对齐的二维列表，两种接口契约不能混用。
         if not self.image_vector_enabled:
             logger.info("image2image_search skipped because MRAG image vector index is disabled")
             return []
@@ -83,6 +85,7 @@ class ImageRetriever:
     def text2page_search(self, kb_id: str | list[str], queries: list[str], limit: int = 10, score_threshold: float = 0.0,
                          filter_conditions: Optional[Dict] = None):
         """文本到页面检索"""
+        # 页面向量和图片向量共享编码器，但分别调用 page 索引，避免视觉召回结果丢失页面预览元数据。
         if not self.image_vector_enabled:
             logger.info("text2page_search skipped because MRAG image vector index is disabled")
             return self._empty_results(len(queries))

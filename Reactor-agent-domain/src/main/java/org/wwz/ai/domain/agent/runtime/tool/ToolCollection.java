@@ -153,11 +153,13 @@ public class ToolCollection {
     public Object execute(String name, Object toolInput) {
         // 分支1：执行本地基础工具
         if (toolMap.containsKey(name)) {
+            // 本地工具优先，避免同名 MCP 工具抢占已经注册的领域实现。
             BaseTool tool = getTool(name);
             return tool.execute(toolInput);
         }
         // 分支2：执行远程MCP工具
         else if (mcpToolMap.containsKey(name)) {
+            // 只有本地不存在时才交给统一 MCP executor，保持工具名解析的确定性。
             McpToolInfo toolInfo = mcpToolMap.get(name);
             McpToolExecutor executor = mcpToolExecutor;
             if (executor == null) {

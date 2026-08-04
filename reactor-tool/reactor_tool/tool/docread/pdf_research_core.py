@@ -79,6 +79,7 @@ def extract_structure(file_path: str) -> dict[str, Any]:
 
         outline: list[dict[str, Any]] = []
         toc = doc.get_toc(simple=True) or []
+        # 优先使用 PDF 内嵌书签；这比从排版文本猜标题更稳定，也能保留作者定义的层级。
         for entry in toc:
             level, title, page = entry[0], entry[1], entry[2]
             title = (title or "").strip()
@@ -119,7 +120,7 @@ def _derive_sections(doc, outline: list[dict[str, Any]], page_count: int) -> lis
         if sections:
             return sections[:80]
 
-    # Heuristic scan (text-only papers without embedded bookmarks).
+    # 没有书签时只扫描前 40 页并按有限关键词/编号识别，避免把正文普通句子误当成章节。
     seen: set[str] = set()
     idx = 0
     scan_pages = min(page_count, 40)
@@ -177,6 +178,7 @@ def _derive_figures(doc, page_count: int) -> list[dict[str, Any]]:
             label = f"{'Table' if kind == 'table' else 'Figure'} {number}"
             key = label.lower()
             if key in seen:
+                # 同一图注可能在文本层重复出现，只保留第一次出现的页码和定位框。
                 continue
             seen.add(key)
             entry: dict[str, Any] = {
@@ -233,6 +235,7 @@ def _figure_bbox(page, number: str, kind: str) -> list[float] | None:
             if not ib or len(ib) != 4:
                 continue
             # image bottom must be above the caption top, with horizontal overlap
+            # 只把同页、横向重叠且距离最近的图片并入图注框，避免吞并相邻图。
             if ib[3] > caption[1] + 4:
                 continue
             if ib[2] < caption[0] or ib[0] > caption[2]:
@@ -290,6 +293,7 @@ def extract_formula_candidates(file_path: str, max_items: int = 60) -> list[dict
                 # Skip prose: a line with many words but only one weak symbol.
                 words = [w for w in re.split(r"\s+", line) if w]
                 if len(words) > 14 and len(hits) < 2:
+                    # 单个弱数学符号出现在长句中通常是正文，不足以触发公式候选。
                     continue
                 key = re.sub(r"\s+", "", line)
                 if key in seen:
@@ -332,6 +336,7 @@ def extract_pages_text_tagged(
                 continue
             chunk = f"[[PAGE {p + 1}]]\n{body}"
             if used + len(chunk) > char_budget:
+                # 页码标记和剩余预算内的正文一并保留，保证 LLM 能把公式归因到具体页。
                 parts.append(chunk[: max(0, char_budget - used)])
                 break
             parts.append(chunk)

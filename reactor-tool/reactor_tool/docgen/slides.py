@@ -123,6 +123,8 @@ class DeckTypography:
 
     @classmethod
     def from_theme(cls, theme: Theme) -> DeckTypography:
+        # 字体层级从主题集中派生，渲染器只消费语义角色，不在每个 layout 中
+        # 重复计算字号、行距和项目符号，从而保证整份 deck 的视觉节奏一致。
         d = theme.deck
         body = d.body_size
 
@@ -312,6 +314,8 @@ class SlideGeometry:
         ``side`` says where the media half sits.
         """
         ratio = min(0.8, max(0.2, ratio))
+        # split 是图片/正文/表格布局共用的几何契约：ratio 只描述主区域占比，
+        # side 决定两块的空间顺序，调用方无需自行处理边距和 gutter。
         if side == "top":
             media_h = int((region.height - self.gutter) * ratio)
             media = Region(region.left, region.top, region.width, media_h)
@@ -369,6 +373,8 @@ class BulletPara:
 
 def flatten_body(markdown_text: str) -> list[BulletPara]:
     """Parse slide markdown into a flat, leveled paragraph plan."""
+    # 正文 Markdown 只展开成幻灯片可承载的段落/列表；表格、图表和图片由
+    # 一等字段渲染，避免在这里生成无法参与布局的重复内容。
     from reactor_tool.docgen.markdown import parse_markdown_blocks
     from reactor_tool.docgen.model import (
         CodeBlock,
@@ -523,6 +529,8 @@ def fit_body_size(
     min_scale: float = 0.62,
 ) -> float:
     """Largest scale (≤ 1.0) at which the plan fits the region height."""
+    # 先以 1.0 倍字号估算高度，超出区域时逐步缩小；返回值只影响正文块，
+    # 标题和卡片标题仍由主题字号控制，避免内容拥挤反向改变整体层级。
     if not paras:
         return 1.0
     width_pt = region.width / EMU_PER_PT

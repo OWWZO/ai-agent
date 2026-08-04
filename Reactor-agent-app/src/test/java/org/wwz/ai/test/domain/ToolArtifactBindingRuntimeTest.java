@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 public class ToolArtifactBindingRuntimeTest {
 
     @Test
-    public void shouldMaintainCompatibilityViewsAndHideInternalFiles() {
+    public void shouldMaintainArtifactRegistryAndHideInternalFiles() {
         AgentContext context = newAgentContext();
         ToolArtifactSource source = newSource("call-file-001", "file_tool");
 
@@ -32,7 +32,6 @@ public class ToolArtifactBindingRuntimeTest {
                 "https://file.example.com/public/report.md", "最终报告", false));
 
         Assert.assertEquals(2, context.getProductFiles().size());
-        Assert.assertEquals(1, context.getTaskProductFiles().size());
         Assert.assertEquals(1, context.getVisibleArtifactFiles().size());
         Assert.assertEquals("report.md", context.getVisibleArtifactFiles().get(0).getFileName());
     }
@@ -64,7 +63,6 @@ public class ToolArtifactBindingRuntimeTest {
         Assert.assertEquals("sync_artifact_tool", binding.getSource().getToolName());
         Assert.assertEquals("deliverable.md", binding.getFile().getFileName());
         Assert.assertEquals(1, context.getProductFiles().size());
-        Assert.assertEquals(1, context.getTaskProductFiles().size());
     }
 
     @Test
@@ -129,7 +127,6 @@ public class ToolArtifactBindingRuntimeTest {
                 .query("验证工具产物来源绑定")
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .build();
         toolCollection.setAgentContext(context);
         return context;

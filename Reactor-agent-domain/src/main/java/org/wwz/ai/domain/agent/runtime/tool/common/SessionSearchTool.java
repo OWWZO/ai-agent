@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerType;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 
 import java.util.LinkedHashMap;
@@ -67,27 +68,64 @@ public class SessionSearchTool implements BaseTool {
     @Override
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
+        Map<String, Object> args = normalize(input);
+        String query = StringUtils.trimToEmpty(valueAsString(args.get("query")));
+        String scope = StringUtils.defaultIfBlank(valueAsString(args.get("scope")), "user").trim();
+        int limit = parseLimit(args.get("limit"));
+
         SessionSearchService searchService = resolveSearch();
         if (searchService == null) {
-            return "session_search unavailable";
+            return ToolResultPayload.failureFrom(
+                    "session_search unavailable",
+                    failureDetail(query, scope, limit)
+            );
         }
         String sessionId = agentContext == null ? null : agentContext.getSessionId();
         String visitorId = resolveVisitorId();
-        Map<String, Object> args = normalize(input);
-        String query = String.valueOf(args.getOrDefault("query", "")).trim();
-        String scope = String.valueOf(args.getOrDefault("scope", "user")).trim();
-        int limit = 8;
-        Object limitObj = args.get("limit");
-        if (limitObj instanceof Number n) {
-            limit = n.intValue();
-        } else if (limitObj != null && StringUtils.isNotBlank(String.valueOf(limitObj))) {
+        try {
+            String result = searchService.search(sessionId, visitorId, query, limit, scope);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("tool", TOOL_NAME);
+            data.put("ok", Boolean.TRUE);
+            data.put("query", query);
+            data.put("scope", scope);
+            data.put("limit", limit);
+            data.put("result", StringUtils.defaultString(result));
+            return ToolResultPayload.fromData(data);
+        } catch (Exception e) {
+            return ToolResultPayload.failureFrom(
+                    "session_search failed: " + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()),
+                    failureDetail(query, scope, limit)
+            );
+        }
+    }
+
+    private static int parseLimit(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null && StringUtils.isNotBlank(String.valueOf(value))) {
             try {
-                limit = Integer.parseInt(String.valueOf(limitObj).trim());
+                return Integer.parseInt(String.valueOf(value).trim());
             } catch (NumberFormatException ignored) {
-                // keep default
+                // 无法解析时沿用服务端默认值。
             }
         }
-        return searchService.search(sessionId, visitorId, query, limit, scope);
+        return 8;
+    }
+
+    private static Map<String, Object> failureDetail(String query, String scope, int limit) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("type", "tool_error");
+        detail.put("tool", TOOL_NAME);
+        detail.put("query", query);
+        detail.put("scope", scope);
+        detail.put("limit", limit);
+        return detail;
+    }
+
+    private static String valueAsString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private String resolveVisitorId() {

@@ -17,6 +17,7 @@ _SNIFF_BYTES = 65536
 
 
 def _detect_encoding(path: Path) -> str:
+    # 这里只读取有限前缀：编码探测不应为了打开一个大表而先把整个文件载入内存。
     raw = path.read_bytes()[:_SNIFF_BYTES]
     try:
         raw.decode("utf-8")
@@ -38,6 +39,7 @@ def _sniff_delimiter(sample_text: str) -> str:
 def _delimiter_for_path(path: Path, encoding: str, delimiter: str | None) -> str:
     if delimiter is not None:
         return delimiter
+    # 显式分隔符优先；自动探测只负责补齐调用方未提供的格式信息。
     with open(path, "r", encoding=encoding, newline="") as f:
         sample = f.read(_SNIFF_BYTES)
     return _sniff_delimiter(sample)
@@ -210,6 +212,7 @@ class CSVProcessorTool(SyncTool):
         return f"Processing CSV ({op})"
 
     def execute_sync(self, params: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        # 每个操作保持独立入口，便于把读、查询、写入和统计的结果契约分别控制在本类内。
         op = params["operation"]
         if op == "read":
             return self._op_read(params)
@@ -256,9 +259,11 @@ class CSVProcessorTool(SyncTool):
                 headers = [str(h) if h is not None else f"column_{i}" for i, h in enumerate(first)]
                 for row in reader:
                     total_data_rows += 1
+                    # 继续遍历以返回真实总行数，但只保留上限以内的内容，避免结果膨胀。
                     if len(rows) < cap:
                         rows.append(_parse_row_to_dict(row, headers))
             else:
+                # 无表头时先消费第一行，用稳定的 column_N 名称建立统一的行对象结构。
                 peek = next(reader, None)
                 if peek is None:
                     return {
@@ -327,6 +332,7 @@ class CSVProcessorTool(SyncTool):
                 rec = _parse_row_to_dict(row, headers)
                 if _normalize_cell(rec.get(filter_column)) == filter_value:
                     matched.append(rec)
+                    # 没有排序时可以在读到足够结果后立即停止；排序时必须看完文件才能得到全局顺序。
                     if sort_column is None and len(matched) >= max_out:
                         break
 
@@ -406,11 +412,13 @@ class CSVProcessorTool(SyncTool):
         def bump_unique(col: str, val: str) -> None:
             st = unique_sets.setdefault(col, set())
             if len(st) >= _UNIQUE_CAP:
+                # 唯一值集合只用于估算，不让高基数列无限占用内存；返回值会显式标记截断。
                 unique_truncated[col] = True
                 return
             st.add(val)
 
         def process_row(row: list[str]) -> None:
+            # 统计阶段一次扫描同时累积空值、样本、唯一值和类型命中，避免为每个指标重复读文件。
             nonlocal total_rows
             total_rows += 1
             for i, col in enumerate(headers):
@@ -474,6 +482,7 @@ class CSVProcessorTool(SyncTool):
             elif nf == non_null:
                 inferred = "numeric"
             elif non_null > 0 and df >= non_null * 0.8:
+                # 日期只按高置信比例推断，混合列保守地降级为字符串。
                 inferred = "date"
             else:
                 inferred = "string"
@@ -519,6 +528,7 @@ class CSVProcessorTool(SyncTool):
             open(path, "r", encoding=encoding, newline="") as inf,
             open(out_path, "w", encoding="utf-8", newline="\n") as outf,
         ):
+            # 直接逐行写 JSON 数组，避免先构造完整列表；first_elem 负责处理逗号位置。
             reader = csv.reader(inf, delimiter=delimiter)
             outf.write("[\n")
             first_elem = True
@@ -552,4 +562,3 @@ class CSVProcessorTool(SyncTool):
             outf.write("\n]\n")
 
         return {"success": True, "path": str(out_path), "row_count": row_count}
-

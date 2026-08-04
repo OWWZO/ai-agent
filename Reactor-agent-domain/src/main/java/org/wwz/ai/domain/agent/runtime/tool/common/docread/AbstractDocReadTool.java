@@ -81,6 +81,8 @@ public abstract class AbstractDocReadTool implements BaseTool {
             }
 
             long timeoutSeconds = timeoutSeconds();
+            // 文档读取默认带 workspace_root，远端解析器可把相对路径限制在当前 session；超时
+            // 由具体 reader 的 timeoutSeconds 决定，调用链统一预留连接/写入/总超时。
             String responseText = requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
                     .method("POST")
                     .url(url)
@@ -102,7 +104,8 @@ public abstract class AbstractDocReadTool implements BaseTool {
                         + StringUtils.defaultIfBlank(json.getString("message"), responseText));
             }
 
-            // fileInfo 先登记到账本关联的 artifact source，再向前端发送文件事件。
+            // fileInfo 先登记到账本关联的 artifact source，再向前端发送文件事件；正文仍由
+            // buildLlmData 按上限裁剪，避免大文档直接进入下一轮 prompt。
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
             List<File> files = registerFiles(json.getJSONArray("fileInfo"), artifactSource);
             emitFileMessage(files, artifactSource);

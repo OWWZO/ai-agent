@@ -31,6 +31,7 @@ public class AgentVisitorController {
 
     @GetMapping("/bootstrap")
     public Response<VisitorBootstrapRespVO> bootstrap() {
+        // visitorId 来自过滤器建立的请求上下文，首次访问时由应用服务负责创建或读取匿名档案。
         AnonymousVisitorProfile profile = anonymousVisitorBootstrapApplicationService.bootstrap(
                 VisitorRequestContext.requireVisitorId()
         );
@@ -44,6 +45,7 @@ public class AgentVisitorController {
     @PostMapping("/naming")
     public Response<VisitorBootstrapRespVO> naming(@RequestBody VisitorNamingReqVO request) {
         try {
+            // 命名只允许修改当前请求上下文对应的访客，避免客户端通过 body 伪造归属关系。
             AnonymousVisitorProfile profile = anonymousVisitorNamingApplicationService.bindUsername(
                     VisitorRequestContext.requireVisitorId(),
                     request == null ? null : request.getUsername()
@@ -65,6 +67,7 @@ public class AgentVisitorController {
         if (profile == null) {
             return null;
         }
+        // 外部只需要稳定的访客展示字段，不暴露持久化对象的时间戳、状态码等内部字段。
         return VisitorBootstrapRespVO.builder()
                 .visitorId(profile.getVisitorId())
                 .username(profile.getUsername())

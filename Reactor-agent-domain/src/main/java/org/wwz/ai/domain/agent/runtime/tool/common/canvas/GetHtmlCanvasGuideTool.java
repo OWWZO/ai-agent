@@ -11,7 +11,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Return on-demand HTML canvas authoring guide.
+ * 按需返回 HTML canvas 编写指南的只读工具。
+ *
+ * 工具本身不生成页面，也不触碰工作区；它只把稳定的设计、运行时和交付边界
+ * 暴露给 Agent，实际页面仍由后续 canvas_publish 调用负责生成。
  */
 @Data
 public class GetHtmlCanvasGuideTool implements BaseTool {
@@ -35,6 +38,7 @@ public class GetHtmlCanvasGuideTool implements BaseTool {
 
     @Override
     public Map<String, Object> toParams() {
+        // 指南工具没有输入参数，明确声明空对象 schema，避免模型误传业务字段。
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", Collections.emptyMap());
@@ -45,6 +49,7 @@ public class GetHtmlCanvasGuideTool implements BaseTool {
 
     @Override
     public Object execute(Object input) {
+        // 统一包装为工具结果，保持与其它运行时工具的返回协议一致。
         return ToolResultPayload.fromData(HtmlCanvasGuidePayload.payload());
     }
 }

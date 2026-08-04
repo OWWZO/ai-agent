@@ -48,6 +48,7 @@ public class AgentExecutorConfiguration {
 
     @Bean(name = AgentExecutorNames.HEARTBEAT_SCHEDULER)
     public TaskScheduler agentHeartbeatScheduler(AgentExecutorProperties properties) {
+        // 心跳是周期调度资源，独立于 dispatch/LLM/tool 执行预算，并在关闭时不等待任务完成。
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(properties.getHeartbeat().getPoolSize());
         scheduler.setThreadNamePrefix(properties.getHeartbeat().getThreadNamePrefix());
@@ -90,6 +91,7 @@ public class AgentExecutorConfiguration {
     }
 
     private ThreadPoolTaskExecutor buildPlatformExecutor(String name, AgentExecutorProperties.Pool pool) {
+        // 平台线程池同时受线程数和队列容量限制，拒绝事件由计数包装器纳入可观测性。
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(pool.getCorePoolSize());
         executor.setMaxPoolSize(pool.getMaxPoolSize());
@@ -106,6 +108,7 @@ public class AgentExecutorConfiguration {
     }
 
     private int resolveMaxConcurrency(AgentExecutorProperties.Pool pool) {
+        // 虚拟线程仍需显式准入上限；未配置时退回该池的平台线程最大数作为保守值。
         Integer configured = pool.getMaxConcurrency();
         if (configured != null && configured > 0) {
             return configured;

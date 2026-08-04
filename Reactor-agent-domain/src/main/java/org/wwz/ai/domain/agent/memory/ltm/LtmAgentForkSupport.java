@@ -1,5 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
@@ -11,7 +13,10 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -41,41 +46,44 @@ public final class LtmAgentForkSupport {
     private LtmAgentForkSupport() {
     }
 
-    public static int runMemoryOnlyFork(ReactorRuntimeDependencies deps,
-                                        CuratedMemoryStore store,
-                                        LtmOwner owner,
-                                        String sessionId,
-                                        String parentRequestId,
-                                        String parentSystemPrompt,
-                                        List<Message> conversationSnapshot,
-                                        String userDirective,
-                                        int maxSteps,
-                                        long timeoutSeconds,
-                                        String forkLabel) {
+    public static LtmForkRunResult runMemoryOnlyFork(ReactorRuntimeDependencies deps,
+                                                    CuratedMemoryStore store,
+                                                    LtmOwner owner,
+                                                    String sessionId,
+                                                    String parentRequestId,
+                                                    String parentSystemPrompt,
+                                                    List<Message> conversationSnapshot,
+                                                    String userDirective,
+                                                    int maxSteps,
+                                                    long timeoutSeconds,
+                                                    String forkLabel) {
         if (deps == null || store == null || owner == null) {
-            return 0;
+            return LtmForkRunResult.skipped("deps-or-store-or-owner-null");
         }
         final List<Message> snapshot = conversationSnapshot == null
                 ? List.of()
                 : new ArrayList<>(conversationSnapshot);
         if (StringUtils.isBlank(userDirective)) {
-            return 0;
+            return LtmForkRunResult.skipped("blank-directive");
         }
 
         final String directive = userDirective;
         final String systemPrompt = parentSystemPrompt;
         final int steps = Math.max(1, maxSteps);
-        final String label = forkLabel;
+        final String label = StringUtils.defaultIfBlank(forkLabel, "fork");
         final String sid = sessionId;
         final String reqId = parentRequestId;
         final LtmOwner forkOwner = owner;
         final CuratedMemoryStore forkStore = store;
         final ReactorRuntimeDependencies forkDeps = deps;
+        final String forkRequestId = StringUtils.defaultIfBlank(reqId, "ltm") + "-" + label;
 
-        int before = countEntries(forkStore, forkOwner);
-        Callable<Integer> task = () -> {
+        Map<String, CuratedMemoryEntry> beforeMap = snapshotActiveEntries(forkStore, forkOwner);
+        int before = beforeMap.size();
+        long startedAt = System.currentTimeMillis();
+        Callable<LtmForkRunResult> task = () -> {
             AgentRequest fake = new AgentRequest();
-            fake.setRequestId(StringUtils.defaultIfBlank(reqId, "ltm") + "-" + label);
+            fake.setRequestId(forkRequestId);
             fake.setSessionId(sid);
 
             ToolCollection tools = new ToolCollection();
@@ -105,53 +113,139 @@ public final class LtmAgentForkSupport {
             ReactImplAgent agent = new ReactImplAgent(child);
             agent.setName("ltm-" + label);
             agent.setMaxSteps(steps);
-            if (StringUtils.isNotBlank(systemPrompt)) {
-                // 继承父 system 前缀（同模型下利于 prefix cache）+ 本 fork 指令
-                agent.setSystemPrompt(systemPrompt.trim() + "\n\n# LTM fork directive\n"
-                        + "You may ONLY use the memory tool. Do not call any other tools. "
-                        + "Focus on durable user preferences and environment facts only.\n");
-            }
+            // 父 system（cache 友好）+ 与主路径一致的写入标准；无父 system 时仍注入完整 guidance
+            agent.setSystemPrompt(LtmPromptGuidance.forkSystemPrompt(systemPrompt));
             agent.run(directive);
-            int after = countEntries(forkStore, forkOwner);
-            return Math.max(0, after - before);
+            Map<String, CuratedMemoryEntry> afterMap = snapshotActiveEntries(forkStore, forkOwner);
+            String writtenJson = buildWrittenEntriesJson(beforeMap, afterMap);
+            int applied = countAdded(beforeMap, afterMap);
+            return LtmForkRunResult.builder()
+                    .status(LtmForkRunResult.STATUS_SUCCESS)
+                    .appliedCount(applied)
+                    .entriesBefore(before)
+                    .entriesAfter(afterMap.size())
+                    .durationMs(System.currentTimeMillis() - startedAt)
+                    .forkRequestId(forkRequestId)
+                    .forkLabel(label)
+                    .writtenEntriesJson(writtenJson)
+                    .build();
         };
 
-        Future<Integer> future = FORK_POOL.submit(task);
+        Future<LtmForkRunResult> future = FORK_POOL.submit(task);
         try {
-            return future.get(Math.max(5L, timeoutSeconds), TimeUnit.SECONDS);
+            LtmForkRunResult result = future.get(Math.max(5L, timeoutSeconds), TimeUnit.SECONDS);
+            if (result == null) {
+                return LtmForkRunResult.failed(forkRequestId, label, before,
+                        System.currentTimeMillis() - startedAt, "null result");
+            }
+            if (result.getDurationMs() <= 0) {
+                result.setDurationMs(System.currentTimeMillis() - startedAt);
+            }
+            return result;
         } catch (TimeoutException e) {
             future.cancel(true);
-            return 0;
+            return LtmForkRunResult.timeout(forkRequestId, label, before,
+                    System.currentTimeMillis() - startedAt);
         } catch (Exception e) {
-            return 0;
+            return LtmForkRunResult.failed(forkRequestId, label, before,
+                    System.currentTimeMillis() - startedAt,
+                    e.getClass().getSimpleName() + ": " + StringUtils.left(String.valueOf(e.getMessage()), 500));
         }
     }
 
     private static int countEntries(CuratedMemoryStore store, LtmOwner owner) {
-        try {
-            return store.listActive(owner, CuratedMemoryScope.USER).size()
-                    + store.listActive(owner, CuratedMemoryScope.CURATED).size();
-        } catch (Exception e) {
-            return 0;
-        }
+        return snapshotActiveEntries(store, owner).size();
     }
 
-    public static final String FLUSH_DIRECTIVE = """
-            The conversation window above is about to be compacted.
-            Save durable memories NOW via the memory tool only:
-            - target=user: preferences, identity, communication style
-            - target=curated: stable environment/project conventions
-            Do NOT save one-off tasks, full procedures, or tool noise.
-            If nothing durable, call nothing and finish.
-            """;
+    /** key = scope + \\u0001 + content */
+    private static Map<String, CuratedMemoryEntry> snapshotActiveEntries(CuratedMemoryStore store, LtmOwner owner) {
+        Map<String, CuratedMemoryEntry> out = new LinkedHashMap<>();
+        if (store == null || owner == null) {
+            return out;
+        }
+        try {
+            for (CuratedMemoryScope scope : List.of(CuratedMemoryScope.USER, CuratedMemoryScope.CURATED)) {
+                List<CuratedMemoryEntry> rows = store.listActive(owner, scope);
+                if (rows == null) {
+                    continue;
+                }
+                for (CuratedMemoryEntry e : rows) {
+                    if (e == null || StringUtils.isBlank(e.getContent())) {
+                        continue;
+                    }
+                    String scopeCode = e.getScope() == null ? scope.getCode() : e.getScope().getCode();
+                    out.put(scopeCode + "\u0001" + e.getContent().trim(), e);
+                }
+            }
+        } catch (Exception ignored) {
+            // keep partial
+        }
+        return out;
+    }
 
-    public static final String REVIEW_DIRECTIVE = """
-            Review the conversation above and update long-term memory via the memory tool only.
-            Save durable declarative facts:
-            - target=user: preferences, identity, style
-            - target=curated: stable environment/project facts
-            Do NOT dump full how-to procedures into memory (those belong in skills).
-            Do NOT save one-off tasks or unresolved failures.
-            If nothing new is worth saving, finish without tool calls.
-            """;
+    private static int countAdded(Map<String, CuratedMemoryEntry> before, Map<String, CuratedMemoryEntry> after) {
+        if (after == null || after.isEmpty()) {
+            return 0;
+        }
+        Set<String> beforeKeys = before == null ? Set.of() : before.keySet();
+        int n = 0;
+        for (String k : after.keySet()) {
+            if (!beforeKeys.contains(k)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static String buildWrittenEntriesJson(Map<String, CuratedMemoryEntry> before,
+                                                 Map<String, CuratedMemoryEntry> after) {
+        JSONArray added = new JSONArray();
+        JSONArray removed = new JSONArray();
+        Set<String> beforeKeys = before == null ? Set.of() : before.keySet();
+        Set<String> afterKeys = after == null ? Set.of() : after.keySet();
+        if (after != null) {
+            for (Map.Entry<String, CuratedMemoryEntry> e : after.entrySet()) {
+                if (beforeKeys.contains(e.getKey())) {
+                    continue;
+                }
+                added.add(toEntryJson(e.getValue(), e.getKey()));
+            }
+        }
+        if (before != null) {
+            for (Map.Entry<String, CuratedMemoryEntry> e : before.entrySet()) {
+                if (afterKeys.contains(e.getKey())) {
+                    continue;
+                }
+                removed.add(toEntryJson(e.getValue(), e.getKey()));
+            }
+        }
+        JSONObject root = new JSONObject(true);
+        root.put("added", added);
+        root.put("removed", removed);
+        root.put("added_count", added.size());
+        root.put("removed_count", removed.size());
+        return root.toJSONString();
+    }
+
+    private static JSONObject toEntryJson(CuratedMemoryEntry e, String key) {
+        JSONObject o = new JSONObject(true);
+        if (e != null) {
+            o.put("id", e.getId());
+            o.put("scope", e.getScope() == null ? null : e.getScope().getCode());
+            o.put("content", e.getContent());
+            o.put("write_origin", e.getWriteOrigin());
+            o.put("source_request_id", e.getSourceRequestId());
+        } else if (key != null && key.contains("\u0001")) {
+            int i = key.indexOf('\u0001');
+            o.put("scope", key.substring(0, i));
+            o.put("content", key.substring(i + 1));
+        }
+        return o;
+    }
+
+    /** @see LtmPromptGuidance#FLUSH_DIRECTIVE */
+    public static final String FLUSH_DIRECTIVE = LtmPromptGuidance.FLUSH_DIRECTIVE;
+
+    /** @see LtmPromptGuidance#REVIEW_DIRECTIVE */
+    public static final String REVIEW_DIRECTIVE = LtmPromptGuidance.REVIEW_DIRECTIVE;
 }

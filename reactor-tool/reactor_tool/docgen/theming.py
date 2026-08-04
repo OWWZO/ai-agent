@@ -95,6 +95,7 @@ def contrast_ratio(a: str, b: str) -> float:
 
 def _ensure_contrast(color: str, against: str, minimum: float, *, darken: bool) -> str:
     """Nudge ``color`` lightness until it clears ``minimum`` vs ``against``."""
+    # 只调整 HLS 明度并限制迭代次数，保留品牌色相，同时避免生成不可读的文本颜色。
     out = color
     for _ in range(20):
         if contrast_ratio(out, against) >= minimum:
@@ -138,6 +139,7 @@ def derive_theme_payload(
     with contrast guarantees: body text vs background >= 4.5:1 and the
     primary/heading tone vs background >= 3:1.
     """
+    # 先验证输入，再按明暗模式分别推导背景、表面、文字和强调色。
     _hex_to_rgb(primary)  # validate early
     if accent is not None:
         _hex_to_rgb(accent)

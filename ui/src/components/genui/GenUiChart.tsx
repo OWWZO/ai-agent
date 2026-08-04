@@ -32,6 +32,7 @@ const GenUiChart: FC<Props> = memo(
     const instance = useRef<echarts.EChartsType | null>(null);
 
     const option: EChartsOption = useMemo(() => {
+      // option 只依赖可序列化 props；饼图和坐标图分别使用 ECharts 的数据模型。
       const type = (chart || "bar").toLowerCase();
       const cats = categories.length
         ? categories
@@ -143,6 +144,7 @@ const GenUiChart: FC<Props> = memo(
 
     useEffect(() => {
       if (!ref.current) return;
+      // 实例在 DOM 容器上复用，option 更新只替换配置；ResizeObserver 覆盖非 window 尺寸变化。
       if (!instance.current) {
         instance.current = echarts.init(ref.current);
       }
@@ -162,6 +164,7 @@ const GenUiChart: FC<Props> = memo(
 
     useEffect(() => {
       return () => {
+        // ECharts 持有 canvas 和事件监听器，组件卸载时必须显式 dispose。
         instance.current?.dispose();
         instance.current = null;
       };

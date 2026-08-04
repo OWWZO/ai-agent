@@ -12,9 +12,11 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
 import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwnerResolver;
+import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -38,13 +40,7 @@ public class MemoryTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return """
-                Manage long-term curated memory that persists across sessions for this user.
-                Use target=user for preferences/identity; target=curated for environment facts and conventions.
-                Actions: add, replace, remove. replace/remove match by unique substring in old_text.
-                When full, consolidate (remove/replace shorter) then retry — never silent drop.
-                Do NOT store one-off task noise or full procedure scripts here.
-                """;
+        return LtmPromptGuidance.MEMORY_TOOL_DESCRIPTION;
     }
 
     @Override
@@ -102,11 +98,11 @@ public class MemoryTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         if (LtmMemoryGuard.isSkipMemory(agentContext)) {
-            return resultJson(false, false, LtmMemoryGuard.deniedMessage(), 0, 0);
+            return resultPayload(false, false, LtmMemoryGuard.deniedMessage(), 0, 0);
         }
         CuratedMemoryStore store = resolveStore();
         if (store == null) {
-            return resultJson(false, false, "curated memory store unavailable", 0, 0);
+            return resultPayload(false, false, "curated memory store unavailable", 0, 0);
         }
         LtmOwner owner = agentContext != null && agentContext.getLtmOwner() != null
                 ? agentContext.getLtmOwner()
@@ -129,17 +125,23 @@ public class MemoryTool implements BaseTool {
                     allOk = false;
                 }
             }
-            JSONObject batch = new JSONObject();
+            Map<String, Object> batch = new LinkedHashMap<>();
+            batch.put("tool", TOOL_NAME);
+            batch.put("ok", allOk);
             batch.put("success", allOk);
             batch.put("results", results);
-            return batch.toJSONString();
+            return ToolResultPayload.fromData(batch);
         }
         CuratedMemoryWriteResult result = applyOne(store, owner, args, sessionId, requestId);
         JSONObject json = toJson(result);
         json.put("store", store.getClass().getSimpleName());
         json.put("owner_type", owner.getType().name());
         json.put("owner_id", owner.getId());
-        return json.toJSONString();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.putAll(json);
+        data.put("tool", TOOL_NAME);
+        data.put("ok", result.isSuccess());
+        return ToolResultPayload.fromData(data);
     }
 
     private CuratedMemoryWriteResult applyOne(CuratedMemoryStore store,
@@ -210,13 +212,21 @@ public class MemoryTool implements BaseTool {
         return json;
     }
 
-    private static String resultJson(boolean success, boolean staged, String message, int used, int limit) {
-        return toJson(CuratedMemoryWriteResult.builder()
+    private static ToolResultPayload resultPayload(boolean success,
+                                                   boolean staged,
+                                                   String message,
+                                                   int used,
+                                                   int limit) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.putAll(toJson(CuratedMemoryWriteResult.builder()
                 .success(success)
                 .staged(staged)
                 .message(message)
                 .usedChars(used)
                 .limitChars(limit)
-                .build()).toJSONString();
+                .build()));
+        data.put("tool", TOOL_NAME);
+        data.put("ok", success);
+        return ToolResultPayload.fromData(data);
     }
 }

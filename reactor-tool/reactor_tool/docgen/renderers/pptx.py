@@ -71,13 +71,15 @@ _NUMBERED_HANG_IN = 0.34  # room for "10." markers
 
 
 def render_pptx(deck: DeckSpec, output_path: Path) -> dict[str, Any]:
-    """Render a deck spec to a .pptx file."""
+    """将演示文稿规格渲染为 PPTX，并返回可供工具层消费的产物统计。"""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN
     from pptx.oxml.ns import qn
     from pptx.util import Emu, Inches, Pt
 
+    # 先固定主题、字体和统计容器；后续布局分支只负责把规格转换为形状，
+    # 警告和产物统计统一在出口返回，避免各分支形成不同的结果契约。
     theme = get_theme(deck.theme, kind="deck")
     typo = DeckTypography.from_theme(theme)
     warnings: list[str] = []
@@ -886,6 +888,8 @@ def render_pptx(deck: DeckSpec, output_path: Path) -> dict[str, Any]:
     # Slide construction
     # ------------------------------------------------------------------
 
+    # 标题页是演示文稿的最低结构约束。调用方可以省略它，但只在内存副本
+    # 上补齐，既保证成品可读，也不回写调用方传入的规格对象。
     slides = list(deck.slides)
     if not slides or slides[0].layout != "title":
         slides.insert(
@@ -936,6 +940,8 @@ def render_pptx(deck: DeckSpec, output_path: Path) -> dict[str, Any]:
         )
 
     for idx, sl in enumerate(slides, start=1):
+        # 每张幻灯片按“背景 -> 调色板 -> 布局内容 -> 页眉页脚”的顺序构建。
+        # 背景可能改变文字明暗，因此必须先完成背景解析再选择 palette。
         slide = prs.slides.add_slide(blank)
         layout = sl.layout
         bg_spec = _promote_background_image(sl, sl.background or deck.background)
@@ -951,6 +957,8 @@ def render_pptx(deck: DeckSpec, output_path: Path) -> dict[str, Any]:
             "title", "section", "closing", "quote"
         )
 
+        # 各 layout 只决定内容如何占用几何区域；图片、表格、图表等资源
+        # 的解析失败会记录到 warnings，尽量保留其余页面而不终止整份导出。
         if layout in ("title", "closing"):
             band_top = geom.slide_h // 3
             if sl.kicker:
@@ -1213,6 +1221,7 @@ def render_pptx(deck: DeckSpec, output_path: Path) -> dict[str, Any]:
             slide.notes_slide.notes_text_frame.text = sl.notes
         stats["slides"] += 1
 
+    # 统计应基于实际落盘文件，而不是内存中的估算值，便于上层注册 artifact。
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
 

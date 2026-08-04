@@ -60,7 +60,6 @@ public class PlanSolveNestedConcurrencyHardeningTest {
                 .printer(new SilentPrinter())
                 .runtimeDependencies(runtimeDependencies)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .historyDialogue("")
                 .basePrompt("")
                 .sopPrompt("")
@@ -72,12 +71,6 @@ public class PlanSolveNestedConcurrencyHardeningTest {
                 .fileName("parent-session.md")
                 .ossUrl("https://session")
                 .domainUrl("https://session")
-                .isInternalFile(false)
-                .build());
-        parentContext.getTaskProductFiles().add(org.wwz.ai.domain.agent.runtime.dto.File.builder()
-                .fileName("parent-task.md")
-                .ossUrl("https://task")
-                .domainUrl("https://task")
                 .isInternalFile(false)
                 .build());
 
@@ -134,8 +127,6 @@ public class PlanSolveNestedConcurrencyHardeningTest {
         Assert.assertEquals("child-observation:你的任务是：task-1", parentExecutor.getMemory().get(1).getContent());
         Assert.assertEquals("child-observation:你的任务是：task-2", parentExecutor.getMemory().get(2).getContent());
         Assert.assertEquals("child-observation:你的任务是：task-3", parentExecutor.getMemory().get(3).getContent());
-        Assert.assertEquals("parent-task.md", parentContext.getTaskProductFiles().get(0).getFileName());
-        Assert.assertEquals(1, parentContext.getTaskProductFiles().size());
         Assert.assertEquals(1, parentContext.getProductFiles().size());
         Assert.assertEquals("result:你的任务是：task-1\nresult:你的任务是：task-2\nresult:你的任务是：task-3",
                 node.joinResults(results));

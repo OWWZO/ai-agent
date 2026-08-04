@@ -65,6 +65,7 @@ export const combineData = (
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) => {
+  // 所有实时与历史事件都从这里进入状态模型；具体 messageType 处理分散在小函数中，避免两套回放逻辑漂移。
   switch (eventData.messageType) {
     case "plan": {
       handlePlanMessage(eventData, currentChat);
@@ -172,6 +173,7 @@ function handleTaskMessageByType(
   taskIndex: number
 ) {
   const messageType = eventData.resultMap.messageType;
+  // messageId 在流式增量中可能复用，因此先以 messageType 参与定位，再选择对应的合并策略。
   if (messageType === "plan") {
     handlePlanMessage({
       ...eventData,
@@ -873,6 +875,7 @@ export const handleTaskData = (
     plan_thought: planThought,
   } = multiAgent ?? {};
 
+  // 该函数是唯一的派生层：原始 multiAgent.tasks 保留事件事实，chat.tasks/taskList/conclusion 只从事实重建。
   const TOOL_TYPES = [
     "tool_call",
     "tool_result",
@@ -919,6 +922,7 @@ export const handleTaskData = (
 
   validTasks?.forEach((taskGroup, groupIndex) => {
     const timelineTaskGroup = ensureTimelineTaskGroup(chatList, groupIndex);
+    // 父 Agent 事件先登记，后续带 parentToolUseId 的子事件才能嵌套到正确卡片；父事件缺失时保留到主时间线。
     // toolCallId -> 已渲染的 Agent 父卡片，用于挂载子工具（cc-haha nested）
     const agentParentByToolCallId = new Map<string, CHAT.Task>();
 

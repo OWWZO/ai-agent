@@ -25,7 +25,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 精品对话管理接口。
+ * 精品对话管理 HTTP 适配器。
+ *
+ * <p>控制器负责把管理端 VO 转换为应用层命令或查询条件，并把领域查询视图转换为
+ * 前端分页 VO；精品对话的创建、更新、上下线和查询规则由应用服务负责。这样 HTTP
+ * 字段名或分页表达变化时，不会把展示模型传播到领域层。</p>
  */
 @RestController
 @RequestMapping("/api/v1/admin/featured-conversations")
@@ -36,6 +40,7 @@ public class FeaturedConversationAdminController {
 
     @PostMapping("/create")
     public Response<Boolean> create(@RequestBody FeaturedConversationAdminUpsertReqVO request) {
+        // 写入端点只完成 VO 到命令的边界转换，实际校验、持久化和审计由应用服务处理。
         return success(featuredConversationAdminApplicationService.create(toCommand(request)));
     }
 
@@ -49,6 +54,7 @@ public class FeaturedConversationAdminController {
             @PathVariable("featuredId") String featuredId,
             @RequestParam("operator") String operator
     ) {
+        // 上线和下线是显式状态迁移，操作人作为审计信息传入应用服务。
         return success(featuredConversationAdminApplicationService.online(featuredId, operator));
     }
 
@@ -64,6 +70,8 @@ public class FeaturedConversationAdminController {
     public Response<PageRespVO<FeaturedConversationAdminRespVO>> queryList(
             @RequestBody FeaturedConversationAdminQueryReqVO request
     ) {
+        // HTTP 页码从 1 开始，领域查询使用 offset/limit；这里统一钳制页码和页大小，
+        // 防止非法分页参数把展示层的约定带入领域模型。
         FeaturedConversationPageResult<FeaturedConversationAdminView> page =
                 featuredConversationAdminApplicationService.queryList(
                         FeaturedConversationQueryCondition.builder()
@@ -88,6 +96,7 @@ public class FeaturedConversationAdminController {
     }
 
     private FeaturedConversationUpsertCommand toCommand(FeaturedConversationAdminUpsertReqVO request) {
+        // 命令只承载业务输入，封面资源键和 URL 同时保留以兼容现有资源引用方式。
         return FeaturedConversationUpsertCommand.builder()
                 .featuredId(request.getFeaturedId())
                 .sessionId(request.getSessionId())
@@ -102,6 +111,7 @@ public class FeaturedConversationAdminController {
     }
 
     private FeaturedConversationAdminRespVO toRespVO(FeaturedConversationAdminView item) {
+        // 查询视图到响应 VO 的映射不回传领域对象，避免领域模型成为 HTTP 契约。
         if (item == null) {
             return null;
         }
@@ -120,6 +130,7 @@ public class FeaturedConversationAdminController {
     }
 
     private Response<Boolean> success(boolean data) {
+        // 精品对话管理写操作沿用统一响应码，业务布尔值放在 data 中表达执行结果。
         return Response.<Boolean>builder()
                 .code(ResponseCode.SUCCESS.getCode())
                 .info(ResponseCode.SUCCESS.getInfo())

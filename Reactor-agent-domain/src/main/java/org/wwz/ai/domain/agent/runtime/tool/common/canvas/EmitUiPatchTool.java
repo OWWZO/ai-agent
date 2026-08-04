@@ -15,7 +15,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Validate and emit incremental GenUI JSON patches.
+ * 校验并发布 GenUI 增量补丁。
+ *
+ * <p>补丁只描述对既有树的操作，不在领域工具内维护树副本；前端按
+ * {@code canvas_id} 和可选序号应用它们，工具输出账本则保存本次补丁事实。</p>
  */
 @Slf4j
 @Data
@@ -65,6 +68,7 @@ public class EmitUiPatchTool implements BaseTool {
     public Object execute(Object input) {
         try {
             Map<String, Object> params = input instanceof Map<?, ?> map ? castMap(map) : Map.of();
+            // 规范化同时过滤未知字段，并确保 remove 不携带无意义的 value。
             Map<String, Object> normalized = GenUiSchema.validateUiPatch(params);
 
             Map<String, Object> streamPayload = new LinkedHashMap<>(normalized);
@@ -77,6 +81,7 @@ public class EmitUiPatchTool implements BaseTool {
                 streamPayload.put("toolName", artifactSource.getToolName());
             }
 
+            // 流式事件是实时投影，结构化 ToolResult 仍是账本和历史回放的事实来源。
             if (agentContext != null && agentContext.getPrinter() != null) {
                 String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
                 String digitalEmployee = agentContext.getToolCollection() == null

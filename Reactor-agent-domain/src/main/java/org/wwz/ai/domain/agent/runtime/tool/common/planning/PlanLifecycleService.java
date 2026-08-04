@@ -43,6 +43,7 @@ public class PlanLifecycleService {
         validateNonEmptySteps(remainingSteps);
 
         int completedPrefixSize = countCompletedPrefix(plan);
+        // replan 只替换未完成后缀，已完成前缀保持原步骤和备注，避免历史状态被重写。
         List<String> mergedSteps = new ArrayList<>();
         List<String> mergedStatus = new ArrayList<>();
         List<String> mergedNotes = new ArrayList<>();
@@ -96,6 +97,7 @@ public class PlanLifecycleService {
             return buildResult(plan, false, true);
         }
 
+        // 完成当前步骤后自动激活下一条；若已无未开始步骤则由上面的全完成分支结束计划。
         boolean autoAdvanced = activateFirstNotStarted(plan);
         return buildResult(plan, autoAdvanced, false);
     }
@@ -189,6 +191,7 @@ public class PlanLifecycleService {
         List<String> status = plan.getStepStatus() == null ? new ArrayList<>() : new ArrayList<>(plan.getStepStatus());
         List<String> notes = plan.getNotes() == null ? new ArrayList<>() : new ArrayList<>(plan.getNotes());
 
+        // 历史数据或模型手工构造的数组可能长度不一致，先补齐再截断，保证三条列表按索引对齐。
         while (status.size() < steps.size()) {
             status.add(STATUS_NOT_STARTED);
         }
@@ -222,6 +225,7 @@ public class PlanLifecycleService {
         if (nextIndex == null) {
             return false;
         }
+        // 只允许一个 in_progress；残留状态统一退回 not_started，再激活最早未开始步骤。
         for (int index = 0; index < plan.getStepStatus().size(); index++) {
             if (STATUS_IN_PROGRESS.equals(plan.getStepStatus().get(index))) {
                 plan.getStepStatus().set(index, STATUS_NOT_STARTED);

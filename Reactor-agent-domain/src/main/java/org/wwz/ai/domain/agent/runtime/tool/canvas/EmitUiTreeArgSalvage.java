@@ -11,7 +11,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Recover truncated / malformed emit_ui_tree tool-call JSON.
+ * 抢救被截断或格式损坏的 {@code emit_ui_tree} 工具参数。
+ *
+ * <p>该类只恢复可识别的 tree 载荷，并通过 {@code __salvaged} 标记结果，
+ * 让真正的工具执行器继续负责 GenUI schema 校验和流式投影。</p>
  */
 public final class EmitUiTreeArgSalvage {
 
@@ -30,6 +33,7 @@ public final class EmitUiTreeArgSalvage {
         if (raw.isEmpty()) {
             return null;
         }
+        // 完整 JSON 直接转换；只有结构不完整时才尝试补齐括号。
         try {
             Object parsed = JSON.parse(raw);
             if (parsed instanceof JSONObject obj) {
@@ -45,7 +49,7 @@ public final class EmitUiTreeArgSalvage {
         if (StringUtils.isBlank(raw)) {
             return null;
         }
-        // Try closing truncated braces/brackets.
+        // 第一优先级是平衡括号后重新解析，能最大限度保留原始字段结构。
         String closed = closeTruncatedJsonObject(raw);
         if (closed != null) {
             try {
@@ -62,6 +66,7 @@ public final class EmitUiTreeArgSalvage {
             }
         }
 
+        // 如果外层参数已损坏，再单独截取 tree 对象作为第二级降级路径。
         Matcher m = TREE_OBJECT_PATTERN.matcher(raw);
         if (m.find()) {
             String treeRaw = m.group(1);
@@ -81,7 +86,7 @@ public final class EmitUiTreeArgSalvage {
             }
         }
 
-        // Bare root truncated object
+        // 最后兼容模型直接输出裸 root 的截断对象。
         if (raw.contains("\"kind\"") || raw.contains("\"root\"")) {
             String closedBare = closeTruncatedJsonObject(raw.startsWith("{") ? raw : "{" + raw);
             if (closedBare != null) {
@@ -132,6 +137,7 @@ public final class EmitUiTreeArgSalvage {
             return null;
         }
         StringBuilder sb = new StringBuilder(s);
+        // 只在字符串外统计括号，避免 HTML、文本内容中的符号改变补齐结果。
         boolean inString = false;
         boolean escaped = false;
         int braces = 0;

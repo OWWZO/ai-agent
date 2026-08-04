@@ -56,6 +56,8 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
         options && "keyword" in options ? options.keyword || "" : appliedKeyword;
       setLoadingList(true);
       try {
+        // 列表刷新只替换服务端事实；若当前选中项已被删除则清空选择，仍存在的草稿不被
+        // 无意义地重置，避免用户在切换筛选条件时丢失未保存编辑。
         const next = await listSops(toolBaseUrl, {
           keyword: nextKeyword,
           status: statusFilter || undefined,
@@ -158,6 +160,8 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
     }
     setSaving(true);
     try {
+      // 保存前清洗空步骤/空子步骤，服务端只接收可召回的 SOP 内容；保存成功后再用返回值
+      // 回填 draft，保证本地状态与后端生成的 sopId、状态和规范化步骤一致。
       const saved = await upsertSop(toolBaseUrl, {
         sopId: draft.sopId,
         sopName: draft.sopName.trim(),
@@ -215,6 +219,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
     }
     setSaving(true);
     try {
+      // 已持久化 SOP 的状态切换直接调用后端；新建草稿只修改本地状态，等保存时一并提交。
       const next = await setSopStatus(toolBaseUrl, draft.sopId, status);
       setDraft(sopItemToDraft(next));
       showMessage()?.success(status === "online" ? "已上线" : "已更新状态");
@@ -233,6 +238,8 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
     }
     setRecallLoading(true);
     try {
+      // 试召回使用当前输入的 query，不依赖编辑器草稿是否已保存，用于验证线上索引实际
+      // 返回的模式、命中项和注入文本。
       const result = await recallTestSop(toolBaseUrl, recallQuery.trim());
       setRecallResult(result);
     } catch (error) {

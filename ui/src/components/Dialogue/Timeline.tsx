@@ -292,6 +292,8 @@ const SubAgentTimelineCard: FC<{
   const nestedCount = nested.length;
 
   useEffect(() => {
+    // 运行中的子 Agent 必须自动展开以展示实时工具；结束后才允许按容器状态
+    // 收起，避免流式更新过程中用户看到一个空的折叠卡片。
     if (subAgentRunning) {
       setExpanded(true);
     }
@@ -517,6 +519,8 @@ const TimelineTaskBlock: FC<{
   const [expanded, setExpanded] = useState(() => !canCollapse);
 
   useEffect(() => {
+    // active 子工具优先级高于完成后的默认折叠：实时事件到达时展开，整组完成且
+    // 没有活动子项时收起。这里同步的是展示状态，不会修改后端任务数据。
     if (hasActiveChild) {
       setExpanded(true);
     } else if (canCollapse) {
@@ -655,6 +659,8 @@ export const Timeline: FC<TimelineProps> = ({
   changeFile,
 }) => (
   <>
+    {/* 外层 tasks 是后端事件分组；PlanSolve 还要保留左侧计划进度轨道，普通
+        ReAct 则只渲染内容列，避免用不存在的计划序号制造视觉状态。 */}
     {chat.tasks.map((tasks, index) => {
       const lastTask = index === chat.tasks.length - 1;
       const groupKey = tasks[0]?.id || tasks[0]?.messageId || tasks[0]?.taskId || index;

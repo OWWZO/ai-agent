@@ -1,5 +1,7 @@
 """Artifact references for tabular data.
 
+中文说明：ArtifactRef 只描述数据位置和元数据，不执行读写；实际 I/O 集中在 records 模块。
+
 An :class:`ArtifactRef` is a typed pointer to data that lives outside
 the LLM context window. Data tools accept one interchangeably with an
 inline ``data`` list, and emit one when the output would otherwise
@@ -46,6 +48,7 @@ class ArtifactRef:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        # 未知 kind 不能阻断跨版本传递，但降级为 records 并保留原值供诊断。
         if self.kind not in ARTIFACT_KINDS:
             self.metadata.setdefault("original_kind", self.kind)
             self.kind = "records"
@@ -87,6 +90,7 @@ class ArtifactRef:
 
 def is_artifact_ref(value: Any) -> bool:
     """Return ``True`` if ``value`` looks like an :class:`ArtifactRef`."""
+    # 依次兼容内部对象、协议字典和路径/URI 字符串，保持工具入口只有一个解析点。
     if isinstance(value, ArtifactRef):
         return True
     if isinstance(value, dict) and "uri" in value:

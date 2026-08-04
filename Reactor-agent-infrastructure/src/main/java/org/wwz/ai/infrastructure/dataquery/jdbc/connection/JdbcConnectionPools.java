@@ -8,6 +8,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+/**
+ * 按连接配置缓存 JDBC 数据源，并在配置时间戳变化时刷新。
+ *
+ * <p>读锁覆盖常规命中路径，写锁保护创建/替换路径，避免并发请求重复建立同一连接池。</p>
+ */
 @Slf4j
 public class JdbcConnectionPools {
 
@@ -43,13 +48,14 @@ public class JdbcConnectionPools {
     public DatasourceWrapper getOrCreateConnectionPool(JdbcConnectionConfig config) {
 
         if (!config.isCachePools()) {
+            // 明确关闭缓存时每次创建独立数据源，调用方应承担其生命周期；缓存路径才进入读写锁保护。
             log.info("创建无缓存的数据源连接池");
             return createNewDatasource(config);
         }
 
         String poolId = config.getKey();
 
-        // 先尝试读锁获取
+        // 先尝试读锁获取，连接池未变化时不阻塞其它读请求。
         lock.readLock().lock();
         try {
             DatasourceWrapper existingWrapper = pools.get(poolId);
@@ -61,8 +67,10 @@ public class JdbcConnectionPools {
             lock.readLock().unlock();
         }
 
+        // 读锁未命中后升级为写锁；再次检查是必要的，防止等待期间已有线程完成创建。
         lock.writeLock().lock();
         try {
+            // 双重检查避免多个线程在读锁 miss 后重复创建同一个连接池。
             DatasourceWrapper existingWrapper = pools.get(poolId);
             if (existingWrapper != null && noNeedsRefresh(existingWrapper, config.getFreshTimestamp())) {
                 log.info("再次从缓存获取连接池 poolId {}", poolId);
@@ -112,4 +120,3 @@ public class JdbcConnectionPools {
         }
     }
 }
-

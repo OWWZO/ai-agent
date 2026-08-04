@@ -38,6 +38,7 @@ class RuntimeExecutionResult:
 def prepare_workspace(skill_base_path: str, arguments: Dict) -> PreparedWorkspace:
     """复制 skill 目录到临时工作区，并写入参数文件。"""
     source_root = Path(skill_base_path).resolve()
+    # 每次执行都复制到临时目录，脚本对原始 skill 的修改不会污染注册目录或下一次运行。
     temp_dir = Path(tempfile.mkdtemp(prefix="skill-runner-"))
     workspace_root = temp_dir / source_root.name
     shutil.copytree(source_root, workspace_root)
@@ -75,6 +76,7 @@ def resolve_script_path(skill_base_path: str, script_path: str) -> tuple[Path, P
         raise ValueError(f"skill base path does not exist: {skill_root}")
 
     resolved_script = (skill_root / script_path).resolve()
+    # 先校验根目录包含关系，再确认目标是普通文件，防止 ../ 路径或目录被当作脚本执行。
     if skill_root not in {resolved_script, *resolved_script.parents}:
         raise ValueError("script path is outside registered skill directory")
     if not resolved_script.is_file():
@@ -105,6 +107,7 @@ def collect_generated_files(prepared_workspace: PreparedWorkspace) -> List[Path]
     """收集执行后新增或变更的文件。"""
     current_snapshot = snapshot_regular_files(prepared_workspace.skill_root)
     generated_files: List[Path] = []
+    # 只返回相对基线发生变化的业务文件，.skill/arguments.json 等运行元数据不上传。
     for relative_path, meta in current_snapshot.items():
         if relative_path.startswith(".skill/"):
             continue
@@ -156,6 +159,7 @@ async def execute_script(
     env["SKILL_WORKSPACE"] = str(working_directory)
     env["SKILL_OUTPUT_DIR"] = str(working_directory / "output")
 
+    # 环境变量同时提供 JSON 内容和文件路径，兼容不同 runtime 的参数读取方式；进程 cwd 固定在隔离目录。
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=str(working_directory),
@@ -169,6 +173,7 @@ async def execute_script(
             timeout=max(1, int(timeout_seconds)),
         )
     except asyncio.TimeoutError:
+        # communicate 超时后必须先杀进程再 drain 管道，否则子进程可能继续占用临时工作区。
         process.kill()
         await process.communicate()
         return RuntimeExecutionResult(

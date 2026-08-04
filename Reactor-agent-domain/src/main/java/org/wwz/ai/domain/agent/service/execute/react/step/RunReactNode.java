@@ -39,6 +39,8 @@ public class RunReactNode extends AbstractExecuteSupport {
     protected String doApply(AgentRequest requestParameter, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step2: Run ReAct loop for requestId: {}", requestParameter.getRequestId());
 
+        // Step1 已把请求、工具集合和 ledger recorder 固定在 AgentContext 中；Step2
+        // 只创建一个执行器并让它完成完整 ReAct 生命周期，不能在节点层重复拼装工具或记忆。
         AgentContext agentContext = dynamicContext.getAgentContext();
         if (agentContext == null) {
             throw new IllegalStateException("React Step2: agentContext is null, Step1 must run first.");
@@ -63,6 +65,8 @@ public class RunReactNode extends AbstractExecuteSupport {
      * 不回退到带 tool_calls 的中间思考，也不把 tool observation 拼串当回复。
      */
     static String resolveFinalAnswer(ReActAgent executor, String runResult) {
+        // 终答来源按可靠性排序：优先取执行器记忆中最后一条无 tool_calls 的 assistant
+        // 文本，其次才接受 FINISHED 状态下的 run 返回值；中途停止或工具观察结果均拒绝。
         String fromMemory = findLastUserFacingAssistantText(executor);
         if (StringUtils.isNotBlank(fromMemory)) {
             return sanitizeUserFacingText(fromMemory);

@@ -262,7 +262,6 @@ public class PlanningAgentTest {
                 .printer(printer)
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .executionRecorder(executionRecorder)
                 .agentRunState(agentRunState)
                 .isStream(false)

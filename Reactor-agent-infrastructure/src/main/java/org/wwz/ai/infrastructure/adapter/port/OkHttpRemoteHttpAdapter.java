@@ -55,6 +55,7 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
     @Override
     public RemoteHttpResponse executeDetailed(RemoteHttpRequest request) throws IOException {
         Objects.requireNonNull(request, "RemoteHttpRequest must not be null");
+        // 每次请求基于共享连接池创建轻量客户端副本，只覆盖本次超时和重定向策略。
         RequestBody requestBody = buildRequestBody(request);
         Request.Builder requestBuilder = new Request.Builder().url(request.getUrl());
         applyHeaders(requestBuilder, request.getHeaders());
@@ -62,6 +63,7 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
 
         OkHttpClient client = buildClient(request);
         try (Response response = client.newCall(requestBuilder.build()).execute()) {
+            // 读取 body 与 headers 后再关闭 Response，避免把 OkHttp 的生命周期泄漏给领域 port 调用方。
             String responseBody = response.body() == null ? null : response.body().string();
             Map<String, String> headers = new LinkedHashMap<>();
             for (String name : response.headers().names()) {
@@ -94,6 +96,7 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
 
     private RequestBody buildRequestBody(RemoteHttpRequest request) {
         String method = normalizeMethod(request.getMethod());
+        // 无 body 的方法必须传 null；其余方法即使 body 为空也保留 JSON media type，兼容远端网关的解析约定。
         if ("GET".equals(method) || "DELETE".equals(method) || "HEAD".equals(method)) {
             return null;
         }

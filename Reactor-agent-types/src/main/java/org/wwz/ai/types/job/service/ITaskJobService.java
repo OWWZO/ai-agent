@@ -3,7 +3,10 @@ package org.wwz.ai.types.job.service;
 import org.wwz.ai.types.job.model.TaskScheduleVO;
 
 /**
- * 任务调度服务接口
+ * 任务调度运行时服务契约。
+ *
+ * <p>服务维护“配置任务”到“ScheduledFuture”的映射；刷新负责增删改同步，清理负责移除数据源已标记失效的任务，
+ * stopAllTasks 则用于应用关闭时释放调度资源。</p>
  */
 public interface ITaskJobService {
 

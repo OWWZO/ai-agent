@@ -39,6 +39,7 @@ public class ReplayProjector {
         boolean hasLlm = bundle.getLlmInvocations() != null && !bundle.getLlmInvocations().isEmpty();
         boolean hasTool = bundle.getToolInvocations() != null && !bundle.getToolInvocations().isEmpty();
 
+        // 优先使用混合事实恢复真实时间线；只有在某类事实缺失时才使用降级投影，避免重复或错序事件。
         // 优先走混合回放，因为只有它能按 LLM -> tool 的真实时间线恢复折叠任务；缺少一类事实时再降级。
         if (hasLlm && hasTool) {
             events.addAll(projectMixedHistory(bundle, state));
@@ -107,6 +108,7 @@ public class ReplayProjector {
         Map<Long, List<ToolInvocationView>> toolsByLlmInvocationId = groupToolsByLlmInvocationId(bundle.getToolInvocations());
         List<ToolInvocationView> orphanTools = new ArrayList<>();
 
+        // tool 通常通过 llmInvocationId 归属到某一轮模型请求；没有该关联的工具仍需按自身时间顺序补回。
         if (bundle.getToolInvocations() != null) {
             for (ToolInvocationView invocation : bundle.getToolInvocations()) {
                 if (invocation == null) {
@@ -155,6 +157,7 @@ public class ReplayProjector {
                 continue;
             }
 
+            // 先投影 LLM 过程消息，再投影该轮工具；这样前端折叠状态与实时执行顺序保持一致。
             // 对齐 live SSE：同一 LLM 轮次（及整段 ReAct）工具共享 taskId，不按 invocation 拆组。
             // 否则历史每个工具独立 taskId → 前端变成 N 个「单步已完成」平铺，折叠组消失。
             for (ToolInvocationView toolInvocation : linkedTools) {
@@ -282,6 +285,7 @@ public class ReplayProjector {
             return;
         }
 
+        // 某些失败、旧数据或仅有 tool 事实的 run 没有显式 result 事件，使用 run 终态摘要补齐前端结论区。
         Map<String, Object> resultMap = new LinkedHashMap<>();
         SummaryReplayResultResolver.ResolvedSummary resolvedSummary =
                 SummaryReplayResultResolver.resolve(run.getFinalSummaryText(), bundle.getArtifacts());

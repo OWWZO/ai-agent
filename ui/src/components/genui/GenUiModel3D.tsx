@@ -63,6 +63,7 @@ const GenUiModel3D: FC<Props> = memo(
       const host = hostRef.current;
       if (!host || !modelUrl) return;
 
+      // 每个 src/options 组合拥有独立场景；清理阶段必须释放观察器、材质、几何体和 renderer。
       setStatus("loading");
       let disposed = false;
 
@@ -98,6 +99,7 @@ const GenUiModel3D: FC<Props> = memo(
         modelUrl,
         (gltf) => {
           if (disposed) return;
+          // 模型加载后按包围盒居中并重算相机距离，保证不同尺寸的 glb 都能完整入镜。
           modelRoot = gltf.scene;
           if (options.wireframe) {
             modelRoot.traverse((child) => {
@@ -132,6 +134,7 @@ const GenUiModel3D: FC<Props> = memo(
       );
 
       const resize = () => {
+        // 使用宿主容器尺寸而非 window 尺寸，兼容侧边栏展开和响应式布局变化。
         const rect = host.getBoundingClientRect();
         const width = Math.max(Math.floor(rect.width), 1);
         const h = Math.max(Math.floor(rect.height), 1);
@@ -152,6 +155,7 @@ const GenUiModel3D: FC<Props> = memo(
       tick();
 
       return () => {
+        // React effect 重跑或卸载时阻止异步回调继续写状态，并释放 WebGL 资源。
         disposed = true;
         resizeObserver.disconnect();
         controls.dispose();

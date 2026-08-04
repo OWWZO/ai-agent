@@ -1,5 +1,6 @@
 import request from "@/utils/request";
 
+// 对话附件上传契约；返回的稳定资源引用会进入聊天附件和后续工具调用。
 export type UploadedConversationFile = {
   name: string;
   url: string;

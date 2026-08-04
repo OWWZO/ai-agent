@@ -49,6 +49,7 @@ public class WorkspaceReadStateStore {
                 return;
             }
             int loaded = 0;
+            // 只恢复 mtime、读取范围和 hash，不把文件正文写入跨轮状态，避免状态文件变成第二份内容存储。
             for (Map.Entry<String, PersistedEntry> entry : files.entrySet()) {
                 if (entry.getKey() == null || entry.getValue() == null) {
                     continue;
@@ -85,6 +86,7 @@ public class WorkspaceReadStateStore {
                 Files.createDirectories(parent);
             }
             Map<String, PersistedEntry> files = new LinkedHashMap<>();
+            // snapshot 是当前 AgentContext 的只读快照，序列化期间不依赖后续工具调用的瞬时变化。
             for (Map.Entry<String, WorkspaceFileReadState> entry : states.entrySet()) {
                 WorkspaceFileReadState state = entry.getValue();
                 if (state == null || StringUtils.isBlank(entry.getKey())) {
@@ -102,6 +104,7 @@ public class WorkspaceReadStateStore {
             root.put("sessionId", agentContext.getSessionId());
             root.put("updatedAt", System.currentTimeMillis());
             root.put("files", files);
+            // read-state 与工作区同根保存，跟随会话目录生命周期，不进入 Execution Ledger 或 MySQL。
             Files.writeString(storeFile, root.toJSONString(), StandardCharsets.UTF_8);
             log.info("{} persisted workspace read-state entries={} path={}",
                     agentContext.getRequestId(), files.size(), storeFile);

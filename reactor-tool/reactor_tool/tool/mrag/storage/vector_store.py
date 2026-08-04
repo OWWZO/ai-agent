@@ -77,6 +77,7 @@ class VectorStore:
         
         self._initialized = True
 
+        # 单例只固定一次配置和连接工厂；后续调用即使传入不同 store_type，也必须复用同一索引视图。
         logger.debug(f"VectorStore initialized with type: {self.store_type}")
 
     @property
@@ -148,6 +149,7 @@ class VectorStore:
 
     def _ensure_collection_ready(self, store, collection_name: str):
         """首次获取集合包装器时，顺手保证底层 collection 已就绪。"""
+        # 集合初始化绑定到懒加载入口，保证文本、图片、页面三类索引只有被实际使用时才创建。
         try:
             store.create_collection()
             logger.info(f"向量集合已就绪: {collection_name}")
@@ -438,6 +440,7 @@ class VectorStore:
             )
 
         # 使用线程池并发执行三个搜索任务
+        # 三路检索彼此独立，但结果槽位固定为 text/image/page，不能按完成顺序拼接。
         with ThreadPoolExecutor(max_workers=3) as executor:
             # 提交所有搜索任务
             text_future = executor.submit(search_text)

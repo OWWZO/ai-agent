@@ -37,6 +37,7 @@ export type ToolHeaderProps = {
 };
 
 const getStatusBadge = (status: ToolUIPart["state"]) => {
+  // AI SDK 的工具状态直接映射为用户可读标签和图标，保持中间态与终态可区分。
   const labels: Record<ToolUIPart["state"], string> = {
     "input-streaming": "Pending",
     "input-available": "Running",
@@ -128,12 +129,14 @@ export const ToolOutput = ({
   errorText,
   ...props
 }: ToolOutputProps) => {
+  // 工具尚未产生结果时不渲染空面板，避免流式过程出现无内容的视觉占位。
   if (!(output || errorText)) {
     return null;
   }
 
   let Output = <div>{output as ReactNode}</div>;
 
+  // 结构化结果走 JSON 代码块，ReactNode 和字符串分别保留原有渲染语义。
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
       <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />

@@ -6,10 +6,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * HTML preview hardening + LeAgent-aligned host shell for canvas_publish.
- * <p>
- * Publish stores raw HTML (scripts kept). Preview can strip JS when allowJs=false.
- * Bare / utility-class pages get Tailwind + Inter + wa-* helpers injected.
+ * {@code canvas_publish} 的 HTML 预览安全处理和宿主壳注入器。
+ *
+ * <p>发布链路保存原始 HTML，预览链路才根据 {@code allowJs} 清除脚本或增加 CSP；
+ * 对没有完整样式的片段再补充 Tailwind、字体和宿主工具类。这样既不改变用户产物，
+ * 又能让 iframe 预览具有稳定的基础布局。</p>
  */
 public final class HtmlPreviewSanitizer {
 
@@ -30,7 +31,7 @@ public final class HtmlPreviewSanitizer {
             "(?i)\\brel\\s*=\\s*(['\"]?)stylesheet\\1");
     private static final Pattern HREF_ATTR = Pattern.compile(
             "(?ix)\\bhref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))");
-    /** Real Three.js script loads only — not prose mentioning Three.js. */
+    /** 只识别真实的 Three.js 脚本加载，不把普通文案中的 Three.js 当成依赖。 */
     private static final Pattern THREE_SCRIPT_HINT = Pattern.compile(
             "(?is)(?:<script\\b[^>]*\\bsrc\\s*=\\s*['\"][^'\"]*three(?:\\.min)?\\.js"
                     + "|/npm/three@"
@@ -121,8 +122,10 @@ public final class HtmlPreviewSanitizer {
         if (StringUtils.isBlank(html)) {
             return html;
         }
+        // 只有预览副本参与清洗；allowJs=true 时保留脚本，交由 iframe CSP 控制运行范围。
         String body = allowJs ? html : sanitize(html);
         String out;
+        // 完整文档尽量原地插入资源，片段则包成可独立预览的 HTML 文档。
         if (containsIgnoreCase(body, "<html")) {
             out = injectPreviewAssetsIntoFullDocument(body);
         } else {
@@ -140,6 +143,7 @@ public final class HtmlPreviewSanitizer {
         if (StringUtils.isBlank(html)) {
             return html;
         }
+        // 按风险从高到低移除脚本、事件属性、javascript URL 和自动刷新。
         String out = html;
         out = SCRIPT_TAG.matcher(out).replaceAll("");
         out = EVENT_HANDLER.matcher(out).replaceAll("");
@@ -163,6 +167,7 @@ public final class HtmlPreviewSanitizer {
         if (containsIgnoreCase(html, "content-security-policy")) {
             return html;
         }
+        // 不覆盖作者已有 CSP；这里只为宿主生成的预览副本补最小策略。
         String scriptSrc = allowJs
                 ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob: data:;"
                 : "script-src 'none';";
@@ -200,6 +205,7 @@ public final class HtmlPreviewSanitizer {
     }
 
     public static boolean shouldInjectPreviewShell(String html) {
+        // 已经自带 Tailwind 或实质性 CSS 的页面由作者负责样式，避免宿主重置破坏布局。
         if (documentProvidesTailwind(html)) {
             return false;
         }
@@ -223,8 +229,7 @@ public final class HtmlPreviewSanitizer {
             return html;
         }
         if (!shouldInjectPreviewShell(html)) {
-            // Still inject THREE when shell is skipped but page doesn't load it
-            // and looks like a bare WebGL page that may need the global.
+            // 即使跳过宿主壳，疑似裸 WebGL 页面仍补 THREE 全局依赖，但不覆盖作者自己的 CSS。
             if (!htmlAlreadyLoadsThree(html) && shouldInjectThreeOnly(html)) {
                 return insertAssetsInDocumentHead(html, THREE_JS_BOOTSTRAP);
             }
@@ -256,6 +261,7 @@ public final class HtmlPreviewSanitizer {
         if (html != null && html.contains("__reactorPreviewIframeBootstrap")) {
             return html;
         }
+        // 视口同步脚本只服务预览 iframe 的尺寸，不参与用户页面的业务逻辑。
         int bodyClose = indexOfIgnoreCase(html, "</body");
         if (bodyClose >= 0) {
             return html.substring(0, bodyClose) + PREVIEW_IFRAME_BOOTSTRAP + html.substring(bodyClose);
@@ -291,6 +297,7 @@ public final class HtmlPreviewSanitizer {
         if (html == null) {
             return 0;
         }
+        // 用去空白后的字符数区分真正的作者 CSS 与几行占位样式。
         int total = 0;
         Matcher m = STYLE_BLOCK.matcher(html);
         while (m.find()) {
@@ -304,6 +311,7 @@ public final class HtmlPreviewSanitizer {
         if (html == null) {
             return false;
         }
+        // 字体链接属于宿主可兼容资源，不应单独阻止基础壳注入；其它 stylesheet 视为作者样式。
         Matcher m = LINK_TAG.matcher(html);
         while (m.find()) {
             String tag = m.group(0);

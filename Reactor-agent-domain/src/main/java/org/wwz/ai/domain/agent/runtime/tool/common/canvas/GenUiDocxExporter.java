@@ -20,6 +20,8 @@ public final class GenUiDocxExporter {
 
     @SuppressWarnings("unchecked")
     public static byte[] export(Map<String, Object> normalizedTree, String mode) {
+        // 导出器只接收 GenUI 校验/归一化后的树，先把节点压平成段落，再封装成最小 OOXML
+        // zip 包；复杂交互组件降级为可阅读文本，保证导出不依赖浏览器运行时。
         List<String> paragraphs = new ArrayList<>();
         Object rootObj = normalizedTree == null ? null : normalizedTree.get("root");
         if (!(rootObj instanceof Map<?, ?> rootMap)) {
@@ -28,6 +30,8 @@ public final class GenUiDocxExporter {
             Map<String, Object> root = cast(rootMap);
             String kind = str(root.get("kind"));
             if ("deck".equalsIgnoreCase(mode) && "SlideDeck".equals(kind)) {
+                // deck 模式按 Slide 分页；没有标准 Slide 子节点时保留直接 children，兼容
+                // 历史树结构而不丢失内容。
                 List<Map<String, Object>> slides = childrenOfKind(root, "Slide");
                 if (slides.isEmpty()) {
                     slides = children(root);
@@ -86,6 +90,8 @@ public final class GenUiDocxExporter {
         String kind = str(node.get("kind"));
         Map<String, Object> props = props(node);
         List<Map<String, Object>> children = children(node);
+        // 节点渲染采用“当前节点摘要 + 递归子节点”的规则；未识别 kind 也继续遍历 children，
+        // 让新组件至少保留文本内容，而不是整棵子树静默丢失。
         switch (kind) {
             case "Heading" -> out.add(p(primaryText(props), true));
             case "Text", "Markdown", "Callout", "Alert", "AlertCard" -> out.add(p(primaryText(props)));
@@ -182,6 +188,8 @@ public final class GenUiDocxExporter {
     }
 
     private static void put(ZipOutputStream zos, String name, String content) throws Exception {
+        // DOCX 是 zip 容器，所有 XML 都按 UTF-8 写入；这里集中创建 entry，避免遗漏关闭
+        // entry 导致生成的文件能下载但 Office 无法打开。
         zos.putNextEntry(new ZipEntry(name));
         zos.write(content.getBytes(StandardCharsets.UTF_8));
         zos.closeEntry();

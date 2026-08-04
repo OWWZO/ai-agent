@@ -3,6 +3,13 @@ import { jumpUrl, showMessage } from './utils';
 import { getDeviceId } from '@/services/agentConversation';
 import { resolveServiceBaseUrl } from './origin';
 
+/**
+ * 前端普通 HTTP 请求客户端。
+ *
+ * <p>拦截器统一注入设备标识、解包后端两种历史成功响应格式，并把认证失败、业务
+ * 错误和网络错误转换为页面提示。SSE 请求不经过这里，而由 {@code querySSE} 单独
+ * 维护长连接生命周期。</p>
+ */
 // 创建axios实例
 const request: AxiosInstance = axios.create({
   baseURL: resolveServiceBaseUrl(SERVICE_BASE_URL),

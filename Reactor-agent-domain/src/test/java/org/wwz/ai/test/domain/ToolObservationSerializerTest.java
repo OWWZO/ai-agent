@@ -42,6 +42,17 @@ public class ToolObservationSerializerTest {
     }
 
     @Test
+    public void failurePayloadWithoutDetailKeepsStructuredError() {
+        ToolResultPayload payload = ToolResultPayload.failureFrom("network down", null);
+
+        Assert.assertTrue(payload.getLlmData() instanceof Map<?, ?>);
+        String serialized = ToolObservationSerializer.serializePayload(payload);
+        Assert.assertTrue(serialized.contains("\"tool_ok\":false"));
+        Assert.assertTrue(serialized.contains("tool_error"));
+        Assert.assertTrue(serialized.contains("network down"));
+    }
+
+    @Test
     public void failureWithoutDetailUsesErrorPrefix() {
         Assert.assertEquals("Error: network down", ToolObservationSerializer.serializeFailure("network down", null));
     }

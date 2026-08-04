@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Dataprep service: LeAgent-aligned tabular data tools."""
+"""Dataprep service: LeAgent-aligned tabular data tools.
+
+中文说明：service 负责请求上下文、路径/artifact 归一化、统一异常协议和 spill 上传，
+具体数据处理仍委托给各个 SyncTool。
+"""
 from __future__ import annotations
 
 import json
@@ -16,6 +20,7 @@ _MAX_JSON_CHARS = 200_000
 
 
 def _ctx(request_id: str, workspace_root: str | None = None) -> ToolContext:
+    # 所有 dataprep 工具共享按请求隔离的临时目录，spill 文件和上下文元数据因此使用同一根路径。
     temp = resolve_output_path(
         "dataprep_spill",
         request_id=request_id,
@@ -69,6 +74,7 @@ def _fail(message: str) -> dict[str, Any]:
 
 
 def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) -> Any:
+    """把工作区相对路径和 file URI 归一化，远端 artifact URI 保持原样。"""
     if isinstance(value, str) and value.strip():
         text = value.strip()
         if text.startswith("minio://") or text.startswith("memory://"):
@@ -102,6 +108,8 @@ def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) 
 
 
 def _prepare_params(params: dict[str, Any], request_id: str) -> tuple[dict[str, Any], ToolContext]:
+    """剥离运行时内部参数，并统一处理各工具约定的单文件、列表和表映射路径。"""
+    # 先剥离 Java/HTTP 运行时字段，再把所有支持的输入位置归一化为本地路径或远端 URI。
     workspace_root = _workspace(params)
     clean = _strip_internal(params)
     # common single-table path
@@ -129,6 +137,8 @@ def _prepare_params(params: dict[str, Any], request_id: str) -> tuple[dict[str, 
 
 async def _maybe_upload_spill(request_id: str, data: dict[str, Any]) -> dict[str, Any]:
     """If result spilled to a local file:// artifact, upload for Java clients."""
+    # 本地 spill 只适合 Python 进程内部传递；上传后补充 fileInfo，Java 侧才能通过稳定资源引用读取。
+    # Python 本地 spill 不能直接作为 Java 稳定资源引用，因此成功时提升为 fileInfo。
     artifact = data.get("artifact") if isinstance(data, dict) else None
     if not isinstance(artifact, dict):
         return data
@@ -149,6 +159,8 @@ async def _maybe_upload_spill(request_id: str, data: dict[str, Any]) -> dict[str
 
 
 def _run_tool(tool: Any, params: dict[str, Any], request_id: str) -> dict[str, Any]:
+    # 工具执行统一收敛成 success/message/data 三段式结果，避免每个 runner 重复处理异常协议。
+    # 所有工具共享同一异常到 success/message/data 的转换，避免路由层出现协议分叉。
     clean, context = _prepare_params(params, request_id)
     try:
         result = tool.execute_sync(clean, context)
@@ -161,6 +173,7 @@ def _run_tool(tool: Any, params: dict[str, Any], request_id: str) -> dict[str, A
 async def run_data_aggregate(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
     from reactor_tool.tool.dataprep.data_aggregate import DataAggregateTool
 
+    # 聚合、清洗、合并和变换可能产生 spill 文件，因此执行后统一做上传和 fileInfo 提升。
     result = _run_tool(DataAggregateTool(), params, request_id)
     if result.get("success") and isinstance(result.get("data"), dict):
         result["data"] = await _maybe_upload_spill(request_id, result["data"])

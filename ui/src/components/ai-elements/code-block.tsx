@@ -55,6 +55,7 @@ export async function highlightCode(
   language: BundledLanguage,
   showLineNumbers = false
 ) {
+  // 同时生成浅色和深色主题，调用方可按主题切换而无需重复执行 Shiki。
   const transformers: ShikiTransformer[] = showLineNumbers
     ? [lineNumberTransformer]
     : [];
@@ -82,9 +83,11 @@ export const CodeBlock = ({
   ...props
 }: CodeBlockProps) => {
   const [html, setHtml] = useState<string>("");
+  // 异步高亮完成后只允许已挂载实例更新状态，避免卸载后的 Promise 回调写入旧组件。
   const mounted = useRef(false);
 
   useEffect(() => {
+    // code/language 变化会重新高亮；清理函数撤销本轮结果的状态写入资格。
     highlightCode(code, language, showLineNumbers).then(([light]) => {
       if (!mounted.current) {
         setHtml(light);
@@ -134,12 +137,14 @@ export const CodeBlockCopyButton = ({
   const { code } = useContext(CodeBlockContext);
 
   const copyToClipboard = async () => {
+    // 剪贴板不可用时通过 onError 交给外层提示，不在组件内部伪造复制成功状态。
     if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
       onError?.(new Error("Clipboard API not available"));
       return;
     }
 
     try {
+      // 只有写入成功才切换图标，并在短暂反馈后恢复复制按钮状态。
       await navigator.clipboard.writeText(code);
       setIsCopied(true);
       onCopy?.();

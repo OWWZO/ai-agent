@@ -37,6 +37,7 @@ class BaseRetriever:
         """对多条 query 并发做文本/稀疏/图页检索，结果按 query 维度对齐。"""
         tasks = []
         res = [[] for _ in range(len(queries))]
+        # 各召回器独立并发执行，最终按 query 下标合并，避免某一路结果覆盖其他召回源。
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             # 稠密向量召回
             task = executor.submit(self._text_retriever.vector_search, kb_id, queries,
@@ -55,6 +56,7 @@ class BaseRetriever:
                 tasks.append(task)
 
             for task in concurrent.futures.as_completed(tasks):
+                # as_completed 只改变返回顺序，current_res 自身仍按原 query 顺序排列，因此这里按下标归并。
                 current_res = task.result()
                 if current_res:
                     for i, query in enumerate(queries):
@@ -75,6 +77,7 @@ class BaseRetriever:
         }
 
         def make_query(query):
+            # LightRAG 是可选外部服务；单条 query 失败时返回空结果，不影响同批其他 query。
             data["query"] = query
             try:
                 response = requests.post(url, json=data, timeout=300)

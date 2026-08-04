@@ -8,8 +8,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Full GenUI component catalog (aligned with LeAgent kinds).
- * Validation allows all catalog kinds; frontend renders known ones and falls back for the rest.
+ * GenUI 组件目录及其属性提示。
+ *
+ * <p>目录是模型的能力发现契约，也是 {@link GenUiSchema} 的允许 kind 白名单。
+ * 后端只验证目录级别的种类，具体组件渲染和未知组件的 fallback 由前端承担。</p>
  */
 public final class GenUiCatalog {
 
@@ -22,6 +24,7 @@ public final class GenUiCatalog {
     }
 
     public static List<Map<String, Object>> listCatalog() {
+        // 返回不可变列表，防止单次工具调用修改全局组件能力目录。
         return CATALOG;
     }
 
@@ -31,7 +34,7 @@ public final class GenUiCatalog {
 
     private static List<Map<String, Object>> buildCatalog() {
         List<Map<String, Object>> list = new ArrayList<>();
-        // Layout
+        // 按布局、排版、数据展示、卡片、交互和嵌入能力分组，保持提示目录可读且便于扩展。
         list.add(entry("Stack", "Vertical flex stack", Map.of("gap", "number", "align", "start|center|end|stretch", "padding", "number")));
         list.add(entry("Grid", "CSS grid", Map.of("columns", "1-6", "gap", "number", "minChildWidth", "string")));
         list.add(entry("Row", "Horizontal flex row", Map.of("gap", "number", "justify", "start|center|end|between|around")));

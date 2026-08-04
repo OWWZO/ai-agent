@@ -151,6 +151,8 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
+        // think 只负责产生“下一步要执行什么”的决策事实，不直接执行工具。
+        // 计划更新关闭时跳过 LLM，改由本地计划状态推进，仍遵循 think -> act 生命周期。
         // system 固定；productFiles/nextStep 不注入（prompt cache）
 
         // 2. 特殊场景：关闭计划动态更新时，直接执行计划下一步（不调用大模型思考）
@@ -240,6 +242,8 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public String act() {
+        // act 消费 think 阶段保存的 toolCalls：执行工具并收集结果；有计划时再
+        // 推进计划状态，返回值由父类循环作为下一轮输入或结束标志。
         // 1. 特殊场景：关闭计划动态更新时，直接返回下一步任务
         if (isColseUpdate) {
             if (Objects.nonNull(planningTool.getPlan())) {
@@ -290,6 +294,8 @@ public class PlanningAgent extends ReActAgent {
      * @return 下一步任务标识："finish"（完成）/ 当前步骤字符串 / 空字符串
      */
     private String getNextTask() {
+        // 计划推进是一个状态机：先判断全量完成，再处理当前步骤，最后把计划
+        // 快照和 task 事件分别发送给前端，返回 finish/当前步骤/空值。
         if (planningTool.getPlan() == null) {
             throw new IllegalStateException("planning tool returned without a plan");
         }
@@ -334,6 +340,8 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public String run(String request) {
+        // run 只负责在首次进入时补齐规划提示词，实际 think -> act 循环仍交给父类，
+        // 避免子类重复实现统一停止条件。
         // 计划未初始化时，拼接计划前置提示词（引导大模型生成合理计划）
         if (Objects.isNull(planningTool.getPlan())) {
             ReactorConfig reactorConfig = requireRuntimeDependencies(context).requireReactorConfig();
@@ -405,6 +413,8 @@ public class PlanningAgent extends ReActAgent {
      * 避免历史回放继续只看到首轮 create 快照。
      */
     private void recordCompatPlanningAdvance() {
+        // 关闭动态更新的兼容路径没有真实 planning tool call，因此补写最小账本事实，
+        // 保证历史回放仍能看到计划推进边界。
         PlanningToolOutput output = planningTool.advanceCompatPlanAndCapture();
         if (output == null
                 || context == null

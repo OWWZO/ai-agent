@@ -1,5 +1,7 @@
 """Structured, throttled progress reporting for long-running tools.
 
+中文说明：进度回调是旁路观测能力，任何回调异常都不能影响工具主结果。
+
 :class:`ProgressReporter` wraps the optional ``on_progress`` callback
 that :class:`~leagent.tools.executor.ToolExecutor` passes into
 :meth:`BaseTool.run`. Tools call :meth:`report` after each chunk; the
@@ -95,6 +97,7 @@ class ProgressReporter:
         if processed is not None:
             self._processed = processed
         now = time.monotonic()
+        # 节流只合并 UI/日志事件，不改变 processed 计数；finish 始终强制发送末事件。
         if not force and self._last_emit and \
                 (now - self._last_emit) * 1000 < self._throttle_ms:
             return

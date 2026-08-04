@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Plan Mode 会话状态（对标 cc-haha toolPermissionContext.mode / prePlanMode）。
+ * Plan Mode 会话状态。
  */
 @Data
 @Builder

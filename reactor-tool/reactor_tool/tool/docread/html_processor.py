@@ -43,6 +43,7 @@ class _SkipScriptStyleMixin:
 
     def _ss_start(self, tag: str) -> None:
         if tag in ("script", "style", "noscript"):
+            # 用深度而不是布尔值处理嵌套标签，确保脚本内容不会误混入正文或链接文本。
             self._skip_depth += 1
 
     def _ss_end(self, tag: str) -> None:
@@ -108,6 +109,7 @@ class _LinksParser(HTMLParser, _SkipScriptStyleMixin):
     def handle_endtag(self, tag: str) -> None:
         t = tag.lower()
         if t == "a" and self._in_a and self._a_depth == 1:
+            # 只在最外层锚点闭合时落一条记录，避免嵌套 HTML 标签拆散链接文本。
             text = _normalize_ws(unescape("".join(self._text_parts)))
             self.links.append(
                 {
@@ -151,6 +153,7 @@ class _TablesParser(HTMLParser, _SkipScriptStyleMixin):
         if self._skip_depth:
             return
         if t == "table":
+            # 每层 table 使用独立状态，嵌套表格结束后再回到父表格上下文。
             self._stack.append(_TableState())
             return
         if not self._stack:
@@ -497,6 +500,7 @@ def _rows_to_md_table(rows: list[list[str]]) -> str:
 
 
 def _html_to_markdown(html: str) -> str:
+    # Markdown 转换复用同一个流式 parser，避免先生成中间 DOM 或重复解析 HTML。
     p1 = _MdTableAwareParser()
     p1.feed(html)
     p1.close()
@@ -564,6 +568,7 @@ class HTMLProcessorTool(SyncTool):
         return "Processing HTML"
 
     def execute_sync(self, params: dict[str, Any], context: ToolContext) -> dict[str, Any]:
+        # 兼容历史短操作名后再统一分发，外部协议变化不会扩散到各个解析器。
         op = {
             "links": "extract_links",
             "tables": "extract_tables",
@@ -619,6 +624,7 @@ class HTMLProcessorTool(SyncTool):
         p.close()
         tables = p.tables
         if table_index is not None:
+            # 先完整解析再按索引裁剪，保证索引语义与返回的 table_count 一致。
             if table_index < 0 or table_index >= len(tables):
                 raise IndexError(f"table_index {table_index} out of range (0..{len(tables) - 1})")
             tables = [tables[table_index]]

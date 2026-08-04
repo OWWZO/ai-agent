@@ -26,6 +26,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+/**
+ * 历史 HTTP 调用工具。
+ *
+ * <p>这里同时保留三类兼容契约：失败返回 {@code null} 的旧同步调用、异常传播的
+ * 同步调用，以及按行转发 LLM 流的回调调用。新业务应优先使用明确的远程端口，调用
+ * 本类时必须根据具体方法区分空响应、网络异常和流式终态。</p>
+ */
 @Slf4j
 public class HttpUtils {
 
@@ -52,6 +59,8 @@ public class HttpUtils {
     public static String postReq(String url, Map<String, String> headers, String params, int timeout) {
 
         // log.info("发送http请求：url:{}, timeout:{}, headers:{}, body:{}", url, timeout, JSON.toJSONString(headers), params);
+        // 这是兼容旧调用方的“失败返回 null”接口；新链路应优先使用带明确异常/超时语义的
+        // RemoteHttpPort，避免把网络失败和合法空响应混为一谈。
         HttpPost httpPost = new HttpPost(url);
         RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(timeout).setConnectionRequestTimeout(timeout).setSocketTimeout(timeout).build();
         httpPost.setConfig(requestConfig);
@@ -80,6 +89,8 @@ public class HttpUtils {
     }
 
     public static String httpReq(String url, String type, Map<String, String> headers, String body, int timeout) {
+        // 通用请求适配器只支持当前调用方需要的 HTTP 动词；body 仅对可承载实体的请求设置，
+        // 响应统一按字符串交还给上层解析。
         HttpRequestBase httpReq = getHttpRequest(type, url);
         RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(timeout).setConnectionRequestTimeout(timeout).setSocketTimeout(timeout).build();
         httpReq.setConfig(requestConfig);
@@ -106,6 +117,8 @@ public class HttpUtils {
     }
 
     public static String httpReqThrowException(String url, String type, Map<String, String> headers, String body, int timeout) {
+        // 与 httpReq 的兼容返回值不同，本方法把空响应和请求异常转成 RuntimeException，供
+        // 必须区分失败的同步调用方使用；响应仍在 finally 中关闭。
         log.debug("发送http请求：url:{}, type:{}, headers:{}, body:{}", url, type, JSON.toJSONString(headers), body);
         HttpRequestBase httpReq = getHttpRequest(type, url);
         RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(timeout).setConnectionRequestTimeout(timeout).setSocketTimeout(timeout).build();
@@ -199,7 +212,8 @@ public class HttpUtils {
             int[] allowPorts = new int[]{80, 443};
             boolean protocolCheck = false;
 
-            // 首先进行协议校验，若协议校验不通过，SSRF校验不通过
+            // 首先进行协议校验，若协议校验不通过，SSRF校验不通过；当前方法只做协议/端口
+            // 粗筛，域名/IP 解析和内网地址策略仍需由更上层的 URL 校验链补齐。
             String protocol = urlObj.getProtocol();
             for (String item : allowProtocols) {
                 if (protocol.equals(item)) {
@@ -230,6 +244,8 @@ public class HttpUtils {
     }
 
     public static void llmPost(String url, Map<String, String> header, String body, String bodyCharset, int timeOut, Consumer<String> consumer) {
+        // LLM 流式响应按行转发给 consumer，并用 completed:/error: 前缀保留终态；它不负责
+        // 解析 SSE JSON，调用方仍需处理事件边界和 [DONE] 语义。
         HttpPost httpPost = new HttpPost(url);
         RequestConfig requestConfig = RequestConfig.custom().setConnectTimeout(timeOut).setConnectionRequestTimeout(timeOut).setSocketTimeout(timeOut).build();
         httpPost.setConfig(requestConfig);
@@ -261,5 +277,3 @@ public class HttpUtils {
         }
     }
 }
-
-

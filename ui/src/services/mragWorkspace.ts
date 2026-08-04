@@ -234,6 +234,8 @@ async function requestWrappedData<T>(
   path: string,
   body: Record<string, unknown>
 ): Promise<T> {
+  // reactor-tool 的管理接口统一返回 { code, data }，但错误响应可能是 JSON 或纯文本；
+  // 这里集中解析并转换异常，页面层只处理 MRagWorkspaceRequestError。
   const response = await fetch(`${normalizeToolBaseUrl(toolBaseUrl)}${path}`, {
     method: "POST",
     headers: {
@@ -424,6 +426,8 @@ export function resolveWorkspaceDownloadUrl(fileUrl: string): string {
 }
 
 export function normalizeKnowledgeBaseFile(rawFile: RawKnowledgeBaseFile): KnowledgeBaseFile {
+  // 后端的 source_type、task_status 和 URL 字段存在历史兼容形态；归一化后页面只依赖
+  // sourceUrl/previewUrl/downloadUrl 与统一状态，不在组件内重复判断下载或预览路径。
   const sourceType = inferSourceType(rawFile);
   const sourceUrl = normalizeFileUrlForBrowser(String(rawFile.file_url || ""));
   const taskStatus = toRecord(rawFile.task_status);
@@ -698,6 +702,8 @@ export async function ingestLocalFilesToKnowledgeBase(
   kbId: string,
   files: File[]
 ): Promise<UploadDocumentResult[]> {
+  // 上传与入库是两个阶段：只有全部文件上传成功后才提交 add_files，避免知识库留下
+  // 部分文件已登记、部分文件仍未上传的隐式状态。
   const uploads = await Promise.all(files.map((file) => uploadDocument(toolBaseUrl, file)));
   await addUploadedFilesToKnowledgeBase(toolBaseUrl, {
     kbId,
@@ -713,6 +719,8 @@ export async function streamMragQuery(
   let receivedDone = false;
   let streamClosed = false;
 
+  // fetchEventSource 只负责连接与重连；这里把 heartbeat、DONE、JSON chunk 和异常关闭
+  // 转换成 UI 可消费的事件。连接提前关闭但没有 DONE 时必须抛错，避免页面显示“正常完成”。
   await fetchEventSource(url, {
     method: "POST",
     headers: {

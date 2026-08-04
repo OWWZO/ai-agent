@@ -25,10 +25,12 @@ const JsonViewerInner = memo(({ data, className }: JsonViewerProps) => {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
+    // 结构化内容复制使用浏览器原生 API；不支持时保持当前状态，避免误报成功。
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
     try {
       await navigator.clipboard.writeText(raw);
       setCopied(true);
+      // 复制反馈是临时状态，不应影响 JSON 数据本身的 memo 化。
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       /* ignore */

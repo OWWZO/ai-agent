@@ -6,7 +6,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * document_generate — PDF / DOCX / HTML / Markdown (LeAgent aligned).
+ * document_generate 工具契约。
+ *
+ * 该适配器把 Markdown、结构化 blocks 以及输出格式发布给共享文档生成服务；
+ * 复杂的图表、分页、字体和文件落盘逻辑不在 domain 层重复实现。
  */
 public class DocumentGenerateTool extends AbstractDocGenTool {
 
@@ -37,6 +40,7 @@ public class DocumentGenerateTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // output_path 是唯一必填项，其余字段用于覆盖格式推断和文档排版选项。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. report.pdf / memo.docx. Extension decides format if format omitted."));
         properties.put("format", stringProp("Output format: pdf | docx | html | markdown. Defaults from output_path extension, else pdf."));

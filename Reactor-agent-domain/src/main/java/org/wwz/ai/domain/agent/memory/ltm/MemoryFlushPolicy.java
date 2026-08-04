@@ -42,9 +42,7 @@ public final class MemoryFlushPolicy {
         }
         List<Message> out = new ArrayList<>(messages.size() + 1);
         out.add(Message.userMessage(
-                FLUSH_NOTE_PREFIX + " Context is about to be compacted. "
-                        + "If any durable user preferences, identity facts, or environment conventions "
-                        + "are not yet saved, call the memory tool (target=user|curated) now before they are lost.",
+                FLUSH_NOTE_PREFIX + " " + LtmPromptGuidance.FLUSH_INLINE_NUDGE,
                 null));
         out.addAll(messages);
         return out;
@@ -56,8 +54,7 @@ public final class MemoryFlushPolicy {
         }
         List<Message> out = new ArrayList<>(compacted.size() + 1);
         out.add(Message.userMessage(
-                FLUSH_NOTE_PREFIX + " Older turns were compacted into a shorter working memory. "
-                        + "Use memory tool for durable facts; use session_search for details still in the execution ledger.",
+                FLUSH_NOTE_PREFIX + " " + LtmPromptGuidance.POST_COMPACT_REMINDER,
                 null));
         out.addAll(compacted);
         return out;

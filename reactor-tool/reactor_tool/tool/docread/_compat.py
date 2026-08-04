@@ -25,6 +25,7 @@ class ToolResult:
     produced_files: list[Any] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        # 兼容层只暴露稳定的基础协议，内部 produced_files 等扩展字段不改变旧消费者结构。
         return {
             "success": self.success,
             "data": self.data,
@@ -76,6 +77,7 @@ class SyncTool:
     output_path_params: tuple[str, ...] = ()
 
     def require_param(self, params: dict[str, Any], key: str) -> Any:
+        # 缺参统一抛不可重试错误，避免执行器对明显的调用契约错误重复调度。
         if key not in params or params[key] is None:
             raise NonRetryableToolError(
                 f"Missing required parameter '{key}' for tool '{getattr(self, 'name', 'tool')}'"
@@ -90,6 +92,7 @@ class BaseTool(SyncTool):
     """Async-capable base; ports may implement execute() or execute_sync()."""
 
     async def execute(self, params: dict[str, Any], context: ToolContext) -> Any:
+        # 同步工具通过线程/异步执行器复用同一实现，子类只需覆盖 execute_sync。
         return self.execute_sync(params, context)
 
 

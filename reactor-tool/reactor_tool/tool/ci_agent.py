@@ -257,6 +257,8 @@ class CIAgent(CodeAgent):
         Perform one step in the ReAct framework: the agent thinks, acts, and observes the result.
         Returns None if the step is not final.
         """
+        # 一个 step 的边界是“读取历史 -> 流式生成 -> 解析代码 -> 校验并执行 -> 形成 observation -> 判定终答”。
+        # 任何阶段失败都必须进入 AgentGeneration/Parsing/ExecutionError，不能伪装成正常终答。
         memory_messages = self.write_memory_to_messages()
 
         self.input_messages = memory_messages.copy()
@@ -312,6 +314,7 @@ class CIAgent(CodeAgent):
                 if stream_rendered:
                     self.logger.console.print()
             chat_message = agglomerate_stream_deltas(chat_message_stream_deltas)
+            # 只有聚合后的完整消息才写回 memory，避免把半截 token 当成下一轮上下文。
             memory_step.model_output_message = chat_message
             output_text = chat_message.content
             memory_step.model_output_message = chat_message
@@ -340,6 +343,7 @@ class CIAgent(CodeAgent):
 
         # Parse
         try:
+            # 解析层只负责把模型输出转换为可执行代码；真正的路径权限仍由 before_execute 和运行时 guard 双重承担。
             code_action = fix_final_answer_code(parse_code_blobs(output_text))
         except Exception as e:
             error_msg = (
@@ -372,6 +376,7 @@ class CIAgent(CodeAgent):
 
         unsafe_issues = _scan_unsafe_code(code_action)
         if unsafe_issues:
+            # 静态 AST 检查尽早拒绝高风险 import/动态执行，减少代码进入子进程后的攻击面。
             raise AgentExecutionError(
                 "Unsafe code blocked: "
                 + ", ".join(unsafe_issues)
@@ -380,6 +385,7 @@ class CIAgent(CodeAgent):
             )
 
         try:
+            # 优先使用持久化沙箱以保留变量和产物快照；无策略时回退到 smolagents 原生解释器。
             if self.sandbox_executor is not None:
                 sandbox_result = self.sandbox_executor.execute(code_action)
                 execution_logs = sandbox_result.stdout
@@ -439,6 +445,7 @@ class CIAgent(CodeAgent):
 
         memory_step.observations = observation
 
+        # FinalAnswerCheck 基于执行日志和当前 step 判断是否可以结束，工具执行成功本身不等于回答已经完成。
         finalObj = FinalAnswerCheck(
             input_messages=self.input_messages,
             execution_logs=execution_logs,

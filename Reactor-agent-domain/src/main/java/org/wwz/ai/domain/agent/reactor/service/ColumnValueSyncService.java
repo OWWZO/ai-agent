@@ -69,6 +69,7 @@ public class ColumnValueSyncService {
     }
 
     public String getTableName(ChatModelInfo modelInfo) {
+        // table 模型直接引用表，sql 模型包装为派生表；统一别名后字段值查询可以复用同一 SQL 模板。
         if ("table".equalsIgnoreCase(modelInfo.getType())) {
             return modelInfo.getContent();
         } else if ("sql".equalsIgnoreCase(modelInfo.getType())) {
@@ -95,6 +96,7 @@ public class ColumnValueSyncService {
             return;
         }
         String tableName = getTableName(modelInfo);
+        // 只同步非空去重值并限制 10000 条，ES 仅承担列值召回候选，不作为业务数据的完整副本。
         String valueSql = String.format("select %s as `value` FROM %s WHERE %s IS NOT NULL GROUP BY %s Limit  10000", column.getColumnId(), tableName, column.getColumnId(), column.getColumnId());
         DbConfig dbConfig = dataAgentConfig.getDbConfig();
         QueryResult queryResult = dataQueryExecutionPort.query(dbConfig, valueSql);

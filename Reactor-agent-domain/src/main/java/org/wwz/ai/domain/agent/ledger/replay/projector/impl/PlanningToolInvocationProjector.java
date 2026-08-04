@@ -45,6 +45,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
         }
         rememberPlan(state, plan);
 
+        // 一个 planning invocation 先投影 plan，再按当前步骤拆成 task；task 使用新的 taskId，避免覆盖 plan 事件。
         List<ProjectedReplayEvent> events = new ArrayList<>();
         events.add(ProjectedReplayEvent.builder()
                 .taskId(state.getTaskId())
@@ -60,6 +61,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
         }
 
         String[] currentSteps = plan.getCurrentStep().split("<sep>");
+        // currentStep 可能包含并行/组合步骤，逐段生成任务事件并沿用同一 plannerRoundId 方便前端归组。
         for (String rawStep : currentSteps) {
             if (StringUtils.isBlank(rawStep)) {
                 continue;
@@ -96,6 +98,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
 
     private Plan resolveProjectedPlan(EventResult state, ToolInvocationView invocation) {
         if (invocation != null && invocation.getStructuredOutput() instanceof PlanningToolOutput output) {
+            // 新账本优先使用持久化 afterPlan，避免回放时重新执行生命周期逻辑产生不同结果。
             Plan afterPlan = output.getAfterPlan() == null ? null : output.getAfterPlan().copy();
             if (afterPlan == null) {
                 return null;
@@ -106,6 +109,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
             return afterPlan;
         }
         Map<String, Object> input = readMap(invocation == null ? null : invocation.getInputJson());
+        // 旧账本没有结构化输出时，基于 state 中的上一版计划应用命令，尽力恢复连续状态。
         Plan plan = applyCommandSafely(resolvePlan(state), input);
         if (plan != null && !hasCurrentStep(plan) && !allStepsCompleted(plan)) {
             try {
@@ -120,6 +124,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
     @SuppressWarnings("unchecked")
     private Plan applyCommand(Plan currentPlan, Map<String, Object> input) {
         String command = String.valueOf(input.getOrDefault("command", ""));
+        // projector 只重放 planning 的状态命令，不调用外部工具；无前置 plan 的 update/mark/finish 保持不可投影。
         switch (command) {
             case "create":
                 return Plan.create(
@@ -160,7 +165,7 @@ public class PlanningToolInvocationProjector extends AbstractToolInvocationProje
         try {
             return applyCommand(currentPlan, input);
         } catch (IllegalArgumentException | IllegalStateException ignore) {
-            // 兼容旧 planning 历史：结构化输出缺失时，回放只做 best-effort 恢复。
+            // 兼容旧 planning 历史：单条非法命令只放弃本次迁移，不中断同一会话后续事件回放。
             return currentPlan;
         }
     }

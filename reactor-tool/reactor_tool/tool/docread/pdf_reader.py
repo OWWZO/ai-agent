@@ -257,6 +257,7 @@ class PDFReaderTool(SyncTool):
         operation = (params.get("operation") or "read").strip().lower()
         logger.info("pdf_processor", operation=operation, file_path=params.get("file_path"))
 
+        # 操作分发保持在工具边界内，具体方法共享页码解析和文档句柄生命周期。
         dispatch = {
             "read": self._read,
             "extract_tables": self._extract_tables,
@@ -282,6 +283,7 @@ class PDFReaderTool(SyncTool):
             raise FileNotFoundError(f"PDF file not found: {fp}")
         if not fp.suffix.lower() == ".pdf":
             raise ValueError(f"File is not a PDF: {fp}")
+        # 文档句柄由每个操作的 try/finally 负责关闭，避免长时间服务进程泄漏文件资源。
         return fitz.open(str(fp))
 
     def _resolve_pages(self, params: dict[str, Any], total_pages: int) -> list[int]:
@@ -298,6 +300,7 @@ class PDFReaderTool(SyncTool):
             end = params.get("page_end", total_pages)
         start = max(1, min(start, total_pages))
         end = max(start, min(end, total_pages))
+        # 对外使用 1-based 闭区间，内部统一转换为 Python 的 0-based 半开 range。
         return list(range(start - 1, end))
 
     def _read(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -332,6 +335,7 @@ class PDFReaderTool(SyncTool):
                 full_text_parts.append(text)
                 total_chars += len(text)
 
+                # 页面级结果保留已处理内容；全文达到上限后停止继续扫描，并在结果中标记截断。
                 if total_chars >= max_chars:
                     break
 
@@ -387,6 +391,7 @@ class PDFReaderTool(SyncTool):
                                 "col_count": len(headers) if headers else 0,
                             })
                 except AttributeError:
+                    # 旧版 PyMuPDF 没有 find_tables 时退回基于制表符/多空格的启发式解析。
                     text = page.get_text("text")
                     lines = text.splitlines()
                     table_lines = [
@@ -443,6 +448,7 @@ class PDFReaderTool(SyncTool):
                 for img_idx, img_info in enumerate(image_list):
                     xref = img_info[0]
                     try:
+                        # 图片损坏只跳过当前资源，不能让同一页其它图片或整个 PDF 提取失败。
                         pix = fitz.Pixmap(doc, xref)
 
                         if pix.n - pix.alpha > 3:
@@ -542,6 +548,7 @@ class PDFReaderTool(SyncTool):
                             "context": [l.strip() for l in lines[context_start:context_end]],
                         })
 
+                        # 搜索结果是面向模型的摘要，限制数量避免全文命中时返回过大的上下文。
                         if len(results) >= 100:
                             break
                 if len(results) >= 100:

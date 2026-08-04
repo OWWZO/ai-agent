@@ -84,6 +84,8 @@ class DeepSearch:
     ) -> AsyncGenerator[str, None]:
         """深度搜索主循环（流式 yield SSE 数据片段）。"""
 
+        # deadline 覆盖查询拆解、检索、继续搜索判断和最终回答四个阶段；每个 await
+        # 都使用剩余时间，超时后统一输出当前已积累结果，避免客户端收到悬挂流。
         # 默认超时时间提升到 20 分钟，避免深度搜索在多轮检索和总结时被过早中断。
         total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "1200"))
         deadline = time.monotonic() + total_timeout_seconds
@@ -95,6 +97,8 @@ class DeepSearch:
         try:
             # 执行深度搜索循环
             while current_loop <= max_loop:
+                # 每轮先发 extend/search 中间事件，再更新 current_docs；这些事件是前端
+                # 的过程态，最终 report 才是本次 DeepSearch 的终态事实。
                 logger.info(f"{request_id} 第 {current_loop} 轮深度搜索...")
                 # 查询分解
                 sub_queries = await asyncio.wait_for(
@@ -164,6 +168,8 @@ class DeepSearch:
                 current_loop += 1
 
             # 生成最终答案
+            # answer_question 仍以异步生成器提供片段；stream 模式按 token 数切成 report
+            # 事件，非 stream 模式则只在最后一个事件携带完整答案。
             answer = ""
             acc_content = ""
             acc_token = 0
@@ -221,6 +227,8 @@ class DeepSearch:
                     "messageType": "report"
                 }, ensure_ascii=False)
         except asyncio.TimeoutError:
+            # 超时是可预期的降级路径：保留已发送的检索事件，并发送一个明确终态，
+            # 不把超时当作普通异常重新抛出导致 SSE 没有收尾。
             logger.warning(f"{request_id} deepsearch total timeout after {total_timeout_seconds}s")
             fallback_answer = "深度搜索超时，已返回当前可用结果，请基于已有搜索内容继续处理。"
             yield json.dumps({
@@ -241,6 +249,8 @@ class DeepSearch:
             request_id: str,
     ) -> Tuple[List[Doc], List[List[Doc]]]:
         """异步并行搜索多个查询并去重，避免阻塞当前 Uvicorn 事件循环。"""
+        # semaphore 限制的是本轮子查询的并发预算；gather 保持结果与 queries 顺序，
+        # 返回的 results 用于前端按子查询展示，deduped_docs 用于后续统一上下文。
         max_concurrent = max(1, int(os.getenv("SEARCH_THREAD_NUM", 5)))
         semaphore = asyncio.Semaphore(max_concurrent)
 

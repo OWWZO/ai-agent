@@ -46,6 +46,8 @@ def log_setting():
 
 
 def create_app() -> FastAPI:
+    # create_app 是 Uvicorn factory 边界：每个 worker 子进程独立创建 middleware 和
+    # router，避免父进程共享请求态或把启动期副作用复制到错误的进程生命周期。
     _app = FastAPI(
         on_startup=[log_setting]
     )
@@ -98,6 +100,8 @@ if __name__ == "__main__":
 
     app_factory_path = "server:create_app"
 
+    # reload 与多 worker 都要求 factory 模式，由 Uvicorn 在目标进程内创建 app；生产
+    # 单 worker 可直接传实例。这个选择只影响进程装配，不改变路由层的并发语义。
     # 单进程直接构造 app；多 worker/reload 使用 factory，让子进程内再创建应用，避免启动期导入过重。
     if workers <= 1:
         if reload_enabled:

@@ -47,6 +47,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         List<LlmInvocation> llmInvocations = executionLedgerReadRepository.queryLlmInvocationsByRunId(run.getId());
         List<ToolInvocation> toolInvocations = executionLedgerReadRepository.queryToolInvocationsByRunId(run.getId());
         List<ArtifactRecord> artifacts = executionLedgerReadRepository.queryArtifactsByRunId(run.getId());
+        // 先读取账本中的通用事实，再在 tool view 上延迟挂载 rich output；展示投影不能反向创建账本记录。
         // 先聚合三类通用事实，再补 rich tool output；查询层不读取旧 message/transcript 表。
         return ExecutionRunDetail.builder()
                 .run(toRunView(run))
@@ -121,6 +122,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (runIds.isEmpty()) {
             return runViews;
         }
+        // 批量按 run 查询 artifact，避免会话列表产生 N+1；没有 id 的视图保持原样。
         // 会话摘要列表只需要轻量文件概览，这里统一补到 run 视图上，
         // 避免 controller / UI 再额外扫 artifact 表做第二次拼装。
         Map<Long, List<ArtifactView>> artifactViewsByRunId = executionLedgerReadRepository.queryArtifactsByRunIds(runIds).stream()
@@ -214,6 +216,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         }
         Map<Long, Integer> artifactCountByToolInvocationId = new LinkedHashMap<>();
         if (artifacts != null) {
+            // artifact 数量从同一批查询结果聚合，避免为每个 tool invocation 再访问数据库。
             for (ArtifactRecord artifact : artifacts) {
                 if (artifact == null || artifact.getToolInvocationId() == null) {
                     continue;
@@ -257,6 +260,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (views == null || toolOutputReader == null) {
             return views == null ? List.of() : views;
         }
+        // 只为 rich tool 且已有主键的记录回读专用输出表；普通工具仍保持轻量的 invocation 视图。
         // 结构化输出按 tool invocation 延迟读取，避免普通历史列表预加载无关大字段。
         for (ToolInvocationView view : views) {
             if (view == null

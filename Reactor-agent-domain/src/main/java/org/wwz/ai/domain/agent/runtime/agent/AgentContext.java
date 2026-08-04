@@ -170,9 +170,7 @@ public class AgentContext {
     /**
      * 基础提示词模板（核心指令模板）
      * 用途：
-     * 1. 模板复用：作为智能体的核心指令模板，可替换占位符生成最终的系统提示词；
-     * 2. 场景适配：不同模板类型（templateType）对应不同的basePrompt；
-     * 示例："你是一名电商市场分析师，需基于{{files}}和{{query}}完成{{task}}，遵循{{sopPrompt}}"
+     * 模板复用：作为智能体的核心指令模板，可替换占位符生成最终的系统提示词；
      */
     String basePrompt;
 
@@ -204,7 +202,7 @@ public class AgentContext {
 
     /**
      * LTM fork（flush/review）专用：允许 memory tool 写入，但禁止再 sync/再调度 review/prefetch 副作用。
-     * 对齐 Hermes review fork 的 skip 外部 provider 污染，同时仍可写 builtin memory。
+     * 类似于 Hermes review fork 的 skip 外部 provider 污染，同时仍可写 builtin memory。
      */
     @Builder.Default
     Boolean ltmSideEffectsDisabled = Boolean.FALSE;
@@ -269,7 +267,7 @@ public class AgentContext {
     AgentRunState agentRunState = AgentRunState.builder().build();
 
     /**
-     * 会话 Todo 任务列表（TaskCreate/TaskGet，对标 cc-haha tasks）。
+     * 会话 Todo 任务列表（TaskCreate/TaskGet）。
      * 主/子 Agent 共享同一引用；懒创建。
      */
     @ToString.Exclude
@@ -277,7 +275,7 @@ public class AgentContext {
     SessionTaskListStore sessionTaskList;
 
     /**
-     * 后台运行任务注册表（TaskStop，对标 cc-haha AppState.tasks）。
+     * 后台运行任务注册表（TaskStop）。
      */
     @Builder.Default
     @ToString.Exclude
@@ -300,15 +298,6 @@ public class AgentContext {
     RunCancellation runCancellation;
 
     /**
-     * 当前任务专属的产品文件列表（任务级）
-     * 用途：
-     * 1. 粒度细化：仅关联当前task的产品文件，避免全局文件过多导致LLM上下文过载；
-     * 2. 精准匹配：为当前任务提供专属的文件上下文（如生成A产品报告仅加载A产品的文件）；
-     * 区别于productFiles：productFiles是会话级，taskProductFiles是任务级
-     */
-    List<File> taskProductFiles;
-
-    /**
      * 提示词模板类型
      * 用途：
      * 1. 模板加载：根据类型加载不同场景的提示词模板（如default=通用模板、ecommerce=电商模板）；
@@ -321,6 +310,8 @@ public class AgentContext {
      * 获取或创建会话 Todo 列表（listId 优先 sessionId）。
      */
     public synchronized SessionTaskListStore requireSessionTaskList() {
+        // Todo 列表按 sessionId 建立稳定归属；没有会话 ID 时退回 requestId，保证
+        // 临时/测试上下文也不会共享默认列表。
         if (sessionTaskList == null) {
             String listId = sessionId != null && !sessionId.isBlank() ? sessionId : requestId;
             sessionTaskList = new SessionTaskListStore(listId == null ? "default" : listId);
@@ -329,6 +320,8 @@ public class AgentContext {
     }
 
     public RuntimeBackgroundTaskRegistry requireBackgroundTasks() {
+        // 这类运行态注册表允许由 builder 缺省创建，也兼容旧调用方传入 null；
+        // 懒创建集中在上下文边界，工具不需要自行维护生命周期。
         if (backgroundTasks == null) {
             backgroundTasks = new RuntimeBackgroundTaskRegistry();
         }
@@ -336,6 +329,8 @@ public class AgentContext {
     }
 
     public PlanModeState requirePlanModeState() {
+        // Plan Mode 是请求级状态机，缺省值在首次读取时补齐，避免空上下文让
+        // Enter/ExitPlanMode 的行为依赖具体装配路径。
         if (planModeState == null) {
             planModeState = PlanModeState.builder().build();
         }
@@ -351,6 +346,8 @@ public class AgentContext {
     }
 
     public void bindCurrentToolArtifactSource(ToolArtifactSource toolArtifactSource) {
+        // 当前来源通过 ThreadLocal 绑定到一次工具调用；异步回调不能隐式依赖
+        // 线程切换后的值，必须在创建回调时显式捕获并传递 source。
         currentToolArtifactSourceHolder.set(toolArtifactSource);
     }
 
@@ -405,11 +402,12 @@ public class AgentContext {
 
 
     public ToolArtifactBinding registerGeneratedArtifact(ToolArtifactSource source, File file) {
+        // 工具产物先登记到唯一 registry，再同步到会话级兼容文件列表；
+        // 前端可见列表因此由 ledger/toolCall 绑定派生，而不是由工具自行拼装。
         return toolArtifactRegistry.registerGeneratedFile(
                 source,
                 file,
-                ensureProductFiles(),
-                ensureTaskProductFiles()
+                ensureProductFiles()
         );
     }
 
@@ -444,6 +442,8 @@ public class AgentContext {
      * 绑定本次请求的 run 主键与外部身份。
      */
     public void activateLedgerRun(Long runId, String runUid) {
+        // run 激活只绑定账本身份，不重置上下文中的会话、工具或文件状态；后续
+        // LLM/tool 记录点通过同一个 AgentRunState 取得顺序号和当前执行位置。
         ensureAgentRunState().setRunId(runId);
         ensureAgentRunState().setRunUid(runUid);
     }
@@ -470,6 +470,9 @@ public class AgentContext {
      * child context 共享 run 级依赖与账本事实，但复制任务态兼容视图，避免并发写回父上下文。
      */
     public AgentContext forkForParallelTask(String parallelTask) {
+        // 并行子任务共享 printer、runtime、registry 和 ledger run 身份，以便事实
+        // 仍归属于同一运行；任务文件、workspace 读状态和 ThreadLocal 则复制/隔离，
+        // 防止子任务互相覆盖当前任务视图或工具来源。
         return AgentContext.builder()
                 .requestId(requestId)
                 .sessionId(sessionId)
@@ -492,7 +495,6 @@ public class AgentContext {
                 .currentToolArtifactSourceHolder(new ThreadLocal<>())
                 .executionRecorder(executionRecorder)
                 .agentRunState(agentRunState)
-                .taskProductFiles(copyFiles(taskProductFiles))
                 .templateType(templateType)
                 .build();
     }
@@ -502,13 +504,6 @@ public class AgentContext {
             productFiles = new ArrayList<>();
         }
         return productFiles;
-    }
-
-    private synchronized List<File> ensureTaskProductFiles() {
-        if (taskProductFiles == null) {
-            taskProductFiles = new ArrayList<>();
-        }
-        return taskProductFiles;
     }
 
     private synchronized AgentRunState ensureAgentRunState() {

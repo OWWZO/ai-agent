@@ -12,6 +12,7 @@ final class SseClientDisconnectDetector {
 
     static boolean isClientDisconnected(Throwable throwable) {
         Throwable current = throwable;
+        // 容器和 Spring 可能用不同异常包装断连，因此沿 cause 链统一判断类型与消息。
         while (current != null) {
             String className = current.getClass().getName();
             if ("org.apache.catalina.connector.ClientAbortException".equals(className)
@@ -29,6 +30,7 @@ final class SseClientDisconnectDetector {
     }
 
     private static boolean isDisconnectMessage(String message) {
+        // 同一断连在 Windows、Linux 和不同 Servlet 容器中的英文文案并不一致，按稳定片段匹配。
         String normalized = message.toLowerCase(Locale.ROOT);
         return normalized.contains("broken pipe")
                 || normalized.contains("connection reset by peer")

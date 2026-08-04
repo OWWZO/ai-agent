@@ -150,11 +150,12 @@ public class ToolResultPayload {
 
     /**
      * 对齐 LeAgent {@code ToolResult.fail(error, data=detail)}。
+     * 未提供 detail 时也保留最小结构化错误信息，避免失败工具退化为裸文本。
      */
     public static ToolResultPayload failureFrom(String error, Object detail) {
         return ToolResultPayload.builder()
                 .toolResult(error)
-                .llmData(detail)
+                .llmData(detail == null ? defaultFailureDetail(error) : detail)
                 .failed(Boolean.TRUE)
                 .errorMsg(error)
                 .build();
@@ -168,11 +169,18 @@ public class ToolResultPayload {
                                                 ToolStructuredOutput structuredOutput) {
         return ToolResultPayload.builder()
                 .toolResult(error)
-                .llmData(detail)
+                .llmData(detail == null ? defaultFailureDetail(error) : detail)
                 .structuredOutput(structuredOutput)
                 .failed(Boolean.TRUE)
                 .errorMsg(error)
                 .build();
+    }
+
+    private static Map<String, Object> defaultFailureDetail(String error) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("type", "tool_error");
+        detail.put("message", error);
+        return detail;
     }
 
     private static Map<String, Object> envelope(String toolName, boolean ok, Map<String, Object> fields) {

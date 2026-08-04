@@ -20,6 +20,7 @@ def _safe_segment(value: str, fallback: str = "default") -> str:
 
 
 def session_roots(request_id: str, workspace_root: str | None = None) -> list[Path]:
+    # 所有输入候选都围绕请求 ID 组织，既支持工作区文件，也避免不同会话默认目录互相污染。
     rid = _safe_segment(request_id, "default")
     roots: list[Path] = []
     if workspace_root:
@@ -69,6 +70,7 @@ def resolve_input_path(
     workspace_root: str | None = None,
     must_exist: bool = True,
 ) -> Path:
+    # 先生成候选路径，再要求存在；返回前统一 resolve，避免相对路径和 .. 绕过目录比较。
     if not raw or not str(raw).strip():
         raise FileNotFoundError("file_path is required")
     text = str(raw).strip().replace("\\", "/")
@@ -105,6 +107,7 @@ def resolve_output_path(
     workspace_root: str | None = None,
     default_name: str = "docread_output.bin",
 ) -> Path:
+    # 输出目录允许创建，输入目录由 resolve_input_path 单独校验，避免读写策略混用。
     rid = _safe_segment(request_id, "default")
     base = Path(workspace_root).expanduser().resolve() if workspace_root else (Path.cwd() / "skilloutput" / rid)
     base.mkdir(parents=True, exist_ok=True)

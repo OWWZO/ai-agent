@@ -43,6 +43,7 @@ public class SkillScriptDiscoverer {
 
     public Map<String, SkillScriptDefinition> discover(Path skillDirectory) {
         Path normalizedSkillDirectory = skillDirectory.toAbsolutePath().normalize();
+        // 自动扫描结果先建立基础集合，再由 scripts.yaml 按名称覆盖或增强，兼容简单 skill 与显式配置。
         Map<String, SkillScriptDefinition> discoveredScripts = discoverFromScriptsDirectory(normalizedSkillDirectory);
         Map<String, SkillScriptDefinition> configuredScripts = discoverFromScriptsYaml(normalizedSkillDirectory);
         configuredScripts.forEach(discoveredScripts::put);
@@ -64,6 +65,7 @@ public class SkillScriptDiscoverer {
             for (Path scriptPath : scriptPaths) {
                 String runtime = inferRuntime(scriptPath);
                 if (runtime == null) {
+                    // 未知扩展不注册为可执行脚本，避免把 README 或数据文件暴露给执行器。
                     continue;
                 }
                 String scriptName = stripExtension(scriptPath.getFileName().toString());
@@ -95,6 +97,7 @@ public class SkillScriptDiscoverer {
 
             Object scriptsNode = loadedMap.containsKey("scripts") ? loadedMap.get("scripts") : loadedMap;
             Map<String, SkillScriptDefinition> configuredScripts = new LinkedHashMap<>();
+            // map 和 list 两种 YAML 形状最终都走同一套路径与运行时校验。
             if (scriptsNode instanceof Map<?, ?> scriptsMap) {
                 for (Map.Entry<?, ?> entry : scriptsMap.entrySet()) {
                     String scriptName = String.valueOf(entry.getKey()).trim();
@@ -163,6 +166,7 @@ public class SkillScriptDiscoverer {
         }
 
         Path absolutePath = skillPathGuard.ensureUnderRoot(skillDirectory, skillDirectory.resolve(relativePath));
+        // 配置文件中的相对路径必须落在 skill 根内，且最终确实指向普通文件。
         if (!Files.isRegularFile(absolutePath)) {
             throw new SkillLoadException("configured script does not exist: " + absolutePath);
         }

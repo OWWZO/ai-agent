@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * document_template — save/list/get/delete/preview/generate parameterized docgen templates.
+ * document_template 工具契约。
+ *
+ * 模板的保存、变量校验、预览和最终渲染都在文档生成服务中完成；domain 只负责
+ * 向 Agent 发布统一的 action、变量和输出格式描述。
  */
 public class DocumentTemplateTool extends AbstractDocGenTool {
 
@@ -30,6 +33,7 @@ public class DocumentTemplateTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // 文档和幻灯片共用一份 schema，通过 kind 区分 content 与 slides 的解释方式。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("action", stringProp("save | list | get | delete | preview | generate"));
         properties.put("name", stringProp("Template name (required except list)"));

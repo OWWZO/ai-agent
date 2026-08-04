@@ -116,6 +116,7 @@ class SearchBase(ABC):
         use_jina_reader = kwargs.get("use_jina_reader", True)
 
         async def _resolve_content(doc: Doc) -> str:
+            # Jina 负责清洗正文但属于外部依赖；空结果或异常时必须回退直连，不能丢弃搜索命中。
             # 深度搜索默认改为直连抓取，只有显式开启时才尝试 Jina Reader。
             if use_jina_reader:
                 jina_timeout = int(os.getenv("JINA_READER_TIMEOUT", timeout))
@@ -165,6 +166,7 @@ class SearchBase(ABC):
 
         seen_docs = set()
         deduped_docs = []
+        # 搜索引擎只返回有正文且正文未重复的文档，避免后续 LLM 上下文被同一页面重复占用。
         for doc in docs:
             if doc.content and doc.content not in seen_docs:
                 deduped_docs.append(doc)
@@ -449,6 +451,7 @@ class MixSearch(BingSearch):
             engines.append(self._serp_engine)
         if use_exa:
             engines.append(self._exa_engine)
+        # 每个文档独立抓取；TaskGroup 保证所有任务结束后再把正文写回对应 Doc。
         async with asyncio.TaskGroup() as tg:
             tasks = [
                 tg.create_task(

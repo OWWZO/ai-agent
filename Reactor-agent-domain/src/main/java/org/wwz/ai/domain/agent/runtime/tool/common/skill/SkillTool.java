@@ -69,6 +69,7 @@ public class SkillTool implements BaseTool {
                 return ToolResultPayload.failureFrom("skill_name is required", null);
             }
 
+            // 工具只读取已注册快照，不在调用时重新扫描文件系统，保证正文和脚本摘要来自同一版本。
             SkillDefinition skillDefinition = skillRegistry.getRequiredSkill(skillName);
             SkillToolResult result = SkillToolResult.builder()
                     .name(skillDefinition.getName())

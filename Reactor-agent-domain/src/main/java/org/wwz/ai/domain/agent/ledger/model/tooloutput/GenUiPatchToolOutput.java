@@ -10,7 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * emit_ui_patch terminal structured output (not a dedicated DB table yet).
+ * emit_ui_patch 工具的终态结构化输出。
+ *
+ * patches 是供历史投影重放的操作记录，canvasId/seq 用于把增量更新关联到正确的
+ * GenUI 画布；它不是第二套展示账本。
  */
 @Data
 @Builder

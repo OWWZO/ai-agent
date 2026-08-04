@@ -82,7 +82,7 @@ class KBFileSQLite(KBFileStore):
     def __init__(self, engine):
         self._engine = engine
         self._session_factory = sessionmaker(bind=engine)
-        # 首次访问时建表（幂等）
+        # 首次装配时幂等建表；具体文档内容和向量索引由其它存储负责，这里只维护文件元数据状态。
         Base.metadata.create_all(self._engine)
 
     def _get_session(self) -> Session:
@@ -92,6 +92,7 @@ class KBFileSQLite(KBFileStore):
         """Add a new file to the knowledge base"""
         session = self._get_session()
         try:
+            # 每个写操作独立 session，失败回滚后再关闭，避免异常事务污染后续请求。
             # Convert Pydantic model to SQLAlchemy model
             sql_model = KBFileSQLModel.from_pydantic(kb_file)
             session.add(sql_model)
@@ -107,6 +108,7 @@ class KBFileSQLite(KBFileStore):
         """Delete a file from the knowledge base"""
         session = self._get_session()
         try:
+            # 删除采用 deleted=1 软删除，保留 file_id 与解析历史，查询路径统一过滤已删除行。
             # Find the file by file_id and kb_id
             file_to_delete = session.query(KBFileSQLModel).filter(
                 KBFileSQLModel.file_id == kb_file.file_id,
@@ -128,6 +130,7 @@ class KBFileSQLite(KBFileStore):
         """Update an existing file in the knowledge base"""
         session = self._get_session()
         try:
+            # 更新只覆盖请求中非 None 字段，允许解析任务分阶段回写 task_status/file_status/doc_count。
             # Find the file by file_id and kb_id
             file_to_update = session.query(KBFileSQLModel).filter(
                 KBFileSQLModel.file_id == kb_file.file_id,
@@ -169,6 +172,7 @@ class KBFileSQLite(KBFileStore):
         """Get files from the knowledge base with pagination"""
         session = self._get_session()
         try:
+            # 分页和 deleted 过滤在数据库完成，避免把整个知识库文件表加载进进程再截取。
             # Calculate offset for pagination
             offset = (page_no - 1) * page_size
 
@@ -188,6 +192,7 @@ class KBFileSQLite(KBFileStore):
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]):
         session = self._get_session()
         try:
+            # 批量删除仍限定 kb_id，防止跨知识库 file_id 重叠时误改其它知识库记录。
             # Query files with pagination and filtering
             files = session.query(KBFileSQLModel).filter(
                 KBFileSQLModel.kb_id == kb_id,

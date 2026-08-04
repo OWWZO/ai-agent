@@ -103,6 +103,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             return;
         }
         try {
+            // run 结束时重新读取所有子事实再汇总计数，避免并发写入期间依赖创建阶段的过期快照。
             DialogueRun existing = executionLedgerWriteRepository.queryRunByRequestId(record.getRequestId());
             if (existing == null) {
                 return;
@@ -272,6 +273,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
             return;
         }
         try {
+            // 工具主表先记录通用状态；结构化输出随后按工具类型写入专用表，二者共享同一个 invocationId。
             executionLedgerWriteRepository.updateToolInvocationFinish(ToolInvocation.builder()
                     .id(record.getToolInvocationId())
                     .status(record.getStatus())
@@ -363,6 +365,8 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         if (entities.isEmpty()) {
             return;
         }
+        // artifact 是回放和前端文件展示的稳定引用，批量写入必须校验实际插入数，
+        // 否则重复键或部分失败会让执行成功但历史缺文件。
         // artifact 是工具输出可回放的稳定引用，写入失败由调用方选择 fail-open 或显式抛出。
         int inserted = executionLedgerWriteRepository.batchInsertArtifacts(entities);
         if (inserted < entities.size()) {

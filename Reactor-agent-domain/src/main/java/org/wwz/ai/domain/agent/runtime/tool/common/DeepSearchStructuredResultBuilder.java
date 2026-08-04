@@ -59,6 +59,7 @@ public class DeepSearchStructuredResultBuilder {
             this.query = response.getQuery().trim();
         }
         String messageType = StringUtils.defaultString(response.getMessageType());
+        // 流式事件按 extend/search/report 分阶段归并；未知事件不改变已构建结果。
         if ("extend".equals(messageType)) {
             recordExtend(response.getSearchResult());
             return;
@@ -100,7 +101,7 @@ public class DeepSearchStructuredResultBuilder {
     public ToolResultPayload buildPayload(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
         DeepSearchToolOutput output = buildOutput(normalizedAnswer);
-        // 用对象 llmData，由中央 serialize_for_llm 出 JSON（不再预填 prose/JSON 字符串）
+        // 用对象 llmData，由中央 serialize_for_llm 出 JSON；结构化输出与紧凑 observation 分工不同。
         DeepSearchObservationOutput observation = DeepSearchObservationOutput.builder()
                 .tool("deep_search")
                 .query(query)
@@ -161,6 +162,7 @@ public class DeepSearchStructuredResultBuilder {
                     continue;
                 }
                 String dedupKey = buildDocDedupKey(doc);
+                // 同一子查询可能跨多个 SSE 事件重复返回文档，去重后保留首次出现顺序。
                 if (dedupBucket.add(dedupKey)) {
                     docsBucket.add(copyDoc(doc));
                 }
@@ -239,6 +241,7 @@ public class DeepSearchStructuredResultBuilder {
             List<DeepSearchrResponse.SearchDoc> rawDocs = entry.getValue();
             if (rawDocs != null) {
                 int docLimit = Math.min(rawDocs.size(), OBSERVATION_DOC_LIMIT_PER_QUERY);
+                // observation 只保留少量摘要以控制主 Agent 上下文；完整文档仍在 typed output 中。
                 for (int idx = 0; idx < docLimit; idx++) {
                     DeepSearchrResponse.SearchDoc rawDoc = rawDocs.get(idx);
                     if (rawDoc == null) {

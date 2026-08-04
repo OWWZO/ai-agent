@@ -101,6 +101,7 @@ interface ResolvePanelViewParams {
 }
 
 function parseJsonSafely(value?: string) {
+  // 面板渲染不能因工具返回的非 JSON 文本崩溃，解析失败统一回退为空对象。
   try {
     const parsed = JSON.parse(value || "{}");
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -141,6 +142,8 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   if (!taskItem) {
     return { type: "empty" };
   }
+
+  // 解析顺序就是展示优先级：搜索/GenUI 先于文件，再到 markdown 兜底，避免同一事件被多个 renderer 抢占。
 
   const {
     useHtml,
@@ -188,6 +191,7 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
   }
 
   if (useHtml) {
+    // HTML 流式期间隐藏工具栏，只有最终产物具备稳定下载/交互能力。
     return {
       type: "html",
       htmlUrl,

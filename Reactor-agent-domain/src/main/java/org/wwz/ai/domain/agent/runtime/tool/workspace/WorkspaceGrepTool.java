@@ -78,6 +78,7 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
 
             List<Map<String, Object>> matches = new ArrayList<>();
             boolean truncated = false;
+            // 逐文件逐行匹配并保留相对路径；达到上限后停止整个遍历，响应明确标记 truncated。
             for (Path filePath : candidateFiles) {
                 List<String> lines;
                 try {

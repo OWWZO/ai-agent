@@ -18,6 +18,8 @@ logger = get_struct_logger(__name__)
 class DataAggregateTool(SyncTool):
     """Aggregate and summarize DataFrame data.
 
+    中文说明：负责把多种统计操作分派到独立实现，并统一结果元数据。
+
     Features:
     - Group by single or multiple columns
     - Multiple aggregation functions (sum, avg, count, min, max, etc.)
@@ -169,6 +171,7 @@ class DataAggregateTool(SyncTool):
         except ImportError as e:
             raise RuntimeError("pandas is not installed. Install with: pip install pandas") from e
 
+        # 输入只解析一次，具体操作共享同一个 DataFrame，避免各分支重复读取 artifact。
         data = resolve_input(params, context, required=False)
         operation = params.get("operation", "groupby")
         output_format = params.get("output_format", "records")
@@ -192,6 +195,7 @@ class DataAggregateTool(SyncTool):
 
         logger.info("Starting aggregation", operation=operation, rows=input_rows)
 
+        # 分派层只负责选择算法；列存在性和操作参数由各专用方法校验。
         if operation == "groupby":
             result_df = self._execute_groupby(df, params, pd)
         elif operation == "pivot":
@@ -205,6 +209,7 @@ class DataAggregateTool(SyncTool):
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
+        # 排序发生在聚合之后，避免把输入行排序误当成结果排序。
         sort_by = params.get("sort_by")
         if sort_by and sort_by in result_df.columns:
             ascending = params.get("sort_ascending", True)
@@ -247,6 +252,7 @@ class DataAggregateTool(SyncTool):
         if missing:
             raise ValueError(f"Group by columns not found: {missing}")
 
+        # 将 avg 归一化为 pandas 的 mean，并为未提供聚合规则的列选择有限默认集合。
         agg_map: dict[str, Any] = {}
         for col, agg_funcs in aggregations.items():
             if col not in df.columns:
@@ -304,6 +310,7 @@ class DataAggregateTool(SyncTool):
         if pivot_aggfunc == "avg":
             pivot_aggfunc = "mean"
 
+        # 单列和多列都转换为 pandas 可接受的标量/列表形态，保持调用契约一致。
         pivot_kwargs: dict[str, Any] = {
             "index": pivot_index if len(pivot_index) > 1 else pivot_index[0],
             "columns": pivot_columns if len(pivot_columns) > 1 else pivot_columns[0],

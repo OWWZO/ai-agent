@@ -41,7 +41,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 输出表写入实现。
+ * Execution Ledger 工具输出投影写入实现。
+ *
+ * <p>每种 rich tool 写入自己的专属输出表，通用 tool invocation 只保留执行事实和
+ * 关联标识；本类负责把领域结构化输出转换为 DAO 行并按工具名分派。它是账本投影的
+ * 基础设施适配器，不负责改变工具执行状态，也不将输出 JSON 回写到通用 invocation。</p>
+ *
+ * <p>{@link #write(ToolOutputPersistCommand)} 采用旁路失败语义，适合请求收尾；
+ * {@link #writeOrThrow(ToolOutputPersistCommand)} 保留失败，适合调用方必须感知投影
+ * 是否建立的场景。重复键和 DAO 返回零行遵循输出表的幂等约束。</p>
  */
 @Slf4j
 @Service
@@ -63,6 +71,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
 
     @Override
     public void write(ToolOutputPersistCommand command) {
+        // 普通写入用于请求收尾或旁路投影：持久化失败只记录日志，不能让已经完成的 Agent 请求再次失败。
         try {
             writeInternal(command, false);
         } catch (Exception e) {
@@ -74,6 +83,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
 
     @Override
     public void writeOrThrow(ToolOutputPersistCommand command) {
+        // 严格写入用于需要感知投影失败的场景，保留数据库异常和插入结果异常给调用方处理。
         writeInternal(command, true);
     }
 
@@ -88,6 +98,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
             return;
         }
         try {
+            // 每种 rich tool 使用独立输出表，但共享同一组账本关联字段；这里集中完成类型校验、行构建和 DAO 分发。
             switch (toolName) {
                 case ToolOutputNames.DEEP_SEARCH -> handleInsertResult(command, deepSearchDao.insert(buildDeepSearchRow(command, cast(command, DeepSearchToolOutput.class))), strict);
                 case ToolOutputNames.FILE_TOOL -> handleInsertResult(command, fileToolDao.insert(buildFileToolRow(command, cast(command, FileToolOutput.class))), strict);
@@ -104,6 +115,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
                 default -> log.debug("skip unsupported tool output persist, toolName={}", toolName);
             }
         } catch (DuplicateKeyException e) {
+            // 输出表以请求/工具调用建立幂等约束；普通模式把重复写视为重放，严格模式则交给调用方决定是否失败。
             if (strict) {
                 throw e;
             }
@@ -228,6 +240,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
     }
 
     private Map<String, Object> baseRow(ToolOutputPersistCommand command) {
+        // 基础关联字段必须和 Execution Ledger 的 tool invocation 对齐，具体工具字段只写入各自的输出表。
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("toolInvocationId", command.getToolInvocationId());
         row.put("runId", command.getRunId());
@@ -257,6 +270,7 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
                     "tool output duplicate or ignored, toolName=%s, requestId=%s, toolCallId=%s, toolInvocationId=%s",
                     resolveToolName(command), command.getRequestId(), command.getToolCallId(), command.getToolInvocationId()));
         }
+        // DAO 返回 0 同样表示未建立新投影（例如数据库方言未抛 DuplicateKeyException），保持普通模式的幂等语义。
         log.warn("tool output first-write-wins ignored duplicate, toolName={}, requestId={}, toolCallId={}, toolInvocationId={}",
                 resolveToolName(command), command.getRequestId(), command.getToolCallId(), command.getToolInvocationId());
     }

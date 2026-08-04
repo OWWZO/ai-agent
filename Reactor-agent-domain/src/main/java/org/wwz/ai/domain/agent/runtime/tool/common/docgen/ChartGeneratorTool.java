@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * chart_generator — bar/line/pie/scatter/heatmap/radar/area/histogram charts as image files.
+ * chart_generator 工具契约。
+ *
+ * 当前类只声明图表类型、数据和输出文件参数；图表布局、主题渲染和 PNG/SVG/PDF
+ * 文件生成由 reactor-tool 的文档生成服务负责。
  */
 public class ChartGeneratorTool extends AbstractDocGenTool {
 
@@ -30,6 +33,7 @@ public class ChartGeneratorTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // chart_type 与 data 是生成图表不可缺少的最小输入，其余字段用于视觉和文件覆盖。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("chart_type", stringProp("bar|line|pie|scatter|heatmap|radar|area|histogram|horizontal_bar"));
         properties.put("data", objectProp("Chart data: categories, series, values, labels, x/y, matrix, row_labels"));

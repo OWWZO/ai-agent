@@ -157,6 +157,7 @@ class SectionSummarizerTool(BaseTool):
                 success=False,
                 error="No extractable text (the PDF may be scanned; try OCR).",
             )
+        # 先由核心层做页码裁剪，再限制送入模型的字符预算，避免整篇论文占满上下文。
         summary = await summarize_text(
             context.llm,
             text[:_SUMMARY_CHAR_BUDGET],
@@ -212,6 +213,7 @@ class PDFTranslateTool(BaseTool):
         target_lang = params.get("target_lang") or "en"
         source = params.get("text") or ""
         if not source and params.get("file_path") and params.get("page") and params.get("bbox"):
+            # 文本和 PDF 区域是互斥输入；没有直接文本时才读取指定页面矩形区域。
             bbox = params["bbox"]
             if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
                 return ToolResult(success=False, error="bbox must be [x0, y0, x1, y1].")
@@ -292,6 +294,7 @@ def parse_formula_json(raw: str) -> list[dict[str, Any]]:
 
     text = (raw or "").strip()
     if text.startswith("```"):
+        # 模型偶尔会包裹 Markdown 代码围栏，先剥离围栏再从首尾方括号提取 JSON 数组。
         text = text.strip("`")
         # Drop an optional leading ``json`` language tag.
         if text[:4].lower() == "json":

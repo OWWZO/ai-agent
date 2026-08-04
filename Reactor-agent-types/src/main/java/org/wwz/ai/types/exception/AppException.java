@@ -5,6 +5,11 @@ import lombok.EqualsAndHashCode;
 
 import java.io.Serial;
 
+/**
+ * 应用层异常基类。
+ *
+ * <p>用于承载跨入口可识别的 code/info；具体业务语义由 {@link BizException} 表达，入口层通常据此映射统一响应。</p>
+ */
 @EqualsAndHashCode(callSuper = true)
 @Data
 public class AppException extends RuntimeException {

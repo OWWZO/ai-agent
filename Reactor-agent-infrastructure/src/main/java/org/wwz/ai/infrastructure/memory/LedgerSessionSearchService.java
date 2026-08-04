@@ -46,7 +46,8 @@ public class LedgerSessionSearchService implements SessionSearchService {
         String q = query.trim();
         String resolvedVisitor = resolveVisitorId(sessionId, visitorId);
 
-        // 1) FULLTEXT 优先
+        // 1) FULLTEXT 优先。检索范围先固定为当前 session 或 visitor 的 ledger 会话集合，
+        // 不把 working memory 当作搜索源，避免“提示词投影”反向冒充执行事实。
         List<DialogueRunView> fullTextHits = tryFullText(sessionId, resolvedVisitor, q, top, normalizedScope);
         if (fullTextHits != null) {
             if (fullTextHits.isEmpty()) {
@@ -62,7 +63,8 @@ public class LedgerSessionSearchService implements SessionSearchService {
             return formatHits(fullTextHits, sessionId, resolvedVisitor, normalizedScope, "fulltext", q);
         }
 
-        // 2) 降级扫描
+        // 2) FULLTEXT 不可用时扫描最近 run；扫描有硬上限，保证缺索引不会把一次工具调用
+        // 变成无界数据库遍历。FULLTEXT 零命中时也会走一次扫描，以覆盖 tool input/observation。
         return scanFallback(sessionId, resolvedVisitor, q, top, normalizedScope);
     }
 
@@ -94,7 +96,8 @@ public class LedgerSessionSearchService implements SessionSearchService {
             }
             return hits == null ? List.of() : hits;
         } catch (Exception e) {
-            // 常见：索引未建、ngram 未开
+            // 常见原因是索引未建或 ngram 未启用。短暂熔断只影响搜索方式，不影响主执行链路；
+            // 下一次请求直接使用 contains 扫描，避免同一配置问题持续刷错误日志。
             fullTextDisabledUntilMs = System.currentTimeMillis() + 60_000L;
             log.warn("session_search FULLTEXT unavailable, fallback to scan for 60s: {}", e.toString());
             return null;
@@ -137,6 +140,8 @@ public class LedgerSessionSearchService implements SessionSearchService {
         try {
             List<String> hits = new ArrayList<>();
             int scanned = 0;
+            // 倒序遍历每个 session，使有限扫描预算优先覆盖最近执行；LinkedHashSet 已在
+            // resolveSessionIds 中去重，当前 session 仍保留在 user 范围的第一位。
             for (String sid : sessionIds) {
                 if (hits.size() >= limit || scanned >= MAX_RUNS_SCAN) {
                     break;
@@ -188,6 +193,8 @@ public class LedgerSessionSearchService implements SessionSearchService {
     private boolean appendToolHits(Long runId, String q, StringBuilder toolHits) {
         boolean hit = false;
         try {
+            // run 的 query/summary 是可直接全文索引的字段，工具名、参数和观察结果则通过
+            // tool_invocation 二次读取补齐；这样不会为了支持工具字段而扩大 FULLTEXT 索引。
             List<ToolInvocation> tools = executionLedgerReadRepository.queryToolInvocationsByRunId(runId);
             if (tools == null) {
                 return false;

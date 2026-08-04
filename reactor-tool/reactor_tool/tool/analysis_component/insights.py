@@ -108,6 +108,7 @@ class InsightType(BaseModel):
     @classmethod
     def from_data(cls, data: SiblingGroup, threshold: float = 0.01, **kwargs) -> "InsightType":
         """通过数据计算生成 InsightType 对象"""
+        # 每种洞察先判断数据是否适用，再计算候选结果，最后用 score/significance 阈值过滤噪声。
         insight = None
         if cls._check(data, **kwargs):
             insight = cls._from_data(data, **kwargs)
@@ -129,6 +130,7 @@ class InsightType(BaseModel):
     
     @staticmethod
     def df_to_list(df: pd.DataFrame) -> List[Dict]:
+        # 输出前移除索引并把日期/Period 转成字符串，保证洞察 payload 可以稳定 JSON 序列化。
         df = df.reset_index()
         if "index" in df.columns:
             df = df.drop("index", axis=1)
@@ -141,6 +143,7 @@ class InsightType(BaseModel):
     
     @staticmethod
     def df_to_csv(df: pd.DataFrame) -> str:
+        # 通过临时文件复用 pandas 的 CSV 编码逻辑，finally 保证中间文件不会留在服务工作目录。
         df = df.reset_index()
         if "index" in df.columns:
             df = df.drop("index", axis=1)
@@ -198,6 +201,7 @@ class OutstandingFirstInsightType(InsightType):
 
         pred = hy_dist(x, *fit_params) + bais
 
+        # 用拟合曲线解释基线分布，再用残差估算首个极值的显著性，而不是只比较最大值大小。
         # 计算 p-value
         residuals = y-pred
         loc, scale = norm.fit(residuals[1:])
@@ -248,6 +252,7 @@ class OutstandingLastInsightType(InsightType):
 
         pred = hy_dist(x, *fit_params) + bais
 
+        # 同样基于拟合残差评估末尾极值，避免把单纯的排序结果误报为统计洞察。
         # 计算 p-value
         residuals = y-pred
         loc, scale = norm.fit(residuals[:-1])
@@ -299,6 +304,7 @@ class AttributionInsightType(InsightType):
 
         pred = hy_dist(x, *fit_params) + bais
 
+        # 归因洞察先计算最大值占比，再用拟合残差得到显著性；占比指标本身在 _check 中已排除。
         # 计算 p-value
         residuals = y-pred
         loc, scale = norm.fit(residuals[1:])
@@ -343,6 +349,7 @@ class EvennessInsightType(InsightType):
         df = df.sort_values(by=data.measure.column, ascending=False)
         y = df[data.measure.column].values
 
+        # Shannon 均匀度衡量分布离均匀状态的距离，随后转换为显著性分数供统一排序。
         y_p = y / y.sum()
         shannon = -np.sum(y_p * np.log(y_p, out=np.zeros_like(y_p),
                           where=(y_p != 0))) / np.log(y.size)
@@ -382,6 +389,7 @@ class TrendInsightType(InsightType):
         df = data.get_data()
         y = df[data.measure.column].values
 
+        # 时间序列先拟合线性趋势，再用斜率和拟合相关性共同决定洞察显著性。
         # Fit linear regression on the data
         fit_line = linregress(x=range(y.size), y=y)
         slope = fit_line.slope
@@ -425,6 +433,7 @@ class ChangePointInsightType(InsightType):
         df = data.get_data()
         y = df[data.measure.column].values
         
+        # 先找局部峰值，再比较峰值左右均值差异，选择统计显著性最高的转折点。
         peaks, _ = find_peaks(y)
 
         if peaks.size == 0:
@@ -474,6 +483,7 @@ class CorrelationInsightType(InsightType):
         c1 = df[data.breakdown.name].values
         c2 = df[data.measure.column].values
 
+        # Pearson 系数表达方向和强度，p-value 转成统一 significance 字段供洞察排序。
         r_value, p_value = pearsonr(c1, c2)
         return InsightType(
             type="Correlation",

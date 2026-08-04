@@ -34,6 +34,7 @@ public class ExecutionLedgerWriteRepository implements IExecutionLedgerWriteRepo
 
     @Override
     public void insertRun(DialogueRun run) {
+        // repository 只做领域实体到 DAO 的适配，不在基础设施层重新定义账本业务语义。
         dialogueRunLedgerDao.insertRun(run);
     }
 

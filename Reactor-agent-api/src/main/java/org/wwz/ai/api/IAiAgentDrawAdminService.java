@@ -7,6 +7,12 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * 可视化拖拉拽流程图配置的管理契约。
+ *
+ * <p>配置正文以字符串形式跨越 API 边界保存和读取，具体 JSON/节点结构由 trigger 与 domain 层解析，
+ * 本接口不提前绑定编辑器实现。</p>
+ */
 public interface IAiAgentDrawAdminService {
 
     /**

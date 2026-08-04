@@ -67,6 +67,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
     }
 
     public synchronized QdrantClient getClient() {
+        // gRPC 客户端延迟到首次真正访问时创建，避免 REST 模式或禁用 Qdrant 时无谓建立连接。
         if (client == null) {
             client = createClient();
         }
@@ -78,6 +79,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
     }
 
     public ResolvedQdrantEndpoint resolveEndpoint(QdrantConfig qdrantConfig) {
+        // URL 配置优先于 host/port：带 scheme 的 URL 还决定 TLS 和 REST 分流，旧 host 配置继续兼容。
         String url = StringUtils.trimToNull(qdrantConfig.getUrl());
         Integer configuredPort = qdrantConfig.getPort();
         if (configuredPort == null || configuredPort <= 0) {
@@ -110,6 +112,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     private QdrantClient createClient() {
         ResolvedQdrantEndpoint endpoint = resolveEndpoint();
+        // REST 模式由 RemoteHttpPort 负责请求，不创建 gRPC Client，避免同一配置产生两套连接状态。
         if (shouldUseRestApi(endpoint)) {
             throw new IllegalStateException("当前 Qdrant 配置已切换为 REST 模式，不创建 gRPC Client");
         }
@@ -138,6 +141,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     public void createCosineCollection(String collectionName, int dimension) throws ExecutionException, InterruptedException {
         ResolvedQdrantEndpoint endpoint = resolveEndpoint();
+        // REST 与 gRPC 使用各自 SDK 协议创建同一逻辑集合，创建后 REST 额外补 schema collection 的 payload index。
         if (shouldUseRestApi(endpoint)) {
             try {
                 if (isCollectionExist(collectionName)) {
@@ -188,6 +192,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     @Override
     public void afterPropertiesSet() {
+        // 启用 Qdrant 时仅预热 gRPC；REST 仍保持按请求调用，初始化失败也不阻断应用启动。
         if (Boolean.TRUE.equals(dataAgentConfig.getQdrantConfig().getEnable())) {
             try {
                 if (!shouldUseRestApi(resolveEndpoint())) {
@@ -201,6 +206,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
 
     @Override
     public void destroy() {
+        // Spring 销毁阶段关闭共享 gRPC 通道，避免测试或热重载残留线程。
         if (client != null) {
             client.close();
             client = null;
@@ -215,6 +221,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
             throw new IllegalArgumentException("vector is empty");
         }
         ResolvedQdrantEndpoint endpoint = resolveEndpoint();
+        // limit 在两种协议下都统一受 maxLimitSize 约束；REST 返回 JSON 后转换回 SDK ScoredPoint 供上层复用。
         if (shouldUseRestApi(endpoint)) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("vector", vector);
@@ -393,6 +400,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
         }
         ResolvedQdrantEndpoint endpoint = resolveEndpoint();
         if (shouldUseRestApi(endpoint)) {
+            // REST 直接保留原始 payload 类型；gRPC 则先转换为 JsonWithInt.Value，保证两种传输协议的字段语义一致。
             List<Map<String, Object>> pointList = new ArrayList<>();
             for (int i = 0; i < vectors.size(); i++) {
                 Map<String, Object> point = new LinkedHashMap<>();
@@ -656,6 +664,7 @@ public class QdrantService implements InitializingBean, DisposableBean {
     }
 
     private JsonWithInt.Value getValue(Object obj, int cur) {
+        // payload 可能嵌套列表/对象，限制递归深度避免异常数据把序列化过程拖入无限递归。
         if (cur > 100) {
             log.warn("getValue exceed max deep: cur:{}", cur);
             return null;

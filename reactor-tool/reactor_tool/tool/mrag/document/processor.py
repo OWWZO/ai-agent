@@ -91,6 +91,7 @@ class DocumentProcessor:
         """"""
         parser_start_time = time.time()
         self._parser.parse()
+        # 解析器产生的图片先上传并建立相对路径映射，再改写 Markdown 引用，保证后续切块保存的是稳定资源 URL。
         for image_path in self._parser.parsed_images():
             image_url = oss_utils.upload_local_storage(image_path, file_id=self._uid)
             asset_key = self._build_asset_key(image_path, self._parser.images_dir)
@@ -206,6 +207,7 @@ class DocumentProcessor:
             return
 
         chunk_texts = get_text_splitter().split(text=text)
+        # 主块用于常规上下文召回；可选的 sub chunk 只增加细粒度检索入口，原始主块内容仍作为展示和回链数据保留。
         log_str = ""
         for i, chunk in enumerate(chunk_texts):
             log_str += f"=======================Chunk {i}: \n{chunk}\n"
@@ -289,6 +291,7 @@ class DocumentProcessor:
             return
 
         if self._image_vector_enabled:
+            # 多模态索引开启时写入 image chunk；关闭时跳过视觉向量，但统一保留 OCR/caption 文本代理。
             batch_size = 5
             for i in tqdm.tqdm(range(0, len(image_paths), batch_size), desc="Process image",
                                total=len(image_paths) // batch_size + 1):
@@ -335,6 +338,7 @@ class DocumentProcessor:
             return
 
         if self._image_vector_enabled:
+            # 页面截图与图片使用相同的视觉向量协议，但 page_id/path 字段保留页面语义供预览回链。
             batch_size = 5
             for i in tqdm.tqdm(range(0, len(page_paths), batch_size), desc="Process page",
                                total=len(page_paths) // batch_size + 1):
@@ -434,6 +438,7 @@ class DocumentProcessor:
     def process(self):
         mrag_start_time = time.time()
         self._mrag_process()
+        # canonical 正文先落稳定文档存储，LightRAG 属于可选外部索引，失败不应影响本地文档已可回显。
         self._persist_canonical_full_text()
         mrag_cost_time = time.time()
         logger.info(f"MRAG cost time: {mrag_cost_time - mrag_start_time}")

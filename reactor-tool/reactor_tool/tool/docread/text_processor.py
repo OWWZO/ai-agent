@@ -195,6 +195,7 @@ def analyze_bytes(raw: bytes) -> dict[str, Any]:
 
     bom_enc, bom_len = _sniff_bom(raw)
     nul_r = _nul_ratio(raw)
+    # BOM 是强信号；没有 BOM 时再结合 charset-normalizer、严格解码和 UTF-16 零字节形态判断。
     likely_binary = nul_r >= _BINARY_NUL_RATIO and bom_enc is None
 
     cn = _charset_normalizer_guess(raw)
@@ -219,6 +220,7 @@ def analyze_bytes(raw: bytes) -> dict[str, Any]:
 
     only_latin_fallback = len(strict_list) == 1 and strict_list[0].get("fallback_only")
     if likely_binary and only_latin_fallback:
+        # latin-1 几乎可以解码任意字节，不能把这种“能解码”误当成文本证据。
         primary = None
         source = "binary_heuristic"
 
@@ -539,6 +541,7 @@ class TextFileProcessorTool(SyncTool):
         if operation not in dispatch:
             raise ValueError(f"Unknown operation: {operation}")
 
+        # 所有操作共享同一条路径解析和编码策略，具体方法只处理自己的文本变换。
         return dispatch[operation](file_path, params)
 
     def _read_raw_sample(self, file_path: Path, n: int) -> bytes:
@@ -550,6 +553,7 @@ class TextFileProcessorTool(SyncTool):
     def _resolve_encoding(self, file_path: Path, encoding: str | None) -> str:
         if encoding:
             return encoding.strip()
+        # 自动模式只采样文件前缀；真正读取时仍由 _read_text 使用同一结果打开全文。
         raw = self._read_raw_sample(file_path, min(_DEFAULT_DETECT_BYTES, max(file_path.stat().st_size, 1)))
         analysis = analyze_bytes(raw)
         if analysis.get("likely_binary") and not analysis.get("strict_candidates"):
@@ -565,6 +569,7 @@ class TextFileProcessorTool(SyncTool):
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         enc = self._resolve_encoding(file_path, encoding)
+        # 保留原始换行符，插入、替换和 diff 才不会在读写往返中隐式改格式。
         with file_path.open("r", encoding=enc, errors=errors, newline="") as f:
             text = f.read()
         meta = {"used_encoding": enc, "errors": errors}
@@ -650,6 +655,7 @@ class TextFileProcessorTool(SyncTool):
                 if m.groups():
                     match_info["groups"] = list(m.groups())
                 matches.append(match_info)
+                # 结果上限同时保护响应大小和正则搜索在超大文件上的运行时间。
                 if len(matches) >= max_matches:
                     break
 
@@ -678,6 +684,7 @@ class TextFileProcessorTool(SyncTool):
         if replace_all:
             new_text, count = compiled.subn(replacement, text)
         else:
+            # 单次替换仍使用同一个正则编译结果，只改变 subn 的 count 约束。
             new_text, count = compiled.subn(replacement, text, count=1)
 
         write_errors = params.get("errors") or "strict"
@@ -902,6 +909,7 @@ class TextFileProcessorTool(SyncTool):
         end_marker = params.get("end_marker")
 
         if start_line and end_line:
+            # 三种提取模式互斥：优先使用明确的行号范围，其次是包含边界的标记区间，最后才是逐行匹配。
             s = max(0, start_line - 1)
             e = min(len(lines), end_line)
             extracted = lines[s:e]
@@ -963,6 +971,7 @@ class TextFileProcessorTool(SyncTool):
 
         parts: list[str] = []
         if chunk_lines:
+            # 按行切分保留原换行符；按分隔符切分则交给正则，二者共享后续写文件逻辑。
             lines = text.splitlines(keepends=True)
             for i in range(0, len(lines), chunk_lines):
                 parts.append("".join(lines[i:i + chunk_lines]))

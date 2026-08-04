@@ -14,6 +14,7 @@ import type { PromptInputAttachmentItem } from "@/components/ai-elements/prompt-
 import type { UploadAttachmentState } from "./uploadQueue";
 
 function formatAttachmentSize(size?: number) {
+  // 采用 1024 进位并固定两位小数，让上传中/成功状态的文本长度稳定。
   if (typeof size !== "number" || Number.isNaN(size) || size < 0) {
     return "未知大小";
   }
@@ -29,6 +30,7 @@ function formatAttachmentSize(size?: number) {
 }
 
 export function resolveUploadStatusLabel(uploadState?: UploadAttachmentState) {
+  // pending/uploading 共用进行中文案，success 展示最终文件大小，error 优先展示服务端原因。
   if (!uploadState) {
     return "";
   }
@@ -62,12 +64,14 @@ export default function UploadAttachmentChip(props: {
   const isError = props.uploadState?.status === "error";
 
   const removeAttachment = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // 同步移除 prompt input 和上传队列，避免 UI 消失但异步上传结果随后重新写回。
     event.stopPropagation();
     attachments.remove(props.attachment.id);
     props.onRemoveAttachment(props.attachment.id);
   };
 
   const retryAttachment = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // 重试只触发上传 hook，附件本身仍保留在输入框中。
     event.stopPropagation();
     props.onRetryAttachment(props.attachment.id);
   };

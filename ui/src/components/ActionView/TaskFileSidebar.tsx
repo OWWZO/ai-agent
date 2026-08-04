@@ -29,6 +29,7 @@ type TaskFileSidebarProps = {
 };
 
 const getFileIcon = (type: string) => {
+  // 文件图标只依据扩展名分组，具体 URL/文件类型判断由 workspaceFiles 和 fileKind 负责。
   const ext = (type || "").toLowerCase();
   switch (ext) {
     case "png":
@@ -68,9 +69,11 @@ const getFileIcon = (type: string) => {
 
 const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProps) {
   const { taskList, selectedFileKey, onSelectFile, onBack, onRefresh } = props;
+  // 任务列表可能由多个工具事件拼接而来，先统一去重/规范化为可展示的工作区文件。
   const files = useMemo(() => collectWorkspaceFiles(taskList), [taskList]);
 
   const handleCopySelectedLink = () => {
+    // 优先复制当前选中文件，否则回退到首个文件；没有可下载引用时不伪造成功提示。
     const selected =
       files.find((item) => workspaceFileKey(item) === selectedFileKey) || files[0];
     const url = selected?.downloadUrl || selected?.url;

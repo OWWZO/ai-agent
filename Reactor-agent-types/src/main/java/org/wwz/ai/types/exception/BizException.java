@@ -6,7 +6,9 @@ import lombok.EqualsAndHashCode;
 import java.io.Serial;
 
 /**
- * 业务异常
+ * 可预期的业务规则异常。
+ *
+ * <p>与系统异常不同，它携带稳定业务码和可展示说明，适合由 Controller/网关转换成正常的失败响应。</p>
  */
 @EqualsAndHashCode(callSuper = true)
 @Data

@@ -475,6 +475,7 @@ export function useConversationStream(
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;
     let taskDataDirty = false;
+    // 原始事件先写入 currentChat.multiAgent，再由 handleTaskData 派生工作区/时间线；两类状态不能混为一谈。
     let pendingFlushFrame: number | null = null;
     let lastConversationFlushAt = 0;
     let lastTaskFlushAt = 0;
@@ -488,6 +489,7 @@ export function useConversationStream(
       }
 
       const now = performance.now();
+      // 会话快照与任务面板使用不同刷新频率：前者保持响应，后者避免每个 SSE chunk 都触发重渲染。
       // 只要有新事件就重建 chat.tasks，避免 multiAgent 已更新但时间线仍停在旧快照
       if (taskDataDirty) {
         const derived = handleTaskData(
@@ -561,6 +563,7 @@ export function useConversationStream(
         Boolean(data.errorMsg) &&
         !resultMap?.eventData;
 
+      // 结束错误、角色不可用、token 耗尽和普通事件是互斥处理分支；终态分支必须先停止 loading 再落快照。
       if (isTerminalGuardError) {
         const errorText = data.errorMsg || "当前请求处理失败，请稍后重试";
         if (streamStillActive) {
@@ -695,6 +698,7 @@ export function useConversationStream(
 
       const isPlanThoughtEvent = eventData.messageType === "plan_thought";
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
+      // combineData 只负责把事件合并进原始会话，后续再根据事件类型触发工作区同步和最终结论覆盖。
       currentChat = combineData(eventData, currentChat);
       // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
       // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。

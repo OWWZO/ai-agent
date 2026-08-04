@@ -75,6 +75,7 @@ public class McpRegistry {
      * 预热全局启用的 MCP。
      */
     public synchronized void preloadAllEnabledMcps() {
+        // 全局预热以数据库当前启用集合为准：先同步下线项，再建立新 runtime，最后发布不可变 id 快照。
         List<AiClientToolMcpVO> enabledMcpList = repository.queryEnabledAiClientToolMcpVOList();
         Map<String, AiClientToolMcpVO> mcpMap = enabledMcpList.stream()
                 .filter(Objects::nonNull)
@@ -191,6 +192,7 @@ public class McpRegistry {
         }
 
         // 懒加载保证按客户端绑定调用时也能工作；真正执行仍复用已缓存的 runtime 和串行锁。
+        // 因此调用方不需要持有 MCP 连接，也不能绕过注册中心自行创建客户端。
         ensureMcpsLoaded(Collections.singletonList(mcpId));
         McpClientRuntime runtime = runtimeCache.get(mcpId);
         if (runtime == null) {
@@ -246,6 +248,7 @@ public class McpRegistry {
         List<McpToolInfo> toolInfos = new ArrayList<>();
         runtime.getLock().lock();
         try {
+            // MCP 工具发现支持 cursor 分页；必须在同一把客户端锁内连续拉取，避免复用客户端时交错请求。
             String cursor = null;
             do {
                 McpSchema.ListToolsResult listToolsResult = StringUtils.isBlank(cursor)
@@ -480,6 +483,7 @@ public class McpRegistry {
         try {
             return transientRuntime.getSyncClient().callTool(request);
         } finally {
+            // STDIO 的临时客户端无论工具成功、返回业务错误还是抛异常都要关闭，避免子进程和管道泄漏。
             closeRuntimeQuietly(transientRuntime);
         }
     }
@@ -541,6 +545,7 @@ public class McpRegistry {
      * 将 MCP 返回结果转换为兼容现有 Agent 观察链路的字符串。
      */
     private String formatToolResult(String toolName, McpServerDescriptor descriptor, McpSchema.CallToolResult result) {
+        // 先处理 MCP 的 error 标记，再按文本、结构化内容、原始 content 逐级降级，保持旧 Agent 的字符串观察契约。
         if (result == null) {
             log.error("MCP 工具执行返回空结果: mcpId={}, toolName={}", descriptor.getMcpId(), toolName);
             return buildErrorResult(toolName);

@@ -198,6 +198,7 @@ class QdrantVectorStore(BaseVectorStore):
                     points.append(point)
 
             # 批量插入
+            # 统一按 1000 个点切批并等待 upsert 完成，避免大文件入库时单次请求过大或返回早于持久化。
             batch_size = 1000
             for i in range(0, len(points), batch_size):
                 batch_points = points[i:i + batch_size]
@@ -234,6 +235,7 @@ class QdrantVectorStore(BaseVectorStore):
             query_filter = self._build_filter(filter_conditions)
 
             # 执行搜索
+            # 每个 query vector 对应一个 SearchRequest，search_batch 返回顺序与请求顺序一致，供上层按子问题对齐。
             batch_requests = []
             for query_vector in query_vectors:
                 batch_requests.append(
@@ -285,6 +287,7 @@ class QdrantVectorStore(BaseVectorStore):
             raise ValueError("Sparse vectors are required for BM25 keyword search")
 
         # 构建过滤器
+        # BM25 查询必须使用命名 sparse_vector；缺少对应 SDK 模型时直接报配置/依赖错误，不伪装成无命中。
         query_filter = self._build_filter(filter_conditions)
 
         logger.info(f"Qdrant keyword search: {sparse_vectors}")
@@ -404,6 +407,7 @@ class QdrantVectorStore(BaseVectorStore):
             points, next_offset = scroll_result
 
             # 格式化结果
+            # offset 原样向上透传，调用方可以继续滚动而不需要理解 Qdrant 的分页对象。
             formatted_points = []
             for point in points:
                 formatted_points.append({
@@ -452,6 +456,7 @@ class QdrantVectorStore(BaseVectorStore):
         if not filter_conditions:
             return None
 
+        # 字符串/整数使用精确匹配，列表使用 any 匹配；不支持的值类型被忽略，避免生成无效的 Qdrant 条件。
         must_conditions = []
         for key, value in filter_conditions.items():
             # Warning: int 和 str 的匹配方式不同

@@ -75,7 +75,11 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
 
     /** 失败：LeAgent 风格 Error 前缀。 */
     protected ToolResultPayload failResult(String message) {
-        return ToolResultPayload.failureFrom(message, null);
+        Map<String, Object> detail = new java.util.LinkedHashMap<>();
+        detail.put("type", "tool_error");
+        detail.put("tool", getName());
+        detail.put("message", message);
+        return ToolResultPayload.failureFrom(message, detail);
     }
 
     protected String withWorkspaceHint(String description) {

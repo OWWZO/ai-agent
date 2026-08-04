@@ -437,6 +437,7 @@ public class ReactorConfig {
                     .interfaceUrl(settings.getInterfaceUrl())
                     .functionCallType(settings.getFunctionCallType())
                     .maxInputTokens(settings.getMaxInputTokens())
+                    .reasoningEffort(settings.getReasoningEffort())
                     .extParams(settings.getExtParams())
                     .build());
         });

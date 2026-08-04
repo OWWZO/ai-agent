@@ -28,6 +28,7 @@ public final class SummaryReplayResultResolver {
 
     public static ResolvedSummary resolve(String rawSummaryText, List<ArtifactView> artifacts) {
         String normalizedRawText = StringUtils.defaultString(rawSummaryText);
+        // 总结文本和 artifact 列表共用一个持久化字符串；只切一次，避免文件名或内容中的分隔符被重复拆分。
         String[] parts = normalizedRawText.split(Pattern.quote(ToolArtifactFormatter.ARTIFACT_DELIMITER), 2);
         String summaryText = parts.length == 0 ? "" : StringUtils.trimToEmpty(parts[0]);
 
@@ -55,6 +56,7 @@ public final class SummaryReplayResultResolver {
             return List.of();
         }
         List<ArtifactView> result = new ArrayList<>(artifacts.size());
+        // 回放只允许 visible/output 且具备 toolCallId + fileName 的产物，内部文件和不完整行不能暴露给前端。
         for (ArtifactView artifact : artifacts) {
             if (artifact == null) {
                 continue;
@@ -84,6 +86,7 @@ public final class SummaryReplayResultResolver {
         }
 
         LinkedHashSet<ArtifactView> selected = new LinkedHashSet<>();
+        // 先精确匹配稳定 key，再允许带包装文本的兼容包含匹配；LinkedHashSet 保持总结中的声明顺序并去重。
         for (String item : splitArtifactItems(artifactSection)) {
             ArtifactView exactMatch = artifactIndex.get(item);
             if (exactMatch != null) {
@@ -121,6 +124,7 @@ public final class SummaryReplayResultResolver {
             return List.of();
         }
         List<ArtifactView> reversed = new ArrayList<>(artifacts);
+        // 未点名文件时按最新产物优先，复制后反转避免改变账本查询返回的原始列表。
         Collections.reverse(reversed);
         return reversed;
     }

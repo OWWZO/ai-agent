@@ -94,6 +94,7 @@ class _Builder:
         return out
 
     def convert(self, el: object) -> list[object]:
+        # 先按 MathML 标签分派到 OMML 结构；未知节点退化为文本，保证文档生成可继续。
         name = _localname(el)
         children = list(el)  # type: ignore[call-overload]
 
@@ -192,6 +193,7 @@ class _Builder:
         *,
         und_ovr: bool,
     ) -> object:
+        # Office 对求和/积分等大运算符有专用 nary 结构，上下标位置由 limLoc 控制。
         nary = self.el("nary")
         pr = self.el("naryPr")
         pr.append(self._val("chr", chr_))  # type: ignore[union-attr]
@@ -275,6 +277,7 @@ def latex_to_omml_xml(latex: str, *, display: bool = False) -> str | None:
     Returns the serialised ``<m:oMath>`` (or ``<m:oMathPara>`` when
     ``display``) element, or ``None`` if the expression cannot be parsed.
     """
+    # OMML 转换失败必须返回 None，由上层选择 PNG/Unicode fallback，不能阻断整份产物。
     expr = latex.strip().strip("$").strip()
     if not expr:
         return None

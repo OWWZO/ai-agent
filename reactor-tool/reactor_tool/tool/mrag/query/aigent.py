@@ -76,6 +76,7 @@ class AgenticRAG:
     @staticmethod
     def merge_retrieval_results(resp: List[Dict]) -> Tuple[List[Dict], List[Dict], List[Dict]]:
         # 根据类型， 去重
+        # OCR/caption 既可能来自图片也可能来自页面，按稳定 asset id 归并后再分到三类展示结果。
         text_chunk_map = {}
         image_chunk_map = {}
         page_chunk_map = {}
@@ -243,6 +244,7 @@ class AgenticRAG:
 
     def iter_retrieval(self, question: str, image_urls: List[str] = None):
         """多轮检索 pipeline：yield 过程 SSE 事件，最后 yield RetrievalTrace。"""
+        # 每轮先检索再并发总结，规划模型决定是否继续；过程事件与最终 trace 共用同一批命中数据。
         loop = 1
         answer_question = question
         total_sub_questions = []
@@ -299,6 +301,7 @@ class AgenticRAG:
 
             tasks = {}
             summarized_infos = {}
+            # 总结任务按 future 完成顺序回收，但最终按 sub_questions 顺序写回，保证展示和 trace 稳定。
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 for sub_question, query_chunks in zip(sub_questions, current_chunks):
                     task = executor.submit(QueryProcessor.summarize_subquery, sub_question, query_chunks)
@@ -449,6 +452,7 @@ class AgenticRAG:
             image_descs = []
 
         # 0.判断用户的问题是否需要检索
+        # 先做轻量路由，再进入 Agentic 检索；无文本命中时继续尝试图片回答，最后才回退到普通 LLM。
         simple_check_flag = QueryProcessor.simple_query_check(question)
         if simple_check_flag:
             yield self._stage_event("route", "\n## 路由  \n无需检索，直接 LLM 回答。\n", mode="simple_llm")
@@ -510,6 +514,7 @@ class AgenticRAG:
         context = self.build_ref_context(text_chunks)
 
         if not answer_image_urls:
+            # 只有文本证据时使用文本提示；有页面/图片证据时切换 VLM，并在回答后显式补回图片 Markdown。
             logger.info("没有找到图片, 使用LLM回答")
             prompt = PromptManager.TEXT_PROMPT.format(context=context, question=question)
             messages = LLMClient().convert_messages(prompt)

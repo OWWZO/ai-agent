@@ -19,6 +19,7 @@ function cloneSearchResultSnapshot(searchResult?: MESSAGE.SearchResult) {
     return searchResult;
   }
 
+  // SSE 合并会原地更新 searchResult；渲染前复制数组，避免缓存中的旧任务被后续事件悄悄改写。
   return {
     ...searchResult,
     query: [...(searchResult.query || [])],
@@ -35,6 +36,7 @@ function cloneResultMapSnapshot(
     return {} as MESSAGE.ResultMap;
   }
 
+  // 只复制渲染链会读取的可变数组，保留其它字段引用以控制复制成本。
   return {
     ...resultMap,
     searchResult: cloneSearchResultSnapshot(resultMap.searchResult),
@@ -118,6 +120,7 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
       .join(",")
     : "";
 
+  // 签名必须覆盖 tool/artifact/query/plan 等展示字段；否则同一个任务对象原地更新时 WeakMap 会返回过期结果。
   return [
     baseId,
     task.messageId || "",
@@ -206,6 +209,7 @@ export function processTaskForRender(
   const signature = getTaskRenderSignature(task, baseId);
   const cached = taskRenderCache.get(task);
   if (cached?.signature === signature) {
+    // 同一对象且展示输入未变化时复用拆分结果，避免每个 SSE chunk 都重复生成任务数组。
     return cached.items;
   }
 

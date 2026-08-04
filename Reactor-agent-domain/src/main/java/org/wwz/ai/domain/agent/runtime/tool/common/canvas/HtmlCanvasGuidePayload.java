@@ -5,8 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * On-demand HTML canvas authoring guide for the model.
- * Aligned with LeAgent get_html_canvas_guide for Reactor file-service publish path.
+ * 按需提供给模型的 HTML canvas 创作指南。
+ *
+ * <p>指南描述的是 canvas_publish 的输入边界、预览运行时和质量门槛，
+ * 不参与 HTML 解析或发布；GenUI HtmlFrame 使用另一条渲染路径。</p>
  */
 public final class HtmlCanvasGuidePayload {
 

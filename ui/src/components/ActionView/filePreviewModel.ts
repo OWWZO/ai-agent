@@ -18,6 +18,7 @@ export interface PreviewRendererFlags {
 }
 
 export function filterPreviewTaskList(taskList?: PanelItemType[]) {
+  // 摘要/最终结果不是独立预览项；深搜只保留允许展示 workspace 的阶段。
   return (taskList || []).filter(
     (item) =>
       !["task_summary", "result"].includes(item.messageType) &&
@@ -33,6 +34,7 @@ export function resolvePreviewTaskSelection(params: {
   taskList: PanelItemType[];
   activeTaskIndex?: number;
 }) {
+  // 优先使用外部 active index，其次默认任务，最后回退到列表末项，兼容历史回放和实时任务。
   const { defaultTaskItem, taskList, activeTaskIndex } = params;
   let taskItem =
     typeof activeTaskIndex === "number"
@@ -60,6 +62,7 @@ export function resolvePreviewTitle(
   }
 
   const { messageType, resultMap } = taskItem;
+  // 标题按工具结果、文件产物、深搜阶段依次解析，避免把内部 messageType 直接暴露给用户。
   if (messageType === "tool_result") {
     if (
       taskItem.toolResult?.toolName === "image_generation_tool" &&
@@ -103,6 +106,7 @@ export function resolvePreviewCanPreview(
   flags: PreviewRendererFlags | undefined,
   artifactMissing: boolean
 ) {
+  // 缺少 artifact 时即使 message type 支持，也不能打开空预览面板。
   return !artifactMissing && Boolean(
     flags?.useFile ||
       flags?.useHtml ||

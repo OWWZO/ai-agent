@@ -7,9 +7,12 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
 import org.wwz.ai.domain.agent.memory.ltm.LtmAgentForkSupport;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkExecutionEvent;
+import org.wwz.ai.domain.agent.memory.ltm.LtmForkRunResult;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.infrastructure.dao.reactor.ILtmForkExecutionDao;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +29,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
 
     private final ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider;
     private final ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider;
+    private final ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider;
 
     private final Map<String, AtomicInteger> turnCounters = new ConcurrentHashMap<>();
     private final Map<String, Boolean> inFlight = new ConcurrentHashMap<>();
@@ -36,9 +40,11 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
     private volatile long timeoutSeconds = 90L;
 
     public BackgroundReviewServiceImpl(ObjectProvider<ReactorRuntimeDependencies> runtimeDependenciesProvider,
-                                       ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider) {
+                                       ObjectProvider<CuratedMemoryStore> curatedMemoryStoreProvider,
+                                       ObjectProvider<ILtmForkExecutionDao> ltmForkExecutionDaoProvider) {
         this.runtimeDependenciesProvider = runtimeDependenciesProvider;
         this.curatedMemoryStoreProvider = curatedMemoryStoreProvider;
+        this.ltmForkExecutionDaoProvider = ltmForkExecutionDaoProvider;
     }
 
     public void configure(boolean enabled, int nudgeInterval, long timeoutSeconds, int maxSteps) {
@@ -69,6 +75,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
         }
         if (owner == null) {
             log.info("background-review skip reason=null-owner sessionId={}", sessionId);
+            recordSkip(sessionId, requestId, null, conversationSnapshot, "null-owner");
             return;
         }
         if (StringUtils.isBlank(sessionId)) {
@@ -86,6 +93,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
         }
         if (inFlight.putIfAbsent(sessionId, Boolean.TRUE) != null) {
             log.info("background-review skip reason=in-flight sessionId={}", sessionId);
+            recordSkip(sessionId, requestId, owner, conversationSnapshot, "in-flight");
             return;
         }
 
@@ -99,6 +107,7 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                 runReviewFork(sessionId, requestId, owner, snapshot, system);
             } catch (Exception e) {
                 log.warn("background-review fork error sessionId={}: {}", sessionId, e.toString(), e);
+                recordSkip(sessionId, requestId, owner, snapshot, "thread-error");
             } finally {
                 inFlight.remove(sessionId);
             }
@@ -118,11 +127,13 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
         if (store == null || deps == null) {
             log.warn("background-review abort storeOrDepsNull sessionId={} store={} deps={}",
                     sessionId, store != null, deps != null);
+            recordSkip(sessionId, requestId, owner, snapshot,
+                    store == null ? "store-null" : "deps-null");
             return;
         }
         log.info("background-review fork start sessionId={} snapshotMsgs={}", sessionId,
                 snapshot == null ? 0 : snapshot.size());
-        int applied = LtmAgentForkSupport.runMemoryOnlyFork(
+        LtmForkRunResult result = LtmAgentForkSupport.runMemoryOnlyFork(
                 deps,
                 store,
                 owner,
@@ -134,6 +145,72 @@ public class BackgroundReviewServiceImpl implements BackgroundReviewService {
                 maxSteps,
                 timeoutSeconds,
                 "bg-review");
-        log.info("background-review fork done sessionId={} appliedApprox={}", sessionId, applied);
+        log.info("background-review fork done sessionId={} status={} appliedApprox={} durationMs={}",
+                sessionId, result.getStatus(), result.appliedOrZero(), result.getDurationMs());
+        recordResult(sessionId, requestId, owner, snapshot == null ? 0 : snapshot.size(), result);
+    }
+
+    private void recordSkip(String sessionId,
+                            String requestId,
+                            LtmOwner owner,
+                            List<Message> snapshot,
+                            String reason) {
+        LtmForkExecutionEvent event = baseEvent(sessionId, requestId, owner)
+                .forkKind(LtmForkExecutionEvent.KIND_BG_REVIEW)
+                .status(LtmForkExecutionEvent.STATUS_SKIPPED)
+                .skipReason(reason)
+                .snapshotMessageCount(snapshot == null ? 0 : snapshot.size())
+                .maxSteps(maxSteps)
+                .timeoutSeconds(timeoutSeconds)
+                .appliedCount(0)
+                .build();
+        persist(event);
+    }
+
+    private void recordResult(String sessionId,
+                              String requestId,
+                              LtmOwner owner,
+                              int snapshotMsgs,
+                              LtmForkRunResult result) {
+        LtmForkExecutionEvent event = baseEvent(sessionId, requestId, owner)
+                .forkKind(LtmForkExecutionEvent.KIND_BG_REVIEW)
+                .forkRequestId(result.getForkRequestId())
+                .status(result.getStatus())
+                .skipReason(result.getSkipReason())
+                .snapshotMessageCount(snapshotMsgs)
+                .maxSteps(maxSteps)
+                .timeoutSeconds(timeoutSeconds)
+                .durationMs(result.getDurationMs())
+                .entriesBefore(result.getEntriesBefore())
+                .entriesAfter(result.getEntriesAfter())
+                .appliedCount(result.appliedOrZero())
+                .errorMessage(StringUtils.left(result.getErrorMessage(), 1000))
+                .detailJson(StringUtils.left(result.getWrittenEntriesJson(), 500_000))
+                .build();
+        persist(event);
+    }
+
+    private LtmForkExecutionEvent.LtmForkExecutionEventBuilder baseEvent(String sessionId,
+                                                                         String requestId,
+                                                                         LtmOwner owner) {
+        return LtmForkExecutionEvent.builder()
+                .sessionId(StringUtils.defaultIfBlank(sessionId, "unknown"))
+                .triggerRequestId(StringUtils.defaultIfBlank(requestId, "unknown"))
+                .ownerType(owner == null || owner.getType() == null ? null : owner.getType().name())
+                .ownerId(owner == null ? null : owner.getId())
+                .deleted(0);
+    }
+
+    private void persist(LtmForkExecutionEvent event) {
+        try {
+            ILtmForkExecutionDao dao = ltmForkExecutionDaoProvider.getIfAvailable();
+            if (dao == null || event == null) {
+                return;
+            }
+            dao.insertEvent(event);
+        } catch (Exception e) {
+            log.warn("record ltm fork review event failed sessionId={}: {}",
+                    event == null ? null : event.getSessionId(), e.toString());
+        }
     }
 }

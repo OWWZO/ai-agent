@@ -262,6 +262,7 @@ public class SqlParserUtils {
     }
 
     private static FromTable parseSelectFromTable(SqlNode from) {
+        // 递归把 JOIN、子查询和 UNION 统一折叠为 FromTable 链，后续问数逻辑不需要再依赖 Calcite AST。
         if (SqlKind.IDENTIFIER.equals(from.getKind())) {
             return singleFromTable(from);
         }
@@ -399,6 +400,7 @@ public class SqlParserUtils {
 
     public static SqlModel parseSelectSql(String sql, String dialect) throws SqlParseException {
         log.debug("待解析sql:{}", sql);
+        // 先清理结尾分号并隐藏 hint，再验证查询类型；这样模型只接收 SELECT 结构，hint 仍可在执行阶段恢复。
         sql = cleanSql(sql, dialect);
         SqlModel sqlModel = new SqlModel();
         sql = hintParse(sqlModel, sql);
@@ -440,6 +442,7 @@ public class SqlParserUtils {
 
         List<ModelColumn> modelColumns = parseSelectColumn(selectNode, dialect);
 
+        // 解析结果按列、来源、过滤、分组和排序分段填充，SqlModel 是查询转换层的稳定中间表示。
         resetOrderByColumnKind(sqlModel.getOrderByList(), modelColumns);
 
         sqlModel.setColumnList(modelColumns);
@@ -473,6 +476,7 @@ public class SqlParserUtils {
 
     private static List<WhereCondition> flattenConditions(WhereCondition condition, boolean isAnd) {
         List<WhereCondition> flatConditions = new ArrayList<>();
+        // AND 可以安全展开为独立条件；OR 必须保留整棵子树，否则会改变 SQL 的布尔语义。
         if (condition.getOperator() == null) {
             flatConditions.add(condition);
         } else {

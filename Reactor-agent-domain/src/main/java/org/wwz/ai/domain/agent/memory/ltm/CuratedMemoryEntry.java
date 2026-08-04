@@ -7,6 +7,12 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * 用户级长期记忆策展条目。
+ *
+ * status 区分可检索、待审核和删除状态；source 字段保留写入来源，便于后台审核和
+ * 记忆回溯，不把策展内容混入 Execution Ledger 的运行事件。
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -27,6 +27,8 @@ public class DrawConfigParser {
         List<AiClientConfig> configList = new ArrayList<>();
 
         try {
+            // 解析分两阶段完成：先把节点转成可引用的 NodeInfo，再按 edges 生成有方向的
+            // source/target 关系；这样边解析不需要反复遍历原始 JSON 节点。
             JsonNode rootNode = objectMapper.readTree(configData);
             JsonNode nodesArray = rootNode.get("nodes");
             JsonNode edgesArray = rootNode.get("edges");
@@ -72,7 +74,8 @@ public class DrawConfigParser {
             nodeInfo.setNodeId(nodeId);
             nodeInfo.setNodeType(nodeType);
 
-            // 解析节点数据，提取引用ID
+            // 节点只保存后续关系生成所需的最小信息：类型、标题和业务引用 ID；未知节点
+            // 仍进入 map，便于边解析时给出明确的缺失引用/未处理类型日志。
             JsonNode dataNode = nodeJson.get("data");
             if (dataNode != null) {
                 nodeInfo.setTitle(dataNode.has("title") ? dataNode.get("title").asText() : "");
@@ -96,7 +99,8 @@ public class DrawConfigParser {
      * 从inputsValues中提取引用ID
      */
     private static void extractRefId(JsonNode inputsValues, NodeInfo nodeInfo) {
-        // 根据不同节点类型提取不同的引用ID
+        // 前端不同节点使用不同字段承载引用 ID，按节点类型分派解析规则，避免在边逻辑中
+        // 混入 client/agent/model 等字段兼容判断。
         switch (nodeInfo.getNodeType()) {
             case "client":
                 extractClientRefId(inputsValues, nodeInfo);
@@ -236,7 +240,8 @@ public class DrawConfigParser {
             String sourceNodeId = edgeJson.get("sourceNodeID").asText();
             String targetNodeId = edgeJson.get("targetNodeID").asText();
 
-            // 获取sourcePortID，这包含了重要的连接端口信息
+            // sourcePortID 是执行图中连接语义的一部分，保存到 extParam 供后续运行时恢复，
+            // 不能只依赖 source/target 节点 ID。
             String sourcePortId = null;
             if (edgeJson.has("sourcePortID")) {
                 sourcePortId = edgeJson.get("sourcePortID").asText();
@@ -254,14 +259,16 @@ public class DrawConfigParser {
                 continue;
             }
 
-            // 跳过start节点
+            // start 只是画布入口控制节点，不是可装配的 client/agent/tool 关系，必须从持久化
+            // 映射中排除。
             if ("start".equals(sourceNode.getNodeType()) || "start".equals(targetNode.getNodeType())) {
                 log.debug("跳过start节点: {} -> {}", sourceNode.getNodeType(), targetNode.getNodeType());
                 skippedEdges++;
                 continue;
             }
 
-            // 验证节点是否有有效的引用ID
+            // 没有业务引用 ID 的节点无法生成可执行关系；跳过该边而不是生成空 source/target，
+            // 避免污染后续装配查询。
             if (sourceNode.getRefId() == null || sourceNode.getRefId().trim().isEmpty() ||
                 targetNode.getRefId() == null || targetNode.getRefId().trim().isEmpty()) {
                 log.warn("节点缺少有效的引用ID，跳过关系: {}({}) -> {}({})",
@@ -303,7 +310,8 @@ public class DrawConfigParser {
             return null;
         }
 
-        // 构建扩展参数，包含端口信息和节点标题
+        // 构建扩展参数，包含端口信息和节点标题。它是辅助诊断/恢复信息，主关系字段仍由
+        // sourceType/sourceId/targetType/targetId 承载，构建失败可安全回退为空 JSON。
         String extParam = "{}";
         try {
             StringBuilder extParamBuilder = new StringBuilder("{");

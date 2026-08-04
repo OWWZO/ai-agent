@@ -17,6 +17,7 @@ export function useMragQuery(
   const [queryRawChunks, setQueryRawChunks] = useState<unknown[]>([]);
 
   const handleSubmitQuery = useCallback(async (overrideSessionId?: string) => {
+    // 每次提交先校验知识库和问题，并取消上一条请求，保证只保留一个活动流。
     const currentQuestion = question.trim();
     if (!selectedKnowledgeBaseId) {
       showMessage()?.error("请先选择知识库");
@@ -37,6 +38,7 @@ export function useMragQuery(
     setQueryRawChunks([]);
 
     try {
+      // answer 累积文本，raw chunks 只保留最近 50 条用于诊断和调试展示。
       await streamMragQuery({
         toolBaseUrl,
         kbId: selectedKnowledgeBaseId,
@@ -55,6 +57,7 @@ export function useMragQuery(
         setQueryError(mapMragError(error));
       }
     } finally {
+      // 只有当前 controller 才能清空 ref；旧请求的 finally 不得覆盖新请求状态。
       if (queryAbortRef.current === abortController) {
         queryAbortRef.current = null;
       }
@@ -66,6 +69,7 @@ export function useMragQuery(
   }, [onCompleted, question, selectedKnowledgeBaseId, sessionId, toolBaseUrl]);
 
   const handleStopQuery = useCallback(() => {
+    // 主动停止走同一 AbortController，错误回调会识别 aborted 并跳过失败提示。
     if (!queryAbortRef.current) {
       return;
     }

@@ -44,12 +44,14 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     @Override
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
+        // 先 hydrate 跨轮工作记忆，再进入 Agent 内核；记忆加载失败不应改变 case 的执行边界。
         enrichWorkingMemory(request);
         applyOutputStyle(request);
         doExecute(request, stream);
     }
 
     private void doExecute(AgentRequest request, AgentSessionStream stream) throws Exception {
+        // 动态上下文承载协议无关 Printer，执行工厂负责创建真正的 AgentContext 和 ReAct 节点。
         StrategyHandler<AgentRequest, DefaultReactAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultReactAgentExecuteStrategyFactory.armoryStrategyHandler();
 
@@ -58,6 +60,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
                         .printer(new AgentSessionPrinter(stream, request, request.getAgentType()))
                         .build();
 
+        // 注册活动 run 后，停止请求才能通过 requestId 找到同一条执行流；无论成功还是异常都必须解除注册。
         activeAgentRunRegistry.begin(request.getRequestId(), request.getSessionId());
         activeAgentRunRegistry.bindStream(request.getRequestId(), stream);
         try {
@@ -73,6 +76,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
                         "用户停止本轮对话");
             }
         } catch (Exception e) {
+            // 用户取消与系统失败使用不同账本终态，前端和历史回放据此区分 STOPPED 与 FAILED。
             if (dynamicContext.getAgentContext() != null
                     && dynamicContext.getAgentContext().isRunCancelled()) {
                 ExecutionLedgerRunSupport.finishRun(
@@ -118,6 +122,7 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         }
         List<Message> working = List.of();
         if (sessionWorkingMemoryService != null) {
+            // 优先读取已持久化的 working_memory 投影，保持 prompt cache 友好的消息形状。
             working = sessionWorkingMemoryService.loadReadyMessages(request.getSessionId(), request.getRequestId());
         }
         // 冷启动/无投影时回退 ledger hydrate，保证首批会话仍有跨轮上下文

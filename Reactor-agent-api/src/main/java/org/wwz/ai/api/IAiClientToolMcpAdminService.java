@@ -8,8 +8,10 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 /**
- * MCP客户端配置管理服务接口
- * @description MCP客户端配置管理服务接口
+ * MCP 客户端连接配置管理契约。
+ *
+ * <p>transportType 与 transportConfig 描述连接方式及其参数，requestTimeout 约束单次外部调用；
+ * 具体连接建立、探活和工具注册不属于 API 契约层职责。</p>
  */
 public interface IAiClientToolMcpAdminService {
 

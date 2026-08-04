@@ -6,6 +6,7 @@ import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.JdbcCatalogFactory;
 import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.DialectEnum;
 
 
+/** 通过 SPI 注册 ClickHouse 元数据目录。 */
 @AutoService(JdbcCatalogFactory.class)
 public class ClickhouseCatalogFactory implements JdbcCatalogFactory {
     @Override
@@ -18,4 +19,3 @@ public class ClickhouseCatalogFactory implements JdbcCatalogFactory {
         return new ClickhouseCatalog();
     }
 }
-

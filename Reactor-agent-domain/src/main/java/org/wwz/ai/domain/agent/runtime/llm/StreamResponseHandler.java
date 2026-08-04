@@ -70,6 +70,8 @@ public class StreamResponseHandler {
                                                                              String hiddenStartMarker,
                                                                              boolean emitFinalSnapshot,
                                                                              boolean pushToClient) {
+        // 文本流按“累积完整响应 -> 过滤隐藏标记 -> 计算新增片段 -> 按间隔推送”处理；
+        // future 只在 complete/error 收口，避免每个 chunk 都改变上游调用契约。
         CompletableFuture<StringStreamResult> future = new CompletableFuture<>();
         StringBuilder allContent = new StringBuilder();
         StringBuilder streamBuffer = new StringBuilder();
@@ -146,6 +148,8 @@ public class StreamResponseHandler {
                                                                         Flux<ChatResponse> flux,
                                                                         long startTimeMs,
                                                                         boolean pushToClient) {
+        // tool-call 流同时维护 content、reasoning 和 tool-call delta 三条累积线；
+        // 中间帧只聚合，只有 onComplete 才能确认参数完整并交给执行层。
         // 异步结果容器
         CompletableFuture<LLM.ToolCallResponse> future = new CompletableFuture<>();
 
@@ -173,6 +177,8 @@ public class StreamResponseHandler {
         flux.subscribe(
             response -> {
                 try {
+                    // 一个 ChatResponse 可能同时携带正文、reasoning 和多个 tool-call
+                    // 片段，逐类合并后再按节流策略向前端发事件。
                     // 每个 chunk 同时可能包含正文、reasoning 和 tool_call delta，三类内容必须独立累积。
                     chunkCount[0]++;
                     Generation generation = response != null ? response.getResult() : null;
@@ -245,6 +251,8 @@ public class StreamResponseHandler {
 
             () -> {
                 try {
+                    // 完成时再次拆分隐藏思考并冲刷尾部增量，再构造完整 toolCalls；
+                    // 这是唯一允许把聚合参数交给后续工具调度的边界。
                     List<ToolCall> toolCalls = buildToolCalls(toolCallAccumulators);
                     // 整轮再 split 一次，兜底 <think> 跨 chunk 或仅 final metadata
                     ReasoningContentExtractor.SplitResult finalSplit =
@@ -349,6 +357,8 @@ public class StreamResponseHandler {
      * @return 真正需要推给前端的增量文本（可能为空）
      */
     private static String appendReasoningChunk(StringBuilder all, String chunk) {
+        // 兼容网关既可能返回“累计全文”也可能返回“纯增量”的两种格式：当 chunk
+        // 以已有全文为前缀时只取尾部，否则把它当作新的增量，重复帧直接忽略。
         if (chunk == null || chunk.isEmpty()) {
             return "";
         }

@@ -68,6 +68,7 @@ def _read_legacy_doc_binary(file_path: Path) -> tuple[str, str]:
     try:
         from pyantiword.antiword_wrapper import extract_text_with_antiword
 
+        # pyantiword 是首选的原生文本提取器；只有提取失败才尝试外部 LibreOffice 转换。
         raw = extract_text_with_antiword(str(file_path))
         if raw is not None:
             text = str(raw).strip()
@@ -208,6 +209,7 @@ class WordReaderTool(SyncTool):
 
         suffix = file_path.suffix.lower()
         if suffix == ".doc":
+            # 二进制 .doc 没有 python-docx 可用的 OOXML 结构，只能返回统一契约下的纯文本降级结果。
             logger.info("Reading legacy Word .doc", file_path=str(file_path))
             full_text, source = _read_legacy_doc_binary(file_path)
             result = _build_legacy_doc_result(
@@ -262,6 +264,7 @@ class WordReaderTool(SyncTool):
             is_heading = style_name.startswith("Heading")
 
             if preserve_structure:
+                # 结构模式保留标题级别和段落类型；关闭后只构建连续文本，减少结果体积。
                 item: dict[str, Any] = {
                     "type": "heading" if is_heading else "paragraph",
                     "text": text,
@@ -284,6 +287,7 @@ class WordReaderTool(SyncTool):
 
         tables_data: list[list[list[str]]] = []
         if extract_tables:
+            # 表格既写入全文上下文，也作为独立结构返回，满足摘要和精确表格消费两类调用方。
             for table in doc.tables:
                 table_data: list[list[str]] = []
                 for row in table.rows:
@@ -304,6 +308,7 @@ class WordReaderTool(SyncTool):
 
         headers_footers: dict[str, list[str]] = {"headers": [], "footers": []}
         if extract_headers:
+            # 页眉页脚按 section 收集；它们不混入正文，避免重复计入段落统计。
             for section in doc.sections:
                 if section.header:
                     for para in section.header.paragraphs:

@@ -1,5 +1,6 @@
 import api from "./index";
 
+// 计划审批 API：审批、拒绝和取消都以 approvalId 关联同一待处理计划。
 export type PlanApprovePayload = {
   approvalId: string;
   editedPlanContent?: string;

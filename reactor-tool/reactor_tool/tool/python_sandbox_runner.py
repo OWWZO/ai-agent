@@ -84,6 +84,7 @@ def _snapshot_workspace_files(workspace_root: Path) -> dict[Path, tuple[int, int
     if not workspace_root.is_dir():
         return {}
     files: dict[Path, tuple[int, int]] = {}
+    # 快照只记录可采集普通文件，排除输入目录、隐藏目录和 runner 自己的源文件，避免把内部状态当成用户产物。
     for path in workspace_root.rglob("*"):
         if not _is_harvestable_file(path, workspace_root):
             continue
@@ -97,6 +98,7 @@ def _produced_files(workspace_root: Path,
                     before: dict[Path, tuple[int, int]],
                     after: dict[Path, tuple[int, int]]) -> list[dict[str, Any]]:
     produced: list[dict[str, Any]] = []
+    # 通过 size + mtime_ns 对比识别新增和修改文件；删除文件不属于可上传产物，因此不会出现在结果中。
     for path in sorted(after, key=lambda item: str(item).lower()):
         if after[path] == before.get(path):
             continue
@@ -170,6 +172,7 @@ class _PtpCallRewriter(ast.NodeTransformer):
 
 
 def _compile_user_code(source: str):
+    # 编译前仅做 AST 级兼容改写，不执行用户表达式；运行时权限校验仍由 I/O guard 独立承担。
     tree = ast.parse(source, filename="<code_interpreter>", mode="exec")
     tree = _PtpCallRewriter().visit(tree)
     ast.fix_missing_locations(tree)
@@ -197,6 +200,7 @@ def main() -> int:
                 globals_env.update(build_runtime_helpers(policy))
                 globals_env["__sandbox_np_ptp__"] = _sandbox_np_ptp
                 globals_env.update(dict(request.get("initial_variables") or {}))
+                # init 只建立一次共享 globals；后续 execute 可以保留变量，同时每次仍重新建立文件快照。
                 _write_response({"type": "ready"})
                 continue
             if request_type == "close":
@@ -218,6 +222,7 @@ def main() -> int:
             status = "success"
             error = None
             try:
+                # stdout/stderr 必须被捕获，用户 print 不能污染父子进程 JSONL 协议；权限守卫包在 exec 外层。
                 with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                     with activate_runtime_io_guard(policy):
                         source = str(request.get("code") or "")
@@ -227,6 +232,7 @@ def main() -> int:
                 error = _sanitize_text(str(exc))
                 stderr.write(_sanitize_text(traceback.format_exc()))
             after = _snapshot_workspace_files(workspace_root)
+            # 即使用户代码失败也采集 after，保留失败前已经生成的文件供上层诊断或展示。
             stdout_text, stdout_truncated = _truncate(_sanitize_text(stdout.getvalue()))
             stderr_text, stderr_truncated = _truncate(_sanitize_text(stderr.getvalue()))
             _write_response({

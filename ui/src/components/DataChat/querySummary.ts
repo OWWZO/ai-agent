@@ -20,6 +20,7 @@ function trimFilterValue(value?: string) {
 }
 
 function resolveFilterLabel(filter: DataChatFilter) {
+  // OR 过滤器展开子条件，普通过滤器沿用后端提供的操作符和清洗后的值。
   if (filter.operator === "OR") {
     return (filter.subFilters || [])
       .map(
@@ -32,6 +33,7 @@ function resolveFilterLabel(filter: DataChatFilter) {
 }
 
 function resolveFormula(chartCfg: DataChatSourceConfig) {
+  // overwriteCalc 是带 ${} 包裹的模板，按 overwriteSource 做展示侧变量替换。
   const overwriteSource = chartCfg.overwriteSource || {};
   let formula = chartCfg.overwriteCalc || "";
   const keys = Object.keys(overwriteSource);
@@ -46,6 +48,7 @@ function resolveFormula(chartCfg: DataChatSourceConfig) {
 }
 
 export function buildQuerySummary(chartCfg: DataChatSourceConfig): DataChatQuerySummary {
+  // 摘要只投影当前图表配置，不重新请求数据；showTypeSwitch 表示可在同维度多指标间切换。
   const dimCols = chartCfg.dimCols || [];
   const measureCols = chartCfg.measureCols || [];
   const dataList = chartCfg.dataList || [];

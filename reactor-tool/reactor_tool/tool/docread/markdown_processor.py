@@ -114,6 +114,7 @@ def _nest_toc(headings: list[dict[str, Any]], max_depth: int) -> list[dict[str, 
             "children": [],
         }
         while stack and stack[-1][0] >= h["level"]:
+            # 栈顶必须是当前标题的父级；遇到同级或更高标题时回退到对应祖先。
             stack.pop()
         if not stack:
             root.append(node)
@@ -168,6 +169,7 @@ def _markdown_to_html(md: str) -> str:
         line = lines[i]
         stripped = line.strip()
         if stripped.startswith("```"):
+            # 代码围栏切换时先冲刷段落，代码体单独转义，避免其中的 Markdown 被二次解释。
             flush_para()
             if not in_code:
                 in_code = True
@@ -261,6 +263,7 @@ def _find_section_range(
                     start_level = level
             else:
                 if level <= start_level:
+                    # 章节包括其所有更深层子标题，直到下一个同级或上级标题之前。
                     return (start_idx, i)
     if start_idx is not None:
         return (start_idx, len(lines))
@@ -530,6 +533,7 @@ class MarkdownProcessorTool(SyncTool):
         operation = self.require_param(params, "operation")
         logger.info("markdown_processor", operation=operation)
 
+        # 操作统一在此分发，章节编辑方法只接收已校验的操作名和原始参数。
         dispatch = {
             "read": self._read,
             "write": self._write,
@@ -561,6 +565,7 @@ class MarkdownProcessorTool(SyncTool):
             raise ValueError(f"Not a file: {file_path}")
 
         raw = _read_text(file_path)
+        # read 同时返回原文和结构索引，调用方可以按需使用解析结果而不必重复读取文件。
         lines = raw.splitlines()
         headings = _parse_headings(lines)
         links = _parse_links(raw)
@@ -605,6 +610,7 @@ class MarkdownProcessorTool(SyncTool):
         parts: list[str] = []
 
         if metadata:
+            # frontmatter 先写入文档头部；列表值按 YAML 风格展开，保持常见 Markdown 工具可读。
             fm_lines = ["---"]
             for k, v in metadata.items():
                 if isinstance(v, list):
@@ -703,6 +709,7 @@ class MarkdownProcessorTool(SyncTool):
         start, end = rng
         insert_lines = content.splitlines()
 
+        # before/after 保留原章节；replace 直接替换区间，三种模式共享同一范围计算。
         if position == "before":
             new_lines = lines[:start] + [""] + insert_lines + [""] + lines[start:]
         elif position == "replace":
@@ -805,6 +812,7 @@ class MarkdownProcessorTool(SyncTool):
         for h in headings:
             if h["level"] > max_depth:
                 continue
+            # 锚点规则与常见 Markdown 渲染器保持接近：去标点、空格改连字符。
             indent = "  " * (h["level"] - 1)
             anchor = re.sub(r"[^\w\s-]", "", h["text"].lower())
             anchor = re.sub(r"\s+", "-", anchor.strip())
@@ -906,6 +914,7 @@ class MarkdownProcessorTool(SyncTool):
             p = Path(fp)
             if not p.exists():
                 raise FileNotFoundError(f"Merge source not found: {fp}")
+            # 每个源文件先去除首尾空白，再用统一分隔符连接，避免边界处出现多余空行。
             parts.append(_read_text(p).strip())
 
         merged = separator.join(parts) + "\n"
@@ -942,6 +951,7 @@ class MarkdownProcessorTool(SyncTool):
             raise ValueError("convert requires output_format: html or plain_text")
 
         raw = _read_text(file_path)
+        # 转换只选择目标格式；写文件是可选副作用，未提供 output_path 时仍返回内存结果。
         if fmt == "html":
             content = _markdown_to_html(raw)
         else:

@@ -19,6 +19,8 @@ logger = get_struct_logger(__name__)
 class DataCleanTool(SyncTool):
     """Clean and preprocess DataFrame data.
 
+    中文说明：按用户指定顺序执行去重、缺失值处理和类型归一化，并返回操作摘要。
+
     Features:
     - Remove duplicate rows based on specified columns
     - Fill missing values with specified strategies
@@ -148,6 +150,7 @@ class DataCleanTool(SyncTool):
         except ImportError as e:
             raise RuntimeError("pandas is not installed. Install with: pip install pandas") from e
 
+        # 清洗操作必须按声明顺序执行，例如先填充再删除缺失值会产生不同结果。
         data = resolve_input(params, context, required=False)
         operations = params["operations"]
         output_format = params.get("output_format", "records")
@@ -174,6 +177,7 @@ class DataCleanTool(SyncTool):
 
         logger.info("Starting data cleaning", rows=rows_before, columns=len(columns_before))
 
+        # 每一步都记录影响行列数，便于上层展示结果并定位清洗造成的数据变化。
         for op in operations:
             op_type = op["type"]
             columns = op.get("columns", [])

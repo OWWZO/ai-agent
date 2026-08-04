@@ -1,9 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import GeneralInput from "./index";
+import GeneralInput, { ATTACHMENT_ACCEPT, MAX_QUERY_CHARS } from "./index";
 
 describe("GeneralInput", () => {
+  it("附件 accept 包含 pptx/json/py/html", () => {
+    expect(ATTACHMENT_ACCEPT).toContain(".pptx");
+    expect(ATTACHMENT_ACCEPT).toContain(".json");
+    expect(ATTACHMENT_ACCEPT).toContain(".py");
+    expect(ATTACHMENT_ACCEPT).toContain(".html");
+    expect(MAX_QUERY_CHARS).toBe(8000);
+  });
+
   it("上传菜单触发器不会渲染嵌套 button", () => {
     const html = renderToStaticMarkup(
       <GeneralInput

@@ -28,7 +28,6 @@ public class CodeExecutionToolTest {
                 .requestId("req-code-001")
                 .sessionId("session-code-001")
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
                 .build();
         ToolArtifactSource artifactSource = ToolArtifactSource.builder()

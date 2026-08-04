@@ -3,6 +3,12 @@ package org.wwz.ai.domain.agent.memory.ltm;
 import lombok.Builder;
 import lombok.Value;
 
+/**
+ * 长期记忆策展写入结果。
+ *
+ * success 表示请求处理完成，staged/noChange 用于区分“暂存待审核”和“内容未变化”；
+ * 调用方据此决定是否继续刷新索引或向用户展示变更提示。
+ */
 @Value
 @Builder
 public class CuratedMemoryWriteResult {

@@ -41,6 +41,7 @@ public class LtmManager {
 
     public synchronized boolean addProvider(MemoryProvider provider) {
         Objects.requireNonNull(provider, "provider");
+        // 外部记忆 Provider 可能触发网络或独立存储；全局只允许一个，避免同一工具和生命周期事件被重复执行。
         if (provider.isExternal()) {
             if (!hasExternal.compareAndSet(false, true)) {
                 log.warn("Rejected memory provider '{}' — external provider already registered", provider.name());
@@ -67,6 +68,7 @@ public class LtmManager {
 
     public void initializeAll(String sessionId, LtmOwner owner, Map<String, Object> context) {
         Map<String, Object> ctx = context == null ? Map.of() : context;
+        // 初始化是逐 Provider 隔离的：单个记忆后端失败不能阻断 Agent 主链路启动。
         for (MemoryProvider provider : providers) {
             try {
                 provider.initialize(sessionId, owner, ctx);
@@ -96,6 +98,7 @@ public class LtmManager {
             return "";
         }
         List<String> parts = new ArrayList<>();
+        // 同步预取要汇总到当前轮提示词，因此外部 Provider 使用统一超时；本地 Provider 保持直接调用。
         for (MemoryProvider provider : providers) {
             try {
                 String result = prefetchOne(provider, query, sessionId);
@@ -117,6 +120,7 @@ public class LtmManager {
         try {
             return future.get(prefetchTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
+            // Future 取消只保证不再等待结果；外部 HTTP/SDK 是否立即停止由 Provider 自身的中断响应决定。
             future.cancel(true);
             log.warn("Memory provider '{}' prefetch timed out/failed after {}ms", provider.name(), prefetchTimeoutMs);
             return "";
@@ -127,6 +131,7 @@ public class LtmManager {
         if (query == null || query.isBlank()) {
             return;
         }
+        // 异步预取不进入当前提示词，统一排队到单线程，避免多个外部记忆请求互相争抢上下文或连接资源。
         background.execute(() -> {
             for (MemoryProvider provider : providers) {
                 try {
@@ -143,6 +148,7 @@ public class LtmManager {
             return;
         }
         List<Map<String, Object>> msgSnapshot = messages == null ? List.of() : List.copyOf(messages);
+        // 先复制消息列表再异步执行，防止调用方继续构造下一轮消息时改变本轮同步内容。
         background.execute(() -> {
             for (MemoryProvider provider : providers) {
                 try {
@@ -174,6 +180,7 @@ public class LtmManager {
                                            String parentSessionId,
                                            boolean reset) {
         List<Map<String, Object>> snapshot = messages == null ? List.of() : List.copyOf(messages);
+        // 会话切换先提交旧会话，再通知新会话；两个阶段都隔离异常，保证边界钩子不会反向影响请求。
         background.execute(() -> {
             for (MemoryProvider provider : providers) {
                 try {
@@ -218,6 +225,7 @@ public class LtmManager {
         if (provider == null) {
             return "{\"success\":false,\"message\":\"No memory provider handles tool " + toolName + "\"}";
         }
+        // 工具路由在注册时固定到 Provider；调用阶段只负责补齐空参数并把 Provider 异常转换为工具可消费的失败结果。
         try {
             return provider.handleToolCall(toolName, args == null ? Map.of() : args);
         } catch (Exception e) {
@@ -230,6 +238,7 @@ public class LtmManager {
     }
 
     public void shutdownAll() {
+        // 先停止后台任务，再按反向注册顺序关闭 Provider，减少后台回调访问已释放资源的机会。
         background.shutdown();
         try {
             background.awaitTermination(5, TimeUnit.SECONDS);

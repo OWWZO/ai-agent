@@ -310,6 +310,8 @@ async def _raw_openai_like_request(
     stream: bool,
     only_content: bool,
 ):
+    # 兼容网关统一按 Chat Completions SSE 读取；stream=False 也先走 SSE，
+    # 再把所有 data 片段合并成一次性响应，避免不同网关的 JSON/SSE 分支漂移。
     api_base = params.get("api_base")
     api_key = params.get("api_key")
     if not api_base or not api_key:
@@ -393,6 +395,9 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     2) Zhipu OpenAI-compatible endpoint
     3) Generic OpenAI-compatible gateways
     """
+    # 该函数只负责把模型名和环境配置归一化为 transport 参数，不发起请求。
+    # 先识别明确的 DashScope/Zhipu 前缀，再处理通用 OPENAI_BASE_URL，避免把
+    # 普通 gpt-* 模型意外劫持到 DashScope。
     model = (model or "").strip()
     if not model:
         return {"model": model, **kwargs}
@@ -504,6 +509,8 @@ async def ask_llm(
     messages 可为纯字符串或 chat messages 列表；
     stream=True 时异步 yield 片段，only_content 只返回文本。
     """
+    # ask_llm 是 Python 工具侧的统一协议边界：上游只关心文本/对象流，
+    # 本函数负责敏感词处理、参数默认值、兼容网关选择，以及失败后的恢复策略。
     if isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
 
@@ -587,6 +594,8 @@ async def ask_llm(
     fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
+        # buffered_chunks 记录已经发给调用方的前缀；重试流式请求时剥离相同前缀，
+        # 避免供应商已经输出的内容在第二次连接中重复出现。
         retry_prefix = "".join(buffered_chunks) if stream and only_content and attempt > 0 else ""
         try:
             if openai_compat_http_primary:
@@ -711,6 +720,8 @@ def ask_llm_sync_iter(*args, **kwargs):
     """
     为同步调用方提供 ask_llm 的桥接能力，内部仍复用统一的异步请求逻辑。
     """
+    # 独立线程承载 asyncio event loop，队列承担唯一的跨线程通道；调用方关闭
+    # 生成器时只做短暂 join，避免同步消费端被后台网络任务永久阻塞。
     result_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
 
     async def _consume():

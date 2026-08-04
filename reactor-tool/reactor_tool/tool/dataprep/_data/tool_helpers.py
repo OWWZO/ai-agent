@@ -1,5 +1,7 @@
 ﻿"""Reusable helpers so data tools stay concise.
 
+中文说明：这里统一输入三选一和输出 spill，避免每个数据工具重新实现协议转换。
+
 These bind together :mod:`records` and :mod:`schema` into the two
 one-liners every data tool needs at its entry and exit points:
 
@@ -126,6 +128,7 @@ def resolve_input(
     required: bool = True,
 ) -> list[dict[str, Any]]:
     """Decode the usual trio of input params into a list of row dicts."""
+    # 优先使用 inline data，其次是 artifact 和路径；不同工具只需调整 key 名称。
     value = params.get(data_key)
     if value is None:
         value = params.get(artifact_key)
@@ -167,6 +170,7 @@ def build_result(
     else:
         force_spill = False
 
+    # 先生成统一 envelope，再按调用方要求把小结果转成列式 dict；大结果保持 artifact 形态。
     envelope = emit_records(
         records,
         context,

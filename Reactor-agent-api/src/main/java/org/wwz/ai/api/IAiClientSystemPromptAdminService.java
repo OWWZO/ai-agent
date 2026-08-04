@@ -8,8 +8,9 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 /**
- * 系统提示词配置管理服务接口
- * @description 系统提示词配置管理服务接口
+ * 系统提示词配置管理契约。
+ *
+ * <p>提示词正文属于运行时装配输入；接口负责版本外配置的增删改查，具体如何注入 Agent 上下文由 domain 层决定。</p>
  */
 public interface IAiClientSystemPromptAdminService {
 

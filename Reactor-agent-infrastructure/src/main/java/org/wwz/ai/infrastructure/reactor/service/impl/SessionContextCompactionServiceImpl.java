@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -135,8 +136,11 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         if (messages == null || messages.isEmpty()) {
             return messages == null ? List.of() : messages;
         }
-        // 防止 compact 自己的 LLM 调用再触发压缩（对齐 cc-haha querySource=compact）
-        if (StringUtils.isNotBlank(requestId) && requestId.contains("-compact")) {
+        // 防止 compact / LTM fork 自己的 LLM 调用再触发压缩
+        if (StringUtils.isNotBlank(requestId)
+                && (requestId.contains("-compact")
+                || requestId.contains("-flush")
+                || requestId.contains("-bg-review"))) {
             return messages;
         }
         CompactionBudget budget = resolveBudget();
@@ -481,8 +485,11 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             return null;
         }
         try {
-            String compactRequestId = COMPACT_REQUEST_PREFIX + StringUtils.defaultIfBlank(requestId, "anon")
-                    + "-" + System.currentTimeMillis();
+            // 必须 ≤ ai_agent_working_memory_turn.request_id VARCHAR(64)。
+            // 旧拼接 wm-compact-{requestId}-{ts} 在 reactorsession 长 requestId 下可达 70+ 字符触发截断。
+            // 与 trigger_request_id 的关联写在 compaction 审计表，不依赖嵌入原 requestId。
+            String compactRequestId = COMPACT_REQUEST_PREFIX
+                    + UUID.randomUUID().toString().replace("-", "");
             sessionWorkingMemoryService.replaceReadyProjection(sessionId, compactRequestId, compacted);
             return compactRequestId;
         } catch (Exception e) {

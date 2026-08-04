@@ -11,6 +11,7 @@ const Card: ReactorType.FC<{ data: Record<string, any> }> = (props) => {
   const kpiList: KpiItem[] = Array.isArray(data?.kpiList) ? data.kpiList : [];
 
   const items = useMemo(
+    // showValue 优先于原始 value，统一成渲染层需要的 label/value/key 结构。
     () =>
       kpiList.map((item, index) => ({
         key: `kpi-${index}`,

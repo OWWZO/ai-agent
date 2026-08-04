@@ -22,6 +22,7 @@ interface WorkspaceMRagProps {
 }
 
 const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
+  // 启动时只读取一次本地工作区状态，后续状态变化通过 effect 持久化。
   const initialWorkspaceState = useMemo(() => loadMRagWorkspaceStoredState(), []);
   const toolBaseUrl = initialWorkspaceState.toolBaseUrl;
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(
@@ -39,6 +40,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
     selectedKnowledgeBaseId,
     historyState.activeSessionId,
     () => {
+      // 查询完成后刷新当前详情和会话列表，确保流式结果与历史记录最终一致。
       if (historyState.activeSessionId) {
         void historyState.loadSessionDetail(historyState.activeSessionId);
       }
@@ -54,6 +56,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
   );
 
   useEffect(() => {
+    // 当前知识库和工具地址是可恢复工作区状态的最小持久化集合。
     persistMRagWorkspaceStoredState({
       toolBaseUrl,
       selectedKnowledgeBaseId,
@@ -61,6 +64,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
   }, [selectedKnowledgeBaseId, toolBaseUrl]);
 
   useEffect(() => {
+    // 每个工具地址只 bootstrap 一次，避免 hook 重新渲染重复请求知识库目录。
     if (
       !shouldBootstrapKnowledgeBases(
         bootstrappedToolBaseUrlRef.current,
@@ -114,6 +118,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         }}
         deletingKnowledgeBaseId={catalog.deletingKnowledgeBaseId}
         onDeleteKnowledgeBase={(kbId) => {
+          // 删除是跨资源操作：成功后同时刷新目录、重置文件全文和查询结果。
           Modal.confirm({
             title: "确认删除这个知识库吗？",
             content: "删除后会同时清理向量数据、文件记录和正文回显记录。",
@@ -146,6 +151,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         onCreateKnowledgeBaseDescChange={catalog.setCreateKnowledgeBaseDesc}
         creatingKnowledgeBase={catalog.creatingKnowledgeBase}
         onCreateKnowledgeBase={() => {
+          // 创建成功后重新取目录，并优先选中新建知识库。
           void catalog.handleCreateKnowledgeBase().then((createdKnowledgeBase) => {
             if (!createdKnowledgeBase) {
               return;
@@ -202,6 +208,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
           void historyState.createSession();
         }}
         onSelectSession={(sessionId) => {
+          // 切换历史会话先清理旧查询结果，再按会话记录的知识库恢复上下文。
           queryState.handleClearQueryResult();
           void historyState.loadSessionDetail(sessionId).then((detail) => {
             if (detail?.session.coverKbId) {
@@ -216,6 +223,7 @@ const WorkspaceMRag: ReactorType.FC<WorkspaceMRagProps> = ({ embedded }) => {
         queryError={queryState.queryError}
         queryRawChunks={queryState.queryRawChunks}
         onSubmitQuery={() => {
+          // 查询入口保证先有活动 session，再把明确的 sessionId 交给流式 hook。
           void historyState.ensureActiveSession().then((sessionId) => {
             void queryState.handleSubmitQuery(sessionId);
           });

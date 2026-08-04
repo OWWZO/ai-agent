@@ -65,6 +65,7 @@ export function KeyboardTypewriter({
   const [displayed, setDisplayed] = useState("");
   const [isTypingDone, setIsTypingDone] = useState(false);
 
+  // 统一单句和多句输入，后续状态机只处理非空句子序列。
   const items = useMemo(() => {
     return (texts && texts.length ? texts : text != null ? [text] : []).filter(Boolean);
   }, [texts, text]);
@@ -98,6 +99,7 @@ export function KeyboardTypewriter({
     const step = () => {
       const curText = items[itemIndexRef.current] || "";
 
+      // typing -> holding -> erasing -> pause 是完整的一轮；每个阶段只安排一个 timer。
       if (phaseRef.current === "typing") {
         setIsTypingDone(false);
         if (charIndexRef.current < curText.length) {
@@ -132,6 +134,7 @@ export function KeyboardTypewriter({
         setIsTypingDone(false);
 
         const isLast = itemIndexRef.current >= items.length - 1;
+        // 非循环模式在最后一句擦除完成后停留，不再创建下一轮 timer。
         if (!loop && isLast) {
           setIsTypingDone(true);
           return;
@@ -185,4 +188,3 @@ export function KeyboardTypewriter({
     </span>
   );
 }
-

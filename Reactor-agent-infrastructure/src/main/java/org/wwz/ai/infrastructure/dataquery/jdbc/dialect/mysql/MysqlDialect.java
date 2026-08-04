@@ -8,6 +8,7 @@ import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.JdbcDialect;
 
 import java.util.Properties;
 
+/** MySQL 方言，使用只读查询默认能力并开启 INFORMATION_SCHEMA 元数据读取。 */
 public class MysqlDialect implements JdbcDialect {
     @Override
     public DialectEnum dialectName() {
@@ -22,10 +23,10 @@ public class MysqlDialect implements JdbcDialect {
 
     @Override
     public Properties defaultProperties() {
+        // remarks 和 Information Schema 配置保证列注释可被目录层读取。
         Properties properties = new Properties();
         properties.setProperty("remarks", "true");
         properties.setProperty("useInformationSchema", "true");
         return properties;
     }
 }
-

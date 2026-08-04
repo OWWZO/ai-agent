@@ -47,7 +47,15 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 输出表读取实现。
+ * Execution Ledger 工具输出投影读取实现。
+ *
+ * <p>该类只读取各 rich tool 的专属输出表，并将数据库行恢复为领域结构化输出，
+ * 不创建新的执行事实，也不把输出表当作第二套账本。已具备 {@code toolInvocationId}
+ * 时按工具和调用主键精准读取；历史记录缺少主键时才使用 request/toolCall 兼容查询，
+ * 多表命中则返回空结果而不猜测关联关系。</p>
+ *
+ * <p>文件产物不重复嵌入工具输出 JSON，而是通过 artifact ledger 关联查询后重新挂载
+ * 为 {@code ToolFileRef}，从而保持大对象和工具结构化结果的存储边界。</p>
  */
 @Slf4j
 @Service
@@ -70,9 +78,11 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
 
     @Override
     public Optional<ToolStructuredOutput> readByInvocationId(String toolName, Long toolInvocationId) {
+        // 主键路径只访问目标工具表，未知工具按“没有结构化输出”处理，避免跨表误匹配。
         if (StringUtils.isBlank(toolName) || toolInvocationId == null) {
             return Optional.empty();
         }
+        // 已有 invocation 主键时直接命中对应输出表，避免跨表扫描；未知工具按“没有结构化输出”处理。
         return switch (toolName) {
             case ToolOutputNames.DEEP_SEARCH -> Optional.ofNullable(toDeepSearchOutput(deepSearchDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.FILE_TOOL -> Optional.ofNullable(toFileToolOutput(fileToolDao.queryByToolInvocationId(toolInvocationId)));
@@ -92,9 +102,11 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
 
     @Override
     public Optional<ToolOutputView> readDirect(String requestId, String toolCallId) {
+        // 兼容旧数据的直接查询允许跨表，但只有唯一命中时才返回，确保历史回放不产生错配。
         if (StringUtils.isBlank(requestId) || StringUtils.isBlank(toolCallId)) {
             return Optional.empty();
         }
+        // 旧回放或缺少 invocationId 时只能跨 rich-tool 表查找；多表命中说明关联字段不唯一，不能猜测正确结果。
         List<ToolOutputView> matches = new ArrayList<>();
         addIfPresent(matches, ToolOutputNames.DEEP_SEARCH, deepSearchDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.FILE_TOOL, fileToolDao.queryByRequestToolCall(requestId, toolCallId));
@@ -117,6 +129,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
     }
 
     private void addIfPresent(List<ToolOutputView> matches, String toolName, Map<String, Object> row) {
+        // DAO 行先恢复为领域结构化输出，再包装为带账本元数据的视图，保持回放层不依赖数据库列名。
         ToolStructuredOutput output = switch (toolName) {
             case ToolOutputNames.DEEP_SEARCH -> toDeepSearchOutput(row);
             case ToolOutputNames.FILE_TOOL -> toFileToolOutput(row);
@@ -338,6 +351,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         Long toolInvocationId = longValue(row, "tool_invocation_id", "toolInvocationId");
         List<ArtifactRecord> artifacts;
         if (toolInvocationId != null) {
+            // 优先使用工具调用主键关联产物；兼容历史行时再按 run/request + toolCallId 回退。
             artifacts = artifactLedgerDao.queryOutputArtifactsByToolInvocationId(toolInvocationId);
         } else {
             Long runId = longValue(row, "run_id", "runId");
@@ -357,6 +371,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         if (artifacts == null || artifacts.isEmpty()) {
             return List.of();
         }
+        // 产物不存进工具输出 JSON；这里把 Execution Ledger 的 artifact 投影重新挂回结构化输出。
         List<ToolFileRef> fileRefs = new ArrayList<>(artifacts.size());
         for (ArtifactRecord artifact : artifacts) {
             if (artifact == null) {
@@ -392,7 +407,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 return out;
             }
         } catch (Exception ignore) {
-            // ignore
+            // 非法或版本不兼容的 JSON 只使该可选字段缺失，不应阻断整条历史回放。
         }
         return null;
     }
@@ -420,7 +435,7 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 return out;
             }
         } catch (Exception ignore) {
-            // ignore
+            // 补丁列表属于展示数据，解析失败时返回空列表，让其它账本字段仍可被恢复。
         }
         return java.util.Collections.emptyList();
     }

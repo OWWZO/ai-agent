@@ -98,6 +98,13 @@ const MODE_OPTIONS: Array<{
 
 const VISIBLE_MODE_OPTIONS = MODE_OPTIONS.filter((item) => item.key !== "quick");
 
+/** 输入框附件 accept：图片 + 常见文档/代码/表格 */
+export const ATTACHMENT_ACCEPT =
+  "image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx,.pptx,.json,.py,.html";
+
+/** 单条 query 最大字符数（前端硬限制） */
+export const MAX_QUERY_CHARS = 8000;
+
 const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
   if (productType === "chat") {
     return "quick";
@@ -227,12 +234,17 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     setModeMenuOpen(false);
   };
 
+  const handleQuestionChange = (value: string) => {
+    setQuestion(value.length > MAX_QUERY_CHARS ? value.slice(0, MAX_QUERY_CHARS) : value);
+  };
+
   const handleSubmit = ({ text }: { text: string; files: unknown[] }) => {
-    if (!text.trim() || disabled || hasUploadingAttachment || hasFailedAttachment) return;
+    const trimmed = text.trim().slice(0, MAX_QUERY_CHARS);
+    if (!trimmed || disabled || hasUploadingAttachment || hasFailedAttachment) return;
 
     send(
       buildSubmitPayload({
-        question: text,
+        question: trimmed,
         visibleMode,
         isDataAgent,
         currentProductType: product?.type,
@@ -251,14 +263,19 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
     if (event.metaKey || event.ctrlKey) {
       event.preventDefault();
+      if (question.length >= MAX_QUERY_CHARS) {
+        return;
+      }
       const textarea = event.currentTarget;
       const { selectionStart, selectionEnd } = textarea;
-      const nextValue =
-        question.slice(0, selectionStart) + "\n" + question.slice(selectionEnd);
+      const nextValue = (
+        question.slice(0, selectionStart) + "\n" + question.slice(selectionEnd)
+      ).slice(0, MAX_QUERY_CHARS);
       setQuestion(nextValue);
       requestAnimationFrame(() => {
-        textarea.selectionStart = selectionStart + 1;
-        textarea.selectionEnd = selectionStart + 1;
+        const caret = Math.min(selectionStart + 1, nextValue.length);
+        textarea.selectionStart = caret;
+        textarea.selectionEnd = caret;
         textarea.focus();
       });
       return;
@@ -277,7 +294,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     <TooltipProvider>
       <div className="w-full">
         <PromptInput
-          accept="image/*,application/pdf,.txt,.md,.csv,.xlsx,.docx"
+          accept={ATTACHMENT_ACCEPT}
           className={cn(
             "reactor-input-flat w-full transition-[border-color,box-shadow] duration-200",
             size === "big" ? "rounded-[28px]" : "rounded-[26px]"
@@ -306,7 +323,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                 size === "big" ? "min-h-[76px] pt-3.5" : "min-h-[52px] pt-2.5"
               )}
               disabled={disabled}
-              onChange={(event) => setQuestion(event.target.value)}
+              maxLength={MAX_QUERY_CHARS}
+              onChange={(event) => handleQuestionChange(event.target.value)}
               onCompositionEnd={() => {
                 tempData.current.compositing = false;
               }}
@@ -317,6 +335,18 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               placeholder={placeholder}
               value={question}
             />
+            {question.length >= Math.floor(MAX_QUERY_CHARS * 0.8) ? (
+              <div
+                className={cn(
+                  "px-4 pb-1 text-right text-[11px] tabular-nums",
+                  question.length >= MAX_QUERY_CHARS
+                    ? "text-[#ff3b30]"
+                    : "text-[#aeaeb2]"
+                )}
+              >
+                {question.length}/{MAX_QUERY_CHARS}
+              </div>
+            ) : null}
           </PromptInputBody>
 
           <PromptInputFooter className="items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">

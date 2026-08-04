@@ -3,6 +3,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getArtifactIdentity(artifact: MESSAGE.ArtifactReference) {
+  // 资源 key 优先于 URL 和展示名，最后才退回完整 JSON，保证同一产物在不同事件中只保留一份。
   return (
     artifact.resourceKey ||
     artifact.previewUrl ||
@@ -26,6 +27,7 @@ export function pickFirstText(...values: unknown[]) {
 }
 
 export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
+  // 新旧事件分别使用 input/toolParam；只接受普通对象，避免数组或 null 被误当成参数映射。
   const input = resultMap?.input;
   if (isRecord(input)) {
     return input;
@@ -41,6 +43,7 @@ export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
 
 export function resolveToolCallTargetName(resultMap?: MESSAGE.ResultMap) {
   const input = resolveToolCallInput(resultMap);
+  // 文件类工具的目标字段历史上多次改名，按稳定性从显式主文件名到 path 依次回退。
   return pickFirstText(
     resultMap?.primaryFileName,
     input.fileName,
@@ -111,6 +114,7 @@ export function findToolCallPlaceholderIndex(
     return -1;
   }
 
+  // 从尾部查找，因为同一 toolCallId 在重试/流式更新中可能留下多个占位任务。
   return findLastTaskIndex(tasks, (task) =>
     task.messageType === "tool_call" &&
     resolveTaskToolCallId(task) === toolCallId
@@ -140,6 +144,7 @@ export function mergeImageGenerationToolTask(
   toolTask: MESSAGE.Task,
   fileTask: MESSAGE.Task
 ): MESSAGE.Task {
+  // 工具结果和后续 file 事件分别携带 artifact/fileInfo；以 file 事件为准，缺失时保留工具事件已有值。
   const artifactRefs = Array.isArray(fileTask.artifactRefs)
     ? [...fileTask.artifactRefs]
     : Array.isArray(toolTask.artifactRefs)
@@ -173,6 +178,7 @@ export function mergeTaskArtifactRefs(
   const previousRefs = Array.isArray(targetTask.artifactRefs)
     ? targetTask.artifactRefs
     : [];
+  // 事件可能重复到达，先合并再按资源身份去重，保持任务对象作为后续预览链路的唯一入口。
   const mergedRefs = [...previousRefs, ...eventData.artifactRefs];
 
   targetTask.artifactRefs = mergedRefs.filter((artifact, index, current) =>

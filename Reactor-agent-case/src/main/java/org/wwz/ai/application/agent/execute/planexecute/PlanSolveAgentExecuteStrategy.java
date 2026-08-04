@@ -42,6 +42,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
 
     @Override
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
+        // PlanSolve 与 ReAct 共用跨轮记忆 hydrate，但执行工厂负责规划、执行两阶段的具体编排。
         enrichWorkingMemory(request);
         StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> executeHandler
                 = defaultPlanSolveAgentExecuteStrategyFactory.armoryStrategyHandler();
@@ -49,6 +50,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
                 DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext.builder()
                         .printer(new AgentSessionPrinter(stream, request, request.getAgentType()))
                         .build();
+        // 让 stop 入口可以通过 requestId 定位当前 run；finally 中统一释放，避免取消后残留活动记录。
         activeAgentRunRegistry.begin(request.getRequestId(), request.getSessionId());
         activeAgentRunRegistry.bindStream(request.getRequestId(), stream);
         try {
@@ -64,6 +66,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
                         "用户停止本轮对话");
             }
         } catch (Exception e) {
+            // 取消是用户行为，普通异常是系统失败；两者必须分别写入 ledger 终态。
             if (dynamicContext.getAgentContext() != null
                     && dynamicContext.getAgentContext().isRunCancelled()) {
                 ExecutionLedgerRunSupport.finishRun(
@@ -93,6 +96,7 @@ public class PlanSolveAgentExecuteStrategy implements IExecuteStrategy {
         }
         List<Message> working = List.of();
         if (sessionWorkingMemoryService != null) {
+            // working_memory 是默认跨轮上下文来源，只有投影不可用时才回退到 ledger hydrate。
             working = sessionWorkingMemoryService.loadReadyMessages(request.getSessionId(), request.getRequestId());
         }
         // 冷启动/无投影时回退 ledger hydrate，保证首批会话仍有跨轮上下文

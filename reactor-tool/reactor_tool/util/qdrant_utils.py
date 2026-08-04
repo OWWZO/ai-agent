@@ -53,6 +53,7 @@ def _env_int(name: str, default: int) -> int:
 
 def resolve_shared_qdrant_config() -> dict:
     """解析共享 Qdrant 配置。"""
+    # 共享配置供通用 SOP 等场景使用；调用方应在建客户端前再判断 url/host 是否实际存在。
     return {
         "url": _trimmed_env("QDRANT_URL"),
         "host": _trimmed_env("QDRANT_HOST"),
@@ -64,6 +65,7 @@ def resolve_shared_qdrant_config() -> dict:
 
 def resolve_data_agent_qdrant_config() -> dict:
     """解析 DataAgent 专属 Qdrant 配置。"""
+    # DataAgent 的 host 优先于 url，避免同时配置时把本地直连误判成云端 URL。
     override_url = _trimmed_env("DATA_AGENT_QDRANT_URL")
     override_host = _trimmed_env("DATA_AGENT_QDRANT_HOST")
     return {
@@ -95,6 +97,7 @@ def build_qdrant_client(
     timeout: float,
 ) -> QdrantClient:
     """根据 url/host 二选一创建 Qdrant 客户端。"""
+    # qdrant-client 对带 scheme 的地址使用 url，其余地址按 host 处理；两者不能同时传入。
     client_kwargs = {
         "grpc_port": int(port),
         "timeout": timeout,
@@ -136,6 +139,7 @@ class EmbeddingClient:
         :param texts: 文本列表
         :return: 二维浮点数列表，失败返回 None
         """
+        # embedding 服务约定直接返回二维向量列表；格式不符合时返回 None，让上层走降级路径。
         try:
             body = {
                 "inputs": texts,
@@ -198,7 +202,7 @@ class QdrantRecall(object):
             api_key=api_key,
         )
 
-        # 集合不存在则按固定维度创建
+        # 集合不存在则按当前 embedding 的固定维度创建，避免首次写入时才暴露维度不匹配。
         self._ensure_collection()
 
     def _ensure_collection(self):
@@ -227,6 +231,7 @@ class QdrantRecall(object):
                          - 批量: [{'id': 1, 'vector': [...], 'payload': {}}, ...]
         :return: 操作结果（Qdrant 的 OperationResponse）
         """
+        # 对外同时接受字典和 PointStruct；这里统一成 SDK 的 PointStruct 列表后再 upsert。
         if isinstance(points, dict):
             # 单条插入
             point = PointStruct(
@@ -261,6 +266,7 @@ class QdrantRecall(object):
         :param filters: dict，过滤条件，格式同 search() 中的 filters
         :return: 删除操作响应
         """
+        # ID 删除适合精确清理；过滤删除先把标量、列表和范围映射成 Qdrant Filter。
         if ids is None and filters is None:
             raise ValueError("❌ 必须提供 ids 或 filters 中至少一个参数")
         
@@ -304,6 +310,7 @@ class QdrantRecall(object):
         return self.client.delete(collection_name=self.collection_name, points_selector=delete_request)
     
     def search(self, query_vector, filters):
+        # 检索过滤器与 delete 共用同一套 payload 条件语义，返回结果时补回 score 供上层排序。
         must_conditions = []
         
         for key, val in filters.items():
@@ -345,6 +352,7 @@ class QdrantRecall(object):
             score_threshold=self.qd_threshhold,
         )
         
+        # renderer/table-rag 只消费 payload，因此把 SDK ScoredPoint 的分数平铺到 payload。
         payloads = []
         for res in results:
             payload = res.payload

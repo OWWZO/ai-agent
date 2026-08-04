@@ -7,7 +7,11 @@ import org.wwz.ai.api.response.Response;
 
 import java.util.List;
 
-//todo:预留给后续开发
+/**
+ * AI 客户端基础配置管理契约。
+ *
+ * <p>当前接口预留给后续管理能力扩展；其中 clientId 是业务配置标识，id 是持久化主键，两者查询和更新入口刻意分开。</p>
+ */
 public interface IAiClientAdminService {
 
     /**

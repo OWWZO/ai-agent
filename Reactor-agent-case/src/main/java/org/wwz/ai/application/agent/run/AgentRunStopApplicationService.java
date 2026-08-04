@@ -27,6 +27,8 @@ public class AgentRunStopApplicationService {
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
 
     public Map<String, Object> stop(String sessionId, String requestId) {
+        // 停止是协作式的：先校验 request/session 归属，再向活动 run 发取消信号，
+        // 最后写 stopped ledger、通知客户端并关闭流；底层 HTTP/工具是否立即中断由各自实现决定。
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("requestId", requestId);
         result.put("sessionId", sessionId);
@@ -56,6 +58,8 @@ public class AgentRunStopApplicationService {
         boolean first = activeAgentRunRegistry.cancel(requestId, RunCancellation.REASON_USER_STOP);
         AgentContext ctx = run.getAgentContext();
         if (ctx != null) {
+            // finishRun 只记录一次用户停止事实，Printer 通知是即时 UI 反馈，两者职责不同，
+            // 不能用关闭 SSE 代替 ledger 状态迁移。
             ExecutionLedgerRunSupport.finishRun(
                     ctx,
                     ExecutionLedgerConstants.STATUS_STOPPED,

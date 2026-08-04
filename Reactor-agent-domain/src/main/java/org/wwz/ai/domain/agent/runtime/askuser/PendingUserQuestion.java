@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 挂起中的 AskUserQuestion（对标 cc-haha permission queue 项）。
+ * 挂起中的 AskUserQuestion。
  * 工具线程 await future；Web 通过独立 HTTP 提交答案完成 future。
  */
 @Data

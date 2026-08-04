@@ -56,6 +56,7 @@ async def _maybe_upload_produced_files(
     """If result mentions output files on disk, upload them for Java clients."""
     file_info: list[dict[str, Any]] = []
     candidates: list[str] = []
+    # 工具返回的文件路径可能出现在多个兼容字段中，先收集候选，再按路径去重后上传。
     for key in ("output_path", "outputPath", "file_path", "filePath"):
         v = result.get(key)
         if isinstance(v, str) and v and Path(v).is_file():
@@ -76,6 +77,7 @@ async def _maybe_upload_produced_files(
             continue
         seen.add(path)
         try:
+            # 单个文件上传失败不影响其他文件和原始工具结果，文件服务属于增强能力。
             info = await upload_file_by_path(path, request_id=request_id)
             if info:
                 file_info.append(info)
@@ -118,6 +120,7 @@ def _run_sync_tool(tool: Any, params: dict[str, Any], request_id: str) -> dict[s
     op = str(clean.get("operation") or "read").strip().lower()
     is_write = op in _WRITE_OPS
 
+    # 输入路径解析为已存在文件，输出路径解析到当前会话工作区；读写使用不同解析器避免越界或覆盖错误位置。
     # Always try to resolve readable file_path when present (even if also output_path_params)
     for key in ("file_path", "file_path_2", *path_keys):
         if key in out_keys and is_write and key == "file_path":
@@ -158,6 +161,7 @@ def _run_sync_tool(tool: Any, params: dict[str, Any], request_id: str) -> dict[s
 
     context = _ctx(request_id, workspace_root)
     try:
+        # 统一在清理并规范路径后的参数上执行工具，下面只把 ToolResult 或普通值包装成稳定协议。
         data = tool.execute_sync(clean, context)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"docread tool={getattr(tool, 'name', type(tool).__name__)} failed: {exc}")

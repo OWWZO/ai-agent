@@ -38,6 +38,7 @@ public class McpConnectionDiagnostic {
         String fullUrl = null;
         
         try {
+            // 诊断只建立一次短连接并返回结果对象，不复用 MCP 运行时连接，避免探测动作改变正式会话状态。
             // 构建完整URL
             fullUrl = buildFullUrl(baseUri, sseEndpoint);
             result.setFullUrl(fullUrl);
@@ -56,6 +57,7 @@ public class McpConnectionDiagnostic {
                 httpConnection.setInstanceFollowRedirects(false);
 
                 try {
+                    // 只把 HTTP 响应码作为可达性证据；2xx 表示服务正常响应，其它状态仍说明主机可连接但服务异常。
                     int responseCode = httpConnection.getResponseCode();
                     result.setResponseCode(responseCode);
                     result.setAccessible(true);
@@ -80,6 +82,7 @@ public class McpConnectionDiagnostic {
             }
 
         } catch (java.net.ConnectException e) {
+            // 不同网络失败类型映射为可操作的诊断建议，调用方无需解析异常字符串。
             result.setAccessible(false);
             result.setStatus("❌ 连接失败");
             result.setErrorMessage("无法连接到服务: " + e.getMessage());
@@ -120,6 +123,7 @@ public class McpConnectionDiagnostic {
         }
         
         // 如果 fullUrl 未设置，尝试设置一个默认值
+        // URL 构建失败也保留可追踪的基础地址，保证诊断结果始终可序列化和展示。
         if (result.getFullUrl() == null && fullUrl != null) {
             result.setFullUrl(fullUrl);
         } else if (result.getFullUrl() == null) {

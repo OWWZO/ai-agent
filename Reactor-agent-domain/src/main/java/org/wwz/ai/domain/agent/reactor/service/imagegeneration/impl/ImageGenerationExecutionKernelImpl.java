@@ -40,6 +40,7 @@ public class ImageGenerationExecutionKernelImpl implements IImageGenerationExecu
             throw new IllegalArgumentException("prompt不能为空");
         }
 
+        // 内核把领域命令收敛成网关契约：默认值和空值处理集中在这里，避免各入口各自拼请求。
         ImageGenerationGatewayRequest request = ImageGenerationGatewayRequest.builder()
                 .requestId(command.getRequestId())
                 .prompt(StringUtils.trim(command.getPrompt()))
@@ -56,6 +57,7 @@ public class ImageGenerationExecutionKernelImpl implements IImageGenerationExecu
                 .build();
 
         ImageGenerationGatewayResponse response = imageGenerationGateway.generate(request);
+        // 网关只负责外部调用，内核再把不同提供方的文件 URL 归一成工作台可消费的文件模型。
         List<WorkspaceImageFile> files = normalizeFiles(response == null ? null : response.getFileInfo());
 
         return ImageGenerationExecutionResult.builder()

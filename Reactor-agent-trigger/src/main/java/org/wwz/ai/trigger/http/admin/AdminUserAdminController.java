@@ -21,7 +21,14 @@ import java.util.stream.Collectors;
 
 /**
  * 管理员用户管理控制器
- * @description 管理员用户管理控制器
+ *
+ * <p>该类是管理员用户 HTTP 契约到基础设施 DAO 的适配层：负责接收管理端 DTO、
+ * 转换为持久化对象、调用 DAO，并把执行结果统一包装成 {@link Response}。当前管理
+ * 用户能力尚未经过独立应用服务编排，因此控制器保留了这段较薄的直接访问边界。</p>
+ *
+ * <p>所有端点都把异常转换为统一失败响应，避免数据库或转换异常直接泄漏到 HTTP
+ * 层；查询类接口在“没有匹配数据”时仍返回成功码和空数据，这是调用方需要区分的
+ * “查询成功但无结果”语义。</p>
  */
 @Slf4j
 @RestController
@@ -35,6 +42,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     @Override
     @PostMapping("/create")
     public Response<Boolean> createAdminUser(@RequestBody AdminUserRequestDTO request) {
+        // 创建时同时补齐审计时间，DAO 只负责执行持久化，不承担请求 DTO 的生命周期语义。
         try {
             log.info("创建管理员用户请求：{}", request);
 
@@ -327,6 +335,8 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     @Override
     @PostMapping("/query-list")
     public Response<List<AdminUserResponseDTO>> queryAdminUserList(@RequestBody AdminUserQueryRequestDTO request) {
+        // 该接口先读取全量数据，再在内存中完成筛选和分页；它是当前管理端兼容实现，
+        // 因而分页参数只影响返回窗口，不会改变底层 DAO 的查询范围。
         try {
             log.info("根据条件查询管理员用户列表请求：{}", request);
 
@@ -405,6 +415,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     @Override
     @PostMapping("/login")
     public Response<AdminUserResponseDTO> loginAdminUser(@RequestBody AdminUserLoginRequestDTO request) {
+        // 登录先按用户名和密码查询，再单独检查状态；“凭证正确但账号不可用”不能视为登录成功。
         try {
             log.info("管理员用户登录请求：{}", request.getUsername());
 
@@ -454,6 +465,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     @Override
     @PostMapping("/validate-login")
     public Response<Boolean> validateAdminUserLogin(@RequestBody AdminUserLoginRequestDTO request) {
+        // 校验接口只返回布尔结果，不建立会话；它与 login 的区别是成功时不暴露管理员详情。
         try {
             log.info("管理员用户登录校验请求：{}", request.getUsername());
 
@@ -510,7 +522,10 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     }
 
     /**
-     * DTO转PO
+     * 将 HTTP 请求对象转换为 DAO 使用的持久化对象。
+     *
+     * <p>转换方法只负责字段映射，创建时间、更新时间等由具体写入端点根据生命周期
+     * 语义补齐，避免更新操作意外重置创建时间。</p>
      */
     private AdminUser convertToAdminUser(AdminUserRequestDTO requestDTO) {
         AdminUser adminUser = new AdminUser();
@@ -519,7 +534,7 @@ public class AdminUserAdminController implements IAdminUserAdminService {
     }
 
     /**
-     * PO转DTO
+     * 将持久化对象转换为对外响应对象，隔离数据库对象与 HTTP 返回模型。
      */
     private AdminUserResponseDTO convertToAdminUserResponseDTO(AdminUser adminUser) {
         AdminUserResponseDTO responseDTO = new AdminUserResponseDTO();

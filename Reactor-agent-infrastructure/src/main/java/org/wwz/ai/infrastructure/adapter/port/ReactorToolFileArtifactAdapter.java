@@ -41,6 +41,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
 
     @Override
     public FileResponse upload(String serviceBaseUrl, FileRequest request) throws IOException {
+        // 适配器先复制并归一化请求对象，再映射到 reactor-tool 的 JSON 上传接口，避免修改领域请求本身。
         FileRequest normalizedRequest = normalizeRequest(request);
         String responseText = remoteHttpPort.execute(RemoteHttpRequest.builder()
                 .method("POST")
@@ -58,6 +59,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
     @Override
     public FileResponse register(String serviceBaseUrl, FileRequest request) throws IOException {
         FileRequest normalizedRequest = normalizeRequest(request);
+        // register 只登记已有本地文件的元数据，因此 localPath 是此协议分支的必需边界字段。
         if (StringUtils.isBlank(normalizedRequest.getLocalPath())) {
             throw new IllegalArgumentException("localPath must not be blank for register");
         }
@@ -76,6 +78,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
 
     @Override
     public FileResponse get(String serviceBaseUrl, FileRequest request) throws IOException {
+        // 查询仍复用同一请求归一化逻辑，返回稳定文件 URL/元数据，不在 Java 侧缓存文件正文。
         FileRequest normalizedRequest = normalizeRequest(request);
         String responseText = remoteHttpPort.execute(RemoteHttpRequest.builder()
                 .method("POST")
@@ -102,6 +105,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
             throw new IllegalArgumentException("url must not be blank");
         }
         long timeout = timeoutSeconds == null || timeoutSeconds <= 0 ? 60L : timeoutSeconds;
+        // 每次下载按调用方超时创建轻量 client，避免修改共享 OkHttp client 影响其它远端请求。
         OkHttpClient client = sharedClient.newBuilder()
                 .connectTimeout(timeout, TimeUnit.SECONDS)
                 .readTimeout(timeout, TimeUnit.SECONDS)
@@ -112,6 +116,7 @@ public class ReactorToolFileArtifactAdapter implements FileArtifactPort {
                 .build();
         Request request = new Request.Builder().url(url).get().build();
         try (Response response = client.newCall(request).execute()) {
+            // Response 必须在 try-with-resources 内消费和关闭，确保大文件下载不会长期占用连接池。
             ResponseBody body = response.body();
             if (!response.isSuccessful()) {
                 String err = body == null ? "" : body.string();

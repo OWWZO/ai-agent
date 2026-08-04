@@ -46,6 +46,8 @@ public class AgentSessionPrinter implements Printer {
                      String digitalEmployee,
                      Boolean isFinal) {
         try {
+            // Printer 是领域事件到 AgentResponse/SSE 的协议适配边界：先建立公共元数据，
+            // 再按 messageType 填充专属字段，最后一次性发送，避免领域层依赖传输细节。
             if (Objects.isNull(messageId)) {
                 messageId = StringUtil.getUUID();
             }
@@ -125,6 +127,8 @@ public class AgentSessionPrinter implements Printer {
                 case "data_analysis":
                 case "ui_tree":
                 case "ui_patch":
+                    // 结构化事件统一转为 resultMap；extraResultMap 用于补充父子 Agent
+                    // 关联信息，必须在序列化后再合并，防止被 message 内容覆盖。
                     response.setResultMap(JSON.parseObject(JSON.toJSONString(message)));
                     response.getResultMap().put("agentType", agentType);
                     // 子 Agent 嵌套标签（parentToolUseId 等）经 extraResultMap 传入，
@@ -137,6 +141,8 @@ public class AgentSessionPrinter implements Printer {
                     response.setResult((String) message);
                     break;
                 case "result":
+                    // result 是本轮终态事件：兼容字符串、Map 和普通对象三种旧调用形态，
+                    // 同时把 taskSummary 提升到 response.result 供历史/前端直接读取。
                     if (message instanceof String) {
                         response.setResult((String) message);
                     } else if (message instanceof Map) {

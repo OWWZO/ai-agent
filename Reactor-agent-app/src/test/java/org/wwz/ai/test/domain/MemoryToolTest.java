@@ -1,18 +1,28 @@
 package org.wwz.ai.test.domain;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.infrastructure.memory.InMemoryCuratedMemoryStore;
 
 import java.util.Map;
 
 public class MemoryToolTest {
+
+    @Test
+    public void descriptionEncouragesProactiveSave() {
+        MemoryTool tool = new MemoryTool();
+        String desc = tool.getDescription();
+        Assert.assertTrue(desc.contains("save proactively"));
+        Assert.assertTrue(desc.contains("WHEN:"));
+        Assert.assertTrue(desc.contains("target=user") || desc.contains("'user'"));
+        Assert.assertTrue(desc.contains("curated"));
+        Assert.assertTrue(desc.contains("SKIP:"));
+    }
 
     @Test
     public void addReplaceRemove() {
@@ -28,25 +38,25 @@ public class MemoryToolTest {
         MemoryTool tool = new MemoryTool();
         tool.setAgentContext(ctx);
 
-        Object add = tool.execute(Map.of(
+        ToolResultPayload add = (ToolResultPayload) tool.execute(Map.of(
                 "action", "add",
                 "target", "user",
                 "content", "prefers concise Chinese"));
-        JSONObject addJson = JSON.parseObject(String.valueOf(add));
-        Assert.assertTrue(addJson.getBooleanValue("success"));
+        Assert.assertTrue(add.getLlmData() instanceof Map<?, ?>);
+        Assert.assertTrue(Boolean.TRUE.equals(((Map<?, ?>) add.getLlmData()).get("success")));
 
-        Object replace = tool.execute(Map.of(
+        ToolResultPayload replace = (ToolResultPayload) tool.execute(Map.of(
                 "action", "replace",
                 "target", "user",
                 "old_text", "concise",
                 "content", "prefers brief Chinese answers"));
-        Assert.assertTrue(JSON.parseObject(String.valueOf(replace)).getBooleanValue("success"));
+        Assert.assertTrue(Boolean.TRUE.equals(((Map<?, ?>) replace.getLlmData()).get("success")));
 
-        Object remove = tool.execute(Map.of(
+        ToolResultPayload remove = (ToolResultPayload) tool.execute(Map.of(
                 "action", "remove",
                 "target", "user",
                 "old_text", "brief"));
-        Assert.assertTrue(JSON.parseObject(String.valueOf(remove)).getBooleanValue("success"));
+        Assert.assertTrue(Boolean.TRUE.equals(((Map<?, ?>) remove.getLlmData()).get("success")));
         Assert.assertTrue(store.listActive(LtmOwner.user("u1"),
                 org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryScope.USER).isEmpty());
     }

@@ -28,6 +28,7 @@ public class DataQueryExecutionAdapter implements DataQueryExecutionPort {
 
     @Override
     public QueryResult query(DbConfig dbConfig, String sql, int limit) throws SQLException {
+        // 端口层保持 domain 请求简单；JDBC 方言、连接池和 Statement limit 全部在 infrastructure 请求中补齐。
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         jdbcQueryRequest.setSql(sql);

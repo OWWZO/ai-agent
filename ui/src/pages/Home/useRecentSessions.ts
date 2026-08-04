@@ -12,6 +12,7 @@ export function useRecentSessions() {
   const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
 
   const refreshRecentSessions = useCallback((enabled = true) => {
+    // 首页未进入会话态时跳过请求；失败只记录日志，不能阻断首页展示。
     if (!enabled) {
       return Promise.resolve([] as ConversationSessionItem[]);
     }

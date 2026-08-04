@@ -45,6 +45,7 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        // 身份解析只发生在 trigger 边界；后续 case/domain 通过 VisitorRequestContext 读取，不感知 Servlet API。
         AnonymousVisitorIdentity identity = anonymousVisitorApplicationService.resolveOrCreate(
                 readCookieValue(request, visitorCookieProperties.getName()),
                 request.getHeader("User-Agent"),
@@ -57,6 +58,7 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } finally {
+            // Servlet 线程可能被容器复用，必须清掉 ThreadLocal，防止下一个请求继承上一个访客身份。
             VisitorRequestContext.clear();
         }
     }
@@ -85,6 +87,7 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
+        // 反向代理场景取 X-Forwarded-For 的第一个地址；没有代理头时使用容器看到的直连地址。
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (StringUtils.isNotBlank(forwardedFor)) {
             return forwardedFor.split(",")[0].trim();

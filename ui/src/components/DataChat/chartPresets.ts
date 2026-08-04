@@ -1,3 +1,4 @@
+// 这些预设只描述通用视觉约束；具体数据、坐标轴方向和 series 由 chartConfig 运行时补齐。
 export const defaultChartPresets = {
   chartTypes: ["line", "bar", "hbar", "pie"],
   templateline: {

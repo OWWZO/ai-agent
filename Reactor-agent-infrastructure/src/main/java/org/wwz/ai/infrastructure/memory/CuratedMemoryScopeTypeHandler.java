@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+/** 将用户长期记忆作用域在 Java 枚举和数据库字符串之间转换的 MyBatis 类型处理器。 */
 @MappedTypes(CuratedMemoryScope.class)
 public class CuratedMemoryScopeTypeHandler extends BaseTypeHandler<CuratedMemoryScope> {
 

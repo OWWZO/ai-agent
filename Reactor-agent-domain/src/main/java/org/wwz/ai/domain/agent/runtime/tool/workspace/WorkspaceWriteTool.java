@@ -66,6 +66,7 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
+            // 写入始终使用 UTF-8，并立即刷新 readState，使同一轮后续 edit 不必重复 read。
             Files.writeString(filePath, content, StandardCharsets.UTF_8);
             if (agentContext != null) {
                 long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
@@ -76,7 +77,7 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
                         .lineCount(Integer.MAX_VALUE)
                         .contentHash(WorkspaceReadStateStore.sha256Hex(content))
                         .build());
-                // 写计划文件时同步 PlanModeState（ExitPlanMode / UI 一致）
+                // 写计划文件时同步 PlanModeState（ExitPlanMode / UI 一致）。
                 String relative = toRelativePath(workspaceRoot, filePath);
                 if (relative != null
                         && relative.replace('\\', '/').endsWith(org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.RELATIVE_PLAN_PATH)

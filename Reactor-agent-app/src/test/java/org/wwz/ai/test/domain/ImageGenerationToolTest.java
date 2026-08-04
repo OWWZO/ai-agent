@@ -67,7 +67,6 @@ public class ImageGenerationToolTest {
                 .printer(printer)
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);
@@ -106,8 +105,8 @@ public class ImageGenerationToolTest {
         Map<?, ?> fileMessage = (Map<?, ?>) printer.lastMessage();
         Assert.assertEquals("call-image-001", fileMessage.get("toolCallId"));
         Assert.assertEquals("image_generation_tool", fileMessage.get("toolName"));
-        Assert.assertEquals(1, context.getTaskProductFiles().size());
-        Assert.assertEquals("poster.png", context.getTaskProductFiles().get(0).getFileName());
+        Assert.assertEquals(1, context.getVisibleArtifactFiles().size());
+        Assert.assertEquals("poster.png", context.getVisibleArtifactFiles().get(0).getFileName());
 
         ImageGenerationExecuteCommand command = commandCaptor.getValue();
         Assert.assertEquals("session-image-001", command.getRequestId());
@@ -161,7 +160,6 @@ public class ImageGenerationToolTest {
                                 .isInternalFile(Boolean.FALSE)
                                 .build()
                 )))
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);
@@ -230,7 +228,6 @@ public class ImageGenerationToolTest {
                                 .isInternalFile(Boolean.FALSE)
                                 .build()
                 )))
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig, kernel))
                 .build();
         toolCollection.setAgentContext(context);

@@ -41,10 +41,12 @@ def activate_runtime_io_guard(policy: CodeInterpreterPermissionPolicy):
         yield
         return
     _ensure_runtime_patches_installed()
+    # 策略放入 ContextVar 而非全局变量，使并发执行的解释器上下文互不串权限。
     token = _ACTIVE_POLICY.set(policy)
     try:
         yield
     finally:
+        # 必须按 token 恢复上层上下文；直接清空会破坏嵌套执行器或同线程的其它请求。
         _ACTIVE_POLICY.reset(token)
 
 
@@ -55,6 +57,7 @@ def extract_runtime_permission_error(error_message: str) -> CodeExecutionPermiss
         return None
 
     payload_text = error_message[marker_index + len(_RUNTIME_PERMISSION_MARKER) :].strip()
+    # 只解析最后一个标记，兼容 stderr 中包含多段异常文本的情况；JSON 损坏则按普通执行错误交回上层。
     try:
         payload = json.loads(payload_text)
     except Exception:
@@ -98,6 +101,7 @@ def _ensure_runtime_patches_installed() -> None:
     if _PATCHES_INSTALLED:
         return
 
+    # patch 是进程级安装动作，只执行一次；每次请求只切换 ContextVar 中的当前策略。
     _patch_path_method("open", _guard_path_open)
     _patch_path_method("read_text", _guard_path_read_method("read_text"))
     _patch_path_method("read_bytes", _guard_path_read_method("read_bytes"))
@@ -151,6 +155,7 @@ def _guard_path_open(original: Callable[..., Any]) -> Callable[..., Any]:
             mode = args[0] or mode
         if "mode" in kwargs and kwargs["mode"]:
             mode = kwargs["mode"]
+        # open 的 w/a/x/+ 任一标志都可能改变文件，统一按写权限检查；其余模式视为读取。
         access_mode = "write" if any(flag in str(mode) for flag in ("w", "a", "x", "+")) else "read"
         normalized_self = Path(_normalize_path(self, access_mode=access_mode))
         return original(normalized_self, *args, **kwargs)
@@ -280,6 +285,7 @@ def _patch_matplotlib_savefig() -> None:
             if _should_bypass_guard():
                 return __original(*args, **kwargs)
             path_arg_index = 1 if __owner is Figure else 0
+            # pyplot.savefig 与 Figure.savefig 的路径参数位置不同，闭包保存 owner 防止循环变量晚绑定。
             normalized_args, normalized_kwargs = _normalize_path_argument(
                 args=args,
                 kwargs=kwargs,
@@ -317,6 +323,7 @@ def _normalize_path_argument(
     keyword_names: tuple[str, ...],
     path_arg_index: int,
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    # 同时支持位置参数和库版本差异下的关键字参数；复制容器后再改写，避免污染用户原始调用参数。
     normalized_args = list(args)
     normalized_kwargs = dict(kwargs)
 
@@ -349,6 +356,7 @@ def _normalize_path(value: Any, *, access_mode: str) -> str:
     if policy is None:
         return str(value)
     try:
+        # 守卫内部调用 validate_authorized_path 会再次访问 Path，必须暂时绕过 patch，避免递归进入自身。
         with _bypass_runtime_guard():
             return validate_authorized_path(str(value), policy=policy, access_mode=access_mode)
     except CodeExecutionPermissionError as error:
@@ -360,6 +368,7 @@ def _is_pathlike(value: Any) -> bool:
 
 
 def _should_bypass_guard() -> bool:
+    # 没有活动策略时保留库原始行为；正处于内部规范化时也必须放行原始 Path 操作。
     return _ACTIVE_POLICY.get() is None or _GUARD_BYPASS_DEPTH.get() > 0
 
 
@@ -384,6 +393,7 @@ def _encode_runtime_permission_error(error: CodeExecutionPermissionError) -> Cod
         "policy": policy_payload,
     }
 
+    # 将结构化拒绝原因编码进异常文本，跨越子进程 stderr 后仍能被执行器恢复为同一领域错误。
     return CodeExecutionPermissionError(
         error.blocked_reason,
         f"{error}\n{_RUNTIME_PERMISSION_MARKER}{json.dumps(payload, ensure_ascii=False)}",

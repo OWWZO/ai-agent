@@ -111,6 +111,7 @@ public class MicuImageGenerationClient {
         int n = request.getN() == null || request.getN() < 1 ? 1 : Math.min(request.getN(), MAX_N);
         String size = resolveSize(request.getSize(), request.getPrompt(), mode);
         String model = resolveModel(request.getModel(), size);
+        // 先确定模式、尺寸和模型，再选择文生图、单图编辑、多图参考或 Grok 路由。
         List<String> notes = new ArrayList<>();
         notes.add("mode=" + mode);
         notes.add("size=" + size);
@@ -159,6 +160,7 @@ public class MicuImageGenerationClient {
                     notes
             );
             if (!call.success() && FALLBACK_STATUS.contains(call.status) && ("2k".equals(tier) || "4k".equals(tier))) {
+                // 高分辨率接口失败时降级到 chat 兼容通道，并记录尺寸可能不再严格生效。
                 usedFallback = true;
                 notes.add("generations HTTP " + call.status + " → fallback chat stream（size 可能不生效）");
                 JSONObject chatBody = new JSONObject();
@@ -235,6 +237,7 @@ public class MicuImageGenerationClient {
                 notes
         );
         if (!call.success() && FALLBACK_STATUS.contains(call.status)) {
+            // 编辑接口回退时必须把参考图和蒙版一起放入 chat 请求，不能只重发文字 prompt。
             usedFallback = true;
             notes.add("edits HTTP " + call.status + " → fallback chat completions");
             call = callWithRetry(buildChatEditRequest(model, request.getPrompt(), size, List.of(source), mask), isPro, notes);
@@ -291,6 +294,7 @@ public class MicuImageGenerationClient {
                 notes
         );
         if (!call.success() && FALLBACK_STATUS.contains(call.status)) {
+            // 多图参考只回退一次，避免重复上传大体积图片造成额外下游压力。
             usedFallback = true;
             notes.add("multi-ref edits HTTP " + call.status + " → fallback chat completions");
             call = callWithRetry(buildChatEditRequest(model, request.getPrompt(), size, sourceImages, null), isPro, notes);
@@ -415,6 +419,7 @@ public class MicuImageGenerationClient {
                 return last;
             }
             long delay = delays[Math.min(i, delays.length - 1)];
+            // 只有可重试状态才等待；参数或鉴权错误应立即返回，避免被放大成超时。
             notes.add("HTTP " + last.status + " 重试 " + (i + 1) + "/" + attempts + "，等待 " + delay + "ms");
             sleep(delay);
         }
@@ -439,6 +444,7 @@ public class MicuImageGenerationClient {
     }
 
     private List<GeneratedImage> extractImages(String responseText) {
+        // 兼容 images.data、responses.output 和 chat choices 三类响应形状，统一成 GeneratedImage。
         Object parsed;
         try {
             parsed = JSON.parse(responseText);
@@ -590,6 +596,7 @@ public class MicuImageGenerationClient {
         if (CollectionUtils.isEmpty(references)) {
             throw new IllegalArgumentException("图生图模式至少需要一张参考图片");
         }
+        // 参考图统一物化为受大小限制的字节，调用方不需要区分 URL、data URL 和 Base64。
         List<LoadedImage> images = new ArrayList<>();
         long total = 0L;
         for (int i = 0; i < references.size(); i++) {
@@ -736,6 +743,7 @@ public class MicuImageGenerationClient {
 
     private String resolveSize(String rawSize, String prompt, String mode) {
         if (StringUtils.hasText(rawSize)) {
+            // 显式尺寸优先；缺省时才从 prompt 的分辨率或横竖屏意图推断。
             return validateSize(rawSize.trim().toLowerCase(Locale.ROOT), false);
         }
         String inferred = inferSizeFromPrompt(prompt);
@@ -751,6 +759,7 @@ public class MicuImageGenerationClient {
             return StringUtils.hasText(requestedModel) ? model : defaultGrokModel;
         }
         String tier = sizeTier(size);
+        // 2K/4K 默认切到 pro，避免普通模型静默接受高分辨率却返回错误或低质量结果。
         if (("2k".equals(tier) || "4k".equals(tier)) && !model.toLowerCase(Locale.ROOT).contains("pro")) {
             return PRO_MODEL;
         }
@@ -776,6 +785,7 @@ public class MicuImageGenerationClient {
             throw new IllegalArgumentException("size W/H 必须为正数");
         }
         if (!grok) {
+            // OpenAI 兼容通道限制边长和 8 像素对齐；Grok 使用独立 resolution/aspect_ratio 契约。
             if (w < MIN_SIZE_EDGE || h < MIN_SIZE_EDGE || w > MAX_SIZE_EDGE || h > MAX_SIZE_EDGE) {
                 throw new IllegalArgumentException("size 边长必须在 " + MIN_SIZE_EDGE + "-" + MAX_SIZE_EDGE);
             }

@@ -86,7 +86,7 @@ public class CodeInterpreterTool implements BaseTool {
                     .build();
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
 
-            // 调用流式 API
+            // 调用流式 API；execute 等待完整 ToolResult，但中间过程由 listener 实时推送到前端。
             Future<ToolResultPayload> future = callCodeAgentStream(request, artifactSource);
             return future.get();
         } catch (Exception e) {
@@ -159,6 +159,7 @@ public class CodeInterpreterTool implements BaseTool {
                     }
 
                     if (Objects.nonNull(codeResponse.getFileInfo()) && !codeResponse.getFileInfo().isEmpty()) {
+                        // SSE 可能多次携带 fileInfo，先用最新批次覆盖再逐个登记，避免旧文件混入最终结果。
                         finalFileInfo.clear();
                         finalFileInfo.addAll(codeResponse.getFileInfo());
                         for (CodeInterpreterResponse.FileInfo fileInfo : codeResponse.getFileInfo()) {
@@ -176,6 +177,7 @@ public class CodeInterpreterTool implements BaseTool {
 
                     codeResponse.setToolCallId(toolCallId);
                     if (Boolean.TRUE.equals(codeResponse.getIsFinal())) {
+                        // final 事件补齐结论和累计正文，确保 UI 与 LLM 看到的是完整而非最后一个 chunk。
                         String conclusion = StringUtils.firstNonBlank(
                                 codeResponse.getCodeOutput(),
                                 codeResponse.getContent(),
@@ -211,6 +213,7 @@ public class CodeInterpreterTool implements BaseTool {
 
                 @Override
                 public void onClosed() {
+                    // 上游可能在没有 isFinal 标记的情况下直接断流，这里用已累计内容生成一次兜底终态。
                     CodeInterpreterResponse codeResponse = latestResponseRef.get();
                     if (codeResponse.getFileInfo() == null && !finalFileInfo.isEmpty()) {
                         codeResponse.setFileInfo(finalFileInfo);

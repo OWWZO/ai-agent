@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/**
+ * 前端 SSE 协议边界校验。
+ *
+ * <p>这里只验证事件信封和关键主键，保留未知字段供后续业务投影消费；这样协议向后
+ * 兼容时不会因为后端新增富结构字段而让网络层拒绝整条事件。</p>
+ */
 const answerEnvelopeSchema = z.object({
   status: z.string(),
   packageType: z.string(),

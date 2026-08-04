@@ -42,5 +42,8 @@ public class LLMSettings {
     @JSONField(name = "max_input_tokens")
     private int maxInputTokens;
 
+    @JSONField(name = "reasoning_effort")
+    private String reasoningEffort;
+
     private Map<String, Object> extParams;
 }

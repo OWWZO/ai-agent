@@ -123,7 +123,6 @@ public final class ExecutionLedgerFixtureFactory {
                 .query("测试执行账本")
                 .toolCollection(toolCollection)
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .executionRecorder(recorder)
                 .build();
         toolCollection.setAgentContext(context);

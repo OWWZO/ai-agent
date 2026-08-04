@@ -1,5 +1,6 @@
 import api from "./index";
 
+// 精选会话管理 API，online/offline 只改变发布状态，queryList 负责后台分页查询。
 export interface FeaturedConversationAdminQuery {
   status?: string;
   sessionId?: string;

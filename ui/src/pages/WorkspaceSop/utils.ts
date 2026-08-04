@@ -24,6 +24,7 @@ export function createEmptyDraft(): SopEditorDraft {
 }
 
 export function sopItemToDraft(item: SopItem): SopEditorDraft {
+  // 编辑草稿始终至少保留一个步骤和一个空子项，避免表单出现不可输入的空数组。
   return {
     sopId: item.sopId,
     sopName: item.sopName,
@@ -41,6 +42,7 @@ export function sopItemToDraft(item: SopItem): SopEditorDraft {
 }
 
 export function normalizeStatus(value: unknown): SopStatus {
+  // 只接受已知状态，其它后端值按在线处理，保证列表展示有安全默认值。
   const status = String(value || "online").toLowerCase();
   if (status === "offline" || status === "draft") {
     return status;

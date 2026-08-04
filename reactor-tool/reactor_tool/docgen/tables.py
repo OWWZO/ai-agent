@@ -94,6 +94,7 @@ _NEGATIVE_LEADS = "-−↓▼▽↘"
 
 def _classify_cell(text: str) -> ColumnKind | None:
     """Best-effort kind for one trimmed cell; ``None`` for empty/unknown."""
+    # 识别顺序从更具体的百分比/货币到普通数字和日期，避免带符号的数值被误判为文本。
     if not text:
         return None
     if _PERCENT_RE.match(text) or _PAREN_NEGATIVE_RE.match(text):
@@ -111,6 +112,7 @@ def _classify_cell(text: str) -> ColumnKind | None:
 
 def _cell_polarity(text: str) -> CellPolarity | None:
     """Sign of a delta-style cell (``+8%`` / ``▼3.2`` / ``(1,200)``)."""
+    # 只有明确的正负号、方向箭头或括号负数才赋予颜色语义，普通数字保持中性。
     if not text:
         return None
     if _PAREN_NEGATIVE_RE.match(text):
@@ -235,6 +237,7 @@ def resolve_table_style(
     unusable as a header band; headers then use the accent color with the
     background color as text.
     """
+    # 先按明暗背景选基础颜色，再按 style 变体决定边框、斑马纹和合计行规则。
     c = theme.colors
     if dark:
         header_fill = c.accent
@@ -328,6 +331,7 @@ _NUMERIC_KINDS: frozenset[str] = frozenset({"number", "percent", "currency", "de
 
 def _infer_column_kind(cells: list[str]) -> ColumnKind:
     """Dominant kind across non-empty cells (>=60% agreement required)."""
+    # 使用多数样本而不是单个单元格决定列类型，且把货币/百分比等数值族合并统计。
     kinds = [k for k in (_classify_cell(c) for c in cells if c) if k is not None]
     non_empty = sum(1 for c in cells if c)
     if not kinds or non_empty == 0:
@@ -360,6 +364,7 @@ def _detect_total_row(body: list[list[str]]) -> int | None:
 
 def process_table(block: TableBlock, *, theme: Theme | None = None) -> ProcessedTable:
     """Analyse a table block into a renderer-agnostic :class:`ProcessedTable`."""
+    # 处理顺序固定为：补齐网格 -> 数字格式化 -> 合计识别 -> 类型/对齐推断 -> 宽度与样式计算。
     header_raw, body_raw = block.effective_header_and_body()
     col_count = max(1, len(header_raw), *(len(r) for r in body_raw))
 
@@ -374,7 +379,7 @@ def process_table(block: TableBlock, *, theme: Theme | None = None) -> Processed
     if getattr(block, "number_format", True):
         body_txt = [[_format_number(c) for c in row] for row in body_txt]
 
-    # Total row: explicit flag wins, else label detection.
+    # 合计行的显式配置优先；未配置时才根据最后一行标签自动识别。
     forced_total = getattr(block, "total_row", None)
     if forced_total is True and body_txt:
         total_idx: int | None = len(body_txt) - 1
@@ -383,8 +388,7 @@ def process_table(block: TableBlock, *, theme: Theme | None = None) -> Processed
     else:
         total_idx = _detect_total_row(body_txt)
 
-    # Column kinds are inferred from body cells excluding the total row
-    # (its label cell would otherwise poison the first column).
+    # 推断列类型时排除合计行，避免首列的“合计”标签污染真实数据类型。
     sample_rows = [r for i, r in enumerate(body_txt) if i != total_idx]
     kinds: list[ColumnKind] = [
         _infer_column_kind([r[i] for r in sample_rows]) for i in range(col_count)
@@ -402,7 +406,7 @@ def process_table(block: TableBlock, *, theme: Theme | None = None) -> Processed
         else:
             aligns.append("left")
 
-    # Width weights: explicit percents win; otherwise CJK-aware content fit.
+    # 宽度显式百分比优先，否则按 CJK 双倍宽度估算内容所需空间。
     explicit_widths = getattr(block, "widths", None)
     if explicit_widths and len(explicit_widths) == col_count and all(
         w > 0 for w in explicit_widths

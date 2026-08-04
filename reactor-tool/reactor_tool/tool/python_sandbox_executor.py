@@ -52,12 +52,14 @@ class PythonSandboxExecutor:
 
     def execute(self, code: str) -> PythonSandboxExecutionResult:
         with self._lock:
+            # 同一个解释器会话可能保留变量和导入状态，因此请求必须串行发送，不能并发写入 JSONL 管道。
             self._ensure_started()
             response = self._request({"type": "execute", "code": code})
             produced_files = list(response.get("produced_files") or [])
             for item in produced_files:
                 path = str(item.get("file_path") or "")
                 if path:
+                    # 以绝对路径合并多次执行的产物，后续上传只保留每个文件的最新快照。
                     self._produced_by_path[path] = item
             if response.get("status") != "success":
                 raise PythonSandboxExecutionError(response)
@@ -80,6 +82,7 @@ class PythonSandboxExecutor:
             if self._process is None:
                 return
             try:
+                # 先给 runner 一个协议级 close 机会；请求卡住或进程异常时 finally 再强制终止并回收管道。
                 if self._process.poll() is None:
                     self._request({"type": "close"}, allow_closed=True)
             finally:
@@ -99,6 +102,7 @@ class PythonSandboxExecutor:
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
         # cwd 固定到 output/，相对路径落盘（如 savefig('a.png')）默认可被采集上传
         output_dir = Path(self._policy.output_dir).resolve()
+        # 子进程 cwd 固定为输出目录，使未显式指定目录的相对产物仍落在可控边界内。
         output_dir.mkdir(parents=True, exist_ok=True)
         self._process = subprocess.Popen(
             [sys.executable, "-I", str(runner)],
@@ -119,6 +123,7 @@ class PythonSandboxExecutor:
             "initial_variables": self._initial_variables,
         })
         if response.get("type") != "ready":
+            # 初始化失败不能复用半初始化进程，否则下一次 execute 会把 execute 请求发给未知状态的 runner。
             if self._process.poll() is None:
                 self._process.kill()
                 self._process.wait(timeout=5)
@@ -133,12 +138,13 @@ class PythonSandboxExecutor:
         process = self._process
         if process is None or process.stdin is None or process.stdout is None:
             raise RuntimeError("Python sandbox runner is unavailable")
-        # ASCII-only wire format: immune to Windows GBK/UTF-8 stdin mismatches
+        # JSONL 使用 ASCII-only wire format，避免 Windows 隔离进程的默认编码破坏协议中的非 ASCII 文本。
         # when the child is launched with ``-I`` (PYTHONIOENCODING ignored).
         process.stdin.write(json.dumps(payload, ensure_ascii=True, default=str) + "\n")
         process.stdin.flush()
         response_line = _read_line_with_timeout(process.stdout, self._timeout_seconds)
         if response_line is None:
+            # 超时后杀掉当前 runner；持久会话已不再可信，下一次请求会重新初始化干净进程。
             process.kill()
             process.wait(timeout=5)
             if allow_closed:
@@ -151,6 +157,7 @@ class PythonSandboxExecutor:
 
 
 def _read_line_with_timeout(stream, timeout_seconds: float) -> str | None:
+    # readline 本身不可取消，用守护线程等待并由父线程控制超时；超时路径由调用方负责杀进程。
     result: list[str] = []
     reader = threading.Thread(target=lambda: result.append(stream.readline()), daemon=True)
     reader.start()

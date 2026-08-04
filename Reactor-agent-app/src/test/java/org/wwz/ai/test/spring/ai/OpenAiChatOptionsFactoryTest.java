@@ -49,6 +49,23 @@ public class OpenAiChatOptionsFactoryTest {
     }
 
     @Test
+    public void test_buildTextOptionsUsesConfiguredReasoningEffort() {
+        OpenAiChatOptionsFactory factory = new OpenAiChatOptionsFactory();
+        ReflectionTestUtils.setField(factory, "toolCallbackProvider", new LlmToolCallbackProvider());
+
+        LLMSettings settings = LLMSettings.builder()
+                .model("gpt-5")
+                .maxTokens(2048)
+                .temperature(0.2D)
+                .reasoningEffort("high")
+                .build();
+
+        var options = factory.buildTextOptions(settings, null);
+
+        Assert.assertEquals("high", options.getReasoningEffort());
+    }
+
+    @Test
     public void test_buildToolOptionsDoesNotForceToolChoiceWhenNoTools() {
         OpenAiChatOptionsFactory factory = new OpenAiChatOptionsFactory();
         ReflectionTestUtils.setField(factory, "toolCallbackProvider", new LlmToolCallbackProvider());

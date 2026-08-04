@@ -605,6 +605,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
   };
 
   const handleSubmit = () => {
+    // 查询入口只在知识源、问题和非运行态同时满足时放行；具体请求/流式状态由上层
+    // hook 管理，本视图只负责把交互意图传递出去。
     if (!selectedKnowledgeBase || !question.trim() || querying) return;
     onSubmitQuery();
   };
@@ -618,7 +620,7 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
 
   return (
     <div className="relative flex h-full flex-col bg-[var(--chat-bg)] text-[var(--chat-text)]">
-      {/* ── Minimal top bar ── */}
+      {/* 顶栏只管理三个独立抽屉的开关：历史、知识源和证据，不把抽屉内容混入主查询状态。 */}
       <header className="relative z-10 shrink-0 px-4 pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[920px] items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -729,7 +731,8 @@ export function WorkspaceMRagView(props: WorkspaceMRagViewProps) {
         </div>
       </header>
 
-      {/* ── Center document stage ── */}
+      {/* 中央文档区只消费 queryAnswer/queryError/querying；MRAG 原始 chunk 留给调试/证据抽屉，
+          避免流式过程文本和最终 Markdown 在主视图重复渲染。 */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[760px] px-5 pb-44 pt-8 sm:px-8 sm:pt-10">
           {!selectedKnowledgeBase ? (

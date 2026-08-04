@@ -57,6 +57,7 @@ function hydrateRun(
   detail: ConversationHistoryDetail,
   run: ConversationHistoryRunDetail
 ): CHAT.ChatItem {
+  // 历史 run 先还原为与实时流相同的空状态，再逐帧复用 combineData，确保历史和实时使用同一事件语义。
   const runStatus = normalizeRunStatus(run.status);
   const currentChat: CHAT.ChatItem = {
     sessionId: detail.sessionId,
@@ -89,6 +90,7 @@ function hydrateRun(
   }
 
   if (!currentChat.conclusion && run.finalSummaryText) {
+    // 旧数据或失败 run 可能没有 result frame，用 run 终态摘要补一条与实时 result 同构的事件。
     const fallbackEventData = buildFallbackConclusionEventData(run);
     combineData(fallbackEventData, currentChat);
     syncConclusionFromEventData(currentChat, fallbackEventData);

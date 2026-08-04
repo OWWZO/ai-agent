@@ -33,6 +33,7 @@ class SplitSentence(object):
 
     def __call__(self, text):
         """将文本切成句子列表。"""
+        # 先按粗粒度标点切片，再用 quote_flag 把引号内部内容重新并回同一句，避免语义被截断。
         final_sentences = []
         tmp_list = self.puncs_coarse_ptn.split(text)
         quote_flag = False
@@ -85,6 +86,7 @@ class SplitSentence(object):
 
 # 使用用户自定义分割符切分
 def split_by_user_separators(text, separators, keep_separators):
+    """按用户分隔符切分，并按配置决定分隔符归属前一块还是直接丢弃。"""
     if keep_separators:
         # sep_pattern = "|".join(["(\{})".format(sep) for sep in separators])
         sep_pattern = "|".join(f"({re.escape(sep)})" for sep in separators)
@@ -118,6 +120,7 @@ def split_by_user_separators(text, separators, keep_separators):
 
 def enforce_chunk_hard_limit(text: str, hard_limit: int) -> list[str]:
     """对超长单块做最终兜底切分，保证任何返回块都不超过硬上限。"""
+    # 这是所有切分分支的最后一道长度边界，即使单句或标题本身超长也不能穿透上限。
     if hard_limit <= 0:
         return [text]
     if len(text) <= hard_limit:
@@ -143,6 +146,7 @@ def text_split_to_chunks(
         keep_separators=True
 ) -> list[str]:
     """通用文本切 chunk：分句 → 按 size/overlap 合并 → 硬长度限制。"""
+    # 先处理空输入、短文本和用户自定义分隔符，再进入带 overlap 的默认句子切分路径。
     hard_limit = int(os.getenv("CHUNK_HARD_MAX_SIZE", 8000))
     if chunk_size is None:
         chunk_size = int(os.getenv("CHUNK_SIZE", 500))
@@ -163,6 +167,7 @@ def text_split_to_chunks(
             chunks_list = split_by_user_separators(text, separators, keep_separators)
             normalized_chunks = []
             for chunk in chunks_list:
+                # 标题只在自定义分隔符路径中前置一次，随后统一应用硬长度限制。
                 normalized_chunk = chunk
                 if name is not None and name != "":
                     normalized_chunk = name + "\n" + normalized_chunk
@@ -170,7 +175,7 @@ def text_split_to_chunks(
             logger.info(f"{request_id} 共计生成{len(chunks_list)}个chunk")
             return normalized_chunks
         t0 = time.time()
-        # 文本分割
+        # 默认路径保留句子边界，并通过左右扫描为相邻 chunk 保留 overlap。
         logger.info(f"{request_id} 正文总字数:{len(text)}")
         # 用改进JIO方法分割
         split_sentence = SplitSentence()
@@ -184,7 +189,7 @@ def text_split_to_chunks(
         chunk_left_slices_content = []  # 当前chunk在指针左边的切片内容
         chunk_right_slices_len = 0  # 当前chunk在指针及右边的切片总长度
         chunk_right_slices_content = []  # 当前chunk在指针及右边的切片内容
-        # 从左往右遍历切片，切分chunk
+        # 指针逐步向右移动：左侧收集 overlap，右侧扩展到接近 chunk_size 后产出一个块。
         while idx < len(text_slices_list):
             logger.info(f"{request_id} 当前指针索引:{idx}")
             chunk_left_slices_len = 0  # 当前chunk在指针左边的切片总长度
@@ -227,7 +232,7 @@ def text_split_to_chunks(
                     chunk_right_slices_content.append(slice)
                     idx += 1
                     idx_slice_added = False
-        # 最后一个chunk长度未超过chunk_size，补充到列表
+        # 循环结束时，尚未在超限分支产出的尾部内容需要补入结果。
         if not idx_slice_added:
             logger.info(
                 f"{request_id} chunk右边切片数:{len(chunk_right_slices_content)} 右边切片长度:{chunk_right_slices_len}")
@@ -235,7 +240,7 @@ def text_split_to_chunks(
             chunks_list_temp.append(chunk_content)
             logger.info(
                 f"{request_id} 生成第{len(chunks_list_temp)}个chunk 包含切片数:{len(chunk_left_slices_content) + len(chunk_right_slices_content)} 字数:{len(chunk_content)}")
-        # chunks后处理
+        # 去除空白、补充文档名上下文，并对每块执行最终硬上限保护。
         chunks_list = []
         for chunk in chunks_list_temp:
             chunk = chunk.strip(" \n\t\r")
@@ -290,6 +295,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
         self._hard_limit = int(os.getenv("CHUNK_HARD_MAX_SIZE", 8000))
 
     def split(self, text: str):
+        # Markdown 先保留标题元数据，再合并相邻内容；超长正文回退到默认句子切分器。
         headers = [('#', 'Header 1'),
                    ('##', 'Header 2'),
                    ('###', 'Header 3'),
@@ -301,6 +307,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
         docs = md_splitter.split_text(text)
 
         def build_context(chunk_text: str, chunk_metadata: dict):
+            # 将标题层级重新写入正文，使向量索引单独取到 chunk 时仍保留语义上下文。
             context = ""
             for k, v in headers:
                 if v in chunk_metadata:
@@ -308,7 +315,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
             context += chunk_text
             return context
 
-        # 合并，直到最大块到chunk_size, 在合并过程中保留metadata信息
+        # 合并到 chunk_size，同时沿用当前块的标题元数据，避免跨标题拼接造成上下文污染。
         merged_chunks = []
         current_chunk = ""
         current_metadata = {}
@@ -333,7 +340,7 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
                 current_chunk += separator + content
 
             else:
-                # 当前块已满，保存并开始新块
+                # 当前块已满先落盘；单个 Markdown 节点过长时交给默认切分器继续拆分。
                 merged_chunks.append({
                     'content': current_chunk,
                     'metadata': current_metadata
@@ -354,14 +361,14 @@ class MarkdownDocumentSplitter(BaseDocumentSplitter):
                     current_chunk = content
                     current_metadata = metadata.copy()
 
-        # 添加最后一个块
+        # 循环结束后补上尚未落盘的最后一块。
         if current_chunk:
             merged_chunks.append({
                 'content': current_chunk,
                 'metadata': current_metadata
             })
 
-        # 返回合并后的文本列表
+        # 重新注入标题上下文，并对每个结果应用统一硬长度限制。
         final_chunks = []
         for chunk in merged_chunks:
             normalized_chunk = build_context(chunk['content'], chunk['metadata'])

@@ -24,7 +24,11 @@ from typing import List, Dict, Optional, Any
 
 
 class BaseVectorStore(ABC):
-    """向量数据库抽象基类"""
+    """向量数据库抽象基类。
+
+    该层只约定集合、写入、检索、删除和滚动读取的最小端口，不规定 Qdrant/Chroma
+    的客户端对象或异常类型；具体实现负责把后端差异转换成这些稳定返回值。
+    """
 
     def __init__(self, config: Dict[str, Any]):
         """
@@ -222,6 +226,9 @@ class BaseCollectionVectorStore(ABC):
 
     这是一个通用的包装器基类，适用于所有类型的向量存储（文本、图像、页面等）。
     所有实际操作都委托给 BaseVectorStore 实例。
+
+    包装器把知识库、文档和文件 ID 等业务过滤条件收敛成后端无关的方法，调用方不需要
+    直接拼装向量集合名称或 payload filter。
     """
 
     def __init__(self,

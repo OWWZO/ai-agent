@@ -45,10 +45,12 @@ class GetDataTool(Tool):
         super().__init__(*args, **kwargs)
     
     def forward(self, query: str) -> pd.DataFrame:
+        # 先发出可观察的取数步骤，再调用统一数据接口；后续分析步骤依赖这里返回的 DataFrame。
         self.context.queue.put_nowait({"requestId": self.context.request_id, "data": f"\n### 1. 取数 Query\n{query}  \n", "isFinal": False})
         query = f"{query}。取 {self.context.max_data_size} 条"
         base_datas = get_data(query=query, modelCodeList=self.context.modelCodeList, request_id=self.context.request_id)
         if isinstance(base_datas, list):
+            # 一个自然语言查询可能拆成多个结果集；只有维度一致的结果才会被合并。
             df = self.merge_df(base_datas)
             # dfs = [self.to_df(bd) for bd in base_datas]
             if base_datas:
@@ -61,15 +63,15 @@ class GetDataTool(Tool):
                 top_k_data = "### 3. 取数结果\n没有获取到数据"
             self.context.queue.put_nowait({"requestId": self.context.request_id, "data": f"\n{top_k_data}\n", "isFinal": False})
             return df if len(df) > 0 else "没有获取到数据"
-        # 异常情况
+        # 非列表结果通常代表权限、接口或参数错误，原样作为步骤结果返回给 Agent。
         else:
-            # 查询无权限
             self.context.queue.put_nowait({"requestId": self.context.request_id, "data": f"### 3. 取数结果\n{base_datas}\n", "isFinal": False})
             return base_datas
     
     @classmethod
     @timer()
     def merge_df(cls, datas: List[Dict]) -> pd.DataFrame:
+        """将同维度的多个指标结果按维度外连接，并给受筛选的指标加前缀。"""
         joined_df = cls.to_df(datas[0])
         if len(datas) > 1 and (prefix := "_".join([f"{f['name']}为{f['val']}" for f in datas[0]["filters"] 
                 if f["opt"] in ["EQUALS"] and f["dataType"] in ["VARCHAR"] and not re.match(r"^\d{4}-\d{2}-\d{2}$", f["val"])])):
@@ -86,6 +88,7 @@ class GetDataTool(Tool):
     
     @staticmethod
     def to_df(data) -> pd.DataFrame:
+        """按接口返回的 ``columnList`` 顺序，把 guid 行数据还原成 DataFrame。"""
         cols = [c["name"] for c in data["columnList"]]
         guids = [c["guid"] for c in data["columnList"]]
         values = [[row.get(c) for c in guids] for row in data["dataList"]]
@@ -144,6 +147,7 @@ class InsightTool(Tool):
             analysis_method: str,
     ) -> List[Dict[str, Any]]:
         if analysis_method in ["Trend", "ChangePoint"]:
+            # 趋势类洞察要求时间列是 datetime；这里按数据接口常见的日期编码长度选择格式。
             val = df.iloc[0][breakdown]
             if len(val) == 4:
                 format = "%Y"
@@ -162,6 +166,7 @@ class InsightTool(Tool):
             data=df,
             measure=Measure(name=measure, column=measure, agg="sum" if measure_type == "quantity" else "max", type=measure_type),
         )
+        # 由统一 InsightFactory 选择具体算法，工具层只负责准备模型输入并序列化结论。
         breakdown_col = [c for c in data_model.columns if c.name == breakdown][0]
         sibling_group = SiblingGroup(data=data_model, breakdown=breakdown_col)
         insight: InsightType = InsightFactoryDict[analysis_method].from_data(sibling_group)
@@ -192,6 +197,7 @@ class SaveInsightTool(Tool):
         super().__init__(*args, **kwargs)
     
     def forward(self, df: pd.DataFrame, insight: str, analysis_process: str) -> pd.DataFrame:
+        # 保存时同时持久化结论和能直接证明结论的紧凑数据，多个洞察通过约定分隔符拆分。
         insights = [i.strip() for i in insight.split("<sep>")]
         if isinstance(df, pd.DataFrame):
             data = InsightType.df_to_csv(df)
@@ -240,21 +246,26 @@ class DataTransTool(Tool):
         super().__init__(*args, **kwargs)
     
     def forward(self, df: pd.DataFrame, column:str, measure: str, measure_type: str, trans_type: str) -> pd.DataFrame:
+        # 先按指标类型确定聚合方式，再执行单一变换；返回值继续作为下一步工具的 DataFrame 输入。
         assert trans_type in ["rate", "rank", "increase", "sub_avg"]
         agg = "sum" if measure_type == "quantity" else "max"
         if trans_type == "rate":
+            # rate 用分组指标除以全体指标总和，得到各组对整体的占比。
             df = df.groupby(column).agg({measure: agg}).reset_index()
             df[f"Rate({measure})"] = df[measure] / df[measure].sum()
         if trans_type == "increase":
+            # 增长计算必须先按时间/序列列排序，首行没有前值，因此会被 diff 后的 dropna 移除。
             df = df.groupby(column).agg({measure: agg})\
                 .sort_values(by=column, ascending=True).reset_index()
             df[f"Increase({measure})"] = df[measure].diff(1)
             df = df.dropna()
         if trans_type == "sub_avg":
+            # 与整体均值的差值保留正负方向，供后续洞察识别高于或低于平均水平的分组。
             df = df.groupby(column).agg({measure: agg}).reset_index()
             avg = df[measure].sum() / df[measure].size
             df[f"{measure}-avg"] = df[measure] - avg
         if trans_type == "rank":
+            # dense 排名让相同指标值共享名次，且不会因为并列产生跳号。
             df = df.groupby(column).agg({measure: agg}).reset_index()
             df[f"Rank({measure})"] = df[measure].rank(ascending=False, method="dense").astype(int)
         return df
@@ -276,6 +287,7 @@ class FinalAnswerTool(Tool):
         super().__init__(*args, **kwargs)
 
     def forward(self, answer: str) -> Any:
+        # final_answer 是分析编排的终止信号；已保存的洞察与最终摘要一起返回给外层 Agent。
         return {
             "insights": self.context.insights or [],
             "summary": answer,

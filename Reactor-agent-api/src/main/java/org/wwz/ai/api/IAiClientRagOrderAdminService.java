@@ -7,6 +7,11 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * AI 客户端知识库/RAG 配置管理契约。
+ *
+ * <p>ragId 是业务知识库标识，knowledgeTag 用于按知识域筛选；启用状态由实现层统一解释为可用候选范围。</p>
+ */
 public interface IAiClientRagOrderAdminService {
 
     /**

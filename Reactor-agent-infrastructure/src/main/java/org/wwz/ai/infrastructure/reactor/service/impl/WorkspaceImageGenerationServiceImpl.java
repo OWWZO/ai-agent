@@ -58,6 +58,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
     public WorkspaceImageGenerationResult generate(WorkspaceImageGenerationCommand command) {
         validateGenerateRequest(command);
 
+        // 入口先统一图片、蒙版、模式和批次数，再交给领域内核执行，保证 HTTP 与 Agent 入口共享同一约束。
         List<String> sourceImages = normalizeSourceImages(command.getFileNames());
         List<String> maskImages = normalizeMaskImages(command.getMaskFileNames());
         String mode = resolveMode(command.getMode(), sourceImages);
@@ -86,6 +87,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
             throw new IllegalStateException("上游未返回可识别的图片结果");
         }
 
+        // 只有上游返回可识别文件后才落账，避免产生没有 artifact 的“成功”历史批次。
         imageGenerationBatchPersistenceService.persistWorkspaceBatch(requestId, result);
         log.info("生图工作台生成成功 requestId={}, fileCount={}", requestId, result.getFiles().size());
 
@@ -103,6 +105,7 @@ public class WorkspaceImageGenerationServiceImpl implements IWorkspaceImageGener
     public WorkspaceImageGenerationHistoryPage queryHistory(int pageNo, int pageSize) {
         int safePageNo = Math.max(pageNo, 1);
         int safePageSize = Math.min(pageSize > 0 ? pageSize : DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE);
+        // 分页查询只筛工作台 requestSource；每行优先走结构化读取，旧数据再使用列值回退组装。
         int total = toolOutputImageGenerationDao.countByRequestSource(ExecutionLedgerConstants.REQUEST_SOURCE_WORKSPACE);
         if (total <= 0) {
             return WorkspaceImageGenerationHistoryPage.builder()

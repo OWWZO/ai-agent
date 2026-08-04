@@ -15,6 +15,13 @@ import javax.sql.DataSource;
 import java.io.Serializable;
 import java.util.Properties;
 
+/**
+ * JDBC 连接池及其配套方言能力的组装器。
+ *
+ * <p>工厂先根据 URL 选择方言，再选择元数据目录，最后将连接池参数、方言默认属性和
+ * 外部扩展属性合并到 Hikari 配置。支持的数据库类型在这里形成明确边界，未知方言
+ * 不会降级为默认连接池。</p>
+ */
 @Slf4j
 public class JdbcConnectionPoolFactory implements Serializable {
 
@@ -25,6 +32,7 @@ public class JdbcConnectionPoolFactory implements Serializable {
 
 
     public DatasourceWrapper createPooledDatasource(JdbcConnectionConfig connConfig) {
+        // 方言和目录必须来自同一份配置推导，防止 SQL 语法与元数据读取策略错配。
         JdbcDialect jdbcDialect = JdbcDialectLoader.load(connConfig.getUrl());
         DatasourceWrapper datasourceWrapper = new DatasourceWrapper();
         datasourceWrapper.setJdbcDialect(jdbcDialect);
@@ -47,6 +55,7 @@ public class JdbcConnectionPoolFactory implements Serializable {
     }
 
     private DataSource createHikariDatasource(JdbcConnectionConfig connConfig, JdbcDialect jdbcDialect) {
+        // Hikari 只负责连接池参数，方言默认属性和用户扩展属性在此统一注入。
         HikariConfig config = new HikariConfig();
         config.setPoolName(CONNECTION_POOL_PREFIX + connConfig.getKey());
         config.setDriverClassName(jdbcDialect.driverName());
@@ -94,4 +103,3 @@ public class JdbcConnectionPoolFactory implements Serializable {
         return new HikariDataSource(config);
     }
 }
-

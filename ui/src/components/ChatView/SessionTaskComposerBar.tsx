@@ -18,6 +18,7 @@ type SessionTaskComposerBarProps = {
 };
 
 function StatusIcon({ status }: { status?: string }) {
+  // 任务状态映射为固定尺寸图标，避免文本变化导致摘要栏布局抖动。
   if (status === "completed") {
     return <CheckCircle2Icon className="size-3.5 shrink-0 text-[var(--chat-text-muted)]" />;
   }
@@ -29,6 +30,7 @@ function StatusIcon({ status }: { status?: string }) {
 
 const SessionTaskComposerBar: FC<SessionTaskComposerBarProps> = memo(
   ({ chat, taskList }) => {
+    // 先从聊天/任务事件中取最新快照，再由快照统一计算完成数和进行中任务。
     const tool = useMemo(
       () => findLatestSessionTasks(chat, taskList),
       [chat, taskList]

@@ -257,7 +257,8 @@ class ColumnFilterModule:
         raise RuntimeError(f"解析llm json结果失败: 无法从结果中提取有效的 JSON")
     
     async def _filter_single_table(self, semaphore, table_schema_info: dict) -> dict | None:
-        
+        # 单表阶段受 semaphore 限流，并在 LLM 返回为空或 JSON 不合法时重试；只有
+        # relatedFlag=true 才保留列，defaultRecall=1 的列始终保留，避免关键维度被误删。
         async with semaphore:
             llm_response = ""
             request_id = ""
@@ -318,6 +319,8 @@ class ColumnFilterModule:
             raise RuntimeError(f"[filter column] {request_id} 多次重试后执行失败, error_msg:{error_msg}")
     
     async def batch_get_stage_result(self):
+        # 两阶段策略先批量粗筛表，再把命中的单表交给列筛选；第一阶段完成一个 batch
+        # 就立即提交第二阶段，降低尾延迟，同时用独立 semaphore 隔离两级并发预算。
         # table_schema_lists = self.body.get("schema_info", [])
         table_schema_lists = self.column_info
         
@@ -370,6 +373,8 @@ class ColumnFilterModule:
         return results
     
     async def filter_table(self, semaphore, schema_info_list):
+        # 粗筛阶段只负责从表集合中选择相关 modelCode，不修改列结构；结果通过
+        # index->modelCode 映射恢复原始 schema，供后续单表列筛选继续处理。
         async with semaphore:
             if schema_info_list is None or len(schema_info_list) == 0:
                 return []
@@ -419,6 +424,8 @@ class ColumnFilterModule:
             return schema_info_list
     
     async def batch_get_result(self):
+        # 小输入或关闭两阶段时直接并发执行单表筛选；否则走批量粗筛 -> 单表精筛，
+        # 最终统一过滤空结果，调用方只接收保留下来的 schema 列表。
         # table_schema_lists = self.body.get("schema_info", [])
         table_schema_lists = self.column_info
         

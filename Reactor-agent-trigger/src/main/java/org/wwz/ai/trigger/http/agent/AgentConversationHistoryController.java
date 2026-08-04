@@ -59,6 +59,8 @@ public class AgentConversationHistoryController {
     @GetMapping("/{sessionId}")
     public Response<ConversationHistoryDetailRespVO> detail(@PathVariable("sessionId") String sessionId) {
         try {
+            // 历史详情先校验 visitor 对 session 的所有权，再读取 ledger 并执行 replay；
+            // replay 只生成展示视图，不把历史事件重新写回运行账本。
             conversationSessionOwnershipApplicationService.ensureExistingSessionAccessible(
                     VisitorRequestContext.requireVisitorId(),
                     sessionId

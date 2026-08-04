@@ -9,7 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * canvas_publish terminal structured output.
+ * canvas_publish 工具的终态结构化输出。
+ *
+ * 它只承载 ledger 和历史回放需要的稳定文件引用，不保存 HTML 内容本身；文件内容
+ * 仍由 artifact 记录和文件服务负责管理。
  */
 @Data
 @Builder

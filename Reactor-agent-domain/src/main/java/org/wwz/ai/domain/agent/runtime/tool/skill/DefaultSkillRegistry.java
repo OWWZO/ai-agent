@@ -42,6 +42,7 @@ public class DefaultSkillRegistry implements SkillRegistry {
             return;
         }
 
+        // 先构造完整的新快照，最后一次性替换 volatile 缓存，读取方不会看到半成品注册结果。
         Map<String, SkillDefinition> loadedSkills = new LinkedHashMap<>();
         for (Path rootDirectory : resolvedRootDirectories) {
             loadSkillsFromRoot(rootDirectory, loadedSkills);
@@ -77,6 +78,7 @@ public class DefaultSkillRegistry implements SkillRegistry {
     @Override
     public Path assertPathAllowed(Path candidatePath) {
         Path normalizedCandidatePath = candidatePath.toAbsolutePath().normalize();
+        // 先按 skill 所属根匹配，再交给 guard 做最终边界校验，防止 ../ 或符号路径绕出目录。
         for (SkillDefinition skillDefinition : skillCache.values()) {
             Path skillBasePath = skillDefinition.getBasePath().toAbsolutePath().normalize();
             if (normalizedCandidatePath.startsWith(skillBasePath)) {
@@ -130,6 +132,7 @@ public class DefaultSkillRegistry implements SkillRegistry {
         List<Path> skillDirectories = findSkillDirectories(rootDirectory);
         for (Path skillDirectory : skillDirectories) {
             try {
+                // SKILL.md 定义元数据，脚本发现器只补充可执行入口；任一 skill 失败都不污染其它已加载项。
                 SkillDefinition skillDefinition = skillMarkdownParser.parse(skillDirectory);
                 if (loadedSkills.containsKey(skillDefinition.getName())) {
                     throw new SkillLoadException("duplicate skill name detected: " + skillDefinition.getName());

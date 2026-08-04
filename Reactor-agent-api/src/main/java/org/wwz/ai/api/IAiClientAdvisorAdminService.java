@@ -8,6 +8,12 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * AI 客户端 Advisor 配置管理契约。
+ *
+ * <p>Advisor 的类型、排序和启用状态共同决定运行时装配顺序；接口仅提供配置的 CRUD 与筛选查询，
+ * 不在 API 层解释具体 Advisor 行为。</p>
+ */
 public interface IAiClientAdvisorAdminService {
 
     /**

@@ -75,6 +75,7 @@ class ListSessionRequest(BaseModel):
 
 @router.post("/create")
 def create_session(request: CreateSessionRequest):
+    # 会话先固化知识库范围和封面库，后续 turn 直接引用快照，避免用户修改选择后历史记录漂移。
     session_id = f"mrag_session_{uuid.uuid4().hex}"
     scope = request.resolve_scope()
     now = datetime.now()
@@ -93,6 +94,7 @@ def create_session(request: CreateSessionRequest):
 
 @router.post("/list")
 def list_sessions(request: ListSessionRequest):
+    # 列表只返回会话摘要，不加载全部 turn，详情接口再按需展开完整历史。
     sessions = get_mrag_session_store().list_sessions(request.page_no, request.page_size)
     return {
         "code": 200,
@@ -108,6 +110,7 @@ def session_detail(request: SessionDetailRequest):
     if not session:
         raise HTTPException(status_code=404, detail="MRAG 会话不存在")
 
+    # session 与 turns 分开读取，先确认会话存在，避免对不存在的 ID 返回看似有效的空历史。
     turns = get_mrag_turn_store().list_turns(request.session_id)
     return {
         "code": 200,
@@ -120,6 +123,7 @@ def session_detail(request: SessionDetailRequest):
 
 @router.post("/delete")
 def delete_session(request: DeleteSessionRequest):
+    # 删除会话后同步清理 turn；两张表的删除顺序和失败语义由这里统一编排。
     deleted = get_mrag_session_store().delete_session(request.session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="MRAG 会话不存在")

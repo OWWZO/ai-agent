@@ -59,6 +59,7 @@ public class WorkspaceListTool extends AbstractWorkspacePathTool {
             List<Map<String, Object>> entriesOut = new ArrayList<>();
             boolean truncated = false;
             try (var pathStream = Files.walk(directoryPath, maxDepth)) {
+                // 同时限制深度和返回条数；多取一条只为判断结果是否被截断。
                 List<Path> entries = pathStream
                         .filter(path -> !path.equals(directoryPath))
                         .limit(workspaceRuntimeOptions.getMaxListEntries() + 1L)

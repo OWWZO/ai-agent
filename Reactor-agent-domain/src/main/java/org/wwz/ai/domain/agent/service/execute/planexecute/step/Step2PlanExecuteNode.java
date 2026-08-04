@@ -77,6 +77,8 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
 
     @Override
     protected String doApply(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        // Step2 是 PlanSolve 的执行边界：Step1 准备上下文，Step2 让单个 ReAct
+        // planner 完成规划、工具调用和终答，随后统一发送结果并写回记忆。
         log.info("PlanSolve Step2: single planner ReAct for requestId: {}", requestParameter.getRequestId());
 
         AgentContext agentContext = dynamicContext.getAgentContext();
@@ -126,6 +128,8 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
     }
 
     private void sendFinalResult(AgentContext agentContext, String rawFinalAnswer) {
+        // 终答先经过 artifact 协议解析，把用户摘要和可见文件分开；只有这里发送
+        // result 并结束 ledger run，避免中间工具事件误标记为最终成功。
         TaskSummaryResult result = TaskSummaryArtifactProtocol.parse(
                 StringUtils.defaultString(rawFinalAnswer),
                 agentContext.getVisibleArtifactBindings()
@@ -158,6 +162,8 @@ public class Step2PlanExecuteNode extends AbstractExecuteSupport {
      * 仅接受「纯文本 assistant 轮」（无 tool_calls）作为用户终答。与 React RunReactNode 同语义。
      */
     public static String resolveFinalAnswer(ReActAgent executor, String runResult) {
+        // 优先从记忆中取最后一条无 tool-call 的 assistant 文本；只有执行器已结束且
+        // 返回值像用户文案时才使用 runResult，否则返回明确的缺失提示。
         String fromMemory = findLastUserFacingAssistantText(executor);
         if (StringUtils.isNotBlank(fromMemory)) {
             return sanitizeUserFacingText(fromMemory);

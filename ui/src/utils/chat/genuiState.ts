@@ -39,6 +39,8 @@ export function mergeUiPatchIntoTaskGroup(
   taskGroup: Array<CHAT.Task | MESSAGE.Task>,
   patchTask: CHAT.Task | MESSAGE.Task
 ): boolean {
+  // patch 只投影到同一 task group 中最近的 ui_tree；tree 是展示基准，patch task
+  // 只保留轻量 breadcrumb 状态。找不到基准时返回 false，由调用方继续保留独立 patch。
   const treeIndex = findLatestGenUiTreeIndex(taskGroup);
   if (treeIndex < 0) return false;
 
@@ -65,6 +67,7 @@ export function mergeUiPatchIntoTaskGroup(
   };
 
   // Keep outer resultMap shape stable for buildTaskFromEventData consumers.
+  // 兼容旧的 resultMap.resultMap 嵌套形态，避免合并后前端读取路径发生变化。
   if (prevRm.resultMap && typeof prevRm.resultMap === "object") {
     treeTask.resultMap = {
       ...prevRm,
@@ -115,6 +118,8 @@ export function mergeUiPatchIntoTasks(
   tasks: Array<Array<CHAT.Task | MESSAGE.Task>> | undefined | null,
   patchTask: CHAT.Task | MESSAGE.Task
 ): boolean {
+  // 计划执行可能把 tree 和 patch 分到不同组，因此从最新组向前搜索；首次成功合并
+  // 即停止，确保一个 patch 不会被重复应用到多个历史 tree。
   if (!Array.isArray(tasks) || !tasks.length) return false;
   for (let g = tasks.length - 1; g >= 0; g--) {
     const group = tasks[g];

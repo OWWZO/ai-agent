@@ -238,6 +238,9 @@ def _markup(
 
 def render_pdf(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
     """Render a document spec to a PDF file."""
+    # PDF 渲染分为“注册字体/主题 -> 构造 flowables -> build/multiBuild -> 可选后处理”四段。
+    # 这里保持 DocumentSpec 到 story 的单向转换，图片、图表、公式和目录都以 flowable 参与
+    # ReportLab 分页，避免在渲染前手工拼接页内容。
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
     from reportlab.lib.pagesizes import A3, A4, A5, LEGAL, LETTER, landscape
@@ -1614,6 +1617,8 @@ def render_pdf(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
             content_started = True
         return out
 
+    # 先构建完整 story；目录存在时使用 multiBuild，让 ReportLab 通过多遍构建回填标题页码，
+    # 普通文档只需单遍 build，减少不必要的分页开销。
     for block in spec.blocks:
         story.extend(_flowables_for(block))
 
@@ -1624,6 +1629,8 @@ def render_pdf(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
         doc.build(story, canvasmaker=_DecoratedCanvas)
 
     if spec.merge_sources or spec.encryption:
+        # 合并/加密依赖可选 pypdf，属于生成成功后的后处理；缺少依赖时保留已生成 PDF，
+        # 只在 warnings 中说明后处理被跳过。
         _postprocess_pdf(output_path, spec, warnings)
 
     if _emoji_seen and not fonts.get("emoji_embedded"):
@@ -1670,6 +1677,8 @@ def _postprocess_pdf(
     output_path: Path, spec: DocumentSpec, warnings: list[str]
 ) -> None:
     """Merge additional PDFs and/or encrypt the output using pypdf."""
+    # 后处理以当前 PDF 为第一份输入，再追加存在的 merge_sources，最后统一设置加密；无效
+    # 合并源只产生 warning，不删除已成功生成的主体文档。
     try:
         from pypdf import PdfReader, PdfWriter
     except ImportError:

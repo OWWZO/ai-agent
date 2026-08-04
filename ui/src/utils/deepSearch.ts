@@ -12,6 +12,7 @@ export function resolveDeepSearchStage(
   stage: unknown,
   fallbackStage?: unknown
 ): DeepSearchStage {
+  // 优先使用当前事件的 stage，再回退到兼容字段；最终固定为 search，避免未知值让 UI 卡在空状态。
   if (isDeepSearchStage(stage)) {
     return stage;
   }
@@ -22,6 +23,7 @@ export function resolveDeepSearchStage(
 }
 
 export function normalizeDeepSearchQueries(value: unknown): string[] {
+  // 后端可能返回单个字符串或数组，统一成去空白、去空项的数组供标题和卡片复用。
   const rawQueries = Array.isArray(value)
     ? value
     : value == null
@@ -112,6 +114,7 @@ function normalizeDeepSearchDocs(value: unknown): MESSAGE.Doc[] {
     return [];
   }
 
+  // 某些阶段按 query 分组返回二维数组，先展平再去重，避免 UI 绑定后端分组形态。
   return value.reduce<MESSAGE.Doc[]>((result, item) => {
     if (Array.isArray(item)) {
       item.forEach((doc) => {
@@ -133,6 +136,7 @@ export function buildDeepSearchResultItems(value: unknown): DeepSearchCardItem[]
   const docs = normalizeDeepSearchDocs(value);
   const seen = new Set<string>();
 
+  // URL 和标题共同作为展示去重键；相同 URL 的不同标题仍保留，避免丢失来源上下文。
   return docs.reduce<DeepSearchCardItem[]>((result, doc, index) => {
     const url = String(doc.link || "").trim();
     const name = String(doc.title || doc.link || `搜索结果 ${index + 1}`).trim();
@@ -159,6 +163,7 @@ export function buildDeepSearchPreviewModel(
     return undefined;
   }
 
+  // extend/search 只生成轻量预览，report 交给工作区完整结果渲染，防止同一任务出现两套主展示。
   const stage = resolveDeepSearchStage(task.resultMap?.messageType);
   if (stage !== "extend" && stage !== "search") {
     return undefined;

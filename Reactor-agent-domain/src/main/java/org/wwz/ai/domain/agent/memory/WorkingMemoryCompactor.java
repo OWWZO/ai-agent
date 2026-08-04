@@ -128,12 +128,20 @@ public final class WorkingMemoryCompactor {
 
         List<Message> keep = keepRecentTail(body, budget);
         // 若 body 本身就是 full list 且 notes 来自外部，keep 从 body 切
-        String reinject = notes;
+        // 已包装的 notes 也必须再清洗一次，防止历史轮次残留 <analysis>/<summary> 污染主 Agent。
+        String reinject;
         if (!notes.contains("This session is being continued from a previous conversation")) {
             reinject = CompactionPrompt.wrapSummaryForReinject(
                     CompactionPrompt.formatCompactSummary(notes), !keep.isEmpty());
-        } else if (!keep.isEmpty() && !notes.contains("Recent messages are preserved verbatim")) {
-            reinject = notes + "\n\nRecent messages are preserved verbatim.";
+        } else {
+            reinject = CompactionPrompt.sanitizeForReinject(notes);
+            if (!keep.isEmpty() && !reinject.contains("Recent messages are preserved verbatim")) {
+                reinject = reinject + "\n\nRecent messages are preserved verbatim after this summary.";
+            }
+            if (!reinject.contains("NOT a context-compaction")) {
+                reinject = CompactionPrompt.wrapSummaryForReinject(
+                        stripLegacyContinuationPrefix(reinject), !keep.isEmpty());
+            }
         }
         // 摘要放在前缀、最近消息原样保留在后缀，既缩短上下文又维持最近工具调用的可解释性。
         List<Message> post = buildPostCompactMessages(reinject, keep);
@@ -149,6 +157,27 @@ public final class WorkingMemoryCompactor {
         }
         String content = message.getContent();
         return content != null && content.contains("This session is being continued from a previous conversation");
+    }
+
+    /** 去掉旧版 continuation 前缀，便于重新 wrap 时补上角色边界说明。 */
+    private static String stripLegacyContinuationPrefix(String notes) {
+        if (StringUtils.isBlank(notes)) {
+            return "";
+        }
+        String body = notes;
+        String marker = "This session is being continued from a previous conversation that ran out of context.";
+        int idx = body.indexOf(marker);
+        if (idx >= 0) {
+            body = body.substring(idx + marker.length()).trim();
+        }
+        String cover = "The summary below covers the earlier portion of the conversation.";
+        if (body.startsWith(cover)) {
+            body = body.substring(cover.length()).trim();
+        }
+        body = body.replace("Recent messages are preserved verbatim after this summary.", "")
+                .replace("Recent messages are preserved verbatim.", "")
+                .trim();
+        return body;
     }
 
     /**
@@ -221,6 +250,7 @@ public final class WorkingMemoryCompactor {
         int tokens = 0;
         int textMsgs = 0;
         while (start > 0) {
+            // 从尾部向前累计，先满足最小 token 和文本消息条件，再在最大预算内尽量多保留上下文。
             int candidate = start - 1;
             int add = tokenCounter.estimateOneMessage(messages.get(candidate));
             if (tokens + add > maxTokens && tokens >= minTokens && textMsgs >= minText) {
@@ -335,6 +365,8 @@ public final class WorkingMemoryCompactor {
             return idx;
         }
 
+        // keep 区间可能从 tool_result 开始；先收集区间中引用的 call，再向前寻找对应 assistant tool_use。
+        // 这里调整的是切片边界，不修改消息内容，因此压缩后仍能通过模型协议校验。
         // 向前扩展直到所有 tool_call_id 都有对应 assistant tool_calls
         int expanded = idx;
         Set<String> provided = new HashSet<>();
@@ -381,6 +413,7 @@ public final class WorkingMemoryCompactor {
         if (end == 0) {
             return 0;
         }
+        // 计算前缀中尚未闭合的 tool_call，只有等对应 tool_result 到达后才能安全删除该前缀。
         Set<String> openToolCalls = new HashSet<>();
         for (int i = 0; i < end; i++) {
             Message m = messages.get(i);

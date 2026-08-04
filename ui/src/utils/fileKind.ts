@@ -11,6 +11,7 @@ export type FileKind =
 
 export const FILE_KIND_TONE = "bg-[#f5f5f7] text-[#6b6b70]";
 
+// 优先使用后端提供的类型，缺失时才从文件名后缀推断，保证展示和下载协议一致。
 export function resolveFileKind(type?: string, name?: string): FileKind {
   const ext = (type || name?.split(".").pop() || "").toLowerCase();
   if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"].includes(ext)) {
@@ -53,6 +54,7 @@ export function fileKindLabel(type?: string, name?: string) {
   }
 }
 
+// 徽标是列表中的紧凑视觉标记，具体文件类型名称由 fileKindLabel 单独负责。
 export function fileKindBadge(kind: FileKind) {
   if (kind === "xlsx") return "X";
   if (kind === "py") return "Py";

@@ -12,6 +12,7 @@ const Tabs = <V extends string | number>(props: ReactorType.ControlProps<V> & {
   const slideRef = useRef<HTMLDivElement>(null);
 
   const adjustSlide = useMemoizedFn(() => {
+    // 指示条跟随实际 tab 宽度和 offset，不能用 options 文本长度推算，才能兼容字体和响应式布局。
     if (!wrapRef.current) return;
     const activeTab = wrapRef.current.querySelector<HTMLDivElement>(`[item-key="${value}"]`);
     if (!activeTab) return;
@@ -27,6 +28,7 @@ const Tabs = <V extends string | number>(props: ReactorType.ControlProps<V> & {
 
   useEffect(() => {
     adjustSlide();
+    // 容器尺寸变化会改变 tab 的 offset，监听容器而不是只依赖 value。
     const observer = new ResizeObserver(adjustSlide);
     if (wrapRef.current) {
       observer.observe(wrapRef.current);

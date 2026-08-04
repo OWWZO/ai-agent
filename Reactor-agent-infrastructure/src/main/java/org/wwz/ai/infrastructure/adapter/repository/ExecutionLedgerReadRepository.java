@@ -21,6 +21,8 @@ import java.util.List;
 
 /**
  * Phase 1 执行账本读仓储适配器。
+ *
+ * <p>这里只把 DAO 查询结果映射为 ledger 读模型，不创建历史消息表或其它第二套持久化真相。</p>
  */
 @Repository
 @RequiredArgsConstructor
@@ -34,6 +36,7 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
 
     @Override
     public DialogueRun queryRunByRequestId(String requestId) {
+        // requestId 是运行时外部关联键，先定位 run，再由调用方按 runId 查询 LLM、tool 和 artifact 事实。
         return dialogueRunLedgerDao.queryByRequestId(requestId);
     }
 
@@ -54,6 +57,7 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
 
     @Override
     public List<ToolInvocationView> queryRecentToolInvocations(String toolName, int limit) {
+        // recent 查询直接返回投影所需视图，仓储不在这里拼装前端事件或改变账本事实。
         return toolInvocationLedgerDao.queryRecentByToolName(toolName, limit);
     }
 
@@ -99,6 +103,7 @@ public class ExecutionLedgerReadRepository implements IExecutionLedgerReadReposi
 
     @Override
     public List<DialogueSessionView> queryRecentSessions(String visitorId, int limit) {
+        // visitor 过滤在 DAO 层执行，避免先查全量 session 再在内存中泄露或误混访客数据。
         return dialogueSessionLedgerDao.queryRecentSessionsByVisitor(visitorId, limit);
     }
 

@@ -94,6 +94,7 @@ public final class LlmRequestRetry {
             String message = current.getMessage();
             String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
             if (containsAny(lower, NON_TRANSIENT_MARKERS)) {
+                // 证书、协议版本等配置性错误不会因重试改变，必须优先于通用 IOException 判断。
                 return false;
             }
 
@@ -110,6 +111,7 @@ public final class LlmRequestRetry {
 
             // 普通 IOException 仍可重试；证书类错误已在上面排除。
             if (current instanceof IOException) {
+                // 网络 I/O 的异常类型层次不稳定，无法识别为永久错误时按瞬态处理。
                 return true;
             }
 
@@ -156,6 +158,7 @@ public final class LlmRequestRetry {
     public static <T> T call(String label, Supplier<T> supplier) {
         int retries = maxRetries();
         RuntimeException lastError = null;
+        // 普通调用每次失败都可以从头执行；只有达到次数上限或判定为永久错误才把异常交给上层。
         for (int attempt = 0; attempt <= retries; attempt++) {
             try {
                 return supplier.get();
@@ -188,6 +191,7 @@ public final class LlmRequestRetry {
     public static Flux<ChatResponse> stream(String label, Supplier<Flux<ChatResponse>> openStream) {
         AtomicBoolean emitted = new AtomicBoolean(false);
         int retries = maxRetries();
+        // 流式一旦向客户端发出 chunk 就不能透明重开，否则会重复内容；因此 retry 条件绑定 emitted 状态。
         return Flux.defer(() -> {
                     emitted.set(false);
                     return openStream.get().doOnNext(ignored -> emitted.set(true));
@@ -205,6 +209,7 @@ public final class LlmRequestRetry {
     }
 
     private static long computeDelayMs(int attempt) {
+        // 指数退避限制在 maxDelay 内，再加入小幅 jitter，减少多个请求同时重试造成的尖峰。
         long delay = Math.min(maxDelayMs(), baseDelayMs() * (1L << attempt));
         long jitter = (long) (Math.random() * Math.min(250L, Math.max(1L, delay / 5L)));
         return delay + jitter;
@@ -223,6 +228,7 @@ public final class LlmRequestRetry {
     }
 
     private static Integer extractStatusCode(Throwable throwable) {
+        // 兼容 Spring HttpStatusCode、远端 SDK response 等不同异常 API，反射失败只表示无法取状态码。
         try {
             var method = throwable.getClass().getMethod("getStatusCode");
             Object value = method.invoke(throwable);

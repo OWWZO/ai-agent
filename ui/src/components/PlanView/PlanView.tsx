@@ -36,6 +36,7 @@ const PlanView: ReactorType.FC<{
     togglePlanView: () => setOpen((v) => !v),
   }));
 
+  // 进度基于 stepStatus 统计完成项；total 使用 stages 保持与可视化行数一致。
   const total = stages?.length ?? 0;
   const completed = useMemo(
     () => stepStatus?.filter((s) => s === "completed").length ?? 0,
@@ -46,6 +47,7 @@ const PlanView: ReactorType.FC<{
   const isStreaming = Boolean(
     plan && stepStatus && stepStatus.length > 0 && !stepStatus.every((s) => s === "completed")
   );
+  // 减弱动态模式只影响动画参数，不改变计划状态和进度计算。
   const { reduce } = useMotionConfig();
 
   if (!plan) {

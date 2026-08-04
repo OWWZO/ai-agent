@@ -32,6 +32,7 @@ public class WorkspaceService {
     public Path resolveAndEnsureRoot(String sessionId) {
         Path root = resolveRoot(sessionId);
         try {
+            // 只在真正需要执行工具时创建会话目录，单纯查询配置不会产生文件系统副作用。
             Files.createDirectories(root);
         } catch (IOException e) {
             throw new WorkspaceAccessException("failed to create workspace root: " + root, e);
@@ -59,6 +60,7 @@ public class WorkspaceService {
      */
     public Path resolveAllowedPath(Path workspaceRoot, String rawPath) {
         Path candidate = resolveCandidate(workspaceRoot, rawPath);
+        // 读取根包含 workspace 和已注册 skill；写入根仍由 resolveWritablePath 单独收紧。
         return workspacePathGuard.ensureUnderAnyRoot(listReadableRoots(workspaceRoot), candidate);
     }
 
@@ -91,6 +93,7 @@ public class WorkspaceService {
             throw new WorkspaceAccessException("path is required");
         }
         Path candidate = Path.of(rawPath.trim());
+        // 相对路径遵循工具的 cwd 语义，绝对路径保留后续 guard 的跨根拒绝能力。
         if (!candidate.isAbsolute()) {
             if (workspaceRoot == null) {
                 throw new WorkspaceAccessException("workspace root is not configured");

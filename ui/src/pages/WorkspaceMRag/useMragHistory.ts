@@ -31,6 +31,7 @@ export function useMragHistory(toolBaseUrl: string, selectedKnowledgeBaseId: str
   }, [toolBaseUrl]);
 
   const loadSessionDetail = useCallback(async (sessionId: string) => {
+    // 空 session 表示清空当前详情；有效 session 才更新 active id，避免列表切换产生悬挂状态。
     if (!sessionId) {
       setSessionDetail(null);
       return null;
@@ -47,6 +48,7 @@ export function useMragHistory(toolBaseUrl: string, selectedKnowledgeBaseId: str
   }, [toolBaseUrl]);
 
   const ensureActiveSession = useCallback(async () => {
+    // 查询前懒创建会话，创建结果立即作为空详情写入，保证后续流式请求有稳定 sessionId。
     if (activeSessionId) {
       return activeSessionId;
     }
@@ -64,6 +66,7 @@ export function useMragHistory(toolBaseUrl: string, selectedKnowledgeBaseId: str
   }, [activeSessionId, selectedKnowledgeBaseId, toolBaseUrl]);
 
   const createSession = useCallback(async () => {
+    // 显式新建始终产生新 session，并置顶到本地历史列表，同时去掉同 ID 旧项。
     const created = await createMragSession(toolBaseUrl, {
       kbId: selectedKnowledgeBaseId,
     });
@@ -77,6 +80,7 @@ export function useMragHistory(toolBaseUrl: string, selectedKnowledgeBaseId: str
   }, [selectedKnowledgeBaseId, toolBaseUrl]);
 
   useEffect(() => {
+    // 首次加载历史后自动打开最新会话；已有 active id 时不抢占用户当前选择。
     void refreshSessions().then((nextSessions) => {
       if (!activeSessionId && nextSessions[0]?.sessionId) {
         void loadSessionDetail(nextSessions[0].sessionId);
@@ -85,6 +89,7 @@ export function useMragHistory(toolBaseUrl: string, selectedKnowledgeBaseId: str
   }, [activeSessionId, loadSessionDetail, refreshSessions]);
 
   useEffect(() => {
+    // 知识库切换后旧会话不再适用，清空它让下一次查询重新建立正确关联。
     if (!selectedKnowledgeBaseId) {
       return;
     }

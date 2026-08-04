@@ -111,6 +111,7 @@ def resolve_image(
     Priority: base64_data > file_id (incl. embedded in path/url) > path > url.
     Returns None if the image cannot be resolved.
     """
+    # 来源优先级是协议的一部分：inline base64 最确定，其次是托管文件、路径和远端 URL。
     data: bytes | None = None
     resolved_mime = mime or "image/png"
     source_desc = ""
@@ -163,6 +164,7 @@ def resolve_image(
                 logger.warning("image_resolve_url_unsupported", url=url[:80])
                 return None
 
+    # 统一在返回前做尺寸和体积约束，避免单张图片拖垮文档或演示文稿产物。
     if data is None:
         return None
 

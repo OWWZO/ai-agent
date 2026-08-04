@@ -26,6 +26,7 @@ def render_chart_png(
     transparent: bool = False,
 ) -> bytes | None:
     """Render a chart block to PNG bytes. Returns None on failure."""
+    # matplotlib 只是可选渲染器；缺少依赖或单个图表失败时应跳过图片而不阻断整份文档。
     try:
         import matplotlib
 
@@ -36,6 +37,7 @@ def render_chart_png(
         logger.warning("docgen_chart_matplotlib_unavailable", error=str(exc))
         return None
 
+    # 过滤空 series，避免生成空图或在后续绘制阶段触发无意义异常。
     series = [s for s in block.series if s.values]
     if not series:
         logger.warning("docgen_chart_no_series", title=block.title)

@@ -32,6 +32,7 @@ class UnknownException(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as e:
+            # 异常统一在 HTTP 边界转成响应，避免内部堆栈直接泄露给调用方；request_id 保留排障关联线索。
             logger.error(f"{RequestIdCtx.request_id} {request.method} {request.url.path} error={traceback.format_exc()}")
             return Response(content=f"Unexpected error: {e}", status_code=500)
 
@@ -47,6 +48,7 @@ class RequestHandlerRoute(APIRoute):
                 content_type = request.headers.get('content-type', '')
                 # 跳过文件上传，避免把二进制写进日志
                 if request.method == "POST" and not content_type.startswith('multipart/form-data'):
+                    # Starlette 会缓存 request.body()，下游仍可正常读取同一请求体；这里只增加可观测性。
                     body = (await request.body()).decode("utf-8")
                     logger.info(f"{RequestIdCtx.request_id} {request.method} {request.url.path} body={body}")
             except Exception as e:
@@ -61,9 +63,11 @@ class HTTPProcessTimeMiddleware(BaseHTTPMiddleware):
     """每个请求生成 UUID 作为 request_id，并在响应头返回 X-Process-Time(ms)。"""
 
     async def dispatch(self, request, call_next):
+        # request_id 在进入业务链路前建立，使路由日志、异常日志和下游工具共享同一关联标识。
         RequestIdCtx.request_id = str(uuid.uuid4())
         async with AsyncTimer(key=f"{request.method} {request.url.path}") as t:
             response = await call_next(request)
+            # 计时必须包住 call_next，响应头在拿到下游响应后写入，确保记录完整请求耗时。
             process_time = int((time.time() - t.start_time) * 1000)
             response.headers["X-Process-Time"] = str(process_time)
         return response

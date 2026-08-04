@@ -38,6 +38,8 @@ public class SummaryResultNode extends AbstractExecuteSupport {
 
     
     private void persistWorkspaceReadState(AgentContext agentContext) {
+        // read-state 属于会话工作区的辅助状态，持久化失败只记录告警，不阻断终答和
+        // ledger 收口；下一轮仍可从可用的文件引用继续执行。
         if (workspaceReadStateStore == null || agentContext == null) {
             return;
         }
@@ -52,6 +54,8 @@ public class SummaryResultNode extends AbstractExecuteSupport {
     protected String doApply(AgentRequest requestParameter, DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
         log.info("React Step3: Send React final answer for requestId: {}", requestParameter.getRequestId());
 
+        // Step3 是本轮成功收口的唯一节点：先解析可见 artifact 并发送 result，再结束
+        // ledger，随后投影 working memory/LTM。这样失败执行不会被错误写入下一轮上下文。
         AgentContext agentContext = dynamicContext.getAgentContext();
         if (agentContext == null || dynamicContext.getExecutor() == null) {
             throw new IllegalStateException("React Step3: agentContext/executor is null, Step2 must run first.");
@@ -71,6 +75,7 @@ public class SummaryResultNode extends AbstractExecuteSupport {
 
         if (CollectionUtils.isEmpty(result.getFiles())) {
             // 模型未勾选交付物时，回退全部可见产物（与历史 SummaryResultNode 一致）
+            // 该回退只作用于当前 result 展示，不改变 artifact registry 的可见性集合。
             List<File> fileResponses = agentContext.getReversedVisibleArtifactFiles();
             if (!CollectionUtils.isEmpty(fileResponses)) {
                 taskResult.put("fileList", fileResponses);
@@ -98,6 +103,8 @@ public class SummaryResultNode extends AbstractExecuteSupport {
     private void persistWorkingMemory(AgentContext agentContext,
                                       DefaultReactAgentExecuteStrategyFactory.DynamicContext dynamicContext,
                                       String entryAgent) {
+        // working memory 只接收本轮执行器导出的增量，并关联 runId/requestId；不回写整段
+        // 历史消息，避免把 ledger 事实源和下一轮提示词投影混成第二套主账本。
         if (sessionWorkingMemoryService == null || agentContext == null || dynamicContext.getExecutor() == null) {
             return;
         }

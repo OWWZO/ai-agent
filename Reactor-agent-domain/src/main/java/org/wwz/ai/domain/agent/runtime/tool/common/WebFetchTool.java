@@ -91,15 +91,17 @@ public class WebFetchTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         long start = System.currentTimeMillis();
+        String rawUrl = "";
+        String prompt = "";
         try {
             Map<String, Object> params = coerceMap(input);
-            String rawUrl = StringUtils.trimToEmpty(valueAsString(params.get("url")));
-            String prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
+            rawUrl = StringUtils.trimToEmpty(valueAsString(params.get("url")));
+            prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
             if (StringUtils.isBlank(rawUrl)) {
-                return failure("WebFetch 失败：url 不能为空");
+                return failure("WebFetch 失败：url 不能为空", rawUrl, prompt);
             }
             if (StringUtils.isBlank(prompt)) {
-                return failure("WebFetch 失败：prompt 不能为空（需说明要从页面提取/分析什么）");
+                return failure("WebFetch 失败：prompt 不能为空（需说明要从页面提取/分析什么）", rawUrl, prompt);
             }
 
             String upgradedUrl = upgradeToHttps(rawUrl);
@@ -134,9 +136,17 @@ public class WebFetchTool implements BaseTool {
             data.put("prompt", prompt);
             data.put("content", extracted);
             return ToolResultPayload.fromData(data);
+        } catch (FetchHttpException e) {
+            log.warn("{} WebFetch remote response failed, url={}, status={}", requestId(), e.url, e.statusCode);
+            Map<String, Object> detail = failureDetails(rawUrl, prompt);
+            detail.put("status", e.statusCode);
+            detail.put("statusText", StringUtils.defaultString(e.statusText));
+            detail.put("responseBody", e.responseBody);
+            return ToolResultPayload.failureFrom("WebFetch 失败：" + e.getMessage(), detail);
         } catch (Exception e) {
             log.error("{} WebFetch execute error, input={}", requestId(), input, e);
-            return failure("WebFetch 失败：" + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()));
+            return failure("WebFetch 失败：" + StringUtils.defaultIfBlank(e.getMessage(), e.getClass().getSimpleName()),
+                    rawUrl, prompt);
         }
     }
 
@@ -174,8 +184,12 @@ public class WebFetchTool implements BaseTool {
         }
 
         if (code < 200 || code >= 300) {
-            throw new IllegalStateException("HTTP " + code + " for " + url
-                    + ": " + StringUtils.abbreviate(StringUtils.defaultString(response.getBody()), 200));
+            throw new FetchHttpException(
+                    code,
+                    url,
+                    response.getStatusText(),
+                    StringUtils.abbreviate(StringUtils.defaultString(response.getBody()), 2000)
+            );
         }
 
         String contentType = StringUtils.defaultString(headerIgnoreCase(response.getHeaders(), "Content-Type")).toLowerCase(Locale.ROOT);
@@ -335,8 +349,21 @@ public class WebFetchTool implements BaseTool {
         return null;
     }
 
-    private ToolResultPayload failure(String message) {
-        return ToolResultPayload.failureFrom(message, null);
+    private ToolResultPayload failure(String message, String url, String prompt) {
+        return ToolResultPayload.failureFrom(message, failureDetails(url, prompt));
+    }
+
+    private Map<String, Object> failureDetails(String url, String prompt) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("type", "tool_error");
+        detail.put("tool", "web_fetch");
+        if (StringUtils.isNotBlank(url)) {
+            detail.put("url", url);
+        }
+        if (StringUtils.isNotBlank(prompt)) {
+            detail.put("prompt", prompt);
+        }
+        return detail;
     }
 
     @SuppressWarnings("unchecked")
@@ -367,6 +394,24 @@ public class WebFetchTool implements BaseTool {
             throw new IllegalStateException("WebFetchTool 缺少 ReactorRuntimeDependencies");
         }
         return agentContext.getRuntimeDependencies().requireRemoteHttpPort();
+    }
+
+    private static final class FetchHttpException extends IllegalStateException {
+        private final int statusCode;
+        private final String url;
+        private final String statusText;
+        private final String responseBody;
+
+        private FetchHttpException(int statusCode,
+                                   String url,
+                                   String statusText,
+                                   String responseBody) {
+            super("HTTP " + statusCode + " for " + url + ": " + responseBody);
+            this.statusCode = statusCode;
+            this.url = url;
+            this.statusText = statusText;
+            this.responseBody = responseBody;
+        }
     }
 
     private record FetchResult(

@@ -34,6 +34,7 @@ const TypeBar: ReactorType.FC<{
 
   const { currentType, chartCfg, onChange } = props;
   const [showQueryArgs, setShowQueryArgs] = useState(true);
+  // 查询摘要和图表类型切换都只依赖当前配置，不重新修改后端返回的数据源。
   const summary = useMemo(() => buildQuerySummary(chartCfg), [chartCfg]);
 
   return (
@@ -142,12 +143,14 @@ const DataChat: ReactorType.FC<{
   data?: DataChatSourceConfig;
 }> = (props) => {
   const { data } = props;
+  // 非对象数据降级为空配置，避免流式中间态把图表组件打崩。
   const chartCfg = typeof data === "object" && data ? data : {};
   const [currentType, setCurrentType] = useState<string>(
     resolveChartType(chartCfg)
   );
 
   const transConfig = useMemo(() => {
+    // chartSuggest 只覆盖用户当前选择，其他轴、数据和预设由 buildChartConfig 统一合并。
     return buildChartConfig({
       ...chartCfg,
       chartSuggest: currentType,

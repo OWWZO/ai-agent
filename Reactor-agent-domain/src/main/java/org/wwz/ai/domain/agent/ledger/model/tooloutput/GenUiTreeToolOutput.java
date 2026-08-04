@@ -8,7 +8,10 @@ import lombok.NoArgsConstructor;
 import java.util.Map;
 
 /**
- * emit_ui_tree terminal structured output (not a dedicated DB table yet).
+ * emit_ui_tree 工具的终态结构化输出。
+ *
+ * tree 是画布初始展示基准，后续 emit_ui_patch 通过同一 canvasId 叠加；该模型只
+ * 负责承载投影所需数据，不直接执行组件校验或渲染。
  */
 @Data
 @Builder

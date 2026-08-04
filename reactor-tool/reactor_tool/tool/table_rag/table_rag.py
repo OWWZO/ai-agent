@@ -182,6 +182,7 @@ class TableRAGAgent(TableAgent):
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def fetch_schema_with_limit(col: str) -> List[Any]:
+            # 信号量限制并发进入下游，wait_for 只约束单列检索，外层 wait_for 再约束整批任务。
             async with semaphore:
                 try:
                     # 单任务超时 10s
@@ -207,6 +208,7 @@ class TableRAGAgent(TableAgent):
             )
             
             # 📦 合并结果
+            # gather 返回的结果与 tasks 顺序一致；这里只合并有效 data，保留部分成功结果。
             for result in results:
                 if result:  # 非空列表
                     if isinstance(result, dict) and "data" in result:
@@ -270,6 +272,7 @@ class TableRAGAgent(TableAgent):
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def fetch_with_limit(query: str) -> Dict[str, Any]:
+            # 单元格召回与 schema 召回共享并发模型，但结果是 key/value 字典，需要后续 update 合并。
             async with semaphore:
                 try:
                     # 单任务设置超时（避免某个卡住）
@@ -302,6 +305,7 @@ class TableRAGAgent(TableAgent):
             )
             
             # 📦 合并结果
+            # 同一单元格可能被多个 query 命中，后出现的值覆盖前值；上层只消费合并后的候选字典。
             for result in results:
                 if isinstance(result, dict) and result:
                     data = result.get("data", {})
@@ -411,6 +415,7 @@ class TableRAGAgent(TableAgent):
         model_code_topk = 100000 if model_code_topk is None else model_code_topk
         
         model_code_schema_map = {}  # 临时用于分组和计算
+        # 先按表汇总总分，再截断每张表的列和最终表集合，避免列 topK 把表级排序打散。
         # 把每一个list 里面的dict 按 column 排序
         all_table_schema_list = sort_dict_list_by_keys(all_table_schema_list, desired_field_order)
         # 1. 按 modelCode 分组，累加 score，收集 schema
@@ -461,6 +466,7 @@ class TableRAGAgent(TableAgent):
         
         keywords = await self.get_jieba_queries(query)
         
+        # 向量召回负责 schema，ES 负责 cell value；两路结果在 qd_es_merge 后统一按表/列排序。
         if self.use_vector:
             # query 拆解 扩召回
             _retrieved_docs = await self.retrieve_schema_by_jieba(query, model_code_list=model_code_list)
@@ -502,6 +508,7 @@ class TableRAGAgent(TableAgent):
         start_time = time.time()
         result = []
         model_code_list = self.model_code_list
+        # 先用白名单和表描述缩小候选表，再执行列/值召回，避免对全量 schema 做无约束检索。
         # choose table
         model_code_list, table_caption = self.get_table_caption(model_code_list, self.schema_info)
         

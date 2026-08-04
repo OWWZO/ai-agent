@@ -88,6 +88,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
     public void chatQuery(DataAgentChatReq req, AgentMessageStream stream) throws Exception {
         NL2SQLReq nl2SqlReq = prepareNl2SqlReq(req.getContent(), null);
         stream.send(ChatDataMessage.ofStatus(EventTypeEnum.DEBUG.name(), nl2SqlReq.getRequestId()));
+        // 先同步发送 requestId 让前端建立查询上下文，再把慢查询放入受控执行器；流只在 finally 中关闭。
         // 远端 NL2SQL 和数据库查询可能较慢，放入受控工具执行器；无论成功失败都发送 ready 并关闭流。
         AgentExecutorSupport.execute(toolExecutor, "dataAgentChatQuery", () -> {
             try {
@@ -164,6 +165,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
 
     private NL2SQLReq prepareNl2SqlReq(String query, String traceId) {
         try {
+            // 请求构建集中完成 request/trace/db 标识和 schema 召回，保证 chat、API、preview 使用同一输入契约。
             NL2SQLReq nl2SqlReq = buildBaseNl2SqlReq(query);
             nl2SqlReq.setRequestId(UUID.randomUUID().toString());
             nl2SqlReq.setTraceId(StringUtils.isNotBlank(traceId) ? traceId : nl2SqlReq.getRequestId());
@@ -187,6 +189,7 @@ public class DataAgentQueryServiceImpl implements DataAgentQueryService {
 
         if (CollectionUtils.isEmpty(recallSchema)) {
             log.warn("{},{} 召回schema为空，读取数据库", baseNl2SqlReq.getTraceId(), baseNl2SqlReq.getRequestId());
+            // RAG 只用于缩小候选 schema，不是执行必需条件；召回不可用时使用数据库元数据保证主链路可用。
             List<ChatModelSchema> list = chatModelSchemaService.listDistinctSchemas();
             List<ChatSchemaDto> dtoList = new ArrayList<>();
             for (ChatModelSchema schema : list) {

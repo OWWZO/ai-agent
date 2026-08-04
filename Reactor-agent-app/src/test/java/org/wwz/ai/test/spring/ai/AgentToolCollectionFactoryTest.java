@@ -215,7 +215,6 @@ public class AgentToolCollectionFactoryTest {
         parentContext.setToolCollection(parentToolCollection);
         parentContext.setTask("父任务");
         parentContext.getProductFiles().add(File.builder().fileName("parent-session.md").ossUrl("https://parent/session").domainUrl("https://parent/session").isInternalFile(false).build());
-        parentContext.getTaskProductFiles().add(File.builder().fileName("parent-task.md").ossUrl("https://parent/task").domainUrl("https://parent/task").isInternalFile(false).build());
 
         JSONObject parentEmployees = new JSONObject();
         parentEmployees.put("file_tool", "父数字员工");
@@ -240,15 +239,12 @@ public class AgentToolCollectionFactoryTest {
         JSONObject childEmployees = new JSONObject();
         childEmployees.put("file_tool", "子数字员工");
         childToolCollection.updateDigitalEmployee(childEmployees);
-        childContext.getTaskProductFiles().add(File.builder().fileName("child-task.md").ossUrl("https://child/task").domainUrl("https://child/task").isInternalFile(false).build());
         childContext.getProductFiles().add(File.builder().fileName("child-session.md").ossUrl("https://child/session").domainUrl("https://child/session").isInternalFile(false).build());
         childContext.getCurrentToolArtifactSourceHolder().set(null);
 
         Assert.assertEquals("父任务", parentToolCollection.getCurrentTask());
         Assert.assertEquals("父数字员工", parentToolCollection.getDigitalEmployee("file_tool"));
-        Assert.assertEquals(1, parentContext.getTaskProductFiles().size());
         Assert.assertEquals(1, parentContext.getProductFiles().size());
-        Assert.assertEquals(2, childContext.getTaskProductFiles().size());
         Assert.assertEquals(2, childContext.getProductFiles().size());
     }
 
@@ -423,7 +419,6 @@ public class AgentToolCollectionFactoryTest {
                 .task("")
                 .printer(new SilentPrinter())
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(runtimeDependencies)
                 .historyDialogue("")
                 .basePrompt("")

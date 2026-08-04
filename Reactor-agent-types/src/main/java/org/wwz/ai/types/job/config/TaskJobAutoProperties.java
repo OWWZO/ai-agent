@@ -3,7 +3,10 @@ package org.wwz.ai.types.job.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 任务调度器配置属性
+ * 任务调度器配置属性。
+ *
+ * <p>poolSize/关闭等待控制调度线程池，refreshInterval 控制有效任务重载，cleanInvalidTasksCron 控制无效任务清理；
+ * 这些属性共同决定调度器的生命周期而不是单个业务任务的执行参数。</p>
  */
 @ConfigurationProperties(prefix = "xfg.wrench.task.job", ignoreInvalidFields = true)
 public class TaskJobAutoProperties {

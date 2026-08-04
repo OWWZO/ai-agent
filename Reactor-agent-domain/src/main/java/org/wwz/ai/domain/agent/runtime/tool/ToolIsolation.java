@@ -41,6 +41,7 @@ public final class ToolIsolation {
         }
         BaseTool unwrapped = ContextScopedTool.unwrap(tool);
         if (unwrapped instanceof ContextIsolatableTool isolatable) {
+            // 工具自己知道如何复制时优先使用显式策略，避免反射误判其内部执行态。
             return isolatable.isolateFor(context);
         }
         BaseTool forked = tryFork(unwrapped, context);
@@ -85,6 +86,7 @@ public final class ToolIsolation {
                 return null;
             }
             // 无参构造路径也要把服务/注册表等依赖拷过去；不拷执行态
+            // 复制后再绑定目标 context，确保子 Agent 不共享父 Agent 的会话状态。
             copyInjectableFields(source, copy);
             writeAgentContext(copy, context);
             FORK_CAPABLE.putIfAbsent(clazz, Boolean.TRUE);
@@ -126,6 +128,7 @@ public final class ToolIsolation {
             }
             if (complete) {
                 try {
+                    // 优先使用最长构造函数保留不可变依赖；构造失败再降级到无参路径。
                     return best.newInstance(args);
                 } catch (Exception ignored) {
                     // fall through to no-arg
@@ -160,6 +163,7 @@ public final class ToolIsolation {
                 continue;
             }
             if (isExecutionStateField(field.getName(), field.getType())) {
+                // stream/future/buffer 等字段属于单次调用状态，复制它们会把父任务进行中的执行带入子任务。
                 continue;
             }
             // 跳过 JDK / 集合执行缓冲
@@ -232,6 +236,7 @@ public final class ToolIsolation {
             }
         }
         // getter fallback
+        // 字段不可访问时再尝试标准 getter；仍找不到依赖则由上层回退共享锁，保证功能优先于并发假设。
         for (Method method : source.getClass().getMethods()) {
             if (method.getParameterCount() != 0 || method.getReturnType() == void.class) {
                 continue;

@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * template_filler — Jinja2 template fill (LeAgent aligned).
+ * template_filler 工具契约。
+ *
+ * Reactor 只负责把模板来源、变量和输出格式传递给共享服务；Jinja2 的语法执行、
+ * 未定义变量策略以及文件读取边界由 reactor-tool 统一处理。
  */
 public class TemplateFillerTool extends AbstractDocGenTool {
 
@@ -29,6 +32,7 @@ public class TemplateFillerTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // 三种 template_source 共享一套参数描述，具体必填关系由服务按 source 校验。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("template_source", stringProp("Source type: string | file | url. Default string."));
         properties.put("template_string", stringProp("Template content when source=string."));

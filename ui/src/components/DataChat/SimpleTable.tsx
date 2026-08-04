@@ -15,6 +15,7 @@ interface SimpleTableProps {
 }
 
 const toColumnLetter = (index: number): string => {
+  // 使用 26 进制把列索引转换成类似 Excel 的 A、Z、AA 标识。
   let n = index + 1;
   let label = "";
   while (n > 0) {
@@ -40,6 +41,7 @@ const SimpleTable: ReactorType.FC<SimpleTableProps> = ({ data }) => {
   );
 
   const columns = useMemo(
+    // 为缺少 key 的列补稳定标识，并保留用户可见列字母。
     () =>
       columnList.map((col, index) => ({
         ...col,
@@ -114,6 +116,7 @@ const SimpleTable: ReactorType.FC<SimpleTableProps> = ({ data }) => {
                 {columns.map((col, colIndex) => {
                   const raw = row?.[col.dataIndex];
                   const value = raw == null ? "" : String(raw);
+                  // 数值单元格右对齐，选中单元格同时展示坐标和完整值。
                   const numeric = isNumericLike(raw);
                   const isSelected =
                     selected?.row === rowIndex && selected?.col === colIndex;

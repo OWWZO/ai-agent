@@ -117,6 +117,7 @@ public class WebSearchTool implements BaseTool {
             }
 
             Exception lastError = null;
+            // provider 按优先级逐个尝试；单个供应商超时或响应格式异常时，继续使用下一个可用后端。
             for (ProviderPlan plan : plans) {
                 try {
                     SearchBundle bundle = executePlan(plan, query, allowedDomains, blockedDomains);
@@ -163,6 +164,7 @@ public class WebSearchTool implements BaseTool {
 
         Exception firstError = null;
         try {
+            // 新接口优先使用 server tool；保留 search_parameters 作为 xAI 兼容接口的降级路径。
             return callGrokWithServerTool(endpoint, plan, filteredQuery, query);
         } catch (Exception e) {
             firstError = e;
@@ -241,6 +243,7 @@ public class WebSearchTool implements BaseTool {
             throw new IllegalStateException(String.valueOf(err));
         }
 
+        // 先取模型摘要，再从多种 citation/annotation 形态提取来源；没有摘要但有来源时仍可返回可用结果。
         String content = extractAssistantContent(root);
         List<SearchHit> hits = extractHitsFromGrok(root, content);
         if (StringUtils.isBlank(content) && hits.isEmpty()) {
@@ -289,6 +292,7 @@ public class WebSearchTool implements BaseTool {
 
     private List<SearchHit> extractHitsFromGrok(JSONObject root, String content) {
         List<SearchHit> hits = new ArrayList<>();
+        // citation 字段在根、choice、message 和 annotation 层级都可能出现，按优先级收集后统一去重限量。
         collectCitationArray(root.getJSONArray("citations"), hits);
         JSONArray choices = root.getJSONArray("choices");
         if (choices != null && !choices.isEmpty()) {
@@ -317,6 +321,7 @@ public class WebSearchTool implements BaseTool {
             }
         }
         if (hits.isEmpty() && StringUtils.isNotBlank(content)) {
+            // 兼容只在正文中输出 markdown 链接的模型响应。
             Matcher md = MARKDOWN_LINK.matcher(content);
             while (md.find() && hits.size() < MAX_RESULTS) {
                 SearchHit hit = normalizeHit(md.group(1), md.group(2), null);
@@ -326,6 +331,7 @@ public class WebSearchTool implements BaseTool {
             }
         }
         if (hits.isEmpty() && StringUtils.isNotBlank(content)) {
+            // 最后从裸 URL 兜底，确保没有结构化 citation 时仍能保留来源。
             Matcher bare = BARE_URL.matcher(content);
             while (bare.find() && hits.size() < MAX_RESULTS) {
                 String url = bare.group();
@@ -367,6 +373,7 @@ public class WebSearchTool implements BaseTool {
                                          List<String> allowedDomains,
                                          List<String> blockedDomains,
                                          String apiKey) throws Exception {
+        // Tavily 原生支持域名白名单/黑名单，优先放入请求字段，避免只靠自然语言过滤。
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", query);
         body.put("max_results", MAX_RESULTS);
@@ -416,6 +423,7 @@ public class WebSearchTool implements BaseTool {
                                         List<String> allowedDomains,
                                         List<String> blockedDomains,
                                         String apiKey) throws Exception {
+        // Brave 通过查询语法表达域名过滤；响应结构位于 web.results，与 Tavily 不同，统一在此处转成 SearchHit。
         String filteredQuery = applyDomainFiltersToQuery(query, allowedDomains, blockedDomains);
         String url = "https://api.search.brave.com/res/v1/web/search?q="
                 + URLEncoder.encode(filteredQuery, StandardCharsets.UTF_8)
@@ -534,7 +542,7 @@ public class WebSearchTool implements BaseTool {
             return plans;
         }
 
-        // auto
+        // auto 只加入实际具备凭据的 Provider，执行阶段才能按顺序安全尝试而不制造无意义错误。
         if (grok != null) {
             plans.add(grok);
         }
@@ -567,6 +575,7 @@ public class WebSearchTool implements BaseTool {
 
         LLMSettings llm = resolveAgentLlmSettings();
         if (llm != null) {
+            // WebSearch 专用配置优先，缺失项才借用当前 Agent LLM 配置，避免搜索设置覆盖对话模型。
             if (apiKey == null) {
                 apiKey = StringUtils.trimToNull(llm.getApiKey());
             }
@@ -591,6 +600,7 @@ public class WebSearchTool implements BaseTool {
                 || StringUtils.isNotBlank(config.getWebSearchGrokBaseUrl())
                 || StringUtils.isNotBlank(config.getWebSearchGrokModel());
         if (!explicitGrokConfig && !looksLikeGrokModel(model) && !looksLikeXaiEndpoint(baseUrl)) {
+            // auto 模式不能把任意 OpenAI 兼容模型误当成 Grok 搜索后端，避免错误发送 search 参数。
             return null;
         }
 
@@ -632,6 +642,7 @@ public class WebSearchTool implements BaseTool {
     private static String applyDomainFiltersToQuery(String query,
                                                     List<String> allowedDomains,
                                                     List<String> blockedDomains) {
+        // allowed 与 blocked 已在入口互斥校验；这里仅负责转换为各 provider 都能理解的 site 语法。
         StringBuilder sb = new StringBuilder();
         if (!allowedDomains.isEmpty()) {
             sb.append('(');
@@ -660,6 +671,7 @@ public class WebSearchTool implements BaseTool {
 
     private static List<SearchHit> dedupeHits(List<SearchHit> hits) {
         Map<String, SearchHit> map = new LinkedHashMap<>();
+        // LinkedHashMap 同时保证 URL 去重和 provider 返回顺序，达到统一的 MAX_RESULTS 上限。
         for (SearchHit hit : hits) {
             if (hit == null || StringUtils.isBlank(hit.url())) {
                 continue;

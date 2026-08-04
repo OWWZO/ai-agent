@@ -4,9 +4,10 @@ import lombok.Builder;
 import lombok.Value;
 
 /**
+ * 会话上下文压缩预算。
  *
- * <p>
- * threshold = contextWindow - min(maxOutput, maxOutputReserve) - bufferTokens
+ * <p>threshold 是允许输入消息占用的上限，必须先扣除模型输出预留和安全缓冲；
+ * 这样压缩器在发起 LLM 摘要前不会把上下文窗口消耗到无法容纳输出的位置。</p>
  */
 @Value
 @Builder
@@ -43,6 +44,7 @@ public class CompactionBudget {
     int microToolResultMaxChars;
 
     public int threshold() {
+        // 配置可能来自外部环境，先把负数归零，并至少保留一个可用 token 的输入空间。
         int reservedOut = Math.min(Math.max(maxOutputTokens, 0), Math.max(maxOutputReserve, 0));
         int window = Math.max(contextWindow, 0);
         int buffer = Math.max(bufferTokens, 0);
@@ -50,6 +52,7 @@ public class CompactionBudget {
     }
 
     public static CompactionBudget defaults() {
+        // 默认值同时打开完整压缩、LLM 摘要和微压缩，形成生产主路径的基线预算。
         return CompactionBudget.builder()
                 .enabled(true)
                 .llmEnabled(true)

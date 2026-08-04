@@ -134,6 +134,7 @@ public class PlanningTool implements BaseTool {
             throw new IllegalArgumentException("Command is required");
         }
 
+        // 命令处理器只负责路由和统一包装；具体状态迁移交给各 handler，结构化快照随同 observation 返回给账本。
         Function<Map<String, Object>, String> handler = commandHandlers.get(command);
         if (handler != null) {
             String observation = handler.apply(params);
@@ -165,6 +166,7 @@ public class PlanningTool implements BaseTool {
             throw new IllegalStateException("A plan already exists. Delete the current plan first.");
         }
 
+        // beforePlan 即使是 null 也要记录，回放才能区分“首次创建”和后续更新。
         Plan beforePlan = snapshot(plan);
         PlanLifecycleResult result = closeUpdateMode
                 ? createCompatPlan(title, steps)
@@ -185,6 +187,7 @@ public class PlanningTool implements BaseTool {
             throw new IllegalArgumentException("steps are required for update command");
         }
 
+        // 更新与创建共用生命周期服务；closeUpdateMode 只切换兼容迁移行为，不改变输出快照格式。
         Plan beforePlan = snapshot(plan);
         PlanLifecycleResult result = closeUpdateMode
                 ? updateCompatPlan(title, steps)
@@ -207,6 +210,7 @@ public class PlanningTool implements BaseTool {
             throw new IllegalArgumentException("step_index is required for mark_step command");
         }
 
+        // 先保存旧计划再执行迁移，避免自动推进后的 currentStep 覆盖 beforePlan，导致历史无法还原状态变化。
         Plan beforePlan = snapshot(plan);
         PlanLifecycleResult result = closeUpdateMode
                 ? markStepCompat(stepIndex, stepStatus, stepNotes)
@@ -218,6 +222,7 @@ public class PlanningTool implements BaseTool {
     }
 
     private String finishPlan(Map<String, Object> params) {
+        // finish 仍通过生命周期服务校验完整计划，不能简单把当前步骤改成 completed。
         Plan beforePlan = snapshot(plan);
         PlanLifecycleResult result = lifecycleService.finish(plan);
         plan = result.getPlan();
@@ -243,6 +248,7 @@ public class PlanningTool implements BaseTool {
         Plan beforePlan = snapshot(plan);
         Integer currentStepIndex = plan.getCurrentStepIndex();
         if (currentStepIndex == null) {
+            // 兼容顺推模式首次进入时可能尚未选出可执行步骤，先让生命周期服务补齐游标。
             PlanLifecycleResult result = lifecycleService.ensureExecutable(plan);
             plan = result.getPlan();
             lastStructuredOutput = buildStructuredOutput("mark_step", beforePlan, result);
@@ -275,6 +281,7 @@ public class PlanningTool implements BaseTool {
     private PlanLifecycleResult markStepCompat(Integer stepIndex, String stepStatus, String stepNotes) {
         plan.updateStepStatus(stepIndex, stepStatus, stepNotes);
         if ("completed".equals(stepStatus)) {
+            // 完成步骤后重新选取下一个可执行步骤；其它状态只保留显式修改，避免兼容模式擅自推进。
             return lifecycleService.ensureExecutable(plan);
         }
         return PlanLifecycleResult.builder()
@@ -287,6 +294,7 @@ public class PlanningTool implements BaseTool {
     }
 
     private PlanningToolOutput buildStructuredOutput(String command, Plan beforePlan, PlanLifecycleResult result) {
+        // 输出携带前后快照和自动推进标记，前端可直接展示，历史 projector 也无需重新运行计划逻辑。
         return PlanningToolOutput.builder()
                 .command(command)
                 .beforePlan(beforePlan)
@@ -313,6 +321,7 @@ public class PlanningTool implements BaseTool {
         }
 
         int displayedCurrentIndex = currentStepIndex + 1;
+        // 模型有时按 UI 的 1-based 序号回写；仅当它恰好指向当前步骤时折算，避免把其它合法 0-based 索引误改。
         if (stepIndex.equals(displayedCurrentIndex)) {
             return currentStepIndex;
         }
@@ -333,5 +342,4 @@ public class PlanningTool implements BaseTool {
         return agentContext.getRuntimeDependencies().requireReactorConfig();
     }
 }
-
 

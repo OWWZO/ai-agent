@@ -65,6 +65,7 @@ public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
             List<String> files = new ArrayList<>();
             boolean truncated = false;
             try (var pathStream = Files.walk(basePath)) {
+                // 多取一条结果判断是否截断，再只返回配置上限以内的路径。
                 List<Path> matchedPaths = pathStream
                         .filter(Files::isRegularFile)
                         .filter(path -> matcher.matcher(toRelativePath(basePath, path)).matches())

@@ -234,6 +234,8 @@ def _checklist_html(block: ChecklistBlock, *, zh: bool) -> str:
 
 def render_html(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
     """Render a document spec to a standalone themed HTML file."""
+    # 渲染阶段只消费已经校验过的 DocumentSpec；正文、图片、图表和公式都在这里转成
+    # escaped HTML 或 data URI，最终文件不依赖运行时服务即可预览。
     theme = get_theme(spec.theme, kind="document")
     warnings: list[str] = []
     stats = {
@@ -291,6 +293,8 @@ def render_html(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
 
     def _block_html(block: Block) -> str:  # noqa: PLR0911, PLR0912
         nonlocal heading_idx
+        # 每种 block 在此完成“领域块 -> HTML”映射，并同步更新统计/TOC；未知块返回空串，
+        # 让新增模型字段不会把 Python 对象 repr 意外写入用户文件。
         if isinstance(block, HeadingBlock):
             heading_idx += 1
             anchor = f"h-{heading_idx}"
@@ -446,6 +450,8 @@ def render_html(spec: DocumentSpec, output_path: Path) -> dict[str, Any]:
 
     body = "\n".join(body_parts)
     if toc_requested and toc_marker in body:
+        # 先用 marker 占位再统一替换，保证 TOC 能引用后续才遇到的标题，同时只替换首个
+        # marker，避免用户正文中出现同名文本时被误删。
         items = "".join(
             f'<li class="toc-l{level}"><a href="#{anchor}">{_inline_html(text)}</a></li>'
             for level, text, anchor in toc_entries
@@ -492,6 +498,8 @@ def _list_html(block: ListBlock) -> str:
 
 
 def _table_html(block: TableBlock, theme: Any, *, caption_html: Any = None) -> str:
+    # 表格先经过 process_table 归一化列宽、对齐和合计行，再由 renderer 负责 HTML 转义；
+    # 样式决策集中在 theme/table style，避免每个单元格重复解释原始参数。
     pt = process_table(block, theme=theme)
     if not pt.header and not pt.body:
         return ""

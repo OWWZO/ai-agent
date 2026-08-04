@@ -77,6 +77,7 @@ public class ChatModelInfoService {
             return;
         }
         if (forceRefresh) {
+            // 刷新模式先删除不再配置的模型，随后逐模型重建，避免历史 schema 继续参与召回。
             cleanStaleModelMetadata(tableList.stream().map(DataAgentModelConfig::getId).collect(Collectors.toSet()));
         }
         for (DataAgentModelConfig modelConfig : tableList) {
@@ -179,6 +180,7 @@ public class ChatModelInfoService {
     public ChatModelInfo saveModelInfo(DataAgentModelConfig modelConfig, List<TableColumn> tableSchema, Map<String, Set<String>> fewShotMap) throws SQLException, ExecutionException, InterruptedException {
         ChatModelInfo modelInfo = new ChatModelInfo();
         String modelCode = modelConfig.getId();
+        // 事务覆盖模型/字段元数据；向量和 ES 同步紧随其后，失败时抛出异常让调用方感知初始化未完整结束。
         cleanModelMetadata(modelCode);
         modelInfo.setCode(modelCode);
         modelInfo.setName(modelConfig.getName());
@@ -209,6 +211,7 @@ public class ChatModelInfoService {
     private int syncVectorInfo(List<ChatModelSchema> chatModelSchemas) {
         List<VectorSaveReq.VectorData> vectorDataList = convertToVectorData(chatModelSchemas);
         // 分批处理
+        // 每批独立提交并累计成功数量；任一批失败立即终止，避免报告“部分成功”却留下不可见 schema。
         int batchSize = 20;
         int total = 0;
         for (int i = 0; i < vectorDataList.size(); i += batchSize) {
@@ -230,6 +233,7 @@ public class ChatModelInfoService {
 
     private List<VectorSaveReq.VectorData> convertToVectorData(List<ChatModelSchema> schemaList) {
         List<VectorSaveReq.VectorData> allVectors = new ArrayList<>();
+        // 一列会拆成列名、同义词、注释和 few-shot 四类语义向量，numeric 列跳过 few-shot 以减少无效召回。
         for (ChatModelSchema schema : schemaList) {
             String[] uuids = schema.getVectorUuid().split(",");
             addVectorSaveData(allVectors, schema, schema.getColumnName(), uuids[0]);

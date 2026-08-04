@@ -167,6 +167,7 @@ class ExcelReaderTool(SyncTool):
         # "Bad offset for central directory".
         head = file_path.read_bytes()[:8]
         if head[:2] == b"PK":
+            # OOXML 文件必须先通过 ZIP 魔数检查，避免把 HTML 错误页或旧 OLE 文件交给 openpyxl。
             pass  # zip-based OOXML
         elif head[:4] == b"\xD0\xCF\x11\xE0":
             raise ValueError(
@@ -187,6 +188,7 @@ class ExcelReaderTool(SyncTool):
         logger.info("Opening Excel file", file_path=str(file_path), size=size)
 
         try:
+            # 只读、data_only 模式降低内存占用并返回公式计算后的值，而不是公式字符串。
             wb = load_workbook(str(file_path), read_only=True, data_only=True)
         except InvalidFileException as e:
             raise ValueError(
@@ -223,6 +225,7 @@ class ExcelReaderTool(SyncTool):
                 )
 
             if cell_range:
+                # 指定范围优先于工作表 used-range，避免稀疏大表把无关空白区域带入结果。
                 try:
                     min_col, min_row, max_col, max_row = range_boundaries(cell_range)
                 except Exception as e:
@@ -262,6 +265,7 @@ class ExcelReaderTool(SyncTool):
             data_rows: list[list[Any]] = []
 
             if has_header and raw_data:
+                # 表头只消费第一行；后续输出格式都基于同一组 headers 生成，保持结果形状一致。
                 headers = [str(h) if h is not None else f"Column_{i}" for i, h in enumerate(raw_data[0])]
                 data_rows = raw_data[1:]
             else:

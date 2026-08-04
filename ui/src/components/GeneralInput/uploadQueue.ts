@@ -8,6 +8,7 @@ export type UploadAttachmentState = {
   uploadedFile?: CHAT.TFile;
 };
 
+// 上传状态更新均返回新 queue，未知 id 原样返回，避免异步回调误创建幽灵附件。
 export function markUploadSuccess(
   queue: Record<string, UploadAttachmentState>,
   id: string,

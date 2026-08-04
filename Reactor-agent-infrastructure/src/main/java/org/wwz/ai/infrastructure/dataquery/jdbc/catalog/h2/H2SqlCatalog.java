@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** H2 测试/本地数据源的元数据目录，按 MySQL 模式读取 INFORMATION_SCHEMA。 */
 @Slf4j
 public class H2SqlCatalog extends AbstractJdbcCatalog {
 
@@ -31,6 +32,7 @@ public class H2SqlCatalog extends AbstractJdbcCatalog {
 
     @Override
     public List<SimpleTable> listTables(Connection connection, String schema) throws CatalogException {
+        // H2 的 show tables 返回表名列表，列序号由结果集第一列定义。
         String sql = "show tables ";
         try (PreparedStatement prepared = connection.prepareStatement(sql);
              ResultSet rs = prepared.executeQuery()) {
@@ -47,6 +49,7 @@ public class H2SqlCatalog extends AbstractJdbcCatalog {
     }
 
     public String typeConvertMysql(String type) {
+        // H2 在 MySQL 模式下沿用常见类型名，因此复用同一套领域类型归一规则。
         return switch (type) {
             case "DATE", "TIME", "TIMESTAMP" -> StandardColumnType.DATE.name();
             case "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "DOUBLE", "NUMERIC", "DECIMAL" ->
@@ -57,6 +60,7 @@ public class H2SqlCatalog extends AbstractJdbcCatalog {
 
     @Override
     public List<TableColumn> getTableColumns(Connection connection, String tablePath, String schema) throws CatalogException {
+        // H2 约定使用 PUBLIC schema，并将表名转大写后查询系统目录。
         String sql = String.format(
                 SELECT_COLUMNS_SQL_TEMPLATE, "PUBLIC", tablePath.toUpperCase());
 
@@ -86,4 +90,3 @@ public class H2SqlCatalog extends AbstractJdbcCatalog {
         }
     }
 }
-

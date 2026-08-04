@@ -122,6 +122,9 @@ public class AgentToolCollectionFactory {
     }
 
     private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
+        // 工具集合是一次请求的能力快照：先绑定上下文和工作区，再按 outputStyle、
+        // 配置白名单及 attachScope 装配工具，最后补 MCP、子 Agent 和 Plan Mode 能力。
+        // 所有工具复用同一 AgentContext，才能保持 artifact、取消和 ledger 关联。
         ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(agentContext);
         ensureWorkspaceRoot(agentContext);
         ToolCollection toolCollection = new ToolCollection();
@@ -143,6 +146,8 @@ public class AgentToolCollectionFactory {
 
         // dataAgent 只暴露问数工具；普通 Agent 按配置装配 workspace、文档、数据处理、画布和外部检索工具。
         if ("dataAgent".equals(request.getOutputStyle())) {
+            // dataAgent 只暴露问数入口，避免把普通 Agent 的文件/检索/编排工具带入
+            // 数据查询协议；其它模式再按配置逐组挂载能力。
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
             dataAnalysisTool.setAgentContext(agentContext);
             toolCollection.addTool(dataAnalysisTool);
@@ -306,6 +311,8 @@ public class AgentToolCollectionFactory {
         }
 
         try {
+            // MCP 是动态外部能力，发现失败只降级远程工具；本地工具集合已经可以
+            // 独立工作，不能因为远端配置异常而让 Agent 无法启动。
             // MCP 工具属于动态配置，发现失败只影响远程工具，不阻断本地工具集合构建。
             for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
                 toolCollection.addMcpTool(toolInfo);
@@ -330,6 +337,8 @@ public class AgentToolCollectionFactory {
     }
 
     private void registerPlanModeTools(ToolCollection toolCollection, AgentContext agentContext) {
+        // Plan Mode 工具共享当前上下文的 task/approval registry，工具调用结果才能
+        // 在多轮执行中保持同一状态，而不是每次 build 重新创建孤立状态机。
         TaskCreateTool taskCreateTool = new TaskCreateTool();
         taskCreateTool.setAgentContext(agentContext);
         toolCollection.addTool(taskCreateTool);
@@ -384,6 +393,8 @@ public class AgentToolCollectionFactory {
     }
 
     private void registerWorkspaceTools(ToolCollection toolCollection, AgentContext agentContext) {
+        // workspace 工具统一绑定已解析的 cwd 和读状态存储；read/write/edit/list 等
+        // 入口虽然分开，路径安全和会话级 read 状态仍由 WorkspaceService 共享。
         WorkspaceReadTool readTool = new WorkspaceReadTool(workspaceService, workspaceRuntimeOptions);
         readTool.setAgentContext(agentContext);
         toolCollection.addTool(readTool);

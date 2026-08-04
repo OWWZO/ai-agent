@@ -303,6 +303,7 @@ class _TokenWalker:
 
     def parse_blocks(self, until: str | None) -> list[Block]:
         blocks: list[Block] = []
+        # 游标只由当前 walker 消费；遇到递归容器的 close token 时返回给上一层，保持嵌套结构边界。
         while self.i < len(self.tokens):
             tok = self.peek()
             if tok is None:
@@ -322,6 +323,7 @@ class _TokenWalker:
     def _parse_one(self) -> Block | list[Block] | None:
         tok = self.next()
         t = tok.type
+        # markdown-it token 被转换成领域 Block；未知 wrapper 跳过子树，已知内容则保留为可渲染结构。
 
         if t == "heading_open":
             level = int(tok.tag[1]) if len(tok.tag) == 2 else 1
@@ -380,6 +382,7 @@ class _TokenWalker:
 
         # Callout containers: container_<name>_open
         if t.startswith("container_") and t.endswith("_open"):
+            # callout 使用同一套递归解析器读取内部段落，再压缩为前端可消费的 variant/title/text。
             variant = t[len("container_") : -len("_open")]
             title = (tok.info or "").strip()
             title = title[len(variant):].strip() or None if title.lower().startswith(variant) else title or None
@@ -397,6 +400,7 @@ class _TokenWalker:
 
     def _paragraph_from_inline(self, inline: Any) -> Block | None:
         content = (inline.content or "").strip()
+        # 段落可能实际代表目录、分页符或单独图片，先识别这些特殊形态再退回普通 ParagraphBlock。
         if _TOC_RE.match(content):
             return TocBlock()
         if _PAGEBREAK_RE.match(content) or _PAGEBREAK_HTML_RE.search(content):
@@ -427,6 +431,7 @@ class _TokenWalker:
 
     def _parse_list_items(self, close_type: str) -> list[ListItem]:
         items: list[ListItem] = []
+        # 列表项可以嵌套列表；内层递归只消费自己的 close token，文本和 children 分别保留。
         while self.i < len(self.tokens):
             tok = self.next()
             if tok.type == close_type:
@@ -475,6 +480,7 @@ class _TokenWalker:
         rows: list[list[str]] = []
         current: list[str] | None = None
         in_header = False
+        # 表头、对齐方式和数据行来自不同 token 阶段，必须按 table/thead/tr 的生命周期逐个收集。
         while self.i < len(self.tokens):
             tok = self.next()
             t = tok.type
@@ -518,6 +524,7 @@ class _TokenWalker:
         items: list[DefinitionItem] = []
         current: DefinitionItem | None = None
         depth = 1
+        # depth 处理嵌套 definition list；dt 创建新术语，后续 inline 归入当前术语的 definitions。
         while self.i < len(self.tokens):
             tok = self.next()
             t = tok.type
@@ -545,6 +552,7 @@ class _TokenWalker:
         items: list[FootnoteItem] = []
         label = ""
         texts: list[str] = []
+        # 脚注的 label 在 open token 元数据中，正文在 close 前累积，避免把相邻脚注文本串联。
         while self.i < len(self.tokens):
             tok = self.next()
             t = tok.type
@@ -565,6 +573,7 @@ class _TokenWalker:
     def _parse_fence(self, tok: Any) -> Block:
         lang = (tok.info or "").strip().split()[0].lower() if (tok.info or "").strip() else ""
         body = tok.content or ""
+        # 特殊 fence 先尝试转换为结构化 Block，校验失败时保留为 JSON/代码块，确保内容不丢失。
         if lang in _MATH_FENCE_LANGS:
             latex = body.strip()
             if latex:

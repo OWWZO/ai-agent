@@ -55,7 +55,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
 
             List<AiAgentDrawConfig> configs;
 
-            // 条件查询
+            // 查询条件按 configId/configName/agentId/status 的优先级收敛为一次 DAO 查询；
+            // 分页在内存中完成，因此这里不把分页参数误传给底层 SQL，也要接受数据量较大时的成本。
             if (StringUtils.hasText(request.getConfigId())) {
                 AiAgentDrawConfig cfg = aiAgentDrawConfigDao.queryByConfigId(request.getConfigId());
                 configs = cfg != null ? List.of(cfg) : List.of();
@@ -74,7 +75,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                 configs = aiAgentDrawConfigDao.queryAll();
             }
 
-            // 简单分页（内存分页）
+            // 简单分页（内存分页）：先保护 pageNum/pageSize，再处理越界页，保证接口返回空列表
+            // 而不是抛出 subList 越界异常。
             if (request.getPageNum() != null && request.getPageSize() != null) {
                 int pageNum = Math.max(1, request.getPageNum());
                 int pageSize = Math.max(1, request.getPageSize());
@@ -136,7 +138,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                         .build();
             }
 
-            // 解析JSON中的agent信息
+            // 保存主配置前先从画布 JSON 提取 Agent 元数据；解析失败使用默认值，主配置仍可
+            // 落库，后续关系解析再分别记录失败，避免一个辅助映射阻断拖拽配置保存。
             String[] agentInfo = parseAgentInfoFromJson(request.getConfigData());
             String agentName = agentInfo[0];
             String description = agentInfo[1];
@@ -184,11 +187,13 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
             }
 
             if (result > 0) {
-                // 解析JSON配置数据，生成关系映射并存储到ai_client_config表
+                // 主配置成功后再派生两类关系：ai_client_config 描述节点连线，ai_agent_flow_config
+                // 描述 agent 到 client 的执行顺序。两者都是可重建投影，不改变主配置事务结果。
                 try {
                     List<AiClientConfig> configRelations = DrawConfigParser.parseConfigData(request.getConfigData());
                     if (!configRelations.isEmpty()) {
-                        // 先删除该配置相关的旧关系数据（如果是更新操作）
+                        // 更新时先清除旧关系，再插入本次画布计算出的关系，避免删除后仍残留
+                        // 已从画布移除的边；重复关系按 source/target 条件跳过。
                         if (existingConfig != null) {
                             aiClientConfigDao.deleteBySourceId(configId);
                             log.info("删除配置{}的旧关系数据", configId);
@@ -221,7 +226,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
                     log.error("解析和保存配置关系数据失败，configId: {}", configId, e);
                 }
 
-                // 解析JSON配置数据，提取client信息并保存agent-client关系
+                // 第二个投影单独处理，允许关系解析失败而不回滚主配置；agent-client 关系
+                // 使用当前 agentId 重建，保证执行顺序来自最新画布。
                 try {
                     List<AiAgentFlowConfig> agentFlowConfigs = parseClientInfoFromJson(request.getConfigData(), agentId);
                     if (!agentFlowConfigs.isEmpty()) {
@@ -278,6 +284,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
             JsonNode nodesArray = rootNode.get("nodes");
 
             if (nodesArray != null && nodesArray.isArray()) {
+                // 只读取第一个 agent 节点作为画布主 Agent；其余节点属于执行图组件，不覆盖
+                // 主 Agent 元数据，找不到时保留空默认值。
                 for (JsonNode node : nodesArray) {
                     String nodeType = node.get("type").asText();
 
@@ -332,6 +340,8 @@ public class AiAgentDrawAdminController implements IAiAgentDrawAdminService {
             JsonNode nodesArray = rootNode.get("nodes");
 
             if (nodesArray != null && nodesArray.isArray()) {
+                // client 节点按画布出现顺序读取 sequence/stepPrompt，返回列表交给持久化层
+                // 逐条写入；这里不把缺失字段自行猜成其他节点类型。
                 for (JsonNode node : nodesArray) {
                     String nodeType = node.get("type").asText();
 

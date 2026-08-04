@@ -84,7 +84,6 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 .dateInfo(DateUtil.CurrentDateInfo())
                 .productFiles(new ArrayList<>(convertFiles(request.getSessionFiles())))
                 .workspaceRoot(resolveWorkspaceRoot(request.getSessionId()))
-                .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
                 .historyDialogue(request.getHistoryDialogue())
@@ -101,6 +100,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
         // Execution Ledger 保存本轮事实；SOP、工作区读取状态和工作记忆分别服务当前执行或下一轮上下文。
+        // 先初始化 run，再装配工具，保证后续工具调用从一开始就能关联到同一个 ledger run。
         ExecutionLedgerRunSupport.initializeRun(
                 agentExecutionRecorder,
                 agentContext,
@@ -112,7 +112,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
         }
         handleSopRecall(agentContext, request);
-        // PlanSolve = cchaha 式「先规划」：请求一进来就进入 plan mode，未批准前禁止改业务
+        // PlanSolve = cchaha 式“先规划”：请求一进来就进入 plan mode，未批准前禁止改业务；
+        // 这条状态约束在工具层执行，节点只负责建立初始状态和把计划文件提示发给前端。
         enterPlanModeForPlanSolve(agentContext);
 
         dynamicContext.setAgentContext(agentContext);
@@ -132,6 +133,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
         if (state.isPlanMode()) {
             return;
         }
+        // plan mode 的内存状态先于事件发送建立，避免消费者收到 entered 事件后立即读取到旧状态。
         state.enterPlanMode();
         String planPathHint = PlanArtifactStore.RELATIVE_PLAN_PATH;
         if (planArtifactStore != null) {
@@ -141,7 +143,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                     planPathHint = path.toString();
                 }
             } catch (Exception ignored) {
-                // best-effort
+                // 计划文件路径只是前端提示；存储解析失败时仍使用稳定的相对路径，不阻断执行。
             }
         }
         state.setPlan(state.getPlanContent(), planPathHint);
@@ -160,6 +162,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
     private void handleSopRecall(AgentContext agentContext, AgentRequest request) {
         try {
             log.info("{} 开始执行SOP召回", request.getRequestId());
+            // SOP 召回是提示词增强，不是执行前置条件。召回服务不可用或返回无效结果时，
+            // 保留原始 sopPrompt，继续让 PlanSolve 使用基础规划能力。
             SopRecallResponse sopResponse = sopRecallService.sopRecall(request.getRequestId(), request.getQuery());
             if (sopRecallService.isValidSopResult(sopResponse)) {
                 String sopContent = sopResponse.getData().getChoosed_sop_string();
@@ -173,6 +177,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 log.warn("{} SOP召回失败或结果无效", request.getRequestId());
             }
         } catch (Exception e) {
+            // SOP 属于 best-effort 外部能力；异常只记录诊断信息，不能让计划入口整体失败。
             log.error("{} SOP召回处理异常", request.getRequestId(), e);
         }
     }
@@ -185,6 +190,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             return;
         }
         try {
+            // 读取状态用于跨节点/跨轮的重复读取判断，失败时不影响 workspace 本身的读写能力。
             workspaceReadStateStore.hydrate(agentContext);
         } catch (Exception e) {
             log.warn("hydrate workspace read-state failed, requestId={}", agentContext.getRequestId(), e);
@@ -196,6 +202,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             return;
         }
         try {
+            // 会话附件物化只负责把稳定文件引用准备到 workspace；它失败时保留引用，让后续
+            // 工具按自身能力返回可解释的文件错误，而不是在上下文准备阶段吞掉整个请求。
             workspaceSessionFileMaterializer.materialize(agentContext, sessionFiles);
         } catch (Exception e) {
             log.warn("materialize session files failed, requestId={}", agentContext == null ? null : agentContext.getRequestId(), e);
@@ -207,6 +215,8 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             return null;
         }
         try {
+            // 根目录由 workspace 服务统一解析并创建，节点不自行拼接路径，避免不同 Agent
+            // 对 session 隔离规则产生分歧。
             return workspaceService.resolveAndEnsureRoot(sessionId).toString();
         } catch (Exception e) {
             log.warn("resolve workspace root failed, sessionId={}", sessionId, e);
@@ -244,6 +254,7 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             return List.of();
         }
         List<Message> result = new ArrayList<>(messages.size());
+        // 历史消息只做运行时 DTO 翻译；它们属于输入上下文，不会在这里重新写入 Execution Ledger。
         for (AgentRequest.Message message : messages) {
             result.add(convertMessage(message));
         }

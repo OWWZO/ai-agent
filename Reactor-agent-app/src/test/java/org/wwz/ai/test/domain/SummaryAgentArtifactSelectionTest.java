@@ -120,7 +120,6 @@ public class SummaryAgentArtifactSelectionTest {
                 .sessionId("session-summary-001")
                 .query("总结报告")
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
                 .build();
     }

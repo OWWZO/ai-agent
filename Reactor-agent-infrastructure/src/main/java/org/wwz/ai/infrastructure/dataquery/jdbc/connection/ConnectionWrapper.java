@@ -16,6 +16,12 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+/**
+ * 单个 JDBC 数据源的运行时连接门面。
+ *
+ * <p>对象把连接池、方言、目录和原始连接配置聚合起来：语句创建委托给方言，连接获取
+ * 负责有限重试。它不拥有连接关闭权，调用方在完成查询后必须关闭返回的 JDBC 连接。</p>
+ */
 @Slf4j
 @Data
 public class ConnectionWrapper {
@@ -25,6 +31,7 @@ public class ConnectionWrapper {
     private JdbcConnectionConfig jdbcConnectionConfig;
 
     public PreparedStatement createPreparedStatement(Connection connection, String queryTemplate, Integer fetchSize) throws SQLException {
+        // 由方言决定预编译语句的游标和 fetch 行为，避免连接层复制数据库差异。
         return jdbcDialect.createPreparedStatement(connection, queryTemplate, fetchSize);
     }
 
@@ -37,6 +44,7 @@ public class ConnectionWrapper {
     }
 
     public Connection getConnection() {
+        // 连接获取失败只在配置的次数内重试；中断时立即转业务异常，不吞掉线程中断原因。
         int maxRetryTime = jdbcConnectionConfig.getMaxRetryTimes();
         int i = 0;
         Connection connection = null;
@@ -65,4 +73,3 @@ public class ConnectionWrapper {
         return connection;
     }
 }
-

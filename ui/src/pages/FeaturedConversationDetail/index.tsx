@@ -23,11 +23,13 @@ export default function FeaturedConversationDetailPage(
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // featuredId 同时支持路由参数和嵌入 props；没有 ID 时清空旧详情。
     if (!featuredId) {
       setDetail(null);
       return;
     }
 
+    // 组件卸载或 ID 切换后忽略旧请求，避免详情闪回上一条会话。
     let disposed = false;
     setLoading(true);
 

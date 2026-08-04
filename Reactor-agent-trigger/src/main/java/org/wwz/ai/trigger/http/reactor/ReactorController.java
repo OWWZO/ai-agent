@@ -71,6 +71,8 @@ public class ReactorController {
     @PostMapping("/AutoAgent")
     public SseEmitter AutoAgent(@RequestBody AgentRequest request) throws UnsupportedEncodingException {
 
+        // 调试入口仍遵循完整 SSE 生命周期：先做 visitor/session 校验，再启动心跳和
+        // 生命周期回调，最后把 dispatch 提交到有界执行器；任何准入失败都不启动 Agent。
         log.info("{} auto agent request: {}", request.getRequestId(), JSON.toJSONString(request));
 
         Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
@@ -103,6 +105,8 @@ public class ReactorController {
         try {
             AgentExecutorSupport.execute(dispatchExecutor, "dispatch", request.getRequestId(), () -> {
                 try {
+                    // dispatch 正常返回后显式 complete；异常路径发送 error，避免后台任务
+                    // 结束但浏览器端仍保持连接的悬挂状态。
                     agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
                     emitter.complete();
                 } catch (Exception e) {
@@ -151,6 +155,8 @@ public class ReactorController {
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
+        // GPT 增量查询由应用服务负责实际调度；Controller 只创建传输层 emitter、维持心跳，
+        // 并把领域响应交给 projection stream，避免入口层重复实现 Agent 协议。
         SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,

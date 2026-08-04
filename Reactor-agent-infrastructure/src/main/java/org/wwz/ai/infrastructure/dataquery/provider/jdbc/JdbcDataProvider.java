@@ -17,6 +17,13 @@ import java.util.Map;
 
 import static java.sql.Types.*;
 
+/**
+ * JDBC 查询结果适配器。
+ *
+ * <p>该类负责取得连接、按方言创建查询语句、读取 ResultSet 并物化为领域
+ * {@link QueryResult}；SQL 生成和连接池生命周期分别由请求对象及连接门面负责。结果
+ * 中同时保留最终 SQL、连接耗时、列信息和数据行，供问数上层展示和诊断。</p>
+ */
 @Service
 @Slf4j
 public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
@@ -53,10 +60,12 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
 
     @Override
     public QueryResult queryData(JdbcQueryRequest request) throws SQLException {
+        // 查询结果同时承载执行 SQL、连接耗时和数据行，供上层展示结果并定位慢查询。
         QueryResult queryResult = new QueryResult();
         long queryStartTime = System.currentTimeMillis();
         queryResult.setQueryStartTime(queryStartTime);
         final ConnectionWrapper wrapper = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig());
+        // 先由连接包装器按方言改写 SQL，再记录最终执行文本，日志和返回结果保持一致。
         request.setSql(wrapper.getJdbcDialect().formatSql(request.getSql()));
         queryResult.setQuerySql(request.getSql());
         log.info("jdbc执行sql:{}", request.getSql());
@@ -70,6 +79,7 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
                 ResultSetMetaData metaData = rs.getMetaData();
                 List<String> columnList = getColumnList(metaData);
                 queryResult.setColumnList(columnList);
+                // 结果按列标签建行，并按 JDBC 类型做最小转换，避免 BigDecimal/整数类型在后续 JSON 序列化时失真。
                 while (rs.next()) {
                     Map<String, Object> row = new HashMap<>();
                     for (int i = 1; i <= columnList.size(); i++) {
@@ -90,6 +100,7 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
 
     @Override
     public boolean queryForTest(JdbcQueryRequest request) {
+        // 连通性测试只申请并关闭连接，不执行用户 SQL，避免测试请求产生业务副作用。
         boolean success = false;
         request.getJdbcConnectionConfig().setMaxRetryTimes(1);
         try (Connection connection = JdbcConnectionFactory.getConnection(request.getJdbcConnectionConfig()).getConnection()) {
@@ -102,4 +113,3 @@ public class JdbcDataProvider implements DataProvider<JdbcQueryRequest> {
     }
 
 }
-

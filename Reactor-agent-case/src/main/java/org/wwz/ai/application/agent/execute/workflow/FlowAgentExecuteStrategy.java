@@ -46,6 +46,7 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
         log.info("{} fixed agent request: {}", request.getRequestId(), request);
 
+        // 固定流程仍使用 domain 的 AgentContext/Printer，但由 case 负责把 Spring AI 流转换为会话事件。
         Printer printer = new AgentSessionPrinter(stream, request, request.getAgentType());
         AgentContext agentContext = AgentContext.builder()
                 .requestId(request.getRequestId())
@@ -55,7 +56,6 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
                 .task("")
                 .dateInfo(DateUtil.CurrentDateInfo())
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .sopPrompt(request.getSopPrompt())
                 .basePrompt(request.getBasePrompt())
                 .agentType(request.getAgentType())
@@ -76,10 +76,12 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
         String content = "";
         final String sessionId = request.getSessionId();
 
+        // 每个配置项代表一个串行流程节点；上一步输出会作为下一步 prompt 的上下文继续传递。
         for (AiAgentClientFlowConfigVO config : aiAgentClientList) {
             ChatClient chatClient = getChatClientByClientId(config.getClientId());
             StringBuilder fullText = new StringBuilder();
             try {
+                // Spring AI 的 Flux 只在此处转换为协议事件，避免把响应式流细节泄漏到 domain。
                 Flux<org.springframework.ai.chat.model.ChatResponse> flux = chatClient
                         .prompt(request.getQuery() + "，" + content)
                         .system(config.getStepPrompt() + " current_date_time:" + LocalDateTime.now())
@@ -99,6 +101,7 @@ public class FlowAgentExecuteStrategy implements IExecuteStrategy {
                     }
                 }).doOnError(e -> log.warn("LLM stream error: {}", e.getMessage())).blockLast();
             } catch (Exception e) {
+                // 单个节点失败时保留已经收到的内容并记录错误，后续是否继续由固定流程的既有语义决定。
                 log.error("流式调用 LLM 异常: {}", e.getMessage(), e);
             }
 

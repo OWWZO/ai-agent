@@ -50,6 +50,8 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
 
     @Override
     public void queryAgentStreamIncr(GptQueryReq params, AgentSessionStream stream) {
+        // 查询入口按“规范化请求 -> visitor/session 鉴权 -> 投影流 -> 有界调度”推进；
+        // 鉴权失败不进入 Agent，准入失败也只结束当前 SSE，不泄漏半个运行上下文。
         gptQueryAgentRequestFactory.normalize(params);
         AgentRequest agentRequest = gptQueryAgentRequestFactory.build(params);
         log.info("{} start handle Agent request: {}", params.getRequestId(), JSON.toJSONString(agentRequest));
@@ -84,9 +86,13 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
                                     AgentResponseProjectionStream projectingStream,
                                     AgentSessionStream stream) {
         try {
+            // dispatch 内部只产出领域响应，projection stream 负责转成前端协议；正常路径
+            // 由这里统一 complete，避免策略自己关闭流造成重复完成或遗漏尾事件。
             agentDispatchService.dispatch(agentRequest, projectingStream);
             projectingStream.complete();
         } catch (Exception e) {
+            // 浏览器主动断开属于下游终止，不再把它包装成服务端失败；其它异常才发 error，
+            // 这样前端能区分用户取消与 Agent 执行错误。
             if (projectingStream.isAborted() || stream.isAborted()) {
                 log.info("{} dispatch stopped after downstream abort", agentRequest.getRequestId());
                 projectingStream.complete();

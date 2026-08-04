@@ -46,19 +46,6 @@ public class ReactImplAgent extends ReActAgent {
      */
     private Integer maxObserve;
 
-    // ===================== 父类继承字段（关键说明） =====================
-    // - name: 智能体名称（固定为"react"）
-    // - description: 智能体描述（工具调用能力说明）
-    // - systemPrompt: 系统提示词（指导大模型决策的核心指令，包含工具列表、任务规则等）
-    // - nextStepPrompt: 下一步提示词（每次思考阶段向大模型发送的决策提示词）
-    // - printer: 响应输出器（用于向客户端推送流式/非流式响应，如tool_thought、tool_result）
-    // - maxSteps: 最大执行步数（防止智能体无限循环思考/执行）
-    // - llm: 大模型实例（用于调用LLM生成工具调用指令）
-    // - context: 智能体上下文（包含请求ID、用户查询、工具集合、文件信息、流式标识等核心上下文）
-    // - availableTools: 可用工具集合（当前智能体可调用的所有工具）
-    // - digitalEmployeePrompt: 数字员工专属提示词（业务定制化指令）
-    // - memory: 智能体记忆（存储对话历史、工具调用记录、执行结果等，保证上下文连续性）
-
     /**
      * 构造方法：初始化ReAct智能体核心配置
      * 核心逻辑：加载配置→构建提示词→初始化核心组件→设置初始状态
@@ -77,6 +64,7 @@ public class ReactImplAgent extends ReActAgent {
 
         // 步骤3：构建工具描述提示词（整合所有可用工具的名称+描述，供大模型决策参考）
         String toolPrompt = buildToolPrompt(context.getToolCollection());
+
         initializePromptsWithHistoryOnlyInSystem(
                 reactorConfig.getReactSystemPromptMap(),
                 reactorConfig.getReactNextStepPromptMap(),

@@ -23,10 +23,7 @@ public class DomainMessageConverterTest {
 
     @Test
     public void test_convertMessagesWithToolReplayAndImage() {
-        DomainMessageConverter converter = new DomainMessageConverter();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setSensitivePatterns("{}");
-        ReflectionTestUtils.setField(converter, "reactorConfig", reactorConfig);
+        DomainMessageConverter converter = newConverter();
 
         ToolCall toolCall = ToolCall.builder()
                 .id("call-1")
@@ -59,5 +56,50 @@ public class DomainMessageConverterTest {
         Assert.assertEquals("call-1", toolResponseMessage.getResponses().get(0).id());
         Assert.assertEquals("deep_search", toolResponseMessage.getResponses().get(0).name());
         Assert.assertEquals("搜索完成", toolResponseMessage.getResponses().get(0).responseData());
+    }
+
+    @Test
+    public void test_toolResultWithImageExpandsToMediaUserMessage() {
+        DomainMessageConverter converter = newConverter();
+        String dataUrl = "data:image/png;base64,"
+                + Base64.getEncoder().encodeToString("png-bytes".getBytes(StandardCharsets.UTF_8));
+        String observation = "{\"type\":\"image\",\"path\":\"shot.png\",\"mimeType\":\"image/png\",\"size\":9}";
+
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-img")
+                .type("function")
+                .function(ToolCall.Function.builder()
+                        .name("workspace_read")
+                        .arguments("{\"path\":\"shot.png\"}")
+                        .build())
+                .build();
+
+        List<org.springframework.ai.chat.messages.Message> converted = converter.convert(List.of(
+                Message.fromToolCalls("read image", List.of(toolCall)),
+                Message.toolMessage(observation, "call-img", dataUrl)
+        ));
+
+        Assert.assertEquals(3, converted.size());
+        Assert.assertTrue(converted.get(0) instanceof AssistantMessage);
+
+        ToolResponseMessage toolResponse = (ToolResponseMessage) converted.get(1);
+        Assert.assertEquals("call-img", toolResponse.getResponses().get(0).id());
+        Assert.assertEquals("workspace_read", toolResponse.getResponses().get(0).name());
+        Assert.assertEquals(observation, toolResponse.getResponses().get(0).responseData());
+        Assert.assertFalse(toolResponse.getResponses().get(0).responseData().contains("data:image"));
+
+        UserMessage imageMessage = (UserMessage) converted.get(2);
+        Assert.assertEquals(1, imageMessage.getMedia().size());
+        Assert.assertEquals("image/png", imageMessage.getMedia().get(0).getMimeType().toString());
+        Assert.assertTrue(imageMessage.getText().contains("workspace_read"));
+        Assert.assertTrue(imageMessage.getText().contains("call-img"));
+    }
+
+    private DomainMessageConverter newConverter() {
+        DomainMessageConverter converter = new DomainMessageConverter();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setSensitivePatterns("{}");
+        ReflectionTestUtils.setField(converter, "reactorConfig", reactorConfig);
+        return converter;
     }
 }

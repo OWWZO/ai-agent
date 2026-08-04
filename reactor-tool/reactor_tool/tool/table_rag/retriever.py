@@ -28,7 +28,7 @@ def _first_non_blank_env(*names, default=None):
 
 def retrieved_cells_dict2map_key_val(retrieved_cells_dict, _few_shot_seprator):
     """将召回 cell 按 table-column 聚合 fewShot 样例值。"""
-    # key 去重，value 不会有重复的
+    # cell 召回结果按表和列去重，列值单独拼接，最后再注入 schema 的 fewShot 字段。
     _map = {}
     for key, item in retrieved_cells_dict.items():
         assert "columnId" in item and "modelCode" in item, item
@@ -119,6 +119,7 @@ class Retriever:
             return {}
 
     async def qdrant_recall(self, query, model_code_list):
+        # Qdrant 有两种部署形态：指定服务地址时走服务端召回，否则走直连配置；未配置则保持空召回。
         qdrant_enable_env = os.getenv("DATA_AGENT_QDRANT_ENABLE")
         if qdrant_enable_env is None:
             return []
@@ -151,6 +152,7 @@ class Retriever:
         return {"data": data}
     
     def qd_merge_rerank(self, qdrant_results):
+        # 同一列可能被多个子查询命中，累加分数后再排序，得到列级而不是片段级的候选。
         merge_map = {}
         for result in qdrant_results:
             key = result["modelCode"] + "-" + result["columnId"]
@@ -175,11 +177,11 @@ class Retriever:
         return schema_list
     
     def qd_es_merge(self, retrieved_cells, retrieved_columns):
-        # retrieved_cells
+        # ES 提供用户词命中的样例值，Qdrant 提供语义命中的列 schema；这里把两者合成 NL2SQL 输入。
         _few_shot_seprator = ";"
         retrieved_cells_key_val_map = retrieved_cells_dict2map_key_val(retrieved_cells, _few_shot_seprator)
         retrieved_columns_schema_map = retrieved_list2map_schema(retrieved_columns)
-        # 需要把retrieveled few shots 放到columns里面去
+        # 已命中的列复用 schema，未被 Qdrant 命中的列也保留，避免 ES 结果被无声丢弃。
         for key, schema_val in retrieved_cells_key_val_map.items():
             
             if key in retrieved_columns_schema_map:

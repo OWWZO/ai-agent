@@ -48,6 +48,8 @@ export const useStreamAnimation = (
   const smoothY = useSpring(y, { stiffness: 300, damping: 20 });
 
   useEffect(() => {
+    // 流式期间只追赶新增文本，非流式或关闭动画时直接同步完整文本；每次 effect
+    // 重跑都取消上一轮 RAF，避免旧文本继续写入新一轮 displayText。
     if (!enabled) {
       setDisplayText(text);
       return;
@@ -95,6 +97,7 @@ export const useStreamAnimation = (
     }
 
     return () => {
+      // React 卸载或文本变化时取消未完成帧，防止异步回调在已失效组件上更新状态。
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
@@ -103,6 +106,8 @@ export const useStreamAnimation = (
 
   // 平滑滚动
   useEffect(() => {
+    // 只有用户已经接近底部时才自动跟随，避免用户回看历史时被流式内容强行拉回；
+    // 50ms 节流用于限制高频 token 事件触发的滚动布局计算。
     if (!smoothScroll || !isStreaming || !textRef.current) return;
 
     const now = Date.now();

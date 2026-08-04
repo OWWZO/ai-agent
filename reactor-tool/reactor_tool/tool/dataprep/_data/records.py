@@ -1,5 +1,7 @@
 ﻿"""Record-level I/O helpers with artifact support and automatic spill.
 
+中文说明：这是 dataprep 工具和文件/artifact 存储之间的适配边界。
+
 This is the glue layer between tool bodies and the storage/artifact
 primitives. Data tools call exactly two functions:
 
@@ -119,6 +121,7 @@ def load_records(
     * Bare path string, ``file://`` URI, or ``minio://bucket/key``
     * ``None`` — empty list
     """
+    # 输入统一收敛成行记录，后续工具不需要分别处理内存列表、路径和远端 URI。
     if value is None:
         return []
 
@@ -157,6 +160,7 @@ def load_dataframe(
 
 
 def _read_artifact(ref: ArtifactRef, context: "ToolContext | None") -> list[dict[str, Any]]:
+    # scheme 决定读取介质；解析和读取分开，便于为新存储增加独立分支。
     scheme, location = _split_uri(ref.uri)
     if scheme in ("", "file"):
         return _read_local(Path(location), ref.kind)
@@ -288,6 +292,7 @@ def emit_records(
     written to disk (or MinIO when a file store is reachable) and the
     envelope contains only a short preview plus an :class:`ArtifactRef`.
     """
+    # 先推断 schema 和估算体积，再决定是否 spill，保证小结果仍保持低延迟内嵌返回。
     schema = infer_schema(records)
     row_count = len(records)
     encoded_size = _estimate_json_size(records) if records else 0
@@ -307,6 +312,7 @@ def emit_records(
             spilled=False,
         )
 
+    # 大结果只返回预览和稳定 artifact 引用，避免工具消息和 Java SSE 负载无限增长。
     ref = _spill_records(
         records,
         context,
@@ -368,6 +374,7 @@ def _spill_records(
     file_store = getattr(context, "file_store", None) if context else None
     session_id = getattr(context, "session_id", None) if context else None
 
+    # 优先上传到会话文件服务；远端失败时降级到请求临时目录，确保工具仍能完成。
     if file_store is not None:
         try:
             key = _upload_minio(file_store, session_id, basename, payload)

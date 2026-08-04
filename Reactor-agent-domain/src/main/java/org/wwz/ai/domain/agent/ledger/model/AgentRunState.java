@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * run 级运行态上下文。
- * 需要兼容 PlanSolve 并发 executor，因此当前 agent / step / llm invocation 采用线程内视图。
  */
 @Data
 @Builder

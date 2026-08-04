@@ -8,6 +8,10 @@ import java.util.List;
 
 /**
  * Agent 主链路执行器与 visitor Cookie 配置。
+ * <p>
+ * dispatch、llm、task、tool 是彼此独立的容量预算；Pool 的队列/平台线程参数与
+ * 虚拟线程模式下的 maxConcurrency 不是同一个限制。这里仅承载配置，实际拒绝、
+ * 超时和取消语义由 domain executor support 与各调用方负责。
  */
 @Data
 @ConfigurationProperties(prefix = "autobots.execution")
@@ -46,6 +50,8 @@ public class AgentExecutorProperties {
     @Data
     public static class Pool {
 
+        // 平台线程模式使用 core/max/queue/keepAlive；虚拟线程模式仍需 maxConcurrency
+        // 保护下游 LLM、HTTP 或数据库，不能把虚拟线程数量理解成无限吞吐。
         private Integer corePoolSize;
         private Integer maxPoolSize;
         private Integer queueCapacity;

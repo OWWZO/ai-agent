@@ -40,6 +40,7 @@ public class SessionTaskListStore {
             throw new IllegalArgumentException("description 不能为空");
         }
         String id = String.valueOf(highWaterMark.incrementAndGet());
+        // 自增序号只在 create 的同步区内分配，保证主 Agent 和子 Agent 共用 store 时不会得到重复 id。
         SessionTaskItem item = SessionTaskItem.builder()
                 .id(id)
                 .subject(subject.trim())
@@ -73,6 +74,7 @@ public class SessionTaskListStore {
         if (item == null) {
             return Optional.empty();
         }
+        // update 是部分字段更新；null 表示保持原值，空字符串仅在显式允许的字段上清空。
         if (StringUtils.isNotBlank(subject)) {
             item.setSubject(subject.trim());
         }
@@ -93,6 +95,7 @@ public class SessionTaskListStore {
                 item.setBlocks(new ArrayList<>());
             }
             for (String id : addBlocks) {
+                // 阻塞关系按任务 id 去重，避免重复事件不断扩大内存列表。
                 if (StringUtils.isNotBlank(id) && !item.getBlocks().contains(id.trim())) {
                     item.getBlocks().add(id.trim());
                 }
@@ -149,6 +152,7 @@ public class SessionTaskListStore {
             return oldSnapshot;
         }
         boolean allDone = true;
+        // 先检查整表是否全部完成；完成列表按协议直接清空，不把历史完成项继续暴露为活动 Todo。
         for (Map<String, Object> raw : todoMaps) {
             if (raw == null) {
                 continue;
@@ -179,7 +183,7 @@ public class SessionTaskListStore {
             String activeForm = StringUtils.trimToNull(str(raw.get("activeForm")));
             String description = firstNonBlank(str(raw.get("description")), content);
             String subject = firstNonBlank(str(raw.get("subject")), content);
-            // 允许客户端带 id 但统一用自增，保证稳定序号
+            // 忽略客户端 id，统一使用本地自增序号，避免跨轮/跨来源 id 冲突。
             SessionTaskItem item = create(subject, description, activeForm, null);
             item.setStatus(status);
         }
@@ -198,6 +202,7 @@ public class SessionTaskListStore {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("listId", listId);
         body.put("tasks", toClientTaskList());
+        // 列表和统计从同一份当前快照计算，前端无需再按状态二次遍历或猜测总数。
         body.put("total", tasks.size());
         long pending = list().stream().filter(t -> SessionTaskItem.STATUS_PENDING.equals(t.getStatus())).count();
         long inProgress = list().stream().filter(t -> SessionTaskItem.STATUS_IN_PROGRESS.equals(t.getStatus())).count();
@@ -210,6 +215,7 @@ public class SessionTaskListStore {
 
     private static String normalizeStatus(String status) {
         String normalized = status.trim().toLowerCase().replace('-', '_');
+        // 对外兼容 done/inprogress 别名，内部只保留三种规范状态，保证排序和统计分支稳定。
         return switch (normalized) {
             case SessionTaskItem.STATUS_PENDING,
                  SessionTaskItem.STATUS_IN_PROGRESS,

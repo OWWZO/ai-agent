@@ -31,6 +31,7 @@ public class AgentTaskJob implements ITaskDataProvider {
 
     @Override
     public List<TaskScheduleVO> queryAllValidTaskSchedule() {
+        // 定时框架只消费通用 TaskScheduleVO；这里把领域任务配置转换为调度器模型，不在查询阶段执行任务。
         List<AiAgentTaskScheduleVO> aiAgentTaskScheduleVOS = taskService.queryAllValidTaskSchedule();
         List<TaskScheduleVO> result = new ArrayList<>();
         for (AiAgentTaskScheduleVO aiAgentTaskScheduleVO : aiAgentTaskScheduleVOS) {
@@ -63,6 +64,7 @@ public class AgentTaskJob implements ITaskDataProvider {
 
     @Override
     public List<Long> queryAllInvalidTaskScheduleIds() {
+        // 无效任务 ID 单独提供给调度框架清理，避免把失效任务混入有效任务描述。
         return taskService.queryAllInvalidTaskScheduleIds();
     }
 

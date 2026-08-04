@@ -42,7 +42,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
     public void initializeTasks() {
         log.info("开始初始化任务调度配置");
         try {
-            // 聚合所有数据提供者的任务调度配置
+            // 启动时先从所有 provider 聚合有效配置，再统一注册到 scheduler；scheduledTasks
+            // 是当前 JVM 的运行态索引，不是数据库真相源。
             List<TaskScheduleVO> allTaskSchedules = new ArrayList<>();
             for (ITaskDataProvider provider : taskDataProviders) {
                 List<TaskScheduleVO> taskSchedules = provider.queryAllValidTaskSchedule();
@@ -51,7 +52,7 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                 }
             }
 
-            // 处理每个任务调度配置
+            // 每个任务以 taskId 作为幂等键进入运行态索引，具体 Cron 注册由 scheduleTask 负责。
             for (TaskScheduleVO task : allTaskSchedules) {
                 // 创建并调度新任务
                 scheduleTask(task);
@@ -71,7 +72,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                 return false;
             }
 
-            // 如果任务已存在，先移除旧任务
+            // 更新任务采用“取消旧 future -> 注册新 future”的替换语义，避免同一 taskId 同时
+            // 存在两个 Cron 触发器。
             if (scheduledTasks.containsKey(task.getId())) {
                 log.info("任务已存在，先移除旧任务，ID: {}", task.getId());
                 removeTask(task.getId());
@@ -98,6 +100,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
 
             ScheduledFuture<?> future = scheduledTasks.remove(taskId);
             if (future != null) {
+                // cancel(true) 只发出中断请求；任务本身是否立即停止取决于 Runnable 是否配合
+                // 中断，索引先移除可以阻止后续刷新把旧 future 当作活跃任务。
                 future.cancel(true);
                 log.info("任务移除成功，ID: {}", taskId);
                 return true;
@@ -118,7 +122,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
         try {
             log.info("开始调度任务，ID: {}, 描述: {}, Cron表达式: {}", task.getId(), task.getDescription(), task.getCronExpression());
 
-            // 使用新的函数式编程方式
+            // scheduler 只保存 Cron 触发器和轻量 Runnable，真正业务执行在触发时从 task 中
+            // 取得；注册成功后才写入 scheduledTasks，避免索引出现“未注册成功”的假活跃项。
             ScheduledFuture<?> future = taskScheduler.schedule(
                     () -> executeTaskWithFunction(task),
                     new CronTrigger(task.getCronExpression())
@@ -139,7 +144,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
         try {
             log.info("开始执行任务（函数式），ID: {}, 描述: {}", task.getId(), task.getDescription());
 
-            // 获取并执行任务
+            // provider 返回 Runnable，把调度触发和业务动作解耦；异常在单次触发边界被记录，
+            // 不让一次任务失败终止整个 scheduler。
             Runnable taskRunnable = task.getTaskExecutor().get();
             taskRunnable.run();
 
@@ -153,7 +159,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
     public void refreshTasks() {
         log.info("开始刷新任务调度配置（动态更新）");
         try {
-            // 聚合所有数据提供者的任务调度配置
+            // 刷新采用增量策略：保留仍存在的 taskId，只注册新任务，最后取消配置源中已删除的
+            // future。这样刷新不会重置所有 Cron 的下一次触发时间。
             List<TaskScheduleVO> allTaskSchedules = new ArrayList<>();
             for (ITaskDataProvider provider : taskDataProviders) {
                 List<TaskScheduleVO> taskSchedules = provider.queryAllValidTaskSchedule();
@@ -162,7 +169,7 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
                 }
             }
 
-            // 记录当前配置中的任务ID
+            // currentTaskIds 表示本次配置快照，专门用于识别需要取消的旧运行态任务。
             Map<Long, Boolean> currentTaskIds = new ConcurrentHashMap<>();
 
             // 处理每个任务调度配置
@@ -236,6 +243,8 @@ public class TaskJobService implements ITaskJobService, DisposableBean {
     @Override
     public void stopAllTasks() {
         log.info("开始停止所有任务");
+        // 应用销毁或显式停机时统一取消 future 并清空索引；取消是协作式的，不等待业务 Runnable
+        // 自己完成，避免 Spring 销毁阶段被单个长任务卡住。
         scheduledTasks.forEach((id, future) -> {
             if (future != null) {
                 future.cancel(true);

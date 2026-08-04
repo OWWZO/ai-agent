@@ -7,13 +7,17 @@ from loguru import logger as _loguru
 
 
 class _BoundLogger:
+    """轻量日志门面，保留 docgen 所需的 bind 和级别方法形状。"""
+
     def __init__(self, name: str = ""):
         self._name = name
 
     def bind(self, **kwargs: Any) -> "_BoundLogger":
+        # 当前兼容层不保存绑定上下文，只保证调用方无需依赖完整 structlog。
         return self
 
     def _fmt(self, event: str, kwargs: dict[str, Any]) -> str:
+        # 所有级别共用同一格式，便于从工具日志中检索事件名和键值。
         if not kwargs:
             return f"[{self._name}] {event}" if self._name else event
         parts = " ".join(f"{k}={v!r}" for k, v in kwargs.items())
@@ -37,4 +41,5 @@ class _BoundLogger:
 
 
 def get_logger(name: str | None = None) -> _BoundLogger:
+    """返回带可选名称前缀的轻量 logger。"""
     return _BoundLogger(name or "")

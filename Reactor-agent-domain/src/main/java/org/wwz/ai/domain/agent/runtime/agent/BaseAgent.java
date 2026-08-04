@@ -15,12 +15,16 @@ import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
@@ -104,6 +108,7 @@ public abstract class BaseAgent {
                 boolean hasWorking = context != null
                 && context.getWorkingMemoryMessages() != null
                 && !context.getWorkingMemoryMessages().isEmpty();
+
         if (hasWorking) {
             // 跨轮：用历史整段替换 memory，再 append 本轮 query（严格前缀续写）
             memory.replaceMessages(new ArrayList<>(context.getWorkingMemoryMessages()));
@@ -116,11 +121,18 @@ public abstract class BaseAgent {
         }
         if (query != null && !query.isEmpty()) {
             String userContent = query;
+            // 本轮上传/可用文件挂在 user 侧（不进 system，保护 prompt cache）
+            if (context != null && context.getProductFiles() != null && !context.getProductFiles().isEmpty()) {
+                String filesBlock = FileUtil.formatAvailableFilesUserBlock(context.getProductFiles());
+                if (StringUtils.isNotBlank(filesBlock)) {
+                    userContent = filesBlock + "\n\n" + userContent;
+                }
+            }
             // 深度记忆 prefetch 挂在 user 侧围栏；skip_memory 不注入
             if (context != null
                     && !Boolean.TRUE.equals(context.getSkipMemory())
                     && StringUtils.isNotBlank(context.getLtmMemoryContext())) {
-                userContent = context.getLtmMemoryContext().trim() + "\n\n" + query;
+                userContent = context.getLtmMemoryContext().trim() + "\n\n" + userContent;
             }
             updateMemory(RoleType.USER, userContent, null);
         }
@@ -142,7 +154,7 @@ public abstract class BaseAgent {
                     context.markExecutionPosition(getName(), currentStep);
                     // Plan Mode：sparse/full 提醒 + mid-run Enter 时补 system 指引
                     org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector.injectStepReminders(this);
-                    // cc-haha 对齐：每步 LLM 前再判一次上下文水位（含 tool 后中途）
+                    //每步 LLM 前再判一次上下文水位（含 tool 后中途）
                     compactWorkingMemoryIfNeeded("step");
                 }
                 log.info("{} {} Executing step {}/{}", context.getRequestId(), getName(), currentStep, maxSteps);
@@ -256,15 +268,23 @@ public abstract class BaseAgent {
                 context == null ? null : context.getQuery(),
                 context == null ? null : context.getToolCollection());
         systemTemplate = intentPolicy.appendTo(systemTemplate);
-        // LTM 策展冻结块：会话开始快照；skip_memory 路径不注入（子代理等）
-        if (context != null
-                && !Boolean.TRUE.equals(context.getSkipMemory())
-                && context.getRuntimeDependencies() != null) {
-            var ltmManager = context.getRuntimeDependencies().getOptionalLtmManager();
-            if (ltmManager != null) {
-                String ltmBlock = ltmManager.buildSystemPrompt();
-                if (StringUtils.isNotBlank(ltmBlock) && !systemTemplate.contains(ltmBlock)) {
-                    systemTemplate = systemTemplate.trim() + "\n\n" + ltmBlock.trim() + "\n";
+        // Hermes-style tool guidance (WHEN/SKIP) + curated snapshot; skip_memory 不注入
+        if (context != null && !Boolean.TRUE.equals(context.getSkipMemory())) {
+            var tools = context.getToolCollection();
+            boolean memoryToolPresent = tools != null && tools.getTool(MemoryTool.TOOL_NAME) != null;
+            boolean sessionSearchPresent = tools != null && tools.getTool(SessionSearchTool.TOOL_NAME) != null;
+            String ltmGuidance = LtmPromptGuidance.forLoadedTools(memoryToolPresent, sessionSearchPresent);
+            if (StringUtils.isNotBlank(ltmGuidance) && !systemTemplate.contains(LtmPromptGuidance.MEMORY_GUIDANCE)
+                    && !systemTemplate.contains(ltmGuidance)) {
+                systemTemplate = systemTemplate.trim() + "\n\n" + ltmGuidance.trim() + "\n";
+            }
+            if (context.getRuntimeDependencies() != null) {
+                var ltmManager = context.getRuntimeDependencies().getOptionalLtmManager();
+                if (ltmManager != null) {
+                    String ltmBlock = ltmManager.buildSystemPrompt();
+                    if (StringUtils.isNotBlank(ltmBlock) && !systemTemplate.contains(ltmBlock)) {
+                        systemTemplate = systemTemplate.trim() + "\n\n" + ltmBlock.trim() + "\n";
+                    }
                 }
             }
         }
@@ -367,7 +387,7 @@ public abstract class BaseAgent {
 
 
     /**
-     * 会话级 env（date）预置到 memory 前缀；history 走 workingMemoryMessages preload，不再拼 historyDialogue 文本。
+     * 会话级 env（date）预置到 memory 前缀；history 走 workingMemoryMessages preload
      */
     protected void seedSessionContextMessages() {
         if (context == null || memory == null) {
@@ -386,24 +406,6 @@ public abstract class BaseAgent {
                     "<session_env>\n当前日期：" + dateInfo + "\n</session_env>",
                     null));
         }
-    }
-
-    /**
-     * 预装跨轮工作记忆（ledger hydrate 的 Message 链）。幂等：已存在非 session_env 消息则跳过。
-     */
-    protected void preloadWorkingMemoryIfPresent() {
-        if (context == null || memory == null) {
-            return;
-        }
-        List<Message> working = context.getWorkingMemoryMessages();
-        if (working == null || working.isEmpty()) {
-            return;
-        }
-        // 已有非空 memory 且首条已是历史时跳过（防重复 preload）
-        if (!memory.getMessages().isEmpty()) {
-            return;
-        }
-        memory.addMessages(new ArrayList<>(working));
     }
 
 
@@ -428,8 +430,8 @@ public abstract class BaseAgent {
     }
 
         /**
-     * 初始化稳定 system prompt（cache-friendly）。
-     * query/date/history 进入 memory messages，不写入 system；nextStep 已禁用。
+     * 初始化稳定 system prompt
+     * query/date/history 进入 memory messages，不写入 system
      */
     protected void initializePromptsWithHistoryOnlyInSystem(Map<String, String> systemPromptMap,
                                                             Map<String, String> nextStepPromptMap,
@@ -1303,11 +1305,15 @@ public abstract class BaseAgent {
     }
 
     /**
-     * 对齐 cc-haha：每次即将调用主模型前，对当前 Memory 做阈值压缩。
+     * 每次即将调用主模型前，对当前 Memory 做阈值压缩。
      * 成功后同步 memory + context.workingMemoryMessages，保证 export delta 正确。
      */
     protected void compactWorkingMemoryIfNeeded(String phase) {
         if (context == null || memory == null) {
+            return;
+        }
+        // LTM flush/review fork：禁止 mid-run compact，否则会递归 flush 并冲掉对话快照
+        if (org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard.isSideEffectsDisabled(context)) {
             return;
         }
         if (context.getRuntimeDependencies() == null) {

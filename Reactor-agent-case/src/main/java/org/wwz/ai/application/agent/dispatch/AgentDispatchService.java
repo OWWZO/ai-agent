@@ -26,6 +26,7 @@ public class AgentDispatchService implements IAgentDispatchService {
     public void dispatch(AgentRequest request, AgentSessionStream stream) throws Exception {
         String strategy = null;
 
+        // agentType 只负责选择应用策略，具体执行和输出协议分别交给 strategy 与 stream，避免调度器承载业务逻辑。
         if (request.getAgentType() != null) {
             if (AgentType.WORKFLOW.getValue().equals(request.getAgentType())) {
                 strategy = "flowAgentExecuteStrategy";
@@ -37,6 +38,7 @@ public class AgentDispatchService implements IAgentDispatchService {
         }
 
         if (strategy == null || strategy.isEmpty()) {
+            // 未识别类型沿用 ReAct 作为兼容默认策略，保证旧客户端不因缺少 agentType 直接失效。
             strategy = "reactAgentExecuteStrategy";
         }
 
@@ -45,6 +47,7 @@ public class AgentDispatchService implements IAgentDispatchService {
             throw new BizException("不存在的执行策略类型 strategy:" + strategy);
         }
 
+        // case 层只负责转发请求；SSE/WebSocket 等协议适配由 trigger 实现 AgentSessionStream。
         executeStrategy.execute(request, stream);
     }
 }

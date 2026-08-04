@@ -92,6 +92,7 @@ class AnalysisPythonInterpreterTool(Tool):
     def forward(self, code: str) -> str:
         code = (code or "").strip()
         if not code:
+            # 每次执行前都要清空上一步的状态，避免空代码被误判为上一步已经收工。
             self.last_is_final = False
             self.last_output = None
             self.last_logs = ""
@@ -99,6 +100,7 @@ class AnalysisPythonInterpreterTool(Tool):
         try:
             output, logs, is_final = self._executor(code)
         except Exception as exc:
+            # 执行异常只作为当前步骤的 observation 返回，外层 Agent 仍可据此修正下一步代码。
             self.last_is_final = False
             self.last_output = None
             self.last_logs = str(exc)
@@ -113,8 +115,8 @@ def extract_code_from_message(
     content: str | None,
     tool_calls: list | None = None,
 ) -> tuple[Optional[str], str]:
-    """按优先级提取代码。返回 (code, source_tag)。"""
-    # 1) FC tool_calls
+    """按协议兼容优先级提取代码，返回 ``(code, source_tag)``。"""
+    # 优先读取 Function Calling；兼容层只负责把不同供应商的参数形态统一成代码字符串。
     for call in tool_calls or []:
         fn = call.get("function") if isinstance(call, dict) else None
         if not isinstance(fn, dict):
@@ -137,7 +139,7 @@ def extract_code_from_message(
     if not text.strip():
         return None, "empty"
 
-    # 2) ```python ... ```
+    # 模型没有使用 FC 时，依次兼容 Markdown 代码块和自定义 code 标签。
     fence = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.S | re.I)
     if fence:
         return fence.group(1).strip(), "markdown_fence"
@@ -147,7 +149,7 @@ def extract_code_from_message(
     if tag:
         return tag.group(1).strip(), "code_tag"
 
-    # 4) 整段可解析为 Python
+    # 纯文本只有在 AST 可解析且包含分析相关 token 时才执行，避免把普通说明误送进沙箱。
     stripped = text.strip()
     try:
         ast.parse(stripped)
@@ -156,7 +158,7 @@ def extract_code_from_message(
     except SyntaxError:
         pass
 
-    # 5) 结论型文本 → 包 final_answer，避免解析连环炸
+    # 已经是结论的文本直接包装为 final_answer，避免在收尾阶段继续要求模型重写代码。
     if _looks_like_conclusion(stripped):
         safe = stripped.replace("\\", "\\\\").replace('"""', '\\"""')
         return f'final_answer("""{safe}""")', "wrapped_final_answer"
@@ -196,7 +198,7 @@ def chat_completion_with_tools(
     api_key: str,
     timeout: float = 600.0,
 ) -> Dict[str, Any]:
-    """非流式 chat.completions，保留 tool_calls。"""
+    """调用 OpenAI 兼容接口，并保留外层 FC 的 ``tool_calls`` 结构。"""
     url = _build_chat_completions_url(_normalize_openai_compat_api_base(api_base))
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -269,6 +271,7 @@ class AnalysisFCCodeAgent:
         ]
 
         for step in range(1, self.max_steps + 1):
+            # 每一步都让模型根据完整历史决定下一段代码；max_steps 是防止协议失控的硬边界。
             try:
                 raw = chat_completion_with_tools(
                     messages=messages,
@@ -302,6 +305,7 @@ class AnalysisFCCodeAgent:
             thought = _extract_thought(content)
 
             if not code:
+                # 解析失败不直接结束任务，追加修复提示，让模型回到唯一的 python_interpreter 协议。
                 repair = (
                     "上一步未能提取可执行代码。"
                     "请仅通过工具 python_interpreter 提交 code；"
@@ -330,7 +334,7 @@ class AnalysisFCCodeAgent:
                 output=output,
             )
 
-            # 写入对话历史：优先保留 tool_calls 形态，便于模型继续 FC
+            # 先把当前执行结果写回对话历史，再决定是否继续；这样下一轮能看到真实 observation。
             if tool_calls:
                 messages.append(
                     {
@@ -339,7 +343,7 @@ class AnalysisFCCodeAgent:
                         "tool_calls": tool_calls,
                     }
                 )
-                # 为每个 tool_call 补 tool 结果（OpenAI 协议）
+                # OpenAI 协议要求每个 tool_call 都有对应的 tool 消息，不能只追加一条汇总结果。
                 for call in tool_calls:
                     call_id = call.get("id") or f"call_{step}"
                     messages.append(
@@ -364,9 +368,10 @@ class AnalysisFCCodeAgent:
                 )
 
             if is_final:
+                # final_answer 由沙箱内的业务工具触发，外层只负责转发最终输出并停止循环。
                 return
 
-        # 步数耗尽
+        # 未触发 final_answer 时仍返回结构化失败事件，避免 SSE 调用方无限等待。
         yield AnalysisStepEvent(
             step=self.max_steps,
             thought="",

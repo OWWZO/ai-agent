@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * checklist_generate — Markdown/JSON/HTML/PDF/DOCX checklist.
+ * checklist_generate 工具契约。
+ *
+ * 当前类只负责声明 Reactor 到 reactor-tool 的 endpoint 和参数 schema，清单解析、
+ * 状态跟踪以及 Markdown/PDF/DOCX 导出由共享的文档生成适配层执行。
  */
 public class ChecklistGenerateTool extends AbstractDocGenTool {
 
@@ -29,6 +32,7 @@ public class ChecklistGenerateTool extends AbstractDocGenTool {
 
     @Override
     protected Map<String, Object> defaultParams() {
+        // 保持平面 items 与分组 groups 两种输入形态，兼容简单清单和层级化清单。
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("output_path", stringProp("Output file name, e.g. checklist.md / checklist.pdf."));
         properties.put("format", stringProp("markdown | json | html | pdf | docx."));

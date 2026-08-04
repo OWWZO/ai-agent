@@ -14,11 +14,11 @@ import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import javax.annotation.Resource;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -28,6 +28,8 @@ import java.util.Map;
 /**
  * 将领域 Message 转换为 Spring AI Message。
  * 对 TOOL 消息采用两段式转换：先扫描 assistant tool calls，再恢复 toolCallId -> toolName。
+ * Spring AI ToolResponseMessage 仅支持字符串 responseData，不含 Media；
+ * 因此带 base64Image 的 TOOL 会展开为 ToolResponse + UserMessage(Media)。
  */
 @Component
 public class DomainMessageConverter {
@@ -49,9 +51,16 @@ public class DomainMessageConverter {
             if (message == null || message.getRole() == null) {
                 continue;
             }
-            org.springframework.ai.chat.messages.Message converted = convertMessage(message, toolCallNameIndex);
-            if (converted != null) {
-                convertedMessages.add(converted);
+            if (message.getRole() == RoleType.TOOL
+                    && StringUtils.isNotBlank(message.getBase64Image())) {
+                // ToolResponse 无 Media：短文本 observation + 紧跟 UserMessage 挂图。
+                convertedMessages.add(toToolResponseMessage(message, toolCallNameIndex));
+                convertedMessages.add(toToolImageUserMessage(message, toolCallNameIndex));
+            } else {
+                org.springframework.ai.chat.messages.Message converted = convertMessage(message, toolCallNameIndex);
+                if (converted != null) {
+                    convertedMessages.add(converted);
+                }
             }
             if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
                 for (ToolCall toolCall : message.getToolCalls()) {
@@ -123,10 +132,7 @@ public class DomainMessageConverter {
      */
     private ToolResponseMessage toToolResponseMessage(Message message, Map<String, String> toolCallNameIndex) {
         String toolCallId = StringUtils.trimToEmpty(message.getToolCallId());
-        String toolName = toolCallNameIndex.get(toolCallId);
-        if (StringUtils.isBlank(toolName)) {
-            throw new IllegalStateException("Cannot resolve tool name for toolCallId: " + toolCallId);
-        }
+        String toolName = resolveToolName(toolCallId, toolCallNameIndex);
 
         String content = StringUtil.textDesensitization(
                 StringUtils.defaultString(message.getContent()),
@@ -141,6 +147,30 @@ public class DomainMessageConverter {
                 .responses(List.of(response))
                 .metadata(Map.of(AbstractMessage.MESSAGE_TYPE, MessageType.TOOL.getValue()))
                 .build();
+    }
+
+    /**
+     * 工具结果图片：挂到 UserMessage.Media，供多模态模型阅读。
+     */
+    private UserMessage toToolImageUserMessage(Message message, Map<String, String> toolCallNameIndex) {
+        String toolCallId = StringUtils.trimToEmpty(message.getToolCallId());
+        String toolName = toolCallNameIndex.getOrDefault(toolCallId, "tool");
+        Media media = buildMedia(message.getBase64Image());
+        String caption = "[tool image] tool=" + toolName
+                + " tool_call_id=" + toolCallId
+                + " mime=" + media.getMimeType();
+        return UserMessage.builder()
+                .text(caption)
+                .media(media)
+                .build();
+    }
+
+    private String resolveToolName(String toolCallId, Map<String, String> toolCallNameIndex) {
+        String toolName = toolCallNameIndex.get(toolCallId);
+        if (StringUtils.isBlank(toolName)) {
+            throw new IllegalStateException("Cannot resolve tool name for toolCallId: " + toolCallId);
+        }
+        return toolName;
     }
 
     private Media buildMedia(String rawBase64Image) {

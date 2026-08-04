@@ -365,6 +365,8 @@ public class LLM {
             String callKind
     ) {
         try {
+            // 纯文本请求的顺序必须保持为：记录实际 prompt 快照 → 创建 LLM 账本事实 → 调用模型 → 完成账本事实。
+            // 这样观测数据、账本状态和真正发送给模型的内容才能一一对应。
             // 先记录完整 prompt 观测，再创建 invocation，保证请求快照与实际发送内容一致。
             LlmPromptObservability.logRequest(
                     context,
@@ -428,6 +430,7 @@ public class LLM {
                 });
             }
 
+            // 流式调用的完成与失败都由 whenComplete 收口，避免网络异常时留下 RUNNING 的孤立 invocation。
             return streamResponseHandler.handleStringStreamWithUsage(
                     context,
                     LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
@@ -500,6 +503,8 @@ public class LLM {
             int timeout
     ) {
         try {
+            // 工具调用有两条协议分支：原生 function_call 由 Spring AI 组装 tools[]，
+            // struct_parse 则把 schema 放入 system 文本后自行解析 JSON；两者共用观测和账本入口。
             if (!ToolChoice.isValid(toolChoice)) {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
             }
@@ -534,6 +539,7 @@ Prompt prompt = buildPrompt(
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
+                // 非流式原生调用先走 Spring AI；超时或网关不兼容时再回退到受控旧 HTTP 链路。
                 CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.withTimeout(
                         AgentExecutorSupport.supplyAsync(
                                 runtimeDependencies.requireLlmExecutor(),
@@ -571,7 +577,7 @@ Prompt prompt = buildPrompt(
                     pushToClient
             ).orTimeout(timeout, TimeUnit.SECONDS);
 
-            // 空流再开一次 stream；仍失败则留给上层 think 结束
+            // 空流通常是兼容网关的瞬态响应：只对“明确为空流”的情况重试一次，避免普通错误被掩盖。
             return streamFuture.handle((response, throwable) -> {
                         if (throwable == null) {
                             return CompletableFuture.completedFuture(response);
@@ -629,6 +635,7 @@ Prompt prompt = buildPrompt(
             long startTime,
             LlmInvocationHandle invocationHandle
     ) {
+        // struct_parse 不支持原生 tools[]，因此 system 中的工具 schema 和模型返回的 JSON 共同构成协议。
         Message mergedSystemMessage = buildStructParseSystemMessage(systemMsg, tools);
         Prompt prompt = buildPrompt(
                 mergeMessages(mergedSystemMessage, messages),
@@ -641,6 +648,7 @@ Prompt prompt = buildPrompt(
 
         String retryLabel = "llm-askTool-struct:" + model;
         if (!stream) {
+            // 非流式路径可以一次性解析完整 JSON；流式路径则由响应处理器隐藏代码块标记后再解析。
             return AgentExecutorSupport.withTimeout(
                     AgentExecutorSupport.supplyAsync(
                             runtimeDependencies.requireLlmExecutor(),
@@ -994,6 +1002,8 @@ Prompt prompt = buildPrompt(
         if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
             return LlmInvocationHandle.disabled();
         }
+        // invocation 的 prompt 估算和观测快照来自当前线程上下文，必须在异步切换前捕获。
+        // 若当前请求没有有效 run，则保持 fail-open，不让可选的持久化能力阻断模型调用。
         LocalDateTime startedAt = LocalDateTime.now();
         int invocationSeq = context.getAgentRunState().nextInvocationSeq();
         LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
@@ -1099,6 +1109,8 @@ Prompt prompt = buildPrompt(
         if (context == null || handle == null || !handle.enabled() || handle.invocationId() == null) {
             return;
         }
+        // 完成时重新取回 invocation 创建阶段的观测快照，合并最终 token/cache 信息后一次性落账本。
+        // 清理当前线程观测是必要的，否则复用线程会把本次模型调用的数据带进下一请求。
         restoreObservationBundle(handle);
         LlmUsageSnapshot snapshot = usage == null ? LlmUsageSnapshot.empty() : usage;
         LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
@@ -1148,6 +1160,8 @@ Prompt prompt = buildPrompt(
                                                   Supplier<CompletableFuture<T>> fallbackSupplier,
                                                   String requestId,
                                                   String scene) {
+        // 回退只发生在主 Future 已经失败之后，并且由同一个结果 Future 对外呈现，
+        // 调用方无需感知底层是 Spring AI 还是旧 HTTP 实现。
         CompletableFuture<T> result = new CompletableFuture<>();
         primaryFuture.whenComplete((value, throwable) -> {
             if (throwable == null) {
@@ -1291,6 +1305,8 @@ Prompt prompt = buildPrompt(
     }
 
     private String normalizeToolArguments(String arguments) {
+        // 不同兼容网关可能返回对象、数组、被 JSON 字符串再次包裹的 JSON，或非 JSON 文本；
+        // 工具执行层统一接收合法 JSON，无法恢复时使用空对象而不是把坏参数继续向下传播。
         if (StringUtils.isBlank(arguments)) {
             return "{}";
         }

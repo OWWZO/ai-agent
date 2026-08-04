@@ -92,6 +92,7 @@ public class AiAgentController implements IAiAgentService {
 
         SseEmitter emitter = SseLifecycleSupport.createEmitter(AUTO_AGENT_SSE_TIMEOUT);
         try {
+            // 访客身份与会话归属校验必须在提交异步任务前完成，避免未授权请求已经进入 Agent 执行器。
             String visitorId = resolveVisitorId(request);
             request.setVisitorId(visitorId);
             conversationSessionOwnershipApplicationService.ensureSessionAccessible(
@@ -118,6 +119,7 @@ public class AiAgentController implements IAiAgentService {
 
         // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
         try {
+            // dispatch 进入受控执行器后立即返回 HTTP 响应；异步任务负责把 Agent 事件写入同一个 emitter。
             AgentExecutorSupport.execute(dispatchExecutor, "dispatch", request.getRequestId(), () -> {
                 try {
                     // 使用 IAgentDispatchService 进行策略调度
@@ -127,6 +129,7 @@ public class AiAgentController implements IAiAgentService {
                     //调用emitter对应方法触发资源回收
                     emitter.complete();
                 } catch (Exception e) {
+                    // 任务内部异常需要结束 SSE；若客户端已经断开，completeWithError 失败只能记录日志。
                     log.error("{} auto agent error", request.getRequestId(), e);
                     try {
                         emitter.completeWithError(e);
@@ -174,6 +177,7 @@ public class AiAgentController implements IAiAgentService {
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
+        // 旧 GPT 入口仍复用 case 查询 seam，但直接在进程内适配为 SSE，避免 HTTP loopback 造成额外生命周期。
         SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,

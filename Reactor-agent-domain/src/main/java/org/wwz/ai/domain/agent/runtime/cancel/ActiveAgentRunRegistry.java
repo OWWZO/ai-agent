@@ -72,6 +72,8 @@ public class ActiveAgentRunRegistry {
     private PendingPlanApprovalRegistry pendingPlanApprovalRegistry;
 
     public ActiveRun begin(String requestId, String sessionId) {
+        // begin 只建立进程内索引和取消令牌，不代表 ledger 已初始化；真正的运行账本
+        // 仍由执行节点负责创建，避免取消注册表承担持久化职责。
         if (StringUtils.isBlank(requestId)) {
             throw new IllegalArgumentException("requestId 不能为空");
         }
@@ -82,6 +84,8 @@ public class ActiveAgentRunRegistry {
     }
 
     public void bindContext(String requestId, AgentContext agentContext) {
+        // Context 在执行树准备完成后才绑定，因此 stop 可能先于 bind 到达；这种情况下
+        // 取消令牌仍然有效，后续 bind 会把同一令牌注入 context。
         ActiveRun run = byRequestId.get(requestId);
         if (run == null || agentContext == null) {
             return;
@@ -91,6 +95,8 @@ public class ActiveAgentRunRegistry {
     }
 
     public void bindStream(String requestId, AgentMessageStream stream) {
+        // stream abort 是用户断开连接的被动取消入口，与主动 stop 共享同一个幂等令牌；
+        // 首次取消负责级联清理，重复 abort 不应重复关闭问询、审批或后台任务。
         ActiveRun run = byRequestId.get(requestId);
         if (run == null) {
             return;
@@ -105,6 +111,8 @@ public class ActiveAgentRunRegistry {
      * @return true 若首次成功取消
      */
     public boolean cancel(String requestId, String reason) {
+        // 取消顺序是“原子置位 -> 解除交互等待 -> 停止后台任务”。先置位保证并发的
+        // stop、SSE abort 和超时只有一个调用者执行清理，其余调用只观察已取消状态。
         ActiveRun run = byRequestId.get(StringUtils.trimToEmpty(requestId));
         if (run == null) {
             return false;
@@ -140,6 +148,8 @@ public class ActiveAgentRunRegistry {
     }
 
     public void end(String requestId) {
+        // end 只移除进程内索引；run 的最终状态已经由 ledger finishRun 持久化，不能
+        // 因为内存清理而丢失历史查询所需事实。
         if (StringUtils.isBlank(requestId)) {
             return;
         }

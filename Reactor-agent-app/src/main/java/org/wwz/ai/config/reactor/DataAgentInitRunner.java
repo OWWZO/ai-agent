@@ -23,6 +23,13 @@ import org.wwz.ai.infrastructure.dataquery.util.JdbcUtils;
 
 import java.sql.Connection;
 
+/**
+ * 数据问数启动初始化器。
+ *
+ * <p>启动阶段按“本地数据库基础设施 -> Qdrant/ES 可选能力 -> 模型元数据 -> Skill
+ * 注册表”的顺序准备运行环境。普通启动允许可选外部能力降级并关闭对应开关；开启
+ * {@code forceRefresh} 时，关键刷新失败会继续抛出，防止使用不完整索引或模型元数据。</p>
+ */
 @Slf4j
 @Component
 public class DataAgentInitRunner implements CommandLineRunner {
@@ -43,6 +50,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        // CommandLineRunner 在 Spring 上下文完成后执行，所有阶段都共享最终解析后的配置。
         log.info("dataAgent config:{}", dataAgentConfig);
         boolean forceRefresh = Boolean.TRUE.equals(dataAgentConfig.getForceRefresh());
         
@@ -92,6 +100,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
     }
 
     private void prepareQdrantCapability(boolean forceRefresh) throws Exception {
+        // Qdrant 依赖共享 embedding 代理；先做健康检查，再创建或重建 schema collection。
         QdrantConfig qdrantConfig = dataAgentConfig.getQdrantConfig();
         if (!Boolean.TRUE.equals(qdrantConfig.getEnable())) {
             return;
@@ -117,6 +126,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
     }
 
     private void prepareEsCapability(boolean forceRefresh) throws Exception {
+        // ES 只承接列值索引能力，初始化失败时关闭该能力但不影响其他问数路径（普通模式）。
         EsConfig esConfig = dataAgentConfig.getEsConfig();
         if (!Boolean.TRUE.equals(esConfig.getEnable())) {
             return;
@@ -138,6 +148,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
     }
 
     private void handleCapabilityFailure(String capability, boolean forceRefresh, Exception e) {
+        // 强制刷新由上层重新抛出；普通启动记录降级并让调用方通过配置开关避开故障能力。
         if (forceRefresh) {
             log.error("{} capability force-refresh failed", capability, e);
             return;
@@ -146,6 +157,7 @@ public class DataAgentInitRunner implements CommandLineRunner {
     }
 
     private int resolveEmbeddingDimension() {
+        // 环境变量只覆盖向量维度，缺失或非法时回退默认值以保持启动可用性。
         String dimension = System.getenv("TEXT_EMBEDDING_DIMENSION");
         if (StringUtils.isBlank(dimension)) {
             return 1024;

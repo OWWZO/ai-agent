@@ -180,6 +180,8 @@ async def upload_document(file: UploadFile = File(...)):
     """
     print(file)
     try:
+        # 上传接口先完成类型/大小校验，再在 S3 与本地文件服务之间选择存储后端；
+        # 两条分支返回同一组访问字段，调用方不需要感知具体存储实现。
         # 验证文件类型
         file_extension = _resolve_file_extension(file)
 
@@ -209,6 +211,8 @@ async def upload_document(file: UploadFile = File(...)):
         upload_date = datetime.now()
 
         if _is_s3_configured():
+            # OSS 分支需要临时文件作为 SDK 输入，finally 负责删除中间文件；
+            # 返回的 permanent_url 才是后续 MRAG 异步入库使用的稳定来源。
             # 创建临时文件
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
                 temp_file.write(file_content)
@@ -394,6 +398,8 @@ class File(BaseModel):
 
 
 def add_file(filename, file_url, kb_id):
+    # 后台任务先写入 PENDING 记录，再按“下载 -> RUNNING -> DocumentProcessor ->
+    # SUCCESS/FAILED”推进状态；异常只收口当前文件，不影响同批其它文件。
     tempdir = tempfile.gettempdir()
     # 下载文件到临时目录
     file_id = uuid.uuid4().hex
@@ -451,6 +457,8 @@ class AddFilesRequest(BaseModel):
 
 @router.post("/add_files")
 async def add_files(request: AddFilesRequest, background_tasks: BackgroundTasks):
+    # 接口只负责登记后台任务并立即返回，前端必须通过 list_kb_files 轮询最终状态，
+    # 不能把 HTTP 200 解释为文档已经完成向量化。
     for file in request.files:
         filename = file.filename
         file_url = file.file_url
@@ -470,6 +478,8 @@ async def add_files(request: AddFilesRequest, background_tasks: BackgroundTasks)
 
 
 def add_web_url(url, kb_id):
+    # URL 入库与文件入库共享状态机，但正文先由 crawl_utils 抓取到本地 Markdown，
+    # 再进入同一个 DocumentProcessor，保证两种来源最终生成相同的 canonical doc。
     tempdir = tempfile.gettempdir()
     # 下载文件到临时目录
     file_id = uuid.uuid4().hex
@@ -540,6 +550,8 @@ class AddWebUrlRequest(BaseModel):
 
 @router.post("/add_web_url")
 async def async_add_web_url(request: AddWebUrlRequest, background_tasks: BackgroundTasks):
+    # 与 add_files 一样，接口成功只表示后台任务已排队；处理进度和错误写回知识库
+    # 文件记录，由列表/全文接口统一读取。
     kb_id = request.kb_id
     url = request.url
     background_tasks.add_task(
@@ -560,6 +572,8 @@ class DeleteFileRequest(BaseModel):
 
 @router.post("/delete_files")
 async def delete_files(request: DeleteFileRequest):
+    # 删除必须同时清理文件元数据、canonical 文档和文本/图片向量；三类存储没有
+    # 事务包裹，因此按固定顺序执行并由各自 store 负责幂等删除。
     file_ids = request.file_ids
     kb_id = request.kb_id
 
@@ -610,6 +624,8 @@ class GetFileFullContentRequest(BaseModel):
 
 @router.post("/get_file_full_content")
 async def get_file_full_content(request: GetFileFullContentRequest):
+    # 全文回显按 PENDING/RUNNING、FAILED、UNAVAILABLE、READY 四态返回，
+    # 将“尚未生成”和“生成失败”与“成功但无正文”区分开，前端才能正确展示。
     kb_file_store = get_kb_file_store()
     kb_doc_store = get_kb_doc_store()
     kb_file = kb_file_store.get_file(request.kb_id, request.file_id)

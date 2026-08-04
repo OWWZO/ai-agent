@@ -1,5 +1,12 @@
 import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
 
+/**
+ * 任务产物和附件引用归一化工具。
+ *
+ * <p>实时事件、历史回放和工具结果的文件字段并不完全一致；本模块将它们收敛为
+ * {@code CHAT.TFile}，并集中决定预览、下载、复制和缺失资源语义，页面组件不直接
+ * 解析后端的多种旧字段。</p>
+ */
 const toText = (value: unknown) => {
   if (value == null) {
     return "";

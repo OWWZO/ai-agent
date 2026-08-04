@@ -372,6 +372,9 @@ function estimateDurations(
     finishedAtMs?: number;
   }
 ): Array<number | undefined> {
+  // 事件通常只有开始时间，没有单独的结束事件，因此按“下一步开始时间 ->
+  // 当前时间/整轮结束时间 -> 保守下限”的优先级估算。这样流式阶段会持续增长，
+  // 历史回放阶段也不会因为缺少结束时间而显示空耗时。
   const times = steps.map((step) => step.startedAtMs);
   return steps.map((step, index) => {
     const tool = step.tool;
@@ -499,6 +502,9 @@ export function segmentProcessSteps(
     groupIndexBase?: number;
   }
 ): ProcessSegment[] {
+  // 这里把后端任务事件转换成 UI 语义：思考和工具先进入缓冲区，助手过程回复、
+  // user_brief 会切开缓冲区，真实工具才形成可折叠步骤组。切分规则必须与
+  // Timeline 的展示语义一致，否则同一批事件会在实时流和历史回放中呈现不同结构。
   const segments: ProcessSegment[] = [];
   /** 缓冲：thinking + tools；有非空助手回复时 thinking 提出外层，否则 thinking 进组 */
   let buffer: ProcessStepRow[] = [];
@@ -692,6 +698,9 @@ export function deriveAgentProcessModel(
     (loading ? undefined : nowMs);
   const startedAtMs = parseMessageTimeMs(chat.startedAt);
 
+  // PlanSolve 的 task 容器承载计划步骤，必须保留容器边界；普通 ReAct 历史数据
+  // 可能被按“一个工具一个容器”保存，先合并 children 再分组，才能恢复连续执行组。
+  // 这是展示层的重建，不会改写原始 chat.tasks，也不改变 ledger 的事件顺序。
   const segments: ProcessSegment[] = [];
   let groupSerial = 0;
   const taskGroups = chat.tasks || [];

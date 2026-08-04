@@ -110,6 +110,8 @@ public class CanvasPublishTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
+            // 入口先统一参数并校验 mode，再在 inline HTML 与 workspace 文件之间择一取源；
+            // 之后所有路径都经过同一 sanitizer、文件名和 artifact 登记流程。
             Map<String, Object> params = input instanceof Map<?, ?> map
                     ? castMap(map)
                     : Map.of();
@@ -139,6 +141,8 @@ public class CanvasPublishTool implements BaseTool {
             }
 
             if (StringUtils.isNotBlank(htmlPath)) {
+                // html_path 只能指向当前 session workspace，读取失败返回可解释的工具错误，
+                // 不回退为空 HTML，避免把路径问题伪装成成功预览。
                 String loaded = loadHtmlFromPath(htmlPath);
                 if (loaded == null) {
                     return failure(title, mode, "html_path not found or unreadable: " + htmlPath);
@@ -153,6 +157,8 @@ public class CanvasPublishTool implements BaseTool {
             html = HtmlPreviewSanitizer.buildPreviewHtml(html, true);
 
             int htmlBytes = html.getBytes(StandardCharsets.UTF_8).length;
+            // inline 大小只是软预算：告警不阻止兼容调用，真正的大页面仍建议通过 html_path
+            // 传入，避免模型上下文和请求体同时承载完整 HTML。
             if (StringUtils.isBlank(htmlPath) && htmlBytes > SOFT_INLINE_HTML_BYTES && !salvaged) {
                 log.warn("{} canvas_publish large inline html bytes={} (soft budget={})",
                         agentContext.getRequestId(), htmlBytes, SOFT_INLINE_HTML_BYTES);
@@ -174,6 +180,8 @@ public class CanvasPublishTool implements BaseTool {
                                               boolean openInPanel,
                                               boolean salvaged,
                                               ToolArtifactSource artifactSource) {
+        // 文件服务上传、运行时 artifact 登记和前端预览事件属于同一次工具结果的三个投影：
+        // 上传失败直接终止；上传成功后先登记稳定引用，再按 openInPanel 决定是否通知 UI。
         ReactorConfig reactorConfig = requireReactorConfig();
         FileArtifactPort fileArtifactPort = requireFileArtifactPort();
 
@@ -239,7 +247,7 @@ public class CanvasPublishTool implements BaseTool {
             String digitalEmployee = agentContext.getToolCollection() == null
                     ? null
                     : agentContext.getToolCollection().getDigitalEmployee(getName());
-            // Align with report_tool(fileType=html) so ActionView/HTMLRenderer opens the preview.
+            // 对齐 report_tool(fileType=html)，让 ActionView/HTMLRenderer 能打开同一预览协议。
             agentContext.getPrinter().send(toolCallId, "html", htmlResponse, digitalEmployee, true);
         }
 
@@ -272,6 +280,8 @@ public class CanvasPublishTool implements BaseTool {
             return null;
         }
         String normalized = htmlPath.trim().replace('\\', '/');
+        // 先拒绝明显的父目录片段，再用 normalize + startsWith 做最终边界判断；绝对路径也
+        // 必须位于当前 session root 内，不能借工具参数读取任意本机文件。
         if (normalized.contains("..")) {
             return null;
         }

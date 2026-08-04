@@ -119,6 +119,8 @@ function parseGeometry(value: unknown, sceneScript: string): GeometryKind {
 }
 
 function inferSceneOptions(props: Props): SceneOptions {
+  // GenUI 属性来自模型输出，先统一做范围限制和默认推断，再交给 Three.js；这样异常的
+  // 高度、粒子数或颜色不会把渲染循环变成无限资源消耗。
   const sceneScript = typeof props.sceneScript === "string" ? props.sceneScript : "";
   const quality = String(props.quality || "auto").toLowerCase();
   const particleFallback = /particle|PointsMaterial/i.test(sceneScript) ? 360 : 140;
@@ -165,6 +167,8 @@ function createGeometry(kind: GeometryKind, detail: number): THREE.BufferGeometr
 }
 
 function disposeObject(obj: THREE.Object3D): void {
+  // Three.js 不会因为从 scene 移除对象就自动释放 GPU 资源，effect 重建或组件卸载时必须
+  // 显式 dispose geometry/material，避免聊天页面多次渲染后显存持续增长。
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh | THREE.LineSegments | THREE.Points;
     const maybeGeometry = mesh.geometry as THREE.BufferGeometry | undefined;
@@ -187,6 +191,8 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
     if (!host) return;
 
     const scene = new THREE.Scene();
+    // 每次 options 变化都建立完整的独立 scene；清理函数会销毁旧 renderer，避免旧动画
+    // 循环继续引用已卸载的 DOM 节点。
     scene.background = new THREE.Color(options.background);
     scene.fog = new THREE.Fog(options.background, options.cameraZ + 2, options.cameraZ + 11);
 
@@ -308,6 +314,8 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
 
     const tick = () => {
       if (disposed) return;
+      // requestAnimationFrame 只在组件仍存活且画布可见时渲染；不可见时保留循环调度，
+      // 但跳过 GPU 绘制，重新进入视口后可从同一个 Clock 继续动画。
       requestAnimationFrame(tick);
       if (!visible) return;
       const t = clock.getElapsedTime();
@@ -334,6 +342,8 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
 
     return () => {
       disposed = true;
+      // 清理顺序先阻止下一帧，再断开观察器、移除 canvas、释放场景资源和 renderer，
+      // 覆盖 React effect 重跑与组件卸载两种生命周期。
       resizeObserver.disconnect();
       intersectionObserver?.disconnect();
       if (renderer.domElement.parentNode === host) {

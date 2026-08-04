@@ -147,6 +147,7 @@ class PlanSOP(object):
     def sop_choose(self, query, sop_list=[]):
         """按 query 从候选列表或向量库择优 SOP，返回 (mode, sop_string)。"""
         SOP_QDRANT_ENABLE = _env_flag("SOP_QDRANT_ENABLE", default=False)
+        # 有显式候选时可直接 rerank；否则走 name/step 两路召回，最终合并后按 sop_id 去重。
         # 未开 Qdrant 时，直接对传入 sop_list 做 name/steps 双路 rerank
         if not SOP_QDRANT_ENABLE and sop_list:
             name_scores = get_rerank(query=query, doc_list=[sop["sop_name"] for sop in sop_list], request_id=self.request_id, url=self.bge_rerank_url)
@@ -168,6 +169,7 @@ class PlanSOP(object):
         all_sop_recall = self.sop_dedup(all_sop_recall)
 
         all_sop_recall = sorted(all_sop_recall, key=lambda x: x.score, reverse=True)
+        # 先限制候选总量，再按分数模式选择，避免 prompt 注入过多低相关 SOP。
         all_sop_recall = all_sop_recall[:self.max_recall_sop_number * 2]
 
         sop_mode, choosed_sop = self._get_filter_mode(all_sop_recall)
@@ -184,6 +186,7 @@ class PlanSOP(object):
             prompt = plan_sop_prompts["no_sop_mode_prompt"]
 
         choosed_sop_string += prompt
+        # 选择出的 SOP JSON 仅用于生成计划提示词；这里把结构化步骤展平为模型更稳定的顺序文本。
         for sop_index, sop in enumerate(choosed_sop):
             json_sop = safe_literal_eval(sop.sop_json_string)
             sop_desc = json_sop.get("sop_name", "")
@@ -269,6 +272,7 @@ class PlanSOP(object):
         sop_qdrant_enable = _env_flag("SOP_QDRANT_ENABLE", default=auto_enable)
 
         if sop_qdrant_enable:
+            # relay 和直连 Qdrant 共用同一 vector_type 过滤语义；任一远端失败都回退内置 SOP，保障规划继续。
             try:
                 if tr_qdrant_url:
                     _sops = get_qd_server_recall(
@@ -331,6 +335,7 @@ class PlanSOP(object):
             filter_mode = SOP_MODE.NO_SOP_MODE
             choosed_sop = recall_sops[:self.max_recall_sop_number]
         else:
+            # 中间分数进入 COMMON_MODE，让模型参考 SOP 而非强制照做；低分则保留有限参考但标记 NO_SOP_MODE。
             filter_mode = SOP_MODE.COMMON_MODE
             choosed_sop = recall_sops[:self.max_recall_sop_number]
 

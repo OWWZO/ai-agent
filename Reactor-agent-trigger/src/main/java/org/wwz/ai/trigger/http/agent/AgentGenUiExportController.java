@@ -15,7 +15,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
- * GenUI export endpoints (PDF / DOCX). report_tool is intentionally kept.
+ * GenUI 导出入口，负责把前端提交的组件树导出为 PDF 或 DOCX。
+ *
+ * <p>导出器消费的是通用树结构和模式参数，Controller 只负责提取请求字段、设置
+ * 下载文件名与媒体类型，并将参数错误和服务端异常转换为 HTTP 响应。该入口不取代
+ * Agent 的 {@code report_tool}，两者分别服务于显式导出请求和 Agent 工具调用。</p>
  */
 @Slf4j
 @RestController
@@ -24,6 +28,7 @@ public class AgentGenUiExportController {
 
     @PostMapping("/export/pdf")
     public ResponseEntity<?> exportPdf(@RequestBody Map<String, Object> body) {
+        // PDF 成功响应直接返回字节流；参数错误使用 400，避免调用方把校验失败误判为导出文件。
         try {
             Object tree = body == null ? null : body.get("tree");
             String mode = body == null ? "document" : String.valueOf(body.getOrDefault("mode", "document"));
@@ -44,6 +49,7 @@ public class AgentGenUiExportController {
 
     @PostMapping("/export/docx")
     public ResponseEntity<?> exportDocx(@RequestBody Map<String, Object> body) {
+        // DOCX 与 PDF 共用请求结构，但使用独立媒体类型和扩展名，便于浏览器正确下载。
         try {
             Object tree = body == null ? null : body.get("tree");
             String mode = body == null ? "document" : String.valueOf(body.getOrDefault("mode", "document"));

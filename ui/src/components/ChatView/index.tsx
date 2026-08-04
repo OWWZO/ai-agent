@@ -91,6 +91,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     exitFocusMode,
   } = useWorkspacePanels();
 
+  // 工作区的打开、任务选择和文件预览与对话流是两套生命周期。这里保留
+  // conversation 的最新快照，同时允许 ActionView 尚未挂载时暂存一次文件预览。
   useEffect(() => {
     onFocusModeChange?.(isFocusMode);
   }, [isFocusMode, onFocusModeChange]);
@@ -134,11 +136,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [conversation]);
 
   useEffect(() => {
+    // 会话 ID 变化意味着旧的流式草稿、数据加载状态和工作区展开状态都不再
+    // 属于当前会话；这里只重置本组件持有的瞬时状态，历史内容由父状态提供。
     setDataLoading(false);
     setWorkspaceOpenRequested(false);
   }, [conversation.id]);
 
   useEffect(() => {
+    // 任务列表会在流式过程中不断补全字段。保留稳定 key 后用最新任务替换
+    // 当前选中对象，既能更新状态，又不会因为对象引用变化丢失用户选择。
     setActiveTask((prevActiveTask) => {
       if (!prevActiveTask) {
         return prevActiveTask;
@@ -164,6 +170,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const commitConversation = useMemoizedFn(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
+      // 草稿控制器只提交属于创建它的 conversationId 的结果；updatedAt 在这里
+      // 统一刷新，保证普通对话和 DataAgent 对话使用同一持久化入口。
       onConversationChange(conversationId, {
         ...nextConversation,
         updatedAt: Date.now(),
@@ -175,6 +183,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     runtime: DataConversationRuntime,
     event: CHAT.DataChatEvent
   ) => {
+    // SSE 事件只增量修改当前数据项，再由 draftController 原子替换列表末项。
+    // READY/ERROR 同时收口 loading；只在会话仍匹配时清除全局 dataLoading。
     switch (event.eventType) {
       case "THINK":
         runtime.currentChat.think = event.data;
@@ -204,6 +214,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+    // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
+    // 上一轮打开的文件预览遮住用户刚选择的任务。
     setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
@@ -226,7 +238,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       status: chat?.metrics?.status,
       finishedAt: chat?.finishedAt,
     });
-    // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费
+    // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费。
+    // 两条路径同时保留是为了覆盖“首次打开工作区”和“工作区已存在”两种时序。
     setPendingPreviewFile(file);
     actionViewRef.current?.setFilePreview(file);
   });
@@ -258,6 +271,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
+    // DataAgent 不复用普通 Agent 的运行账本：先基于当前会话创建带 loading
+    // 占位的草稿控制器，再把 SSE THINK/CHART_DATA/READY/ERROR 事件逐个合并回末项。
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
     const params = {content: inputInfo.message,};
@@ -281,6 +296,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       commitConversation
     );
 
+    // 先提交 optimistic 草稿，用户可以立即看到本次查询；后续事件只更新这个
+    // controller，不直接依赖闭包里的 conversation，避免流期间父状态更新导致覆盖。
     draftController.commit(initialConversation);
     setDataLoading(true);
 
@@ -293,6 +310,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       updateDataChatFromEvent(runtime, data);
     };
     const handleError = (error: unknown) => {
+      // querySSE 的错误回调目前只记录诊断信息；具体的展示状态由服务端 ERROR
+      // 事件收口，若服务端未发送终态则保持现有流协议行为。
       console.error("DataAgent SSE stream error", error);
     };
 
@@ -316,6 +335,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       return;
     }
     if (inputInfoProp.message?.length !== 0) {
+      // 输入路由以 outputStyle 和 deepThink 决定协议：普通/深度请求交给
+      // useConversationStream，只有非深度 dataAgent 才走独立的 DataAgent SSE。
       const targetOutput =
         inputInfoProp.outputStyle || conversationRef.current.productType;
       if (targetOutput === "dataAgent" && !inputInfoProp.deepThink) {
@@ -340,6 +361,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       lastDataChat.query === inputInfoProp.message &&
       !lastDataChat.chartData &&
       !lastDataChat.error;
+    // 如果真正的草稿尚未回写父状态，先渲染一个临时末项；一旦检测到同查询的
+    // loading 项已存在，就停止追加，避免同一条用户输入显示两次。
     const shouldRenderOptimisticPlaceholder =
       targetOutput === "dataAgent" &&
       !inputInfoProp.deepThink &&

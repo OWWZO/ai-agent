@@ -3,6 +3,12 @@ import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-sou
 import { getDeviceId } from '@/services/agentConversation';
 import { resolveServiceBaseUrl } from './origin';
 
+/**
+ * Reactor Agent SSE 客户端适配器。
+ *
+ * <p>该模块只负责建立 POST SSE 连接、解析顶层 JSON 和转发 open/message/error/close
+ * 生命周期；事件业务语义由调用方和 {@code sseParsers} 负责，避免网络层绑定具体任务模型。</p>
+ */
 const customHost = resolveServiceBaseUrl(SERVICE_BASE_URL);
 /**
  * 历史会话接口已下线，主聊天统一回到当前仍然保留的 Reactor SSE 入口。

@@ -111,6 +111,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
     @Override
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
+        // execute 建立一次独立的远端流会话，并把取消句柄保存在局部引用中；
+        // 超时只取消本次 session，不影响同一工具实例在其他上下文中的调用。
         final AtomicReference<RemoteStreamSession> streamSession = new AtomicReference<>();
         try {
             Map<String, Object> params = (Map<String, Object>) input;
@@ -164,6 +166,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
             MultiModalAgentRequest multiModalAgentRequest,
             ToolArtifactSource artifactSource,
             AtomicReference<RemoteStreamSession> streamSession) {
+        // 远端响应是异步 SSE，future 负责把流生命周期收敛回同步工具契约；
+        // listener 只转发事件给局部 StreamState，避免并发调用共享缓冲区。
         CompletableFuture<ToolResultPayload> future = new CompletableFuture<>();
         try {
             ReactorConfig reactorConfig = requireReactorConfig();
@@ -201,12 +205,16 @@ public class MultiModalAgent implements ContextIsolatableTool {
 
                 @Override
                 public void onClosed() {
+                    // close 不是成功标志：由 StreamState.complete() 根据是否收到
+                    // 有效内容决定成功或失败，并补发尚未刷出的最终 Markdown。
                     localState.complete();
                     streamSession.set(null);
                 }
 
                 @Override
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
+                    // 失败直接完成 future，避免等待超时；当前协议不把半截答案注册为
+                    // 成功 artifact，完整结果必须经过正常终态收口。
                     streamSession.set(null);
                     log.error("{} multimodalagent_tool request error, code={}, body={}",
                             agentContext.getRequestId(), statusCode, responseBody, throwable);
@@ -228,6 +236,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
     }
 
     private class StreamState {
+        // 每次请求独立保存增量过程、完整答案和终态标记；finalSent 防止 close 与
+        // 显式 final 包竞争时重复推送。
         private final ToolArtifactSource artifactSource;
         private final int firstInterval;
         private final int sendInterval;
@@ -250,6 +260,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
         }
 
         private void consume(String data) {
+            // 心跳、空包和 [DONE] 不改变业务状态；解析异常只丢弃当前 chunk，
+            // 让后续合法事件仍有机会完成本次请求。
             if (!StringUtils.hasText(data) || "[DONE]".equals(data) || data.startsWith("heartbeat")) {
                 return;
             }
@@ -285,6 +297,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
         }
 
         private void complete() {
+            // 上游可能没有发送显式 final，因此 close 时以 fullContent 做最后一致性
+            // 检查，并只完成一次 future。
             if (!finalSent && fullContent.length() > 0) {
                 emitFinalMarkdown(messageId, digitalEmployee, fullContent.toString(), artifactSource);
                 finalSent = true;
@@ -309,6 +323,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
                                 int sendInterval,
                                 int chunkIndex,
                                 ToolArtifactSource artifactSource) {
+        // stage 协议和 choices 协议共存：先按 stage 分流，否则按 token 累加答案；
+        // 两者最终都通过相同的过程事件/最终 Markdown 出口。
         if (streamResponse == null) {
             return false;
         }
@@ -356,6 +372,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
                                      StringBuilder incrementalBuffer,
                                      StringBuilder fullContent,
                                      ToolArtifactSource artifactSource) {
+        // error 是失败终态，final 是答案终态，其余 stage 仅进入 knowledge 过程区；
+        // 过程标题不能混入最终答案，否则历史回放会把进度文本当成用户结果。
         String stage = streamResponse.getStage();
         String data = streamResponse.getData();
 
@@ -447,6 +465,8 @@ public class MultiModalAgent implements ContextIsolatableTool {
                                    String digitalEmployee,
                                    String markdownContent,
                                    ToolArtifactSource artifactSource) {
+        // 最终 Markdown 同时推送给前端并登记为 artifact，toolCallId 由当前上下文
+        // 绑定，保证实时卡片与持久化产物关联到同一次工具调用。
         if (!StringUtils.hasText(markdownContent)) {
             return;
         }

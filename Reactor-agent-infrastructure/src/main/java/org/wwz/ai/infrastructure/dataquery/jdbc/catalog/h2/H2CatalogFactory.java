@@ -6,6 +6,7 @@ import org.wwz.ai.infrastructure.dataquery.jdbc.catalog.JdbcCatalogFactory;
 import org.wwz.ai.infrastructure.dataquery.jdbc.dialect.DialectEnum;
 
 
+/** 通过 SPI 注册 H2 元数据目录。 */
 @AutoService(JdbcCatalogFactory.class)
 public class H2CatalogFactory implements JdbcCatalogFactory {
     @Override
@@ -18,4 +19,3 @@ public class H2CatalogFactory implements JdbcCatalogFactory {
         return new H2SqlCatalog();
     }
 }
-

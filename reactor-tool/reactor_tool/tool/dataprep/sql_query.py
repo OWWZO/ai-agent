@@ -40,6 +40,8 @@ FORBIDDEN_PATTERNS = [
 class SQLQueryTool(SyncTool):
     """Execute SQL queries on DataFrame data.
 
+    中文说明：把输入表加载到进程内 SQLite，执行只读 SQL，并把结果重新交给 dataprep artifact 协议。
+
     Features:
     - Full SQL SELECT support via pandasql/sqldf
     - Safe query validation to prevent harmful operations
@@ -132,6 +134,7 @@ class SQLQueryTool(SyncTool):
         Returns:
             Tuple of (is_valid, error_message).
         """
+        # 这是工具级只读门禁，不是完整 SQL parser；最终执行仍由 SQLite 负责语法校验。
         query_upper = query.upper().strip()
 
         if not query_upper.startswith("SELECT") and not query_upper.startswith("WITH"):
@@ -169,6 +172,7 @@ class SQLQueryTool(SyncTool):
         if "LIMIT" in query_upper:
             return query
 
+        # 仅在用户没有 LIMIT 时追加上限，防止查询结果无界增长；已有 LIMIT 原样保留。
         query = query.rstrip().rstrip(";")
         return f"{query} LIMIT {limit}"
 
@@ -246,6 +250,7 @@ class SQLQueryTool(SyncTool):
                 safe = f"t_{safe}"
             return safe
 
+        # 表名先转成安全 SQLite 标识符，再只替换 SQL 中的表引用，避免非法名称破坏执行。
         try:
             conn = sqlite3.connect(":memory:")
             name_map: dict[str, str] = {}

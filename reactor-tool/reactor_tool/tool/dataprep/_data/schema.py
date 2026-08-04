@@ -1,5 +1,7 @@
 """Tabular schema inference.
 
+中文说明：schema 是结果的轻量摘要，帮助 UI/LLM 理解列结构而不必扫描全部行。
+
 :class:`TabularSchema` captures the shape of a result so downstream
 tools, UI widgets, and the LLM can reason about it without scanning the
 raw rows. Inference is done once when a tool finishes so it costs
@@ -64,6 +66,7 @@ def infer_schema(
     the top ``sample_size`` distinct values per column are retained in
     ``sample_values`` to keep the schema payload small.
     """
+    # 优先复用 DataFrame 元信息；只有普通 records 才逐行收集类型和样例。
     try:
         import pandas as pd
     except ImportError:  # pragma: no cover - pandas is a declared dep
@@ -96,6 +99,7 @@ def _schema_from_dataframe(
         except Exception:  # noqa: BLE001
             uniques = []
             unique_count = None
+        # 高基数列不携带样例，控制 schema 体积并避免把大量唯一值重新送入上下文。
         if unique_count is not None and unique_count > unique_threshold:
             sample: list[Any] = []
         else:
@@ -118,6 +122,7 @@ def _schema_from_records(
     if row_count == 0:
         return TabularSchema()
 
+    # records 输入没有 pandas dtype，只保留有限样例并把多类型列标记为 mixed。
     seen: dict[str, dict[str, Any]] = {}
     for row in records:
         if not isinstance(row, dict):

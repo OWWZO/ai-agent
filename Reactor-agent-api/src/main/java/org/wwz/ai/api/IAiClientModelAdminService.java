@@ -8,6 +8,11 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * AI 客户端模型配置管理契约。
+ *
+ * <p>模型通过 modelId 关联外部模型，通过 apiId 关联连接配置；按模型类型和 API 配置查询用于运行时选择候选模型。</p>
+ */
 public interface IAiClientModelAdminService {
 
     /**

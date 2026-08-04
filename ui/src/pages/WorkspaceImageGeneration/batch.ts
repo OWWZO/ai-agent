@@ -45,6 +45,7 @@ export function shouldUseImageBatchMode(input: {
   imageCount: number;
   batchMode: boolean;
 }) {
+  // 只有编辑模式且存在多张源图时才拆批，单图请求保持原有单次协议。
   return input.mode === "edits" && input.batchMode && input.imageCount > 1;
 }
 
@@ -53,6 +54,7 @@ export function buildImageBatchPlans(input: {
   size: string;
   images: ImageBatchPlanInput[];
 }): ImageBatchPlan[] {
+  // 每张源图生成独立 plan，保留 mask 对齐关系并去掉输出扩展名。
   return input.images.map((image, index) => ({
     key: String(index + 1),
     fileNames: [image.source],
@@ -70,6 +72,7 @@ export async function runImageBatchRequests(input: {
   createRequestId: (index: number) => string;
   request: (payload: ImageBatchRequestPayload) => Promise<ImageGenerationToolResponse>;
 }): Promise<ImageBatchExecutionResult[]> {
+  // Promise.all 并行执行，但每个 plan 单独捕获错误，使部分成功结果仍可回显。
   return await Promise.all(
     input.plans.map(async (plan, index) => {
       try {
@@ -104,6 +107,7 @@ export async function runImageBatchRequests(input: {
 }
 
 function normalizeBatchOutputName(fileName: string, index: number) {
+  // 后端接收不带扩展名的逻辑文件名；空名使用稳定的批次序号兜底。
   const trimmed = (fileName || "").trim();
   if (!trimmed) {
     return `图片生成结果_${index + 1}`;

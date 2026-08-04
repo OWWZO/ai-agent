@@ -3,6 +3,7 @@ package org.wwz.ai.infrastructure.dataquery.jdbc.dialect;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
+/** 系统支持的数据源方言及其 URL 组成规则。 */
 @Getter
 public enum DialectEnum {
     MYSQL("MySql", "jdbc:mysql://", "/", ""),
@@ -22,6 +23,7 @@ public enum DialectEnum {
     }
 
     public static DialectEnum of(String dialectName) {
+        // 管理配置通常传入展示名称，因此采用大小写不敏感的精确匹配。
         DialectEnum[] dialectEnums = DialectEnum.class.getEnumConstants();
 
         for (DialectEnum dialectEnum : dialectEnums) {
@@ -34,4 +36,3 @@ public enum DialectEnum {
     }
 
 }
-

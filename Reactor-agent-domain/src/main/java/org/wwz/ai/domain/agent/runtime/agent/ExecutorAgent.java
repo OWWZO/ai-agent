@@ -94,7 +94,7 @@ public class ExecutorAgent extends ReActAgent {
                 if (toolCalls.isEmpty()) {
                     Map<String, Object> taskSummary = new HashMap<>();
                     taskSummary.put("taskSummary", response.getContent());
-                    taskSummary.put("fileList", context.getTaskProductFiles());
+                    taskSummary.put("fileList", context.getVisibleArtifactFiles());
                     printer.send("task_summary", taskSummary);
                 } else {
                     printer.send("tool_thought", response.getContent());

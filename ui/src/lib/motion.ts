@@ -19,6 +19,7 @@ export const DURATION = {
 /** Shared motion config for high-traffic surfaces. */
 export function useMotionConfig() {
   const reduce = !!useReducedMotion();
+  // 尊重系统减弱动态设置：缩短过渡并关闭无限循环，避免仅隐藏动画仍持续占用资源。
   return {
     reduce,
     duration: reduce ? DURATION.reduced : DURATION.message,

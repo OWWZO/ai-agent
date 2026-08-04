@@ -87,6 +87,7 @@ class KBDocSQLite(KBDocStore):
         Base.metadata.create_all(self._engine)
 
     def _get_session(self) -> Session:
+        # 每个仓储操作独立创建并在 finally 关闭会话，避免长连接把 SQLite 事务状态带到下一次请求。
         return self._session_factory()
 
     def add_doc(self, kb_doc: KBDocPydanticModel) -> bool:
@@ -187,6 +188,7 @@ class KBDocSQLite(KBDocStore):
         """按文件覆盖 canonical 正文记录，保证回显内容稳定且唯一。"""
         session = self._get_session()
         try:
+            # 优先复用同文件的最新 canonical 行，并将软删除记录恢复为可见；只有首次入库才新增记录。
             existing_doc = session.query(KBDocSQLModel).filter(
                 KBDocSQLModel.kb_id == kb_doc.kb_id,
                 KBDocSQLModel.file_id == kb_doc.file_id,
@@ -231,6 +233,7 @@ class KBDocSQLite(KBDocStore):
     def delete_by_file_ids(self, kb_id: str, file_ids: List[str]) -> int:
         session = self._get_session()
         try:
+            # 元数据删除采用软删除，保留历史行供排查；向量索引的物理清理由上层另行协调。
             docs = session.query(KBDocSQLModel).filter(
                 KBDocSQLModel.kb_id == kb_id,
                 KBDocSQLModel.file_id.in_(file_ids),

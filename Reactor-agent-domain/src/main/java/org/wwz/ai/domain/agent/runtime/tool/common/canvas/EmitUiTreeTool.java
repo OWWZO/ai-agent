@@ -16,7 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Validate and emit a GenUI tree to chat (inline) and workspace panel.
+ * 校验并发布 GenUI 树。
+ *
+ * <p>工具结果同时服务两条消费链：结构化结果写入工具输出账本，
+ * {@code ui_tree} 事件通过当前会话打印器推送给聊天区和工作台面板。
+ * 这里不保存树的后续状态，增量更新由 {@link EmitUiPatchTool} 负责。</p>
  */
 @Slf4j
 @Data
@@ -78,6 +82,7 @@ public class EmitUiTreeTool implements BaseTool {
                     return failure("tree is not valid JSON: " + e.getMessage());
                 }
             }
+            // 先解析可能以字符串传入的树，再统一走 schema 规范化，保证两种输入形态行为一致。
             Map<String, Object> normalized = GenUiSchema.validateUiTree(treeRaw);
             String canvasId = stringVal(params.get("canvas_id"));
 
@@ -98,6 +103,7 @@ public class EmitUiTreeTool implements BaseTool {
                 streamPayload.put("salvaged", true);
             }
 
+            // 事件只在有流式打印器时发送；账本结果仍由工具返回值承接，避免丢失执行事实。
             if (agentContext != null && agentContext.getPrinter() != null) {
                 String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
                 String digitalEmployee = agentContext.getToolCollection() == null

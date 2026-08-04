@@ -41,7 +41,8 @@ public class LtmProperties {
 
     @Data
     public static class BackgroundReview {
-        private boolean enabled = false;
+        /** Hermes default: periodic post-turn review (not only on compact). */
+        private boolean enabled = true;
         private int nudgeInterval = 10;
         private long timeoutSeconds = 60L;
         private int materialMaxChars = 1200;

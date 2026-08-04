@@ -27,6 +27,7 @@ class _FileDB(object):
 
     async def save(self, file_name, content, scope) -> str:
         """将文本内容写入 scope 目录，返回落盘路径。"""
+        # 文件名和 scope 分别清洗：前者控制单文件名，后者控制会话目录，不能把完整用户路径直接拼入落盘路径。
         if "." in file_name:
             file_name = os.path.basename(file_name)
         else:
@@ -46,6 +47,7 @@ class _FileDB(object):
 
     async def save_by_data(self, file: UploadFile, scope: str = None) -> str:
         """将 UploadFile 二进制写入本地，返回落盘路径。"""
+        # 上传流可能已被上游读取，先尝试回到开头；只有确认仍为空才走底层 file 对象的同步兜底读取。
         file_name = normalize_stored_file_name(file.filename)
         # 必须二进制读取；await file.read() 兼容已消费/未 seek 的 stream
         try:
@@ -89,6 +91,7 @@ _MAX_STORED_FILE_NAME_LENGTH = 120
 
 def normalize_stored_file_name(file_name: str) -> str:
     """统一文件名，避免 Windows 非法字符、保留名和超长路径导致落盘失败。"""
+    # 归一化结果同时用于落盘、file_id 计算和 URL 生成，必须在所有入口保持一致。
     normalized = os.path.basename((file_name or "").strip())
     if not normalized:
         raise ValueError("file_name is empty")
@@ -115,6 +118,7 @@ class FileInfoOp(object):
     async def add_by_content(cls, filename: str, content: str, file_id: str, description: str = None,
                              request_id: str = None) -> FileInfo:
         """文本内容落盘 + 写元数据。"""
+        # 先落盘再写元数据，确保数据库中的 file_path 指向已经存在的文件。
         filename = normalize_stored_file_name(filename)
         file_path = await FileDB.save(filename, content, scope=request_id)
         file_info = FileInfo(
@@ -157,6 +161,7 @@ class FileInfoOp(object):
         request_id: str = None,
     ) -> FileInfo:
         """登记已落盘文件：不拷贝内容，file_path 指向已有绝对路径。"""
+        # register 与 upload 的区别是只登记引用；因此必须先验证源文件存在，再把绝对路径写入元数据。
         filename = normalize_stored_file_name(filename)
         if not local_path or not os.path.isfile(local_path):
             raise FileNotFoundError(f"local file not found: {local_path}")
@@ -176,6 +181,7 @@ class FileInfoOp(object):
     @timer()
     async def add(file_info: FileInfo) -> FileInfo:
         """插入或按 file_id 覆盖更新（同 ID 视为重新上传）。"""
+        # file_id 是逻辑唯一键；重复上传更新同一元数据行，避免列表接口出现同一文件的多个活动版本。
         file_id = file_info.file_id
         f = await FileInfoOp.get_by_file_id(file_info.file_id)
         async with async_session_local() as session:

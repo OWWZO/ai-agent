@@ -79,6 +79,9 @@ public class ImageGenerationTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
+            // 工具调用分为四个阶段：校验 prompt、解析当前会话中的输入图片引用、
+            // 委托执行内核生成产物、再把同一批文件分别登记到 artifact 和 SSE 文件事件。
+            // typed output 最后返回给模型/回放链路，三种输出必须使用同一执行结果。
             Map<String, Object> params = (Map<String, Object>) input;
             String prompt = StringUtils.trimToEmpty(valueAsString(params.get("prompt")));
             if (StringUtils.isBlank(prompt)) {
@@ -127,6 +130,8 @@ public class ImageGenerationTool implements BaseTool {
     }
 
     private void appendGeneratedArtifacts(ImageGenerationExecutionResult result, ToolArtifactSource artifactSource) {
+        // artifact registry 是 ledger 可追踪文件引用的入口；这里登记的是生成结果，
+        // 不是模型原始 URL，后续历史回放和前端预览都依赖这一稳定引用。
         if (result == null || CollectionUtils.isEmpty(result.getFiles())) {
             return;
         }
@@ -144,6 +149,8 @@ public class ImageGenerationTool implements BaseTool {
     }
 
     private void emitFileMessage(ImageGenerationExecutionResult result, ToolArtifactSource artifactSource) {
+        // SSE 文件事件服务于当前轮即时展示，不能替代 artifact 持久化；因此即使
+        // 前端事件发送失败，typed tool result 仍由 execute 的返回值负责闭环。
         if (result == null || CollectionUtils.isEmpty(result.getFiles())) {
             return;
         }
@@ -347,6 +354,8 @@ public class ImageGenerationTool implements BaseTool {
      * 生图结果需要同时保留 prompt、摘要和图片文件引用，便于后续 replay 还原。
      */
     private ToolResultPayload buildSuccessPayload(ImageGenerationExecutionResult result) {
+        // 返回结构同时保留摘要、生成参数和稳定文件引用：摘要给模型继续推理，
+        // fileRefs/produced_files 给 ledger、replay 及 document_generate 等下游复用。
         String summary = normalizeSummary(result);
         ImageGenerationToolOutput structuredOutput = ImageGenerationToolOutput.builder()
                 .prompt(result.getPrompt())

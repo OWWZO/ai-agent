@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 const iconWrap = "flex h-8 w-8 shrink-0 items-center justify-center";
 
 export const getStatusIcon = (status?: CHAT.PlanStatus) => {
+  // 计划状态只影响图标和动效，未知状态保留固定尺寸占位以避免列表跳动。
   switch (status) {
     case "not_started":
       return (

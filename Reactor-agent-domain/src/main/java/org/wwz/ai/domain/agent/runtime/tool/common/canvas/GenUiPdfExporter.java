@@ -29,6 +29,8 @@ public final class GenUiPdfExporter {
     @SuppressWarnings("unchecked")
     public static byte[] export(Map<String, Object> normalizedTree, String mode) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            // PDF 导出采用文本优先策略，不执行 GenUI 的浏览器交互；先建立稳定的页面边距，
+            // 再将树节点递归写入 OpenPDF，保证离线产物至少包含完整语义内容。
             Document document = new Document(PageSize.A4, 42, 42, 48, 48);
             PdfWriter.getInstance(document, out);
             document.open();
@@ -40,6 +42,7 @@ public final class GenUiPdfExporter {
                 Map<String, Object> root = cast(rootMap);
                 String kind = str(root.get("kind"));
                 if ("deck".equalsIgnoreCase(mode) && "SlideDeck".equals(kind)) {
+                    // 每个 Slide 映射成新页；非 deck 文档直接从 root 开始渲染。
                     List<Map<String, Object>> slides = childrenOfKind(root, "Slide");
                     if (slides.isEmpty()) {
                         slides = children(root);
@@ -68,6 +71,8 @@ public final class GenUiPdfExporter {
         String kind = str(node.get("kind"));
         Map<String, Object> props = props(node);
         List<Map<String, Object>> children = children(node);
+        // 当前节点只负责输出自己的文本/表格，容器节点再递归 children；未知节点也走默认
+        // 文本和子节点分支，避免导出与前端树结构强绑定。
 
         switch (kind) {
             case "Heading" -> {
@@ -158,6 +163,8 @@ public final class GenUiPdfExporter {
     }
 
     private static PdfPTable buildTable(Map<String, Object> props, List<Map<String, Object>> rows) {
+        // 列数取 headers 或数据行的最大 cell 数，允许缺失单元格以空字符串补齐，避免
+        // 不规则 GenUI 表格破坏 PDF 表格布局。
         List<?> headers = props.get("headers") instanceof List<?> h ? h : List.of();
         int colCount = Math.max(1, headers.isEmpty()
                 ? rows.stream().mapToInt(r -> children(r).size()).max().orElse(1)

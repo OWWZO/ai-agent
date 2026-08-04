@@ -1,5 +1,6 @@
 import { trimTrailingSlash } from "@/pages/WorkspaceImageGeneration/utils";
 
+// 浏览器端只使用当前页面的 origin，避免服务端返回的旧工具地址把资源请求带回历史端口。
 function buildCurrentToolOrigin(): string {
   if (typeof window === "undefined") {
     return "";
@@ -15,6 +16,7 @@ function buildCurrentToolBaseUrl(): string {
   return `${origin}/tool`;
 }
 
+// 本地开发端口、旧域名和当前工具路径都可能出现在历史产物中，需要统一迁移到当前页面。
 function shouldRewriteToCurrentTool(url: URL): boolean {
   if (typeof window === "undefined") {
     return false;
@@ -53,6 +55,7 @@ export function normalizeToolBaseUrlForBrowser(rawUrl?: string | null): string {
   }
 
   try {
+    // 正常分支保留查询参数和 hash；只有命中旧地址规则时才替换 origin/path。
     const parsed = new URL(normalized, currentOrigin || "https://workspace.local");
     if (!shouldRewriteToCurrentTool(parsed)) {
       return parsed.toString().replace(/\/$/, "");
@@ -70,6 +73,7 @@ export function normalizeToolBaseUrlForBrowser(rawUrl?: string | null): string {
     currentToolUrl.hash = parsed.hash;
     return currentToolUrl.toString().replace(/\/$/, "");
   } catch {
+    // 部分历史值不是完整 URL，按路径前缀兜底，保证坏数据不会阻断页面渲染。
     if (!currentToolBaseUrl) {
       return normalized;
     }
@@ -93,6 +97,7 @@ export function normalizeFileUrlForBrowser(rawUrl?: string | null): string {
   }
 
   try {
+    // 文件资源沿用同一套旧地址迁移规则，但保留文件自身的查询参数和 hash。
     const parsed = new URL(normalized);
     if (!shouldRewriteToCurrentTool(parsed)) {
       return parsed.toString();
@@ -111,6 +116,7 @@ export function normalizeFileUrlForBrowser(rawUrl?: string | null): string {
     currentToolUrl.hash = parsed.hash;
     return currentToolUrl.toString();
   } catch {
+    // 相对路径无法被 URL 解析时，仅补当前 origin，不猜测其它外部主机。
     if (normalized.startsWith("/tool/")) {
       const currentOrigin = buildCurrentToolOrigin();
       return currentOrigin ? `${currentOrigin}${normalized}` : normalized;

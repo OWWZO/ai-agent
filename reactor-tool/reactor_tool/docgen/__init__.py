@@ -27,6 +27,7 @@ Agent-facing tools (``document_generate`` / ``slides_generate``) live in
 ``leagent.tools.gen`` and drive this package.
 """
 
+# 统一中间表示连接解析、主题、字体和多格式渲染；工具入口不应绕过本包直接拼接文件。
 from reactor_tool.docgen.checklist import (
     build_checklist_block,
     checklist_stats,

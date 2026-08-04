@@ -21,6 +21,7 @@ function resolveFileExtension(fileName?: string, mimeType?: string | null) {
 }
 
 export function normalizeUploadedFile(file: UploadedConversationFile): CHAT.TFile {
+  // 统一 preview/download URL 和扩展名，后续渲染无需判断不同后端返回字段的优先级。
   const previewUrl = normalizeFileUrlForBrowser(
     file.previewUrl || file.url || file.downloadUrl || ""
   );
@@ -46,6 +47,7 @@ export function useAttachmentUploads(sessionId: string) {
   const attachmentUploadsRef = useRef<Record<string, UploadAttachmentState>>({});
 
   useEffect(() => {
+    // ref 只用于 retry 等异步回调读取最新队列，渲染仍以 React state 为准。
     attachmentUploadsRef.current = attachmentUploads;
   }, [attachmentUploads]);
 
@@ -55,6 +57,7 @@ export function useAttachmentUploads(sessionId: string) {
   }, []);
 
   useEffect(() => {
+    // session 切换后旧附件不再属于当前对话，必须同时清空状态和顺序数组。
     clearAttachmentUploads();
   }, [clearAttachmentUploads, sessionId]);
 
@@ -72,6 +75,7 @@ export function useAttachmentUploads(sessionId: string) {
 
   const uploadAttachment = useCallback(
     async (attachmentId: string, file: File) => {
+      // 先标记 uploading，再把成功/失败结果合并回相同 id，允许多个文件并行上传。
       setAttachmentUploads((prev) => markUploadUploading(prev, attachmentId));
 
       try {
@@ -101,6 +105,7 @@ export function useAttachmentUploads(sessionId: string) {
       }
 
       setAttachmentUploads((prev) => {
+        // 同一 id 只入队一次，顺序数组单独维护以稳定用户看到的附件顺序。
         const next = { ...prev };
         attachments.forEach((attachment) => {
           if (next[attachment.id]) {
@@ -134,6 +139,7 @@ export function useAttachmentUploads(sessionId: string) {
 
   const retryAttachmentUpload = useCallback(
     (id: string) => {
+      // retry 从 ref 读取最新 File，避免闭包捕获旧队列或已完成的状态对象。
       const target = attachmentUploadsRef.current[id];
       if (!target) {
         return;

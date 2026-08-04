@@ -21,6 +21,7 @@ function formatDateTime(value?: string) {
 }
 
 function resolveAccent(indexSeed: string) {
+  // 用稳定字符串 hash 选择配色，保证同一精选会话在列表/详情入口视觉一致。
   const palette = [
     "from-[oklch(0.93_0.03_250)] to-[oklch(0.97_0.01_90)]",
     "from-[oklch(0.93_0.03_180)] to-[oklch(0.97_0.01_90)]",
@@ -40,6 +41,7 @@ function CardShell(props: {
   className: string;
   children: ReactNode;
 }) {
+  // 嵌入场景由调用方接管选择，独立页面则使用新窗口路由跳转。
   if (props.onSelect) {
     return (
       <button
@@ -72,6 +74,7 @@ export default function FeaturedConversationCard(
   const publishedLabel = formatDateTime(card.publishedAt);
   const accent = resolveAccent(card.featuredId || card.title);
   const href = buildFeaturedConversationDetailPath(card.featuredId);
+  // 统一在渲染前准备标签、日期和跳转地址，grid/row 两种布局共享同一数据语义。
   const handleSelect = onSelect
     ? () => onSelect(card.featuredId)
     : undefined;

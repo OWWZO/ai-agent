@@ -8,6 +8,12 @@ import org.wwz.ai.api.response.Response;
 import java.util.List;
 
 
+/**
+ * AI 客户端 API 连接配置管理契约。
+ *
+ * <p>配置包含兼容接口的基础地址、补全路径和 embedding 路径；敏感字段的存储与脱敏由实现层负责，
+ * API 方法只暴露配置管理动作。</p>
+ */
 public interface IAiClientApiAdminService {
 
     /**

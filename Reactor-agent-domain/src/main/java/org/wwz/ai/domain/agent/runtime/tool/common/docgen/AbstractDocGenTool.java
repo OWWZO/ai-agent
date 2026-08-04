@@ -53,6 +53,8 @@ public abstract class AbstractDocGenTool implements BaseTool {
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
+            // 抽象层统一完成参数翻译、requestId 注入、远端调用和结果映射，具体工具只需
+            // 提供 endpointPath/defaultParams；这样所有文档生成器共享同一超时与 artifact 协议。
             Map<String, Object> params = coerceMap(input);
             ReactorConfig config = requireReactorConfig();
             String base = StringUtils.trimToEmpty(config.getCodeInterpreterUrl());
@@ -88,6 +90,8 @@ public abstract class AbstractDocGenTool implements BaseTool {
             }
 
             ToolArtifactSource artifactSource = agentContext.requireCurrentToolArtifactSource(getName());
+            // 远端返回的 fileInfo 是外部文件事实，先注册到当前 tool invocation，再发送前端
+            // 文件事件；LLM observation 只保留短摘要，完整 URL 由 artifact 回放提供。
             List<File> files = registerFiles(json.getJSONArray("fileInfo"), artifactSource);
             emitFileMessage(files, artifactSource);
 
@@ -113,6 +117,8 @@ public abstract class AbstractDocGenTool implements BaseTool {
             if (StringUtils.isBlank(fileName)) {
                 continue;
             }
+            // 同时兼容 camelCase/snake_case 是为了吸收 reactor-tool 历史响应，不把兼容逻辑
+            // 泄漏到每一个具体生成工具。
             Integer size = null;
             if (item.get("fileSize") != null) {
                 size = item.getInteger("fileSize");
@@ -137,6 +143,8 @@ public abstract class AbstractDocGenTool implements BaseTool {
         if (files == null || files.isEmpty() || agentContext.getPrinter() == null) {
             return;
         }
+        // 文件事件只负责实时 UI 展示，不能替代 artifact 登记；无 Printer 的后台执行仍保留
+        // 文件引用，避免把展示通道可用性当成生成成功条件。
         Map<String, Object> resultMap = new HashMap<>();
         resultMap.put("command", "生成文档");
         resultMap.put("fileInfo", files);

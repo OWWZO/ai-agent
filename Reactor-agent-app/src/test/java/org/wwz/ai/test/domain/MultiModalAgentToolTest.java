@@ -54,7 +54,6 @@ public class MultiModalAgentToolTest {
                     .printer(printer)
                     .toolCollection(toolCollection)
                     .productFiles(new ArrayList<>())
-                    .taskProductFiles(new ArrayList<>())
                     .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
                     .build();
             toolCollection.setAgentContext(agentContext);
@@ -93,8 +92,8 @@ public class MultiModalAgentToolTest {
                             .stream()
                             .distinct()
                             .collect(Collectors.toList()));
-            Assert.assertEquals(1, agentContext.getTaskProductFiles().size());
-            Assert.assertTrue(agentContext.getTaskProductFiles().get(0).getFileName().endsWith(".md"));
+            Assert.assertEquals(1, agentContext.getVisibleArtifactFiles().size());
+            Assert.assertTrue(agentContext.getVisibleArtifactFiles().get(0).getFileName().endsWith(".md"));
         } finally {
             server.stop(0);
         }
@@ -113,7 +112,6 @@ public class MultiModalAgentToolTest {
                 .printer(new RecordingPrinter())
                 .toolCollection(new ToolCollection())
                 .productFiles(new ArrayList<>())
-                .taskProductFiles(new ArrayList<>())
                 .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig))
                 .build());
 

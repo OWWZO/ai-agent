@@ -24,6 +24,7 @@ public class DataQueryMetadataAdapter implements DataQueryMetadataPort {
 
     @Override
     public List<TableColumn> queryColumns(DbConfig dbConfig, String tableName, String schema) throws SQLException {
+        // 表结构读取复用同一 JDBC 配置解析，但由 catalog 负责数据库方言差异，适配器不直接访问 JDBC 元数据。
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         return jdbcDataMetaProvider.queryColumns(jdbcQueryRequest, tableName, schema);
@@ -31,6 +32,7 @@ public class DataQueryMetadataAdapter implements DataQueryMetadataPort {
 
     @Override
     public List<TableColumn> getTableColumnsOfSql(DbConfig dbConfig, String sql, int limit) throws SQLException {
+        // SQL 字段元数据走独立 provider，避免为了拿列定义把实际数据行读入 domain 查询结果。
         JdbcQueryRequest jdbcQueryRequest = new JdbcQueryRequest();
         jdbcQueryRequest.setJdbcConnectionConfig(JdbcUtils.parseJdbcConnectionConfig(dbConfig));
         jdbcQueryRequest.setSql(sql);

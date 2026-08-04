@@ -243,6 +243,7 @@ async def code_interpreter_agent(
     """代码解释器主入口：建工作区 → 下载输入 → 权限策略 → 驱动 CIAgent 流式产出。"""
     work_dir = ""
     try:
+        # 每次调用使用独立临时目录；input 与 output 分开，权限策略才能把输入只读边界和产物写入边界分开表达。
         # 临时工作区：输入文件 + output/ 产物目录
         work_dir = tempfile.mkdtemp()
         workspace_root = str(Path(work_dir).resolve())
@@ -262,6 +263,7 @@ async def code_interpreter_agent(
             ],
         )
 
+        # 先生成轻量文件摘要放进 prompt，真正的文件路径仍由权限策略和沙箱控制，不把大文件正文直接塞入上下文。
         # 1. 文件处理
         files = []
         if import_files:
@@ -306,6 +308,7 @@ async def code_interpreter_agent(
         ci_prompt_template = get_prompt("code_interpreter")
 
         # 3. CodeAgent
+        # Agent 只接收已经固定权限边界的 executor，避免 prompt 中的路径说明成为唯一安全措施。
         agent = create_ci_agent(
             prompt_templates=ci_prompt_template,
             max_tokens=max_tokens,
@@ -344,6 +347,7 @@ async def code_interpreter_agent(
             step_no = 0
             for step in agent.run(task=str(template_task), stream=True, max_steps=10):
                 if isinstance(step, CodeOuput):
+                    # 中间步骤同时返回代码、思考、执行日志和代码文件引用，前端可逐步展示而不必等待最终答案。
                     step_no += 1
                     step.step = step_no
                     yield f"\n## 执行步骤 {step_no}  \n"
@@ -366,6 +370,7 @@ async def code_interpreter_agent(
                     yield step
 
                 elif isinstance(step, FinalAnswerStep):
+                    # 最终步骤统一上传沙箱产物和 Markdown 结论，再通过 ActionOutput 交给 Java/SSE 协议层。
                     file_list = []
                     for produced_file in agent.get_produced_files():
                         file_path = produced_file.get("file_path")
@@ -402,6 +407,7 @@ async def code_interpreter_agent(
         raise e
 
     finally:
+        # 无论成功、权限拒绝还是执行异常，都要关闭 runner 并删除临时工作区，避免进程与敏感输入泄漏。
         if "agent" in locals():
             agent.close_sandbox()
         if work_dir:
