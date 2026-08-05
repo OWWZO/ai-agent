@@ -5,11 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
-
 import org.wwz.ai.domain.agent.runtime.tool.common.CodeInterpreterTool;
 import org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestionRegistry;
 import org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApprovalRegistry;
@@ -82,6 +82,7 @@ import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * 统一构建 PlanSolve / ReAct 的工具集合，避免节点层重复拼装。
@@ -135,13 +136,11 @@ public class AgentToolCollectionFactory {
         if (runtimeDependencies.getOptionalCuratedMemoryStore() != null
                 || runtimeDependencies.getOptionalLtmManager() != null) {
             MemoryTool memoryTool = new MemoryTool();
-            memoryTool.setAgentContext(agentContext);
-            toolCollection.addTool(memoryTool);
+            addTool(toolCollection, memoryTool, agentContext, MemoryTool::setAgentContext);
         }
         if (runtimeDependencies.getOptionalSessionSearchService() != null) {
             SessionSearchTool sessionSearchTool = new SessionSearchTool();
-            sessionSearchTool.setAgentContext(agentContext);
-            toolCollection.addTool(sessionSearchTool);
+            addTool(toolCollection, sessionSearchTool, agentContext, SessionSearchTool::setAgentContext);
         }
 
         // dataAgent 只暴露问数工具；普通 Agent 按配置装配 workspace、文档、数据处理、画布和外部检索工具。
@@ -149,16 +148,14 @@ public class AgentToolCollectionFactory {
             // dataAgent 只暴露问数入口，避免把普通 Agent 的文件/检索/编排工具带入
             // 数据查询协议；其它模式再按配置逐组挂载能力。
             DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-            dataAnalysisTool.setAgentContext(agentContext);
-            toolCollection.addTool(dataAnalysisTool);
+            addTool(toolCollection, dataAnalysisTool, agentContext, DataAnalysisTool::setAgentContext);
         } else {
             // workspace 启用时：agent 用 cwd 系工具感知文件；file_tool 仅作内部适配，不再暴露给 LLM
             if (workspaceService.isEnabled()) {
                 registerWorkspaceTools(toolCollection, agentContext);
             } else {
                 FileTool fileTool = new FileTool();
-                fileTool.setAgentContext(agentContext);
-                toolCollection.addTool(fileTool);
+                addTool(toolCollection, fileTool, agentContext, FileTool::setAgentContext);
             }
 
             List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
@@ -170,13 +167,11 @@ public class AgentToolCollectionFactory {
 
             if (agentToolList.contains("code")) {
                 CodeInterpreterTool codeInterpreterTool = new CodeInterpreterTool();
-                codeInterpreterTool.setAgentContext(agentContext);
-                toolCollection.addTool(codeInterpreterTool);
+                addTool(toolCollection, codeInterpreterTool, agentContext, CodeInterpreterTool::setAgentContext);
             }
             if (agentToolList.contains("report")) {
                 ReportTool reportTool = new ReportTool();
-                reportTool.setAgentContext(agentContext);
-                toolCollection.addTool(reportTool);
+                addTool(toolCollection, reportTool, agentContext, ReportTool::setAgentContext);
             }
 
             if (agentToolList.contains("docgen")
@@ -189,36 +184,28 @@ public class AgentToolCollectionFactory {
                     || agentToolList.contains("theme_designer")
                     || agentToolList.contains("chart_generator")) {
                 DocumentGenerateTool documentGenerateTool = new DocumentGenerateTool();
-                documentGenerateTool.setAgentContext(agentContext);
-                toolCollection.addTool(documentGenerateTool);
+                addTool(toolCollection, documentGenerateTool, agentContext, DocumentGenerateTool::setAgentContext);
 
                 SlidesGenerateTool slidesGenerateTool = new SlidesGenerateTool();
-                slidesGenerateTool.setAgentContext(agentContext);
-                toolCollection.addTool(slidesGenerateTool);
+                addTool(toolCollection, slidesGenerateTool, agentContext, SlidesGenerateTool::setAgentContext);
 
                 ExcelGeneratorTool excelGeneratorTool = new ExcelGeneratorTool();
-                excelGeneratorTool.setAgentContext(agentContext);
-                toolCollection.addTool(excelGeneratorTool);
+                addTool(toolCollection, excelGeneratorTool, agentContext, ExcelGeneratorTool::setAgentContext);
 
                 ChecklistGenerateTool checklistGenerateTool = new ChecklistGenerateTool();
-                checklistGenerateTool.setAgentContext(agentContext);
-                toolCollection.addTool(checklistGenerateTool);
+                addTool(toolCollection, checklistGenerateTool, agentContext, ChecklistGenerateTool::setAgentContext);
 
                 TemplateFillerTool templateFillerTool = new TemplateFillerTool();
-                templateFillerTool.setAgentContext(agentContext);
-                toolCollection.addTool(templateFillerTool);
+                addTool(toolCollection, templateFillerTool, agentContext, TemplateFillerTool::setAgentContext);
 
                 DocumentTemplateTool documentTemplateTool = new DocumentTemplateTool();
-                documentTemplateTool.setAgentContext(agentContext);
-                toolCollection.addTool(documentTemplateTool);
+                addTool(toolCollection, documentTemplateTool, agentContext, DocumentTemplateTool::setAgentContext);
 
                 ThemeDesignerTool themeDesignerTool = new ThemeDesignerTool();
-                themeDesignerTool.setAgentContext(agentContext);
-                toolCollection.addTool(themeDesignerTool);
+                addTool(toolCollection, themeDesignerTool, agentContext, ThemeDesignerTool::setAgentContext);
 
                 ChartGeneratorTool chartGeneratorTool = new ChartGeneratorTool();
-                chartGeneratorTool.setAgentContext(agentContext);
-                toolCollection.addTool(chartGeneratorTool);
+                addTool(toolCollection, chartGeneratorTool, agentContext, ChartGeneratorTool::setAgentContext);
             }
             if (agentToolList.contains("docread")
                     || agentToolList.contains("csv_processor")
@@ -247,63 +234,50 @@ public class AgentToolCollectionFactory {
                     || agentToolList.contains("html_canvas")
                     || agentToolList.contains("genui")) {
                 GetHtmlCanvasGuideTool getHtmlCanvasGuideTool = new GetHtmlCanvasGuideTool();
-                getHtmlCanvasGuideTool.setAgentContext(agentContext);
-                toolCollection.addTool(getHtmlCanvasGuideTool);
+                addTool(toolCollection, getHtmlCanvasGuideTool, agentContext, GetHtmlCanvasGuideTool::setAgentContext);
 
                 CanvasPublishTool canvasPublishTool = new CanvasPublishTool();
-                canvasPublishTool.setAgentContext(agentContext);
-                toolCollection.addTool(canvasPublishTool);
+                addTool(toolCollection, canvasPublishTool, agentContext, CanvasPublishTool::setAgentContext);
 
                 GetGenuiGuideTool getGenuiGuideTool = new GetGenuiGuideTool();
-                getGenuiGuideTool.setAgentContext(agentContext);
-                toolCollection.addTool(getGenuiGuideTool);
+                addTool(toolCollection, getGenuiGuideTool, agentContext, GetGenuiGuideTool::setAgentContext);
 
                 ListUiComponentsTool listUiComponentsTool = new ListUiComponentsTool();
-                listUiComponentsTool.setAgentContext(agentContext);
-                toolCollection.addTool(listUiComponentsTool);
+                addTool(toolCollection, listUiComponentsTool, agentContext, ListUiComponentsTool::setAgentContext);
 
                 EmitUiTreeTool emitUiTreeTool = new EmitUiTreeTool();
-                emitUiTreeTool.setAgentContext(agentContext);
-                toolCollection.addTool(emitUiTreeTool);
+                addTool(toolCollection, emitUiTreeTool, agentContext, EmitUiTreeTool::setAgentContext);
 
                 EmitUiPatchTool emitUiPatchTool = new EmitUiPatchTool();
-                emitUiPatchTool.setAgentContext(agentContext);
-                toolCollection.addTool(emitUiPatchTool);
+                addTool(toolCollection, emitUiPatchTool, agentContext, EmitUiPatchTool::setAgentContext);
             }
             if (agentToolList.contains("search")) {
                 DeepSearchTool deepSearchTool = new DeepSearchTool();
-                deepSearchTool.setAgentContext(agentContext);
-                toolCollection.addTool(deepSearchTool);
+                addTool(toolCollection, deepSearchTool, agentContext, DeepSearchTool::setAgentContext);
             }
             if (agentToolList.contains("web_fetch") || agentToolList.contains("WebFetch")) {
                 WebFetchTool webFetchTool = new WebFetchTool();
-                webFetchTool.setAgentContext(agentContext);
-                toolCollection.addTool(webFetchTool);
+                addTool(toolCollection, webFetchTool, agentContext, WebFetchTool::setAgentContext);
             }
             if (agentToolList.contains("web_search") || agentToolList.contains("WebSearch")) {
                 WebSearchTool webSearchTool = new WebSearchTool();
-                webSearchTool.setAgentContext(agentContext);
-                toolCollection.addTool(webSearchTool);
+                addTool(toolCollection, webSearchTool, agentContext, WebSearchTool::setAgentContext);
             }
             if (agentToolList.contains("code_execution")) {
                 CodeExecutionTool codeExecutionTool = new CodeExecutionTool();
-                codeExecutionTool.setAgentContext(agentContext);
-                toolCollection.addTool(codeExecutionTool);
+                addTool(toolCollection, codeExecutionTool, agentContext, CodeExecutionTool::setAgentContext);
             }
             if (agentToolList.contains("multimodalagent")) {
                 MultiModalAgent multiModalAgent = new MultiModalAgent();
-                multiModalAgent.setAgentContext(agentContext);
-                toolCollection.addTool(multiModalAgent);
+                addTool(toolCollection, multiModalAgent, agentContext, MultiModalAgent::setAgentContext);
             }
             if (agentToolList.contains("image_generation")) {
                 ImageGenerationTool imageGenerationTool = new ImageGenerationTool();
-                imageGenerationTool.setAgentContext(agentContext);
-                toolCollection.addTool(imageGenerationTool);
+                addTool(toolCollection, imageGenerationTool, agentContext, ImageGenerationTool::setAgentContext);
             }
             if (agentToolList.contains("data_analysis")) {
                 DataAnalysisTool dataAnalysisTool = new DataAnalysisTool();
-                dataAnalysisTool.setAgentContext(agentContext);
-                toolCollection.addTool(dataAnalysisTool);
+                addTool(toolCollection, dataAnalysisTool, agentContext, DataAnalysisTool::setAgentContext);
             }
             if (shouldAttachSkillTools(attachScope)) {
                 registerSkillTools(toolCollection, agentContext);
@@ -325,8 +299,7 @@ public class AgentToolCollectionFactory {
         if (!"dataAgent".equals(request.getOutputStyle()) && subAgentRunner != null && subAgentRegistry != null) {
             // 子 Agent 派发工具只挂在主 Agent 上，避免 dataAgent 或子任务再次无限扩散执行边界。
             AgentDispatchTool agentDispatchTool = new AgentDispatchTool(subAgentRunner, subAgentRegistry);
-            agentDispatchTool.setAgentContext(agentContext);
-            toolCollection.addTool(agentDispatchTool);
+            addTool(toolCollection, agentDispatchTool, agentContext, AgentDispatchTool::setAgentContext);
         }
 
         // Task / Plan Mode 工具（对标 cc-haha Task* + Enter/ExitPlanMode）
@@ -340,41 +313,32 @@ public class AgentToolCollectionFactory {
         // Plan Mode 工具共享当前上下文的 task/approval registry，工具调用结果才能
         // 在多轮执行中保持同一状态，而不是每次 build 重新创建孤立状态机。
         TaskCreateTool taskCreateTool = new TaskCreateTool();
-        taskCreateTool.setAgentContext(agentContext);
-        toolCollection.addTool(taskCreateTool);
+        addTool(toolCollection, taskCreateTool, agentContext, TaskCreateTool::setAgentContext);
 
         TaskGetTool taskGetTool = new TaskGetTool();
-        taskGetTool.setAgentContext(agentContext);
-        toolCollection.addTool(taskGetTool);
+        addTool(toolCollection, taskGetTool, agentContext, TaskGetTool::setAgentContext);
 
         TaskUpdateTool taskUpdateTool = new TaskUpdateTool();
-        taskUpdateTool.setAgentContext(agentContext);
-        toolCollection.addTool(taskUpdateTool);
+        addTool(toolCollection, taskUpdateTool, agentContext, TaskUpdateTool::setAgentContext);
 
         TaskListTool taskListTool = new TaskListTool();
-        taskListTool.setAgentContext(agentContext);
-        toolCollection.addTool(taskListTool);
+        addTool(toolCollection, taskListTool, agentContext, TaskListTool::setAgentContext);
 
         TodoWriteTool todoWriteTool = new TodoWriteTool();
-        todoWriteTool.setAgentContext(agentContext);
-        toolCollection.addTool(todoWriteTool);
+        addTool(toolCollection, todoWriteTool, agentContext, TodoWriteTool::setAgentContext);
 
         TaskStopTool taskStopTool = new TaskStopTool();
-        taskStopTool.setAgentContext(agentContext);
-        toolCollection.addTool(taskStopTool);
+        addTool(toolCollection, taskStopTool, agentContext, TaskStopTool::setAgentContext);
 
         EnterPlanModeTool enterPlanModeTool = new EnterPlanModeTool(planArtifactStore);
-        enterPlanModeTool.setAgentContext(agentContext);
-        toolCollection.addTool(enterPlanModeTool);
+        addTool(toolCollection, enterPlanModeTool, agentContext, EnterPlanModeTool::setAgentContext);
 
         ExitPlanModeTool exitPlanModeTool = new ExitPlanModeTool(pendingPlanApprovalRegistry, planArtifactStore);
-        exitPlanModeTool.setAgentContext(agentContext);
-        toolCollection.addTool(exitPlanModeTool);
+        addTool(toolCollection, exitPlanModeTool, agentContext, ExitPlanModeTool::setAgentContext);
 
         if (pendingUserQuestionRegistry != null) {
             AskUserQuestionTool askUserQuestionTool = new AskUserQuestionTool(pendingUserQuestionRegistry);
-            askUserQuestionTool.setAgentContext(agentContext);
-            toolCollection.addTool(askUserQuestionTool);
+            addTool(toolCollection, askUserQuestionTool, agentContext, AskUserQuestionTool::setAgentContext);
         }
     }
 
@@ -396,96 +360,83 @@ public class AgentToolCollectionFactory {
         // workspace 工具统一绑定已解析的 cwd 和读状态存储；read/write/edit/list 等
         // 入口虽然分开，路径安全和会话级 read 状态仍由 WorkspaceService 共享。
         WorkspaceReadTool readTool = new WorkspaceReadTool(workspaceService, workspaceRuntimeOptions);
-        readTool.setAgentContext(agentContext);
-        toolCollection.addTool(readTool);
+        addTool(toolCollection, readTool, agentContext, WorkspaceReadTool::setAgentContext);
 
         WorkspaceWriteTool writeTool = new WorkspaceWriteTool(workspaceService, workspaceRuntimeOptions);
-        writeTool.setAgentContext(agentContext);
-        toolCollection.addTool(writeTool);
+        addTool(toolCollection, writeTool, agentContext, WorkspaceWriteTool::setAgentContext);
 
         WorkspaceEditTool editTool = new WorkspaceEditTool(workspaceService, workspaceRuntimeOptions);
-        editTool.setAgentContext(agentContext);
-        toolCollection.addTool(editTool);
+        addTool(toolCollection, editTool, agentContext, WorkspaceEditTool::setAgentContext);
 
         WorkspaceListTool listTool = new WorkspaceListTool(workspaceService, workspaceRuntimeOptions);
-        listTool.setAgentContext(agentContext);
-        toolCollection.addTool(listTool);
+        addTool(toolCollection, listTool, agentContext, WorkspaceListTool::setAgentContext);
 
         WorkspaceGlobTool globTool = new WorkspaceGlobTool(workspaceService, workspaceRuntimeOptions);
-        globTool.setAgentContext(agentContext);
-        toolCollection.addTool(globTool);
+        addTool(toolCollection, globTool, agentContext, WorkspaceGlobTool::setAgentContext);
 
         WorkspaceGrepTool grepTool = new WorkspaceGrepTool(workspaceService, workspaceRuntimeOptions);
-        grepTool.setAgentContext(agentContext);
-        toolCollection.addTool(grepTool);
+        addTool(toolCollection, grepTool, agentContext, WorkspaceGrepTool::setAgentContext);
     }
 
     private void registerDocReadTools(ToolCollection toolCollection, AgentContext agentContext) {
         CsvProcessorTool csvProcessorTool = new CsvProcessorTool();
-        csvProcessorTool.setAgentContext(agentContext);
-        toolCollection.addTool(csvProcessorTool);
+        addTool(toolCollection, csvProcessorTool, agentContext, CsvProcessorTool::setAgentContext);
 
         ExcelReaderTool excelReaderTool = new ExcelReaderTool();
-        excelReaderTool.setAgentContext(agentContext);
-        toolCollection.addTool(excelReaderTool);
+        addTool(toolCollection, excelReaderTool, agentContext, ExcelReaderTool::setAgentContext);
 
         HtmlProcessorTool htmlProcessorTool = new HtmlProcessorTool();
-        htmlProcessorTool.setAgentContext(agentContext);
-        toolCollection.addTool(htmlProcessorTool);
+        addTool(toolCollection, htmlProcessorTool, agentContext, HtmlProcessorTool::setAgentContext);
 
         MarkdownProcessorTool markdownProcessorTool = new MarkdownProcessorTool();
-        markdownProcessorTool.setAgentContext(agentContext);
-        toolCollection.addTool(markdownProcessorTool);
+        addTool(toolCollection, markdownProcessorTool, agentContext, MarkdownProcessorTool::setAgentContext);
 
         TextProcessorTool textProcessorTool = new TextProcessorTool();
-        textProcessorTool.setAgentContext(agentContext);
-        toolCollection.addTool(textProcessorTool);
+        addTool(toolCollection, textProcessorTool, agentContext, TextProcessorTool::setAgentContext);
 
         WordReaderTool wordReaderTool = new WordReaderTool();
-        wordReaderTool.setAgentContext(agentContext);
-        toolCollection.addTool(wordReaderTool);
+        addTool(toolCollection, wordReaderTool, agentContext, WordReaderTool::setAgentContext);
 
         PdfReaderTool pdfReaderTool = new PdfReaderTool();
-        pdfReaderTool.setAgentContext(agentContext);
-        toolCollection.addTool(pdfReaderTool);
+        addTool(toolCollection, pdfReaderTool, agentContext, PdfReaderTool::setAgentContext);
 
         PdfStructureTool pdfStructureTool = new PdfStructureTool();
-        pdfStructureTool.setAgentContext(agentContext);
-        toolCollection.addTool(pdfStructureTool);
+        addTool(toolCollection, pdfStructureTool, agentContext, PdfStructureTool::setAgentContext);
 
         CitationExtractorTool citationExtractorTool = new CitationExtractorTool();
-        citationExtractorTool.setAgentContext(agentContext);
-        toolCollection.addTool(citationExtractorTool);
+        addTool(toolCollection, citationExtractorTool, agentContext, CitationExtractorTool::setAgentContext);
 
         ImageOcrTool imageOcrTool = new ImageOcrTool();
-        imageOcrTool.setAgentContext(agentContext);
-        toolCollection.addTool(imageOcrTool);
+        addTool(toolCollection, imageOcrTool, agentContext, ImageOcrTool::setAgentContext);
     }
 
     private void registerDataPrepTools(ToolCollection toolCollection, AgentContext agentContext) {
         DataAggregateTool dataAggregateTool = new DataAggregateTool();
-        dataAggregateTool.setAgentContext(agentContext);
-        toolCollection.addTool(dataAggregateTool);
+        addTool(toolCollection, dataAggregateTool, agentContext, DataAggregateTool::setAgentContext);
 
         DataCleanTool dataCleanTool = new DataCleanTool();
-        dataCleanTool.setAgentContext(agentContext);
-        toolCollection.addTool(dataCleanTool);
+        addTool(toolCollection, dataCleanTool, agentContext, DataCleanTool::setAgentContext);
 
         DataMergeTool dataMergeTool = new DataMergeTool();
-        dataMergeTool.setAgentContext(agentContext);
-        toolCollection.addTool(dataMergeTool);
+        addTool(toolCollection, dataMergeTool, agentContext, DataMergeTool::setAgentContext);
 
         DataTransformTool dataTransformTool = new DataTransformTool();
-        dataTransformTool.setAgentContext(agentContext);
-        toolCollection.addTool(dataTransformTool);
+        addTool(toolCollection, dataTransformTool, agentContext, DataTransformTool::setAgentContext);
 
         DataValidateTool dataValidateTool = new DataValidateTool();
-        dataValidateTool.setAgentContext(agentContext);
-        toolCollection.addTool(dataValidateTool);
+        addTool(toolCollection, dataValidateTool, agentContext, DataValidateTool::setAgentContext);
 
         SqlQueryTool sqlQueryTool = new SqlQueryTool();
-        sqlQueryTool.setAgentContext(agentContext);
-        toolCollection.addTool(sqlQueryTool);
+        addTool(toolCollection, sqlQueryTool, agentContext, SqlQueryTool::setAgentContext);
+    }
+
+    /** 统一完成工具上下文绑定和注册，避免遗漏其中任一步骤。 */
+    private <T extends BaseTool> void addTool(ToolCollection toolCollection,
+                                              T tool,
+                                              AgentContext agentContext,
+                                              BiConsumer<T, AgentContext> contextBinder) {
+        contextBinder.accept(tool, agentContext);
+        toolCollection.addTool(tool);
     }
 
     private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
@@ -509,8 +460,7 @@ public class AgentToolCollectionFactory {
         // path 浏览统一走 workspace_*；skill 目录已并入 workspace 可读根
         // 脚本执行对齐 cc-haha：由 Bash / PowerShell 在 skill basePath 下运行，不再挂 script_runner_tool
         SkillTool skillTool = new SkillTool(skillRegistry);
-        skillTool.setAgentContext(agentContext);
-        toolCollection.addTool(skillTool);
+        addTool(toolCollection, skillTool, agentContext, SkillTool::setAgentContext);
     }
 
     private enum SkillAttachScope {

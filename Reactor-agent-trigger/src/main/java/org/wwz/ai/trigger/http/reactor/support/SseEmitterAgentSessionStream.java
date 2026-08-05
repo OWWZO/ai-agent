@@ -33,7 +33,7 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
             return;
         }
         try {
-            // emitter.send 可能在客户端断开时抛出容器特定异常，统一转换为 aborted 状态并通知上游取消。
+            // emitter.send 可能在客户端断开时抛出容器特定异常，统一转换为 aborted 状态并通知观察者。
             emitter.send(payload);
         } catch (Exception ex) {
             if (SseClientDisconnectDetector.isClientDisconnected(ex)) {
@@ -110,10 +110,10 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
     }
 
     /**
-     * 对客户端断开做一次性广播，避免重复取消上游远端流。
+     * 对客户端断开做一次性广播，避免重复通知观察者。
      */
     private void markAborted() {
-        // 多个 SSE 回调可能并发到达，abortNotified 保证上游取消和处理器只执行一次。
+        // 多个 SSE 回调可能并发到达，abortNotified 保证每个观察者只被通知一次。
         aborted.set(true);
         closed.set(true);
         if (!abortNotified.compareAndSet(false, true)) {

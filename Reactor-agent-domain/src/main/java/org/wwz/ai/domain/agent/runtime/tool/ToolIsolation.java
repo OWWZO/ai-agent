@@ -152,9 +152,6 @@ public final class ToolIsolation {
      * 复制可共享依赖（服务、注册表、options）；跳过 AgentContext 与执行态字段。
      */
     private static void copyInjectableFields(Object source, Object target) throws IllegalAccessException {
-        if (source == null || target == null || source.getClass() != target.getClass()) {
-            // 允许子类：按 target 类型字段从 source 取值
-        }
         for (Field field : allFields(target.getClass())) {
             if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
                 continue;
@@ -221,9 +218,6 @@ public final class ToolIsolation {
             String name = field.getName();
             if (isExecutionStateField(name, field.getType())) {
                 continue;
-            }
-            if (!type.isAssignableFrom(field.getType()) && !field.getType().isAssignableFrom(type)) {
-                // 仍尝试取值后做类型匹配
             }
             try {
                 field.setAccessible(true);

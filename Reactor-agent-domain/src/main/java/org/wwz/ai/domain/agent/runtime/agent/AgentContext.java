@@ -26,25 +26,17 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 智能体（Agent）上下文类
- * 核心作用：作为智能体全生命周期（思考→行动→工具调用→结果输出）的核心数据载体，
- * 贯穿智能体执行的所有环节，统一存储和传递用户请求、会话信息、工具配置、文件数据、提示词等关键数据，
- * 是智能体各模块（如PlanningAgent、ReActAgent、ToolCollection）间数据交互的唯一入口。
- *
- * 设计特点：
- * 1. 使用@Builder注解支持链式构建（适配复杂场景下的上下文初始化）；
- * 2. 包含全量的Getter/Setter（@Data），方便各模块读写上下文数据；
- * 3. 字段覆盖「请求-会话-任务-工具-文件-提示词-输出」全链路，满足企业级Agent的核心数据需求。
- *
- * @author （可补充作者信息）
- * @date （可补充日期）
+ * Agent 运行时上下文：请求身份、工具会话、记忆、账本与取消控制。
+ * 字段仍扁平暴露（builder/getter 兼容）；逻辑分组见底部 view 方法。
  */
-@Data // Lombok注解：自动生成getter/setter/toString/equals/hashCode等方法
-@Builder // Lombok注解：支持链式构建对象（如AgentContext.builder().requestId("xxx").query("xxx").build()）
-@Slf4j // Lombok注解：自动生成日志对象（log）
-@NoArgsConstructor // Lombok注解：生成无参构造方法
-@AllArgsConstructor // Lombok注解：生成全参构造方法
+@Data
+@Builder
+@Slf4j
+@NoArgsConstructor
+@AllArgsConstructor
 public class AgentContext {
+
+    // ---- identity / request ----
     /**
      * 请求唯一标识（全链路追踪ID）
      * 用途：
@@ -79,6 +71,8 @@ public class AgentContext {
      */
     String task;
 
+
+    // ---- I/O & tools ----
     /**
      * 输出器（结果推送工具）
      * 用途：
@@ -112,7 +106,7 @@ public class AgentContext {
     /**
      * 日期时间信息（格式化字符串）
      * 用途：
-     * 1. 提示词替换：填充提示词中的{{date}}占位符，让LLM感知当前时间；
+     * 1. 会话上下文：由 BaseAgent 作为 session_env 用户消息预置，让 LLM 感知当前时间；
      * 2. 数据溯源：标记文件/任务的时间维度信息；
      * 格式示例："2026-02-19 15:30:00"
      */
@@ -122,7 +116,7 @@ public class AgentContext {
      * 产品相关文件列表（全局）
      * 用途：
      * 1. 上下文补充：为智能体提供产品基础信息（如商品详情、规格文档、售后政策）；
-     * 2. 提示词填充：格式化后填充到提示词的{{files}}占位符，供LLM参考；
+     * 2. 用户消息补充：由 BaseAgent 格式化后追加到本轮用户消息，供 LLM 参考；
      * 范围：覆盖当前会话的所有产品文件，粒度为「会话级」
      */
     List<File> productFiles;
@@ -174,8 +168,10 @@ public class AgentContext {
      */
     String basePrompt;
 
+
+    // ---- memory ----
     /**
-     * 会话历史摘要，用于注入 {{history_dialogue}}
+     * 会话历史摘要兼容字段；默认历史通过 workingMemoryMessages 进入 Memory。
      */
     String historyDialogue;
 
@@ -216,6 +212,8 @@ public class AgentContext {
      */
     Integer agentType;
 
+
+    // ---- artifacts / ledger ----
     /**
      * 当前请求运行期的工具产物登记簿。
      * 这是工具文件来源的唯一事实来源。
@@ -266,6 +264,8 @@ public class AgentContext {
     @JSONField(serialize = false)
     AgentRunState agentRunState = AgentRunState.builder().build();
 
+
+    // ---- run control ----
     /**
      * 会话 Todo 任务列表（TaskCreate/TaskGet）。
      * 主/子 Agent 共享同一引用；懒创建。
@@ -523,6 +523,55 @@ public class AgentContext {
 
     private List<File> copyFiles(List<File> sourceFiles) {
         return sourceFiles == null ? new ArrayList<>() : new ArrayList<>(sourceFiles);
+    }
+
+
+    // ---- logical views (API-compatible field layout unchanged) ----
+
+    public record RequestIdentity(String requestId, String sessionId, String query, String task) {
+    }
+
+    public record MemorySession(
+            String historyDialogue,
+            List<Message> workingMemoryMessages,
+            LtmOwner ltmOwner,
+            String ltmMemoryContext,
+            Boolean skipMemory,
+            Boolean ltmSideEffectsDisabled
+    ) {
+    }
+
+    public record ToolSession(
+            ToolCollection toolCollection,
+            ToolArtifactRegistry toolArtifactRegistry,
+            String workspaceRoot
+    ) {
+    }
+
+    public record RunControl(
+            Boolean isStream,
+            String streamMessageType,
+            RunCancellation runCancellation,
+            PlanModeState planModeState,
+            Integer agentType
+    ) {
+    }
+
+    public RequestIdentity requestIdentity() {
+        return new RequestIdentity(requestId, sessionId, query, task);
+    }
+
+    public MemorySession memorySession() {
+        return new MemorySession(
+                historyDialogue, workingMemoryMessages, ltmOwner, ltmMemoryContext, skipMemory, ltmSideEffectsDisabled);
+    }
+
+    public ToolSession toolSession() {
+        return new ToolSession(toolCollection, toolArtifactRegistry, workspaceRoot);
+    }
+
+    public RunControl runControl() {
+        return new RunControl(isStream, streamMessageType, runCancellation, planModeState, agentType);
     }
 
     @Override

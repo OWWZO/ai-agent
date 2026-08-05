@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.runtime.prompt;
 
 /**
  * 规划代理的提示词常量。
- * system 仅保留静态约束；date/files/query/history/sop 均不进入 system。
+ * system 仅保留静态规划约束；query/date/files/history 由消息链路承载，SOP 由 BaseAgent 统一处理。
  */
 public class PlanningPrompt {
     public static final String SYSTEM_PROMPT = """
@@ -13,9 +13,4 @@ public class PlanningPrompt {
 
             Let's think step by step (让我们一步步思考)
             """;
-
-    /**
-     * 已废弃：nextStep 不再注入 messages。
-     */
-    public static final String NEXT_STEP_PROMPT = "";
 }

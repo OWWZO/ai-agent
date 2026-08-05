@@ -147,7 +147,7 @@ public class StableSystemPromptTest {
         }
 
         String exposeStable(String template) {
-            return buildStableSystemPrompt(template, "ignored-tools-text", null, null);
+            return buildStableSystemPrompt(template);
         }
     }
 }

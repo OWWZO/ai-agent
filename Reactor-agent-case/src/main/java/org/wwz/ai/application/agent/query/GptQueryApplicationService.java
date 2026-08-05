@@ -94,7 +94,7 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
             // 浏览器主动断开属于下游终止，不再把它包装成服务端失败；其它异常才发 error，
             // 这样前端能区分用户取消与 Agent 执行错误。
             if (projectingStream.isAborted() || stream.isAborted()) {
-                log.info("{} dispatch stopped after downstream abort", agentRequest.getRequestId());
+                log.info("{} dispatch error occurred after downstream abort", agentRequest.getRequestId());
                 projectingStream.complete();
                 return;
             }

@@ -3,12 +3,11 @@ package org.wwz.ai.domain.agent.runtime.cancel;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 单轮 Agent run 的协作式取消标志（用户点停止 / SSE 断开）。
+ * 单轮 Agent run 的协作式取消标志（用户主动点击停止）。
  */
 public class RunCancellation {
 
     public static final String REASON_USER_STOP = "user_stop";
-    public static final String REASON_CLIENT_DISCONNECT = "client_disconnect";
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private volatile String reason;

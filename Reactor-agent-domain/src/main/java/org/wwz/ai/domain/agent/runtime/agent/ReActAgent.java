@@ -1,6 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
-
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
@@ -118,7 +117,7 @@ public abstract class ReActAgent extends BaseAgent {
                     ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE); // 标记为内部 ask，避免污染前端回放
 
             // 5. 同步获取异步结果（阻塞等待LLM响应，可根据业务调整为非阻塞）
-            String llmResponse = summaryFuture.get();
+            String llmResponse = awaitFuture(summaryFuture);
             log.info("requestId: {} task:{} generateDigitalEmployee LLM响应: {}", context.getRequestId(), task, llmResponse);
 
             // 6. 解析LLM响应为JSON对象（处理两种常见格式）

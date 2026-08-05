@@ -1,11 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
-
-
-/**
- * 规划代理 - 创建和管理任务计划的代理
- */
-
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -19,35 +13,23 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
-import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanningPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.common.PlanningTool;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ExecutionException;
-import java.time.LocalDateTime;
 
 /**
- * 计划型智能体（PlanningAgent）
- * 继承自 ReActAgent（ReAct 范式智能体，核心是"思考-行动"循环），专注于创建和管理执行计划来解决复杂任务
- * 核心能力：
- * 1. 基于用户查询、工具列表、文件信息生成执行计划
- * 2. 支持计划的动态更新/关闭更新（按需执行固定计划）
- * 3. 调用规划工具（PlanningTool）管理计划的步骤执行、状态跟踪
- * 4. 集成LLM大模型完成思考过程，调用工具完成行动过程
- *
- * @author （可补充作者信息）
- * @date （可补充日期）
+ * 计划型智能体，负责生成计划、推进步骤并记录规划账本事实。
  */
 @Slf4j
 @Data
@@ -102,39 +84,18 @@ public class PlanningAgent extends ReActAgent {
      * @param context 智能体上下文：包含用户查询、工具集合、日期信息、SOP提示词、请求ID等核心数据
      */
     public PlanningAgent(AgentContext context) {
-        // 1. 设置智能体基础属性
-        setName("planning"); // 智能体名称：用于日志/标识
-        setDescription("An agent that creates and manages plans to solve tasks"); // 智能体描述
-
-        // 2. 获取显式注入的运行时配置（ReactorConfig是业务自定义的配置类，包含大模型、提示词等配置）
-        ReactorRuntimeDependencies runtimeDependencies = requireRuntimeDependencies(context);
-        ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
-        setContext(context); // 提前绑定上下文，供基类公共提示词初始化逻辑复用
-
-        // 3. 构建工具提示词：拼接所有可用工具的名称+描述，用于填充提示词模板
-        String toolPrompt = buildToolPrompt(context.getToolCollection());
-        initializePromptsWithHistoryOnlyInSystem(
-                reactorConfig.getPlannerSystemPromptMap(),
-                reactorConfig.getPlannerNextStepPromptMap(),
+        ReactorConfig reactorConfig = AgentBootstrap.configure(this, context, new AgentBootstrap.Profile(
+                "planning",
+                "An agent that creates and manages plans to solve tasks",
+                ReactorConfig::getPlannerSystemPromptMap,
                 PlanningPrompt.SYSTEM_PROMPT,
-                PlanningPrompt.NEXT_STEP_PROMPT,
-                toolPrompt,
-                null,
-                null);
-
-        // 4. 保存提示词快照：避免后续动态替换{{files}}后丢失原始模板
-        // system 由 initializePrompts* 组装为稳定前缀；nextStep 已禁用
-
-        // 5. 设置智能体运行依赖
-        setPrinter(context.printer); // 设置输出器：用于向用户/前端推送执行过程（如plan、task、plan_thought）
-        setMaxSteps(reactorConfig.getPlannerMaxSteps()); // 设置最大执行步骤：防止无限循环
-        setLlm(new LLM(reactorConfig.getPlannerModelName(), "", runtimeDependencies)); // 初始化大模型实例（指定模型名称）
-
-        // 6. 关联上下文&配置计划更新开关
-        setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate())); // 从配置读取是否关闭计划更新（1=关闭）
+                ReactorConfig::getPlannerModelName,
+                ReactorConfig::getPlannerMaxSteps,
+                false,
+                false
+        ));
+        setIsColseUpdate("1".equals(reactorConfig.getPlanningCloseUpdate()));
         planningTool.setCloseUpdateMode(getIsColseUpdate());
-
-        // 7. 初始化可用工具：将规划工具加入智能体的工具集，并绑定上下文
         availableTools.addTool(planningTool);
         planningTool.setAgentContext(context);
     }
@@ -142,49 +103,36 @@ public class PlanningAgent extends ReActAgent {
     /**
      * 重写思考（think）方法：智能体的核心思考逻辑
      * 核心流程：
-     * 1. 加载文件信息并更新提示词
-     * 2. 处理"关闭计划更新"的特殊场景
-     * 3. 构造大模型请求，获取工具调用指令
-     * 4. 处理大模型响应，记录日志&更新记忆
+     * 1. 处理"关闭计划更新"的特殊场景
+     * 2. 构造大模型请求，获取工具调用指令
+     * 3. 处理大模型响应，记录日志并更新记忆
      *
      * @return 思考是否成功（固定返回true，异常仅日志记录不阻断流程）
      */
     @Override
     public boolean think() {
-        // think 只负责产生“下一步要执行什么”的决策事实，不直接执行工具。
-        // 计划更新关闭时跳过 LLM，改由本地计划状态推进，仍遵循 think -> act 生命周期。
-        // system 固定；productFiles/nextStep 不注入（prompt cache）
-
-        // 2. 特殊场景：关闭计划动态更新时，直接执行计划下一步（不调用大模型思考）
+        // 关闭计划更新时不再调用 LLM，而是沿用兼容路径推进本地计划。
         if (isColseUpdate) {
-            if (Objects.nonNull(planningTool.getPlan())) { // 计划已初始化
-                recordCompatPlanningAdvance(); // 执行计划的下一步，并补齐可回放账本事实
+            if (Objects.nonNull(planningTool.getPlan())) {
+                recordCompatPlanningAdvance();
                 return true;
             }
         }
 
         try {
-            // 3. 构造大模型请求的用户消息：确保最后一条消息是用户角色（大模型交互规范）
-            // 不再注入 nextStep user；仅记忆为空时用 query 垫底
-            Message lastMessage = getMemory().getLastMessage();
-            if (lastMessage == null) {
-                String seed = context.getQuery() == null ? "" : context.getQuery();
-                getMemory().addMessage(Message.userMessage(seed, null));
-            }
-// 4. 设置流式消息类型：用于前端区分消息类型（plan_thought=计划思考过程）
+            ensureQueryMessage();
             context.setStreamMessageType("plan_thought");
 
-            // 5/6. askTool + 同步等待；超时等瞬态错误走指数退避重试
             LLM.ToolCallResponse response = LlmRequestRetry.call(
                     "plan-think:" + context.getRequestId(),
-                    () -> awaitAskTool(getLlm().askTool(context,
+                    () -> awaitFuture(getLlm().askTool(context,
                             getMemory().getMessages(),
                             Message.systemMessage(getSystemPrompt(), null),
                             availableTools,
                             ToolChoice.AUTO, null, context.getIsStream(), false, 3000
                     ))
             );
-            setToolCalls(response.getToolCalls()); // 保存大模型返回的工具调用列表
+            setToolCalls(response.getToolCalls());
             bindCurrentPlannerRoundId(response.getToolCalls());
 
             // 原生 CoT：有则推（与 tool_call 无关）
@@ -205,29 +153,21 @@ public class PlanningAgent extends ReActAgent {
                 );
             }
 
-            // 7. 非流式场景：推送思考过程到前端/输出器
             if (!context.getIsStream() && response.getContent() != null && !response.getContent().isEmpty()) {
                 printer.sendWithResultMap("plan_thought", response.getContent(), buildPlannerRoundResultMap());
             }
 
-            // 8. 日志记录：思考内容、选择的工具数量（用于监控/排查）
             log.info("{} {}'s thoughts: {}", context.getRequestId(), getName(), response.getContent());
             log.info("{} {} selected {} tools to use", context.getRequestId(), getName(),
                     response.getToolCalls() != null ? response.getToolCalls().size() : 0);
 
-            // 9. 构建助手消息并添加到记忆（带 reasoning 以便下轮 passback）
-            Message assistantMsg = response.getToolCalls() != null && !response.getToolCalls().isEmpty() && !"struct_parse".equals(llm.getFunctionCallType()) ?
-                    Message.fromToolCalls(response.getContent(), response.getReasoningContent(), response.getToolCalls()) :
-                    Message.assistantMessage(response.getContent(), response.getReasoningContent(), null);
-
-            getMemory().addMessage(assistantMsg);
+            appendAssistantMessage(response);
 
         } catch (Exception e) {
-            // 异常处理：仅记录日志，不返回false（避免智能体直接终止）
             log.error("{} think error ", context.getRequestId(), e);
         }
 
-        return true; // 思考阶段无论是否异常，均返回true（保证流程继续）
+        return true;
     }
 
     /**
@@ -242,40 +182,27 @@ public class PlanningAgent extends ReActAgent {
      */
     @Override
     public String act() {
-        // act 消费 think 阶段保存的 toolCalls：执行工具并收集结果；有计划时再
-        // 推进计划状态，返回值由父类循环作为下一轮输入或结束标志。
-        // 1. 特殊场景：关闭计划动态更新时，直接返回下一步任务
+        // 关闭计划更新时直接返回本地计划的下一步。
         if (isColseUpdate) {
             if (Objects.nonNull(planningTool.getPlan())) {
                 return getNextTask();
             }
         }
-//
-//        if (toolCalls.isEmpty()) {
-//            setState(AgentState.FINISHED);
-//            return getMemory().getLastMessage().toString();
-//        }
-
-        // 2. 初始化工具执行结果列表
         List<String> results = new ArrayList<>();
-        long startTime = System.currentTimeMillis(); // 记录行动开始时间（性能监控）
 
-        // 3. 遍历大模型指定的工具调用列表，逐个执行
         for (ToolCall toolCall : toolCalls) {
             ToolExecutionOutcome outcome = executeToolOutcome(toolCall);
             String result = writeToolObservationToMemory(toolCall, outcome);
-            results.add(result); // 收集工具执行结果
+            results.add(result);
             if (outcome != null && !outcome.isSuccess()) {
                 return result;
             }
         }
 
-        // 6. 计划已初始化的场景：处理计划下一步并返回任务
         if (Objects.nonNull(planningTool.getPlan())) {
-            return getNextTask(); // 返回下一步任务
+            return getNextTask();
         }
 
-        // 7. 无计划时，返回所有工具执行结果的拼接字符串
         return String.join("\n\n", results);
     }
 
@@ -400,13 +327,6 @@ public class PlanningAgent extends ReActAgent {
         return StringUtil.getUUID();
     }
 
-    private ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext context) {
-        if (context == null || context.getRuntimeDependencies() == null) {
-            throw new IllegalStateException("PlanningAgent 缺少 ReactorRuntimeDependencies");
-        }
-        return context.getRuntimeDependencies();
-    }
-
     /**
      * close_update=1 不再重新走 Planner 思考，但历史账本仍需要看到真实的计划推进事实。
      * 这里补一条内部 planning 调用记录，复用既有 tool invocation + structured output 账本体系，
@@ -498,19 +418,4 @@ public class PlanningAgent extends ReActAgent {
         return com.alibaba.fastjson.JSON.toJSONString(payload);
     }
 
-    private static LLM.ToolCallResponse awaitAskTool(
-            java.util.concurrent.CompletableFuture<LLM.ToolCallResponse> future) {
-        try {
-            return future.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new RuntimeException(cause);
-        }
-    }
 }

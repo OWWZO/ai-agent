@@ -117,7 +117,7 @@ public class MultiAgentServiceImplTest {
         stream.abort();
 
         Assert.assertTrue("下游断开后投影流应可见 aborted", projecting.isAborted());
-        Assert.assertTrue("下游断开后应触发 abort 回调（供 ActiveAgentRunRegistry 取消）", abortedObserved.get());
+        Assert.assertTrue("下游断开后应触发 abort 回调（供 ActiveAgentRunRegistry 解绑观察流）", abortedObserved.get());
     }
 
     private ReactorConfig buildReactorConfig() {

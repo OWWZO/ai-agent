@@ -2,7 +2,6 @@ package org.wwz.ai.domain.agent.runtime.llm;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
@@ -16,7 +15,6 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.util.CollectionUtils;
-import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
@@ -38,31 +36,27 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * LLM 领域门面。
  * <p>
- * 统一处理消息转换、模型调用、工具调用、流式增量、重试和 LLM invocation 账本。
- * 正式主路径优先使用 Spring AI；旧的 HTTP/function-call 与 struct_parse 逻辑只作为兼容回退。
+ * 统一处理消息转换、模型调用、工具调用、流式增量和 LLM invocation 账本。
+ * 主路径全部走 Spring AI；struct_parse 仅作为无原生 tools[] 时的兼容协议。
  */
 @Slf4j
 @Data
 public class LLM {
 
-    private static final Map<String, LLM> instances = new ConcurrentHashMap<>();
     private static final String STRUCT_PARSE = "struct_parse";
     private static final String FUNCTION = "function";
     private static final String STRUCT_PARSE_JSON_MARKER = "```json";
@@ -84,19 +78,10 @@ public class LLM {
     private final String interfaceUrl;
     /** 工具调用模式。 */
     private final String functionCallType;
-    /** token 计数器，保留给截断逻辑使用。 */
-    private final TokenCounter tokenCounter;
     /** JSON 工具。 */
     private final ObjectMapper objectMapper;
-    /** 扩展参数。 */
-    private final Map<String, Object> extParams;
     /** 原始模型配置，供 Spring AI 解析器复用。 */
     private final LLMSettings llmSettings;
-
-    /** 累计输入 token。 */
-    private int totalInputTokens;
-    /** 最大输入 token。 */
-    private Integer maxInputTokens;
 
     /** 显式注入的运行时依赖。 */
     private final transient ReactorRuntimeDependencies runtimeDependencies;
@@ -134,178 +119,7 @@ public class LLM {
                 ? config.getInterfaceUrl()
                 : "/v1/chat/completions";
         this.functionCallType = config.getFunctionCallType();
-        this.totalInputTokens = 0;
-        this.maxInputTokens = config.getMaxInputTokens();
-        this.extParams = config.getExtParams();
-        this.tokenCounter = new TokenCounter();
         this.objectMapper = new ObjectMapper();
-    }
-
-    /**
-     * 兼容旧逻辑的消息格式转换，仅保留给 HTTP 回退链路与 token 截断使用。
-     */
-    public List<Map<String, Object>> formatMessages(List<Message> messages, boolean isClaude) {
-        List<Map<String, Object>> formattedMessages = new ArrayList<>();
-        if (messages == null || messages.isEmpty()) {
-            return formattedMessages;
-        }
-
-        for (Message message : messages) {
-            if (message == null || message.getRole() == null) {
-                continue;
-            }
-            Map<String, Object> messageMap = new HashMap<>();
-            if (StringUtils.isNotBlank(message.getBase64Image())) {
-                List<Map<String, Object>> multimodalContent = new ArrayList<>();
-                Map<String, String> imageUrlMap = new HashMap<>();
-                String image = message.getBase64Image();
-                imageUrlMap.put("url", image.startsWith("data:") ? image : "data:image/jpeg;base64," + image);
-                Map<String, Object> imageMap = new HashMap<>();
-                imageMap.put("type", "image_url");
-                imageMap.put("image_url", imageUrlMap);
-                multimodalContent.add(imageMap);
-
-                Map<String, Object> textMap = new HashMap<>();
-                textMap.put("type", "text");
-                textMap.put("text", message.getContent());
-                multimodalContent.add(textMap);
-
-                messageMap.put("role", message.getRole().getValue());
-                messageMap.put("content", multimodalContent);
-            } else if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
-                if (isClaude) {
-                    messageMap.put("role", message.getRole().getValue());
-                    List<Map<String, Object>> claudeToolCalls = new ArrayList<>();
-                    for (ToolCall toolCall : message.getToolCalls()) {
-                        if (toolCall == null || toolCall.getFunction() == null) {
-                            continue;
-                        }
-                        Map<String, Object> claudeToolCall = new HashMap<>();
-                        claudeToolCall.put("type", "tool_use");
-                        claudeToolCall.put("id", toolCall.getId());
-                        claudeToolCall.put("name", toolCall.getFunction().getName());
-                        claudeToolCall.put("input", JSON.parseObject(toolCall.getFunction().getArguments()));
-                        claudeToolCalls.add(claudeToolCall);
-                    }
-                    messageMap.put("content", claudeToolCalls);
-                } else {
-                    messageMap.put("role", message.getRole().getValue());
-                    List<Map<String, Object>> toolCallsMap = JSON.parseObject(
-                            JSON.toJSONString(message.getToolCalls()),
-                            new TypeReference<List<Map<String, Object>>>() {
-                            });
-                    messageMap.put("tool_calls", toolCallsMap);
-                    if (StringUtils.isNotBlank(message.getReasoningContent())) {
-                        messageMap.put("reasoning_content", message.getReasoningContent());
-                    }
-                    if (message.getContent() != null) {
-                        messageMap.put("content", message.getContent());
-                    }
-                }
-            } else if (StringUtils.isNotBlank(message.getToolCallId())) {
-                ReactorConfig reactorConfig = runtimeDependencies.requireReactorConfig();
-                String content = StringUtil.textDesensitization(message.getContent(), reactorConfig.getSensitivePatterns());
-                if (isClaude) {
-                    messageMap.put("role", "user");
-                    List<Map<String, Object>> claudeToolCalls = new ArrayList<>();
-                    Map<String, Object> claudeToolCall = new HashMap<>();
-                    claudeToolCall.put("type", "tool_result");
-                    claudeToolCall.put("tool_use_id", message.getToolCallId());
-                    if (StringUtils.isNotBlank(message.getBase64Image())) {
-                        List<Map<String, Object>> contentBlocks = new ArrayList<>();
-                        contentBlocks.add(Map.of("type", "text", "text", content));
-                        contentBlocks.add(Map.of("type", "image", "source", imageSource(message.getBase64Image())));
-                        claudeToolCall.put("content", contentBlocks);
-                    } else {
-                        claudeToolCall.put("content", content);
-                    }
-                    claudeToolCalls.add(claudeToolCall);
-                    messageMap.put("content", claudeToolCalls);
-                } else {
-                    messageMap.put("role", message.getRole().getValue());
-                    if (StringUtils.isNotBlank(message.getBase64Image())) {
-                        List<Map<String, Object>> contentBlocks = new ArrayList<>();
-                        contentBlocks.add(Map.of("type", "text", "text", content));
-                        contentBlocks.add(Map.of("type", "image_url", "image_url",
-                                Map.of("url", message.getBase64Image())));
-                        messageMap.put("content", contentBlocks);
-                    } else {
-                        messageMap.put("content", content);
-                    }
-                    messageMap.put("tool_call_id", message.getToolCallId());
-                }
-            } else {
-                messageMap.put("role", message.getRole().getValue());
-                messageMap.put("content", message.getContent());
-                if (StringUtils.isNotBlank(message.getReasoningContent())) {
-                    messageMap.put("reasoning_content", message.getReasoningContent());
-                }
-            }
-            formattedMessages.add(messageMap);
-        }
-        return formattedMessages;
-    }
-
-    private Map<String, Object> imageSource(String rawImage) {
-        String normalized = rawImage.trim();
-        String mediaType = "image/jpeg";
-        String data = normalized;
-        if (normalized.startsWith("data:")) {
-            int comma = normalized.indexOf(',');
-            if (comma > 5) {
-                String metadata = normalized.substring(5, comma);
-                int separator = metadata.indexOf(';');
-                mediaType = separator > 0 ? metadata.substring(0, separator) : metadata;
-                data = normalized.substring(comma + 1);
-            }
-        }
-        return Map.of("type", "base64", "media_type", mediaType, "data", data);
-    }
-
-    /**
-     * 保留原截断逻辑，避免调用方行为变化。
-     */
-    public List<Map<String, Object>> truncateMessage(AgentContext context, List<Map<String, Object>> messages, int maxInputTokens) {
-        if (messages == null || messages.isEmpty() || maxInputTokens < 0) {
-            return messages;
-        }
-
-        log.info("{} before truncate {}", context.getRequestId(), JSON.toJSONString(messages));
-        List<Map<String, Object>> truncatedMessages = new ArrayList<>();
-        int remainingTokens = maxInputTokens;
-        Map<String, Object> system = messages.get(0);
-
-        if ("system".equals(system.getOrDefault("role", ""))) {
-            remainingTokens -= tokenCounter.countMessageTokens(system);
-        }
-
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            Map<String, Object> message = messages.get(i);
-            int messageToken = tokenCounter.countMessageTokens(message);
-            if (remainingTokens >= messageToken) {
-                truncatedMessages.add(0, message);
-                remainingTokens -= messageToken;
-            } else {
-                break;
-            }
-        }
-
-        Iterator<Map<String, Object>> iterator = truncatedMessages.iterator();
-        while (iterator.hasNext()) {
-            Map<String, Object> message = iterator.next();
-            if (!"user".equals(message.getOrDefault("role", ""))) {
-                iterator.remove();
-            } else {
-                break;
-            }
-        }
-
-        if ("system".equals(system.getOrDefault("role", ""))) {
-            truncatedMessages.add(0, system);
-        }
-
-        log.info("{} after truncate {}", context.getRequestId(), JSON.toJSONString(truncatedMessages));
-        return truncatedMessages;
     }
 
     /**
@@ -472,8 +286,7 @@ public class LLM {
     }
 
     /**
-     * 工具调用统一门面。
-     * function_call 走 Spring AI 原生工具调用；struct_parse 保留兼容分支。
+     * 工具调用统一门面：function_call 走 Spring AI tools[]；struct_parse 走文本 JSON 协议。
      */
     public CompletableFuture<ToolCallResponse> askTool(
             AgentContext context,
@@ -509,8 +322,11 @@ public class LLM {
                 throw new IllegalArgumentException("Invalid tool_choice: " + toolChoice);
             }
 
+            LlmAskToolProtocol protocol = isStructParseMode()
+                    ? LlmAskToolProtocol.STRUCT_PARSE
+                    : LlmAskToolProtocol.FUNCTION_CALL;
             Message effectiveSystem = systemMsgs;
-            if (isStructParseMode()) {
+            if (protocol == LlmAskToolProtocol.STRUCT_PARSE) {
                 // struct_parse 没有原生 tools[]，先把工具 schema 编入 system，再沿用文本响应解析。
                 effectiveSystem = buildStructParseSystemMessage(systemMsgs, tools);
             }
@@ -523,12 +339,12 @@ public class LLM {
                     stream
             );
             long startTime = System.currentTimeMillis();
-            if (isStructParseMode()) {
+            if (protocol == LlmAskToolProtocol.STRUCT_PARSE) {
                 return askToolWithStructParse(
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
-            // function_call 主路径让 Spring AI 负责工具 schema 与 tool choice；兼容路径只在该模式显式开启时使用。
-Prompt prompt = buildPrompt(
+            // function_call 主路径：Spring AI 负责 tools[] 与 tool_choice。
+            Prompt prompt = buildPrompt(
                     mergeMessages(systemMsgs, messages),
                     chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)
             );
@@ -539,8 +355,7 @@ Prompt prompt = buildPrompt(
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
-                // 非流式原生调用先走 Spring AI；超时或网关不兼容时再回退到受控旧 HTTP 链路。
-                CompletableFuture<ToolCallResponse> springFuture = AgentExecutorSupport.withTimeout(
+                return AgentExecutorSupport.withTimeout(
                         AgentExecutorSupport.supplyAsync(
                                 runtimeDependencies.requireLlmExecutor(),
                                 "llmAskToolFunctionCall",
@@ -554,13 +369,7 @@ Prompt prompt = buildPrompt(
                                     }
                                 }),
                         timeout,
-                        TimeUnit.SECONDS);
-
-                return withFallback(
-                        springFuture,
-                        () -> legacyAskToolFunctionCallNonStream(context, messages, systemMsgs, tools, toolChoice, temperature, timeout, startTime),
-                        context.getRequestId(),
-                        "askTool(function_call, stream=false)"
+                        TimeUnit.SECONDS
                 ).whenComplete((response, throwable) -> {
                     if (throwable == null) {
                         finishLlmInvocation(context, invocationHandle, response, null);
@@ -706,151 +515,6 @@ Prompt prompt = buildPrompt(
     }
 
     /**
-     * function_call 非流式保留受控 HTTP 回退，便于灰度期间快速止损。
-     */
-    private CompletableFuture<ToolCallResponse> legacyAskToolFunctionCallNonStream(
-            AgentContext context,
-            List<Message> messages,
-            Message systemMsg,
-            ToolCollection tools,
-            ToolChoice toolChoice,
-            Double temperature,
-            int timeout,
-            long startTime
-    ) {
-        try {
-            Map<String, Object> params = buildLegacyFunctionCallParams(messages, systemMsg, tools, toolChoice, temperature);
-            log.warn("{} fallback askTool to legacy HTTP, model={}, toolCount={}",
-                    context.getRequestId(), model, countTools(tools));
-
-            return callOpenAI(params, timeout, context)
-                    .thenApply(responseJson -> parseLegacyFunctionCallResponse(context, responseJson, startTime));
-        } catch (Exception e) {
-            return failedFuture(e);
-        }
-    }
-
-    private ToolCallResponse parseLegacyFunctionCallResponse(AgentContext context, String responseJson, long startTime) {
-        try {
-            log.info("{} legacy llm response {}", context.getRequestId(), responseJson);
-            JsonNode jsonResponse = objectMapper.readTree(responseJson);
-            JsonNode choices = jsonResponse.get("choices");
-            if (choices == null || choices.isEmpty() || choices.get(0).get("message") == null) {
-                throw new IllegalArgumentException("Invalid or empty response from LLM");
-            }
-
-            JsonNode message = choices.get(0).get("message");
-            String content = message.has("content") && !message.get("content").isNull()
-                    && !"null".equals(message.get("content").asText())
-                    ? message.get("content").asText()
-                    : null;
-
-            List<ToolCall> toolCalls = new ArrayList<>();
-            if (message.has("tool_calls") && message.get("tool_calls").isArray()) {
-                for (JsonNode toolCall : message.get("tool_calls")) {
-                    JsonNode functionNode = toolCall.get("function");
-                    String name = functionNode != null && functionNode.has("name")
-                            ? functionNode.get("name").asText()
-                            : null;
-                    if (StringUtils.isBlank(name)) {
-                        log.warn("{} skip invalid tool call from legacy response: {}", context.getRequestId(), toolCall);
-                        continue;
-                    }
-                    toolCalls.add(ToolCall.builder()
-                            .id(toolCall.has("id") ? toolCall.get("id").asText() : StringUtil.getUUID())
-                            .type(toolCall.has("type") ? toolCall.get("type").asText() : FUNCTION)
-                            .function(ToolCall.Function.builder()
-                                    .name(name)
-                                    .arguments(normalizeToolArguments(extractToolArguments(functionNode)))
-                                    .build())
-                            .build());
-                }
-            }
-
-            String finishReason = choices.get(0).has("finish_reason") && !choices.get(0).get("finish_reason").isNull()
-                    ? choices.get(0).get("finish_reason").asText()
-                    : null;
-            LlmUsageSnapshot usage = LlmUsageSnapshot.fromJsonNode(jsonResponse.get("usage"));
-
-            return responseMapper.applyUsage(ToolCallResponse.builder()
-                    .content(content)
-                    .toolCalls(toolCalls)
-                    .finishReason(finishReason)
-                    .duration(System.currentTimeMillis() - startTime)
-                    .build(), usage);
-        } catch (Exception e) {
-            throw new CompletionException(e);
-        }
-    }
-
-    /**
-     * 兼容旧 HTTP 回退链路的参数组装。
-     */
-    private Map<String, Object> buildLegacyFunctionCallParams(
-            List<Message> messages,
-            Message systemMsg,
-            ToolCollection tools,
-            ToolChoice toolChoice,
-            Double temperature
-    ) {
-        Map<String, Object> params = new HashMap<>();
-        List<Map<String, Object>> formattedMessages = new ArrayList<>();
-
-        if (systemMsg != null) {
-            if (isClaudeModel()) {
-                params.put("system", systemMsg.getContent());
-            } else {
-                formattedMessages.addAll(formatMessages(List.of(systemMsg), false));
-            }
-        }
-        formattedMessages.addAll(formatMessages(messages, isClaudeModel()));
-
-        List<Map<String, Object>> formattedTools = new ArrayList<>();
-        if (tools != null) {
-            for (BaseTool tool : tools.getToolMap().values()) {
-                Map<String, Object> functionMap = new HashMap<>();
-                functionMap.put("name", tool.getName());
-                functionMap.put("description", tool.getDescription());
-                functionMap.put("parameters", normalizeToolParameters(tool.toParams(), tool.getName()));
-
-                Map<String, Object> toolMap = new HashMap<>();
-                toolMap.put("type", FUNCTION);
-                toolMap.put("function", functionMap);
-                formattedTools.add(toolMap);
-            }
-            for (McpToolInfo tool : tools.getMcpToolMap().values()) {
-                Map<String, Object> functionMap = new HashMap<>();
-                functionMap.put("name", tool.getName());
-                functionMap.put("description", tool.getDesc());
-                functionMap.put("parameters", parseAndNormalizeToolParameters(tool.getParameters(), tool.getName()));
-
-                Map<String, Object> toolMap = new HashMap<>();
-                toolMap.put("type", FUNCTION);
-                toolMap.put("function", functionMap);
-                formattedTools.add(toolMap);
-            }
-        }
-
-        if (isClaudeModel()) {
-            formattedTools = gptToClaudeTool(formattedTools);
-        }
-
-        params.put("model", model);
-        params.put("messages", formattedMessages);
-        params.put("tools", formattedTools);
-        params.put("tool_choice", toolChoice.getValue());
-        params.put("max_tokens", maxTokens);
-        params.put("temperature", temperature != null ? temperature : this.temperature);
-        params.put("stream", false);
-        if (extParams != null) {
-            params.putAll(extParams);
-        }
-
-        log.info("legacy fallback request {}", JSONObject.toJSONString(params));
-        return params;
-    }
-
-    /**
      * 将 struct_parse 的文本响应映射回既有 ToolCallResponse。
      */
     private ToolCallResponse buildStructParseToolCallResponse(
@@ -980,16 +644,7 @@ Prompt prompt = buildPrompt(
         return STRUCT_PARSE.equals(functionCallType);
     }
 
-    private boolean isClaudeModel() {
-        return model != null && model.contains("claude");
-    }
 
-    private int countTools(ToolCollection tools) {
-        if (tools == null) {
-            return 0;
-        }
-        return tools.getToolMap().size() + tools.getMcpToolMap().size();
-    }
 
     private String resolveFinishReason(ChatResponse response) {
         if (response == null || response.getResult() == null || response.getResult().getMetadata() == null) {
@@ -1156,38 +811,6 @@ Prompt prompt = buildPrompt(
         }
     }
 
-    private <T> CompletableFuture<T> withFallback(CompletableFuture<T> primaryFuture,
-                                                  Supplier<CompletableFuture<T>> fallbackSupplier,
-                                                  String requestId,
-                                                  String scene) {
-        // 回退只发生在主 Future 已经失败之后，并且由同一个结果 Future 对外呈现，
-        // 调用方无需感知底层是 Spring AI 还是旧 HTTP 实现。
-        CompletableFuture<T> result = new CompletableFuture<>();
-        primaryFuture.whenComplete((value, throwable) -> {
-            if (throwable == null) {
-                result.complete(value);
-                return;
-            }
-
-            Throwable cause = unwrapCompletionThrowable(throwable);
-            log.warn("{} {} failed on Spring AI path, fallback to legacy chain: {}",
-                    requestId, scene, cause.getMessage(), cause);
-
-            try {
-                fallbackSupplier.get().whenComplete((fallbackValue, fallbackThrowable) -> {
-                    if (fallbackThrowable == null) {
-                        result.complete(fallbackValue);
-                    } else {
-                        result.completeExceptionally(unwrapCompletionThrowable(fallbackThrowable));
-                    }
-                });
-            } catch (Exception fallbackError) {
-                result.completeExceptionally(fallbackError);
-            }
-        });
-        return result;
-    }
-
     private Throwable unwrapCompletionThrowable(Throwable throwable) {
         if ((throwable instanceof CompletionException || throwable instanceof ExecutionException)
                 && throwable.getCause() != null) {
@@ -1210,72 +833,21 @@ Prompt prompt = buildPrompt(
         return future;
     }
 
-    /**
-     * 深拷贝，保留给 Claude 工具格式转换使用。
-     */
-    public <T> T deepCopy(T original) {
-        try {
-            byte[] jsonBytes = objectMapper.writeValueAsBytes(original);
-            return objectMapper.readValue(
-                    jsonBytes,
-                    objectMapper.getTypeFactory().constructType(original.getClass())
-            );
-        } catch (Exception e) {
-            throw new RuntimeException("深拷贝失败", e);
-        }
-    }
-
-    /**
-     * GPT 工具定义转换为 Claude 工具定义。
-     * 仅保留给 legacy fallback 使用。
-     */
-    public List<Map<String, Object>> gptToClaudeTool(List<Map<String, Object>> gptTools) {
-        List<Map<String, Object>> newGptTools = deepCopy(gptTools);
-        List<Map<String, Object>> claudeTools = new ArrayList<>();
-        for (Map<String, Object> gptToolWrapper : newGptTools) {
-            Map<String, Object> gptTool = (Map<String, Object>) gptToolWrapper.get("function");
-            Map<String, Object> claudeTool = new HashMap<>();
-            claudeTool.put("name", gptTool.get("name"));
-            claudeTool.put("description", gptTool.get("description"));
-
-            Map<String, Object> parameters = (Map<String, Object>) gptTool.get("parameters");
-            ArrayList<String> newRequired = new ArrayList<>();
-            newRequired.add("function_name");
-            if (parameters.containsKey("required") && parameters.get("required") != null) {
-                newRequired.addAll((List<String>) parameters.get("required"));
-            }
-            parameters.put("required", newRequired);
-
-            Map<String, Object> newProperties = new HashMap<>();
-            Map<String, Object> functionNameMap = new HashMap<>();
-            functionNameMap.put("description", "默认值为工具名: " + gptTool.get("name"));
-            functionNameMap.put("type", "string");
-            newProperties.put("function_name", functionNameMap);
-            if (parameters.containsKey("properties") && parameters.get("properties") != null) {
-                newProperties.putAll((Map<String, Object>) parameters.get("properties"));
-            }
-            parameters.put("properties", newProperties);
-            claudeTool.put("input_schema", gptTool.get("parameters"));
-            claudeTools.add(claudeTool);
-        }
-        return claudeTools;
-    }
-
     private Map<String, Object> addFunctionNameParam(Map<String, Object> parameters, String toolName) {
-        Map<String, Object> newParameters = deepCopy(parameters);
+        Map<String, Object> newParameters = new LinkedHashMap<>(parameters == null ? Map.of() : parameters);
         ArrayList<String> newRequired = new ArrayList<>();
         newRequired.add("function_name");
-        if (parameters.containsKey("required") && parameters.get("required") != null) {
+        if (parameters != null && parameters.containsKey("required") && parameters.get("required") != null) {
             newRequired.addAll((List<String>) parameters.get("required"));
         }
         newParameters.put("required", newRequired);
 
-        Map<String, Object> newProperties = new HashMap<>();
+        Map<String, Object> newProperties = new LinkedHashMap<>();
         Map<String, Object> functionNameMap = new HashMap<>();
         functionNameMap.put("description", "默认值为工具名: " + toolName);
         functionNameMap.put("type", "string");
         newProperties.put("function_name", functionNameMap);
-        if (parameters.containsKey("properties") && parameters.get("properties") != null) {
+        if (parameters != null && parameters.containsKey("properties") && parameters.get("properties") != null) {
             newProperties.putAll((Map<String, Object>) parameters.get("properties"));
         }
         newParameters.put("properties", newProperties);
@@ -1288,88 +860,6 @@ Prompt prompt = buildPrompt(
 
     private Map<String, Object> parseAndNormalizeToolParameters(String rawParameters, String toolName) {
         return ToolSchemaNormalizer.normalizeSchemaAsMap(rawParameters, toolName);
-    }
-
-    private String extractToolArguments(JsonNode functionNode) {
-        if (functionNode == null || !functionNode.has("arguments") || functionNode.get("arguments").isNull()) {
-            return "{}";
-        }
-        return getToolArgumentsChunk(functionNode.get("arguments"));
-    }
-
-    private String getToolArgumentsChunk(JsonNode argumentsNode) {
-        if (argumentsNode == null || argumentsNode.isNull()) {
-            return "";
-        }
-        return argumentsNode.isTextual() ? argumentsNode.asText() : argumentsNode.toString();
-    }
-
-    private String normalizeToolArguments(String arguments) {
-        // 不同兼容网关可能返回对象、数组、被 JSON 字符串再次包裹的 JSON，或非 JSON 文本；
-        // 工具执行层统一接收合法 JSON，无法恢复时使用空对象而不是把坏参数继续向下传播。
-        if (StringUtils.isBlank(arguments)) {
-            return "{}";
-        }
-        String normalized = arguments.trim();
-        if (normalized.startsWith("\"") && normalized.endsWith("\"")) {
-            try {
-                normalized = objectMapper.readValue(normalized, String.class);
-            } catch (Exception ignore) {
-            }
-        }
-        if (StringUtils.isBlank(normalized)) {
-            return "{}";
-        }
-        normalized = normalized.trim();
-        if ((normalized.startsWith("{") && normalized.endsWith("}"))
-                || (normalized.startsWith("[") && normalized.endsWith("]"))) {
-            return normalized;
-        }
-        try {
-            JsonNode parsed = objectMapper.readTree(normalized);
-            return parsed.toString();
-        } catch (Exception ignore) {
-            return "{}";
-        }
-    }
-
-    /**
-     * 最小化保留的旧 HTTP 调用能力，仅用于受控回退。
-     */
-    protected CompletableFuture<String> callOpenAI(Map<String, Object> params) {
-        return callOpenAI(params, 300);
-    }
-
-    /**
-     * 最小化保留的旧 HTTP 调用能力，仅用于受控回退。
-     */
-    protected CompletableFuture<String> callOpenAI(Map<String, Object> params, int timeout) {
-        return callOpenAI(params, timeout, null);
-    }
-
-    protected CompletableFuture<String> callOpenAI(Map<String, Object> params,
-                                                   int timeout,
-                                                   AgentContext context) {
-        return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "legacyHttpLlm", context, () -> {
-            try {
-                return runtimeDependencies.requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
-                        .method("POST")
-                        .url(baseUrl + interfaceUrl)
-                        .headers(Map.of(
-                                "Authorization", "Bearer " + apiKey,
-                                "Content-Type", "application/json",
-                                "Accept", "application/json"
-                        ))
-                        .body(objectMapper.writeValueAsString(params))
-                        .connectTimeoutSeconds((long) timeout)
-                        .readTimeoutSeconds((long) timeout)
-                        .writeTimeoutSeconds((long) timeout)
-                        .callTimeoutSeconds((long) timeout)
-                        .build());
-            } catch (Exception e) {
-                throw new CompletionException(e);
-            }
-        });
     }
 
     private List<String> findMatches(String text, Pattern pattern) {

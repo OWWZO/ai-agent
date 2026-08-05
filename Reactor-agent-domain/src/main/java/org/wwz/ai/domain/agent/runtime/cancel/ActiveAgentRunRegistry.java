@@ -12,10 +12,11 @@ import javax.annotation.Resource;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 进程内活跃 run 索引：requestId → 上下文/取消标志/流。
- * 供 POST /stop 与 SSE abort 定位当前执行。
+ * 进程内活跃 run 索引：requestId → 上下文/取消标志/当前观察流。
+ * 供 POST /stop 定位当前执行，也供 SSE 断开时解绑观察流。
  */
 @Slf4j
 @Component
@@ -26,7 +27,7 @@ public class ActiveAgentRunRegistry {
         private final String sessionId;
         private final RunCancellation cancellation;
         private volatile AgentContext agentContext;
-        private volatile AgentMessageStream stream;
+        private final AtomicReference<AgentMessageStream> stream = new AtomicReference<>();
 
         public ActiveRun(String requestId, String sessionId, RunCancellation cancellation) {
             this.requestId = requestId;
@@ -55,11 +56,15 @@ public class ActiveAgentRunRegistry {
         }
 
         public AgentMessageStream getStream() {
-            return stream;
+            return stream.get();
         }
 
         public void setStream(AgentMessageStream stream) {
-            this.stream = stream;
+            this.stream.set(stream);
+        }
+
+        private boolean detachStream(AgentMessageStream expected) {
+            return stream.compareAndSet(expected, null);
         }
     }
 
@@ -95,16 +100,34 @@ public class ActiveAgentRunRegistry {
     }
 
     public void bindStream(String requestId, AgentMessageStream stream) {
-        // stream abort 是用户断开连接的被动取消入口，与主动 stop 共享同一个幂等令牌；
-        // 首次取消负责级联清理，重复 abort 不应重复关闭问询、审批或后台任务。
+        // SSE 只负责承载观察结果。客户端断开后解绑当前流，但不能影响仍在后台执行的
+        // run；真正的取消只允许由显式 stop 入口触发。
         ActiveRun run = byRequestId.get(requestId);
         if (run == null) {
             return;
         }
         run.setStream(stream);
         if (stream != null) {
-            stream.onAbort(() -> cancel(requestId, RunCancellation.REASON_CLIENT_DISCONNECT));
+            // 回调捕获具体流实例，旧连接的迟到 abort 不能清掉后来绑定的新连接。
+            stream.onAbort(() -> detachStream(requestId, stream));
         }
+    }
+
+    /**
+     * 解绑已经断开的观察流，但保留 run、取消令牌和 Agent 上下文。
+     *
+     * @return true 表示当前绑定的正是 expectedStream，并且已完成解绑
+     */
+    public boolean detachStream(String requestId, AgentMessageStream expectedStream) {
+        if (StringUtils.isBlank(requestId) || expectedStream == null) {
+            return false;
+        }
+        ActiveRun run = byRequestId.get(requestId.trim());
+        if (run == null || !run.detachStream(expectedStream)) {
+            return false;
+        }
+        log.info("detach agent run stream requestId={}", requestId);
+        return true;
     }
 
     /**
@@ -112,7 +135,7 @@ public class ActiveAgentRunRegistry {
      */
     public boolean cancel(String requestId, String reason) {
         // 取消顺序是“原子置位 -> 解除交互等待 -> 停止后台任务”。先置位保证并发的
-        // stop、SSE abort 和超时只有一个调用者执行清理，其余调用只观察已取消状态。
+        // 显式 stop 只有一个调用者执行清理，其余调用只观察已取消状态。
         ActiveRun run = byRequestId.get(StringUtils.trimToEmpty(requestId));
         if (run == null) {
             return false;

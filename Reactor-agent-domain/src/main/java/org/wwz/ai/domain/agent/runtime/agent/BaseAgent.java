@@ -1,50 +1,40 @@
 package org.wwz.ai.domain.agent.runtime.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard;
+import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
+import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
+import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
-import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Memory;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
+import org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
-import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
-import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.prompt.IntentGatedPrompt;
+import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
-import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
-import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.util.FileUtil;
-import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
-import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
-import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
-import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 所有 Agent 的抽象基类。
@@ -58,7 +48,13 @@ import java.util.concurrent.TimeoutException;
 @Accessors(chain = true)
 public abstract class BaseAgent {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    /** 不单独向前端发送工具结果的工具；它们通过产物或结构化事件展示结果。 */
+    private static final Set<String> TOOLS_WITHOUT_RESULT_EVENT = Set.of(
+            "code_interpreter", "report_tool", "document_generate", "slides_generate",
+            "excel_generator", "checklist_generate", "template_filler", "document_template",
+            "theme_designer", "chart_generator", "file_tool", "deep_search",
+            "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide",
+            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch");
 
     /** Agent 名称 */
     private String name;
@@ -92,10 +88,70 @@ public abstract class BaseAgent {
     /** 数字员工提示词 */
     private String digitalEmployeePrompt;
 
+    private final transient ToolExecutionPipeline toolPipeline = new ToolExecutionPipeline(this);
+
     /**
      * 子类定义单步执行逻辑。
      */
     public abstract String step();
+
+    protected ReactorRuntimeDependencies requireRuntimeDependencies(AgentContext agentContext) {
+        if (agentContext == null || agentContext.getRuntimeDependencies() == null) {
+            throw new IllegalStateException(getClass().getSimpleName() + " 缺少 ReactorRuntimeDependencies");
+        }
+        return agentContext.getRuntimeDependencies();
+    }
+
+    protected <T> T awaitFuture(CompletableFuture<T> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new RuntimeException(cause);
+        }
+    }
+
+    protected void ensureQueryMessage() {
+        if (getMemory().getLastMessage() == null) {
+            String seed = context.getQuery() == null ? "" : context.getQuery();
+            getMemory().addMessage(Message.userMessage(seed, null));
+        }
+    }
+
+    protected void appendAssistantMessage(LLM.ToolCallResponse response) {
+        Message assistantMessage = response.getToolCalls() != null
+                && !response.getToolCalls().isEmpty()
+                && !"struct_parse".equals(llm.getFunctionCallType())
+                ? Message.fromToolCalls(response.getContent(), response.getReasoningContent(), response.getToolCalls())
+                : Message.assistantMessage(response.getContent(), response.getReasoningContent(), null);
+        getMemory().addMessage(assistantMessage);
+    }
+
+    protected Map<String, Object> parseToolParam(ToolCall command) {
+        return toolPipeline.parseToolParam(command);
+    }
+
+    protected void sendToolResult(ToolCall command, String toolResult) {
+        if (printer == null || command == null || command.getFunction() == null) {
+            return;
+        }
+        String toolName = command.getFunction().getName();
+        if (TOOLS_WITHOUT_RESULT_EVENT.contains(toolName)) {
+            return;
+        }
+        printer.send("tool_result", AgentResponse.ToolResult.builder()
+                .toolName(toolName)
+                .toolParam(parseToolParam(command))
+                .toolResult(toolResult)
+                .toolCallId(command.getId())
+                .build(), null);
+    }
 
     /**
      * Agent 主循环。
@@ -153,7 +209,7 @@ public abstract class BaseAgent {
                     // 每步进入前都刷新一次当前位置，供 LLM / tool 账本读取。
                     context.markExecutionPosition(getName(), currentStep);
                     // Plan Mode：sparse/full 提醒 + mid-run Enter 时补 system 指引
-                    org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector.injectStepReminders(this);
+                    PlanModePromptInjector.injectStepReminders(this);
                     //每步 LLM 前再判一次上下文水位（含 tool 后中途）
                     compactWorkingMemoryIfNeeded("step");
                 }
@@ -210,24 +266,6 @@ public abstract class BaseAgent {
         memory.addMessages(new ArrayList<>(messages));
     }
 
-        /**
-     * 注入会话历史摘要到 system 模板。
-     * @deprecated history 应进入 messages，不再拼入 system（破坏 prompt cache 前缀）。
-     */
-    @Deprecated
-    protected String injectHistoryDialogue(String promptTemplate, String historyDialogue) {
-        String normalizedTemplate = promptTemplate == null ? "" : promptTemplate;
-        String normalizedHistory = historyDialogue == null ? "" : historyDialogue;
-        if (normalizedTemplate.contains("{{history_dialogue}}")) {
-            return normalizedTemplate.replace("{{history_dialogue}}", normalizedHistory);
-        }
-        if (normalizedHistory.isBlank()) {
-            return normalizedTemplate;
-        }
-        return normalizedTemplate + "\n\n## 用户历史对话信息\n<history_dialogue>\n"
-                + normalizedHistory
-                + "\n</history_dialogue>";
-    }
 
     /**
      * 组装 cache-friendly system：只保留静态/会话级占位，去掉 query/date/files/history。
@@ -290,13 +328,20 @@ public abstract class BaseAgent {
         }
         systemTemplate = canonicalizeSystemText(systemTemplate);
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
-        String toolSig = org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider.buildToolSignature(
+        String toolSig = LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
         String agentSlot = StringUtils.defaultIfBlank(getName(), "agent")
                 + "|intent=" + intentPolicy.getCacheKey();
         String sessionId = context == null ? null : context.getSessionId();
-        return org.wwz.ai.domain.agent.runtime.llm.SessionPromptFreeze.freezeSystem(
+        return SessionPromptFreeze.freezeSystem(
                 sessionId, agentSlot, toolSig, systemTemplate);
+    }
+
+    /**
+     * 兼容旧的单参数调用方，统一复用当前稳定 system prompt 规范化逻辑。
+     */
+    protected String buildStableSystemPrompt(String template) {
+        return buildStableSystemPrompt(template, null, null, null);
     }
 
     /**
@@ -447,7 +492,17 @@ public abstract class BaseAgent {
         setNextStepPrompt(null);
     }
 
-
+    protected void initializeSystemPrompt(Map<String, String> systemPromptMap, String defaultSystemPrompt) {
+        String toolPrompt = buildToolPrompt(context == null ? null : context.getToolCollection());
+        initializePromptsWithHistoryOnlyInSystem(
+                systemPromptMap,
+                null,
+                defaultSystemPrompt,
+                null,
+                toolPrompt,
+                null,
+                null);
+    }
 
     /**
      * 为单次工具结果追加当前 toolCall 的文件摘要。
@@ -502,120 +557,14 @@ public abstract class BaseAgent {
         return observation;
     }
 
-    /**
-     * 对外保留原有工具执行契约。
-     */
     public String executeTool(ToolCall command) {
         return executeToolOutcome(command).getLlmObservation();
     }
 
-    /**
-     * 单工具路径的完整执行结果。
-     * 包含预登记、执行、observation 收口、账本落库与产物登记。
-     */
     protected ToolExecutionOutcome executeToolOutcome(ToolCall command) {
-        // 单工具路径也复用完整收口流程：先登记调用，再执行，最后写终态、产物和前端完成事件。
-        List<ToolCall> commands = command == null ? List.of() : List.of(command);
-        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
-        if (context != null && context.getAgentRunState() != null && !toolInvocationIds.isEmpty()) {
-            context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
-        }
-        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-        emitToolCallRunningEvents(commands, dispatchIndexMapping);
-        ToolExecutionOutcome outcome = finalizeToolExecutionOutcome(command, executeToolInternal(command));
-        finishToolInvocation(command, outcome);
-        recordToolArtifacts(command);
-        emitToolCallFinishedEvent(command, dispatchIndexMapping.get(command == null ? null : command.getId()), outcome);
-        return outcome;
+        return toolPipeline.executeOne(command);
     }
 
-    /**
-     * 内部工具执行，保留账本需要的状态与结构化输出。
-     */
-    private ToolExecutionOutcome executeToolInternal(ToolCall command) {
-        if (command == null || command.getFunction() == null
-                || StringUtils.isBlank(command.getFunction().getName())) {
-            return ToolExecutionOutcome.failure(
-                    "Error: Invalid function call format",
-                    "Error: Invalid function call format",
-                    null,
-                    "Invalid function call format"
-            );
-        }
-
-        String toolName = command.getFunction().getName();
-        if (context != null && context.isRunCancelled()) {
-            // 用户取消后不再启动工具；返回失败 outcome 让调用链仍能完成账本和 UI 收口。
-            return ToolExecutionOutcome.failure(
-                    "工具未执行：用户已停止本轮对话",
-                    "工具未执行：用户已停止本轮对话",
-                    null,
-                    "USER_STOP"
-            );
-        }
-        try {
-            Object args = parseToolArguments(toolName, command.getFunction().getArguments(), JSON);
-
-            // Plan Mode 工具门禁（对标 cc-haha：plan 期禁写业务文件）
-            String planDeny = org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy.denyReason(
-                    context, toolName, args);
-            if (planDeny != null) {
-                return ToolExecutionOutcome.failure(planDeny, planDeny, null, "PLAN_MODE_DENY");
-            }
-
-            ToolArtifactSource artifactSource = ToolArtifactSource.builder()
-                    .sessionId(context.getSessionId())
-                    .requestId(context.getRequestId())
-                    .toolCallId(command.getId())
-                    .toolName(toolName)
-                    .build();
-
-            Object resultObject;
-            context.bindCurrentToolArtifactSource(artifactSource);
-            try {
-                resultObject = availableTools.execute(toolName, args);
-            } finally {
-                context.clearCurrentToolArtifactSource();
-            }
-
-            log.info("{} execute tool: {} {} result {}", context.getRequestId(), toolName, args, resultObject);
-
-            if (resultObject == null) {
-                return ToolExecutionOutcome.failure(
-                        "Tool " + toolName + " Error.",
-                        "Tool " + toolName + " Error.",
-                        null,
-                        "Tool returned null"
-                );
-            }
-
-            ToolResultPayload payload = normalizeToolResultPayload(resultObject);
-            String toolResult = StringUtils.defaultString(payload.getToolResult());
-            String llmObservation = StringUtils.defaultIfBlank(payload.getLlmObservation(), toolResult);
-            if (Boolean.TRUE.equals(payload.getFailed())) {
-                return ToolExecutionOutcome.failure(
-                        toolResult,
-                        llmObservation,
-                        payload.getStructuredOutput(),
-                        StringUtils.defaultIfBlank(payload.getErrorMsg(), toolResult)
-                );
-            }
-            return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput(),
-                     payload.getBase64Image(), payload.getImageMimeType());
-        } catch (Exception e) {
-            log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
-            return ToolExecutionOutcome.failure(
-                    "Tool " + toolName + " Error.",
-                    "Tool " + toolName + " Error.",
-                    null,
-                    e.getMessage()
-            );
-        }
-    }
-
-    /**
-     * 并发执行多个工具调用。
-     */
     public Map<String, String> executeTools(List<ToolCall> commands) {
         Map<String, ToolExecutionOutcome> outcomes = executeToolOutcomes(commands);
         Map<String, String> result = new LinkedHashMap<>(outcomes.size());
@@ -625,665 +574,18 @@ public abstract class BaseAgent {
         return result;
     }
 
-    /**
-     * 并发执行多个工具调用，并返回完整 outcome。
-     * 子类可以基于同一份 outcome 同时处理前端展示、记忆写回和账本一致性。
-     * <p>
-     * Agent 派发走 task 池，普通工具走 tool 池，打断「同池嵌套阻塞」自死锁；
-     * allOf 带超时，超时未完成的工具标记 failed，避免 UI 永久 running。
-     */
     protected Map<String, ToolExecutionOutcome> executeToolOutcomes(List<ToolCall> commands) {
-        Map<String, ToolExecutionOutcome> result = new ConcurrentHashMap<>();
-        if (commands == null || commands.isEmpty()) {
-            return result;
-        }
-
-        Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
-        Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
-
-        if (context != null && context.getAgentRunState() != null) {
-            context.getAgentRunState().bindToolInvocationIds(toolInvocationIds);
-        }
-        emitToolCallRunningEvents(commands, dispatchIndexMapping);
-
-        List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
-        List<CompletableFuture<?>> executionFutures = new ArrayList<>(commands.size());
-        for (ToolCall toolCall : commands) {
-            // 子 Agent 派发和普通工具使用不同执行器，避免同一个受限线程池中出现嵌套等待导致自死锁。
-            Executor executor = resolveExecutorForTool(toolCall);
-            String scene = isAgentDispatchTool(toolCall) ? "subAgentBatch" : "toolBatch";
-            CompletableFuture<ToolExecutionOutcome> executionFuture = AgentExecutorSupport
-                    .supplyAsync(executor, scene, context,
-                            () -> finalizeToolExecutionOutcome(toolCall, executeToolInternal(toolCall)));
-            executionFutures.add(executionFuture);
-            CompletableFuture<Void> future = executionFuture
-                    .handle((outcome, error) -> {
-                        if (error != null && unwrapExecutionError(error) instanceof CancellationException) {
-                            return null;
-                        }
-                        ToolExecutionOutcome finalOutcome = outcome;
-                        if (error != null) {
-                            Throwable root = unwrapExecutionError(error);
-                            String msg = root.getMessage() == null
-                                    ? root.getClass().getSimpleName()
-                                    : root.getMessage();
-                            finalOutcome = toolFailureOutcome("Tool execution error: " + msg, msg);
-                        }
-                        completeToolOutcome(result, toolCall, finalOutcome, dispatchIndexMapping, true);
-                        return null;
-                    });
-            futures.add(future);
-        }
-
-        awaitToolBatch(futures, executionFutures);
-        for (ToolCall command : commands) {
-            if (command == null || StringUtils.isBlank(command.getId()) || result.containsKey(command.getId())) {
-                continue;
-            }
-            completeToolOutcome(
-                    result,
-                    command,
-                    toolFailureOutcome("工具执行超时，已终止等待", "TOOL_BATCH_TIMEOUT"),
-                    dispatchIndexMapping,
-                    false);
-        }
-
-        // 按模型返回的原始顺序重新组装结果；ConcurrentHashMap 只负责并发写入，不承担展示顺序。
-        Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
-        for (ToolCall command : commands) {
-            if (command != null && StringUtils.isNotBlank(command.getId())) {
-                ordered.put(command.getId(), result.get(command.getId()));
-            }
-        }
-        return ordered;
+        return toolPipeline.executeBatch(commands);
     }
 
-    private void awaitToolBatch(List<CompletableFuture<Void>> futures,
-                                List<CompletableFuture<?>> executionFutures) {
-        if (futures == null || futures.isEmpty()) {
-            return;
-        }
-        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        long timeoutSeconds = resolveToolBatchTimeoutSeconds();
-        try {
-            if (timeoutSeconds > 0L) {
-                all.get(timeoutSeconds, TimeUnit.SECONDS);
-            } else {
-                all.get();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("{} tool batch interrupted, cancelling unfinished tools",
-                    context == null ? "-" : context.getRequestId());
-            cancelToolExecutions(executionFutures);
-        } catch (TimeoutException e) {
-            log.error("{} tool batch timed out after {}s",
-                    context == null ? "-" : context.getRequestId(), timeoutSeconds);
-            cancelToolExecutions(executionFutures);
-        } catch (ExecutionException e) {
-            Throwable root = unwrapExecutionError(e.getCause());
-            if (root instanceof TimeoutException) {
-                log.error("{} tool batch timed out after {}s",
-                        context == null ? "-" : context.getRequestId(), timeoutSeconds);
-                cancelToolExecutions(executionFutures);
-            } else {
-                log.error("{} tool batch join failed",
-                        context == null ? "-" : context.getRequestId(), root);
-            }
-        }
-    }
-
-    /**
-     * 批次超时后取消底层执行任务；FutureTask 会中断正在运行的工具线程。
-     */
-    private void cancelToolExecutions(List<CompletableFuture<?>> executionFutures) {
-        if (executionFutures == null) {
-            return;
-        }
-        for (CompletableFuture<?> executionFuture : executionFutures) {
-            if (executionFuture != null && !executionFuture.isDone()) {
-                executionFuture.cancel(true);
-            }
-        }
-    }
-
-    /**
-     * 登记工具 outcome，并按需落账本/产物/终态事件。
-     * 超时补完路径不调用 recordToolArtifacts，与历史行为一致。
-     */
-    private void completeToolOutcome(Map<String, ToolExecutionOutcome> result,
-                                     ToolCall toolCall,
-                                     ToolExecutionOutcome outcome,
-                                     Map<String, Integer> dispatchIndexMapping,
-                                     boolean recordArtifacts) {
-        if (toolCall == null || StringUtils.isBlank(toolCall.getId()) || outcome == null) {
-            return;
-        }
-        // 幂等保护：防止超时补写与成功回调同时执行导致重复落账
-        if (result.containsKey(toolCall.getId())) {
-            return;
-        }
-        result.put(toolCall.getId(), outcome);
-        finishToolInvocation(toolCall, outcome);
-        if (recordArtifacts) {
-            recordToolArtifacts(toolCall);
-        }
-        emitToolCallFinishedEvent(toolCall, dispatchIndexMapping.get(toolCall.getId()), outcome);
-    }
-
-    private static ToolExecutionOutcome toolFailureOutcome(String message, String errorMsg) {
-        return ToolExecutionOutcome.failure(message, message, null, errorMsg);
-    }
-
-    private static Throwable unwrapExecutionError(Throwable error) {
-        Throwable current = error;
-        while (current instanceof CompletionException && current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current == null ? error : current;
-    }
-
-    private boolean isAgentDispatchTool(ToolCall toolCall) {
-        return toolCall != null
-                && toolCall.getFunction() != null
-                && org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool.NAME
-                .equals(toolCall.getFunction().getName());
-    }
-
-    /**
-     * Agent 派发占用 task 池；普通工具占用 tool 池，避免嵌套 Agent 与子工具同池自死锁。
-     */
-    private Executor resolveExecutorForTool(ToolCall toolCall) {
-        if (isAgentDispatchTool(toolCall)) {
-            return resolveTaskExecutor();
-        }
-        return resolveToolExecutor();
-    }
-
-    private long resolveToolBatchTimeoutSeconds() {
-        if (context == null || context.getRuntimeDependencies() == null) {
-            return 600L;
-        }
-        return context.getRuntimeDependencies().resolveToolBatchTimeoutSeconds();
-    }
-
-    /**
-     * 为同一批 tool call 固定 dispatchIndex，保证实时占位、终态更新与账本顺序一致。
-     */
-    private Map<String, Integer> buildDispatchIndexMapping(List<ToolCall> commands) {
-        Map<String, Integer> dispatchIndexMapping = new LinkedHashMap<>();
-        if (commands == null || commands.isEmpty()) {
-            return dispatchIndexMapping;
-        }
-        int dispatchIndex = 1;
-        for (ToolCall command : commands) {
-            if (command == null || StringUtils.isBlank(command.getId())) {
-                continue;
-            }
-            dispatchIndexMapping.put(command.getId(), dispatchIndex++);
-        }
-        return dispatchIndexMapping;
-    }
-
-    /**
-     * 工具真正开始执行前先推送一条 tool_call 占位事件，
-     * 让前端能够立刻展示“正在调用哪个工具”，避免长耗时工具阶段看起来像卡住。
-     */
-    private void emitToolCallRunningEvents(List<ToolCall> commands, Map<String, Integer> dispatchIndexMapping) {
-        if (commands == null || commands.isEmpty()) {
-            return;
-        }
-        for (ToolCall command : commands) {
-            emitToolCallEvent(command, dispatchIndexMapping.get(command == null ? null : command.getId()), "running", false, null);
-        }
-    }
-
-    /**
-     * 工具完成后回写同一 messageId 的终态，前端可直接原位覆盖 running 卡片。
-     */
-    private void emitToolCallFinishedEvent(ToolCall command,
-                                           Integer dispatchIndex,
-                                           ToolExecutionOutcome outcome) {
-        String status = outcome != null && outcome.isSuccess() ? "success" : "failed";
-        emitToolCallEvent(command, dispatchIndex, status, true, outcome);
-    }
-
-    private void emitToolCallEvent(ToolCall command,
-                                   Integer dispatchIndex,
-                                   String status,
-                                   boolean isFinal,
-                                   ToolExecutionOutcome outcome) {
-        if (printer == null || command == null || command.getFunction() == null) {
-            return;
-        }
-        String toolCallId = command.getId();
-        String toolName = command.getFunction().getName();
-        if (StringUtils.isBlank(toolCallId) || StringUtils.isBlank(toolName)) {
-            return;
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("messageType", "tool_call");
-        payload.put("status", status);
-        payload.put("toolName", toolName);
-        payload.put("toolCallId", toolCallId);
-        payload.put("toolProvider", resolveToolProvider(toolName));
-        if (dispatchIndex != null) {
-            payload.put("dispatchIndex", dispatchIndex);
-        }
-
-        Long toolInvocationId = context == null || context.getAgentRunState() == null
-                ? null
-                : context.getAgentRunState().resolveToolInvocationId(toolCallId);
-        if (toolInvocationId != null) {
-            payload.put("toolInvocationId", String.valueOf(toolInvocationId));
-        }
-
-        Object input = parseToolCallInput(command.getFunction().getArguments());
-        if (input != null) {
-            payload.put("input", input);
-        }
-
-        payload.put("summary", buildToolCallSummary(toolName, status));
-        payload.put("isFinal", isFinal);
-
-        if (outcome != null && StringUtils.isNotBlank(outcome.getErrorMsg())) {
-            payload.put("errorMsg", outcome.getErrorMsg());
-        }
-
-        printer.send(toolCallId, "tool_call", payload, isFinal);
-    }
-
-    private Object parseToolCallInput(String arguments) {
-        String normalizedPayload = normalizeToolPayload(arguments);
-        try {
-            return JSON.readValue(normalizedPayload, Object.class);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    /**
-     * Parse tool arguments; salvage truncated canvas_publish / emit_ui_tree JSON when normal parse fails.
-     */
-    private Object parseToolArguments(String toolName, String arguments, ObjectMapper mapper) throws Exception {
-        String normalizedPayload = normalizeToolPayload(arguments);
-        try {
-            return mapper.readValue(normalizedPayload, Object.class);
-        } catch (Exception parseError) {
-            Map<String, Object> salvaged = trySalvageToolArguments(toolName, normalizedPayload, parseError);
-            if (salvaged != null) {
-                return salvaged;
-            }
-            throw parseError;
-        }
-    }
-
-    private Map<String, Object> trySalvageToolArguments(String toolName,
-                                                        String normalizedPayload,
-                                                        Exception parseError) {
-        if (org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage.isCanvasPublish(toolName)) {
-            Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage
-                    .parseOrSalvage(normalizedPayload);
-            if (salvaged != null && !salvaged.isEmpty()) {
-                log.warn("{} canvas_publish args salvaged after parse failure: {}",
-                        context == null ? "-" : context.getRequestId(),
-                        parseError.getMessage());
-                return salvaged;
-            }
-        }
-        if (org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage.isEmitUiTree(toolName)) {
-            Map<String, Object> salvaged = org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage
-                    .parseOrSalvage(normalizedPayload);
-            if (salvaged != null && !salvaged.isEmpty()) {
-                log.warn("{} emit_ui_tree args salvaged after parse failure: {}",
-                        context == null ? "-" : context.getRequestId(),
-                        parseError.getMessage());
-                return salvaged;
-            }
-        }
-        return null;
-    }
-
-    private String buildToolCallSummary(String toolName, String status) {
-        if ("success".equals(status)) {
-            return toolName + " 调用完成";
-        }
-        if ("failed".equals(status)) {
-            return toolName + " 调用失败";
-        }
-        return "正在调用 " + toolName;
-    }
-
-    /**
-     * 主线程预登记工具调用，稳定保存 dispatchIndex 与 toolInvocationId。
-     */
     protected Map<String, Long> ensureToolInvocationIds(List<ToolCall> commands) {
-        if (context == null || context.getAgentRunState() == null || commands == null || commands.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Long> existing = new LinkedHashMap<>();
-        List<ToolCall> missingCommands = new ArrayList<>();
-        for (ToolCall command : commands) {
-            if (command == null || StringUtils.isBlank(command.getId())) {
-                continue;
-            }
-            Long existingInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-            if (existingInvocationId != null) {
-                existing.put(command.getId(), existingInvocationId);
-            } else {
-                missingCommands.add(command);
-            }
-        }
-        if (missingCommands.isEmpty()) {
-            return existing;
-        }
-        Map<String, Long> created = preRegisterToolInvocations(missingCommands);
-        if (existing.isEmpty()) {
-            return created;
-        }
-        if (created.isEmpty()) {
-            return existing;
-        }
-        existing.putAll(created);
-        return existing;
+        return toolPipeline.ensureToolInvocationIds(commands);
     }
 
     protected Map<String, Long> preRegisterToolInvocations(List<ToolCall> commands) {
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null) {
-            return Map.of();
-        }
-        Long llmInvocationId = context.getAgentRunState().getCurrentLlmInvocationId();
-        if (llmInvocationId == null) {
-            return Map.of();
-        }
-        List<ToolInvocationBatchStartRecord.Item> items = new ArrayList<>(commands.size());
-        int dispatchIndex = 1;
-        for (ToolCall command : commands) {
-            if (command == null || command.getFunction() == null || StringUtils.isBlank(command.getFunction().getName())) {
-                continue;
-            }
-            items.add(ToolInvocationBatchStartRecord.Item.builder()
-                    .toolCallId(command.getId())
-                    .parentToolCallId(context.getParentToolUseId())
-                    .subAgentId(context.getSubAgentId())
-                    .subAgentType(context.getSubAgentType())
-                    .subAgentDescription(context.getSubAgentDescription())
-                    .dispatchIndex(dispatchIndex++)
-                    .toolName(command.getFunction().getName())
-                    .toolProvider(resolveToolProvider(command.getFunction().getName()))
-                    .inputJson(normalizeToolPayload(command.getFunction().getArguments()))
-                    .startedAt(LocalDateTime.now())
-                    .build());
-        }
-        if (items.isEmpty()) {
-            return Map.of();
-        }
-        // 先写入调用开始事实，再启动工具执行，确保快速完成或并发执行也不会丢失 tool invocation。
-        return context.getExecutionRecorder().createToolInvocations(ToolInvocationBatchStartRecord.builder()
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .llmInvocationId(llmInvocationId)
-                .agentName(getName())
-                .stepNo(getCurrentStep())
-                .items(items)
-                .build());
+        return toolPipeline.preRegisterToolInvocations(commands);
     }
 
-    /**
-     * 回写工具终态。
-     */
-    private void finishToolInvocation(ToolCall command, ToolExecutionOutcome outcome) {
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null || command == null) {
-            return;
-        }
-        Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-        if (toolInvocationId == null) {
-            return;
-        }
-        context.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
-                .toolInvocationId(toolInvocationId)
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .sessionId(context.getSessionId())
-                .toolCallId(command.getId())
-                .toolName(command.getFunction().getName())
-                .status(outcome != null && outcome.isSuccess()
-                        ? ExecutionLedgerConstants.STATUS_SUCCESS
-                        : ExecutionLedgerConstants.STATUS_FAILED)
-                .llmObservation(outcome == null ? null : outcome.getLlmObservation())
-                .structuredOutput(outcome == null ? null : outcome.getStructuredOutput())
-                .errorMsg(outcome == null ? null : outcome.getErrorMsg())
-                .finishedAt(LocalDateTime.now())
-                .build());
-    }
-
-    /**
-     * 收口当前 toolCall 生成的输出文件。
-     */
-    private void recordToolArtifacts(ToolCall command) {
-        if (context == null || !context.hasActiveLedgerRun() || context.getAgentRunState() == null || command == null) {
-            return;
-        }
-        Long toolInvocationId = context.getAgentRunState().resolveToolInvocationId(command.getId());
-        if (toolInvocationId == null) {
-            return;
-        }
-        List<ArtifactRecordCommand> artifactCommands = new ArrayList<>();
-        for (var binding : context.getArtifactBindingsByToolCallId(command.getId())) {
-            if (binding == null || binding.getSource() == null || binding.getFile() == null) {
-                continue;
-            }
-            File file = binding.getFile();
-            artifactCommands.add(ArtifactRecordCommand.builder()
-                    .runId(context.getAgentRunState().getRunId())
-                    .requestId(context.getRequestId())
-                    .toolInvocationId(toolInvocationId)
-                    .toolCallId(command.getId())
-                    .artifactRole(ExecutionLedgerConstants.ARTIFACT_ROLE_OUTPUT)
-                    .visibility(binding.isInternalFile()
-                            ? ExecutionLedgerConstants.VISIBILITY_INTERNAL
-                            : ExecutionLedgerConstants.VISIBILITY_VISIBLE)
-                    .sourceType(ExecutionLedgerConstants.SOURCE_TYPE_TOOL_OUTPUT)
-                    .sourceName(binding.getSource().getToolName())
-                    .fileName(file.getFileName())
-                    .storageKey(resolveStorageKey(file))
-                    .downloadUrl(file.getOssUrl())
-                    .previewUrl(file.getDomainUrl())
-                    .fileSize(file.getFileSize() == null ? null : file.getFileSize().longValue())
-                    .metadataJson(buildArtifactMetadata(file))
-                    .build());
-        }
-        if (!artifactCommands.isEmpty()) {
-            context.getExecutionRecorder().recordArtifacts(artifactCommands);
-        }
-    }
-
-    private String normalizeToolPayload(String payload) {
-        if (StringUtils.isBlank(payload)) {
-            return "{}";
-        }
-        try {
-            return JSON.readTree(payload).toString();
-        } catch (Exception ignore) {
-            return "{}";
-        }
-    }
-
-    private ToolResultPayload normalizeToolResultPayload(Object rawResult) {
-        if (rawResult instanceof ToolResultPayload payload) {
-            // 已预填 llmObservation 的 rich tool 保持原样；仅 llmData 时走 LeAgent serialize_for_llm。
-            boolean failed = Boolean.TRUE.equals(payload.getFailed());
-            String toolResult = StringUtils.defaultString(payload.getToolResult());
-            String llmObservation = payload.getLlmObservation();
-            if (StringUtils.isBlank(llmObservation)) {
-                if (payload.getLlmData() != null || failed) {
-                    llmObservation = ToolObservationSerializer.serializePayload(payload);
-                } else {
-                    llmObservation = toolResult;
-                }
-            }
-            if (StringUtils.isBlank(toolResult)) {
-                toolResult = llmObservation;
-            }
-            return ToolResultPayload.builder()
-                    .toolResult(toolResult)
-                    .llmObservation(llmObservation)
-                    .llmData(payload.getLlmData())
-                    .structuredOutput(payload.getStructuredOutput())
-                    .base64Image(payload.getBase64Image())
-                    .imageMimeType(payload.getImageMimeType())
-                    .failed(failed)
-                    .errorMsg(payload.getErrorMsg())
-                    .build();
-        }
-        if (rawResult instanceof String textResult) {
-            // 对齐 LeAgent：成功 + str data → 原样
-            return ToolResultPayload.builder()
-                    .toolResult(textResult)
-                    .llmObservation(ToolObservationSerializer.serializeSuccess(textResult))
-                    .llmData(textResult)
-                    .failed(Boolean.FALSE)
-                    .build();
-        }
-        // 对齐 LeAgent：成功 + 非 str → json.dumps(data)
-        String serialized = ToolObservationSerializer.serializeSuccess(rawResult);
-        return ToolResultPayload.builder()
-                .toolResult(serialized)
-                .llmObservation(serialized)
-                .llmData(rawResult)
-                .failed(Boolean.FALSE)
-                .build();
-    }
-
-    private String resolveToolProvider(String toolName) {
-        if (availableTools == null || StringUtils.isBlank(toolName)) {
-            return ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL;
-        }
-        if (availableTools.getMcpToolMap() != null && availableTools.getMcpToolMap().containsKey(toolName)) {
-            return ExecutionLedgerConstants.TOOL_PROVIDER_MCP;
-        }
-        return ExecutionLedgerConstants.TOOL_PROVIDER_LOCAL;
-    }
-
-    /**
-     * 工具批量执行优先走运行时托管执行器；缺少上下文时回退当前线程，兼容单测夹具。
-     */
-    private Executor resolveToolExecutor() {
-        return resolveExecutor(deps -> deps.requireToolExecutor());
-    }
-
-    private Executor resolveTaskExecutor() {
-        return resolveExecutor(deps -> deps.requireTaskExecutor());
-    }
-
-    private Executor resolveExecutor(java.util.function.Function<
-            org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies, Executor> picker) {
-        if (context == null || context.getRuntimeDependencies() == null) {
-            return Runnable::run;
-        }
-        return picker.apply(context.getRuntimeDependencies());
-    }
-
-    private String resolveStorageKey(File file) {
-        if (file == null) {
-            return "";
-        }
-        if (StringUtils.isNotBlank(file.getOriginOssUrl())) {
-            return file.getOriginOssUrl();
-        }
-        if (StringUtils.isNotBlank(file.getOssUrl())) {
-            return file.getOssUrl();
-        }
-        if (StringUtils.isNotBlank(file.getOriginDomainUrl())) {
-            return file.getOriginDomainUrl();
-        }
-        if (StringUtils.isNotBlank(file.getDomainUrl())) {
-            return file.getDomainUrl();
-        }
-        return StringUtils.defaultString(file.getFileName());
-    }
-
-    private String buildArtifactMetadata(File file) {
-        if (file == null) {
-            return null;
-        }
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        if (StringUtils.isNotBlank(file.getDescription())) {
-            metadata.put("description", file.getDescription());
-        }
-        if (StringUtils.isNotBlank(file.getOriginFileName())) {
-            metadata.put("originFileName", file.getOriginFileName());
-        }
-        if (StringUtils.isNotBlank(file.getOriginDomainUrl())) {
-            metadata.put("originDomainUrl", file.getOriginDomainUrl());
-        }
-        if (metadata.isEmpty()) {
-            return null;
-        }
-        try {
-            return JSON.writeValueAsString(metadata);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    /**
-     * 在工具实际执行完成后统一收口最终 observation。
-     * 所有写库与写记忆都必须使用这一份 canonical 结果。
-     */
-    private ToolExecutionOutcome finalizeToolExecutionOutcome(ToolCall command, ToolExecutionOutcome outcome) {
-        if (outcome == null) {
-            return null;
-        }
-        String toolCallId = command == null ? null : command.getId();
-        return outcome.setLlmObservation(buildFinalLlmObservation(outcome.getLlmObservation(), toolCallId));
-    }
-
-    /**
-     * 单次工具执行的内部结果。
-     */
-    @Data
-    @Accessors(chain = true)
-    protected static class ToolExecutionOutcome {
-        private boolean success;
-        private String toolResult;
-        private String llmObservation;
-        private ToolStructuredOutput structuredOutput;
-        private String errorMsg;
-        private String base64Image;
-        private String imageMimeType;
-
-        private static ToolExecutionOutcome success(String toolResult,
-                                                    String llmObservation,
-                                                    ToolStructuredOutput structuredOutput,
-                                                    String base64Image,
-                                                    String imageMimeType) {
-            return new ToolExecutionOutcome()
-                    .setSuccess(true)
-                    .setToolResult(toolResult)
-                    .setLlmObservation(llmObservation)
-                    .setStructuredOutput(structuredOutput)
-                    .setBase64Image(base64Image)
-                    .setImageMimeType(imageMimeType);
-        }
-
-        private static ToolExecutionOutcome failure(String toolResult,
-                                                    String llmObservation,
-                                                    ToolStructuredOutput structuredOutput,
-                                                    String errorMsg) {
-            return new ToolExecutionOutcome()
-                    .setSuccess(false)
-                    .setToolResult(toolResult)
-                    .setLlmObservation(llmObservation)
-                    .setStructuredOutput(structuredOutput)
-                    .setErrorMsg(errorMsg);
-        }
-    }
-
-    /**
-     * 导出本轮应写入 working_memory 的消息（去掉 session_env 与跨轮 preload 前缀）。
-     */
     public List<Message> exportWorkingMemoryDelta() {
         List<Message> all = memory == null ? List.of() : memory.getMessages();
         if (all == null || all.isEmpty()) {
@@ -1313,7 +615,7 @@ public abstract class BaseAgent {
             return;
         }
         // LTM flush/review fork：禁止 mid-run compact，否则会递归 flush 并冲掉对话快照
-        if (org.wwz.ai.domain.agent.memory.ltm.LtmMemoryGuard.isSideEffectsDisabled(context)) {
+        if (LtmMemoryGuard.isSideEffectsDisabled(context)) {
             return;
         }
         if (context.getRuntimeDependencies() == null) {

@@ -33,7 +33,7 @@ public class SseEmitterAgentSessionStreamTest {
         stream.send("payload");
 
         Assert.assertTrue("客户端断开后应标记为 aborted", stream.isAborted());
-        Assert.assertTrue("客户端断开后应触发上游取消回调", abortTriggered.get());
+        Assert.assertTrue("客户端断开后应触发断开观察回调", abortTriggered.get());
     }
 
     private static class DisconnectingSseEmitter extends SseEmitter {

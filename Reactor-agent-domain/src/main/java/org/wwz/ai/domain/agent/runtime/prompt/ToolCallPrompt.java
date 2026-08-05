@@ -110,8 +110,6 @@ public class ToolCallPrompt {
 
             """.formatted(USER_FACING_REPLY_CONTRACT);
 
-    public static final String NEXT_STEP_PROMPT = "";
-
     public static String ensureUserFacingReplyContract(String systemPrompt) {
         String base = systemPrompt == null ? "" : systemPrompt.replace("\r\n", "\n").replace('\r', '\n');
         base = stripLegacyUserFacingContract(base);

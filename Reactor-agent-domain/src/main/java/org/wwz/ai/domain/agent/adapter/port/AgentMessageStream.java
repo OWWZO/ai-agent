@@ -14,7 +14,8 @@ public interface AgentMessageStream {
 
     /**
      * 注册下游异常中断后的回调。
-     * 典型场景是浏览器主动断开 SSE，此时应尽快取消上游长连接，避免无意义的远端执行继续占用资源。
+     * 典型场景是浏览器主动断开 SSE，此时调用方可以解绑观察流；是否取消后台 run
+     * 由调用方根据业务语义决定，客户端断开本身不等于用户主动停止。
      */
     default void onAbort(Runnable abortHandler) {
     }
