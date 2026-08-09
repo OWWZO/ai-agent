@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 
 /**
  * Web 搜索工具。
- * 优先级：Grok/xAI 原生 server tool（web_search / search_parameters）→ Tavily → Brave。
+ * 优先级：Grok/xAI 原生 server tool（web_search / search_parameters）→ Exa → Tavily → Brave。
  */
 @Slf4j
 @Data
@@ -51,7 +51,7 @@ public class WebSearchTool implements BaseTool {
         String currentMonthYear = java.time.YearMonth.now().toString();
         return """
                 Search the web for up-to-date information beyond the model knowledge cutoff.
-                Prefer Grok native web search when available; otherwise Tavily/Brave.
+                Prefer Grok native web search when available; otherwise Exa/Tavily/Brave.
                 Returns titles, URLs and snippets. After answering, include a Sources section with markdown links.
 
                 CRITICAL:
@@ -113,7 +113,7 @@ public class WebSearchTool implements BaseTool {
             ReactorConfig config = requireReactorConfig();
             List<ProviderPlan> plans = resolveProviderPlans(config);
             if (plans.isEmpty()) {
-                return failure("WebSearch 未配置。请配置 Grok/xAI（web_search.grok_* 或 llm.default）或 tavily/brave API key。");
+                return failure("WebSearch 未配置。请配置 Grok/xAI（web_search.grok_* 或 llm.default）或 exa/tavily/brave API key。");
             }
 
             Exception lastError = null;
@@ -144,6 +144,7 @@ public class WebSearchTool implements BaseTool {
                                      List<String> blockedDomains) throws Exception {
         return switch (plan.provider()) {
             case GROK -> searchGrok(query, allowedDomains, blockedDomains, plan);
+            case EXA -> new SearchBundle(searchExa(query, allowedDomains, blockedDomains, plan), null);
             case TAVILY -> new SearchBundle(searchTavily(query, allowedDomains, blockedDomains, plan.apiKey()), null);
             case BRAVE -> new SearchBundle(searchBrave(query, allowedDomains, blockedDomains, plan.apiKey()), null);
             case DISABLED -> throw new IllegalStateException("disabled");
@@ -369,6 +370,69 @@ public class WebSearchTool implements BaseTool {
         }
     }
 
+    private List<SearchHit> searchExa(String query,
+                                      List<String> allowedDomains,
+                                      List<String> blockedDomains,
+                                      ProviderPlan plan) throws Exception {
+        // 与 reactor-tool ExaSearch 对齐：POST /search + x-api-key，正文走 contents.text。
+        String endpoint = StringUtils.defaultIfBlank(plan.baseUrl(), "https://api.exa.ai/search").trim();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("query", query);
+        body.put("numResults", MAX_RESULTS);
+        body.put("useAutoprompt", true);
+        body.put("contents", Map.of(
+                "text", Map.of("maxCharacters", 2000)
+        ));
+        if (!allowedDomains.isEmpty()) {
+            body.put("includeDomains", allowedDomains);
+        }
+        if (!blockedDomains.isEmpty()) {
+            body.put("excludeDomains", blockedDomains);
+        }
+
+        String responseText = requireRemoteHttpPort().execute(RemoteHttpRequest.builder()
+                .method("POST")
+                .url(endpoint)
+                .headers(Map.of(
+                        "Accept", "application/json",
+                        "Content-Type", "application/json",
+                        "x-api-key", plan.apiKey()
+                ))
+                .body(JSON.toJSONString(body))
+                .connectTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .readTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .writeTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .callTimeoutSeconds(HTTP_TIMEOUT_SECONDS)
+                .build());
+
+        JSONObject root = JSON.parseObject(responseText);
+        JSONArray results = root == null ? null : root.getJSONArray("results");
+        List<SearchHit> hits = new ArrayList<>();
+        if (results == null) {
+            return hits;
+        }
+        for (int i = 0; i < results.size(); i++) {
+            JSONObject item = results.getJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            String snippet = firstNonBlank(
+                    item.getString("text"),
+                    item.getString("extract"),
+                    item.getString("summary"),
+                    item.getString("snippet")
+            );
+            if (StringUtils.isNotBlank(snippet) && snippet.length() > 500) {
+                snippet = snippet.substring(0, 500);
+            }
+            SearchHit hit = normalizeHit(item.getString("title"), item.getString("url"), snippet);
+            if (hit != null) {
+                hits.add(hit);
+            }
+        }
+        return hits;
+    }
+
     private List<SearchHit> searchTavily(String query,
                                          List<String> allowedDomains,
                                          List<String> blockedDomains,
@@ -508,8 +572,8 @@ public class WebSearchTool implements BaseTool {
     }
 
     /**
-     * auto: grok → tavily → brave
-     * grok / tavily / brave / disabled 为强制模式
+     * auto: grok → exa → tavily → brave
+     * grok / exa / tavily / brave / disabled 为强制模式
      */
     private List<ProviderPlan> resolveProviderPlans(ReactorConfig config) {
         String mode = StringUtils.defaultIfBlank(config.getWebSearchMode(), "auto").trim().toLowerCase(Locale.ROOT);
@@ -520,12 +584,19 @@ public class WebSearchTool implements BaseTool {
         }
 
         ProviderPlan grok = resolveGrokPlan(config);
+        ProviderPlan exa = resolveExaPlan(config);
         String tavilyKey = StringUtils.trimToNull(config.getWebSearchTavilyApiKey());
         String braveKey = StringUtils.trimToNull(config.getWebSearchBraveApiKey());
 
         if ("grok".equals(mode) || "xai".equals(mode)) {
             if (grok != null) {
                 plans.add(grok);
+            }
+            return plans;
+        }
+        if ("exa".equals(mode)) {
+            if (exa != null) {
+                plans.add(exa);
             }
             return plans;
         }
@@ -546,6 +617,9 @@ public class WebSearchTool implements BaseTool {
         if (grok != null) {
             plans.add(grok);
         }
+        if (exa != null) {
+            plans.add(exa);
+        }
         if (tavilyKey != null) {
             plans.add(new ProviderPlan(Provider.TAVILY, tavilyKey, null, null, null));
         }
@@ -553,6 +627,18 @@ public class WebSearchTool implements BaseTool {
             plans.add(new ProviderPlan(Provider.BRAVE, braveKey, null, null, null));
         }
         return plans;
+    }
+
+    private ProviderPlan resolveExaPlan(ReactorConfig config) {
+        String apiKey = StringUtils.trimToNull(config.getWebSearchExaApiKey());
+        if (apiKey == null) {
+            return null;
+        }
+        String searchUrl = StringUtils.defaultIfBlank(
+                config.getWebSearchExaSearchUrl(),
+                "https://api.exa.ai/search"
+        ).trim();
+        return new ProviderPlan(Provider.EXA, apiKey, searchUrl, null, null);
     }
 
     private ProviderPlan resolveGrokPlan(ReactorConfig config) {
@@ -758,6 +844,7 @@ public class WebSearchTool implements BaseTool {
 
     private enum Provider {
         GROK,
+        EXA,
         TAVILY,
         BRAVE,
         DISABLED

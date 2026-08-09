@@ -248,8 +248,8 @@ public class ReactorConfig {
     private String webFetchUrl;
 
     /**
-     * WebSearch 模式：auto | grok | tavily | brave | disabled。
-     * auto 时优先 Grok/xAI 原生搜索，其次 tavily，再次 brave。
+     * WebSearch 模式：auto | grok | exa | tavily | brave | disabled。
+     * auto 时优先 Grok/xAI 原生搜索，其次 Exa，再次 tavily，最后 brave。
      */
     @Value("${autobots.autoagent.web_search.mode:auto}")
     private String webSearchMode;
@@ -268,6 +268,12 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.web_search.grok_interface_url:/v1/chat/completions}")
     private String webSearchGrokInterfaceUrl;
+
+    @Value("${autobots.autoagent.web_search.exa_api_key:}")
+    private String webSearchExaApiKey;
+
+    @Value("${autobots.autoagent.web_search.exa_search_url:https://api.exa.ai/search}")
+    private String webSearchExaSearchUrl;
 
     @Value("${autobots.autoagent.web_search.tavily_api_key:}")
     private String webSearchTavilyApiKey;

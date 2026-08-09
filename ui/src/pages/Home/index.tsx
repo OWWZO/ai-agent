@@ -48,6 +48,7 @@ import {
   hydrateConversationFromReplayFrames,
   isHistoryDetailEmpty,
 } from "@/utils/conversationHistory";
+import { readActiveRun } from "@/utils/activeRunStorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   deriveConversationMetaFromInput,
@@ -162,6 +163,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   // 状态负责视图切换，访客 bootstrap 则决定哪些受保护数据可以开始加载。
   const initialRef = useRef<InitialState>(createInitialState());
   const initializedVisitorIdRef = useRef<string | null>(null);
+  const conversationBootstrapResolvedRef = useRef(false);
   const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
   const {
     recentSessions,
@@ -340,7 +342,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
         const initialSessionId = resolveInitialSessionId({
           recentSessions: sessions,
-          storedSessionId: peekSessionId(),
+          // 活动 run 与普通会话指针都保存在当前 tab；活动 run 优先，避免首屏
+          // 临时会话 ID 覆盖刷新前仍在执行的会话。
+          storedSessionId: readActiveRun()?.sessionId || peekSessionId(),
         });
 
         if (!initialSessionId) {
@@ -370,6 +374,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       })
       .finally(() => {
         if (!disposed) {
+          conversationBootstrapResolvedRef.current = true;
           setConversationBootstrapLoading(false);
         }
       });
@@ -524,7 +529,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   );
 
   useEffect(() => {
-    if (conversationBootstrapLoading) {
+    if (
+      conversationBootstrapLoading ||
+      !conversationBootstrapResolvedRef.current
+    ) {
       return;
     }
     setSessionId(currentConversation.sessionId);

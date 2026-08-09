@@ -59,6 +59,7 @@ function hydrateRun(
 ): CHAT.ChatItem {
   // 历史 run 先还原为与实时流相同的空状态，再逐帧复用 combineData，确保历史和实时使用同一事件语义。
   const runStatus = normalizeRunStatus(run.status);
+  const isRunning = runStatus === "RUNNING";
   const currentChat: CHAT.ChatItem = {
     sessionId: detail.sessionId,
     requestId: run.requestId,
@@ -66,7 +67,7 @@ function hydrateRun(
     files: [],
     responseType: "txt",
     agentType: resolveConversationAgentType(detail.outputStyle, detail.deepThink),
-    loading: false,
+    loading: isRunning,
     forceStop: runStatus === "STOPPED",
     tasks: [],
     thought: "",
@@ -89,12 +90,20 @@ function hydrateRun(
     syncConclusionFromEventData(currentChat, eventData);
   }
 
-  if (!currentChat.conclusion && run.finalSummaryText) {
+  if (!isRunning && !currentChat.conclusion && run.finalSummaryText) {
     // 旧数据或失败 run 可能没有 result frame，用 run 终态摘要补一条与实时 result 同构的事件。
     const fallbackEventData = buildFallbackConclusionEventData(run);
     combineData(fallbackEventData, currentChat);
     syncConclusionFromEventData(currentChat, fallbackEventData);
   }
+
+  // 历史接口可能只返回到账本已落盘的部分事件，RUNNING 状态必须覆盖事件中的
+  // 暂态字段，避免页面刷新后把仍在后台执行的 run 错误显示成已完成。
+  currentChat.loading = isRunning;
+  currentChat.metrics = {
+    ...(currentChat.metrics || {}),
+    status: runStatus,
+  };
 
   return buildConversationTaskData(currentChat, detail.deepThink).currentChat;
 }

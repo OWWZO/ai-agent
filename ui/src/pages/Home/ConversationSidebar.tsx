@@ -7,7 +7,6 @@ import {
   SquarePen,
   Search,
   MoreHorizontal,
-  ClipboardList,
   DatabaseZap,
   MessagesSquare,
   Star,
@@ -51,11 +50,6 @@ const navItems: NavItem[] = [
     key: "image-generation",
     label: "生图",
     icon: WandSparkles,
-  },
-  {
-    key: "sop",
-    label: "SOP",
-    icon: ClipboardList,
   },
   {
     key: "sub-agents",

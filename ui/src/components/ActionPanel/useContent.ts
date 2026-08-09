@@ -15,11 +15,7 @@ function buildToolCallMarkdown(resultMap?: PanelItemType["resultMap"]) {
     contentBlocks.push(`正在调用 \`${resultMap.toolName}\``);
   }
 
-  const input = resultMap.input || resultMap.toolParam;
-  if (input && typeof input === "object") {
-    contentBlocks.push(`\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\``);
-  }
-
+  // 工具入参（Structured data）暂不展示，仅保留调用摘要。
   return contentBlocks.join("\n\n");
 }
 

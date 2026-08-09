@@ -1,6 +1,7 @@
 package org.wwz.ai.domain.agent.runtime;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
@@ -20,7 +21,10 @@ public class GptQueryAgentRequestFactory {
     private final ReactorConfig reactorConfig;
 
     /**
-     * 补齐查询请求缺省字段，并生成 traceId。
+     * 补齐查询请求缺省字段，并生成 traceId（仅日志/追踪用）。
+     * <p>run 身份必须用前端 requestId：ActiveAgentRunRegistry / follow / stop 都按该 id 查找。
+     * 旧逻辑把 requestId 改写成 user+sessionId:requestId，导致 follow 用前端原始 id 永远 idle，
+     * 刷新后 ledger 用改写后的 id 反而能续上。</p>
      */
     public void normalize(GptQueryReq req) {
         if (req == null) {
@@ -28,7 +32,10 @@ public class GptQueryAgentRequestFactory {
         }
         req.setUser(req.getUser() == null ? "reactor" : req.getUser());
         req.setDeepThink(req.getDeepThink() == null ? 0 : req.getDeepThink());
-        req.setTraceId(ChateiUtils.getRequestId(req));
+        // traceId 仅作追踪复合键；不要覆盖或替代 requestId
+        if (StringUtils.isBlank(req.getTraceId())) {
+            req.setTraceId(ChateiUtils.getRequestId(req));
+        }
     }
 
     /**
@@ -36,7 +43,11 @@ public class GptQueryAgentRequestFactory {
      */
     public AgentRequest build(GptQueryReq req) {
         AgentRequest request = new AgentRequest();
-        request.setRequestId(req.getTraceId());
+        // 优先前端 requestId，保证与 follow/stop/UI chat.requestId 一致
+        String runRequestId = StringUtils.isNotBlank(req.getRequestId())
+                ? req.getRequestId().trim()
+                : req.getTraceId();
+        request.setRequestId(runRequestId);
         request.setSessionId(req.getSessionId());
         request.setVisitorId(VisitorRequestContext.currentVisitorId());
         request.setErp(req.getUser());

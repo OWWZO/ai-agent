@@ -44,14 +44,11 @@ export type SuggestedQuestion = {
 };
 
 const generalSuggestedQuestions: SuggestedQuestion[] = [
-  {label: "列出近 3 个月大模型企业级落地的 3 个核心趋势",},
-  {label: "输出一份 2026 年中国企业级 RAG 市场的行业研究报告",},
-  {label: "按照市场环境-竞品拆解-用户需求-机会点 的分析框架，定制一份新能源汽车行业的调研任务",},
-  {label: "资讯：Linux 内核新漏洞证明人工审计不可替代",},
-  {label: "拆解 3 款主流多智能体协作平台的产品功能、定价策略与目标客户群体",},
-  {label: "简要对比 Qdrant、Milvus、Pinecone 三款向量数据库的适用场景",},
-  {label: "对比 Codex 与 Claude Code 的产品定位、模型底座、核心优势与典型适用场景",},
-  {label: "资讯：多家互联网大厂正布局智能体支付业务",},
+  {label: "生成一个长征五号B运载火箭升空的3D模型",},
+  {label: "用WHO与世界银行的公开数据，分析近 20 年全球糖尿病患病率的变化趋势：获取并清洗数据、做分区域对比与统计检验、绘制趋势图表，最后写成一份带图表的分析报告。",},
+  {label: "对特斯拉做一次深度尽调：梳理最近四个季度财报要点、行业格局与主要竞品动态，产出一份投研HTML报告，包含业务分析、风险清单与估值框架。",},
+  {label: "围绕个人知识管理工具做一次竞品调研：选取Notion、Obsidian等4–5个代表产品，从功能、目标人群、用户口碑等角度入手，用Canvas产出一份竞品对比调研报告",},
+  {label: "",},
 ];
 
 export const suggestedQuestionsByProductType: Record<string, SuggestedQuestion[]> = {

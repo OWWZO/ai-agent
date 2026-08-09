@@ -77,10 +77,12 @@ export function resolveParentToolUseId(
   const record = task as Record<string, unknown>;
   const resultMap = (record.resultMap || {}) as Record<string, unknown>;
   const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+  const toolResult = (record.toolResult || {}) as Record<string, unknown>;
   return asText(
     resultMap.parentToolUseId ||
       nested.parentToolUseId ||
-      record.parentToolUseId
+      record.parentToolUseId ||
+      toolResult.parentToolUseId
   );
 }
 

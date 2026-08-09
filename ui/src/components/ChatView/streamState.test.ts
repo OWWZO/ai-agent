@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isStructuredDataOnlyTask,
   isWorkspaceAttentionTask,
   resolveActionPanelVisibility,
   resolveRunPresence,
@@ -40,6 +41,64 @@ describe("streamState presence & attention", () => {
         resultMap: { messageType: "tool_call", status: "running" },
       } as CHAT.Task)
     ).toBe(false);
+  });
+
+  it("Structured data 工具入参/出参不展开工作区", () => {
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_call",
+        resultMap: { messageType: "tool_call", toolName: "foo" },
+      } as CHAT.Task)
+    ).toBe(true);
+
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_result",
+        toolResult: {
+          toolName: "foo",
+          toolResult: '{"ok":true}',
+        },
+      } as CHAT.Task)
+    ).toBe(true);
+
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_result",
+        toolResult: {
+          toolName: "foo",
+          toolResult: "plain text result",
+        },
+      } as CHAT.Task)
+    ).toBe(false);
+  });
+
+  it("子智能体卡片与 JSON 观察值不打开右侧空白面板", () => {
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_call",
+        resultMap: { messageType: "tool_call", toolName: "Agent" },
+      } as CHAT.Task)
+    ).toBe(true);
+
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_result",
+        toolResult: {
+          toolName: "Agent",
+          toolResult: 'status=completed\nagentType=Explore\n\n报告正文',
+        },
+      } as CHAT.Task)
+    ).toBe(true);
+
+    expect(
+      isStructuredDataOnlyTask({
+        messageType: "tool_result",
+        toolResult: {
+          toolName: "workspace_grep",
+          toolResult: "",
+        },
+      } as CHAT.Task)
+    ).toBe(true);
   });
 
   it("tool_call 事件不刷新工作区跟随", () => {

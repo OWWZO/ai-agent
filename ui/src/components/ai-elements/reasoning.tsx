@@ -12,6 +12,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { MessageResponse } from "./message";
+import { normalizeThinkingText } from "@/utils/markdown";
 
 type ReasoningContextValue = {
   isStreaming: boolean;
@@ -164,6 +165,7 @@ export type ReasoningContentProps = ComponentProps<
 export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => {
     const { isStreaming } = useReasoning();
+    const normalizedChildren = normalizeThinkingText(children);
 
     return (
       <CollapsibleContent
@@ -180,7 +182,7 @@ export const ReasoningContent = memo(
             showStreamingCursor={false}
             className="text-[13px] leading-6 tracking-[-0.01em] text-foreground/68 [&_p]:text-[13px] [&_p]:leading-6 [&_li]:text-[13px] [&_li]:leading-6 [&_ol]:leading-6 [&_ul]:leading-6 [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[13px] [&_blockquote]:text-foreground/56 [&_code]:text-[12px]"
           >
-            {children}
+            {normalizedChildren}
           </MessageResponse>
         </div>
       </CollapsibleContent>

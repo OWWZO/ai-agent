@@ -100,16 +100,6 @@ interface ResolvePanelViewParams {
   primaryFile?: CHAT.TFile;
 }
 
-function parseJsonSafely(value?: string) {
-  // 面板渲染不能因工具返回的非 JSON 文本崩溃，解析失败统一回退为空对象。
-  try {
-    const parsed = JSON.parse(value || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 function fileView(
   type: FilePanelView["type"],
   primaryFile?: CHAT.TFile,
@@ -234,11 +224,9 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     return fileView("file", primaryFile, missingReason);
   }
 
+  // 工具结构化出参（Structured data / JSON）暂不展示。
   if (useJSON) {
-    return {
-      type: "json",
-      jsonData: parseJsonSafely(toolResultText),
-    };
+    return { type: "empty" };
   }
 
   return {

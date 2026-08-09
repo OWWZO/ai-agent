@@ -55,8 +55,11 @@ public class SubAgentDefinitionAdminController {
     @GetMapping("/tool-catalog")
     public Response<List<String>> toolCatalog() {
         // 目录用于配置页面提示可用工具名称；它不直接修改注册表或子 Agent 定义。
+        // 名称与 AgentToolCollectionFactory 注册的 getName()/TOOL_NAME 保持一致；
+        // 运行时仍会由 SubAgentToolFilter 全局剥离 Agent / PlanMode 写入口 / LTM 等。
         return success(List.of(
                 "*",
+                // workspace / file
                 "workspace_read",
                 "workspace_list",
                 "workspace_glob",
@@ -64,9 +67,11 @@ public class SubAgentDefinitionAdminController {
                 "workspace_write",
                 "workspace_edit",
                 "file_tool",
+                // search / web
                 "deep_search",
                 "WebFetch",
                 "WebSearch",
+                // code / report / skill / media
                 "code_interpreter",
                 "code_execution",
                 "report_tool",
@@ -74,11 +79,53 @@ public class SubAgentDefinitionAdminController {
                 "image_generation_tool",
                 "data_analysis",
                 "multimodalagent_tool",
+                // LTM / session（子 Agent 运行时默认剥离写记忆与 session_search）
+                "memory",
+                "session_search",
+                // plan mode / task
                 "TodoWrite",
                 "TaskCreate",
                 "TaskGet",
                 "TaskUpdate",
-                "TaskList"
+                "TaskList",
+                "TaskStop",
+                "EnterPlanMode",
+                "ExitPlanMode",
+                "AskUserQuestion",
+                // docgen
+                "document_generate",
+                "slides_generate",
+                "excel_generator",
+                "checklist_generate",
+                "template_filler",
+                "document_template",
+                "theme_designer",
+                "chart_generator",
+                // docread
+                "csv_processor",
+                "excel_reader",
+                "html_processor",
+                "markdown_processor",
+                "text_processor",
+                "word_reader",
+                "pdf_reader",
+                "pdf_structure",
+                "citation_extractor",
+                "image_ocr",
+                // dataprep
+                "data_aggregate",
+                "data_clean",
+                "data_merge",
+                "data_transform",
+                "data_validate",
+                "sql_query",
+                // canvas / genui
+                "canvas_publish",
+                "get_html_canvas_guide",
+                "get_genui_guide",
+                "list_ui_components",
+                "emit_ui_tree",
+                "emit_ui_patch"
         ));
     }
 

@@ -38,6 +38,7 @@ import {
   shouldRenderDeepSearchPreview,
 } from "@/utils/deepSearch";
 import { cn } from "@/lib/utils";
+import { canOpenTaskWorkspacePanel } from "@/components/ChatView/streamState";
 import { DeepSearchPreviewItem, ToolItem } from "./Timeline";
 import {
   deriveAgentProcessModel,
@@ -403,11 +404,20 @@ const CompactStepRow: FC<{
     ? `${step.title} 「${step.detail}」`
     : step.title;
 
+  const canOpenPanel =
+    step.tool.messageType === "plan" || canOpenTaskWorkspacePanel(step.tool);
+
   return (
     <button
       type="button"
-      className="timeline-tool-row group flex w-full min-h-8 cursor-pointer items-center gap-2 py-[5px] text-left"
+      className={cn(
+        "timeline-tool-row group flex w-full min-h-8 items-center gap-2 py-[5px] text-left",
+        canOpenPanel ? "cursor-pointer" : "cursor-default"
+      )}
       onClick={() => {
+        if (!canOpenPanel) {
+          return;
+        }
         if (step.tool.messageType === "plan") {
           ctx.changePlan?.();
           return;
@@ -420,13 +430,16 @@ const CompactStepRow: FC<{
       </div>
       <span
         className={cn(
-          "min-w-0 flex-1 truncate text-left text-[14.5px] font-medium leading-5 tracking-[-0.01em] text-[var(--chat-text-muted)] group-hover:text-[var(--chat-text)]",
+          "min-w-0 flex-1 truncate text-left text-[14.5px] font-medium leading-5 tracking-[-0.01em] text-[var(--chat-text-muted)]",
+          canOpenPanel && "group-hover:text-[var(--chat-text)]",
           step.active && "thinking-shimmer"
         )}
       >
         {titleText}
       </span>
-      <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--chat-text-muted)] opacity-55" />
+      {canOpenPanel ? (
+        <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--chat-text-muted)] opacity-55" />
+      ) : null}
       <DurationBadge label={step.durationLabel} active={step.active} />
     </button>
   );

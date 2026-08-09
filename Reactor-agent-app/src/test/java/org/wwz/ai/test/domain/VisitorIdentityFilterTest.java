@@ -89,6 +89,25 @@ public class VisitorIdentityFilterTest {
         Assert.assertTrue(response.getHeader("Set-Cookie").contains("ai_agent_visitor_token=token-003"));
     }
 
+    @Test
+    public void shouldBindVisitorForRunFollowEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-follow")
+                        .rawToken("token-follow")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/run/follow");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-follow", visitorSeenInChain.get());
+    }
+
     private FilterChain captureVisitorChain(AtomicReference<String> visitorSeenInChain) {
         return (request, response) -> visitorSeenInChain.set(VisitorRequestContext.currentVisitorId());
     }

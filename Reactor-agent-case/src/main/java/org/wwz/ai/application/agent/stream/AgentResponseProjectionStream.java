@@ -10,41 +10,71 @@ import org.wwz.ai.domain.agent.runtime.enums.ResponseTypeEnum;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 将执行内核的 {@link AgentResponse} 投影为浏览器侧 {@link GptProcessResult}。
  * 应用层直接调度时使用，替代旧的 HTTP loopback 再解析路径。
+ * <p>下游观察流可在客户端断开后通过 {@link #rebindDownstream(AgentSessionStream)} 续绑，
+ * 投影状态（EventResult / 已投影响应列表）保持不变，仅替换浏览器 SSE 承载。
+ * 断流期间投影结果写入环形缓冲，续绑后补发，降低丢帧。</p>
  */
 @Slf4j
 public class AgentResponseProjectionStream implements AgentSessionStream {
 
-    private final AgentSessionStream downstream;
+    /** 断流窗口内保留的最近投影帧数（含 tool/结果，不含心跳）。 */
+    static final int REPLAY_BUFFER_SIZE = 128;
+
+    private final AtomicReference<AgentSessionStream> downstreamRef = new AtomicReference<>();
     private final AgentRequest request;
     private final Map<AgentType, AgentResponseHandler> handlerMap;
     private final List<AgentResponse> agentRespList = new ArrayList<>();
     private final EventResult eventResult = new EventResult();
+    private final List<Runnable> abortHandlers = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final long startTime = System.currentTimeMillis();
+    private final Deque<GptProcessResult> replayBuffer = new ArrayDeque<>();
+    private final Object bufferLock = new Object();
 
     public AgentResponseProjectionStream(AgentSessionStream downstream,
                                          AgentRequest request,
                                          Map<AgentType, AgentResponseHandler> handlerMap) {
-        this.downstream = downstream;
         this.request = request;
         this.handlerMap = handlerMap == null ? Map.of() : handlerMap;
+        if (downstream != null) {
+            this.downstreamRef.set(downstream);
+            wireDownstreamAbort(downstream);
+        }
+    }
+
+    /**
+     * 刷新/重连后续绑浏览器观察流。已 finish 关闭的投影不再接受续绑。
+     * 续绑后补发断流窗口内缓冲帧。
+     */
+    public void rebindDownstream(AgentSessionStream next) {
+        if (next == null || closed.get()) {
+            return;
+        }
+        downstreamRef.set(next);
+        wireDownstreamAbort(next);
+        log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
+        replayBufferedFrames(next);
     }
 
     @Override
     public void send(Object payload) throws Exception {
-        if (closed.get() || downstream.isAborted()) {
+        if (closed.get()) {
             return;
         }
         if (!(payload instanceof AgentResponse agentResponse)) {
-            downstream.send(payload);
+            forwardIfLive(payload);
             return;
         }
 
@@ -53,12 +83,16 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (handler == null) {
             log.error("{} no AgentResponseHandler found for agentType: {}",
                     request.getRequestId(), agentType);
-            downstream.send(buildDefaultResult(request, "unsupported agentType: " + agentType));
+            GptProcessResult failed = buildDefaultResult(request, "unsupported agentType: " + agentType);
+            offerReplayBuffer(failed);
+            forwardIfLive(failed);
             return;
         }
 
+        // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
         GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
-        downstream.send(result);
+        offerReplayBuffer(result);
+        forwardIfLive(result);
         if (result.isFinished()) {
             log.info("{} task total cost time:{}ms",
                     request.getRequestId(), System.currentTimeMillis() - startTime);
@@ -71,7 +105,10 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        downstream.complete();
+        AgentSessionStream downstream = currentDownstream();
+        if (downstream != null) {
+            downstream.complete();
+        }
     }
 
     @Override
@@ -79,17 +116,33 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        downstream.completeWithError(throwable);
+        AgentSessionStream downstream = currentDownstream();
+        if (downstream != null) {
+            downstream.completeWithError(throwable);
+        }
     }
 
     @Override
     public void onAbort(Runnable abortHandler) {
-        downstream.onAbort(abortHandler);
+        if (abortHandler == null) {
+            return;
+        }
+        abortHandlers.add(abortHandler);
+        AgentSessionStream downstream = currentDownstream();
+        if (downstream != null && downstream.isAborted() && !closed.get()) {
+            abortHandler.run();
+        }
     }
 
     @Override
     public boolean isAborted() {
-        return closed.get() || downstream.isAborted();
+        // 对外仍表示「当前浏览器观察流是否断开」；closed 才是投影生命周期结束。
+        // 续绑后下游恢复，isAborted 变 false。
+        if (closed.get()) {
+            return true;
+        }
+        AgentSessionStream downstream = currentDownstream();
+        return downstream == null || downstream.isAborted();
     }
 
     public static GptProcessResult buildHeartbeat(String requestId) {
@@ -105,6 +158,109 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         result.setPackageType("heartbeat");
         result.setEncrypted(false);
         return result;
+    }
+
+    /**
+     * 续流时若 run 已不在进程内且 ledger 终态，向前端推终态空包。
+     */
+    public static GptProcessResult buildFollowIdle(String requestId) {
+        GptProcessResult result = new GptProcessResult();
+        result.setFinished(true);
+        result.setStatus("success");
+        result.setResponseType(ResponseTypeEnum.text.name());
+        result.setResponse("");
+        result.setResponseAll("");
+        result.setUseTimes(0);
+        result.setUseTokens(0);
+        result.setReqId(requestId);
+        result.setPackageType("follow_idle");
+        result.setEncrypted(false);
+        return result;
+    }
+
+    /**
+     * registry 暂无但 ledger 仍 RUNNING：提示前端继续退避重连，不要当任务结束。
+     */
+    public static GptProcessResult buildFollowPending(String requestId) {
+        GptProcessResult result = new GptProcessResult();
+        result.setFinished(false);
+        result.setStatus("success");
+        result.setResponseType(ResponseTypeEnum.text.name());
+        result.setResponse("");
+        result.setResponseAll("");
+        result.setUseTimes(0);
+        result.setUseTokens(0);
+        result.setReqId(requestId);
+        result.setPackageType("follow_pending");
+        result.setEncrypted(false);
+        return result;
+    }
+
+    private void forwardIfLive(Object payload) throws Exception {
+        AgentSessionStream liveDownstream = currentDownstream();
+        if (liveDownstream == null || liveDownstream.isAborted()) {
+            return;
+        }
+        liveDownstream.send(payload);
+    }
+
+    private void offerReplayBuffer(GptProcessResult result) {
+        if (result == null || "heartbeat".equals(result.getPackageType())) {
+            return;
+        }
+        synchronized (bufferLock) {
+            if (replayBuffer.size() >= REPLAY_BUFFER_SIZE) {
+                replayBuffer.removeFirst();
+            }
+            replayBuffer.addLast(result);
+        }
+    }
+
+    private void replayBufferedFrames(AgentSessionStream next) {
+        List<GptProcessResult> snapshot;
+        synchronized (bufferLock) {
+            snapshot = new ArrayList<>(replayBuffer);
+        }
+        if (snapshot.isEmpty()) {
+            return;
+        }
+        log.info("{} replay {} buffered frames after rebind",
+                request == null ? "-" : request.getRequestId(), snapshot.size());
+        for (GptProcessResult frame : snapshot) {
+            if (next.isAborted() || closed.get()) {
+                return;
+            }
+            try {
+                next.send(frame);
+            } catch (Exception e) {
+                log.warn("{} replay frame failed after rebind",
+                        request == null ? "-" : request.getRequestId(), e);
+                return;
+            }
+        }
+    }
+
+    private AgentSessionStream currentDownstream() {
+        return downstreamRef.get();
+    }
+
+    private void wireDownstreamAbort(AgentSessionStream downstream) {
+        if (downstream == null) {
+            return;
+        }
+        downstream.onAbort(() -> {
+            if (downstreamRef.get() != downstream) {
+                return;
+            }
+            for (Runnable handler : abortHandlers) {
+                try {
+                    handler.run();
+                } catch (Exception e) {
+                    log.warn("{} projection abort handler failed",
+                            request == null ? "-" : request.getRequestId(), e);
+                }
+            }
+        });
     }
 
     private static GptProcessResult buildDefaultResult(AgentRequest request, String errMsg) {

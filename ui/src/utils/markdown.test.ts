@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeMarkdownForDisplay } from "./markdown";
+import { normalizeMarkdownForDisplay, normalizeThinkingText } from "./markdown";
 
 describe("normalizeMarkdownForDisplay", () => {
   it("splits sticky structured-summary headings without space", () => {
@@ -87,5 +87,14 @@ describe("normalizeMarkdownForDisplay", () => {
   it("normalizes BOM and newlines only for default scope sticky headings still split", () => {
     expect(normalizeMarkdownForDisplay("\uFEFFa\r\nb\rc")).toBe("a\nb\nc");
     expect(normalizeMarkdownForDisplay("前言## 标题")).toBe("前言\n\n## 标题");
+  });
+
+  it("removes malformed thought separators without changing normal emphasis", () => {
+    expect(
+      normalizeThinkingText(
+        "Planning data cleaning and reporting steps****Deciding output formats and tools"
+      )
+    ).toBe("Planning data cleaning and reporting steps\n\nDeciding output formats and tools");
+    expect(normalizeThinkingText("**重点** 和 *补充*")).toBe("**重点** 和 *补充*");
   });
 });

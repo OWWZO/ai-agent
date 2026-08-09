@@ -1,11 +1,11 @@
 import classNames from "classnames";
-import { Bot, ClipboardList, DatabaseZap, WandSparkles } from "lucide-react";
+import { Bot, DatabaseZap, WandSparkles } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { ROUTES } from "@/router/routes";
 
 type WorkspaceToolItem = {
-  key: "mrag" | "image-generation" | "sop" | "sub-agents";
+  key: "mrag" | "image-generation" | "sub-agents";
   label: string;
   description: string;
   icon: typeof DatabaseZap;
@@ -26,13 +26,6 @@ const workspaceToolItems: WorkspaceToolItem[] = [
     description: "图片生成与 Base64 解析",
     icon: WandSparkles,
     to: ROUTES.WORKSPACE_IMAGE_GENERATION,
-  },
-  {
-    key: "sop",
-    label: "SOP 工作台",
-    description: "标准作业程序与试召回",
-    icon: ClipboardList,
-    to: ROUTES.WORKSPACE_SOP,
   },
   {
     key: "sub-agents",

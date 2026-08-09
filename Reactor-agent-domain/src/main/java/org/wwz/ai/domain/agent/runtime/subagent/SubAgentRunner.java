@@ -89,8 +89,13 @@ public class SubAgentRunner {
                 && parentContext.getPlanModeState().isPlanMode();
         ToolCollection childTools = SubAgentToolFilter.filter(
                 parentContext.getToolCollection(), definition, parentInPlanMode);
+        String parentToolUseId = resolveParentToolUseId(parentContext);
+        if (StringUtils.isBlank(parentToolUseId)) {
+            log.warn("{} subagent spawn without parentToolUseId type={} id={} — nested tools will not attach to Agent card",
+                    parentContext.getRequestId(), definition.getAgentType(), agentId);
+        }
         AgentContext childContext = SubAgentContextFactory.create(
-                parentContext, prompt, description, childTools, agentId, definition.getAgentType());
+                parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId);
         // 默认每子 Agent 独占工具实例（ToolIsolation）；仅无法 fork 时才共享锁
         ContextScopedTool.bindAll(childTools, childContext);
 
@@ -128,6 +133,13 @@ public class SubAgentRunner {
             return failed(agentId, definition, description, prompt, start,
                     e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         }
+    }
+
+    private static String resolveParentToolUseId(AgentContext parent) {
+        if (parent == null || parent.getCurrentToolArtifactSource() == null) {
+            return null;
+        }
+        return StringUtils.trimToNull(parent.getCurrentToolArtifactSource().getToolCallId());
     }
 
     private static String finalizeContent(ReactImplAgent agent, String runResult) {

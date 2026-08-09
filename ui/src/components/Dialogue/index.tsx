@@ -140,9 +140,12 @@ const DialogueComponent: FC<Props> = (props) => {
   const showProcessTimeline =
     !showStandaloneResponse &&
     (!!thoughtText || !!displayedPlan || chat.tasks.length > 0);
-  // 仅最新一轮且仍在 loading 时闪动；任务结束后一律静止
+  // plan_thought 的 isFinal 只表示本轮规划思考完成，不等于整个 Agent 已结束。
+  // 只有尚未收到思考终态的最新轮次才允许闪动，后续工具执行阶段保持静止。
   const thoughtStreaming =
-    Boolean(chat.loading) && thoughtVersionIndex === latestRoundIndex;
+    Boolean(chat.loading) &&
+    thoughtVersionIndex === latestRoundIndex &&
+    selectedThoughtRound?.planThoughtFinal !== true;
 
   const changeActiveChat = useCallback((task: CHAT.Task, targetChat: CHAT.ChatItem) => {
     changeTask?.(task, targetChat);
@@ -209,6 +212,7 @@ const DialogueComponent: FC<Props> = (props) => {
       <div className="mt-4 w-full">
         <RunStatus
           status={chat.metrics?.status}
+          errorMsg={chat.tip || undefined}
           finishedAt={chat.finishedAt}
         />
       </div>

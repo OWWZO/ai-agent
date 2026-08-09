@@ -1,4 +1,5 @@
 import { isHTML, isValidJSON } from "@/utils";
+import { isAgentDispatchTask } from "@/utils/chat/subagent";
 import { buildDeepSearchResultItems } from "@/utils/deepSearch";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
@@ -111,7 +112,12 @@ export const useMsgTypes = (taskItem?: PanelItemType) => {
       useLegacyDoc,
       useWord,
       useFile,
-      useJSON: messageType === 'tool_result' && toolResult?.toolResult && isValidJSON(toolResult.toolResult),
+      // Agent 观察值可能是 JSON，但仍走 SubAgent markdown，不能当成空白 Structured data。
+      useJSON:
+        messageType === "tool_result" &&
+        !!toolResult?.toolResult &&
+        isValidJSON(toolResult.toolResult) &&
+        !isAgentDispatchTask(taskItem as unknown as CHAT.Task),
       isHtml,
       searchList,
       usePpt

@@ -64,9 +64,18 @@ export function resolveTaskToolCallId(
     return "";
   }
 
+  const record = task as Record<string, unknown>;
+  const resultMap = (record.resultMap || {}) as Record<string, unknown>;
+  const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+  const toolResult = (record.toolResult || {}) as Record<string, unknown>;
+
+  // 兼容 realtime / history / 多层 resultMap 展开后的多种落点，避免父 Agent
+  // 无法登记 toolCallId 导致子工具挂不上 children。
   return pickFirstText(
-    task.resultMap?.toolCallId,
-    task.toolResult?.toolCallId,
+    resultMap.toolCallId,
+    nested.toolCallId,
+    toolResult.toolCallId,
+    record.toolCallId,
   );
 }
 

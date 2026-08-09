@@ -7,17 +7,28 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * trigger 侧统一管理 SSE 生命周期，避免心跳、超时和异常处理散落在 domain。
  */
 public final class SseLifecycleSupport {
 
+    /**
+     * 主聊天 / follow / 问数等长连接 SSE 超时。
+     * 客户端主动断开仍走 abort；此值只避免服务端因“空闲超时”提前掐流。
+     */
+    public static final long LONG_LIVED_SSE_TIMEOUT_MS = TimeUnit.DAYS.toMillis(7);
+
     private SseLifecycleSupport() {
     }
 
     public static SseEmitter createEmitter(long timeoutMillis) {
         return new SseEmitterUtf8(timeoutMillis);
+    }
+
+    public static SseEmitter createLongLivedEmitter() {
+        return createEmitter(LONG_LIVED_SSE_TIMEOUT_MS);
     }
 
     public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
@@ -43,13 +54,17 @@ public final class SseLifecycleSupport {
                 log.info("{} send heartbeat", requestId);
                 emitter.send(heartbeatPayload);
             } catch (Exception e) {
-                if (SseClientDisconnectDetector.isClientDisconnected(e)) {
-                    log.info("{} heartbeat stopped because SSE client disconnected", requestId);
-                    emitter.complete();
+                if (SseClientDisconnectDetector.isClientDisconnected(e)
+                        || isEmitterAlreadyCompleted(e)) {
+                    log.info("{} heartbeat stopped because SSE emitter is closed", requestId);
+                    try {
+                        emitter.complete();
+                    } catch (Exception ignored) {
+                        // already completed
+                    }
                     return;
                 }
-                log.warn("{} heartbeat failed, closing connection", requestId, e);
-                emitter.completeWithError(e);
+                log.warn("{} heartbeat send failed, will retry next interval", requestId, e);
             }
         }, Instant.now().plusMillis(heartbeatIntervalMillis), Duration.ofMillis(heartbeatIntervalMillis));
     }
@@ -84,5 +99,18 @@ public final class SseLifecycleSupport {
         if (heartbeatFuture != null) {
             heartbeatFuture.cancel(true);
         }
+    }
+
+    private static boolean isEmitterAlreadyCompleted(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof IllegalStateException
+                    && current.getMessage() != null
+                    && current.getMessage().contains("already completed")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }

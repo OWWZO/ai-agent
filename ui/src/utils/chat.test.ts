@@ -785,6 +785,7 @@ describe("chat deep_search progress", () => {
       "planner-round-2",
     ]);
     expect(currentChat.multiAgent.plannerRounds?.[0]?.planThought).toBe("先收集背景信息");
+    expect(currentChat.multiAgent.plannerRounds?.[0]?.planThoughtFinal).toBe(true);
     expect(currentChat.multiAgent.plannerRounds?.[0]?.plan?.title).toBe("第一轮计划");
     expect(currentChat.multiAgent.plannerRounds?.[1]?.planThought).toBe("根据新信息重排计划");
     expect(currentChat.multiAgent.plan_thought).toBe("根据新信息重排计划");
@@ -853,6 +854,115 @@ describe("chat deep_search progress", () => {
     } as unknown as MESSAGE.EventData, chat);
 
     expect(chat.multiAgent.plannerRounds?.[0]?.planThought).toBe("第一段第二段");
+    expect(chat.multiAgent.plannerRounds?.[0]?.planThoughtFinal).toBe(false);
+  });
+});
+
+describe("chat reasoning progress", () => {
+  const createReasoningEvent = (
+    content: string,
+    isFinal: boolean,
+    options?: { messageId?: string; taskId?: string }
+  ) =>
+    ({
+      messageType: "task",
+      messageId: options?.messageId || "reasoning-message-1",
+      taskId: options?.taskId || "reasoning-task-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-reasoning-1",
+        messageId: options?.messageId || "reasoning-message-1",
+        messageType: "llm_reasoning",
+        messageTime: "1714041607000",
+        isFinal,
+        finish: isFinal,
+        reasoningContent: content,
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  const createToolThoughtEvent = (
+    content: string,
+    isFinal: boolean,
+    options?: { messageId?: string; taskId?: string }
+  ) =>
+    ({
+      messageType: "task",
+      messageId: options?.messageId || "thought-message-1",
+      taskId: options?.taskId || "reasoning-task-1",
+      taskOrder: 1,
+      messageOrder: 2,
+      resultMap: {
+        requestId: "req-reasoning-1",
+        messageId: options?.messageId || "thought-message-1",
+        messageType: "tool_thought",
+        messageTime: "1714041608000",
+        isFinal,
+        finish: isFinal,
+        toolThought: content,
+      },
+    }) as unknown as MESSAGE.EventData;
+
+  it("llm_reasoning 最终增量会同步任务终态，停止深度思考闪光", () => {
+    const chat = {
+      sessionId: "session-reasoning-1",
+      requestId: "req-reasoning-1",
+      query: "整理数据",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createReasoningEvent("先清理字段", false), chat);
+    combineData(createReasoningEvent("再输出报告", true), chat);
+
+    const reasoning = chat.multiAgent.tasks[0]?.[0];
+    expect(reasoning?.toolThought).toBe("再输出报告");
+    expect(reasoning?.finish).toBe(true);
+    expect(reasoning?.isFinal).toBe(true);
+    expect(reasoning?.resultMap.isFinal).toBe(true);
+  });
+
+  it("助手过程文一开始就收口深度思考，迟到 reasoning 只补字不重开流式", () => {
+    const chat = {
+      sessionId: "session-reasoning-2",
+      requestId: "req-reasoning-2",
+      query: "整理数据",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createReasoningEvent("先分析需求", false), chat);
+    combineData(createReasoningEvent("再拆步骤", false), chat);
+
+    let reasoning = chat.multiAgent.tasks[0]?.[0];
+    expect(reasoning?.toolThought).toBe("先分析需求再拆步骤");
+    expect(reasoning?.isFinal).toBe(false);
+
+    combineData(createToolThoughtEvent("开始调用工具", false), chat);
+
+    reasoning = chat.multiAgent.tasks[0]?.[0];
+    expect(reasoning?.messageType).toBe("llm_reasoning");
+    expect(reasoning?.isFinal).toBe(true);
+    expect(reasoning?.resultMap.isFinal).toBe(true);
+    expect(reasoning?.toolThought).toBe("先分析需求再拆步骤");
+
+    combineData(createReasoningEvent("并核对边界", false), chat);
+    reasoning = chat.multiAgent.tasks[0]?.[0];
+    expect(reasoning?.toolThought).toBe("先分析需求再拆步骤并核对边界");
+    expect(reasoning?.isFinal).toBe(true);
+
+    combineData(createReasoningEvent("先分析需求再拆步骤并核对边界与风险", true), chat);
+    reasoning = chat.multiAgent.tasks[0]?.[0];
+    expect(reasoning?.toolThought).toBe("先分析需求再拆步骤并核对边界与风险");
+    expect(reasoning?.isFinal).toBe(true);
   });
 });
 

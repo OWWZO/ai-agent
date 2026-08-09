@@ -248,6 +248,9 @@ public class BaseAgentResponseHandler {
                 if (agentResponse.getResultMap() != null) {
                     payload.put("resultMap", new LinkedHashMap<>(agentResponse.getResultMap()));
                 }
+                // 子 Agent 嵌套标签需同时出现在外层 envelope 与内层 resultMap，
+                // 否则前端 resolveParentToolUseId 在部分结构下读不到 parentToolUseId。
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "agent_stream":
                 payload.put("result", agentResponse.getResult());

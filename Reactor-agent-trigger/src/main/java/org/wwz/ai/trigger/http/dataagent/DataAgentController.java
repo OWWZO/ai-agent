@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 数据问数 HTTP 入口。
@@ -64,7 +63,7 @@ public class DataAgentController {
     public SseEmitter chatQuery(@RequestBody DataAgentChatReq req) throws Exception {
         // 问数流只在入口创建 emitter 并注册关闭回调，具体查询、工具调用和结果事件由
         // application service 完成；这样 HTTP 生命周期与问数业务生命周期保持分层。
-        SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
+        SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         SseLifecycleSupport.registerLifecycle(emitter,
                 Objects.toString(req.getTraceId(), "data-agent-chat"),
                 null,

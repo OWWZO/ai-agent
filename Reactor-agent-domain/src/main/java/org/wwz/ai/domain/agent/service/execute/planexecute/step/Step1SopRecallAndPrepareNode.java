@@ -112,7 +112,6 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
             activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
         }
         handleSopRecall(agentContext, request);
-        // PlanSolve = cchaha 式“先规划”：请求一进来就进入 plan mode，未批准前禁止改业务；
         // 这条状态约束在工具层执行，节点只负责建立初始状态和把计划文件提示发给前端。
         enterPlanModeForPlanSolve(agentContext);
 

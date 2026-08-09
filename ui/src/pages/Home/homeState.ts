@@ -138,14 +138,39 @@ function isEmptyConversationDraft(conversation: CHAT.ConversationHistory) {
   );
 }
 
+function conversationRunCount(conversation: CHAT.ConversationHistory) {
+  return conversation.chatList.length + conversation.dataChatList.length;
+}
+
 /**
  * 本地“新聊天”空草稿只保留一个；已有内容的会话不受影响。
+ *
+ * 置顶策略：
+ * - 新会话 / 空草稿替换 → 置顶
+ * - 新一轮 run（chatList/dataChatList 条数增加）→ 置顶
+ * - 同轮流式增量 → 原地更新，避免双任务并发时侧边栏来回跳
  */
 export function mergeLocalRecentConversations(
   currentLocalConversations: CHAT.ConversationHistory[],
   nextConversation: CHAT.ConversationHistory
 ) {
   const shouldReplaceEmptyDraft = isEmptyConversationDraft(nextConversation);
+  const existingIndex = currentLocalConversations.findIndex(
+    (item) => item.sessionId === nextConversation.sessionId
+  );
+  const existing =
+    existingIndex >= 0 ? currentLocalConversations[existingIndex] : null;
+  const runCountIncreased =
+    !!existing &&
+    conversationRunCount(nextConversation) > conversationRunCount(existing);
+  const shouldPromote =
+    existingIndex < 0 || shouldReplaceEmptyDraft || runCountIncreased;
+
+  if (!shouldPromote && existingIndex >= 0) {
+    const next = currentLocalConversations.slice();
+    next[existingIndex] = nextConversation;
+    return next;
+  }
 
   return [
     nextConversation,

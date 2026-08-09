@@ -1,6 +1,8 @@
 import { shouldRenderDeepSearchWorkspace } from "@/utils/deepSearch";
 import { buildAction } from "@/utils/chat";
+import { isAgentDispatchTask } from "@/utils/chat/subagent";
 import { getTaskFiles } from "@/utils/taskArtifacts";
+import { isValidJSON } from "@/utils";
 import type { ActiveRunState } from "./chatView.types";
 
 export type RunPhase =
@@ -126,6 +128,66 @@ export function isWorkspaceAttentionTask(
   }
 
   return false;
+}
+
+/**
+ * Structured data 入参/出参已隐藏：这类任务点击时间线时也不展开右侧面板。
+ */
+export function isStructuredDataOnlyTask(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return false;
+  }
+
+  const messageType = task.messageType || "";
+  if (messageType === "tool_call") {
+    // 子智能体卡片本身也不打开右侧：嵌套工具在时间线展开查看，
+    // 否则 JSON 出参隐藏后会弹出空白工作区。
+    return true;
+  }
+
+  if (messageType !== "tool_result") {
+    return false;
+  }
+
+  if (hasWorkspaceArtifacts(task)) {
+    return false;
+  }
+
+  const toolName =
+    (task as CHAT.Task).toolResult?.toolName ||
+    (task.resultMap as { toolName?: string } | undefined)?.toolName ||
+    "";
+  if (toolName === "internal_search" || toolName === "web_search") {
+    return false;
+  }
+
+  // Agent 派发结果：右侧当前会把 JSON 观察值收成 empty，禁止点开空白面板。
+  // 子工具列表请在时间线嵌套卡片中查看。
+  if (isAgentDispatchTask(task as CHAT.Task)) {
+    return true;
+  }
+
+  const toolResultText = (task as CHAT.Task).toolResult?.toolResult;
+  // 无文本、或纯 JSON 结构化出参：前端暂不渲染，禁止打开空白面板
+  if (!toolResultText?.trim()) {
+    return true;
+  }
+  return isValidJSON(toolResultText);
+}
+
+/**
+ * 时间线点击是否允许打开右侧工作区。
+ * plan 等特殊类型由调用方单独处理。
+ */
+export function canOpenTaskWorkspacePanel(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return false;
+  }
+  return !isStructuredDataOnlyTask(task);
 }
 
 export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {

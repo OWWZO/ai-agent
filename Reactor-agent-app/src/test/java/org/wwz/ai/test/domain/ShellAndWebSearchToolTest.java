@@ -10,6 +10,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
+import com.alibaba.fastjson.JSON;
+
 import java.util.Map;
 
 /**
@@ -24,6 +26,7 @@ public class ShellAndWebSearchToolTest {
         ReflectionTestUtils.setField(config, "webSearchGrokApiKey", "");
         ReflectionTestUtils.setField(config, "webSearchGrokBaseUrl", "");
         ReflectionTestUtils.setField(config, "webSearchGrokModel", "");
+        ReflectionTestUtils.setField(config, "webSearchExaApiKey", "");
         ReflectionTestUtils.setField(config, "webSearchTavilyApiKey", "");
         ReflectionTestUtils.setField(config, "webSearchBraveApiKey", "");
 
@@ -84,9 +87,10 @@ public class ShellAndWebSearchToolTest {
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "Spring AI"));
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
-        Assert.assertTrue(payload.getLlmObservation().contains("grok"));
-        Assert.assertTrue(payload.getLlmObservation().contains("https://example.com"));
-        Assert.assertTrue(payload.getLlmObservation().contains("Example Title"));
+        String data = JSON.toJSONString(payload.getLlmData());
+        Assert.assertTrue(data.contains("grok"));
+        Assert.assertTrue(data.contains("https://example.com"));
+        Assert.assertTrue(data.contains("Example Title"));
     }
 
     @Test
@@ -125,8 +129,9 @@ public class ShellAndWebSearchToolTest {
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "example search"));
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
-        Assert.assertTrue(payload.getLlmObservation().contains("tavily"));
-        Assert.assertTrue(payload.getLlmObservation().contains("Tavily Hit"));
+        String data = JSON.toJSONString(payload.getLlmData());
+        Assert.assertTrue(data.contains("tavily"));
+        Assert.assertTrue(data.contains("Tavily Hit"));
         Assert.assertTrue(calls.get() >= 2);
     }
 
@@ -159,8 +164,50 @@ public class ShellAndWebSearchToolTest {
 
         ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "example search"));
         Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
-        Assert.assertTrue(payload.getLlmObservation().contains("Example Title"));
-        Assert.assertTrue(payload.getLlmObservation().contains("https://example.com"));
-        Assert.assertTrue(payload.getLlmObservation().contains("tavily"));
+        String data = JSON.toJSONString(payload.getLlmData());
+        Assert.assertTrue(data.contains("Example Title"));
+        Assert.assertTrue(data.contains("https://example.com"));
+        Assert.assertTrue(data.contains("tavily"));
+    }
+
+    @Test
+    public void webSearchShouldParseExaResponse() {
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "webSearchMode", "exa");
+        ReflectionTestUtils.setField(config, "webSearchExaApiKey", "exa-test-key");
+        ReflectionTestUtils.setField(config, "webSearchExaSearchUrl", "https://api.exa.ai/search");
+
+        RemoteHttpPort httpPort = request -> {
+            Assert.assertEquals("POST", request.getMethod());
+            Assert.assertTrue(request.getUrl().contains("api.exa.ai/search"));
+            Assert.assertEquals("exa-test-key", request.getHeaders().get("x-api-key"));
+            Assert.assertTrue(request.getBody().contains("numResults"));
+            return """
+                    {
+                      "results": [
+                        {
+                          "title": "Exa Hit",
+                          "url": "https://exa.example/doc",
+                          "text": "semantic search snippet"
+                        }
+                      ]
+                    }
+                    """;
+        };
+
+        AgentContext context = AgentContext.builder()
+                .requestId("req-ws-exa")
+                .sessionId("session-ws-exa")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        WebSearchTool tool = new WebSearchTool();
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of("query", "exa semantic search"));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        String data = JSON.toJSONString(payload.getLlmData());
+        Assert.assertTrue(data.contains("exa"));
+        Assert.assertTrue(data.contains("Exa Hit"));
+        Assert.assertTrue(data.contains("https://exa.example/doc"));
     }
 }

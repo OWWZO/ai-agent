@@ -33,12 +33,27 @@ public class VisitorIdentityFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        String path = resolvePath(request);
         return !(StringUtils.startsWith(path, "/web/api/v1/gpt/queryAgentStreamIncr")
                 || StringUtils.startsWith(path, "/1/web/api/v1/gpt/queryAgentStreamIncr")
                 || StringUtils.startsWith(path, "/api/agent/visitor")
                 || StringUtils.startsWith(path, "/api/agent/conversation/sessions")
-                || StringUtils.startsWith(path, "/api/agent/file"));
+                || StringUtils.startsWith(path, "/api/agent/file")
+                // stop / follow 需要访客身份做会话归属校验
+                || StringUtils.startsWith(path, "/api/agent/run"));
+    }
+
+    /**
+     * 去掉 context-path，避免部署在非根路径时访客过滤器被误跳过。
+     */
+    private static String resolvePath(HttpServletRequest request) {
+        String uri = StringUtils.defaultString(request.getRequestURI());
+        String contextPath = StringUtils.defaultString(request.getContextPath());
+        if (StringUtils.isNotBlank(contextPath) && uri.startsWith(contextPath)) {
+            return uri.substring(contextPath.length());
+        }
+        String servletPath = request.getServletPath();
+        return StringUtils.isNotBlank(servletPath) ? servletPath : uri;
     }
 
     @Override

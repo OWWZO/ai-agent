@@ -5,6 +5,17 @@ import { resolveInitialSessionId } from "./sessionBootstrap";
 describe("sessionBootstrap", () => {
   const sessions = [
     {
+      sessionId: "session-running",
+      title: "执行中的会话",
+      status: "RUNNING",
+      latestQueryText: "正在执行的问题",
+      runCount: 1,
+      finishedRunCount: 0,
+      failedRunCount: 0,
+      startedAt: "2026-05-08T10:20:00",
+      lastActiveAt: "2026-05-08T10:20:00",
+    },
+    {
       sessionId: "session-002",
       title: "第二个会话",
       status: "SUCCESS",
@@ -28,20 +39,20 @@ describe("sessionBootstrap", () => {
     },
   ] as CHAT.ConversationSessionItem[];
 
-  it("首屏进入时即使存在本地 sessionId 也不自动恢复历史会话", () => {
+  it("刷新后只恢复本地记录且仍在执行的会话", () => {
+    expect(
+      resolveInitialSessionId({
+        recentSessions: sessions,
+        storedSessionId: "session-running",
+      })
+    ).toBe("session-running");
+  });
+
+  it("已完成的本地会话不自动恢复", () => {
     expect(
       resolveInitialSessionId({
         recentSessions: sessions,
         storedSessionId: "session-001",
-      })
-    ).toBeNull();
-  });
-
-  it("首屏进入时即使存在最近会话也保持主界面空白态", () => {
-    expect(
-      resolveInitialSessionId({
-        recentSessions: sessions,
-        storedSessionId: "session-stale-001",
       })
     ).toBeNull();
   });

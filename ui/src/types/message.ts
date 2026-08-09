@@ -94,6 +94,7 @@ declare global {
     interface PlannerRound {
       plannerRoundId: string
       planThought?: string
+      planThoughtFinal?: boolean
       planThoughtMessageId?: string
       planThoughtTaskId?: string
       plan?: Plan

@@ -34,7 +34,10 @@ import {
   isTimelineTaskContainerCompleted,
   shouldShowTimelineGroupCompletedIcon,
 } from "./timelineStatus";
-import { isTimelineToolActive } from "@/components/ChatView/streamState";
+import {
+  canOpenTaskWorkspacePanel,
+  isTimelineToolActive,
+} from "@/components/ChatView/streamState";
 import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
@@ -224,10 +227,17 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         );
       }
 
+      const canOpenPanel = canOpenTaskWorkspacePanel(tool);
       return (
         <div
-          className={taskRowClass}
-          onClick={() => changeActiveChat(tool, chat)}
+          className={
+            canOpenPanel
+              ? taskRowClass
+              : "mt-2 flex w-full max-w-full cursor-default items-center gap-3 rounded-xl border border-[var(--chat-border)]/40 bg-white px-2.5 py-2"
+          }
+          onClick={
+            canOpenPanel ? () => changeActiveChat(tool, chat) : undefined
+          }
         >
           {isDeepSearchInline ? (
             <div className={taskIconClass}>
@@ -285,15 +295,18 @@ const SubAgentTimelineCard: FC<{
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 }> = memo(({ tool, chat, subAgent, actionInfo, changeActiveChat }) => {
   const nested = tool.children || [];
-  const [expanded, setExpanded] = useState(() => subAgent.status === "running");
+  const nestedCount = nested.length;
+  // 有嵌套工具时默认展开，避免历史回放/完成后折叠导致「看不了子工具」
+  const [expanded, setExpanded] = useState(
+    () => subAgent.status === "running" || nestedCount > 0
+  );
   const duration = formatSubAgentDuration(subAgent.totalDurationMs);
   const subAgentRunning = subAgent.status === "running";
   const subAgentFailed = subAgent.status === "failed";
-  const nestedCount = nested.length;
+  const canOpenPanel = canOpenTaskWorkspacePanel(tool);
 
   useEffect(() => {
-    // 运行中的子 Agent 必须自动展开以展示实时工具；结束后才允许按容器状态
-    // 收起，避免流式更新过程中用户看到一个空的折叠卡片。
+    // 运行中的子 Agent 必须自动展开以展示实时工具。
     if (subAgentRunning) {
       setExpanded(true);
     }
@@ -303,12 +316,16 @@ const SubAgentTimelineCard: FC<{
     <div className="mt-2">
       <div
         className={[
-          taskRowClass,
+          canOpenPanel
+            ? taskRowClass
+            : "flex w-full max-w-full cursor-default items-center gap-3 rounded-xl border bg-white px-2.5 py-2",
           "border-[var(--chat-border)]/50 bg-white",
           subAgentRunning ? "border-[var(--chat-border)]" : "",
           subAgentFailed ? "border-[#d1d1d6]" : "",
         ].join(" ")}
-        onClick={() => changeActiveChat(tool, chat)}
+        onClick={
+          canOpenPanel ? () => changeActiveChat(tool, chat) : undefined
+        }
       >
         <button
           type="button"
@@ -386,12 +403,20 @@ const SubAgentTimelineCard: FC<{
             const childAction = buildAction(child);
             const childLoading =
               child.messageType === "tool_call" && !child.resultMap?.isFinal;
+            const canOpenChildPanel = canOpenTaskWorkspacePanel(child);
             return (
               <div
                 key={child.id || child.messageId || child.taskId || index}
-                className="mt-1.5 flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+                className={
+                  canOpenChildPanel
+                    ? "mt-1.5 flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
+                    : "mt-1.5 flex min-w-0 cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)]"
+                }
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (!canOpenChildPanel) {
+                    return;
+                  }
                   changeActiveChat(child, chat);
                 }}
               >

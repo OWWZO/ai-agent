@@ -181,4 +181,80 @@ describe("homeState", () => {
       "session-existing",
     ]);
   });
+
+  it("同轮流式增量不置顶，避免双会话并发时侧边栏来回跳", () => {
+    const sessionA = {
+      sessionId: "session-a",
+      title: "任务 A",
+      chatList: [{ query: "A", loading: true } as CHAT.ChatItem],
+      dataChatList: [],
+      updatedAt: 1,
+    } as unknown as CHAT.ConversationHistory;
+    const sessionB = {
+      sessionId: "session-b",
+      title: "任务 B",
+      chatList: [{ query: "B", loading: true } as CHAT.ChatItem],
+      dataChatList: [],
+      updatedAt: 2,
+    } as unknown as CHAT.ConversationHistory;
+
+    const afterBOnTop = mergeLocalRecentConversations([sessionA], sessionB);
+    expect(afterBOnTop.map((item) => item.sessionId)).toEqual([
+      "session-b",
+      "session-a",
+    ]);
+
+    const streamUpdateA = {
+      ...sessionA,
+      chatList: [
+        {
+          query: "A",
+          loading: true,
+          thought: "继续思考",
+        } as CHAT.ChatItem,
+      ],
+      updatedAt: 3,
+    } as unknown as CHAT.ConversationHistory;
+
+    const afterStreamA = mergeLocalRecentConversations(
+      afterBOnTop,
+      streamUpdateA
+    );
+    expect(afterStreamA.map((item) => item.sessionId)).toEqual([
+      "session-b",
+      "session-a",
+    ]);
+    expect(afterStreamA[1].chatList[0].thought).toBe("继续思考");
+  });
+
+  it("新一轮 run 仍置顶", () => {
+    const sessionA = {
+      sessionId: "session-a",
+      title: "任务 A",
+      chatList: [{ query: "A1" } as CHAT.ChatItem],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+    const sessionB = {
+      sessionId: "session-b",
+      title: "任务 B",
+      chatList: [{ query: "B" } as CHAT.ChatItem],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+    const sessionANewRun = {
+      ...sessionA,
+      chatList: [
+        { query: "A1" } as CHAT.ChatItem,
+        { query: "A2", loading: true } as CHAT.ChatItem,
+      ],
+    } as unknown as CHAT.ConversationHistory;
+
+    const merged = mergeLocalRecentConversations(
+      [sessionB, sessionA],
+      sessionANewRun
+    );
+    expect(merged.map((item) => item.sessionId)).toEqual([
+      "session-a",
+      "session-b",
+    ]);
+  });
 });

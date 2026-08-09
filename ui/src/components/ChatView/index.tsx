@@ -6,7 +6,6 @@ import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
-import PlanComposerBar from "./PlanComposerBar";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
 import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
@@ -25,6 +24,7 @@ import {
   createDraftConversation,
   useConversationStream,
 } from "./useConversationStream";
+import { canOpenTaskWorkspacePanel } from "./streamState";
 import { useWorkspacePanels } from "./useWorkspacePanels";
 
 type ChatViewApi = {
@@ -214,6 +214,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+    // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
+    if (!canOpenTaskWorkspacePanel(task)) {
+      return;
+    }
     // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
     // 上一轮打开的文件预览遮住用户刚选择的任务。
     setWorkspaceOpenRequested(true);
@@ -310,9 +314,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       updateDataChatFromEvent(runtime, data);
     };
     const handleError = (error: unknown) => {
-      // querySSE 的错误回调目前只记录诊断信息；具体的展示状态由服务端 ERROR
-      // 事件收口，若服务端未发送终态则保持现有流协议行为。
       console.error("DataAgent SSE stream error", error);
+      if (conversationRef.current.id !== conversationId) {
+        return;
+      }
+      runtime.currentChat = {
+        ...runtime.currentChat,
+        loading: false,
+        error: "连接暂时断开，请重试",
+      };
+      setDataLoading(false);
+      runtime.draftController.commit(
+        runtime.draftController.replaceLastItem({ ...runtime.currentChat })
+      );
     };
 
     const handleClose = () => {
@@ -470,12 +484,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             {!readOnly ? (
               <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
                 <div className="mx-auto w-full max-w-[860px]">
-                  <PlanComposerBar
-                    chat={conversation.chatList?.[conversation.chatList.length - 1]}
-                    taskList={taskList}
-                    structuredPlan={plan}
-                    loading={loading}
-                  />
                   <SessionTaskComposerBar
                     chat={conversation.chatList?.[conversation.chatList.length - 1]}
                     taskList={taskList}
@@ -612,12 +620,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
                     isFocusMode ? "px-2" : "px-4"
                   )}>
-                    <PlanComposerBar
-                      chat={conversation.chatList?.[conversation.chatList.length - 1]}
-                      taskList={taskList}
-                      structuredPlan={plan}
-                      loading={loading}
-                    />
                     <SessionTaskComposerBar
                       chat={conversation.chatList?.[conversation.chatList.length - 1]}
                       taskList={taskList}

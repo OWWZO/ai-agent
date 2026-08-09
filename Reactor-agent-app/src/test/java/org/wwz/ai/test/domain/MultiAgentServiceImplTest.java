@@ -120,6 +120,93 @@ public class MultiAgentServiceImplTest {
         Assert.assertTrue("下游断开后应触发 abort 回调（供 ActiveAgentRunRegistry 解绑观察流）", abortedObserved.get());
     }
 
+    @Test
+    public void shouldResumeSendingAfterRebindDownstream() throws Exception {
+        AbortableAgentSessionStream first = new AbortableAgentSessionStream();
+        RecordingAgentSessionStream second = new RecordingAgentSessionStream();
+        AtomicBoolean firstAbortSeen = new AtomicBoolean(false);
+
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-rebind-1");
+        request.setAgentType(AgentType.REACT.getValue());
+
+        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
+                .finished(false)
+                .status("success")
+                .packageType("result")
+                .resultMap(Map.of())
+                .build();
+
+        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+                first,
+                request,
+                Map.of(AgentType.REACT, handler)
+        );
+        projecting.onAbort(() -> firstAbortSeen.set(true));
+        first.abort();
+
+        Assert.assertTrue(projecting.isAborted());
+        Assert.assertTrue(firstAbortSeen.get());
+
+        projecting.rebindDownstream(second);
+        Assert.assertFalse("续绑后投影流应恢复可写", projecting.isAborted());
+
+        projecting.send(AgentResponse.builder()
+                .requestId("req-rebind-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+
+        Assert.assertEquals(1, second.payloads.size());
+        Assert.assertTrue(second.payloads.get(0) instanceof GptProcessResult);
+    }
+
+    @Test
+    public void shouldBufferAndReplayFramesWhileDownstreamDisconnected() throws Exception {
+        AbortableAgentSessionStream first = new AbortableAgentSessionStream();
+        RecordingAgentSessionStream second = new RecordingAgentSessionStream();
+
+        AgentRequest request = new AgentRequest();
+        request.setRequestId("req-buffer-1");
+        request.setAgentType(AgentType.REACT.getValue());
+
+        AtomicInteger seq = new AtomicInteger();
+        AgentResponseHandler handler = (req, response, agentRespList, eventResult) -> GptProcessResult.builder()
+                .finished(false)
+                .status("success")
+                .packageType("result")
+                .reqId("frame-" + seq.incrementAndGet())
+                .resultMap(Map.of())
+                .build();
+
+        AgentResponseProjectionStream projecting = new AgentResponseProjectionStream(
+                first,
+                request,
+                Map.of(AgentType.REACT, handler)
+        );
+        first.abort();
+
+        projecting.send(AgentResponse.builder()
+                .requestId("req-buffer-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+        projecting.send(AgentResponse.builder()
+                .requestId("req-buffer-1")
+                .messageType("tool_thought")
+                .finish(false)
+                .resultMap(Map.of("agentType", 5))
+                .build());
+
+        Assert.assertTrue(second.payloads.isEmpty());
+
+        projecting.rebindDownstream(second);
+
+        Assert.assertEquals("断流期间投影帧应在 rebind 时补发", 2, second.payloads.size());
+    }
+
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
         ReflectionTestUtils.setField(reactorConfig, "reactorBasePrompt", "react-base-prompt");

@@ -25,21 +25,21 @@ const STATUS_META: Record<
   },
   FAILED: {
     label: "执行失败",
-    description: "本轮在结束前已保留最后可见内容。",
+    description: "本轮未能完成。",
     icon: AlertCircle,
     toneClass:
       "border-rose-200 bg-rose-50/85 text-rose-700",
   },
   STOPPED: {
     label: "已停止",
-    description: "本轮已按停止条件中断，并保留当前结果。",
+    description: "本轮已停止。",
     icon: Ban,
     toneClass:
       "border-amber-200 bg-amber-50/85 text-amber-700",
   },
   TIMEOUT: {
     label: "已超时",
-    description: "本轮执行超时，界面保留了结束前最后可见内容。",
+    description: "本轮执行超时。",
     icon: Clock3,
     toneClass:
       "border-orange-200 bg-orange-50/85 text-orange-700",

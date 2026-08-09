@@ -103,11 +103,14 @@ export function handlePlanThoughtMessage(
 
   upsertPlannerRound(currentChat, plannerRoundId, (round) => {
     const currentThought = round.planThought || "";
-    if (eventData.resultMap.isFinal) {
+    const isFinal = Boolean(eventData.resultMap.isFinal);
+    if (isFinal) {
       round.planThought = eventData.resultMap.planThought;
     } else {
       round.planThought = `${currentThought}${eventData.resultMap.planThought || ""}`;
     }
+    // 思考的终态属于 planner round，而不是整轮 Agent；后续工具执行时不能继续闪动。
+    round.planThoughtFinal = isFinal;
     round.planThoughtMessageId = eventData.messageId;
     round.planThoughtTaskId = eventData.taskId;
   });

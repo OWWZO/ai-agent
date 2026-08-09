@@ -33,7 +33,6 @@ import java.io.UnsupportedEncodingException;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 
 //暂时不用仅做调试 前端请求发到AiAgentController
@@ -157,7 +156,7 @@ public class ReactorController {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
         // GPT 增量查询由应用服务负责实际调度；Controller 只创建传输层 emitter、维持心跳，
         // 并把领域响应交给 projection stream，避免入口层重复实现 Agent 协议。
-        SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
+        SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,
                 emitter,

@@ -33,6 +33,29 @@ public class AgentSessionPrinter implements Printer {
         this.agentType = agentType;
     }
 
+    /**
+     * 刷新后续绑浏览器观察流。主聊天路径 stream 为 {@link AgentResponseProjectionStream}，
+     * 续绑其下游 SSE；返回应写回 ActiveAgentRunRegistry 的根流。
+     *
+     * @return 根观察流；无法续绑时返回 null
+     */
+    public AgentSessionStream attachObserver(AgentSessionStream observer) {
+        if (observer == null || stream == null) {
+            return null;
+        }
+        if (stream instanceof AgentResponseProjectionStream projection) {
+            projection.rebindDownstream(observer);
+            return stream;
+        }
+        log.warn("{} printer stream is not rebindable projection, follow skipped",
+                request == null ? "-" : request.getRequestId());
+        return null;
+    }
+
+    public AgentSessionStream getStream() {
+        return stream;
+    }
+
     @Override
     public void send(String messageId, String messageType, Object message, String digitalEmployee, Boolean isFinal) {
         send(messageId, messageType, message, null, digitalEmployee, isFinal);

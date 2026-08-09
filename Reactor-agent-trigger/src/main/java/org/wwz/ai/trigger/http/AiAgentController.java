@@ -38,7 +38,6 @@ import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.apache.commons.lang3.StringUtils;
@@ -178,7 +177,7 @@ public class AiAgentController implements IAiAgentService {
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
         // 旧 GPT 入口仍复用 case 查询 seam，但直接在进程内适配为 SSE，避免 HTTP loopback 造成额外生命周期。
-        SseEmitter emitter = SseLifecycleSupport.createEmitter(TimeUnit.HOURS.toMillis(1));
+        SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,
                 emitter,

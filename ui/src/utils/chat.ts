@@ -28,6 +28,7 @@ import {
   isImageGenerationToolResultTask,
   mergeImageGenerationToolTask,
   mergeTaskArtifactRefs,
+  pickFirstText,
   resolveTaskToolCallId,
   resolveToolCallActionText,
   resolveToolCallTargetName,
@@ -235,6 +236,34 @@ function handleTaskMessageByType(
 }
 
 /**
+ * 助手过程文 / 总结一旦开始渲染，立刻收口仍在流式中的原生思考。
+ * 对齐 deep_search 进入 report 后不再拖着前置阶段慢播的体验：
+ * 已有思考全文马上定格展示，后续迟到的 reasoning 增量只补字、不重开流式态。
+ */
+function finalizeOpenNativeReasoning(currentChat: CHAT.ChatItem) {
+  const groups = currentChat.multiAgent?.tasks || [];
+  for (const group of groups) {
+    for (const tool of group || []) {
+      if (
+        tool.messageType !== "llm_reasoning" &&
+        tool.messageType !== "plan_thought"
+      ) {
+        continue;
+      }
+      if (tool.finish || tool.isFinal || tool.resultMap?.isFinal) {
+        continue;
+      }
+      tool.finish = true;
+      tool.isFinal = true;
+      tool.resultMap = {
+        ...(tool.resultMap || {}),
+        isFinal: true,
+      };
+    }
+  }
+}
+
+/**
  * 处理总结阶段的流式增量文本（agent_stream）。
  * 多智能体模式下先写入临时 conclusion，等待最终 result 覆盖。
  */
@@ -246,6 +275,8 @@ function handleAgentStreamMessage(
   if (!chunk) {
     return;
   }
+  // 总结开始即收口深度思考，避免与 conclusion 并行慢播。
+  finalizeOpenNativeReasoning(currentChat);
 
   const streamConclusion = currentChat.conclusion;
   if (!streamConclusion || streamConclusion.messageType !== "agent_stream") {
@@ -304,6 +335,11 @@ function handleToolThoughtMessage(
   // 仅过程 content，不用 reasoningContent 冒充
   const thoughtText = resultMap?.toolThought || "";
   const { isFinal } = resultMap;
+
+  // 助手回复一开始有字，就把未完成的深度思考定格展示（剩余字等迟到包补齐）。
+  if (thoughtText) {
+    finalizeOpenNativeReasoning(currentChat);
+  }
 
   if (taskIndex === -1) {
     tasks.push([
@@ -390,11 +426,32 @@ function createNewTask(taskId: string, resultMap: MESSAGE.Task): MESSAGE.Task {
  * @param isFinal 是否为最终结果
  */
 function updateToolThought(tool: MESSAGE.Task, newThought: string, isFinal: boolean) {
+  const wasFinal = Boolean(tool.finish || tool.isFinal || tool.resultMap?.isFinal);
+  const current = tool.toolThought || "";
+
   if (isFinal) {
-    tool.toolThought = newThought;
+    // 终包多为全文快照：以前缀关系取更长者，避免重复拼接或被短帧回退。
+    if (!current) {
+      tool.toolThought = newThought;
+    } else if (newThought.startsWith(current) || current.startsWith(newThought)) {
+      tool.toolThought = newThought.length >= current.length ? newThought : current;
+    } else {
+      tool.toolThought = newThought;
+    }
   } else {
-    tool.toolThought = (tool.toolThought || '') + newThought;
+    tool.toolThought = `${current}${newThought}`;
   }
+
+  // 已被助手回复收口的思考：迟到增量只补全文，不重新打开流式态。
+  const final = Boolean(isFinal) || wasFinal;
+  // 流式增量复用同一个任务对象，终态字段也必须同步，否则时间线会把已结束的
+  // 深度思考或过程步骤继续判定为 active 并持续显示闪光。
+  tool.finish = final;
+  tool.isFinal = final;
+  tool.resultMap = {
+    ...(tool.resultMap || {}),
+    isFinal: final,
+  };
 }
 
 /**
@@ -937,7 +994,12 @@ export const handleTaskData = (
       if (!parentToolUseId) {
         for (const item of processedInfo) {
           if (isAgentDispatchTask(item)) {
-            const agentToolCallId = resolveTaskToolCallId(item);
+            // toolCallId 优先；messageId 在 realtime tool_call 中常等于 toolCallId
+            const agentToolCallId = pickFirstText(
+              resolveTaskToolCallId(item),
+              item.messageId,
+              (item as { id?: string }).id
+            );
             if (agentToolCallId) {
               if (!item.children) {
                 item.children = [];

@@ -25,6 +25,12 @@ const SSE_HEADERS: Record<string, string> = {
 
 interface SSEConfig<TMessage = unknown> {
   body: unknown;
+  method?: 'GET' | 'POST';
+  signal?: AbortSignal;
+  /** 是否允许 fetch-event-source 在连接失败后自动重发请求。 */
+  retryOnError?: boolean;
+  /** 收到带 id 的业务事件时通知调用方保存游标。 */
+  handleEventId?: (eventId: string) => void;
   parser?: (raw: unknown) => TMessage;
   handleMessage: (data: TMessage) => void;
   handleError: (error: Error) => void;
@@ -40,32 +46,64 @@ export default <TMessage = unknown>(
   config: SSEConfig<TMessage>,
   url: string = DEFAULT_SSE_URL
 ): void => {
-  const { body = null, parser, handleMessage, handleError, handleClose } = config;
+  const {
+    body = null,
+    method = 'POST',
+    signal,
+    // 当前入口使用 POST；默认不重发原始请求，避免断线后重复创建任务。
+    retryOnError = false,
+    handleEventId,
+    parser,
+    handleMessage,
+    handleError,
+    handleClose,
+  } = config;
 
-  fetchEventSource(url, {
-    method: 'POST',
+  void fetchEventSource(url, {
+    method,
     credentials: 'include',
     headers: SSE_HEADERS,
-    body: JSON.stringify(body),
+    signal,
+    body: method === 'GET' ? undefined : JSON.stringify(body),
     openWhenHidden: true,
     onmessage(event: EventSourceMessage) {
+      if (event.id) {
+        handleEventId?.(event.id);
+      }
       if (event.data) {
         try {
           const parsedData = JSON.parse(event.data);
           handleMessage(parser ? parser(parsedData) : (parsedData as TMessage));
         } catch (error) {
           console.error('Error parsing SSE message:', error);
-          handleError(new Error('Failed to parse SSE message'));
+          // 单条协议帧解析失败不等于连接断开；保留连接并等待后续帧，
+          // 避免把后端新增字段或脏帧误报成“任务仍在后台执行”。
         }
       }
     },
     onerror(error: Error) {
       console.error('SSE error:', error);
+      // POST 流默认不重发原始请求，避免断线后重复 dispatch；需要恢复时由调用方
+      // 使用已保存的 run 状态建立 follow 连接。
+      if (!retryOnError) {
+        throw error;
+      }
       handleError(error);
     },
     onclose() {
       console.log('SSE connection closed');
       handleClose();
+    }
+  }).catch((error: unknown) => {
+    // 主动 abort 是组件生命周期清理，不应冒泡成对话失败。
+    if (
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      return;
+    }
+    if (error instanceof Error) {
+      handleError(error);
     }
   });
 };

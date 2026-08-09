@@ -25,11 +25,25 @@ public final class SubAgentContextFactory {
                                       ToolCollection childTools,
                                       String agentId,
                                       String agentType) {
+        return create(parent, prompt, description, childTools, agentId, agentType, null);
+    }
+
+    public static AgentContext create(AgentContext parent,
+                                      String prompt,
+                                      String description,
+                                      ToolCollection childTools,
+                                      String agentId,
+                                      String agentType,
+                                      String explicitParentToolUseId) {
         if (parent == null) {
             throw new IllegalArgumentException("parent AgentContext 不能为空");
         }
         String childRequestId = parent.getRequestId() + ":sub:" + agentId;
-        String parentToolUseId = resolveParentToolUseId(parent);
+        // 显式 parentToolUseId 优先；否则回退当前线程绑定的 Agent 工具 toolCallId。
+        // 二者皆空时子工具无法嵌套到父卡片（前端只显示 totalToolUseCount）。
+        String parentToolUseId = StringUtils.isNotBlank(explicitParentToolUseId)
+                ? explicitParentToolUseId.trim()
+                : resolveParentToolUseId(parent);
         Printer childPrinter = wrapPrinter(parent.getPrinter(), parentToolUseId, agentId, agentType, description);
 
         AgentContext child = AgentContext.builder()
