@@ -41,7 +41,13 @@ public class EmitUiTreeTool implements BaseTool {
                 + "Do NOT use canvas_publish for simple charts/3D shapes — use Chart / ThreeJsFrame instead. "
                 + "Before non-trivial trees: get_genui_guide then list_ui_components. "
                 + "Args: {tree, optional canvas_id}. tree may be object or JSON string. "
-                + "Prefer emit_ui_patch for small updates.";
+                + "Prefer emit_ui_patch for small updates. "
+                + "Interactive actions: set props.action to {type, payload} with snake_case type — "
+                + "e.g. {type:'send_message', payload:{content:'Summarize this'}}, "
+                + "{type:'open_url', payload:{url:'https://…'}}, "
+                + "{type:'submit_form', payload:{formId:'f1'}} (collects named Form fields). "
+                + "Legacy bare actionId string is treated as send_message content. "
+                + "Form fields need name + enclosing Form; Button/InteractiveButton fire actions on click.";
     }
 
     @Override

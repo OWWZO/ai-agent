@@ -15,6 +15,193 @@
 --   ai_agent_display_event, ai_agent_session_memory
 -- =============================================================================
 
+CREATE TABLE IF NOT EXISTS admin_user (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    user_id     VARCHAR(64)  NOT NULL COMMENT '用户ID（唯一标识）',
+    username    VARCHAR(50)  NOT NULL COMMENT '用户名（登录账号）',
+    password    VARCHAR(128) NOT NULL COMMENT '密码（加密存储）',
+    status      TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用,2:锁定)',
+    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_id (user_id),
+    KEY idx_create_time (create_time),
+    KEY idx_status (status)
+) COMMENT='管理员用户表';
+
+CREATE TABLE IF NOT EXISTS ai_agent (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    agent_id    VARCHAR(64)  NOT NULL COMMENT '智能体ID',
+    agent_name  VARCHAR(50)  NOT NULL COMMENT '智能体名称',
+    description VARCHAR(255) NULL COMMENT '描述',
+    channel     VARCHAR(32)  NULL COMMENT '渠道类型(agent，chat_stream)',
+    strategy    VARCHAR(64)  NULL COMMENT '执行策略(auto、flow)',
+    status      TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_agent_id (agent_id)
+) COMMENT='AI智能体配置表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_draw_config (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    config_id   VARCHAR(64)   NOT NULL COMMENT '配置ID（唯一标识）',
+    config_name VARCHAR(100)  NOT NULL COMMENT '配置名称',
+    description VARCHAR(500)  NULL COMMENT '配置描述',
+    agent_id    VARCHAR(64)   NULL COMMENT '关联的智能体ID（来自ai_agent表）',
+    config_data LONGTEXT      NOT NULL COMMENT '完整的拖拉拽配置JSON数据（包含nodes和edges）',
+    version     INT           NULL DEFAULT 1 COMMENT '配置版本号',
+    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_by   VARCHAR(64)   NULL COMMENT '创建人',
+    update_by   VARCHAR(64)   NULL COMMENT '更新人',
+    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_config_id (config_id),
+    KEY idx_agent_id (agent_id),
+    KEY idx_config_name (config_name),
+    KEY idx_status (status)
+) COMMENT='AI智能体拖拉拽配置主表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_flow_config (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    agent_id    VARCHAR(64)  NOT NULL COMMENT '智能体ID',
+    client_id   VARCHAR(64)  NOT NULL COMMENT '客户端ID',
+    client_name VARCHAR(64)  NULL COMMENT '客户端名称',
+    client_type VARCHAR(64)  NULL COMMENT '客户端类型',
+    sequence    INT          NOT NULL COMMENT '序列号(执行顺序)',
+    step_prompt TEXT         NULL COMMENT '步骤提示词',
+    status      INT          NULL DEFAULT 1 COMMENT '状态；0无效，1有效',
+    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_agent_client_seq (agent_id, client_id, sequence)
+) COMMENT='智能体-客户端关联表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_task_schedule (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    agent_id        BIGINT       NOT NULL COMMENT '智能体ID',
+    task_name       VARCHAR(64)  NULL COMMENT '任务名称',
+    description     VARCHAR(255) NULL COMMENT '任务描述',
+    cron_expression VARCHAR(50)  NOT NULL COMMENT '时间表达式(如: 0/3 * * * * *)',
+    task_param      TEXT         NULL COMMENT '任务入参配置(JSON格式)',
+    status          TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:无效,1:有效)',
+    create_time     DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time     DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_agent_id (agent_id)
+) COMMENT='智能体任务调度配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    client_id   VARCHAR(64)   NOT NULL COMMENT '客户端ID',
+    client_name VARCHAR(50)   NOT NULL COMMENT '客户端名称',
+    description VARCHAR(1024) NULL COMMENT '描述',
+    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY client_id (client_id)
+) COMMENT='AI客户端配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_advisor (
+    id           BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    advisor_id   VARCHAR(64)   NOT NULL COMMENT '顾问ID',
+    advisor_name VARCHAR(50)   NOT NULL COMMENT '顾问名称',
+    advisor_type VARCHAR(50)   NOT NULL COMMENT '顾问类型(PromptChatMemory/RagAnswer/SimpleLoggerAdvisor等)',
+    order_num    INT           NULL DEFAULT 0 COMMENT '顺序号',
+    ext_param    VARCHAR(2048) NULL COMMENT '扩展参数配置，json 记录',
+    status       TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time  DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time  DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_advisor_id (advisor_id)
+) COMMENT='顾问配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_api (
+    id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
+    api_id           VARCHAR(64)   NOT NULL COMMENT '全局唯一配置ID',
+    base_url         VARCHAR(255)  NOT NULL COMMENT 'API基础URL',
+    api_key          VARCHAR(255)  NOT NULL COMMENT 'API密钥',
+    completions_path VARCHAR(255)  NOT NULL COMMENT '补全API路径',
+    embeddings_path  VARCHAR(255)  NOT NULL COMMENT '嵌入API路径',
+    status           TINYINT       NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
+    create_time      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_api_id (api_id),
+    KEY idx_status (status)
+) COMMENT='OpenAI API配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_config (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    source_type VARCHAR(32)   NOT NULL COMMENT '源类型（model、client）',
+    source_id   VARCHAR(64)   NOT NULL COMMENT '源ID（如 chatModelId、chatClientId 等）',
+    target_type VARCHAR(32)   NOT NULL COMMENT '目标类型(tool_mcp,advisor,prompt,model）',
+    target_id   VARCHAR(64)   NOT NULL COMMENT '目标ID（如 openAiApiId、chatModelId、systemPromptId、advisorId 等）',
+    ext_param   VARCHAR(1024) NULL COMMENT '扩展参数（JSON格式）',
+    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_source_id (source_id),
+    KEY idx_target_id (target_id)
+) COMMENT='AI客户端统一关联配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_model (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
+    model_id    VARCHAR(64)   NOT NULL COMMENT '全局唯一模型ID',
+    api_id      VARCHAR(64)   NOT NULL COMMENT '关联的API配置ID',
+    model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途',
+    model_name  VARCHAR(64)   NOT NULL COMMENT '模型名称',
+    model_type  VARCHAR(32)   NOT NULL COMMENT '模型类型：openai、deepseek、claude',
+    status      TINYINT       NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
+    create_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_model_id (model_id),
+    KEY idx_api_config_id (api_id),
+    KEY idx_status (status)
+) COMMENT='聊天模型配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_rag_order (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    rag_id        VARCHAR(50)  NOT NULL COMMENT '知识库ID',
+    rag_name      VARCHAR(50)  NOT NULL COMMENT '知识库名称',
+    knowledge_tag VARCHAR(50)  NOT NULL COMMENT '知识标签',
+    status        TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time   DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time   DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_rag_id (rag_id)
+) COMMENT='知识库配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_system_prompt (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    prompt_id      VARCHAR(64)   NOT NULL COMMENT '提示词ID',
+    prompt_name    VARCHAR(128)  NOT NULL COMMENT '提示词名称',
+    prompt_content TEXT          NOT NULL COMMENT '提示词内容',
+    description    VARCHAR(1024) NULL COMMENT '描述',
+    status         TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time    DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time    DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_prompt_id (prompt_id)
+) COMMENT='系统提示词配置表';
+
+CREATE TABLE IF NOT EXISTS ai_client_tool_mcp (
+    id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    mcp_id           VARCHAR(64)   NOT NULL COMMENT 'MCP名称',
+    mcp_name         VARCHAR(50)   NOT NULL COMMENT 'MCP名称',
+    transport_type   VARCHAR(20)   NOT NULL COMMENT '传输类型(sse/stdio)',
+    transport_config VARCHAR(1024) NULL COMMENT '传输配置(sse/stdio)',
+    request_timeout  INT           NULL DEFAULT 180 COMMENT '请求超时时间(分钟)',
+    status           TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
+    create_time      DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time      DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_mcp_id (mcp_id)
+) COMMENT='MCP客户端配置表';
+
 CREATE TABLE IF NOT EXISTS ai_agent_sub_agent_definition (
     id                      BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     agent_key               VARCHAR(64)    NOT NULL COMMENT 'subagent_type 唯一键，如 code-reviewer',
@@ -273,10 +460,12 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_file_tool (
     error_msg            TEXT           NULL COMMENT '错误信息',
     command              VARCHAR(32)    NULL COMMENT '工具命令',
     primary_file_name    VARCHAR(256)   NULL COMMENT '主文件名',
-    preview_url          VARCHAR(1024)  NULL COMMENT '预览地址',
-    download_url         VARCHAR(1024)  NULL COMMENT '下载地址',
+    content_storage_mode VARCHAR(32)    NULL COMMENT '内容存储模式',
     created_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    content              MEDIUMTEXT     NULL COMMENT '正文内容',
+    preview_url          VARCHAR(1024)  NULL COMMENT '预览地址',
+    download_url         VARCHAR(1024)  NULL COMMENT '下载地址',
     PRIMARY KEY (id),
     UNIQUE KEY uk_tool_invocation (tool_invocation_id),
     UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
@@ -648,7 +837,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_message (
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_turn (
     id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)  NOT NULL COMMENT '会话ID',
-    request_id         VARCHAR(128) NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
+    request_id         VARCHAR(64)  NOT NULL COMMENT '请求ID',
     run_id             BIGINT       NULL COMMENT '关联 dialogue_run.id',
     turn_seq           INT          NOT NULL COMMENT 'session 内从 1 递增',
     entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve',
@@ -672,7 +861,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id           VARCHAR(64)   NOT NULL COMMENT '会话ID',
     turn_id              BIGINT        NOT NULL COMMENT 'FK -> working_memory_turn.id',
-    request_id           VARCHAR(128)  NOT NULL COMMENT '请求ID（含 wm-compact-* 合成 id）',
+    request_id           VARCHAR(64)   NOT NULL COMMENT '请求ID',
     run_id               BIGINT        NULL COMMENT '关联 dialogue_run.id',
     seq_no               INT           NOT NULL COMMENT 'turn 内从 0 递增',
     role                 VARCHAR(16)   NOT NULL COMMENT 'USER/ASSISTANT/TOOL/SYSTEM',

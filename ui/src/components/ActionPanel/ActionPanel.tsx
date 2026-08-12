@@ -6,7 +6,6 @@ import { useMsgTypes } from "./useMsgTypes";
 import HTMLRenderer from "./HTMLRenderer";
 import useContent from "./useContent";
 import MarkdownRenderer from "./MarkdownRenderer";
-import GenUiInline from "@/components/genui/GenUiInline";
 import TableRenderer from "./TableRenderer";
 import FileRenderer from "./FileRenderer";
 import ImageRenderer from "./ImageRenderer";
@@ -67,7 +66,6 @@ const StreamingMarkdownWrapper = memo(
         <MarkdownRenderer
           markDownContent={content}
           isStreaming={isStreaming}
-          normalizationScope="default"
         />
         <div
           aria-hidden
@@ -137,12 +135,6 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         return (
           <ContentWrapper key="search">
             <SearchListRenderer list={panelView.searchList} />
-          </ContentWrapper>
-        );
-      case "ui_tree":
-        return (
-          <ContentWrapper key="ui_tree">
-            <GenUiInline tree={panelView.tree} showExport />
           </ContentWrapper>
         );
       case "html":

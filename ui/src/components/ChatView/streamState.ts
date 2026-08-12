@@ -37,6 +37,8 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "session_tasks",
   "user_brief",
   "ui_patch",
+  // GenUI 只在对话主回复区展示，不进工作区
+  "ui_tree",
 ]);
 
 /**
@@ -52,7 +54,6 @@ const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
   "browser",
   "knowledge",
   "data_analysis",
-  "ui_tree",
   "deep_search",
 ]);
 
@@ -63,7 +64,6 @@ const CRAFTING_MESSAGE_TYPES = new Set([
   "ppt",
   "code",
   "data_analysis",
-  "ui_tree",
   "deep_search",
 ]);
 
@@ -187,6 +187,9 @@ export function canOpenTaskWorkspacePanel(
   if (!task) {
     return false;
   }
+  if (!isWorkspaceRenderableTask(task)) {
+    return false;
+  }
   return !isStructuredDataOnlyTask(task);
 }
 
@@ -210,10 +213,6 @@ export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {
   }
 
   const innerType = eventData.resultMap?.messageType || eventData.messageType;
-  // ui_patch merges into the latest ui_tree; must refresh workspace to pick up mutated tree.
-  if (innerType === "ui_patch") {
-    return true;
-  }
   if (innerType && WORKSPACE_HIDDEN_MESSAGE_TYPES.has(innerType)) {
     return false;
   }

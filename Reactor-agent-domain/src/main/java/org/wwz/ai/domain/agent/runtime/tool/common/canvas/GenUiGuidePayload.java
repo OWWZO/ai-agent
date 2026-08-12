@@ -26,14 +26,21 @@ public final class GenUiGuidePayload {
                 "All component fields live under props. children holds only nested nodes.",
                 "kind must match list_ui_components exactly (PascalCase).",
                 "emit_ui_tree args: {tree, optional canvas_id}. Prefer tree as nested JSON object.",
-                "emit_ui_patch: {patches:[{op,path,value?}], optional seq, canvas_id}. Paths are RFC6901 into the tree."
+                "emit_ui_patch: {patches:[{op,path,value?}], optional seq, canvas_id}. Paths are RFC6901 into the tree.",
+                "Interactive (in-UI first): props.action = {type, payload}. Types: patch_ui|submit_form|open_url|navigate|send_message.",
+                "Default: keep interaction inside GenUI. Prefer patch_ui for local UI updates (tabs, toggles, counters, visibility).",
+                "patch_ui payload: {patches:[{op,path,value?}]} — applied client-side on the current tree; no chat turn.",
+                "submit_form: wrap fields in Form; each field needs props.name; values stay in-UI (not sent as chat).",
+                "send_message payload: {content:string} — ONLY when the Agent must reply; injects a normal user chat turn.",
+                "Bare actionId string alone does NOT send chat; use explicit type send_message when needed."
         ));
         guide.put("workflow_order", List.of(
                 "1. Confirm GenUI is appropriate (charts, KPI, multi-card, dashboards — not plain Q&A).",
                 "2. Call list_ui_components for exact kinds/props.",
                 "3. Build a minimal valid tree using wire_format_and_syntax.",
-                "4. emit_ui_tree; use emit_ui_patch for small follow-ups.",
-                "5. NEVER use canvas_publish for a simple pie/bar/line chart — Chart kind renders interactive ECharts."
+                "4. emit_ui_tree; use emit_ui_patch for small server-side follow-ups (re-renders the same final GenUI).",
+                "5. For clickable controls, set Button props.action to patch_ui (local) or send_message (needs Agent).",
+                "6. NEVER use canvas_publish for a simple pie/bar/line chart — Chart kind renders interactive ECharts."
         ));
         guide.put("canvas_routing", List.of(
                 "Prose / Q&A / bullets → markdown (no tools).",

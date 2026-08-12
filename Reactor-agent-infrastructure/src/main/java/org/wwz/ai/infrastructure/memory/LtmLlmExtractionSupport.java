@@ -61,11 +61,13 @@ public final class LtmLlmExtractionSupport {
                     "Conversation material:\n" + material + "\n\nReturn JSON array only.", null));
 
             long timeout = Math.max(5L, timeoutSeconds);
+            // Prefer stream aggregation: some OpenAI-compatible gateways return empty/truncated
+            // non-stream JSON bodies that Spring AI cannot deserialize as ChatCompletion.
             String raw = llm.ask(
                     ctx,
                     ask,
                     List.of(system),
-                    false,
+                    true,
                     false,
                     0.2,
                     ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT

@@ -4,6 +4,11 @@ import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import GenUiChart from "./GenUiChart";
 import GenUiModel3D from "./GenUiModel3D";
 import GenUiThreeJsFrame from "./GenUiThreeJsFrame";
+import {
+  GenUiActionButton,
+  GenUiFormField,
+  GenUiFormShell,
+} from "./GenUiFormFields";
 
 export type GenUiNodeData = {
   nodeId?: string;
@@ -356,17 +361,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     }
     case "Button":
     case "LinkButton":
-      return (
-        <a
-          key={key}
-          href={props.href || props.url || undefined}
-          className="inline-flex items-center rounded-md border border-[var(--chat-border)] bg-[var(--chat-surface)] px-3 py-1.5 text-[13px] font-medium text-[var(--chat-text)] hover:bg-[var(--chat-surface-muted)]"
-          target={props.href || props.url ? "_blank" : undefined}
-          rel="noreferrer"
-        >
-          {props.label || props.value || props.text || "Button"}
-        </a>
-      );
+    case "InteractiveButton":
+      return <GenUiActionButton key={key} props={props} />;
+    case "ToggleButton":
+      return <GenUiActionButton key={key} props={props} toggle />;
     case "MetricCard":
     case "DataCard":
       return (
@@ -516,9 +514,14 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{renderChildren()}</div>
         </div>
       );
+    case "Form":
+      return (
+        <GenUiFormShell key={key} node={node}>
+          {renderChildren()}
+        </GenUiFormShell>
+      );
     case "SlideDeck":
     case "Slide":
-    case "Form":
     case "SectionHeader": {
       const title = props.title || props.name || props.quote || props.location || props.message || "";
       const body = props.value || props.description || props.bio || props.subtitle || props.condition || props.content || "";
@@ -748,29 +751,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     case "Textarea":
     case "Select":
     case "FileInput":
-      return (
-        <div key={key} className="space-y-1">
-          {props.label ? (
-            <div className="text-[12px] text-[var(--chat-text-soft)]">{props.label}</div>
-          ) : null}
-          <div className="rounded-md border border-[var(--chat-border)]/70 bg-white px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
-            {props.placeholder || props.value || "（只读展示）"}
-          </div>
-        </div>
-      );
+    case "NumberInput":
     case "Switch":
     case "Slider":
-    case "InteractiveButton":
-    case "ToggleButton":
-      return (
-        <div
-          key={key}
-          className="inline-flex items-center rounded-md border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/40 px-2.5 py-1 text-[12px] text-[var(--chat-text)]"
-        >
-          {props.label || props.title || props.name || node.kind}
-          {props.value != null ? `: ${String(props.value)}` : ""}
-        </div>
-      );
+      return <GenUiFormField key={key} kind={node.kind} props={props} />;
     case "JsonDebug":
       return (
         <pre

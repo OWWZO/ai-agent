@@ -7,12 +7,17 @@ import org.wwz.ai.domain.agent.adapter.port.FileArtifactPort;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.dto.CodeInterpreterResponse;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.FileRequest;
 import org.wwz.ai.domain.agent.runtime.dto.FileResponse;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 工作区文件 → 文件服务登记（不重复上传 content）。
@@ -26,15 +31,15 @@ public final class WorkspaceFileRegistration {
     }
 
     /**
-     * 本地 workspace 文件登记预览 URL，供后续工具引用。
+     * 本地 workspace 文件登记预览 URL，并向前端推送 file 事件。
      * <p>
-     * workspace_write / workspace_edit 不向前端推送 file 事件，
-     * 避免时间线出现「写入文件 + 编辑 workspace_write」双组件；产物仍正常登记。
+     * 与 file_tool 一致走 {@code messageType=file}；workspace_write/edit 已在
+     * BaseAgent 中跳过 tool_result，避免「写入文件 + tool_result」双卡片。
      * </p>
      *
      * @param relativePath 工作区内相对路径（可含目录）
      * @param absolutePath 本地绝对路径
-     * @param commandLabel 仅日志/说明用，不再作为前端 SSE command
+     * @param commandLabel 前端 file 卡片 command 文案
      * @return 给 tool 结果附加的说明；失败时返回错误提示
      */
     public static String registerLocalFile(AgentContext agentContext,
@@ -92,8 +97,28 @@ public final class WorkspaceFileRegistration {
             if (artifactSource != null) {
                 agentContext.registerGeneratedArtifact(artifactSource, file);
             }
+
+            // 与 file_tool 同形：fileInfo + command，供工作区列表与终答 Markdown 相对引用解析
+            if (agentContext.getPrinter() != null) {
+                Map<String, Object> resultMap = new HashMap<>();
+                resultMap.put("command", StringUtils.defaultIfBlank(commandLabel, "写入文件"));
+                if (artifactSource != null) {
+                    resultMap.put("toolCallId", artifactSource.getToolCallId());
+                    resultMap.put("toolName", artifactSource.getToolName());
+                }
+                List<CodeInterpreterResponse.FileInfo> fileInfo = new ArrayList<>();
+                fileInfo.add(CodeInterpreterResponse.FileInfo.builder()
+                        .fileName(baseName)
+                        .ossUrl(fileResponse.getOssUrl())
+                        .domainUrl(fileResponse.getDomainUrl())
+                        .fileSize(fileResponse.getFileSize())
+                        .build());
+                resultMap.put("fileInfo", fileInfo);
+                agentContext.getPrinter().send("file", resultMap, null);
+            }
+
             if (log.isDebugEnabled()) {
-                log.debug("workspace file registered silently, command={}, path={}, domainUrl={}",
+                log.debug("workspace file registered, command={}, path={}, domainUrl={}",
                         commandLabel, absolutePath, fileResponse.getDomainUrl());
             }
             return "已登记预览: " + fileResponse.getDomainUrl();

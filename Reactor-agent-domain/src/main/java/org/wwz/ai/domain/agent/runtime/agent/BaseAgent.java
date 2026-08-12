@@ -54,7 +54,9 @@ public abstract class BaseAgent {
             "excel_generator", "checklist_generate", "template_filler", "document_template",
             "theme_designer", "chart_generator", "file_tool", "deep_search",
             "multimodalagent_tool", "data_analysis", "canvas_publish", "get_html_canvas_guide",
-            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch");
+            "get_genui_guide", "list_ui_components", "emit_ui_tree", "emit_ui_patch",
+            // workspace 产物走 file 事件，避免再叠一层 tool_result 卡片
+            "workspace_write", "workspace_edit");
 
     /** Agent 名称 */
     private String name;

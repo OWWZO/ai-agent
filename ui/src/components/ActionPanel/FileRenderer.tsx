@@ -291,7 +291,6 @@ const FileRenderer: ReactorType.FC<FileRendererProps> = React.memo((props) => {
       <div className={cn("mx-auto max-w-[720px] bg-white px-6 py-6 sm:px-8", className)}>
         <MarkdownRenderer
           markDownContent={data || ""}
-          normalizationScope="default"
         />
       </div>
     );

@@ -352,11 +352,13 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                 "Please provide the conversation summary now, following the required <analysis> and <summary> structure.",
                 null));
 
+        // Prefer stream aggregation: some OpenAI-compatible gateways return empty/truncated
+        // non-stream JSON bodies that Spring AI cannot deserialize as ChatCompletion.
         String raw = llm.ask(
                 context,
                 askMessages,
                 List.of(system),
-                false,
+                true,
                 false,
                 budget.getTemperature(),
                 ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT

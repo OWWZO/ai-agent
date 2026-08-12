@@ -42,8 +42,6 @@ import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
-import GenUiInline from "@/components/genui/GenUiInline";
-import { getGenUiTreeFromTask, resolveDisplayGenUiTree } from "@/utils/chat/genuiState";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -138,14 +136,18 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       return <UserBriefCard tool={tool} />;
     }
     case "ui_tree": {
-      const tree = resolveDisplayGenUiTree(tool) || getGenUiTreeFromTask(tool);
+      // 完整树已在 Dialogue 主回复区 featured 展示；时间线只保留轻量步骤摘要。
       const nested: any = tool.resultMap?.resultMap || tool.resultMap || {};
       const patchCount = Array.isArray(nested.appliedPatches)
         ? nested.appliedPatches.length
         : Number(nested.patchCount) || 0;
       return (
-        <div className="mt-2">
-          <GenUiInline tree={tree} showExport patchCount={patchCount} />
+        <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+          已生成 GenUI 界面
+          {patchCount > 0 ? `（已合并 ${patchCount} 条补丁）` : ""}
+          <span className="ml-1 text-[12px] text-[var(--chat-text-muted)]">
+            · 见下方可视化回复
+          </span>
         </div>
       );
     }
@@ -154,10 +156,12 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       const count = Array.isArray(nested.patches)
         ? nested.patches.length
         : Number(nested.patchCount) || 0;
-      const merged = Boolean(nested.mergedIntoTree);
       return (
         <div className="mt-2 rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
-          {merged ? `GenUI 补丁已合并到上方界面（${count} 条）` : `GenUI 补丁（${count} 条）`}
+          GenUI 补丁（{count || "?"} 条）
+          <span className="ml-1 text-[12px] text-[var(--chat-text-muted)]">
+            · 已更新下方可视化回复
+          </span>
         </div>
       );
     }

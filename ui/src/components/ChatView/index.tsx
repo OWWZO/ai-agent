@@ -26,6 +26,9 @@ import {
 } from "./useConversationStream";
 import { canOpenTaskWorkspacePanel } from "./streamState";
 import { useWorkspacePanels } from "./useWorkspacePanels";
+import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
+import { collectSessionFileTasks } from "@/components/ActionView/workspaceFiles";
+import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
 
 type ChatViewApi = {
   openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
@@ -234,7 +237,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
-    // 只打开右侧预览 tab；左侧文件管理仅由「查看当前任务的文件」入口进入
+    // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
     setWorkspaceOpenRequested(true);
     setIsRightCollapsed(false);
     changeActionStatus(true);
@@ -251,10 +254,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const clearPendingPreviewFile = useMemoizedFn(() => {
     setPendingPreviewFile(undefined);
   });
-
-  useEffect(() => {
-    onTaskListChange?.(taskList || []);
-  }, [taskList, onTaskListChange]);
 
   useEffect(() => {
     onRegisterApi?.({ openFile: changeFile });
@@ -406,6 +405,23 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return getProductByType(conversation.productType || product?.type);
   }, [conversation.productType, product?.type]);
 
+  // 会话级文件任务：跨多轮累计，避免新请求清空侧栏文件列表
+  const sessionFileTasks = useMemo(
+    () => collectSessionFileTasks(conversation.chatList, taskList),
+    [conversation.chatList, taskList]
+  );
+
+  useEffect(() => {
+    // 侧栏「会话文件」消费会话级任务，而非仅当前轮 taskList
+    onTaskListChange?.(sessionFileTasks || []);
+  }, [sessionFileTasks, onTaskListChange]);
+
+  // 会话级产物表：终答 Markdown 相对引用（report.md）跨轮可解析
+  const sessionArtifactFiles = useMemo(
+    () => collectSessionArtifactFiles(conversation.chatList),
+    [conversation.chatList]
+  );
+
   const headerTitle = conversation.chatTitle || conversation.title;
 
   const renderChatDialogues = () => (
@@ -416,6 +432,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           chat={chat}
           streamingThought={streamingThoughtMap[chat.requestId]}
           deepThink={conversation.deepThink}
+          sessionArtifactFiles={sessionArtifactFiles}
           changeTask={changeTask}
           changeFile={changeFile}
           changePlan={changePlan}
@@ -464,8 +481,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 type="button"
                 onClick={() => onOpenTaskFiles?.()}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                title="查看当前任务的文件"
-                aria-label="查看当前任务的文件"
+                title="查看当前会话的文件"
+                aria-label="查看当前会话的文件"
               >
                 <FolderOpen className="h-4 w-4" />
               </button>
@@ -592,8 +609,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     type="button"
                     onClick={() => onOpenTaskFiles?.()}
                     className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                    title="查看当前任务的文件"
-                    aria-label="查看当前任务的文件"
+                    title="查看当前会话的文件"
+                    aria-label="查看当前会话的文件"
                   >
                     <FolderOpen className="h-4 w-4" />
                   </button>
@@ -723,7 +740,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               pendingPreviewFile={pendingPreviewFile}
               onPendingPreviewFileConsumed={clearPendingPreviewFile}
               workspaceCaption={workspaceCaption}
-              taskList={taskList}
+              taskList={sessionFileTasks}
               plan={plan}
               runState={activeRunState}
               isFocusMode={isFocusMode}
@@ -809,8 +826,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const isDataConversation =
     conversation.productType === "dataAgent" && !conversation.deepThink;
 
+  const sendGenUiMessage = useMemoizedFn((message: string) => {
+    sendMessage({
+      message,
+      deepThink: conversation.deepThink,
+      outputStyle: toRequestOutputStyle(conversation.productType),
+      aiAgentId: conversation.role?.agentId,
+    });
+  });
+
   return (
     <div className="flex h-full w-full justify-center">
+      {!readOnly ? (
+        <GenUiActionBridge sendMessage={sendGenUiMessage} busy={loading} />
+      ) : null}
       {isDataConversation ? renderDataAgent() : renderMultAgent()}
     </div>
   );

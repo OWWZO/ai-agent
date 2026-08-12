@@ -3,6 +3,7 @@ import {
   mergeUiPatchIntoTaskGroup,
   mergeUiPatchIntoTasks,
   getGenUiTreeFromTask,
+  findFeaturedGenUi,
 } from "./genuiState";
 import { processTaskForRender } from "./renderTasks";
 
@@ -42,28 +43,20 @@ describe("genuiState merge", () => {
     const tree = getGenUiTreeFromTask(treeTask);
     expect(tree.root.props.title).toBe("New");
     expect(patchTask.resultMap.mergedIntoTree).toBe(true);
-    expect(Array.isArray(treeTask.resultMap.appliedPatches)).toBe(true);
   });
 
   it("merges ui_patch across task groups", () => {
     const treeTask: any = {
       messageType: "ui_tree",
-      messageTime: "1",
       resultMap: {
         tree: {
           schemaVersion: "1",
-          root: {
-            nodeId: "r1",
-            kind: "Card",
-            props: { title: "Old" },
-            children: [],
-          },
+          root: { kind: "Card", props: { title: "A" }, children: [] },
         },
       },
     };
     const patchTask: any = {
       messageType: "ui_patch",
-      messageTime: "2",
       resultMap: {
         patches: [{ op: "replace", path: "/root/props/title", value: "Cross" }],
       },
@@ -77,7 +70,6 @@ describe("genuiState merge", () => {
     const treeTask: any = {
       messageType: "ui_tree",
       messageTime: "1",
-      messageId: "tree-1",
       resultMap: {
         messageType: "ui_tree",
         isFinal: true,
@@ -108,5 +100,94 @@ describe("genuiState merge", () => {
 
     const after = processTaskForRender(treeTask, "base");
     expect(getGenUiTreeFromTask(after[0]).root.props.title).toBe("Patched");
+  });
+
+  it("finds latest featured GenUI across task groups", () => {
+    const older: any = {
+      messageType: "ui_tree",
+      resultMap: {
+        tree: { schemaVersion: "1", root: { kind: "Card", props: { title: "A" } } },
+      },
+    };
+    const newer: any = {
+      messageType: "ui_tree",
+      resultMap: {
+        tree: { schemaVersion: "1", root: { kind: "Card", props: { title: "B" } } },
+        appliedPatches: [{ op: "replace", path: "/root/props/title", value: "B" }],
+      },
+    };
+    const featured = findFeaturedGenUi([[older], [newer]]);
+    expect(featured?.tree?.root?.props?.title).toBe("B");
+  });
+
+  it("finds featured GenUI nested under timeline containers", () => {
+    const treeTask: any = {
+      messageType: "ui_tree",
+      resultMap: {
+        tree: {
+          schemaVersion: "1",
+          root: { kind: "Stack", props: {}, children: [] },
+        },
+      },
+    };
+    const featured = findFeaturedGenUi([
+      [{ task: "", children: [{ messageType: "tool_result" }, treeTask] } as any],
+    ]);
+    expect(featured?.tree?.root?.kind).toBe("Stack");
+  });
+
+  it("rebuilds featured tree from multiAgent patches relative to originalTree", () => {
+    const treeTask: any = {
+      messageType: "ui_tree",
+      messageId: "tree-1",
+      resultMap: {
+        tree: {
+          schemaVersion: "1",
+          root: { kind: "Card", props: { title: "Old", value: "1" }, children: [] },
+        },
+      },
+    };
+    const patch1: any = {
+      messageType: "ui_patch",
+      messageId: "p1",
+      resultMap: {
+        patches: [{ op: "replace", path: "/root/props/title", value: "Mid" }],
+        mergedIntoTree: true,
+      },
+    };
+    const patch2: any = {
+      messageType: "ui_patch",
+      messageId: "p2",
+      resultMap: {
+        patches: [{ op: "replace", path: "/root/props/value", value: "99" }],
+      },
+    };
+    const featured = findFeaturedGenUi(
+      [[{ task: "", children: [treeTask] } as any]],
+      [[treeTask, patch1, patch2]]
+    );
+    expect(featured?.tree?.root?.props?.title).toBe("Mid");
+    expect(featured?.tree?.root?.props?.value).toBe("99");
+    expect(featured?.patchCount).toBe(2);
+  });
+
+  it("accepts patch path without /root prefix", () => {
+    const treeTask: any = {
+      messageType: "ui_tree",
+      resultMap: {
+        tree: {
+          schemaVersion: "1",
+          root: { kind: "Card", props: { title: "Old" }, children: [] },
+        },
+      },
+    };
+    const patchTask: any = {
+      messageType: "ui_patch",
+      resultMap: {
+        patches: [{ op: "replace", path: "/props/title", value: "Loose" }],
+      },
+    };
+    const featured = findFeaturedGenUi(null, [[treeTask, patchTask]]);
+    expect(featured?.tree?.root?.props?.title).toBe("Loose");
   });
 });

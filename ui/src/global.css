@@ -482,6 +482,105 @@ ol {
   border-color: var(--chat-border);
 }
 
+/* 终答/对话 Markdown 内嵌图：限制尺寸，避免占满整列 */
+.chat-dialogue .chat-markdown img,
+.conclusion-markdown.markdown-body img,
+.markdown-body.chat-markdown img,
+.chat-dialogue .chat-markdown .markdown-media-image,
+.conclusion-markdown.markdown-body .markdown-media-image,
+.markdown-body.chat-markdown .markdown-media-image {
+  display: block;
+  max-width: min(360px, 100%);
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  margin: 0.6em 0;
+  border-radius: 0.65rem;
+  border: 1px solid var(--chat-border);
+  object-fit: contain;
+  background: var(--chat-surface, transparent);
+  cursor: zoom-in;
+}
+
+.chat-dialogue .chat-markdown .markdown-media-image-root,
+.conclusion-markdown.markdown-body .markdown-media-image-root,
+.markdown-body.chat-markdown .markdown-media-image-root {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0.6em 0;
+}
+
+/* 终答 Markdown 内嵌音视频（![](a.mp4) / [视频](a.mp4)） */
+.chat-dialogue .chat-markdown .markdown-media-player-wrap,
+.conclusion-markdown.markdown-body .markdown-media-player-wrap,
+.markdown-body.chat-markdown .markdown-media-player-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0.65em 0;
+  vertical-align: top;
+}
+
+.chat-dialogue .chat-markdown .markdown-media-video,
+.conclusion-markdown.markdown-body .markdown-media-video,
+.markdown-body.chat-markdown .markdown-media-video {
+  display: block;
+  max-width: min(480px, 100%);
+  max-height: 320px;
+  width: 100%;
+  border-radius: 0.65rem;
+  border: 1px solid var(--chat-border);
+  background: #0a0a0a;
+}
+
+.chat-dialogue .chat-markdown .markdown-media-audio,
+.conclusion-markdown.markdown-body .markdown-media-audio,
+.markdown-body.chat-markdown .markdown-media-audio {
+  display: block;
+  width: min(420px, 100%);
+}
+
+.chat-dialogue .chat-markdown .markdown-media-expand-btn,
+.conclusion-markdown.markdown-body .markdown-media-expand-btn,
+.markdown-body.chat-markdown .markdown-media-expand-btn {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  display: inline-flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid oklch(100% 0 0 / 0.18);
+  border-radius: 0.45rem;
+  background: oklch(0% 0 0 / 0.55);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.chat-dialogue .chat-markdown .markdown-media-expand-btn:hover,
+.conclusion-markdown.markdown-body .markdown-media-expand-btn:hover,
+.markdown-body.chat-markdown .markdown-media-expand-btn:hover {
+  background: oklch(0% 0 0 / 0.72);
+  transform: scale(1.04);
+}
+
+.markdown-media-video-preview {
+  display: block;
+  width: 100%;
+  max-height: min(78vh, 720px);
+  border-radius: 0.65rem;
+  background: #0a0a0a;
+}
+
+.markdown-media-audio-preview {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0 0.25rem;
+}
+
 .ai-stream-cursor {
   display: inline-flex;
   width: 2px;

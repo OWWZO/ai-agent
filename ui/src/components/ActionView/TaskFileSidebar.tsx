@@ -102,7 +102,7 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
             type="button"
             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--chat-text-muted)] transition-colors hover:bg-black/[0.05] hover:text-[var(--chat-text)]"
             title="打开目录"
-            onClick={() => showMessage()?.info("当前任务产物列表")}
+            onClick={() => showMessage()?.info("当前会话产物列表")}
           >
             <FolderOpen className="h-3.5 w-3.5" />
           </button>
@@ -138,7 +138,7 @@ const TaskFileSidebar = memo(function TaskFileSidebar(props: TaskFileSidebarProp
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 scrollbar-hover">
         {files.length === 0 ? (
           <div className="px-2.5 py-8 text-center text-[12px] text-[var(--chat-text-muted)]">
-            当前任务暂无文件
+            当前会话暂无文件
           </div>
         ) : (
           <div className="flex flex-col gap-0.5">

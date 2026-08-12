@@ -11,17 +11,100 @@ function unescapePointerToken(token: string) {
 
 function tokenize(path: string): string[] {
   if (!path || path === "/") return [];
-  if (!path.startsWith("/")) {
-    throw new Error(`Invalid JSON pointer: ${path}`);
-  }
-  return path
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return normalized
     .slice(1)
     .split("/")
-    .map(unescapePointerToken);
+    .map(unescapePointerToken)
+    .filter((t) => t.length > 0);
 }
 
 function cloneDeep<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * 模型常见路径变体 → 相对当前 doc 可解析的 pointer。
+ * 例如 tree 有 root 时：/props/title → /root/props/title
+ */
+function expandPathCandidates(path: string, doc: any): string[] {
+  const raw = String(path || "").trim();
+  if (!raw) return [];
+  const withSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  const candidates = [withSlash];
+  if (doc && typeof doc === "object" && doc.root && !withSlash.startsWith("/root")) {
+    if (withSlash === "/") {
+      candidates.push("/root");
+    } else {
+      candidates.push(`/root${withSlash}`);
+    }
+  }
+  // 去掉重复 schema 前缀
+  if (withSlash.startsWith("/schemaVersion")) {
+    candidates.push(withSlash.replace(/^\/schemaVersion\/?/, "/") || "/");
+  }
+  return Array.from(new Set(candidates));
+}
+
+function applyOnePatch(doc: any, patch: JsonPatch): any {
+  if (!patch || !patch.path) return doc;
+  const candidates = expandPathCandidates(patch.path, doc);
+  for (const candidate of candidates) {
+    try {
+      const tokens = tokenize(candidate);
+      if (tokens.length === 0) {
+        if (patch.op === "replace" || patch.op === "add") {
+          return cloneDeep(patch.value);
+        }
+        continue;
+      }
+      let parent: any = doc;
+      let ok = true;
+      for (let i = 0; i < tokens.length - 1; i++) {
+        const key = tokens[i];
+        if (parent == null || typeof parent !== "object") {
+          ok = false;
+          break;
+        }
+        if (Array.isArray(parent)) {
+          const idx = Number(key);
+          parent = parent[idx];
+        } else {
+          parent = parent[key];
+        }
+      }
+      if (!ok || parent == null || typeof parent !== "object") {
+        continue;
+      }
+      const last = tokens[tokens.length - 1];
+      if (patch.op === "remove") {
+        if (Array.isArray(parent)) {
+          const idx = Number(last);
+          if (!Number.isNaN(idx)) parent.splice(idx, 1);
+        } else {
+          delete parent[last];
+        }
+        return doc;
+      }
+      if (patch.op === "add" || patch.op === "replace") {
+        if (Array.isArray(parent)) {
+          const idx = last === "-" ? parent.length : Number(last);
+          if (patch.op === "add" && last === "-") {
+            parent.push(cloneDeep(patch.value));
+          } else if (!Number.isNaN(idx)) {
+            if (patch.op === "add") parent.splice(idx, 0, cloneDeep(patch.value));
+            else parent[idx] = cloneDeep(patch.value);
+          }
+        } else {
+          parent[last] = cloneDeep(patch.value);
+        }
+        return doc;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return doc;
 }
 
 /**
@@ -34,59 +117,9 @@ export function applyUiPatches(tree: any, patches: JsonPatch[]): any {
   if (!tree || !Array.isArray(patches) || patches.length === 0) {
     return tree;
   }
-  // patch 是顺序敏感的：后续操作可能依赖前一条 add/replace 已经创建的节点。
   let doc = cloneDeep(tree);
   for (const patch of patches) {
-    if (!patch || !patch.path) continue;
-    const tokens = tokenize(patch.path);
-    if (tokens.length === 0) {
-      // 空路径代表替换整个文档；remove 不处理，避免无根对象导致渲染链崩溃。
-      if (patch.op === "replace" || patch.op === "add") {
-        doc = cloneDeep(patch.value);
-      }
-      continue;
-    }
-    let parent: any = doc;
-    // 先定位父容器，数组按索引访问，对象按属性名访问。
-    for (let i = 0; i < tokens.length - 1; i++) {
-      const key = tokens[i];
-      if (parent == null || typeof parent !== "object") {
-        parent = undefined;
-        break;
-      }
-      if (Array.isArray(parent)) {
-        const idx = Number(key);
-        parent = parent[idx];
-      } else {
-        parent = parent[key];
-      }
-    }
-    if (parent == null || typeof parent !== "object") {
-      continue;
-    }
-    const last = tokens[tokens.length - 1];
-    // remove 对数组执行删除并收缩索引，对对象则删除指定属性。
-    if (patch.op === "remove") {
-      if (Array.isArray(parent)) {
-        const idx = Number(last);
-        if (!Number.isNaN(idx)) parent.splice(idx, 1);
-      } else {
-        delete parent[last];
-      }
-    } else if (patch.op === "add" || patch.op === "replace") {
-      // 数组的 - 只对 add 有效；普通 add 插入，replace 覆盖现有槽位。
-      if (Array.isArray(parent)) {
-        const idx = last === "-" ? parent.length : Number(last);
-        if (patch.op === "add" && last === "-") {
-          parent.push(cloneDeep(patch.value));
-        } else if (!Number.isNaN(idx)) {
-          if (patch.op === "add") parent.splice(idx, 0, cloneDeep(patch.value));
-          else parent[idx] = cloneDeep(patch.value);
-        }
-      } else {
-        parent[last] = cloneDeep(patch.value);
-      }
-    }
+    doc = applyOnePatch(doc, patch);
   }
   return doc;
 }

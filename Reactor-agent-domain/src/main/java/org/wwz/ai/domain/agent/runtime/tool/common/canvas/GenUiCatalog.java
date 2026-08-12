@@ -107,22 +107,33 @@ public final class GenUiCatalog {
         list.add(entry("ImageGallery", "Image gallery", Map.of("images", "array of {src,alt}")));
         list.add(entry("KeyValueList", "Key-value list", Map.of("items", "array of {key,value}")));
         list.add(entry("SectionHeader", "Section header", Map.of("title", "string", "subtitle", "string", "eyebrow", "string")));
-        // Interactive
-        list.add(entry("Button", "Button", Map.of("label", "string", "variant", "default|primary", "action", "object")));
-        list.add(entry("InteractiveButton", "Interactive button", Map.of("label", "string", "action", "object")));
-        list.add(entry("ToggleButton", "Toggle button", Map.of("label", "string", "pressed", "boolean")));
-        list.add(entry("LinkButton", "Link button", Map.of("label", "string", "href", "url")));
-        list.add(entry("Input", "Text input", Map.of("name", "string", "label", "string", "placeholder", "string", "value", "string")));
-        list.add(entry("Select", "Select", Map.of("name", "string", "label", "string", "options", "string[]", "value", "string")));
+        // Interactive — props.action = {type,payload}; type: send_message|open_url|navigate|submit_form
+        list.add(entry("Button", "Clickable button; set action to send_message/open_url/submit_form",
+                Map.of("label", "string", "variant", "default|primary", "action", "{type,payload}", "actionId", "string legacy")));
+        list.add(entry("InteractiveButton", "Primary interactive button with action",
+                Map.of("label", "string", "action", "{type,payload}", "disabled", "boolean")));
+        list.add(entry("ToggleButton", "Toggle button with action",
+                Map.of("label", "string", "pressed", "boolean", "action", "{type,payload}")));
+        list.add(entry("LinkButton", "Link or action button", Map.of("label", "string", "href", "url", "action", "{type,payload}")));
+        list.add(entry("Input", "Text input (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "placeholder", "string", "value", "string")));
+        list.add(entry("Select", "Select (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "options", "string[]", "value", "string")));
         list.add(entry("Chip", "Chip", Map.of("label", "string", "selected", "boolean")));
         list.add(entry("ChipGroup", "Chip group; children Chip", Map.of("label", "string")));
         // Forms
-        list.add(entry("Form", "Form container", Map.of("title", "string", "submitLabel", "string")));
-        list.add(entry("NumberInput", "Number input", Map.of("name", "string", "label", "string", "value", "number", "min", "number", "max", "number")));
-        list.add(entry("Switch", "Switch", Map.of("name", "string", "label", "string", "checked", "boolean")));
-        list.add(entry("Slider", "Slider", Map.of("name", "string", "label", "string", "value", "number", "min", "number", "max", "number")));
-        list.add(entry("FileInput", "File input", Map.of("name", "string", "label", "string", "accept", "string")));
-        list.add(entry("Textarea", "Textarea", Map.of("name", "string", "label", "string", "value", "string", "rows", "number")));
+        list.add(entry("Form", "Form scope; named fields + Button action submit_form",
+                Map.of("title", "string", "formId", "string", "submitLabel", "string")));
+        list.add(entry("NumberInput", "Number input (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "value", "number", "min", "number", "max", "number")));
+        list.add(entry("Switch", "Switch (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "checked", "boolean")));
+        list.add(entry("Slider", "Slider (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "value", "number", "min", "number", "max", "number")));
+        list.add(entry("FileInput", "File path input (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "accept", "string")));
+        list.add(entry("Textarea", "Textarea (interactive inside Form with name)",
+                Map.of("name", "string", "label", "string", "value", "string", "rows", "number")));
         // Feedback
         list.add(entry("Alert", "Alert banner", Map.of("message", "string", "variant", "info|success|warning|error")));
         list.add(entry("Callout", "Callout", Map.of("title", "string", "message", "string", "variant", "info|success|warning|error")));

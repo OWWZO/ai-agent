@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { Menu } from "lucide-react";
 import ChatView from "@/components/ChatView";
 import { DURATION, EASE_OUT, useMotionConfig } from "@/lib/motion";
 import WorkspaceMRag from "@/pages/WorkspaceMRag";
@@ -177,6 +178,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [sidebarPanel, setSidebarPanel] = useState<"sessions" | "task-files">(
     "sessions"
   );
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [workspaceImmersive, setWorkspaceImmersive] = useState(false);
   const [workspaceTaskList, setWorkspaceTaskList] = useState<PanelItemType[]>(
     []
@@ -220,6 +222,28 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     bootstrapLoading: visitorBootstrapLoading,
     visitorNamed: visitorBootstrap?.named,
   });
+
+  const closeMobileSidebar = useCallback(() => {
+    setMobileSidebarOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileSidebarOpen]);
 
   const defaultFixRole = useMemo(
     () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
@@ -845,6 +869,57 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     );
   }
 
+  const sidebarSharedProps = {
+    activeView,
+    recentSessions: displayedRecentSessions,
+    recentSessionsLoading,
+    selectedSessionId: currentConversation.sessionId,
+    visitorUsername: visitorBootstrap?.username,
+    sidebarPanel,
+    taskList: workspaceTaskList,
+    selectedTaskFileKey,
+    onNewChat: () => {
+      setSidebarPanel("sessions");
+      setSelectedTaskFileKey("");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      createNewChat();
+    },
+    onSelectSession: (session: ConversationSessionItem) => {
+      setSidebarPanel("sessions");
+      setSelectedTaskFileKey("");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      handleSelectRecentSession(session);
+    },
+    onChangeView: (view: SidebarView) => {
+      if (view === "featured") {
+        setFeaturedEntryId("");
+      }
+      setSidebarPanel("sessions");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      setActiveView(view);
+    },
+    onManageFeaturedConversation: handleOpenFeaturedAdmin,
+    onOpenTaskFiles: () => {
+      if (activeView !== "chat") {
+        setActiveView("chat");
+      }
+      setWorkspaceImmersive(false);
+      setSidebarPanel("task-files");
+    },
+    onCloseTaskFiles: () => setSidebarPanel("sessions"),
+    onSelectTaskFile: (file: WorkspaceFileItem) => {
+      setSelectedTaskFileKey(workspaceFileKey(file));
+      chatViewApiRef.current?.openFile(file);
+      closeMobileSidebar();
+    },
+    onRefreshTaskFiles: () => {
+      setWorkspaceTaskList((prev) => [...prev]);
+    },
+  } as const;
+
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">
       <div className="flex h-full w-full">
@@ -855,55 +930,54 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               : "hidden h-full w-[var(--chat-sidebar-width)] shrink-0 transition-[width,opacity] duration-300 lg:block"
           }
         >
-          <ConversationSidebar
-            activeView={activeView}
-            recentSessions={displayedRecentSessions}
-            recentSessionsLoading={recentSessionsLoading}
-            selectedSessionId={currentConversation.sessionId}
-            visitorUsername={visitorBootstrap?.username}
-            sidebarPanel={sidebarPanel}
-            taskList={workspaceTaskList}
-            selectedTaskFileKey={selectedTaskFileKey}
-            onNewChat={() => {
-              setSidebarPanel("sessions");
-              setSelectedTaskFileKey("");
-              setWorkspaceImmersive(false);
-              createNewChat();
-            }}
-            onSelectSession={(session) => {
-              setSidebarPanel("sessions");
-              setSelectedTaskFileKey("");
-              setWorkspaceImmersive(false);
-              handleSelectRecentSession(session);
-            }}
-            onChangeView={(view) => {
-              if (view === "featured") {
-                setFeaturedEntryId("");
-              }
-              setSidebarPanel("sessions");
-              setWorkspaceImmersive(false);
-              setActiveView(view);
-            }}
-            onManageFeaturedConversation={handleOpenFeaturedAdmin}
-            onOpenTaskFiles={() => {
-              if (activeView !== "chat") {
-                setActiveView("chat");
-              }
-              setWorkspaceImmersive(false);
-              setSidebarPanel("task-files");
-            }}
-            onCloseTaskFiles={() => setSidebarPanel("sessions")}
-            onSelectTaskFile={(file: WorkspaceFileItem) => {
-              setSelectedTaskFileKey(workspaceFileKey(file));
-              chatViewApiRef.current?.openFile(file);
-            }}
-            onRefreshTaskFiles={() => {
-              setWorkspaceTaskList((prev) => [...prev]);
-            }}
-          />
+          <ConversationSidebar {...sidebarSharedProps} />
         </div>
 
+        {!workspaceImmersive && mobileSidebarOpen ? (
+          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/35 supports-backdrop-filter:backdrop-blur-[2px]"
+              aria-label="关闭侧边栏遮罩"
+              onClick={closeMobileSidebar}
+            />
+            <div className="absolute inset-y-0 left-0 flex w-[min(86vw,var(--chat-sidebar-width))] max-w-full shadow-2xl">
+              <ConversationSidebar
+                {...sidebarSharedProps}
+                onRequestClose={closeMobileSidebar}
+              />
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {!workspaceImmersive ? (
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--chat-border)] bg-[var(--chat-nav)]/90 px-3 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+                aria-label="打开侧边栏"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--chat-text)]">
+                Reactor
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSidebarPanel("sessions");
+                  setSelectedTaskFileKey("");
+                  setWorkspaceImmersive(false);
+                  createNewChat();
+                }}
+                className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+              >
+                新建
+              </button>
+            </div>
+          ) : null}
           <div className={contentContainerClassName}>
             {activeView === "mrag" ? (
               <WorkspaceMRag embedded />

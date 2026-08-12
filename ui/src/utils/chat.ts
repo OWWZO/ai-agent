@@ -33,7 +33,7 @@ import {
   resolveToolCallActionText,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
-import { mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
+import { ensureOriginalTree, mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
 import {
   AGENT_DISPATCH_TOOL_NAME,
   buildSubAgentAction,
@@ -824,21 +824,23 @@ function handleNonStreamingMessage(
   taskIndex: number,
 ) {
   const nextTask = buildTaskFromEventData(eventData);
+  // 冻结 GenUI 初始树，后续 patch 展示层可相对 originalTree 全量重放
+  if (nextTask.messageType === "ui_tree") {
+    ensureOriginalTree(nextTask as any);
+  }
 
   if (taskIndex !== -1) {
     const taskGroup = currentChat.multiAgent.tasks[taskIndex];
 
     // GenUI patch: merge onto latest ui_tree (any task group; plan steps may differ).
+    // 始终保留 patch 事件进 multiAgent.tasks，findFeaturedGenUi 才能在最终回复区重放。
     if (nextTask.messageType === "ui_patch") {
-      const merged = mergeUiPatchIntoTasks(
+      mergeUiPatchIntoTasks(
         currentChat.multiAgent.tasks as any,
         nextTask as any
       );
-      if (merged) {
-        // Keep a lightweight patch breadcrumb in timeline (current step group).
-        taskGroup.push(nextTask);
-        return;
-      }
+      taskGroup.push(nextTask);
+      return;
     }
     const placeholderIndex = findToolCallPlaceholderIndex(
       taskGroup,
@@ -952,6 +954,7 @@ export const handleTaskData = (
     "ppt",
     "data_analysis",
     "ui_tree",
+    "ui_patch",
   ];
 
   currentChat.thought = planThought || "";

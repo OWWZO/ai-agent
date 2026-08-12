@@ -88,7 +88,6 @@ const HTMLRenderer: ReactorType.FC<HTMLRendererProps> = memo((props) => {
       <MarkdownRenderer
         markDownContent={outputCode}
         isStreaming={isStreaming}
-        normalizationScope="default"
       />
     );
   }

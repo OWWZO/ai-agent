@@ -504,7 +504,9 @@ export const MessageResponse = memo(
     prevProps.isStreaming === nextProps.isStreaming &&
     prevProps.animateByChars === nextProps.animateByChars &&
     prevProps.showStreamingCursor === nextProps.showStreamingCursor &&
-    prevProps.disableAutoScroll === nextProps.disableAutoScroll
+    prevProps.disableAutoScroll === nextProps.disableAutoScroll &&
+    // 终答产物表解析会换 components（img/a），必须参与比较，否则流式中途解析不到文件。
+    prevProps.components === nextProps.components
 );
 
 MessageResponse.displayName = "MessageResponse";

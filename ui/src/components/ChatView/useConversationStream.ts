@@ -1073,7 +1073,9 @@ export function useConversationStream(
           eventData.messageType === "tool_call" ||
           eventData.messageType === "tool_result" ||
           eventData.resultMap?.messageType === "tool_call" ||
-          eventData.resultMap?.messageType === "tool_result";
+          eventData.resultMap?.messageType === "tool_result" ||
+          eventData.resultMap?.messageType === "ui_tree" ||
+          eventData.resultMap?.messageType === "ui_patch";
         scheduleNonChatFlush(forceTimeline);
       }
     };
@@ -1664,7 +1666,9 @@ export function useConversationStream(
           eventData.messageType === "tool_call" ||
           eventData.messageType === "tool_result" ||
           eventData.resultMap?.messageType === "tool_call" ||
-          eventData.resultMap?.messageType === "tool_result";
+          eventData.resultMap?.messageType === "tool_result" ||
+          eventData.resultMap?.messageType === "ui_tree" ||
+          eventData.resultMap?.messageType === "ui_patch";
         scheduleNonChatFlush(forceTimeline);
       }
     };

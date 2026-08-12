@@ -1,4 +1,4 @@
-import { FC, useState, useCallback, useMemo, memo, useEffect, useRef } from "react";
+import { FC, useState, useCallback, useMemo, memo, useEffect, useRef, useSyncExternalStore } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import { getTaskFiles } from "@/utils/taskArtifacts";
 import {
@@ -10,11 +10,8 @@ import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 import RunPresenceBar from "./RunPresenceBar";
 import RunStatus from "@/components/ActionView/RunStatus";
-import {
-  isPlanSolveConversation,
-  isStructuredConversation,
-} from "@/utils/agentMode";
-import { type MarkdownNormalizationScope } from "@/utils/markdown";
+import { isPlanSolveConversation } from "@/utils/agentMode";
+import { collectChatArtifactFiles } from "@/utils/markdownArtifacts";
 import {
   buildPlannerRoundsForDisplay,
   syncPlannerVersionCursor,
@@ -23,36 +20,34 @@ import { PlanSection } from "./PlanSection";
 import { AgentStepTimeline } from "./AgentStepTimeline";
 import { MessageToolbar } from "./MessageToolbar";
 import { resolveTaskSummaryText } from "./contentHelpers";
+import GenUiInline from "@/components/genui/GenUiInline";
+import { findFeaturedGenUi } from "@/utils/chat/genuiState";
+import { applyUiPatches } from "@/components/genui/applyUiPatch";
+import {
+  genUiLocalScopeKey,
+  getGenUiLocalSnapshot,
+  getLocalUiPatches,
+  getLocalUiVersion,
+  subscribeGenUiLocalTree,
+} from "@/components/genui/genUiLocalTreeStore";
 
 type Props = {
   chat: CHAT.ChatItem;
   streamingThought?: string;
   deepThink: boolean;
+  /** 会话级产物；终答 Markdown 相对引用优先用此表，避免只认本轮 */
+  sessionArtifactFiles?: CHAT.TFile[];
   changeTask?: (task: CHAT.Task, chat?: CHAT.ChatItem) => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   changePlan?: () => void;
   onRegenerate?: () => void;
 };
 
-/** 结构化总结单独启用增强规范化，避免误伤普通聊天。 */
-function resolveConclusionMarkdownScope(
-  chat: CHAT.ChatItem,
-  deepThink: boolean
-): MarkdownNormalizationScope {
-  const structuredConversation = isStructuredConversation(
-    chat.agentType,
-    deepThink
-  );
-  return chat.conclusion && structuredConversation
-    ? "structured_summary"
-    : "default";
-}
-
 const ConclusionSection: FC<{
   chat: CHAT.ChatItem;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
-  normalizationScope: MarkdownNormalizationScope;
-}> = ({ chat, changeFile, normalizationScope }) => {
+  sessionArtifactFiles?: CHAT.TFile[];
+}> = ({ chat, changeFile, sessionArtifactFiles }) => {
   const summary = resolveTaskSummaryText(chat.conclusion) || "任务已完成";
   const summaryStreaming =
     !!chat.loading && chat.conclusion?.messageType === "agent_stream";
@@ -60,13 +55,20 @@ const ConclusionSection: FC<{
     () => getTaskFiles(chat.conclusion),
     [chat.conclusion]
   );
+  // 终答相对文件名引用优先会话级产物表，否则回退本轮。
+  const artifactFiles = useMemo(() => {
+    if (sessionArtifactFiles?.length) {
+      return sessionArtifactFiles;
+    }
+    return collectChatArtifactFiles(chat);
+  }, [chat, sessionArtifactFiles]);
   return (
     <div className="mt-5">
       <div className="mb-3 px-1 py-1">
         <MarkdownRenderer
           markDownContent={summary}
           isStreaming={summaryStreaming}
-          normalizationScope={normalizationScope}
+          artifactFiles={artifactFiles}
           className="chat-markdown conclusion-markdown text-[15px] leading-[1.75] tracking-[-0.01em] text-[var(--chat-text)]"
         />
       </div>
@@ -84,6 +86,7 @@ const DialogueComponent: FC<Props> = (props) => {
     chat,
     streamingThought,
     deepThink,
+    sessionArtifactFiles,
     changeTask,
     changeFile,
     changePlan,
@@ -128,13 +131,43 @@ const DialogueComponent: FC<Props> = (props) => {
       ? `${planVersionIndex + 1}/${plannerRounds.length}`
       : undefined;
   const planIsHistoricalSnapshot = planVersionIndex < latestRoundIndex;
-  const conclusionMarkdownScope = resolveConclusionMarkdownScope(chat, deepThink);
+  // multiAgent.tasks 原地 push/merge 时数组引用不变；必须以 chat 快照为依赖，
+  // 每次 Dialogue 因 chat 引用更新而渲染时重算 featured（含 emit_ui_patch 重放）。
+  const localGenUiTick = useSyncExternalStore(
+    subscribeGenUiLocalTree,
+    getGenUiLocalSnapshot,
+    getGenUiLocalSnapshot
+  );
+  const localScopeKey = genUiLocalScopeKey(chat.sessionId, chat.requestId);
+  const localVersion = getLocalUiVersion(localScopeKey);
+
+  const featuredGenUi = useMemo(() => {
+    const base = findFeaturedGenUi(chat.tasks, chat.multiAgent?.tasks);
+    if (!base) return null;
+    const localPatches = getLocalUiPatches(localScopeKey);
+    if (!localPatches.length) {
+      return {
+        ...base,
+        revision: `${base.revision}|loc0`,
+      };
+    }
+    const tree = applyUiPatches(base.tree, localPatches);
+    return {
+      ...base,
+      tree,
+      patchCount: base.patchCount + localPatches.length,
+      revision: `${base.revision}|loc${localVersion}:${localPatches.length}`,
+    };
+    // chat：流式 flush 会换新 chat 对象；localGenUiTick：客户端 patch_ui
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat, localGenUiTick, localScopeKey, localVersion]);
   const hasAssistantPayload =
     !!chat.response ||
     !!thoughtText ||
     !!displayedPlan ||
     !!chat.tasks.length ||
-    !!chat.conclusion;
+    !!chat.conclusion ||
+    !!featuredGenUi;
   const showStandaloneResponse =
     chat.agentType === 0 && !!chat.response && !chat.conclusion;
   const showProcessTimeline =
@@ -232,7 +265,6 @@ const DialogueComponent: FC<Props> = (props) => {
               <MarkdownRenderer
                 markDownContent={chat.response}
                 isStreaming={chat.loading}
-                normalizationScope="default"
                 className="chat-markdown"
               />
             </MessageContent>
@@ -277,13 +309,29 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
+      {/* GenUI：面向用户的可视化最终产物（过程之后、结论附近） */}
+      {featuredGenUi ? (
+        <div className="timeline-segment-enter mt-4 w-full max-w-[min(960px,100%)]">
+          <div className="rounded-2xl border border-[var(--chat-border)]/60 bg-white p-3 shadow-[var(--chat-soft-shadow)]">
+            <GenUiInline
+              key={`genui-${chat.requestId}-${featuredGenUi.revision}`}
+              tree={featuredGenUi.tree}
+              patchCount={featuredGenUi.patchCount}
+              sessionId={chat.sessionId}
+              messageId={chat.requestId}
+              className="w-full max-w-none"
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* 结论：过程之后的人话结果 */}
       {chat.conclusion ? (
         <div className="timeline-segment-enter mt-3 w-full max-w-[min(960px,100%)]">
           <ConclusionSection
             chat={chat}
             changeFile={changeFile}
-            normalizationScope={conclusionMarkdownScope}
+            sessionArtifactFiles={sessionArtifactFiles}
           />
         </div>
       ) : null}
@@ -298,6 +346,7 @@ const Dialogue = memo(
     prev.chat === next.chat &&
     prev.deepThink === next.deepThink &&
     prev.streamingThought === next.streamingThought &&
+    prev.sessionArtifactFiles === next.sessionArtifactFiles &&
     prev.changeTask === next.changeTask &&
     prev.changeFile === next.changeFile &&
     prev.changePlan === next.changePlan &&

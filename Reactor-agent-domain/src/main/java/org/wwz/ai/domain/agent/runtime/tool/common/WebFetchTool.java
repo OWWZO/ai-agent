@@ -122,7 +122,7 @@ public class WebFetchTool implements BaseTool {
             }
 
             String markdown = truncateContent(fetch.content());
-            String extracted = applyPromptToContent(prompt, markdown);
+            ExtractOutcome extracted = applyPromptToContent(prompt, markdown);
             long durationMs = System.currentTimeMillis() - start;
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -134,7 +134,12 @@ public class WebFetchTool implements BaseTool {
             data.put("bytes", fetch.bytes());
             data.put("durationMs", durationMs);
             data.put("prompt", prompt);
-            data.put("content", extracted);
+            data.put("content", extracted.content());
+            data.put("degraded", extracted.degraded());
+            if (extracted.degraded()) {
+                data.put("extractError", extracted.errorSummary());
+                data.put("hint", "Page fetch succeeded; model extract failed, returned truncated page text.");
+            }
             return ToolResultPayload.fromData(data);
         } catch (FetchHttpException e) {
             log.warn("{} WebFetch remote response failed, url={}, status={}", requestId(), e.url, e.statusCode);
@@ -207,7 +212,7 @@ public class WebFetchTool implements BaseTool {
         return FetchResult.content(finalUrl, code, response.getStatusText(), content, content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
     }
 
-    private String applyPromptToContent(String prompt, String markdownContent) throws Exception {
+    private ExtractOutcome applyPromptToContent(String prompt, String markdownContent) {
         String modelPrompt = """
                 Web page content:
                 ---
@@ -221,18 +226,53 @@ public class WebFetchTool implements BaseTool {
                 - Use quotation marks for exact language from the source
                 """.formatted(markdownContent, prompt);
 
-        ReactorConfig config = requireReactorConfig();
-        String modelName = StringUtils.defaultIfBlank(config.getSummaryModelName(), config.getReactModelName());
-        LLM llm = new LLM(modelName, "", agentContext.getRuntimeDependencies());
-        String answer = llm.ask(
-                agentContext,
-                Collections.singletonList(Message.userMessage(modelPrompt, null)),
-                Collections.emptyList(),
-                false,
-                false,
-                0.0
-        ).get(EXTRACT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        return StringUtils.defaultIfBlank(answer, "No response from model");
+        try {
+            ReactorConfig config = requireReactorConfig();
+            String modelName = StringUtils.defaultIfBlank(config.getSummaryModelName(), config.getReactModelName());
+            LLM llm = new LLM(modelName, "", agentContext.getRuntimeDependencies());
+            // Prefer stream aggregation: some OpenAI-compatible gateways return empty/truncated
+            // non-stream JSON bodies that Spring AI cannot deserialize as ChatCompletion.
+            String answer = llm.ask(
+                    agentContext,
+                    Collections.singletonList(Message.userMessage(modelPrompt, null)),
+                    Collections.emptyList(),
+                    true,
+                    false,
+                    0.0
+            ).get(EXTRACT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return ExtractOutcome.success(StringUtils.defaultIfBlank(answer, "No response from model"));
+        } catch (Exception e) {
+            String root = rootCauseSummary(e);
+            log.warn("{} WebFetch model extract failed, degrade to page text, root={}", requestId(), root, e);
+            String degraded = """
+                    [WebFetch degraded: model extract failed]
+                    error: %s
+                    prompt: %s
+
+                    page text:
+                    %s
+                    """.formatted(root, prompt, markdownContent);
+            return ExtractOutcome.degraded(degraded, root);
+        }
+    }
+
+    private static String rootCauseSummary(Throwable error) {
+        Throwable cursor = error;
+        while (cursor.getCause() != null && cursor.getCause() != cursor) {
+            cursor = cursor.getCause();
+        }
+        String message = StringUtils.defaultIfBlank(cursor.getMessage(), cursor.getClass().getSimpleName());
+        return cursor.getClass().getSimpleName() + ": " + message;
+    }
+
+    private record ExtractOutcome(String content, boolean degraded, String errorSummary) {
+        private static ExtractOutcome success(String content) {
+            return new ExtractOutcome(content, false, null);
+        }
+
+        private static ExtractOutcome degraded(String content, String errorSummary) {
+            return new ExtractOutcome(content, true, errorSummary);
+        }
     }
 
     private static String htmlToText(String html) {

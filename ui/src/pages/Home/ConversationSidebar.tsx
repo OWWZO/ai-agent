@@ -82,6 +82,7 @@ type ConversationSidebarProps = {
   onCloseTaskFiles?: () => void;
   onSelectTaskFile?: (file: WorkspaceFileItem) => void;
   onRefreshTaskFiles?: () => void;
+  onRequestClose?: () => void;
 };
 
 const ConversationSidebar = memo(function ConversationSidebar(
@@ -104,6 +105,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
     onCloseTaskFiles,
     onSelectTaskFile,
     onRefreshTaskFiles,
+    onRequestClose,
   } = props;
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -157,32 +159,44 @@ const ConversationSidebar = memo(function ConversationSidebar(
   const isTaskFilesPanel = sidebarPanel === "task-files";
 
   return (
-    <div className="flex h-full w-full min-w-[var(--chat-sidebar-width)] flex-col border-r border-[var(--chat-border)] bg-[var(--chat-nav)]">
+    <div className="flex h-full w-full min-w-0 flex-col border-r border-[var(--chat-border)] bg-[var(--chat-nav)]">
       {/* 顶部操作区 — Manus 侧栏风格 */}
       <div className="flex h-14 shrink-0 items-center justify-between px-3.5">
         <div className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--chat-text)]">
           Reactor
         </div>
-        {!isTaskFilesPanel ? (
-          <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5">
+          {!isTaskFilesPanel ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSearchToggle}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+                aria-label="搜索"
+              >
+                <Search className="h-[18px] w-[18px]" />
+              </button>
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
+                aria-label="新建任务"
+              >
+                <SquarePen className="h-[18px] w-[18px]" />
+              </button>
+            </>
+          ) : null}
+          {onRequestClose ? (
             <button
               type="button"
-              onClick={handleSearchToggle}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
-              aria-label="搜索"
+              onClick={onRequestClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)] lg:hidden"
+              aria-label="关闭侧边栏"
             >
-              <Search className="h-[18px] w-[18px]" />
+              <X className="h-[18px] w-[18px]" />
             </button>
-            <button
-              type="button"
-              onClick={onNewChat}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition-colors hover:bg-black/5 hover:text-[var(--chat-text)]"
-              aria-label="新建任务"
-            >
-              <SquarePen className="h-[18px] w-[18px]" />
-            </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {!isTaskFilesPanel ? (
@@ -411,7 +425,7 @@ const ConversationSidebar = memo(function ConversationSidebar(
               )}
             >
               <FolderOpen className="h-4 w-4 shrink-0 text-[var(--chat-text-muted)]" />
-              <span>查看当前任务的文件</span>
+              <span>查看当前会话的文件</span>
             </button>
             {visitorUsername ? (
               <div className="mt-1 flex items-center gap-2.5 px-2.5 py-1.5">

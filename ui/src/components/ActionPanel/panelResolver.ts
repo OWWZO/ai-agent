@@ -66,11 +66,6 @@ type MarkdownPanelView = {
   isStreaming: boolean;
 };
 
-type GenUiPanelView = {
-  type: "ui_tree";
-  tree?: unknown;
-};
-
 type EmptyPanelView = {
   type: "empty";
 };
@@ -83,8 +78,7 @@ export type PanelView =
   | FilePanelView
   | DownloadOnlyPanelView
   | JsonPanelView
-  | MarkdownPanelView
-  | GenUiPanelView;
+  | MarkdownPanelView;
 
 interface ResolvePanelViewParams {
   taskItem?: PanelItemType;
@@ -158,12 +152,9 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     };
   }
 
+  // GenUI 仅在对话主回复区展示，工作区不渲染
   if (useGenUi || taskItem.messageType === "ui_tree") {
-    const nested = (taskItem as any)?.resultMap;
-    return {
-      type: "ui_tree",
-      tree: nested?.tree || nested?.resultMap?.tree,
-    };
+    return { type: "empty" };
   }
 
   if (usePpt) {
