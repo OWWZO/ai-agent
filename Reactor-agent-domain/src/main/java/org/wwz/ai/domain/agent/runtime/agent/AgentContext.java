@@ -96,6 +96,13 @@ public class AgentContext {
     ToolCollection toolCollection;
 
     /**
+     * 主 Agent 的隐藏完整工具池，仅供 Agent 派发子 Agent 时筛选工具使用。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    ToolCollection subAgentToolCollection;
+
+    /**
      * Reactor 运行时依赖包。
      * 所有 Agent / Tool / LLM 必须通过这里读取运行时协作者，禁止自行回 Spring 容器查找。
      */
@@ -483,6 +490,7 @@ public class AgentContext {
                 .dateInfo(dateInfo)
                 .productFiles(copyFiles(productFiles))
                 .workspaceRoot(workspaceRoot)
+                .subAgentToolCollection(subAgentToolCollection)
                 .workspaceReadStateByPath(copyWorkspaceReadState())
                 .isStream(isStream)
                 .streamMessageType(streamMessageType)

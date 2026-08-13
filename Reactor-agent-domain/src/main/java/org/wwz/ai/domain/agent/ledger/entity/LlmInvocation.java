@@ -78,9 +78,6 @@ public class LlmInvocation {
     /** completion_tokens_details.reasoning_tokens */
     private Integer reasoningTokens;
 
-    /** 请求总体提示词快照 JSON */
-    private String promptPayloadJson;
-
     private String systemFingerprint;
 
     private Integer estTotalTokens;
@@ -95,17 +92,10 @@ public class LlmInvocation {
 
     private Integer toolCount;
 
-    private String toolNames;
-
-    private String roleSeq;
-
     /** OK / RISK / MISS / UNKNOWN */
     private String cacheStatus;
 
     private String cacheRiskFlags;
-
-    /** LLM-REQ/RESP/CACHE 观测聚合 */
-    private String obsLogJson;
 
     /** 完成原因 */
     private String finishReason;

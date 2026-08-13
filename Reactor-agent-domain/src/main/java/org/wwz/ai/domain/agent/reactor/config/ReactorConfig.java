@@ -213,6 +213,16 @@ public class ReactorConfig {
     }
 
     /**
+     * PlanSolve 主 Agent 可见的工具白名单。完整 tool_list 仍作为子 Agent 的工具来源。
+     */
+    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
+    private String planSolveMainToolList;
+
+    public void setPlanSolveMainToolList(String planSolveMainToolList) {
+        this.planSolveMainToolList = planSolveMainToolList;
+    }
+
+    /**
      * LLM Settings
      */
     private Map<String, LLMSettings> llmSettingsMap;
@@ -223,16 +233,16 @@ public class ReactorConfig {
         this.llmSettingsMap = normalizeLlmSettingsMap(rawSettings);
     }
 
-    @Value("${autobots.autoagent.planner.max_steps:40}")
+    @Value("${autobots.autoagent.planner.max_steps:400}")
     private Integer plannerMaxSteps;
 
     @Value("${autobots.autoagent.planner.max_parallel_tasks:2}")
     private Integer plannerMaxParallelTasks;
 
-    @Value("${autobots.autoagent.executor.max_steps:40}")
+    @Value("${autobots.autoagent.executor.max_steps:400}")
     private Integer executorMaxSteps;
 
-    @Value("${autobots.autoagent.react.max_steps:40}")
+    @Value("${autobots.autoagent.react.max_steps:400}")
     private Integer reactMaxSteps;
 
     @Value("${autobots.autoagent.executor.max_observe:10000}")
@@ -248,8 +258,8 @@ public class ReactorConfig {
     private String webFetchUrl;
 
     /**
-     * WebSearch 模式：auto | grok | exa | tavily | brave | disabled。
-     * auto 时优先 Grok/xAI 原生搜索，其次 Exa，再次 tavily，最后 brave。
+     * WebSearch 模式：auto | gpt | grok | exa | tavily | brave | disabled。
+     * auto 时优先 Grok/xAI 原生搜索，其次 GPT/OpenAI Responses API、Exa、Tavily、Brave。
      */
     @Value("${autobots.autoagent.web_search.mode:auto}")
     private String webSearchMode;
@@ -267,7 +277,22 @@ public class ReactorConfig {
     private String webSearchGrokModel;
 
     @Value("${autobots.autoagent.web_search.grok_interface_url:/v1/chat/completions}")
-    private String webSearchGrokInterfaceUrl;
+     private String webSearchGrokInterfaceUrl;
+
+     /**
+      * OpenAI Responses API 搜索凭证；支持官方 OpenAI 或兼容 Responses API 的代理。
+      */
+     @Value("${autobots.autoagent.web_search.gpt_api_key:}")
+     private String webSearchGptApiKey;
+
+     @Value("${autobots.autoagent.web_search.gpt_base_url:https://api.openai.com/v1}")
+     private String webSearchGptBaseUrl;
+
+     @Value("${autobots.autoagent.web_search.gpt_model:gpt-4.1}")
+     private String webSearchGptModel;
+
+     @Value("${autobots.autoagent.web_search.gpt_interface_url:/responses}")
+     private String webSearchGptInterfaceUrl;
 
     @Value("${autobots.autoagent.web_search.exa_api_key:}")
     private String webSearchExaApiKey;

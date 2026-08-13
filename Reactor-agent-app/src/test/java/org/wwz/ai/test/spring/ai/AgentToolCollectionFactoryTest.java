@@ -166,6 +166,33 @@ public class AgentToolCollectionFactoryTest {
     }
 
     @Test
+    public void shouldFilterPlanSolveMainToolsWithoutChangingChildToolSource() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setPlanSolveMainToolList("Agent,TaskCreate");
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+
+        ToolCollection full = factory.buildForPlanSolve(buildAgentContext(), buildAgentRequest("html"));
+        ToolCollection main = factory.filterForPlanSolveMain(full);
+
+        Assert.assertTrue(full.getToolMap().containsKey("deep_search"));
+        Assert.assertTrue(full.getToolMap().containsKey("Agent"));
+        Assert.assertTrue(main.getToolMap().containsKey("Agent"));
+        Assert.assertTrue(main.getToolMap().containsKey("TaskCreate"));
+        Assert.assertFalse(main.getToolMap().containsKey("deep_search"));
+        Assert.assertFalse(main.getToolMap().containsKey("web_search"));
+    }
+
+    @Test
     public void shouldKeepDataAgentToolingStableWithoutMultiModalAgent() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());

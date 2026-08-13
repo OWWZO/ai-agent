@@ -47,7 +47,10 @@ public class EmitUiTreeTool implements BaseTool {
                 + "{type:'open_url', payload:{url:'https://…'}}, "
                 + "{type:'submit_form', payload:{formId:'f1'}} (collects named Form fields). "
                 + "Legacy bare actionId string is treated as send_message content. "
-                + "Form fields need name + enclosing Form; Button/InteractiveButton fire actions on click.";
+                + "Form fields need name + enclosing Form; Button/InteractiveButton fire actions on click."
+                + "Prioritize building interactive components to allow users active participation and operation."
+                + "Add lightweight 2D animation elements to visualize logic and lower comprehension cost."
+            ;
     }
 
     @Override

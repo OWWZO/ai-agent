@@ -100,7 +100,8 @@ public class AgentRunController {
         SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         SseEmitterAgentSessionStream stream = new SseEmitterAgentSessionStream(emitter);
         try {
-            boolean attached = agentRunFollowApplicationService.follow(sessionId, requestId, stream);
+            boolean attached = agentRunFollowApplicationService.follow(
+                    sessionId, requestId, req.getLastEventSeq(), stream);
             if (attached) {
                 ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                         heartbeatScheduler,

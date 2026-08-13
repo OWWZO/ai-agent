@@ -434,6 +434,75 @@ public class ReplayProjectorTest {
     }
 
     @Test
+    public void shouldProjectSubAgentToolsEvenWhenSubAgentLlmThoughtIsSkipped() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 40, 0);
+        LlmInvocationView parentLlm = LlmInvocationView.builder()
+                .id(301L)
+                .invocationSeq(1)
+                .agentName("react")
+                .toolCallCount(1)
+                .responseText("派发子智能体调研")
+                .startedAt(now.minusSeconds(60))
+                .finishedAt(now.minusSeconds(55))
+                .build();
+        LlmInvocationView subAgentLlm = LlmInvocationView.builder()
+                .id(302L)
+                .invocationSeq(2)
+                .agentName("subagent:Explore")
+                .toolCallCount(1)
+                .responseText("子智能体内部思考，不应出现在主时间线")
+                .startedAt(now.minusSeconds(50))
+                .finishedAt(now.minusSeconds(40))
+                .build();
+        ToolInvocationView parentAgentTool = ToolInvocationView.builder()
+                .id(401L)
+                .llmInvocationId(301L)
+                .toolCallId("parent-agent-call")
+                .toolName("Agent")
+                .inputJson("{\"subagent_type\":\"Explore\",\"description\":\"scan controllers\"}")
+                .llmObservation("status=completed\nagentType=Explore\n\n扫描完成")
+                .startedAt(now.minusSeconds(54))
+                .finishedAt(now.minusSeconds(20))
+                .build();
+        ToolInvocationView nestedTool = ToolInvocationView.builder()
+                .id(402L)
+                .llmInvocationId(302L)
+                .toolCallId("child-grep-call")
+                .toolName("workspace_grep")
+                .agentName("subagent:Explore")
+                .parentToolCallId("parent-agent-call")
+                .subAgentId("abc123subagent")
+                .subAgentType("Explore")
+                .subAgentDescription("scan controllers")
+                .inputJson("{\"pattern\":\"Controller\"}")
+                .llmObservation("found 3 files")
+                .startedAt(now.minusSeconds(45))
+                .finishedAt(now.minusSeconds(35))
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .llmInvocations(List.of(parentLlm, subAgentLlm))
+                .toolInvocations(List.of(parentAgentTool, nestedTool))
+                .build());
+
+        Assert.assertEquals(3, frames.size());
+        Assert.assertEquals("tool_thought", frameResultMap(frames.get(0)).get("messageType"));
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(1)).get("messageType"));
+        Assert.assertEquals("Agent", toolResult(frames.get(1)).get("toolName"));
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(2)).get("messageType"));
+        Assert.assertEquals("workspace_grep", toolResult(frames.get(2)).get("toolName"));
+        Assert.assertEquals("parent-agent-call", frameResultMap(frames.get(2)).get("parentToolUseId"));
+        Assert.assertEquals("abc123subagent", frameResultMap(frames.get(2)).get("subAgentId"));
+        // 同 task 组才能被前端挂到 Agent.children
+        Assert.assertEquals(eventTaskId(frames.get(1)), eventTaskId(frames.get(2)));
+        // 子 Agent 思考不得出现
+        for (GptProcessResult frame : frames) {
+            Object thought = frameResultMap(frame).get("toolThought");
+            Assert.assertFalse(String.valueOf(thought).contains("子智能体内部思考"));
+        }
+    }
+
+    @Test
     public void shouldExposePlannerRoundIdOnPlanningThoughtReplayFrame() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 30, 0);
         LlmInvocationView planningInvocation = LlmInvocationView.builder()
@@ -572,6 +641,12 @@ public class ReplayProjectorTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> toolResult(ProjectedReplayEvent event) {
         return (Map<String, Object>) ((Map<String, Object>) event.getResultMap()).get("toolResult");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toolResult(GptProcessResult frame) {
+        Object value = frameResultMap(frame).get("toolResult");
+        return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of();
     }
 
     @SuppressWarnings("unchecked")

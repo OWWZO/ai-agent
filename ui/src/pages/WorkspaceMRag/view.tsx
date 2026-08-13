@@ -427,7 +427,7 @@ function FullContentPanel(props: {
           ) : null}
 
           {showUnavailable ? (
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-4 text-amber-700">
+            <div className="rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-4 py-4 text-[var(--chat-text-soft)]">
               <div className="text-[14px] font-semibold">{unavailableTitle}</div>
               <div className="mt-2 text-[13px] leading-6">
                 {errorMessage || "当前文件暂时没有可回显的正文内容。"}

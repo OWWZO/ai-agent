@@ -35,14 +35,14 @@ const STATUS_META: Record<
     description: "本轮已停止。",
     icon: Ban,
     toneClass:
-      "border-amber-200 bg-amber-50/85 text-amber-700",
+      "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text-soft)]",
   },
   TIMEOUT: {
     label: "已超时",
     description: "本轮执行超时。",
     icon: Clock3,
     toneClass:
-      "border-orange-200 bg-orange-50/85 text-orange-700",
+      "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text-soft)]",
   },
 };
 

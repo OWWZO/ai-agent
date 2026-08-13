@@ -9,26 +9,25 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Editorial Tech Color System - oklch warm grays */
-  /* 画布底色保留 Manus 灰，其余 token 恢复 editorial */
-  --background: #f5f5f7;
+  /* Editorial Tech Color System - neutral white surfaces */
+  --background: #ffffff;
   --foreground: oklch(0.12 0.01 60);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.01 60);
-  --popover: oklch(0.99 0.001 90);
+  --popover: #ffffff;
   --popover-foreground: oklch(0.15 0.01 60);
   --primary: oklch(0.12 0.01 60);
   --primary-foreground: oklch(0.985 0.002 90);
-  --secondary: oklch(0.96 0.005 90);
+  --secondary: #f7f7f8;
   --secondary-foreground: oklch(0.25 0.02 60);
-  --muted: oklch(0.94 0.003 90);
+  --muted: #f1f1f3;
   --muted-foreground: oklch(0.5 0.015 60);
-  --accent: oklch(0.92 0.01 90);
+  --accent: #f1f1f3;
   --accent-foreground: oklch(0.12 0.01 60);
   --destructive: oklch(0.6 0.2 25);
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.65 0.15 145);
-  --warning: oklch(0.75 0.12 85);
+  --warning: oklch(0.55 0.02 260);
 
   /* Editorial Borders - refined */
   --border: oklch(0.88 0.008 90);
@@ -46,13 +45,13 @@
   --radius-full: 9999px;
 
   /* Chat System Colors - oklch with warm tint */
-  --chat-bg: #f5f5f7;
-  --chat-nav: #f0f0f0;
+  --chat-bg: #ffffff;
+  --chat-nav: #ffffff;
   --chat-panel: oklch(1 0 0 / 0.72);
   --chat-panel-strong: oklch(1 0 0 / 0.95);
-  --chat-surface: oklch(0.995 0.004 75);
-  --chat-surface-soft: oklch(0.96 0.006 80);
-  --chat-surface-muted: oklch(0.92 0.008 80);
+  --chat-surface: #ffffff;
+  --chat-surface-soft: #f7f7f8;
+  --chat-surface-muted: #f1f1f3;
   --chat-text: oklch(0.15 0.01 60);
   --chat-text-soft: oklch(0.5 0.015 60);
   --chat-text-muted: oklch(0.6 0.012 60);
@@ -62,8 +61,8 @@
   --chat-accent: oklch(0.56 0.14 258);
   --chat-accent-soft: oklch(0.94 0.03 258);
   --chat-accent-muted: oklch(0.64 0.08 258);
-  --chat-interactive-hover: oklch(0.94 0.006 80);
-  --chat-interactive-active: oklch(0.9 0.01 80);
+  --chat-interactive-hover: #f5f5f7;
+  --chat-interactive-active: #eeeeef;
 
   /* Status Colors - semantic, theme-aware */
   --status-success-bg: oklch(0.95 0.03 155);
@@ -72,12 +71,12 @@
   --status-failed-text: oklch(0.5 0.15 25);
   --status-running-bg: oklch(0.95 0.03 220);
   --status-running-text: oklch(0.4 0.12 220);
-  --status-pending-bg: oklch(0.95 0.03 85);
-  --status-pending-text: oklch(0.5 0.12 85);
+  --status-pending-bg: #f1f1f3;
+  --status-pending-text: oklch(0.5 0.015 260);
   --status-info-bg: oklch(0.95 0.03 240);
   --status-info-text: oklch(0.4 0.12 240);
-  --status-neutral-bg: oklch(0.94 0.005 80);
-  --status-neutral-text: oklch(0.5 0.015 80);
+  --status-neutral-bg: #f1f1f3;
+  --status-neutral-text: oklch(0.5 0.015 260);
 
   /* JSON viewer — flat chat surface, no warm nested frame */
   --json-view-inner-bg: var(--chat-surface);
@@ -130,7 +129,7 @@
     serif;
 
   /* 全局画布：保留 Manus 灰底 */
-  --page-gradient: #f5f5f7;
+  --page-gradient: #ffffff;
 
   /* Motion tokens */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -216,6 +215,18 @@
     radial-gradient(ellipse 80% 50% at 50% -15%, oklch(0.5 0.08 260 / 0.08), transparent),
     radial-gradient(ellipse 60% 40% at 80% 100%, oklch(0.4 0.06 200 / 0.05), transparent),
     linear-gradient(180deg, oklch(0.08 0.005 90) 0%, oklch(0.1 0.008 90) 50%, oklch(0.12 0.01 90) 100%);
+}
+
+/* GenUI 使用中性白色表面，避免继承聊天区域的暖色背景。 */
+.genui-root {
+  --chat-surface: #ffffff;
+  --chat-surface-soft: #f7f7f8;
+  --chat-surface-muted: #f1f1f3;
+  --chat-interactive-hover: #f5f5f7;
+  --chat-interactive-active: #eeeeef;
+  --chat-border: #e5e5e7;
+  --chat-border-strong: #d1d1d4;
+  --chat-divider: #e9e9eb;
 }
 
 @theme inline {

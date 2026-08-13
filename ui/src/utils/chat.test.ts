@@ -1136,6 +1136,22 @@ describe("chat file task title", () => {
     });
   });
 
+  it("WebSearch 和 Webfetch 的完成结果不应继续显示正在调用", () => {
+    const webSearchTask = createToolResultEvent({ toolName: "web_search" })
+      .resultMap as unknown as CHAT.Task;
+    const webfetchTask = createToolResultEvent({ toolName: "webfetch" })
+      .resultMap as unknown as CHAT.Task;
+
+    expect(buildAction(webSearchTask)).toMatchObject({
+      action: "工具调用完成",
+      tool: "web_search",
+    });
+    expect(buildAction(webfetchTask)).toMatchObject({
+      action: "工具调用完成",
+      tool: "webfetch",
+    });
+  });
+
   it("已有工具结果卡片后，tool_call 终态回包不应再次追加新卡片", () => {
     const currentChat = {
       sessionId: "session-tool-call-4",

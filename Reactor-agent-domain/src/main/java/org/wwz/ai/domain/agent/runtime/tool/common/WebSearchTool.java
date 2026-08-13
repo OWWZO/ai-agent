@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 
 /**
  * Web 搜索工具。
- * 优先级：Grok/xAI 原生 server tool（web_search / search_parameters）→ Exa → Tavily → Brave。
+ * 优先级：Grok/xAI 原生搜索 → GPT/OpenAI Responses API → Exa → Tavily → Brave。
  */
 @Slf4j
 @Data
@@ -51,7 +51,7 @@ public class WebSearchTool implements BaseTool {
         String currentMonthYear = java.time.YearMonth.now().toString();
         return """
                 Search the web for up-to-date information beyond the model knowledge cutoff.
-                Prefer Grok native web search when available; otherwise Exa/Tavily/Brave.
+                Prefer Grok or GPT native web search when available; otherwise Exa/Tavily/Brave.
                 Returns titles, URLs and snippets. After answering, include a Sources section with markdown links.
 
                 CRITICAL:
@@ -113,7 +113,7 @@ public class WebSearchTool implements BaseTool {
             ReactorConfig config = requireReactorConfig();
             List<ProviderPlan> plans = resolveProviderPlans(config);
             if (plans.isEmpty()) {
-                return failure("WebSearch 未配置。请配置 Grok/xAI（web_search.grok_* 或 llm.default）或 exa/tavily/brave API key。");
+                return failure("WebSearch 未配置。请配置 GPT/OpenAI（web_search.gpt_*）、Grok/xAI 或 exa/tavily/brave API key。");
             }
 
             Exception lastError = null;
@@ -144,6 +144,7 @@ public class WebSearchTool implements BaseTool {
                                      List<String> blockedDomains) throws Exception {
         return switch (plan.provider()) {
             case GROK -> searchGrok(query, allowedDomains, blockedDomains, plan);
+            case GPT -> searchGpt(query, allowedDomains, blockedDomains, plan);
             case EXA -> new SearchBundle(searchExa(query, allowedDomains, blockedDomains, plan), null);
             case TAVILY -> new SearchBundle(searchTavily(query, allowedDomains, blockedDomains, plan.apiKey()), null);
             case BRAVE -> new SearchBundle(searchBrave(query, allowedDomains, blockedDomains, plan.apiKey()), null);
@@ -178,6 +179,99 @@ public class WebSearchTool implements BaseTool {
             throw new IllegalStateException(
                     "Grok native search failed: server_tool=" + firstError.getMessage()
                             + "; search_parameters=" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * OpenAI Responses API 原生搜索。Responses API 不使用 Chat Completions 的 messages
+     * 或 search_parameters，而是通过 input + web_search_preview 工具返回 output annotations。
+     */
+    private SearchBundle searchGpt(String query,
+                                   List<String> allowedDomains,
+                                   List<String> blockedDomains,
+                                   ProviderPlan plan) throws Exception {
+        Map<String, Object> webSearch = new LinkedHashMap<>();
+        webSearch.put("type", "web_search_preview");
+        if (!allowedDomains.isEmpty()) {
+            webSearch.put("filters", Map.of("allowed_domains", allowedDomains));
+        } else if (!blockedDomains.isEmpty()) {
+            webSearch.put("filters", Map.of("blocked_domains", blockedDomains));
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", plan.model());
+        body.put("input", query);
+        body.put("tools", List.of(webSearch));
+
+        String responseText = postJson(joinUrl(plan.baseUrl(), plan.interfaceUrl()), plan.apiKey(), body);
+        return parseGptResponse(responseText, query);
+    }
+
+    private SearchBundle parseGptResponse(String responseText, String originalQuery) {
+        if (StringUtils.isBlank(responseText)) {
+            throw new IllegalStateException("empty response");
+        }
+        JSONObject root = JSON.parseObject(responseText);
+        if (root == null) {
+            throw new IllegalStateException("invalid json");
+        }
+        if (root.containsKey("error")) {
+            throw new IllegalStateException(String.valueOf(root.get("error")));
+        }
+
+        String summary = StringUtils.trimToEmpty(root.getString("output_text"));
+        List<SearchHit> hits = new ArrayList<>();
+        JSONArray output = root.getJSONArray("output");
+        if (output != null) {
+            for (int i = 0; i < output.size(); i++) {
+                JSONObject item = output.getJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                collectGptContent(item.getJSONArray("content"), hits, summary);
+            }
+        }
+        if (StringUtils.isBlank(summary)) {
+            summary = extractAssistantContent(root);
+        }
+        if (StringUtils.isBlank(summary) && hits.isEmpty()) {
+            throw new IllegalStateException("no content/citations from gpt");
+        }
+        return new SearchBundle(dedupeHits(hits), StringUtils.defaultIfBlank(summary,
+                "GPT search completed for: " + originalQuery));
+    }
+
+    private void collectGptContent(JSONArray content, List<SearchHit> hits, String summary) {
+        if (content == null) {
+            return;
+        }
+        for (int i = 0; i < content.size(); i++) {
+            JSONObject part = content.getJSONObject(i);
+            if (part == null) {
+                continue;
+            }
+            String text = part.getString("text");
+            if (StringUtils.isNotBlank(text) && StringUtils.isBlank(summary)) {
+                summary = text;
+            }
+            JSONArray annotations = part.getJSONArray("annotations");
+            if (annotations == null) {
+                continue;
+            }
+            for (int j = 0; j < annotations.size(); j++) {
+                JSONObject annotation = annotations.getJSONObject(j);
+                if (annotation == null || !"url_citation".equals(annotation.getString("type"))) {
+                    continue;
+                }
+                SearchHit hit = normalizeHit(
+                        firstNonBlank(annotation.getString("title"), annotation.getString("url")),
+                        annotation.getString("url"),
+                        text
+                );
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            }
         }
     }
 
@@ -572,8 +666,8 @@ public class WebSearchTool implements BaseTool {
     }
 
     /**
-     * auto: grok → exa → tavily → brave
-     * grok / exa / tavily / brave / disabled 为强制模式
+     * auto: grok → gpt → exa → tavily → brave
+     * gpt / grok / exa / tavily / brave / disabled 为强制模式
      */
     private List<ProviderPlan> resolveProviderPlans(ReactorConfig config) {
         String mode = StringUtils.defaultIfBlank(config.getWebSearchMode(), "auto").trim().toLowerCase(Locale.ROOT);
@@ -584,6 +678,7 @@ public class WebSearchTool implements BaseTool {
         }
 
         ProviderPlan grok = resolveGrokPlan(config);
+        ProviderPlan gpt = resolveGptPlan(config);
         ProviderPlan exa = resolveExaPlan(config);
         String tavilyKey = StringUtils.trimToNull(config.getWebSearchTavilyApiKey());
         String braveKey = StringUtils.trimToNull(config.getWebSearchBraveApiKey());
@@ -591,6 +686,12 @@ public class WebSearchTool implements BaseTool {
         if ("grok".equals(mode) || "xai".equals(mode)) {
             if (grok != null) {
                 plans.add(grok);
+            }
+            return plans;
+        }
+        if ("gpt".equals(mode) || "openai".equals(mode)) {
+            if (gpt != null) {
+                plans.add(gpt);
             }
             return plans;
         }
@@ -617,6 +718,9 @@ public class WebSearchTool implements BaseTool {
         if (grok != null) {
             plans.add(grok);
         }
+        if (gpt != null) {
+            plans.add(gpt);
+        }
         if (exa != null) {
             plans.add(exa);
         }
@@ -627,6 +731,19 @@ public class WebSearchTool implements BaseTool {
             plans.add(new ProviderPlan(Provider.BRAVE, braveKey, null, null, null));
         }
         return plans;
+    }
+
+    private ProviderPlan resolveGptPlan(ReactorConfig config) {
+        String apiKey = StringUtils.trimToNull(config.getWebSearchGptApiKey());
+        if (apiKey == null) {
+            return null;
+        }
+        String baseUrl = StringUtils.defaultIfBlank(
+                config.getWebSearchGptBaseUrl(), "https://api.openai.com/v1").trim();
+        String model = StringUtils.defaultIfBlank(config.getWebSearchGptModel(), "gpt-4.1").trim();
+        String interfaceUrl = StringUtils.defaultIfBlank(
+                config.getWebSearchGptInterfaceUrl(), "/responses").trim();
+        return new ProviderPlan(Provider.GPT, apiKey, baseUrl, interfaceUrl, model);
     }
 
     private ProviderPlan resolveExaPlan(ReactorConfig config) {
@@ -844,6 +961,7 @@ public class WebSearchTool implements BaseTool {
 
     private enum Provider {
         GROK,
+        GPT,
         EXA,
         TAVILY,
         BRAVE,

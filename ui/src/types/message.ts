@@ -82,6 +82,7 @@ declare global {
       messages: string
       packageType: string
       errorMsg: string
+      eventSeq?: number
     }
 
     interface MultiAgent {

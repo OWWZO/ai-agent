@@ -122,11 +122,14 @@ public class ReplayProjector {
 
         List<LlmInvocationView> llmInvocations = sortLlmInvocations(bundle.getLlmInvocations());
         for (LlmInvocationView llmInvocation : llmInvocations) {
+            List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             if (shouldSkipLlmReplay(llmInvocation)) {
+                // 子 Agent 思考/过程文不进主时间线，但其工具必须投影。
+                // 否则 parentToolUseId 嵌套在历史回放中丢失，前端 SubAgent 展开为空。
+                appendLinkedToolEvents(events, linkedTools, artifactsByInvocationId, state);
                 continue;
             }
 
-            List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
             String messageType = null;
             // LLM content 不是天然的最终答案：有工具调用时它是过程文，无工具时由 run summary 负责交付。
             // 原生 CoT 单独回放为 llm_reasoning（与 content 双路）
@@ -153,22 +156,10 @@ public class ReplayProjector {
                 ));
             }
 
-            if (linkedTools == null || linkedTools.isEmpty()) {
-                continue;
-            }
-
             // 先投影 LLM 过程消息，再投影该轮工具；这样前端折叠状态与实时执行顺序保持一致。
             // 对齐 live SSE：同一 LLM 轮次（及整段 ReAct）工具共享 taskId，不按 invocation 拆组。
             // 否则历史每个工具独立 taskId → 前端变成 N 个「单步已完成」平铺，折叠组消失。
-            for (ToolInvocationView toolInvocation : linkedTools) {
-                List<ArtifactView> artifacts = artifactsByInvocationId.getOrDefault(toolInvocation.getId(), List.of());
-                events.addAll(toolInvocationProjectorRegistry.project(
-                        toolInvocation,
-                        artifacts,
-                        state,
-                        true
-                ));
-            }
+            appendLinkedToolEvents(events, linkedTools, artifactsByInvocationId, state);
         }
 
         for (ToolInvocationView orphanTool : sortToolInvocations(orphanTools)) {
@@ -179,8 +170,36 @@ public class ReplayProjector {
     }
 
     /**
+     * 投影某轮 LLM 关联的工具事件（共享当前 taskId，供前端嵌套/折叠）。
+     */
+    private void appendLinkedToolEvents(List<ProjectedReplayEvent> events,
+                                        List<ToolInvocationView> linkedTools,
+                                        Map<Long, List<ArtifactView>> artifactsByInvocationId,
+                                        EventResult state) {
+        if (events == null || linkedTools == null || linkedTools.isEmpty()) {
+            return;
+        }
+        for (ToolInvocationView toolInvocation : linkedTools) {
+            if (toolInvocation == null) {
+                continue;
+            }
+            List<ArtifactView> artifacts = artifactsByInvocationId == null
+                    ? List.of()
+                    : artifactsByInvocationId.getOrDefault(toolInvocation.getId(), List.of());
+            events.addAll(toolInvocationProjectorRegistry.project(
+                    toolInvocation,
+                    artifacts,
+                    state,
+                    true
+            ));
+        }
+    }
+
+    /**
      * digital employee 生成属于内部配置 ask，不应投影成前端可见 thought。
      * 否则会污染历史重放，并导致 PlanSolve plannerRounds 平白增加一版。
+     * <p>
+     * 注意：仅跳过 LLM 过程文，不跳过其关联工具（见 {@link #projectMixedHistory}）。
      */
     private boolean shouldSkipLlmReplay(LlmInvocationView invocation) {
         if (invocation == null) {

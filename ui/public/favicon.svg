@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Reactor">
+  <!-- tighter crop + thicker strokes for 16px tab clarity -->
+  <ellipse cx="64" cy="64" rx="52" ry="32" transform="rotate(-28 64 64)" stroke="#1D1D1F" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="64" cy="64" rx="38" ry="54" transform="rotate(18 64 64)" stroke="#1D1D1F" stroke-width="5" opacity="0.35"/>
+  <circle cx="64" cy="64" r="22" fill="#1D1D1F"/>
+  <circle cx="108" cy="42" r="12" fill="#1D1D1F"/>
+  <circle cx="28" cy="36" r="9" fill="#1D1D1F"/>
+  <circle cx="48" cy="108" r="10" fill="#1D1D1F"/>
+</svg>

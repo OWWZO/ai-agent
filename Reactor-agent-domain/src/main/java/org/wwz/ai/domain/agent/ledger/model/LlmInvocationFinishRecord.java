@@ -58,7 +58,5 @@ public class LlmInvocationFinishRecord {
     private String cacheStatus;
 
     private String cacheRiskFlags;
-
-    private String obsLogJson;
 }
 

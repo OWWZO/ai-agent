@@ -1,7 +1,5 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.serializer.SerializerFeature;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -9,23 +7,20 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * LLM 请求观测：日志 + 可落库快照（ai_agent_llm_invocation）。
+ * LLM 请求观测：日志 + 轻量落库元数据（systemFingerprint / est tokens / cache）。
+ * 不再落库 prompt_payload_json / tool_names / role_seq / obs_log_json。
  */
 @Slf4j
 public final class LlmPromptObservability {
 
-    private static final int MAX_CONTENT_CHARS = 8000;
     private static final TokenCounter TOKEN_COUNTER = new TokenCounter();
     private static final ConcurrentHashMap<String, PromptSnapshot> LAST_BY_SESSION = new ConcurrentHashMap<>();
     private static final ThreadLocal<ObservationBundle> LAST_BUNDLE = new ThreadLocal<>();
@@ -105,7 +100,6 @@ public final class LlmPromptObservability {
             LAST_BY_SESSION.put(sessionId, curr);
         }
 
-        String promptPayloadJson = buildPromptPayloadJson(systemMessage, messages, tools, estimate, roleSeq);
         List<String> lines = new ArrayList<>();
         lines.add(reqLine);
         lines.add(roleLine);
@@ -113,9 +107,7 @@ public final class LlmPromptObservability {
 
         ObservationBundle bundle = ObservationBundle.builder()
                 .estimate(estimate)
-                .promptPayloadJson(promptPayloadJson)
                 .systemFingerprint(estimate.getSystemFingerprint())
-                .roleSeq(roleSeq)
                 .cacheStatus(cacheStatus)
                 .cacheRiskFlags(cacheRiskFlags)
                 .obsLines(lines)
@@ -200,29 +192,10 @@ public final class LlmPromptObservability {
             if (missLine != null) {
                 lines.add(missLine);
             }
-            Map<String, Object> obs = new LinkedHashMap<>();
-            obs.put("lines", lines);
-            obs.put("cacheStatus", cacheStatus);
-            obs.put("cacheRiskFlags", cacheRiskFlags);
-            obs.put("promptTokens", promptTokens);
-            obs.put("completionTokens", completionTokens);
-            obs.put("totalTokens", totalTokens);
-            obs.put("cachedPromptTokens", cachedPromptTokens);
-            obs.put("promptTextTokens", snapshot.getPromptTextTokens());
-            obs.put("promptAudioTokens", snapshot.getPromptAudioTokens());
-            obs.put("promptImageTokens", snapshot.getPromptImageTokens());
-            obs.put("completionTextTokens", snapshot.getCompletionTextTokens());
-            obs.put("completionAudioTokens", snapshot.getCompletionAudioTokens());
-            obs.put("reasoningTokens", snapshot.getReasoningTokens());
-            obs.put("uncachedPromptTokens", uncached);
-            obs.put("cacheHitRatio", cacheHitRatio < 0 ? null : cacheHitRatio);
-            obs.put("estTotalTokens", estimate == null ? null : estimate.getEstimatedTotalTokens());
-            obs.put("durationMs", durationMs);
             bundle.setCacheStatus(cacheStatus);
             bundle.setCacheRiskFlags(cacheRiskFlags);
             bundle.setUsage(snapshot);
             bundle.setCachedPromptTokens(cachedPromptTokens);
-            bundle.setObsLogJson(JSON.toJSONString(obs, SerializerFeature.DisableCircularReferenceDetect));
             bundle.setObsLines(lines);
         }
         // keep bundle for finishLlmInvocation to read via current()
@@ -251,162 +224,6 @@ public final class LlmPromptObservability {
         return resolveUsage(metadata).getCachedPromptTokens();
     }
 
-    private static String buildPromptPayloadJson(Message systemMessage,
-                                                 List<Message> messages,
-                                                 ToolCollection tools,
-                                                 TokenCounter.PromptEstimate estimate,
-                                                 String roleSeq) {
-        // messages：与正式发送一致，但不含 SYSTEM（system 仅 meta.systemFingerprint）；tools = function schema
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("kind", "exact_wire_no_system");
-        payload.put("messages", buildExactMessages(systemMessage, messages));
-        payload.put("tools", buildExactTools(tools));
-        // 辅助对照字段（非 wire body，便于查 cache）
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("roleSeq", roleSeq);
-        meta.put("systemFingerprint", estimate == null ? null : estimate.getSystemFingerprint());
-        meta.put("estimate", estimate);
-        payload.put("meta", meta);
-        return JSON.toJSONString(payload, SerializerFeature.DisableCircularReferenceDetect);
-    }
-
-    /**
-     * 与 LLM.mergeMessages(system, messages) 顺序一致，字段按领域 Message 原样序列化（不截断）。
-     */
-    private static List<Map<String, Object>> buildExactMessages(Message systemMessage, List<Message> messages) {
-        // 不落 SYSTEM 全文：高度稳定且体积大，指纹放 meta.systemFingerprint 即可对照
-        List<Map<String, Object>> out = new ArrayList<>();
-        if (messages != null) {
-            for (Message message : messages) {
-                if (message == null || message.getRole() == null) {
-                    continue;
-                }
-                if (message.getRole() == org.wwz.ai.domain.agent.runtime.enums.RoleType.SYSTEM) {
-                    continue;
-                }
-                out.add(toExactMessageMap(message));
-            }
-        }
-        return out;
-    }
-
-    private static Map<String, Object> toExactMessageMap(Message message) {
-        Map<String, Object> one = new LinkedHashMap<>();
-        one.put("role", message.getRole() == null ? null : message.getRole().name());
-        // content 原样，不 truncate
-        one.put("content", message.getContent());
-        if (message.getBase64Image() != null) {
-            one.put("base64Image", message.getBase64Image());
-        }
-        if (StringUtils.isNotBlank(message.getToolCallId())) {
-            one.put("toolCallId", message.getToolCallId());
-        }
-        if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
-            List<Map<String, Object>> tcs = new ArrayList<>();
-            for (ToolCall tc : message.getToolCalls()) {
-                if (tc == null) {
-                    continue;
-                }
-                Map<String, Object> t = new LinkedHashMap<>();
-                t.put("id", tc.getId());
-                t.put("type", tc.getType());
-                if (tc.getFunction() != null) {
-                    Map<String, Object> fn = new LinkedHashMap<>();
-                    fn.put("name", tc.getFunction().getName());
-                    fn.put("arguments", tc.getFunction().getArguments());
-                    t.put("function", fn);
-                }
-                tcs.add(t);
-            }
-            one.put("toolCalls", tcs);
-        }
-        return one;
-    }
-
-    /**
-     * 与 OpenAI/Spring AI 工具声明一致：name + description + parameters schema。
-     */
-    private static List<Map<String, Object>> buildExactTools(ToolCollection tools) {
-        List<Map<String, Object>> formatted = new ArrayList<>();
-        if (tools == null) {
-            return formatted;
-        }
-        // 与 LlmToolCallbackProvider 一致：name 字典序 + 稳定 schema
-        if (tools.getToolMap() != null) {
-            tools.getToolMap().values().stream()
-                    .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
-                    .sorted(java.util.Comparator.comparing(
-                            org.wwz.ai.domain.agent.runtime.tool.BaseTool::getName,
-                            String.CASE_INSENSITIVE_ORDER))
-                    .forEach(tool -> {
-                        Map<String, Object> function = new LinkedHashMap<>();
-                        function.put("name", tool.getName());
-                        function.put("description", tool.getDescription());
-                        try {
-                            function.put("parameters",
-                                    org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer.normalizeSchema(
-                                            tool.toParams(), tool.getName()));
-                            // 再做 key 排序，保证 JSON 字节稳定
-                            function.put("parameters",
-                                    org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer.sortDeep(
-                                            function.get("parameters")));
-                        } catch (Exception e) {
-                            function.put("parameters", tool.toParams());
-                            function.put("parametersError", e.getMessage());
-                        }
-                        Map<String, Object> toolMap = new LinkedHashMap<>();
-                        toolMap.put("type", "function");
-                        toolMap.put("function", function);
-                        formatted.add(toolMap);
-                    });
-        }
-        if (tools.getMcpToolMap() != null) {
-            tools.getMcpToolMap().values().stream()
-                    .filter(tool -> tool != null && StringUtils.isNotBlank(tool.getName()))
-                    .sorted(java.util.Comparator.comparing(
-                            org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo::getName,
-                            String.CASE_INSENSITIVE_ORDER))
-                    .forEach(tool -> {
-                        Map<String, Object> function = new LinkedHashMap<>();
-                        function.put("name", tool.getName());
-                        function.put("description", tool.getDesc());
-                        Object parameters = tool.getParameters();
-                        if (parameters instanceof String s && StringUtils.isNotBlank(s)) {
-                            try {
-                                parameters = JSON.parse(s);
-                            } catch (Exception ignored) {
-                            }
-                        }
-                        if (parameters instanceof Map<?, ?>) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> map = (Map<String, Object>) parameters;
-                            parameters = org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer.normalizeSchema(
-                                    map, tool.getName());
-                            parameters = org.wwz.ai.domain.agent.runtime.util.ToolSchemaNormalizer.sortDeep(parameters);
-                        }
-                        function.put("parameters", parameters);
-                        Map<String, Object> toolMap = new LinkedHashMap<>();
-                        toolMap.put("type", "function");
-                        toolMap.put("function", function);
-                        formatted.add(toolMap);
-                    });
-        }
-        return formatted;
-    }
-
-
-
-
-    private static String truncate(String text) {
-        if (text == null) {
-            return null;
-        }
-        if (text.length() <= MAX_CONTENT_CHARS) {
-            return text;
-        }
-        return text.substring(0, MAX_CONTENT_CHARS) + "...(truncated,total=" + text.length() + ")";
-    }
-
     private record PromptSnapshot(String systemFingerprint, String toolNamesKey, int messageCount, int systemChars) {
     }
 
@@ -414,14 +231,11 @@ public final class LlmPromptObservability {
     @Builder
     public static class ObservationBundle {
         private TokenCounter.PromptEstimate estimate;
-        private String promptPayloadJson;
         private String systemFingerprint;
-        private String roleSeq;
         private String cacheStatus;
         private String cacheRiskFlags;
         private LlmUsageSnapshot usage;
         private Integer cachedPromptTokens;
-        private String obsLogJson;
         private List<String> obsLines;
     }
 }

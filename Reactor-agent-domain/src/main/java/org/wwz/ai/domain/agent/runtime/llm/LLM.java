@@ -20,6 +20,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanModeToolPolicy;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
@@ -316,6 +317,7 @@ public class LLM {
             int timeout
     ) {
         try {
+            tools = PlanModeToolPolicy.filterTools(context, tools);
             // 工具调用有两条协议分支：原生 function_call 由 Spring AI 组装 tools[]，
             // struct_parse 则把 schema 放入 system 文本后自行解析 JSON；两者共用观测和账本入口。
             if (!ToolChoice.isValid(toolChoice)) {
@@ -663,15 +665,6 @@ public class LLM {
         int invocationSeq = context.getAgentRunState().nextInvocationSeq();
         LlmPromptObservability.ObservationBundle obs = LlmPromptObservability.current();
         TokenCounter.PromptEstimate est = obs == null ? null : obs.getEstimate();
-        String initialObsJson = null;
-        if (obs != null) {
-            if (obs.getObsLogJson() != null) {
-                initialObsJson = obs.getObsLogJson();
-            } else if (obs.getObsLines() != null) {
-                initialObsJson = com.alibaba.fastjson.JSON.toJSONString(
-                        java.util.Map.of("lines", obs.getObsLines()));
-            }
-        }
         Long invocationId = context.getExecutionRecorder().createLlmInvocation(LlmInvocationStartRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
                 .requestId(context.getRequestId())
@@ -682,7 +675,6 @@ public class LLM {
                 .streaming(stream)
                 .modelName(model)
                 .startedAt(startedAt)
-                .promptPayloadJson(obs == null ? null : obs.getPromptPayloadJson())
                 .systemFingerprint(obs == null ? null : obs.getSystemFingerprint())
                 .estTotalTokens(est == null ? null : est.getEstimatedTotalTokens())
                 .estSystemTokens(est == null ? null : est.getSystemTokens())
@@ -690,11 +682,8 @@ public class LLM {
                 .estToolTokens(est == null ? null : est.getToolTokens())
                 .messageCount(est == null ? null : est.getMessageCount())
                 .toolCount(est == null ? null : est.getToolCount())
-                .toolNames(est == null || est.getToolNames() == null ? null : String.join(",", est.getToolNames()))
-                .roleSeq(obs == null ? null : obs.getRoleSeq())
                 .cacheStatus(obs == null ? null : obs.getCacheStatus())
                 .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
-                .obsLogJson(initialObsJson)
                 .build());
         context.getAgentRunState().bindCurrentLlmInvocationId(invocationId);
         return new LlmInvocationHandle(invocationId, obs);
@@ -794,7 +783,6 @@ public class LLM {
                 .reasoningTokens(snapshot.getReasoningTokens())
                 .cacheStatus(obs == null ? null : obs.getCacheStatus())
                 .cacheRiskFlags(obs == null ? null : obs.getCacheRiskFlags())
-                .obsLogJson(obs == null ? null : obs.getObsLogJson())
                 .finishReason(finishReason)
                 .errorMsg(errorMsg)
                 .finishedAt(LocalDateTime.now())

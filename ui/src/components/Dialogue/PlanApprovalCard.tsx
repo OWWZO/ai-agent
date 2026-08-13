@@ -22,15 +22,12 @@ function pickPlanFields(tool: CHAT.Task) {
   const planContent = String(
     nested.planContent || resultMap.planContent || toolAny.planContent || ""
   );
-  const planFilePath = String(
-    nested.planFilePath || resultMap.planFilePath || toolAny.planFilePath || ""
-  );
   const status = String(nested.status || resultMap.status || toolAny.status || "pending");
-  return { resultMap, approvalId, planContent, planFilePath, status };
+  return { resultMap, approvalId, planContent, status };
 }
 
 const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
-  const { resultMap, approvalId, planContent, planFilePath, status } = pickPlanFields(tool);
+  const { resultMap, approvalId, planContent, status } = pickPlanFields(tool);
   const alreadyDone = status === "approved" || status === "rejected" || Boolean(resultMap.isFinal && status !== "pending");
 
   const [feedback, setFeedback] = useState("");
@@ -139,9 +136,6 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
             ) : null}
           </div>
           <div className="text-[12px] text-[var(--chat-text-soft)]">{subtitle}</div>
-          {planFilePath ? (
-            <div className="mt-0.5 truncate text-[11px] text-[var(--chat-text-soft)]">{planFilePath}</div>
-          ) : null}
         </div>
       </div>
 

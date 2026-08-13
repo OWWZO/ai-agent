@@ -116,10 +116,10 @@ public class FileTool implements BaseTool {
         return payload == null ? null : payload.getToolResult();
     }
 
-    private ToolResultPayload uploadFilePayload(FileRequest fileRequest,
-                                                Boolean isNoticeFe,
-                                                Boolean isInternalFile,
-                                                ToolArtifactSource artifactSource) {
+    public ToolResultPayload uploadFilePayload(FileRequest fileRequest,
+                                               Boolean isNoticeFe,
+                                               Boolean isInternalFile,
+                                               ToolArtifactSource artifactSource) {
         ReactorConfig reactorConfig = requireReactorConfig();
         FileArtifactPort fileArtifactPort = requireFileArtifactPort();
 

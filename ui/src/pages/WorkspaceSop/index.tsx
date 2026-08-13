@@ -373,7 +373,7 @@ const WorkspaceSop: ReactorType.FC<WorkspaceSopProps> = ({ embedded }) => {
                         item.status === "online"
                           ? "bg-emerald-50 text-emerald-600"
                           : item.status === "draft"
-                            ? "bg-amber-50 text-amber-600"
+                            ? "bg-[var(--chat-surface-muted)] text-[var(--chat-text-soft)]"
                             : "bg-slate-100 text-slate-500"
                       )}
                     >

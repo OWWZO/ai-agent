@@ -30,6 +30,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -168,7 +169,10 @@ public class DeepSearchTool implements ContextIsolatableTool {
             String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
             StringBuilder stringBuilderIncr = new StringBuilder();
             StringBuilder stringBuilderAll = new StringBuilder();
+            AtomicBoolean finalAnswerUploaded = new AtomicBoolean(false);
             DeepSearchStructuredResultBuilder resultBuilder = new DeepSearchStructuredResultBuilder(searchRequest.getQuery());
+            FileTool fileTool = new FileTool();
+            fileTool.setAgentContext(ctx);
             String digitalEmployee = ctx.getToolCollection().getDigitalEmployee(getName());
             RemoteStreamSession session = requireRemoteStreamPort(ctx).openStream(RemoteStreamRequest.builder()
                     .method("POST")
@@ -208,11 +212,9 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         }
                         DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
                         searchResponse.setToolCallId(toolCallId);
-                        FileTool fileTool = new FileTool();
-                        fileTool.setAgentContext(ctx);
                         // 使用标准 SSE 客户端逐条消费事件，避免 extend 被上游缓冲后延迟透传。
                         if (searchResponse.getIsFinal()) {
-                            if (Boolean.TRUE.equals(ctx.getIsStream())) {
+                            if (StringUtils.isBlank(searchResponse.getAnswer())) {
                                 searchResponse.setAnswer(stringBuilderAll.toString());
                             }
                             if (searchResponse.getAnswer().isEmpty()) {
@@ -221,16 +223,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                 return;
                             }
                             resultBuilder.recordFinalAnswer(searchResponse.getQuery(), searchResponse.getAnswer());
-                            String fileName = StringUtil.removeSpecialChars(searchResponse.getQuery() + "的搜索结果.md");
-                            String fileDesc = searchResponse.getAnswer()
-                                    .substring(0, Math.min(searchResponse.getAnswer().length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
-                            FileRequest fileRequest = FileRequest.builder()
-                                    .requestId(ctx.getRequestId())
-                                    .fileName(fileName)
-                                    .description(fileDesc)
-                                    .content(searchResponse.getAnswer())
-                                    .build();
-                            fileTool.uploadFile(fileRequest, false, false, artifactSource);
+                            uploadFinalAnswerWithRetry(ctx, artifactSource, searchResponse.getQuery(),
+                                    searchResponse.getAnswer(), reactorConfig, fileTool, finalAnswerUploaded);
                             // 总结文章全量回传，供 observation / fallback 使用，不再截断
                             resultRef.set(searchResponse.getAnswer());
 
@@ -292,6 +286,12 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 @Override
                 public void onClosed() {
                     streamSession.set(null);
+                    if (StringUtils.isNotBlank(stringBuilderAll)) {
+                        resultBuilder.recordFinalAnswer(searchRequest.getQuery(), stringBuilderAll.toString());
+                        resultRef.set(stringBuilderAll.toString());
+                    }
+                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getQuery(),
+                            stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
                     if (!future.isDone()) {
                         future.complete(resultBuilder.buildPayload(resultRef.get()));
                     }
@@ -300,6 +300,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 @Override
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
                     streamSession.set(null);
+                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getQuery(),
+                            stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
                     if (throwable == null && statusCode == null) {
                         if (!future.isDone()) {
                             future.complete(resultBuilder.buildPayload(resultRef.get()));
@@ -322,6 +324,40 @@ public class DeepSearchTool implements ContextIsolatableTool {
         }
 
         return future;
+    }
+
+    private void uploadFinalAnswerWithRetry(AgentContext ctx,
+                                            ToolArtifactSource artifactSource,
+                                            String query,
+                                            String answer,
+                                            ReactorConfig reactorConfig,
+                                            FileTool fileTool,
+                                            AtomicBoolean uploaded) {
+        if (uploaded.get() || StringUtils.isBlank(answer)) {
+            return;
+        }
+        String fileName = StringUtil.removeSpecialChars(StringUtils.defaultString(query) + "的搜索结果.md");
+        String fileDesc = answer.substring(0, Math.min(answer.length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
+        FileRequest fileRequest = FileRequest.builder()
+                .requestId(ctx.getRequestId())
+                .fileName(fileName)
+                .description(fileDesc)
+                .content(answer)
+                .build();
+        for (int attempt = 1; attempt <= 3 && !uploaded.get(); attempt++) {
+            try {
+                ToolResultPayload payload = fileTool.uploadFilePayload(fileRequest, false, false, artifactSource);
+                if (payload != null && !Boolean.TRUE.equals(payload.getFailed())) {
+                    uploaded.set(true);
+                    log.info("{} deep_search final answer uploaded, attempt={}", ctx.getRequestId(), attempt);
+                    return;
+                }
+                log.warn("{} deep_search final answer upload failed, attempt={}", ctx.getRequestId(), attempt);
+            } catch (Exception e) {
+                log.warn("{} deep_search final answer upload error, attempt={}", ctx.getRequestId(), attempt, e);
+            }
+        }
+        log.error("{} deep_search final answer upload exhausted, answerLength={}", ctx.getRequestId(), answer.length());
     }
 
     /**

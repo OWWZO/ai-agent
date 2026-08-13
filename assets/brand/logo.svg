@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="Reactor">
+  <ellipse cx="64" cy="64" rx="40" ry="25" transform="rotate(-28 64 64)" stroke="#1D1D1F" stroke-width="3.6" stroke-linecap="round"/>
+  <ellipse cx="64" cy="64" rx="29" ry="43" transform="rotate(18 64 64)" stroke="#1D1D1F" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="64" cy="64" r="15" fill="#1D1D1F"/>
+  <circle cx="98" cy="47.5" r="7.4" fill="#1D1D1F"/>
+  <circle cx="36.5" cy="41.5" r="5.5" fill="#1D1D1F"/>
+  <circle cx="51.5" cy="95.5" r="6.3" fill="#1D1D1F"/>
+</svg>

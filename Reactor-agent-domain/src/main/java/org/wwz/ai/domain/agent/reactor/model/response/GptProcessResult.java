@@ -39,4 +39,7 @@ public class GptProcessResult {
      * 失败信息
      */
     private String errorMsg;
+
+    /** 单个 Agent run 内单调递增的投影事件序号，用于 follow 续绑增量回放。 */
+    private long eventSeq;
 }

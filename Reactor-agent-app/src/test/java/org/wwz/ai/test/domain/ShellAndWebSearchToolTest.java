@@ -171,6 +171,61 @@ public class ShellAndWebSearchToolTest {
     }
 
     @Test
+    public void webSearchShouldUseGptResponsesApiAndParseCitations() {
+        ReactorConfig config = new ReactorConfig();
+        ReflectionTestUtils.setField(config, "webSearchMode", "gpt");
+        ReflectionTestUtils.setField(config, "webSearchGptApiKey", "openai-test-key");
+        ReflectionTestUtils.setField(config, "webSearchGptBaseUrl", "https://api.openai.com/v1");
+        ReflectionTestUtils.setField(config, "webSearchGptModel", "gpt-4.1");
+        ReflectionTestUtils.setField(config, "webSearchGptInterfaceUrl", "/responses");
+
+        RemoteHttpPort httpPort = request -> {
+            Assert.assertEquals("POST", request.getMethod());
+            Assert.assertEquals("https://api.openai.com/v1/responses", request.getUrl());
+            Assert.assertEquals("Bearer openai-test-key", request.getHeaders().get("Authorization"));
+            Assert.assertTrue(request.getBody().contains("web_search_preview"));
+            Assert.assertTrue(request.getBody().contains("gpt-4.1"));
+            return """
+                    {
+                      "output_text": "OpenAI found [Example](https://example.com).",
+                      "output": [
+                        {
+                          "type": "message",
+                          "content": [
+                            {
+                              "type": "output_text",
+                              "text": "OpenAI found Example.",
+                              "annotations": [
+                                {"type": "url_citation", "url": "https://example.com", "title": "Example"}
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """;
+        };
+
+        AgentContext context = AgentContext.builder()
+                .requestId("req-ws-gpt")
+                .sessionId("session-ws-gpt")
+                .runtimeDependencies(ReactorRuntimeTestSupport.runtimeDependencies(config, httpPort))
+                .build();
+        WebSearchTool tool = new WebSearchTool();
+        tool.setAgentContext(context);
+
+        ToolResultPayload payload = (ToolResultPayload) tool.execute(Map.of(
+                "query", "latest Spring AI docs",
+                "allowed_domains", java.util.List.of("spring.io")
+        ));
+        Assert.assertFalse(Boolean.TRUE.equals(payload.getFailed()));
+        String data = JSON.toJSONString(payload.getLlmData());
+        Assert.assertTrue(data.contains("gpt"));
+        Assert.assertTrue(data.contains("https://example.com"));
+        Assert.assertTrue(data.contains("Example"));
+    }
+
+    @Test
     public void webSearchShouldParseExaResponse() {
         ReactorConfig config = new ReactorConfig();
         ReflectionTestUtils.setField(config, "webSearchMode", "exa");

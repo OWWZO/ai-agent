@@ -4,6 +4,7 @@ export type ActiveRunCheckpoint = {
   sessionId: string;
   requestId: string;
   lastEventId: string;
+  lastEventSeq: number;
 };
 
 /**
@@ -21,6 +22,7 @@ export function saveActiveRun(sessionId: string, requestId: string) {
         sessionId,
         requestId,
         lastEventId: "0",
+        lastEventSeq: 0,
       })
     );
   } catch {
@@ -45,9 +47,25 @@ export function readActiveRun(): ActiveRunCheckpoint | null {
       sessionId: parsed.sessionId,
       requestId: parsed.requestId,
       lastEventId: parsed.lastEventId || "0",
+      lastEventSeq: Number(parsed.lastEventSeq) || 0,
     };
   } catch {
     return null;
+  }
+}
+
+export function updateActiveRunSeq(requestId: string, eventSeq: number) {
+  const activeRun = readActiveRun();
+  if (!activeRun || activeRun.requestId !== requestId || !Number.isFinite(eventSeq)) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      ACTIVE_RUN_STORAGE_KEY,
+      JSON.stringify({ ...activeRun, lastEventSeq: Math.max(activeRun.lastEventSeq, eventSeq) })
+    );
+  } catch {
+    // 存储不可用时不影响当前 SSE 对话。
   }
 }
 

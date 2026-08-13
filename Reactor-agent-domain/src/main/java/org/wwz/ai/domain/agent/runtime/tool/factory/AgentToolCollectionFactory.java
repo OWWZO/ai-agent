@@ -81,7 +81,9 @@ import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 /**
@@ -110,6 +112,34 @@ public class AgentToolCollectionFactory {
 
     public ToolCollection buildForPlanSolve(AgentContext agentContext, AgentRequest request) {
         return build(agentContext, request, SkillAttachScope.PLAN_SOLVE);
+    }
+
+    /**
+     * 生成 PlanSolve 主 Agent 的可见工具池；完整工具池仍由子 Agent 继承。
+     */
+    public ToolCollection filterForPlanSolveMain(ToolCollection fullToolCollection) {
+        ToolCollection main = new ToolCollection();
+        if (fullToolCollection == null) {
+            return main;
+        }
+        main.setMcpToolExecutor(fullToolCollection.getMcpToolExecutor());
+        Set<String> allowed = new HashSet<>(parseToolNames(reactorConfig.getPlanSolveMainToolList()));
+        if (fullToolCollection.getToolMap() != null) {
+            fullToolCollection.getToolMap().forEach((name, tool) -> {
+                if (allowed.contains(name)) {
+                    main.addTool(tool);
+                }
+            });
+        }
+        if (fullToolCollection.getMcpToolMap() != null) {
+            fullToolCollection.getMcpToolMap().forEach((name, tool) -> {
+                if (allowed.contains(name)) {
+                    main.addMcpTool(tool);
+                }
+            });
+        }
+        main.restoreTaskScopedState(fullToolCollection.snapshotTaskScopedState());
+        return main;
     }
 
     public ToolCollection buildForParallelTask(AgentContext agentContext,
@@ -158,12 +188,9 @@ public class AgentToolCollectionFactory {
                 addTool(toolCollection, fileTool, agentContext, FileTool::setAgentContext);
             }
 
-            List<String> agentToolList = Arrays.stream(reactorConfig.getMultiAgentToolListMap()
+            List<String> agentToolList = parseToolNames(reactorConfig.getMultiAgentToolListMap()
                             .getOrDefault("default", "search,web_fetch,web_search,code,code_execution,report,docgen,docread,dataprep,canvas,multimodalagent,image_generation,data_analysis")
-                            .split(","))
-                    .map(String::trim)
-                    .filter(item -> !item.isEmpty())
-                    .toList();
+                    );
 
             if (agentToolList.contains("code")) {
                 CodeInterpreterTool codeInterpreterTool = new CodeInterpreterTool();
@@ -307,6 +334,16 @@ public class AgentToolCollectionFactory {
             registerPlanModeTools(toolCollection, agentContext);
         }
         return toolCollection;
+    }
+
+    private static List<String> parseToolNames(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .toList();
     }
 
     private void registerPlanModeTools(ToolCollection toolCollection, AgentContext agentContext) {

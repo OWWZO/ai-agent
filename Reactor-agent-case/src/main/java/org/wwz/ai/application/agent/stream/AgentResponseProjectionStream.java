@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -39,6 +40,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     private final EventResult eventResult = new EventResult();
     private final List<Runnable> abortHandlers = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicLong eventSequence = new AtomicLong();
     private final long startTime = System.currentTimeMillis();
     private final Deque<GptProcessResult> replayBuffer = new ArrayDeque<>();
     private final Object bufferLock = new Object();
@@ -59,13 +61,17 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
      * 续绑后补发断流窗口内缓冲帧。
      */
     public void rebindDownstream(AgentSessionStream next) {
+        rebindDownstream(next, 0L);
+    }
+
+    public void rebindDownstream(AgentSessionStream next, long lastEventSeq) {
         if (next == null || closed.get()) {
             return;
         }
         downstreamRef.set(next);
         wireDownstreamAbort(next);
         log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
-        replayBufferedFrames(next);
+        replayBufferedFrames(next, lastEventSeq);
     }
 
     @Override
@@ -91,6 +97,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
         // 断流期间仍推进投影状态，避免 rebind 后状态机落后。
         GptProcessResult result = handler.handle(request, agentResponse, agentRespList, eventResult);
+        result.setEventSeq(eventSequence.incrementAndGet());
         offerReplayBuffer(result);
         forwardIfLive(result);
         if (result.isFinished()) {
@@ -216,7 +223,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    private void replayBufferedFrames(AgentSessionStream next) {
+    private void replayBufferedFrames(AgentSessionStream next, long lastEventSeq) {
         List<GptProcessResult> snapshot;
         synchronized (bufferLock) {
             snapshot = new ArrayList<>(replayBuffer);
@@ -227,6 +234,9 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         log.info("{} replay {} buffered frames after rebind",
                 request == null ? "-" : request.getRequestId(), snapshot.size());
         for (GptProcessResult frame : snapshot) {
+            if (frame.getEventSeq() > 0 && frame.getEventSeq() <= lastEventSeq) {
+                continue;
+            }
             if (next.isAborted() || closed.get()) {
                 return;
             }

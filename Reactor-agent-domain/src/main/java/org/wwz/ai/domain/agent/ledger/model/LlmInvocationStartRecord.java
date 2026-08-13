@@ -34,8 +34,6 @@ public class LlmInvocationStartRecord {
 
     private LocalDateTime startedAt;
 
-    private String promptPayloadJson;
-
     private String systemFingerprint;
 
     private Integer estTotalTokens;
@@ -50,14 +48,8 @@ public class LlmInvocationStartRecord {
 
     private Integer toolCount;
 
-    private String toolNames;
-
-    private String roleSeq;
-
     private String cacheStatus;
 
     private String cacheRiskFlags;
-
-    private String obsLogJson;
 }
 

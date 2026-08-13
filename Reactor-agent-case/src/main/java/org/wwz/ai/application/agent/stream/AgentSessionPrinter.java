@@ -40,11 +40,15 @@ public class AgentSessionPrinter implements Printer {
      * @return 根观察流；无法续绑时返回 null
      */
     public AgentSessionStream attachObserver(AgentSessionStream observer) {
+        return attachObserver(observer, 0L);
+    }
+
+    public AgentSessionStream attachObserver(AgentSessionStream observer, long lastEventSeq) {
         if (observer == null || stream == null) {
             return null;
         }
         if (stream instanceof AgentResponseProjectionStream projection) {
-            projection.rebindDownstream(observer);
+            projection.rebindDownstream(observer, lastEventSeq);
             return stream;
         }
         log.warn("{} printer stream is not rebindable projection, follow skipped",

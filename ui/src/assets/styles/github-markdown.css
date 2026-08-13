@@ -25,7 +25,7 @@
     --bgColor-default: #ffffff;
     --bgColor-muted: #f6f8fa;
     --bgColor-neutral-muted: #818b981f;
-    --bgColor-attention-muted: #fff8c5;
+    --bgColor-attention-muted: #f1f1f3;
     --borderColor-default: #d1d9e0;
     --borderColor-muted: #d1d9e0b3;
     --borderColor-neutral-muted: #d1d9e0b3;
@@ -59,7 +59,7 @@
     --color-prettylights-syntax-markup-inserted-text: #116329;
     --color-prettylights-syntax-markup-inserted-bg: #dafbe1;
     --color-prettylights-syntax-markup-changed-text: #953800;
-    --color-prettylights-syntax-markup-changed-bg: #ffd8b5;
+    --color-prettylights-syntax-markup-changed-bg: #f1f1f3;
     --color-prettylights-syntax-markup-ignored-text: #d1d9e0;
     --color-prettylights-syntax-markup-ignored-bg: #0550ae;
     --color-prettylights-syntax-meta-diff-range: #8250df;
@@ -1168,4 +1168,3 @@
 .markdown-body .highlight pre:has(+.zeroclipboard-container) {
   min-height: 52px;
 }
-

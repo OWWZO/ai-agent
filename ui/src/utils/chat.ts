@@ -1281,6 +1281,24 @@ export const buildAction = (task: CHAT.Task) => {
   function handleToolResult(task: CHAT.Task) {
     const toolName = task?.toolResult?.toolName;
     const primaryFile = getPrimaryTaskFile(task);
+    const resultMap = task?.resultMap || {};
+    const nestedResultMap = (resultMap.resultMap || {}) as typeof resultMap;
+    const completed = Boolean(
+      task.finish ||
+      task.isFinal ||
+      resultMap.isFinal ||
+      nestedResultMap.isFinal ||
+      resultMap.status === "success" ||
+      nestedResultMap.status === "success"
+    );
+
+    if (completed) {
+      return {
+        action: "工具调用完成",
+        tool: toolName || "",
+        name: toolName || "",
+      };
+    }
 
     if (toolName === AGENT_DISPATCH_TOOL_NAME || isAgentDispatchTask(task)) {
       return buildSubAgentAction(task);

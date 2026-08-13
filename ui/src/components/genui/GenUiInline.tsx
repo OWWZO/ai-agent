@@ -51,7 +51,9 @@ const GenUiInline: FC<Props> = memo(
 
     const body = (
       <GenUiRenderProvider value={{ sessionId, messageId }}>
-        <GenUiNode node={root} />
+        <div className="genui-root">
+          <GenUiNode node={root} />
+        </div>
       </GenUiRenderProvider>
     );
 

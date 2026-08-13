@@ -107,7 +107,9 @@ public class Step1SopRecallAndPrepareNode extends AbstractExecuteSupport {
                 request,
                 ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
         );
-        agentContext.setToolCollection(buildToolCollection(agentContext, request));
+        ToolCollection fullToolCollection = buildToolCollection(agentContext, request);
+        agentContext.setSubAgentToolCollection(fullToolCollection);
+        agentContext.setToolCollection(agentToolCollectionFactory.filterForPlanSolveMain(fullToolCollection));
         if (activeAgentRunRegistry != null) {
             activeAgentRunRegistry.bindContext(agentContext.getRequestId(), agentContext);
         }

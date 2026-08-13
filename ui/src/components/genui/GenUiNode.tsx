@@ -31,7 +31,7 @@ const textColor = (color?: string) => {
     case "success":
       return "text-emerald-600";
     case "warning":
-      return "text-amber-600";
+      return "text-[var(--chat-text-soft)]";
     case "error":
       return "text-red-600";
     default:
@@ -391,7 +391,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
       );
     case "WeatherCard":
       return (
-        <div key={key} className="rounded-xl border border-[var(--chat-border)]/70 bg-gradient-to-br from-sky-50 to-[var(--chat-surface)] p-3">
+        <div key={key} className="rounded-xl border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] p-3">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[13px] font-medium text-[var(--chat-text)]">{props.location || "Weather"}</div>
@@ -783,11 +783,11 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           className={classNames(
             "rounded-lg border px-3 py-2 text-[13px]",
             props.variant === "error"
-              ? "border-red-200 bg-red-50 text-red-700"
+                ? "border-red-200 bg-red-50 text-red-700"
               : props.variant === "success"
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : props.variant === "warning"
-                  ? "border-amber-200 bg-amber-50 text-amber-800"
+              : props.variant === "warning"
+                  ? "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
                   : "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
           )}
         >

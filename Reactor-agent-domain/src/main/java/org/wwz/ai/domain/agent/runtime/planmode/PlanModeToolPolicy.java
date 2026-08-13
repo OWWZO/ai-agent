@@ -4,8 +4,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
+import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -28,13 +32,19 @@ public final class PlanModeToolPolicy {
             "workspace_list",
             "workspace_glob",
             "workspace_grep",
-            "deep_search",
-            "web_fetch",
-            "WebFetch",
             "skill_tool",
             "get_html_canvas_guide",
             "get_genui_guide",
             "list_ui_components"
+    );
+
+    private static final Set<String> SEARCH_TOOLS = Set.of(
+            "deep_search",
+            "web_search",
+            "WebSearch",
+            "web_fetch",
+            "WebFetch",
+            "session_search"
     );
 
     private static final Set<String> MUTATING = Set.of(
@@ -77,6 +87,14 @@ public final class PlanModeToolPolicy {
             return null;
         }
         String name = toolName.trim();
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (SEARCH_TOOLS.contains(name)
+                || lower.contains("search")
+                || lower.contains("web_fetch")
+                || lower.equals("fetch")) {
+            return "Plan mode: 禁止调用搜索或网页抓取工具「" + name + "」。"
+                    + " 请只使用本地工作区只读工具，退出 plan mode 并获用户批准后再进行外部检索。";
+        }
         if (ALWAYS_ALLOWED.contains(name)) {
             // Agent 在 plan 期允许，但应优先 Explore；不在此硬拦
             return null;
@@ -94,12 +112,51 @@ public final class PlanModeToolPolicy {
                     + " 请只做只读探索、AskUserQuestion、写计划文件，或 ExitPlanMode。";
         }
         // MCP / 未知工具：默认允许只读类；名字含 write/edit/run 则拦
-        String lower = name.toLowerCase(Locale.ROOT);
         if (lower.contains("write") || lower.contains("edit") || lower.contains("delete")
                 || lower.contains("exec") || lower.contains("run_command")) {
             return "Plan mode: 工具「" + name + "」可能修改状态，已禁止。请退出 plan mode 并获用户批准后再用。";
         }
         return null;
+    }
+
+    /**
+     * 构造发给 LLM 的 plan-mode 工具视图，避免模型看到被禁止的外部检索工具。
+     */
+    public static ToolCollection filterTools(AgentContext context, ToolCollection tools) {
+        if (context == null || tools == null || !context.requirePlanModeState().isPlanMode()) {
+            return tools;
+        }
+        ToolCollection filtered = new ToolCollection();
+        filtered.setAgentContext(context);
+        filtered.setMcpToolExecutor(tools.getMcpToolExecutor());
+        filtered.restoreTaskScopedState(tools.snapshotTaskScopedState());
+        if (tools.getToolMap() != null) {
+            for (Map.Entry<String, BaseTool> entry : tools.getToolMap().entrySet()) {
+                if (!isSearchTool(entry.getKey())) {
+                    filtered.addTool(entry.getValue());
+                }
+            }
+        }
+        if (tools.getMcpToolMap() != null) {
+            for (McpToolInfo info : tools.getMcpToolMap().values()) {
+                if (info != null && !isSearchTool(info.getName())) {
+                    filtered.addMcpTool(info);
+                }
+            }
+        }
+        return filtered;
+    }
+
+    private static boolean isSearchTool(String toolName) {
+        if (toolName == null) {
+            return false;
+        }
+        String name = toolName.trim();
+        String lower = name.toLowerCase(Locale.ROOT);
+        return SEARCH_TOOLS.contains(name)
+                || lower.contains("search")
+                || lower.contains("web_fetch")
+                || lower.equals("fetch");
     }
 
     private static boolean isPlanRelativePath(String path) {

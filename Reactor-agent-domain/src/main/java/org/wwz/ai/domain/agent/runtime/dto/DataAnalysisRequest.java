@@ -43,10 +43,10 @@ public class DataAnalysisRequest {
     private String businessKnowledge;
     
     /**
-     * 最大执行步数，默认20
+     * 最大执行步数，默认400
      */
     @Builder.Default
-    private Integer max_steps = 20;
+    private Integer max_steps = 400;
     
     /**
      * 是否流式返回结果，默认true

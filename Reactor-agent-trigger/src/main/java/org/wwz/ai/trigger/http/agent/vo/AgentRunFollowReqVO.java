@@ -11,4 +11,7 @@ public class AgentRunFollowReqVO {
     private String sessionId;
     /** 本轮流式对话的 requestId */
     private String requestId;
+
+    /** 前端已处理的最后一个投影事件序号。 */
+    private long lastEventSeq;
 }

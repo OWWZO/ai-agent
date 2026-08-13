@@ -1,10 +1,38 @@
-# Reactor 多智能体协作应用平台
+<p align="center">
+  <img src="assets/brand/logo.svg" alt="Reactor Logo" width="120" height="120">
+</p>
 
-## 项目简介
+<h1 align="center">Reactor</h1>
 
-传统 AI 对话系统擅长回答问题，却在面对需要拆解、协作、多步执行的复杂任务时力不从心——`Reactor-agent`正是为此而生。`Reactor-agent` 是一个面向复杂任务自动化与AI应用工程化落地的 **多智能体协作应用平台**。  
-它不是只做“单轮对话 + 多次工具调用”的 Demo，而是能把复杂任务拆解、历史任务经验复用、多Agent协作、MCP/本地集成工具编排、RAG 检索增强、会话记忆、执行事实持久化与对话历史回放串成一条可运行、可追踪、可复用的完整执行链路。
 
+
+<p align="center">
+  一款能完成复杂工作的开源多智能体协作平台——它具备规划与自我修正能力、MCP/本地工具编排、多轮混合检索、会话记忆与执行账本，还能在单一可自托管架构中把拆解、协作、追踪与回放串成完整链路。
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-21-ED8B00.svg?logo=openjdk&logoColor=white" alt="Java 21">
+  <img src="https://img.shields.io/badge/Spring%20Boot-3.4-6DB33F.svg?logo=springboot&logoColor=white" alt="Spring Boot 3.4">
+  <img src="https://img.shields.io/badge/Spring%20AI-1.1-6DB33F.svg" alt="Spring AI">
+  <img src="https://img.shields.io/badge/React-19-61dafb.svg?logo=react&logoColor=white" alt="React 19">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776ab.svg?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/Database-MySQL%20%7C%20Qdrant-003b57.svg" alt="MySQL / Qdrant">
+  <img src="https://img.shields.io/badge/PRs-Welcome-brightgreen.svg" alt="PRs Welcome">
+</p>
+
+<p align="center">
+  <a href="AGENTS.md">Contributor guide</a> ·
+  <a href="CLAUDE.md">Architecture</a> ·
+  <a href="https://github.com/OWWZO/ai-agent">GitHub</a>
+</p>
+
+<p align="center">
+  <img src="assets/readme/主界面.png" alt="Reactor Screenshot" width="720">
+</p>
+
+---
+
+**Reactor** 是一个面向复杂任务自动化与 AI 应用工程化落地的多智能体协作应用平台。传统 AI 对话系统擅长回答问题，却在面对需要拆解、协作、多步执行的复杂任务时力不从心——`Reactor-agent` 正是为此而生。它不是只做“单轮对话 + 多次工具调用”的 Demo，而是能把复杂任务拆解、历史任务经验复用、多 Agent 协作、MCP/本地集成工具编排、RAG 检索增强、会话记忆、执行事实持久化与对话历史回放串成一条可运行、可追踪、可复用的完整执行链路。
 
 ## 解决的痛点
 
@@ -64,19 +92,6 @@
 
 
 ## ✨ Agent Showcase
-## 运行视频
-
-<video src="https://owwzo.top.owwzo.cloud/%E6%99%BA%E8%83%BD%E4%BD%93%E6%94%AF%E4%BB%98%E4%B8%9A%E5%8A%A1.mp4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
-</video>
-
-<video src="https://owwzo.top.owwzo.cloud/%E6%8B%86%E8%A7%A3%E4%B8%89%E6%AC%BE%E4%B8%BB%E6%B5%81agent.mp4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
-</video>
-
-
-<video src="https://owwzo.top.owwzo.cloud/%E6%96%B0%E8%83%BD%E6%BA%90%E6%B1%BD%E8%BD%A6%E8%B0%83%E7%A0%94.mp4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
-</video>
-
-
 
 ## 运行截图
 <p align="center">

@@ -2,7 +2,6 @@ import { FC, memo, useEffect, useMemo, useState } from "react";
 import {
   ChevronDownIcon,
   ClipboardListIcon,
-  FileTextIcon,
   LoaderCircleIcon,
 } from "lucide-react";
 import { message } from "antd";
@@ -154,16 +153,9 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
                 {statusLabel}
               </span>
             </div>
-            {model.planFilePath ? (
-              <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-[var(--chat-text-soft)]">
-                <FileTextIcon className="size-3 shrink-0" />
-                <span className="truncate">{model.planFilePath}</span>
-              </div>
-            ) : (
-              <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--chat-text-soft)]">
-                {model.planContent.replace(/\s+/g, " ").slice(0, 80) || "暂无正文"}
-              </div>
-            )}
+            <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--chat-text-soft)]">
+              {model.planContent.replace(/\s+/g, " ").slice(0, 80) || "暂无正文"}
+            </div>
           </div>
           <ChevronDownIcon
             className={[

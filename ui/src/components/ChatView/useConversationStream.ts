@@ -7,7 +7,9 @@ import { getUniqId } from "@/utils";
 import { buildAgentStreamRequest } from "@/utils/agentRequest";
 import {
   clearActiveRun,
+  readActiveRun,
   saveActiveRun,
+  updateActiveRunSeq,
   updateActiveRunEvent,
 } from "@/utils/activeRunStorage";
 import {
@@ -319,6 +321,7 @@ export function useConversationStream(
   const conversationSnapshotsRef = useRef<Map<string, CHAT.ConversationHistory>>(
     new Map()
   );
+  const lastEventSeqRef = useRef<Map<string, number>>(new Map());
 
   const clearFollowReconnectTimer = useMemoizedFn((requestId?: string) => {
     if (requestId) {
@@ -622,7 +625,14 @@ export function useConversationStream(
     }
     const abortController = new AbortController();
     bindForegroundStream(conversationId, requestId, abortController);
-    saveActiveRun(sessionId, requestId);
+    const storedCheckpoint = readActiveRun();
+    const initialEventSeq = storedCheckpoint?.requestId === requestId
+      ? storedCheckpoint.lastEventSeq
+      : (lastEventSeqRef.current.get(requestId) || 0);
+    lastEventSeqRef.current.set(requestId, initialEventSeq);
+    if (!storedCheckpoint || storedCheckpoint.requestId !== requestId) {
+      saveActiveRun(sessionId, requestId);
+    }
     if (conversationRef.current.id === conversationId) {
       setLoading(true);
       onPrepareStreamingWorkspace?.();
@@ -888,6 +898,15 @@ export function useConversationStream(
     };
 
     const handleMessage = (data: MESSAGE.Answer) => {
+      const eventSeq = Number(data.eventSeq || 0);
+      const lastEventSeq = lastEventSeqRef.current.get(requestId) || 0;
+      if (eventSeq > 0 && eventSeq <= lastEventSeq) {
+        return;
+      }
+      if (eventSeq > 0) {
+        lastEventSeqRef.current.set(requestId, eventSeq);
+        updateActiveRunSeq(requestId, eventSeq);
+      }
       // 收到任意有效帧说明观察流已经恢复，下一次断开从最短退避重新开始。
       followReconnectAttemptsRef.current.set(requestId, 0);
       const { finished, resultMap, packageType, status } = data;
@@ -1085,6 +1104,7 @@ export function useConversationStream(
         body: {
           sessionId,
           requestId,
+          lastEventSeq: initialEventSeq,
         },
         signal: abortController.signal,
         retryOnError: false,
@@ -1280,6 +1300,7 @@ export function useConversationStream(
     const abortController = new AbortController();
     bindForegroundStream(conversationId, requestId, abortController);
     saveActiveRun(baseConversation.sessionId, requestId);
+    lastEventSeqRef.current.set(requestId, 0);
     const isActiveStream = () =>
       conversationRef.current.id === conversationId &&
       activeRequestIdRef.current === requestId;
@@ -1442,6 +1463,15 @@ export function useConversationStream(
     };
 
     const handleMessage = (data: MESSAGE.Answer) => {
+      const eventSeq = Number(data.eventSeq || 0);
+      const lastEventSeq = lastEventSeqRef.current.get(requestId) || 0;
+      if (eventSeq > 0 && eventSeq <= lastEventSeq) {
+        return;
+      }
+      if (eventSeq > 0) {
+        lastEventSeqRef.current.set(requestId, eventSeq);
+        updateActiveRunSeq(requestId, eventSeq);
+      }
       // 收到任意有效帧说明主观察流正常，后续断开不应沿用旧的退避次数。
       followReconnectAttemptsRef.current.set(requestId, 0);
       const { finished, resultMap, packageType, status } = data;

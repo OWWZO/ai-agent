@@ -34,7 +34,10 @@ public class AgentRunFollowApplicationService {
     /**
      * @return true 已挂上活跃 run；false 表示无法续绑 live 流，已向 observer 推送 follow_idle / follow_pending 并 complete
      */
-    public boolean follow(String sessionId, String requestId, AgentSessionStream observer) {
+    public boolean follow(String sessionId,
+                          String requestId,
+                          long lastEventSeq,
+                          AgentSessionStream observer) {
         if (observer == null) {
             return false;
         }
@@ -94,7 +97,7 @@ public class AgentRunFollowApplicationService {
             return false;
         }
 
-        AgentSessionStream root = sessionPrinter.attachObserver(observer);
+        AgentSessionStream root = sessionPrinter.attachObserver(observer, lastEventSeq);
         if (root == null) {
             if (isLedgerRunStillRunning(requestId)) {
                 completePending(observer, requestId);

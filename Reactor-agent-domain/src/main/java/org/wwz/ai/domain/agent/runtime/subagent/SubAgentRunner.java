@@ -60,7 +60,8 @@ public class SubAgentRunner {
         if (StringUtils.isBlank(prompt)) {
             return failed(agentId, definition, description, prompt, start, "prompt 不能为空");
         }
-        if (parentContext.getToolCollection() == null) {
+        if (parentContext.getToolCollection() == null
+                && parentContext.getSubAgentToolCollection() == null) {
             return failed(agentId, definition, description, prompt, start, "父 Agent 工具池为空");
         }
 
@@ -87,8 +88,11 @@ public class SubAgentRunner {
                                        long start) {
         boolean parentInPlanMode = parentContext.getPlanModeState() != null
                 && parentContext.getPlanModeState().isPlanMode();
+        ToolCollection parentToolCollection = parentContext.getSubAgentToolCollection() != null
+                ? parentContext.getSubAgentToolCollection()
+                : parentContext.getToolCollection();
         ToolCollection childTools = SubAgentToolFilter.filter(
-                parentContext.getToolCollection(), definition, parentInPlanMode);
+                parentToolCollection, definition, parentInPlanMode);
         String parentToolUseId = resolveParentToolUseId(parentContext);
         if (StringUtils.isBlank(parentToolUseId)) {
             log.warn("{} subagent spawn without parentToolUseId type={} id={} — nested tools will not attach to Agent card",
