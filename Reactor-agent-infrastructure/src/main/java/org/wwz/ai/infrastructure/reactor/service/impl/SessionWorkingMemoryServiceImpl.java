@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryMessage;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryProjector;
+import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryTurn;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
@@ -24,7 +25,8 @@ import java.util.stream.Collectors;
  * 会话工作记忆的持久化适配器。
  *
  * <p>服务以 turn 为父记录、message 为子记录，将运行时消息投影到可重建的 ready
- * 工作记忆。普通回合采用幂等追加；压缩不会改写旧消息，而是使旧 ready 投影失效并
+ * 工作记忆。读写键为 {@code sessionId + memoryScope}（main 与 sub:{agentId} 隔离）。
+ * 普通回合采用幂等追加；压缩不会改写旧消息，而是使旧 ready 投影失效并
  * 追加 compaction turn，从而保留 append-only 历史并维护提示词缓存前缀稳定性。</p>
  *
  * <p>读取失败按 best-effort 返回空列表，避免记忆存储故障阻断主 Agent 请求；写入
@@ -46,12 +48,13 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
     }
 
     @Override
-    public List<Message> loadReadyMessages(String sessionId, String currentRequestId) {
+    public List<Message> loadReadyMessages(String sessionId, String memoryScope, String currentRequestId) {
         if (StringUtils.isBlank(sessionId)) {
             return List.of();
         }
+        String scope = WorkingMemoryScopes.normalize(memoryScope);
         try {
-            List<WorkingMemoryTurn> turns = workingMemoryTurnDao.selectReadyBySessionId(sessionId);
+            List<WorkingMemoryTurn> turns = workingMemoryTurnDao.selectReadyBySessionIdAndScope(sessionId, scope);
             if (turns == null || turns.isEmpty()) {
                 return List.of();
             }
@@ -70,8 +73,6 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             Map<Long, List<WorkingMemoryMessage>> byTurn = rows.stream()
                     .collect(Collectors.groupingBy(WorkingMemoryMessage::getTurnId, LinkedHashMap::new, Collectors.toCollection(ArrayList::new)));
 
-            // Append-only: do not drop oldest turns (prefix rewrite kills prompt cache).
-            // 按 turn 顺序重新投影消息，数据库行顺序不直接暴露给 LLM，避免跨轮次交错。
             List<Message> all = new ArrayList<>();
             for (WorkingMemoryTurn turn : filtered) {
                 List<WorkingMemoryMessage> turnRows = byTurn.getOrDefault(turn.getId(), List.of());
@@ -82,31 +83,37 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             }
             return all;
         } catch (Exception e) {
-            log.warn("loadReadyMessages failed sessionId={}", sessionId, e);
+            log.warn("loadReadyMessages failed sessionId={} scope={}", sessionId, scope, e);
             return List.of();
         }
     }
 
     @Override
-    public void persistTurn(String sessionId, String requestId, Long runId, String entryAgent, List<Message> turnMessages) {
+    public void persistTurn(String sessionId,
+                            String memoryScope,
+                            String requestId,
+                            Long runId,
+                            String entryAgent,
+                            List<Message> turnMessages) {
         if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(requestId) || turnMessages == null || turnMessages.isEmpty()) {
             return;
         }
+        String scope = WorkingMemoryScopes.normalize(memoryScope);
         try {
             WorkingMemoryTurn existing = workingMemoryTurnDao.selectByRequestId(requestId);
             if (existing != null) {
                 return; // idempotent
             }
-            // 先投影成可持久化行，再插入 turn；turnId 回填后批量写消息，形成完整的父子关系。
-            List<WorkingMemoryMessage> rows = projector.project(turnMessages, sessionId, requestId, runId);
+            List<WorkingMemoryMessage> rows = projector.project(turnMessages, sessionId, scope, requestId, runId);
             if (rows.isEmpty()) {
                 return;
             }
-            Integer maxSeq = workingMemoryTurnDao.selectMaxTurnSeq(sessionId);
+            Integer maxSeq = workingMemoryTurnDao.selectMaxTurnSeq(sessionId, scope);
             int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
             LocalDateTime now = LocalDateTime.now();
             WorkingMemoryTurn turn = WorkingMemoryTurn.builder()
                     .sessionId(sessionId)
+                    .memoryScope(scope)
                     .requestId(requestId)
                     .runId(runId)
                     .turnSeq(nextSeq)
@@ -125,35 +132,40 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             }
             for (WorkingMemoryMessage row : rows) {
                 row.setTurnId(turn.getId());
+                row.setMemoryScope(scope);
             }
             workingMemoryMessageDao.batchInsertMessages(rows);
         } catch (Exception e) {
-            log.warn("persistTurn failed sessionId={} requestId={}", sessionId, requestId, e);
+            log.warn("persistTurn failed sessionId={} scope={} requestId={}", sessionId, scope, requestId, e);
         }
     }
 
     @Override
-    public void replaceReadyProjection(String sessionId, String compactRequestId, List<Message> compactedMessages) {
+    public void replaceReadyProjection(String sessionId,
+                                       String memoryScope,
+                                       String compactRequestId,
+                                       List<Message> compactedMessages) {
         if (StringUtils.isBlank(sessionId) || StringUtils.isBlank(compactRequestId)
                 || compactedMessages == null || compactedMessages.isEmpty()) {
             return;
         }
+        String scope = WorkingMemoryScopes.normalize(memoryScope);
         try {
             WorkingMemoryTurn existing = workingMemoryTurnDao.selectByRequestId(compactRequestId);
             if (existing != null) {
                 return;
             }
-            // 压缩不是修改历史行，而是把旧 ready 投影标 invalid，再追加一个新的 compaction turn。
-            List<WorkingMemoryMessage> rows = projector.project(compactedMessages, sessionId, compactRequestId, null);
+            List<WorkingMemoryMessage> rows = projector.project(compactedMessages, sessionId, scope, compactRequestId, null);
             if (rows.isEmpty()) {
                 return;
             }
-            workingMemoryTurnDao.markReadyInvalidBySessionId(sessionId);
-            Integer maxSeq = workingMemoryTurnDao.selectMaxTurnSeq(sessionId);
+            workingMemoryTurnDao.markReadyInvalidBySessionIdAndScope(sessionId, scope);
+            Integer maxSeq = workingMemoryTurnDao.selectMaxTurnSeq(sessionId, scope);
             int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
             LocalDateTime now = LocalDateTime.now();
             WorkingMemoryTurn turn = WorkingMemoryTurn.builder()
                     .sessionId(sessionId)
+                    .memoryScope(scope)
                     .requestId(compactRequestId)
                     .runId(null)
                     .turnSeq(nextSeq)
@@ -172,12 +184,14 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             }
             for (WorkingMemoryMessage row : rows) {
                 row.setTurnId(turn.getId());
+                row.setMemoryScope(scope);
             }
             workingMemoryMessageDao.batchInsertMessages(rows);
-            log.info("replaceReadyProjection sessionId={} compactRequestId={} messages={} tokens={}",
-                    sessionId, compactRequestId, rows.size(), turn.getTokenEstimate());
+            log.info("replaceReadyProjection sessionId={} scope={} compactRequestId={} messages={} tokens={}",
+                    sessionId, scope, compactRequestId, rows.size(), turn.getTokenEstimate());
         } catch (Exception e) {
-            log.warn("replaceReadyProjection failed sessionId={} compactRequestId={}", sessionId, compactRequestId, e);
+            log.warn("replaceReadyProjection failed sessionId={} scope={} compactRequestId={}",
+                    sessionId, scope, compactRequestId, e);
         }
     }
 
@@ -186,7 +200,6 @@ public class SessionWorkingMemoryServiceImpl implements SessionWorkingMemoryServ
             return 0;
         }
         StringBuilder sb = new StringBuilder();
-        // 估算只拼装会进入提示词的角色、正文和工具调用字段，作为容量元数据而非计费精确值。
         for (Message message : messages) {
             if (message == null) {
                 continue;

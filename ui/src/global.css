@@ -1565,3 +1565,73 @@ ol {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
   background: #fff !important;
 }
+
+/* GenUI surface tones + patch flash */
+.genui-root {
+  position: relative;
+}
+
+.genui-tone {
+  background: var(--chat-surface);
+  transition:
+    background-color 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out);
+}
+
+.genui-tone-default {
+  background: var(--chat-surface);
+}
+
+.genui-tone-dashboard {
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--chat-accent-soft) 55%, var(--chat-surface) 45%) 0%,
+      var(--chat-surface) 48%
+    );
+  box-shadow: var(--shadow-sm);
+}
+
+.genui-tone-lesson {
+  background: color-mix(in oklab, var(--chat-surface-soft) 70%, var(--chat-surface) 30%);
+  border-style: solid;
+}
+
+.genui-tone-report {
+  background: var(--chat-surface);
+  box-shadow: var(--shadow-xs);
+  border-color: color-mix(in oklab, var(--chat-border) 80%, var(--chat-accent) 20%);
+}
+
+.genui-tone-media {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--chat-surface-muted) 40%, var(--chat-surface) 60%) 0%,
+      var(--chat-surface) 100%
+    );
+  padding-block: 1rem;
+}
+
+.genui-patch-flash {
+  animation: genuiPatchFlash 0.7s var(--ease-out);
+}
+
+@keyframes genuiPatchFlash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--chat-accent) 0%, transparent);
+  }
+  25% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--chat-accent) 28%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--chat-accent) 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .genui-patch-flash {
+    animation: none;
+  }
+}

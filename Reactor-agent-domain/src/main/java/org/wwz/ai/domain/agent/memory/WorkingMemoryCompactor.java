@@ -311,6 +311,27 @@ public final class WorkingMemoryCompactor {
     }
 
     /**
+     * 压缩请求本身 prompt-too-long 时：从待摘要前缀按 tool-safe 边界丢掉最旧一段，再重试摘要。
+     * 对齐 cc-haha truncateHeadForPTLRetry；返回 null 表示已无法再裁。
+     */
+    public List<Message> truncateHeadForCompactRetry(List<Message> messages) {
+        if (messages == null || messages.size() <= 1) {
+            return null;
+        }
+        int cut = nextSafeDropCount(messages);
+        if (cut <= 0) {
+            cut = 1;
+        }
+        if (cut >= messages.size()) {
+            cut = messages.size() - 1;
+        }
+        if (cut <= 0) {
+            return null;
+        }
+        return List.copyOf(messages.subList(cut, messages.size()));
+    }
+
+    /**
      * 为摘要调用准备消息：截断过长 content，图片改为标记。
      */
     public List<Message> prepareMessagesForSummarizer(List<Message> messages, int contentCharLimit) {

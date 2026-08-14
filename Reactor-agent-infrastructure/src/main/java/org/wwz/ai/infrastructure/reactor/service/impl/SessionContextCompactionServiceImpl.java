@@ -13,6 +13,7 @@ import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactionEvent;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryCompactor;
+import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerReadRepository;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
@@ -132,10 +133,11 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
 
 
     @Override
-    public List<Message> applyIfNeeded(String sessionId, String requestId, List<Message> messages) {
+    public List<Message> applyIfNeeded(String sessionId, String memoryScope, String requestId, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return messages == null ? List.of() : messages;
         }
+        String scope = WorkingMemoryScopes.normalize(memoryScope);
         // 防止 compact / LTM fork 自己的 LLM 调用再触发压缩
         if (StringUtils.isNotBlank(requestId)
                 && (requestId.contains("-compact")
@@ -155,26 +157,28 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             List<Message> microed = compactor.microcompact(current, budget);
             if (microed != current && !microed.equals(current)) {
                 int afterMicro = compactor.estimateTokens(microed);
-                log.info("microcompact sessionId={} before={} after={} msgs={}",
-                        sessionId, originalTokens, afterMicro, microed.size());
+                log.info("microcompact sessionId={} scope={} before={} after={} msgs={}",
+                        sessionId, scope, originalTokens, afterMicro, microed.size());
                 current = microed;
             }
         }
 
         if (!compactor.shouldCompact(current, budget)) {
-            String microCompactId = maybePersistIfChanged(sessionId, requestId, messages, current, originalTokens, "micro-only", budget);
+            String microCompactId = maybePersistIfChanged(sessionId, scope, requestId, messages, current, originalTokens, "micro-only", budget);
             if (current != messages && !current.equals(messages)) {
                 recordCompactionEvent(sessionId, requestId, messages, current, originalTokens, "micro-only", budget, null, microCompactId);
             }
             return current;
         }
 
-        // 即将重压缩：独立 Memory Flush 小回合 + Provider onPreCompress（失败不阻断）
-        current = applyLtmPreCompactHooks(sessionId, requestId, current);
+        // 即将重压缩：独立 Memory Flush 小回合 + Provider onPreCompress（仅 main scope）
+        if (WorkingMemoryScopes.MAIN.equals(scope)) {
+            current = applyLtmPreCompactHooks(sessionId, requestId, current);
+        }
 
         int beforeAuto = compactor.estimateTokens(current);
-        log.info("auto-compact triggered sessionId={} requestId={} tokens={} threshold={}",
-                sessionId, requestId, beforeAuto, budget.threshold());
+        log.info("auto-compact triggered sessionId={} scope={} requestId={} tokens={} threshold={}",
+                sessionId, scope, requestId, beforeAuto, budget.threshold());
 
         List<Message> compacted = null;
         String strategy = null;
@@ -187,8 +191,8 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                 compacted = sm;
                 strategy = "session-memory";
                 clearFailures(sessionId);
-                log.info("session-memory compact sessionId={} before={} after={} msgs={}",
-                        sessionId, beforeAuto, compactor.estimateTokens(sm), sm.size());
+                log.info("session-memory compact sessionId={} scope={} before={} after={} msgs={}",
+                        sessionId, scope, beforeAuto, compactor.estimateTokens(sm), sm.size());
             }
         }
 
@@ -197,8 +201,8 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                 List<Message> full = fullCompact(sessionId, requestId, current, budget);
                 int after = compactor.estimateTokens(full);
                 if (after >= budget.threshold()) {
-                    log.warn("full compact still over threshold sessionId={} after={} threshold={}",
-                            sessionId, after, budget.threshold());
+                    log.warn("full compact still over threshold sessionId={} scope={} after={} threshold={}",
+                            sessionId, scope, after, budget.threshold());
                     recordFailure(sessionId);
                     error = "full compact still over threshold: " + after;
                 } else {
@@ -207,8 +211,8 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
                     clearFailures(sessionId);
                 }
             } catch (Exception e) {
-                log.warn("full compact failed sessionId={} requestId={}: {}",
-                        sessionId, requestId, e.getMessage());
+                log.warn("full compact failed sessionId={} scope={} requestId={}: {}",
+                        sessionId, scope, requestId, e.getMessage());
                 recordFailure(sessionId);
                 error = e.getMessage();
             }
@@ -217,11 +221,11 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         if (compacted == null) {
             compacted = compactor.dropOldestToFit(current, budget);
             strategy = "drop-oldest";
-            log.info("drop-oldest sessionId={} beforeMsgs={} afterMsgs={} afterTokens={}",
-                    sessionId, current.size(), compacted.size(), compactor.estimateTokens(compacted));
+            log.info("drop-oldest sessionId={} scope={} beforeMsgs={} afterMsgs={} afterTokens={}",
+                    sessionId, scope, current.size(), compacted.size(), compactor.estimateTokens(compacted));
         }
 
-        String compactRequestId = maybePersistIfChanged(sessionId, requestId, messages, compacted, originalTokens, strategy, budget);
+        String compactRequestId = maybePersistIfChanged(sessionId, scope, requestId, messages, compacted, originalTokens, strategy, budget);
         recordCompactionEvent(sessionId, requestId, messages, compacted, originalTokens, strategy, budget, error, compactRequestId);
         List<Message> result = compacted == null ? current : compacted;
         // 压缩后提醒：可用 memory / session_search 找回耐久事实与账本细节
@@ -286,12 +290,17 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
     }
 
     @Override
-    public List<Message> applyIfNeededMidRun(String sessionId, String requestId, List<Message> messages) {
+    public List<Message> applyIfNeededMidRun(String sessionId,
+                                             String memoryScope,
+                                             String requestId,
+                                             List<Message> messages) {
         if (!midRunEnabled) {
             return messages == null ? List.of() : messages;
         }
-        return applyIfNeeded(sessionId, requestId, messages);
+        return applyIfNeeded(sessionId, memoryScope, requestId, messages);
     }
+
+    private static final int MAX_COMPACT_PTL_RETRIES = 3;
 
     private List<Message> fullCompact(String sessionId,
                                       String requestId,
@@ -347,32 +356,75 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         context.markExecutionPosition("compaction", null);
 
         Message system = Message.systemMessage(CompactionPrompt.getCompactPrompt(), null);
-        List<Message> askMessages = new ArrayList<>(prepared);
-        askMessages.add(Message.userMessage(
-                "Please provide the conversation summary now, following the required <analysis> and <summary> structure.",
-                null));
 
-        // Prefer stream aggregation: some OpenAI-compatible gateways return empty/truncated
-        // non-stream JSON bodies that Spring AI cannot deserialize as ChatCompletion.
-        String raw = llm.ask(
-                context,
-                askMessages,
-                List.of(system),
-                true,
-                false,
-                budget.getTemperature(),
-                ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT
-        ).get();
+        // 对齐 cc-haha：压缩请求自身 413/超上下文时截掉待摘要最旧 tool-safe 前缀再重试，
+        // 仍失败则抛出，由上层 drop-oldest 兜底，避免用户卡死。
+        Exception lastError = null;
+        for (int attempt = 0; attempt <= MAX_COMPACT_PTL_RETRIES; attempt++) {
+            List<Message> askMessages = new ArrayList<>(prepared);
+            askMessages.add(Message.userMessage(
+                    "Please provide the conversation summary now, following the required <analysis> and <summary> structure.",
+                    null));
+            try {
+                String raw = llm.ask(
+                        context,
+                        askMessages,
+                        List.of(system),
+                        true,
+                        false,
+                        budget.getTemperature(),
+                        ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT
+                ).get();
 
-        String formatted = CompactionPrompt.formatCompactSummary(raw);
-        if (StringUtils.isBlank(formatted)) {
-            throw new IllegalStateException("empty compact summary");
+                String formatted = CompactionPrompt.formatCompactSummary(raw);
+                if (StringUtils.isBlank(formatted)) {
+                    throw new IllegalStateException("empty compact summary");
+                }
+                String reinject = CompactionPrompt.wrapSummaryForReinject(formatted, !toKeep.isEmpty());
+                List<Message> post = compactor.buildPostCompactMessages(reinject, toKeep);
+                log.info("full-llm compact sessionId={} attempt={} summarizeMsgs={} keepMsgs={} postMsgs={} postTokens={}",
+                        sessionId, attempt, prepared.size(), toKeep.size(), post.size(),
+                        compactor.estimateTokens(post));
+                return post;
+            } catch (Exception e) {
+                lastError = e;
+                if (attempt >= MAX_COMPACT_PTL_RETRIES || !isPromptTooLongForCompact(e)) {
+                    throw e;
+                }
+                List<Message> truncated = compactor.truncateHeadForCompactRetry(prepared);
+                if (truncated == null || truncated.size() >= prepared.size()) {
+                    throw e;
+                }
+                log.warn("compact request too long, truncate head and retry sessionId={} attempt={} beforeMsgs={} afterMsgs={}",
+                        sessionId, attempt + 1, prepared.size(), truncated.size());
+                prepared = truncated;
+            }
         }
-        String reinject = CompactionPrompt.wrapSummaryForReinject(formatted, !toKeep.isEmpty());
-        List<Message> post = compactor.buildPostCompactMessages(reinject, toKeep);
-        log.info("full-llm compact sessionId={} summarizeMsgs={} keepMsgs={} postMsgs={} postTokens={}",
-                sessionId, toSummarize.size(), toKeep.size(), post.size(), compactor.estimateTokens(post));
-        return post;
+        throw lastError != null ? lastError : new IllegalStateException("compact failed without error");
+    }
+
+    private static boolean isPromptTooLongForCompact(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("prompt is too long")
+                        || lower.contains("prompt_too_long")
+                        || lower.contains("context_length")
+                        || lower.contains("context length")
+                        || lower.contains("maximum context")
+                        || lower.contains("max context")
+                        || lower.contains("token limit")
+                        || lower.contains("too many tokens")
+                        || lower.contains("413")
+                        || lower.contains("request too large")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private CompactionBudget resolveBudget() {
@@ -457,6 +509,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
     }
 
     private String maybePersistIfChanged(String sessionId,
+                                         String memoryScope,
                                          String requestId,
                                          List<Message> original,
                                          List<Message> result,
@@ -476,13 +529,13 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         if ("micro-only".equals(strategy) && !tokenSaved) {
             return null;
         }
-        String compactRequestId = tryPersist(sessionId, requestId, result);
-        log.info("persist compacted projection sessionId={} strategy={} tokens {}->{} compactRequestId={}",
-                sessionId, strategy, originalTokens, after, compactRequestId);
+        String compactRequestId = tryPersist(sessionId, memoryScope, requestId, result);
+        log.info("persist compacted projection sessionId={} scope={} strategy={} tokens {}->{} compactRequestId={}",
+                sessionId, memoryScope, strategy, originalTokens, after, compactRequestId);
         return compactRequestId;
     }
 
-    private String tryPersist(String sessionId, String requestId, List<Message> compacted) {
+    private String tryPersist(String sessionId, String memoryScope, String requestId, List<Message> compacted) {
         if (sessionWorkingMemoryService == null || StringUtils.isBlank(sessionId) || compacted == null || compacted.isEmpty()) {
             return null;
         }
@@ -492,10 +545,12 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             // 与 trigger_request_id 的关联写在 compaction 审计表，不依赖嵌入原 requestId。
             String compactRequestId = COMPACT_REQUEST_PREFIX
                     + UUID.randomUUID().toString().replace("-", "");
-            sessionWorkingMemoryService.replaceReadyProjection(sessionId, compactRequestId, compacted);
+            sessionWorkingMemoryService.replaceReadyProjection(
+                    sessionId, WorkingMemoryScopes.normalize(memoryScope), compactRequestId, compacted);
             return compactRequestId;
         } catch (Exception e) {
-            log.warn("persist compacted working memory failed sessionId={}: {}", sessionId, e.getMessage());
+            log.warn("persist compacted working memory failed sessionId={} scope={}: {}",
+                    sessionId, memoryScope, e.getMessage());
             return null;
         }
     }

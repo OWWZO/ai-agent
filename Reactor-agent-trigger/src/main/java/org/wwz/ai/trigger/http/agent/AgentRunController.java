@@ -12,9 +12,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.run.AgentRunFollowApplicationService;
+import org.wwz.ai.application.agent.run.AgentRunInjectApplicationService;
 import org.wwz.ai.application.agent.run.AgentRunStopApplicationService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.trigger.http.agent.vo.AgentRunFollowReqVO;
+import org.wwz.ai.trigger.http.agent.vo.AgentRunInjectReqVO;
 import org.wwz.ai.trigger.http.agent.vo.AgentRunStopReqVO;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
@@ -42,6 +44,9 @@ public class AgentRunController {
     private AgentRunStopApplicationService agentRunStopApplicationService;
 
     @Resource
+    private AgentRunInjectApplicationService agentRunInjectApplicationService;
+
+    @Resource
     private AgentRunFollowApplicationService agentRunFollowApplicationService;
 
     @Resource
@@ -67,6 +72,41 @@ public class AgentRunController {
             return Response.<Map<String, Object>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
+                    .data(data)
+                    .build();
+        } catch (Exception e) {
+            return Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.UN_ERROR.getCode())
+                    .info(e.getMessage())
+                    .build();
+        }
+    }
+
+    /**
+     * 向进行中的 run 注入用户指导：控制面入队，不 begin 新 run，不新开 SSE。
+     * 下一 step 边界 drain 进主 Agent Memory。
+     */
+    @PostMapping("/inject")
+    public Response<Map<String, Object>> inject(@RequestBody AgentRunInjectReqVO req) {
+        try {
+            if (req == null || StringUtils.isBlank(req.getRequestId())) {
+                return Response.<Map<String, Object>>builder()
+                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                        .info("requestId 不能为空")
+                        .build();
+            }
+            if (StringUtils.isBlank(req.getText())) {
+                return Response.<Map<String, Object>>builder()
+                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                        .info("text 不能为空")
+                        .build();
+            }
+            Map<String, Object> data = agentRunInjectApplicationService.inject(
+                    req.getSessionId(), req.getRequestId(), req.getText());
+            boolean accepted = Boolean.TRUE.equals(data.get("accepted"));
+            return Response.<Map<String, Object>>builder()
+                    .code(accepted ? ResponseCode.SUCCESS.getCode() : ResponseCode.UN_ERROR.getCode())
+                    .info(accepted ? ResponseCode.SUCCESS.getInfo() : String.valueOf(data.get("message")))
                     .data(data)
                     .build();
         } catch (Exception e) {

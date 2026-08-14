@@ -26,6 +26,11 @@ if [[ -z "${FILE_SAVE_PATH:-}" ]]; then
   fi
 fi
 
+# 相对文件存储路径不能跟随 versioned release 漂移；生产环境优先落到持久化目录。
+if [[ "${FILE_SAVE_PATH}" != /* && -d "/opt/reactor/data" ]]; then
+  export FILE_SAVE_PATH="/opt/reactor/data/${FILE_SAVE_PATH}"
+fi
+
 if [[ -z "${FILE_SERVER_URL:-}" || ! "${FILE_SERVER_URL}" =~ ^https?:// ]]; then
   export FILE_SERVER_URL="http://127.0.0.1:1601/v1/file_tool"
 fi

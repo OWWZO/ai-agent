@@ -18,7 +18,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 主 Agent 派发同步子 Agent 的工具入口（对标 cc-haha AgentTool 同步路径）。
+ * 主 Agent 派发子 Agent 的工具入口（对标 cc-haha AgentTool）。
+ * 阻塞等待子 Agent 完成；子 Agent 内部 LLM 走流式。
  * 输入：description / prompt / subagent_type
  * 输出：JSON 结构化 observation（status/content/元数据），中间工具过程不进入主上下文。
  */
@@ -45,8 +46,9 @@ public class AgentDispatchTool implements BaseTool {
     @Override
     public String getDescription() {
         StringBuilder sb = new StringBuilder();
-        sb.append("派发一个同步子 Agent 执行独立任务，阻塞等待完成后返回精简报告。")
-                .append("子 Agent 从零上下文开始，请在 prompt 中写全背景与交付要求。")
+        sb.append("派发一个子 Agent 执行独立任务，阻塞等待完成后返回精简报告。")
+                .append("新任务：子 Agent 从零上下文开始，请在 prompt 中写全背景与交付要求。")
+                .append("续跑：传入上次结果中的 resume_agent_id（即 agentId），可带着上次工作记忆继续任务。")
                 .append("可用 subagent_type：");
         List<String> lines = new ArrayList<>();
         if (subAgentRegistry != null) {
@@ -71,7 +73,8 @@ public class AgentDispatchTool implements BaseTool {
 
         Map<String, Object> prompt = new LinkedHashMap<>();
         prompt.put("type", "string");
-        prompt.put("description", "交给子 Agent 的完整任务说明。子 Agent 看不到主对话，需包含目标、已知信息、范围与输出格式");
+        prompt.put("description",
+                "交给子 Agent 的任务说明。新任务时需写全背景；resume 时写后续指令即可（会加载上次上下文）");
 
         Map<String, Object> subagentType = new LinkedHashMap<>();
         subagentType.put("type", "string");
@@ -81,10 +84,16 @@ public class AgentDispatchTool implements BaseTool {
                 : String.join(", ", subAgentRegistry.listTypeNames()));
         subagentType.put("description", typeHint);
 
+        Map<String, Object> resumeAgentId = new LinkedHashMap<>();
+        resumeAgentId.put("type", "string");
+        resumeAgentId.put("description",
+                "可选。上次 Agent 工具返回的 agentId。传入后唤醒该子 Agent 并保留其工作记忆，而不是新开实例");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("description", description);
         properties.put("prompt", prompt);
         properties.put("subagent_type", subagentType);
+        properties.put("resume_agent_id", resumeAgentId);
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
@@ -107,6 +116,7 @@ public class AgentDispatchTool implements BaseTool {
             String description = trimToString(params.get("description"));
             String prompt = trimToString(params.get("prompt"));
             String subagentType = trimToString(params.get("subagent_type"));
+            String resumeAgentId = trimToString(params.get("resume_agent_id"));
             // Plan Mode：空白或 general-purpose 强制 Explore（只读）
             if (agentContext != null
                     && agentContext.getPlanModeState() != null
@@ -121,14 +131,21 @@ public class AgentDispatchTool implements BaseTool {
                 return ToolResultPayload.failureFrom("Agent 执行失败：prompt 不能为空", null);
             }
             if (StringUtils.isBlank(description)) {
-                description = StringUtils.defaultIfBlank(subagentType, "subagent-task");
+                description = StringUtils.isNotBlank(resumeAgentId)
+                        ? "resume-" + resumeAgentId
+                        : StringUtils.defaultIfBlank(subagentType, "subagent-task");
             }
             if (subAgentRunner == null) {
                 return ToolResultPayload.failureFrom("Agent 执行失败：SubAgentRunner 未注入", null);
             }
 
-            SubAgentResult result = subAgentRunner.run(agentContext, description, prompt, subagentType);
+            SubAgentResult result = subAgentRunner.run(
+                    agentContext, description, prompt, subagentType,
+                    StringUtils.isBlank(resumeAgentId) ? null : resumeAgentId);
             Map<String, Object> data = buildObservationData(result);
+            if (StringUtils.isNotBlank(resumeAgentId)) {
+                data.put("resumed", true);
+            }
             if (!result.isCompleted()) {
                 return ToolResultPayload.failureFrom(
                         StringUtils.defaultIfBlank(result.getErrorMsg(), "Agent 执行失败"),

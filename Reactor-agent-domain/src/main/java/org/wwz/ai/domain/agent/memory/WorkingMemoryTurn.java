@@ -22,6 +22,8 @@ public class WorkingMemoryTurn {
 
     private Long id;
     private String sessionId;
+    /** main 或 sub:{agentId}，隔离主/子工作记忆 */
+    private String memoryScope;
     private String requestId;
     private Long runId;
     private Integer turnSeq;

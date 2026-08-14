@@ -87,6 +87,44 @@ public class WorkingMemoryCompactorTest {
     }
 
     @Test
+    public void shouldTruncateHeadForCompactRetrySafely() {
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.userMessage("old-1", null));
+        messages.add(Message.fromToolCalls("call", List.of(
+                ToolCall.builder().id("tc-a").type("function")
+                        .function(ToolCall.Function.builder().name("search").arguments("{}").build())
+                        .build()
+        )));
+        messages.add(Message.toolMessage("result-a", "tc-a", null));
+        messages.add(Message.userMessage("keep-me", null));
+        messages.add(Message.assistantMessage("recent", null));
+
+        List<Message> truncated = compactor.truncateHeadForCompactRetry(messages);
+        Assert.assertNotNull(truncated);
+        Assert.assertTrue(truncated.size() < messages.size());
+        Assert.assertTrue(truncated.stream().anyMatch(m -> "keep-me".equals(m.getContent())));
+        // 若保留 tool_result，必须仍有配对 tool_use
+        for (int i = 0; i < truncated.size(); i++) {
+            Message m = truncated.get(i);
+            if (m.getRole() == RoleType.TOOL) {
+                boolean found = false;
+                for (int j = 0; j < i; j++) {
+                    Message prev = truncated.get(j);
+                    if (prev.getRole() == RoleType.ASSISTANT && prev.getToolCalls() != null) {
+                        for (ToolCall tc : prev.getToolCalls()) {
+                            if (tc != null && m.getToolCallId().equals(tc.getId())) {
+                                found = true;
+                            }
+                        }
+                    }
+                }
+                Assert.assertTrue(found);
+            }
+        }
+        Assert.assertNull(compactor.truncateHeadForCompactRetry(List.of(Message.userMessage("only", null))));
+    }
+
+    @Test
     public void shouldFormatAndWrapSummary() {
         String raw = "<analysis>scratch</analysis>\n<summary>\n1. Primary Request: do X\n</summary>";
         String formatted = CompactionPrompt.formatCompactSummary(raw);

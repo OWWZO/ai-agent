@@ -42,6 +42,17 @@ import {
   shouldRefreshWorkspaceTask,
 } from "./streamState";
 
+function isLlmRetryEvent(eventData?: MESSAGE.EventData | null): boolean {
+  return (
+    eventData?.messageType === "llm_retry" ||
+    eventData?.resultMap?.messageType === "llm_retry"
+  );
+}
+
+function isLlmRetryTip(tip?: string): boolean {
+  return !!tip && tip.includes("正在重试");
+}
+
 type UseConversationStreamOptions = {
   conversation: CHAT.ConversationHistory;
   onConversationChange: (
@@ -65,6 +76,8 @@ type UseConversationStreamResult = {
   streamingThoughtMap: Record<string, string>;
   sendMessage: (inputInfo: CHAT.TInputInfo) => void;
   stopActiveRun: () => Promise<void>;
+  /** 向进行中的 run 注入用户指导（不开新 SSE） */
+  injectActiveRun: (text: string) => Promise<boolean>;
   regenerateLastMessage: () => void;
 };
 
@@ -942,7 +955,12 @@ export function useConversationStream(
             deepThink: normalizedDeepThink,
             plan: currentChat.plan || currentChat.multiAgent?.plan,
           });
-          if (presence.hint && currentChat.tip !== presence.hint) {
+          // 重试等待期间心跳不要冲掉「正在重试」提示
+          if (
+            presence.hint &&
+            currentChat.tip !== presence.hint &&
+            !isLlmRetryTip(currentChat.tip)
+          ) {
             currentChat = {
               ...currentChat,
               tip: presence.hint,
@@ -1070,6 +1088,12 @@ export function useConversationStream(
           const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
           scheduleStreamingThought(currentChat.requestId, finalThought, true);
         }
+      } else if (isLlmRetryEvent(eventData)) {
+        // combineData 已写入重试 tip，勿被 presence 覆盖
+        currentChat = {
+          ...currentChat,
+          tip: currentChat.tip,
+        };
       } else {
         const presence = resolveRunPresence({
           loading: true,
@@ -1087,6 +1111,7 @@ export function useConversationStream(
         pendingConversation = draftController.getSnapshot();
         const forceTimeline =
           finished ||
+          isLlmRetryEvent(eventData) ||
           eventData.messageType === "tool_thought" ||
           eventData.messageType === "llm_reasoning" ||
           eventData.messageType === "tool_call" ||
@@ -1576,7 +1601,12 @@ export function useConversationStream(
             deepThink: normalizedDeepThink,
             plan: currentChat.plan || currentChat.multiAgent?.plan,
           });
-          if (presence.hint && currentChat.tip !== presence.hint) {
+          // 重试等待期间心跳不要冲掉「正在重试」提示
+          if (
+            presence.hint &&
+            currentChat.tip !== presence.hint &&
+            !isLlmRetryTip(currentChat.tip)
+          ) {
             currentChat = {
               ...currentChat,
               tip: presence.hint,
@@ -1664,6 +1694,19 @@ export function useConversationStream(
           const finalThought = currentChat.thought || currentChat.multiAgent.plan_thought || "";
           scheduleStreamingThought(currentChat.requestId, finalThought, true);
         }
+      } else if (isLlmRetryEvent(eventData)) {
+        currentChat = {
+          ...currentChat,
+          tip: currentChat.tip,
+        };
+        followReconnectContextsRef.current.set(requestId, {
+          conversationId,
+          sessionId: baseConversation.sessionId,
+          requestId,
+          productType: currentOutputStyle || baseConversation.productType,
+          deepThink: normalizedDeepThink,
+          seedChat: { ...currentChat },
+        });
       } else {
         const presence = resolveRunPresence({
           loading: true,
@@ -1691,6 +1734,7 @@ export function useConversationStream(
         // 过程文 / 工具占位 / 工具结果：强制刷新，避免等工具跑完才整块冒泡
         const forceTimeline =
           finished ||
+          isLlmRetryEvent(eventData) ||
           eventData.messageType === "tool_thought" ||
           eventData.messageType === "llm_reasoning" ||
           eventData.messageType === "tool_call" ||
@@ -1831,6 +1875,32 @@ export function useConversationStream(
     }
   });
 
+  const injectActiveRun = useMemoizedFn(async (text: string) => {
+    const requestId = activeRequestIdRef.current;
+    const activeConversation = conversationRef.current;
+    const trimmed = (text || "").trim();
+    if (!requestId || !loading || !trimmed) {
+      return false;
+    }
+    try {
+      const { agentRunApi } = await import("@/services/agentRun");
+      const data = await agentRunApi.inject({
+        sessionId: activeConversation.sessionId,
+        requestId,
+        text: trimmed,
+      });
+      // request 拦截器已解包为 data 字段
+      if (!data || data.accepted !== true) {
+        console.warn("inject run rejected", data);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn("inject run failed", error);
+      return false;
+    }
+  });
+
   const workspaceCaption = useMemo(() => {
     return resolveWorkspaceCaption(workspaceStreamTask, loading);
   }, [loading, workspaceStreamTask]);
@@ -1848,6 +1918,7 @@ export function useConversationStream(
     streamingThoughtMap,
     sendMessage,
     stopActiveRun,
+    injectActiveRun,
     regenerateLastMessage,
   };
 }

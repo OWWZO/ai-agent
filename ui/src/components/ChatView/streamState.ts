@@ -31,6 +31,10 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "tool_thought",
   "llm_reasoning",
   // tool_thought = 过程回复；llm_reasoning = 原生 CoT
+  "llm_retry",
+  // 子 Agent 心跳，不进工作区/时间线注意力
+  "subagent_progress",
+  // 仅状态条提示，不进工作区
   "ask_user_question",
   "plan_approval",
   "plan_mode_entered",

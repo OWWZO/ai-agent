@@ -45,7 +45,8 @@ export type SuggestedQuestion = {
 
 const generalSuggestedQuestions: SuggestedQuestion[] = [
   {label: "生成一个长征五号B运载火箭升空的3D模型",},
-  {label: "用GenUI展示勾股定理",},
+  {label: "用GenUI交互演示勾股定理",},
+  {label: "用GenUI动画演示HTTP请求从网关到服务的流程",},
   {label: "分析近3年全球糖尿病患病率的变化趋势：获取并清洗数据、做分区域对比与统计检验、绘制趋势图表，最后写成一份带图表的分析报告。",},
   {label: "梳理特斯拉最近四个季度财报要点、行业格局与主要竞品动态，产出一份投研HTML报告",},
   {label: "围绕Notion、Obsidian等4–5个代表产品做一次竞品调研：从功能、用户口碑等角度入手，用Canvas产出一份竞品对比调研报告",},

@@ -91,9 +91,19 @@ public class LLM {
     private final transient DomainMessageConverter messageConverter;
     private final transient LlmChatResponseMapper responseMapper;
     private final transient StreamResponseHandler streamResponseHandler;
+    /** false 表示本实例已是备援路径，禁止再嵌套 fallback。 */
+    private final boolean allowModelFallback;
 
     public LLM(String modelName, String llmErp, ReactorRuntimeDependencies runtimeDependencies) {
+        this(modelName, llmErp, runtimeDependencies, true);
+    }
+
+    private LLM(String modelName,
+                String llmErp,
+                ReactorRuntimeDependencies runtimeDependencies,
+                boolean allowModelFallback) {
         this.llmErp = llmErp;
+        this.allowModelFallback = allowModelFallback;
         this.runtimeDependencies = requireRuntimeDependencies(runtimeDependencies);
         ReactorLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
         this.chatModelResolver = llmDependencies.getChatModelResolver();
@@ -179,6 +189,21 @@ public class LLM {
             Double temperature,
             String callKind
     ) {
+        CompletableFuture<String> primary = askOnCurrentModel(
+                context, messages, systemMsgs, stream, pushToClient, temperature, callKind);
+        return withFallbackModel(context, "ask", primary, () -> new LLM(resolveFallbackModelName(), llmErp, runtimeDependencies, false)
+                .askOnCurrentModel(context, messages, systemMsgs, stream, pushToClient, temperature, callKind));
+    }
+
+    private CompletableFuture<String> askOnCurrentModel(
+            AgentContext context,
+            List<Message> messages,
+            List<Message> systemMsgs,
+            boolean stream,
+            boolean pushToClient,
+            Double temperature,
+            String callKind
+    ) {
         try {
             // 纯文本请求的顺序必须保持为：记录实际 prompt 快照 → 创建 LLM 账本事实 → 调用模型 → 完成账本事实。
             // 这样观测数据、账本状态和真正发送给模型的内容才能一一对应。
@@ -210,7 +235,8 @@ public class LLM {
                 // 非流式调用在受控 LLM 执行器中完成，避免阻塞请求线程或公共 ForkJoinPool。
                 return AgentExecutorSupport.supplyAsync(runtimeDependencies.requireLlmExecutor(), "llmAsk", context, () -> {
                     try {
-                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                        ChatResponse response = LlmRequestRetry.call(
+                                retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
                         ReasoningContentExtractor.SplitResult split =
                                 ReasoningContentExtractor.splitFromChatResponse(response);
                         String content = split.hasContent()
@@ -248,7 +274,7 @@ public class LLM {
             // 流式调用的完成与失败都由 whenComplete 收口，避免网络异常时留下 RUNNING 的孤立 invocation。
             return streamResponseHandler.handleStringStreamWithUsage(
                     context,
-                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
+                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
                     null,
                     false,
                     pushToClient
@@ -316,6 +342,23 @@ public class LLM {
             boolean pushToClient,
             int timeout
     ) {
+        CompletableFuture<ToolCallResponse> primary = askToolOnCurrentModel(
+                context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout);
+        return withFallbackModel(context, "askTool", primary, () -> new LLM(resolveFallbackModelName(), llmErp, runtimeDependencies, false)
+                .askToolOnCurrentModel(context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout));
+    }
+
+    private CompletableFuture<ToolCallResponse> askToolOnCurrentModel(
+            AgentContext context,
+            List<Message> messages,
+            Message systemMsgs,
+            ToolCollection tools,
+            ToolChoice toolChoice,
+            Double temperature,
+            boolean stream,
+            boolean pushToClient,
+            int timeout
+    ) {
         try {
             tools = PlanModeToolPolicy.filterTools(context, tools);
             // 工具调用有两条协议分支：原生 function_call 由 Spring AI 组装 tools[]，
@@ -364,7 +407,8 @@ public class LLM {
                                 context,
                                 () -> {
                                     try {
-                                        ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                                        ChatResponse response = LlmRequestRetry.call(
+                                                retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
                                         return responseMapper.toToolCallResponse(response, startTime);
                                     } catch (Exception e) {
                                         throw new CompletionException(e);
@@ -383,7 +427,7 @@ public class LLM {
 
             CompletableFuture<ToolCallResponse> streamFuture = streamResponseHandler.handleToolCallStream(
                     context,
-                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
+                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
                     startTime,
                     pushToClient
             ).orTimeout(timeout, TimeUnit.SECONDS);
@@ -408,7 +452,8 @@ public class LLM {
                                             try {
                                                 ChatResponse callResponse = LlmRequestRetry.call(
                                                         retryLabel + ":empty-stream-retry",
-                                                        () -> chatModel.call(prompt));
+                                                        () -> chatModel.call(prompt),
+                                                        retryNotifier(context));
                                                 return responseMapper.toToolCallResponse(callResponse, startTime);
                                             } catch (Exception e) {
                                                 throw new CompletionException(e);
@@ -467,7 +512,8 @@ public class LLM {
                             context,
                             () -> {
                                 try {
-                                    ChatResponse response = LlmRequestRetry.call(retryLabel, () -> chatModel.call(prompt));
+                                    ChatResponse response = LlmRequestRetry.call(
+                                            retryLabel, () -> chatModel.call(prompt), retryNotifier(context));
                                     LlmUsageSnapshot usage = LlmUsageSnapshot.resolve(response.getMetadata());
                                     ToolCallResponse toolCallResponse = buildStructParseToolCallResponse(
                                             context,
@@ -490,7 +536,7 @@ public class LLM {
 
         return streamResponseHandler.handleStringStreamWithUsage(
                         context,
-                        LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt)),
+                        LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
                         STRUCT_PARSE_JSON_MARKER,
                         true,
                         true
@@ -644,6 +690,56 @@ public class LLM {
 
     private boolean isStructParseMode() {
         return STRUCT_PARSE.equals(functionCallType);
+    }
+
+    private String resolveFallbackModelName() {
+        return LlmModelFallback.resolveFallbackModelName(runtimeDependencies, model);
+    }
+
+    private <T> CompletableFuture<T> withFallbackModel(AgentContext context,
+                                                       String op,
+                                                       CompletableFuture<T> primary,
+                                                       java.util.function.Supplier<CompletableFuture<T>> fallbackCall) {
+        if (!allowModelFallback || primary == null) {
+            return primary;
+        }
+        return primary.handle((result, error) -> {
+            if (error == null) {
+                return CompletableFuture.completedFuture(result);
+            }
+            Throwable root = unwrapCompletionThrowable(error);
+            if (!LlmModelFallback.isEligible(root)) {
+                return CompletableFuture.<T>failedFuture(root);
+            }
+            String fallbackName = resolveFallbackModelName();
+            if (StringUtils.isBlank(fallbackName)) {
+                return CompletableFuture.<T>failedFuture(root);
+            }
+            String requestId = context == null ? "-" : context.getRequestId();
+            log.warn("{} {} primary model={} failed after retries ({}), switching to fallback model={}",
+                    requestId, op, model, root.getMessage(), fallbackName);
+            notifyFallback(context, fallbackName, root);
+            try {
+                return fallbackCall.get();
+            } catch (Exception e) {
+                return CompletableFuture.<T>failedFuture(e);
+            }
+        }).thenCompose(f -> f);
+    }
+
+    private void notifyFallback(AgentContext context, String fallbackName, Throwable cause) {
+        if (context == null || context.getPrinter() == null) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("fromModel", model);
+            payload.put("toModel", fallbackName);
+            payload.put("reason", cause == null ? null : cause.getMessage());
+            context.getPrinter().send("llm_fallback", payload);
+        } catch (Exception e) {
+            log.debug("llm_fallback event skipped: {}", e.getMessage());
+        }
     }
 
 
@@ -848,6 +944,28 @@ public class LLM {
 
     private Map<String, Object> parseAndNormalizeToolParameters(String rawParameters, String toolName) {
         return ToolSchemaNormalizer.normalizeSchemaAsMap(rawParameters, toolName);
+    }
+
+    /**
+     * 将 LLM 瞬态重试进度推到前端状态条；isFinal=false 避免写入任务聚合/历史回放。
+     */
+    private static LlmRequestRetry.RetryListener retryNotifier(AgentContext context) {
+        return (label, attempt, maxAttempts, error, delayMs) -> {
+            if (context == null || context.getPrinter() == null) {
+                return;
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("attempt", attempt);
+            payload.put("maxAttempts", maxAttempts);
+            payload.put("delayMs", delayMs);
+            payload.put("label", label == null ? "" : label);
+            if (error != null && StringUtils.isNotBlank(error.getMessage())) {
+                payload.put("error", error.getMessage());
+            }
+            payload.put("message", String.format(
+                    "模型请求失败，正在重试（第 %d/%d 次）…", attempt, maxAttempts));
+            context.getPrinter().send(null, "llm_retry", payload, false);
+        };
     }
 
     private List<String> findMatches(String text, Pattern pattern) {

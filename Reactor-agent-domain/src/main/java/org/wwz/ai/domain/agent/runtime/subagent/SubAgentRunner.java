@@ -4,6 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
+import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
@@ -11,18 +13,36 @@ import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 同步子 Agent 执行引擎（对标 cc-haha runAgent 同步路径 + finalizeAgentTool）。
- * 阻塞跑完嵌套 ReactImplAgent，只把结论文本回传主 Agent。
+ * 子 Agent 执行引擎（对标 cc-haha runAgent + finalizeAgentTool + resume）。
+ * 阻塞跑完嵌套 ReactImplAgent（LLM 侧流式），只把结论文本回传主 Agent。
+ * 结束后将 Memory 投影到 working_memory scope=sub:{agentId}，支持再次唤醒。
  */
 @Slf4j
 @Component
 public class SubAgentRunner {
 
+    /** 长 thinking / 工具静默时向前端发心跳，避免 UI 假死感（对标 onQueryProgress）。 */
+    private static final long PROGRESS_HEARTBEAT_SECONDS = 30L;
+
+    private static final ScheduledExecutorService PROGRESS_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "subagent-progress");
+        t.setDaemon(true);
+        return t;
+    });
+
     private final SubAgentRegistry registry;
     private final SubAgentConcurrencyGate concurrencyGate;
+    private SessionWorkingMemoryService sessionWorkingMemoryService;
 
     public SubAgentRunner(SubAgentRegistry registry) {
         this(registry, SubAgentConcurrencyGate.defaults());
@@ -36,12 +56,31 @@ public class SubAgentRunner {
                 : concurrencyGate;
     }
 
+    @Autowired(required = false)
+    public void setSessionWorkingMemoryService(SessionWorkingMemoryService sessionWorkingMemoryService) {
+        this.sessionWorkingMemoryService = sessionWorkingMemoryService;
+    }
+
     public SubAgentResult run(AgentContext parentContext,
                               String description,
                               String prompt,
                               String subagentType) {
+        return run(parentContext, description, prompt, subagentType, null);
+    }
+
+    /**
+     * @param resumeAgentId 非空时从 working_memory sub scope hydrate 并续跑同一 agentId
+     */
+    public SubAgentResult run(AgentContext parentContext,
+                              String description,
+                              String prompt,
+                              String subagentType,
+                              String resumeAgentId) {
         long start = System.currentTimeMillis();
-        String agentId = SubAgentContextFactory.newAgentId();
+        boolean resume = StringUtils.isNotBlank(resumeAgentId);
+        String agentId = resume
+                ? resumeAgentId.trim()
+                : SubAgentContextFactory.newAgentId();
         // Plan Mode：强制 Explore 画像（对标 cchaha 只读子代理）
         String effectiveType = subagentType;
         if (parentContext != null
@@ -65,9 +104,14 @@ public class SubAgentRunner {
             return failed(agentId, definition, description, prompt, start, "父 Agent 工具池为空");
         }
 
+        if (resume && sessionWorkingMemoryService == null) {
+            return failed(agentId, definition, description, prompt, start,
+                    "无法唤醒子 Agent：SessionWorkingMemoryService 未注入");
+        }
+
         try {
             SubAgentResult gated = concurrencyGate.runWithPermit(() ->
-                    runUnlocked(parentContext, description, prompt, definition, agentId, start));
+                    runUnlocked(parentContext, description, prompt, definition, agentId, start, resume));
             if (gated == null) {
                 return failed(agentId, definition, description, prompt, start,
                         "子 Agent 并发已达上限(" + concurrencyGate.getMaxConcurrent()
@@ -85,7 +129,8 @@ public class SubAgentRunner {
                                        String prompt,
                                        SubAgentDefinition definition,
                                        String agentId,
-                                       long start) {
+                                       long start,
+                                       boolean resume) {
         boolean parentInPlanMode = parentContext.getPlanModeState() != null
                 && parentContext.getPlanModeState().isPlanMode();
         ToolCollection parentToolCollection = parentContext.getSubAgentToolCollection() != null
@@ -100,6 +145,27 @@ public class SubAgentRunner {
         }
         AgentContext childContext = SubAgentContextFactory.create(
                 parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId);
+
+        String memoryScope = WorkingMemoryScopes.forSubAgent(agentId);
+        childContext.setMemoryScope(memoryScope);
+
+        // resume：每次运行需要唯一 requestId，否则 working_memory persist 幂等跳过
+        if (resume) {
+            String resumeRequestId = buildResumeRequestId(parentContext.getRequestId(), agentId);
+            childContext.setRequestId(resumeRequestId);
+            List<Message> prior = sessionWorkingMemoryService.loadReadyMessages(
+                    parentContext.getSessionId(), memoryScope, resumeRequestId);
+            if (prior == null || prior.isEmpty()) {
+                return failed(agentId, definition, description, prompt, start,
+                        "无法唤醒子 Agent：未找到 agentId=" + agentId + " 的工作记忆（可能已过期或从未成功结束）");
+            }
+            childContext.setWorkingMemoryMessages(new ArrayList<>(prior));
+            log.info("{} resume subagent type={} id={} priorMsgs={}",
+                    parentContext.getRequestId(), definition.getAgentType(), agentId, prior.size());
+        } else {
+            childContext.setWorkingMemoryMessages(null);
+        }
+
         // 默认每子 Agent 独占工具实例（ToolIsolation）；仅无法 fork 时才共享锁
         ContextScopedTool.bindAll(childTools, childContext);
 
@@ -115,27 +181,109 @@ public class SubAgentRunner {
                 agent.setMaxSteps(definition.getMaxSteps());
             }
 
-            log.info("{} spawn sync subagent type={} id={} desc={}",
-                    parentContext.getRequestId(), definition.getAgentType(), agentId, description);
-            String runResult = agent.run(prompt);
-            String content = finalizeContent(agent, runResult);
-            int toolUseCount = countToolUses(agent);
+            log.info("{} {} streaming subagent type={} id={} desc={}",
+                    parentContext.getRequestId(),
+                    resume ? "resume" : "spawn",
+                    definition.getAgentType(), agentId, description);
+            AtomicBoolean finished = new AtomicBoolean(false);
+            ScheduledFuture<?> heartbeat = PROGRESS_SCHEDULER.scheduleAtFixedRate(
+                    () -> emitSubAgentProgress(childContext, agentId, definition.getAgentType(), description, start, finished),
+                    PROGRESS_HEARTBEAT_SECONDS,
+                    PROGRESS_HEARTBEAT_SECONDS,
+                    TimeUnit.SECONDS);
+            try {
+                String runResult = agent.run(prompt);
+                finished.set(true);
+                String content = finalizeContent(agent, runResult);
+                int toolUseCount = countToolUses(agent);
+                persistSubWorkingMemory(childContext, agent, definition);
 
-            return SubAgentResult.builder()
-                    .status(SubAgentResult.STATUS_COMPLETED)
-                    .agentId(agentId)
-                    .agentType(definition.getAgentType())
-                    .description(description)
-                    .prompt(prompt)
-                    .content(content)
-                    .totalToolUseCount(toolUseCount)
-                    .totalDurationMs(System.currentTimeMillis() - start)
-                    .build();
+                return SubAgentResult.builder()
+                        .status(SubAgentResult.STATUS_COMPLETED)
+                        .agentId(agentId)
+                        .agentType(definition.getAgentType())
+                        .description(description)
+                        .prompt(prompt)
+                        .content(content)
+                        .totalToolUseCount(toolUseCount)
+                        .totalDurationMs(System.currentTimeMillis() - start)
+                        .build();
+            } finally {
+                finished.set(true);
+                heartbeat.cancel(false);
+            }
         } catch (Exception e) {
-            log.error("{} sync subagent failed type={} id={}",
+            log.error("{} streaming subagent failed type={} id={}",
                     parentContext.getRequestId(), definition.getAgentType(), agentId, e);
             return failed(agentId, definition, description, prompt, start,
                     e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
+    }
+
+    private void persistSubWorkingMemory(AgentContext childContext,
+                                         ReactImplAgent agent,
+                                         SubAgentDefinition definition) {
+        if (sessionWorkingMemoryService == null || childContext == null || agent == null) {
+            return;
+        }
+        try {
+            List<Message> delta = agent.exportWorkingMemoryDelta();
+            if (delta == null || delta.isEmpty()) {
+                return;
+            }
+            Long runId = childContext.getAgentRunState() == null
+                    ? null
+                    : childContext.getAgentRunState().getRunId();
+            String entry = "sub_" + StringUtils.defaultIfBlank(
+                    definition == null ? null : definition.getAgentType(), "agent");
+            sessionWorkingMemoryService.persistTurn(
+                    childContext.getSessionId(),
+                    childContext.resolveMemoryScope(),
+                    childContext.getRequestId(),
+                    runId,
+                    entry,
+                    delta);
+            log.info("{} persisted sub working memory scope={} msgs={}",
+                    childContext.getRequestId(), childContext.resolveMemoryScope(), delta.size());
+        } catch (Exception e) {
+            log.warn("{} persist sub working memory failed: {}",
+                    childContext.getRequestId(), e.getMessage());
+        }
+    }
+
+    private static String buildResumeRequestId(String parentRequestId, String agentId) {
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String base = StringUtils.defaultString(parentRequestId) + ":sub:" + agentId + ":r" + suffix;
+        if (base.length() <= 64) {
+            return base;
+        }
+        // request_id 列宽 64：过长时用短形态
+        String shortId = "sr:" + agentId + ":" + suffix;
+        return shortId.length() <= 64 ? shortId : shortId.substring(0, 64);
+    }
+
+    private static void emitSubAgentProgress(AgentContext childContext,
+                                             String agentId,
+                                             String agentType,
+                                             String description,
+                                             long startMs,
+                                             AtomicBoolean finished) {
+        if (finished.get() || childContext == null || childContext.getPrinter() == null) {
+            return;
+        }
+        if (childContext.isRunCancelled()) {
+            return;
+        }
+        try {
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("agentId", agentId);
+            payload.put("agentType", agentType);
+            payload.put("description", description);
+            payload.put("elapsedMs", System.currentTimeMillis() - startMs);
+            payload.put("status", "running");
+            childContext.getPrinter().send("subagent_progress", payload);
+        } catch (Exception e) {
+            log.debug("subagent progress heartbeat skipped id={}: {}", agentId, e.getMessage());
         }
     }
 

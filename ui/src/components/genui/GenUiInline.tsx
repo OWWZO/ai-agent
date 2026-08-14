@@ -1,9 +1,12 @@
 import { FC, memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, Sparkles, X } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
+import classNames from "classnames";
 import GenUiNode, { type GenUiNodeData } from "./GenUiNode";
 import { GenUiRenderProvider } from "./GenUiRenderContext";
 import { applyUiPatches } from "./applyUiPatch";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 
 type Props = {
   tree?: any;
@@ -17,6 +20,8 @@ type Props = {
 const GenUiInline: FC<Props> = memo(
   ({ tree, patches, className, patchCount, sessionId, messageId }) => {
     const [immersive, setImmersive] = useState(false);
+    const [patchFlash, setPatchFlash] = useState(false);
+    const reduceMotion = useReducedMotion();
 
     const resolved = useMemo(() => {
       if (!tree) return null;
@@ -47,13 +52,29 @@ const GenUiInline: FC<Props> = memo(
       };
     }, [immersive]);
 
+    useEffect(() => {
+      if (typeof patchCount !== "number" || patchCount <= 0) return;
+      if (reduceMotion) return;
+      setPatchFlash(true);
+      const t = window.setTimeout(() => setPatchFlash(false), 700);
+      return () => window.clearTimeout(t);
+    }, [patchCount, reduceMotion]);
+
     if (!root) return null;
 
     const body = (
       <GenUiRenderProvider value={{ sessionId, messageId }}>
-        <div className="genui-root">
+        <motion.div
+          className={classNames(
+            "genui-root",
+            patchFlash && "genui-patch-flash"
+          )}
+          initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: DURATION.message, ease: EASE_OUT }}
+        >
           <GenUiNode node={root} />
-        </div>
+        </motion.div>
       </GenUiRenderProvider>
     );
 
@@ -66,31 +87,28 @@ const GenUiInline: FC<Props> = memo(
               aria-modal="true"
               aria-label="Generative UI"
             >
-              {/* 毛玻璃遮罩 — 点击关闭 */}
               <button
                 type="button"
                 aria-label="关闭沉浸模式"
-                className="absolute inset-0 border-0 bg-black/35 backdrop-blur-[6px]"
+                className="absolute inset-0 border-0 bg-[var(--chat-text)]/35 backdrop-blur-[6px]"
                 onClick={() => setImmersive(false)}
               />
 
-              {/* 大屏卡片 */}
               <div
-                className="relative z-[1] flex h-[min(92vh,960px)] w-full max-w-[min(1280px,96vw)] flex-col overflow-hidden rounded-[20px] border border-white/70 bg-[#f7f7f8] shadow-[0_32px_80px_-24px_rgba(15,23,42,0.45)]"
+                className="relative z-[1] flex h-[min(92vh,960px)] w-full max-w-[min(1280px,96vw)] flex-col overflow-hidden rounded-[20px] border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] shadow-[var(--shadow-elevated)]"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* 顶栏 */}
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] bg-white px-4 py-3 sm:px-5">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--chat-border)] bg-[var(--chat-surface)] px-4 py-3 sm:px-5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f1ff] text-[#2f7cf6]">
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]">
                       <Sparkles className="size-3.5" strokeWidth={2.2} />
                     </span>
                     <div className="min-w-0">
-                      <div className="truncate text-[14px] font-semibold tracking-tight text-[#1d1d1f]">
+                      <div className="truncate text-[14px] font-semibold tracking-tight text-[var(--chat-text)]">
                         Generative UI
                       </div>
                       {typeof patchCount === "number" && patchCount > 0 ? (
-                        <div className="truncate text-[11px] text-[#86868b]">
+                        <div className="truncate text-[11px] text-[var(--chat-text-soft)]">
                           已合并 {patchCount} 条补丁
                         </div>
                       ) : null}
@@ -99,16 +117,15 @@ const GenUiInline: FC<Props> = memo(
                   <button
                     type="button"
                     onClick={() => setImmersive(false)}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#86868b] transition hover:bg-black/[0.04] hover:text-[#1d1d1f]"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--chat-text-soft)] transition hover:bg-[var(--chat-interactive-hover)] hover:text-[var(--chat-text)]"
                     title="关闭（Esc）"
                   >
                     <X className="size-4" />
                   </button>
                 </div>
 
-                {/* 内容区：内层白卡 + 可滚动 */}
                 <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 md:p-5">
-                  <div className="min-h-full rounded-2xl border border-black/[0.05] bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6 md:p-8">
+                  <div className="min-h-full rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-surface)] p-4 shadow-[var(--shadow-xs)] sm:p-6 md:p-8">
                     {body}
                   </div>
                 </div>
@@ -121,13 +138,18 @@ const GenUiInline: FC<Props> = memo(
     return (
       <>
         <div className={className || "mt-3 w-full max-w-3xl"}>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--chat-text-soft)]">
-                GenUI
+              <span className="text-[11px] font-medium tracking-wide text-[var(--chat-text-muted)]">
+                交互演示
               </span>
               {typeof patchCount === "number" && patchCount > 0 ? (
-                <span className="rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--chat-text-soft)]">
+                <span
+                  className={classNames(
+                    "rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--chat-text-soft)] transition-colors",
+                    patchFlash && "bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]"
+                  )}
+                >
                   已合并 {patchCount} 条补丁
                 </span>
               ) : null}

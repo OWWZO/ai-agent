@@ -118,6 +118,15 @@ public final class GenUiPdfExporter {
             case "Table" -> document.add(buildTable(props, children));
             case "CodeBlock" -> document.add(mono(str(props.get("code"))));
             case "Chart" -> document.add(body("Chart(" + str(props.get("chart")) + "): " + str(props.get("title"))));
+            case "ParametricLab", "PythagorasLab", "GeometryLab", "InteractiveLab" ->
+                    document.add(body("Interactive lab: " + firstNonBlank(props, "title", "scene", "preset")
+                            + (StringUtils.isNotBlank(str(props.get("formulaNote"))) ? " — " + str(props.get("formulaNote")) : "")));
+            case "ConceptDemo", "AnimStepLab", "KnowledgeDemo" ->
+                    document.add(body("Concept demo: " + firstNonBlank(props, "title", "scene", "preset")));
+            case "Quiz", "WorkedExample" ->
+                    document.add(body(kind + ": " + firstNonBlank(props, "title", "prompt", "problem", "question")));
+            case "BeforeAfter", "CompareSlider", "NumberLine", "CoordinateGrid", "BindScope", "ReactiveScope" ->
+                    document.add(body(kind + ": " + firstNonBlank(props, "title", "beforeLabel", "afterLabel")));
             case "Image", "Video", "Model3D" -> document.add(muted("[" + kind + "] " + str(props.get("src"))));
             case "Button", "LinkButton", "InteractiveButton", "ToggleButton" ->
                     document.add(body("[" + firstNonBlank(props, "label", "value", "text") + "]"));

@@ -322,7 +322,7 @@ public class AgentToolCollectionFactory {
             log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
         }
 
-        // 主 Agent 可派发同步子 Agent；dataAgent 场景不挂载
+        // 主 Agent 可派发子 Agent；dataAgent 场景不挂载
         if (!"dataAgent".equals(request.getOutputStyle()) && subAgentRunner != null && subAgentRegistry != null) {
             // 子 Agent 派发工具只挂在主 Agent 上，避免 dataAgent 或子任务再次无限扩散执行边界。
             AgentDispatchTool agentDispatchTool = new AgentDispatchTool(subAgentRunner, subAgentRegistry);

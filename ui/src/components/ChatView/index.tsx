@@ -114,6 +114,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     changeActionStatus,
     loading: streamLoading,
     stopActiveRun,
+    injectActiveRun,
     streamingThoughtMap,
     sendMessage,
     regenerateLastMessage,
@@ -422,7 +423,43 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     [conversation.chatList]
   );
 
-  const headerTitle = conversation.chatTitle || conversation.title;
+  // 顶栏只展示运行状态（含模型重试），不再显示会话标题
+  const headerStatus = useMemo(() => {
+    const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
+    if (!(loading || activeChat?.loading)) {
+      return "";
+    }
+    const tip = activeChat?.tip?.trim();
+    return tip || "正在推进任务…";
+  }, [conversation.chatList, loading]);
+
+  const renderHeaderStatus = (opts?: { showDeepThink?: boolean; badge?: string }) => (
+    <div className="flex min-w-0 items-center gap-3">
+      {headerStatus ? (
+        <div
+          className="thinking-shimmer truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text-soft)]"
+          role="status"
+          aria-live="polite"
+        >
+          {headerStatus}
+        </div>
+      ) : (
+        <div className="h-[24px]" aria-hidden="true" />
+      )}
+      {opts?.showDeepThink && conversation.deepThink ? (
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+          <i className="font_family icon-shendusikao text-[11px]"></i>
+          <span>深度研究</span>
+        </div>
+      ) : null}
+      {opts?.badge ? (
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+          <i className="font_family icon-shendusikao text-[11px]"></i>
+          <span>{opts.badge}</span>
+        </div>
+      ) : null}
+    </div>
+  );
 
   const renderChatDialogues = () => (
     <>
@@ -466,17 +503,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             id="chat-view"
           >
             <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
-              <div className="flex min-w-0 items-center gap-3">
-                <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
-                  {headerTitle}
-                </h2>
-                {conversation.deepThink && (
-                  <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                    <i className="font_family icon-shendusikao text-[11px]"></i>
-                    <span>深度研究</span>
-                  </div>
-                )}
-              </div>
+              {renderHeaderStatus({ showDeepThink: true })}
               <button
                 type="button"
                 onClick={() => onOpenTaskFiles?.()}
@@ -512,7 +539,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                       conversation.role?.available === false
                         ? "当前角色已失效，请新建对话后重新选择角色"
                         : loading
-                          ? "任务进行中..."
+                          ? "任务进行中，可发送指导…"
                           : "希望 Reactor 为你做哪些任务呢？"
                     }
                     showBtn={false}
@@ -520,6 +547,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     busy={loading}
                     disabled={!loading && conversation.role?.available === false}
                     onStop={loading ? () => void stopActiveRun() : undefined}
+                    onInject={loading ? (text) => void injectActiveRun(text) : undefined}
                     product={currentProduct}
                     deepThink={conversation.deepThink}
                     displayOutput={currentProduct}
@@ -588,22 +616,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           ) : (
             // 展开状态（含沉浸窄列）
             <>
-              {/* Header */}
+              {/* Header：运行状态（替换会话标题） */}
               <div className={classNames(
                 "flex items-center justify-between py-4",
                 isFocusMode ? "px-3" : "px-5"
               )}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <h2 className="truncate text-[16px] font-semibold text-[var(--chat-text)]">
-                    {headerTitle}
-                  </h2>
-                  {conversation.deepThink && !isFocusMode && (
-                    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--chat-border)] bg-[var(--chat-surface-soft)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                      <i className="font_family icon-shendusikao text-[11px]"></i>
-                      <span>深度研究</span>
-                    </div>
-                  )}
-                </div>
+                {renderHeaderStatus({ showDeepThink: !isFocusMode })}
                 {!isFocusMode ? (
                   <button
                     type="button"
@@ -648,7 +666,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                         conversation.role?.available === false
                           ? "当前角色已失效，请新建对话后重新选择角色"
                           : loading
-                            ? "任务进行中..."
+                            ? "任务进行中，可发送指导…"
                             : "希望 Reactor 为你做哪些任务呢？"
                       }
                       showBtn={false}
@@ -656,6 +674,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                       busy={loading}
                       disabled={!loading && conversation.role?.available === false}
                       onStop={loading ? () => void stopActiveRun() : undefined}
+                      onInject={loading ? (text) => void injectActiveRun(text) : undefined}
                       product={currentProduct}
                       deepThink={conversation.deepThink}
                       displayOutput={currentProduct}
@@ -772,15 +791,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           id="chat-view"
         >
           <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
-            <div className="flex min-w-0 items-center gap-3">
-              <h2 className="truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text)]">
-                {headerTitle}
-              </h2>
-              <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
-                <i className="font_family icon-shendusikao text-[11px]"></i>
-                <span>数据分析</span>
-              </div>
-            </div>
+            {renderHeaderStatus({ badge: "数据分析" })}
           </div>
 
           <Conversation

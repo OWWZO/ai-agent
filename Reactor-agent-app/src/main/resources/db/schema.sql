@@ -833,10 +833,11 @@ CREATE TABLE IF NOT EXISTS ai_agent_prompt_memory_message (
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_turn (
     id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id         VARCHAR(64)  NOT NULL COMMENT '会话ID',
+    memory_scope       VARCHAR(64)  NOT NULL DEFAULT 'main' COMMENT 'main 或 sub:{agentId}',
     request_id         VARCHAR(64)  NOT NULL COMMENT '请求ID',
     run_id             BIGINT       NULL COMMENT '关联 dialogue_run.id',
-    turn_seq           INT          NOT NULL COMMENT 'session 内从 1 递增',
-    entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve',
+    turn_seq           INT          NOT NULL COMMENT 'scope 内从 1 递增',
+    entry_agent        VARCHAR(32)  NOT NULL COMMENT 'react / plan_solve / sub_*',
     status             TINYINT      NOT NULL DEFAULT 1 COMMENT '1=READY,0=BUILDING,2=INVALID',
     schema_version     INT          NOT NULL DEFAULT 1 COMMENT '投影协议版本',
     message_count      INT          NOT NULL DEFAULT 0 COMMENT '消息条数',
@@ -848,14 +849,16 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_turn (
     deleted            TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '软删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_wm_turn_request (request_id, deleted),
-    UNIQUE KEY uk_wm_turn_session_seq (session_id, turn_seq, deleted),
+    UNIQUE KEY uk_wm_turn_session_scope_seq (session_id, memory_scope, turn_seq, deleted),
     KEY idx_wm_turn_session (session_id, deleted, turn_seq DESC),
+    KEY idx_wm_turn_session_scope (session_id, memory_scope, deleted, turn_seq DESC),
     KEY idx_wm_turn_run (run_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作记忆轮次头（投影）';
 
 CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     session_id           VARCHAR(64)   NOT NULL COMMENT '会话ID',
+    memory_scope         VARCHAR(64)   NOT NULL DEFAULT 'main' COMMENT 'main 或 sub:{agentId}',
     turn_id              BIGINT        NOT NULL COMMENT 'FK -> working_memory_turn.id',
     request_id           VARCHAR(64)   NOT NULL COMMENT '请求ID',
     run_id               BIGINT        NULL COMMENT '关联 dialogue_run.id',
@@ -875,6 +878,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_working_memory_message (
     PRIMARY KEY (id),
     UNIQUE KEY uk_wm_msg_turn_seq (turn_id, seq_no, deleted),
     KEY idx_wm_msg_session_seq (session_id, deleted, turn_id, seq_no),
+    KEY idx_wm_msg_session_scope (session_id, memory_scope, deleted, turn_id, seq_no),
     KEY idx_wm_msg_request (request_id, deleted, seq_no),
     KEY idx_wm_msg_visibility (session_id, visibility, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作记忆消息行（自包含 hydrate）';

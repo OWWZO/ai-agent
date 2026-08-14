@@ -75,6 +75,27 @@ function parseCameraZ(value: unknown): number {
   return 5;
 }
 
+function fitCameraToObject(
+  camera: THREE.PerspectiveCamera,
+  object: THREE.Object3D,
+  zoom = 1
+): void {
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+  const fov = (camera.fov * Math.PI) / 180;
+  const fitH = maxDim / (2 * Math.tan(fov / 2));
+  const fitW = fitH / Math.max(camera.aspect, 0.2);
+  const dist = Math.max(fitH, fitW) * 1.35 * Math.max(0.6, zoom);
+  camera.position.set(center.x, center.y + maxDim * 0.06, center.z + dist);
+  camera.near = Math.max(0.05, dist / 80);
+  camera.far = dist * 80;
+  camera.lookAt(center);
+  camera.updateProjectionMatrix();
+}
+
 function parseNumber(value: unknown, fallback: number, min: number, max: number): number {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(n)) return fallback;
@@ -194,9 +215,9 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
     // 每次 options 变化都建立完整的独立 scene；清理函数会销毁旧 renderer，避免旧动画
     // 循环继续引用已卸载的 DOM 节点。
     scene.background = new THREE.Color(options.background);
-    scene.fog = new THREE.Fog(options.background, options.cameraZ + 2, options.cameraZ + 11);
+    scene.fog = new THREE.Fog(options.background, 8, 28);
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
     camera.position.set(0, 0.15, options.cameraZ);
 
     const renderer = new THREE.WebGLRenderer({
@@ -206,6 +227,9 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, options.dpr));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
 
     const group = new THREE.Group();
@@ -297,8 +321,10 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
       const width = Math.max(Math.floor(rect.width), 1);
       const height = Math.max(Math.floor(rect.height), 1);
       camera.aspect = width / height;
-      camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      fitCameraToObject(camera, group, options.cameraZ / 5);
+      const dist = camera.position.length();
+      scene.fog = new THREE.Fog(options.background, dist + 1.5, dist + 14);
     };
 
     resize();
@@ -308,8 +334,8 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
       typeof IntersectionObserver === "undefined"
         ? null
         : new IntersectionObserver(([entry]) => {
-            visible = Boolean(entry?.isIntersecting);
-          });
+          visible = Boolean(entry?.isIntersecting);
+        });
     intersectionObserver?.observe(host);
 
     const tick = () => {
@@ -360,8 +386,13 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
         ref={hostRef}
         role="img"
         aria-label={options.title}
-        className="w-full"
-        style={{ height: options.height, background: options.background }}
+        className="w-full min-h-[320px] max-h-[min(64vh,720px)] aspect-[16/9]"
+        style={{
+          ...(props.height != null && String(props.height) !== ""
+            ? { minHeight: options.height, height: options.height, maxHeight: "none", aspectRatio: "auto" }
+            : {}),
+          background: options.background,
+        }}
       />
     </figure>
   );

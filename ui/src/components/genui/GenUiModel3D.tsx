@@ -76,6 +76,9 @@ const GenUiModel3D: FC<Props> = memo(
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.domElement.style.display = "block";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.height = "100%";
       host.appendChild(renderer.domElement);
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -180,8 +183,13 @@ const GenUiModel3D: FC<Props> = memo(
             ref={hostRef}
             role="img"
             aria-label={options.caption || "3D model"}
-            className="w-full"
-            style={{ height: options.height, background: options.background }}
+            className="w-full min-h-[280px] max-h-[min(60vh,680px)] aspect-[16/10]"
+            style={{
+              ...(height != null && String(height) !== ""
+                ? { minHeight: options.height, height: options.height, maxHeight: "none", aspectRatio: "auto" }
+                : {}),
+              background: options.background,
+            }}
           />
           {status === "loading" && (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-white/70">

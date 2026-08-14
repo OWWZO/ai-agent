@@ -194,6 +194,13 @@ function handleTaskMessageByType(
     case "agent_stream":
       handleAgentStreamMessage(eventData, currentChat);
       break;
+    case "llm_retry":
+      // 仅更新状态条，不进入任务时间线
+      handleLlmRetryMessage(eventData, currentChat);
+      break;
+    case "subagent_progress":
+      // 子 Agent 静默心跳：不进时间线/工作区，避免误显示「正在调用工具」
+      break;
     case "tool_thought":
       // 助手过程 content（有 tool 时），不是思考
       handleToolThoughtMessage(eventData, currentChat, taskIndex, toolIndex);
@@ -364,6 +371,27 @@ function handleToolThoughtMessage(
   }
 
   updateToolThought(tasks[taskIndex][toolIndex], thoughtText || "", isFinal);
+}
+
+/** 模型瞬态失败重试：只更新 tip，不进任务列表 */
+function handleLlmRetryMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+) {
+  const nested = toNestedResultMap(eventData.resultMap);
+  const detail = (isRecord(nested.resultMap) ? nested.resultMap : nested) as Record<
+    string,
+    unknown
+  >;
+  const attempt = Number(detail.attempt);
+  const maxAttempts = Number(detail.maxAttempts);
+  const message =
+    typeof detail.message === "string" && detail.message.trim()
+      ? detail.message.trim()
+      : Number.isFinite(attempt) && Number.isFinite(maxAttempts) && maxAttempts > 0
+        ? `模型请求失败，正在重试（第 ${attempt}/${maxAttempts} 次）…`
+        : "模型请求失败，正在重试…";
+  currentChat.tip = message;
 }
 
 /** 原生 CoT：只写 llm_reasoning，不与 tool_thought 混用 */

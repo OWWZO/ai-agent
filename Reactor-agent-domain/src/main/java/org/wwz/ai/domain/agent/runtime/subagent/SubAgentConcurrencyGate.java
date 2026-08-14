@@ -5,7 +5,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
- * 同步子 Agent 全局并发闸门。
+ * 子 Agent 全局并发闸门。
  * 限制同时阻塞在 SubAgentRunner 中的嵌套 Agent 数量，避免打满 task/tool 池。
  */
 public final class SubAgentConcurrencyGate {

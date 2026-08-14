@@ -116,6 +116,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  FolderOpen: () => <span>folder</span>,
   PanelLeftClose: () => <span>left</span>,
   PanelRightClose: () => <span>right</span>,
 }));
@@ -136,6 +137,7 @@ vi.mock("./useConversationStream", () => ({
     streamingThoughtMap: {},
     sendMessage: vi.fn(),
     stopActiveRun: vi.fn(),
+    injectActiveRun: vi.fn(),
     regenerateLastMessage: vi.fn(),
   }),
 }));

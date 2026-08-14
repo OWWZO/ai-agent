@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
+import org.wwz.ai.domain.agent.runtime.cancel.PendingInjectMessage;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -18,12 +19,14 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.memory.ltm.LtmOwner;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Agent 运行时上下文：请求身份、工具会话、记忆、账本与取消控制。
@@ -305,6 +308,20 @@ public class AgentContext {
     RunCancellation runCancellation;
 
     /**
+     * 运行中用户/协调注入队列（控制面；与 ActiveRun 共享同一实例）。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    @Builder.Default
+    ConcurrentLinkedQueue<PendingInjectMessage> pendingInjects = new ConcurrentLinkedQueue<>();
+
+    /**
+     * working_memory 投影作用域：main 或 sub:{agentId}。
+     */
+    @Builder.Default
+    String memoryScope = WorkingMemoryScopes.MAIN;
+
+    /**
      * 提示词模板类型
      * 用途：
      * 1. 模板加载：根据类型加载不同场景的提示词模板（如default=通用模板、ecommerce=电商模板）；
@@ -350,6 +367,46 @@ public class AgentContext {
 
     public String getRunCancelReason() {
         return runCancellation == null ? null : runCancellation.getReason();
+    }
+
+    /**
+     * 绑定与 ActiveRun 共享的 inject 队列（控制面，不 begin 新 run）。
+     */
+    public void bindPendingInjectQueue(ConcurrentLinkedQueue<PendingInjectMessage> queue) {
+        if (queue != null) {
+            this.pendingInjects = queue;
+        }
+    }
+
+    public ConcurrentLinkedQueue<PendingInjectMessage> requirePendingInjects() {
+        if (pendingInjects == null) {
+            pendingInjects = new ConcurrentLinkedQueue<>();
+        }
+        return pendingInjects;
+    }
+
+    public void offerInject(PendingInjectMessage message) {
+        if (message == null || message.getText() == null || message.getText().isBlank()) {
+            return;
+        }
+        requirePendingInjects().offer(message);
+    }
+
+    /**
+     * 取出并清空待注入消息（步进边界调用）。
+     */
+    public List<PendingInjectMessage> drainPendingInjects() {
+        ConcurrentLinkedQueue<PendingInjectMessage> queue = requirePendingInjects();
+        List<PendingInjectMessage> drained = new ArrayList<>();
+        PendingInjectMessage next;
+        while ((next = queue.poll()) != null) {
+            drained.add(next);
+        }
+        return drained;
+    }
+
+    public String resolveMemoryScope() {
+        return WorkingMemoryScopes.normalize(memoryScope);
     }
 
     public void bindCurrentToolArtifactSource(ToolArtifactSource toolArtifactSource) {

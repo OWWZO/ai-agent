@@ -9,14 +9,17 @@ public interface IWorkingMemoryTurnDao {
 
     int insertTurn(WorkingMemoryTurn turn);
 
-    Integer selectMaxTurnSeq(@Param("sessionId") String sessionId);
+    Integer selectMaxTurnSeq(@Param("sessionId") String sessionId,
+                             @Param("memoryScope") String memoryScope);
 
     WorkingMemoryTurn selectByRequestId(@Param("requestId") String requestId);
 
-    java.util.List<WorkingMemoryTurn> selectReadyBySessionId(@Param("sessionId") String sessionId);
+    java.util.List<WorkingMemoryTurn> selectReadyBySessionIdAndScope(@Param("sessionId") String sessionId,
+                                                                     @Param("memoryScope") String memoryScope);
 
     /**
-     * 将会话内全部 READY turns 标为 INVALID（压缩后投影替换）。
+     * 将指定 scope 内全部 READY turns 标为 INVALID（压缩后投影替换）。
      */
-    int markReadyInvalidBySessionId(@Param("sessionId") String sessionId);
+    int markReadyInvalidBySessionIdAndScope(@Param("sessionId") String sessionId,
+                                            @Param("memoryScope") String memoryScope);
 }

@@ -1,9 +1,19 @@
-import { FC, memo, useState } from "react";
+import { FC, memo, useState, type ReactNode } from "react";
 import classNames from "classnames";
+import { motion, useReducedMotion } from "motion/react";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 import GenUiChart from "./GenUiChart";
 import GenUiModel3D from "./GenUiModel3D";
 import GenUiThreeJsFrame from "./GenUiThreeJsFrame";
+import ParametricLab from "./ParametricLab";
+import ConceptDemo from "./ConceptDemo";
+import { GenUiBindScope, useGenUiBind } from "./GenUiBind";
+import { resolveBoundProps } from "./bindProps";
+import { GenUiQuiz, GenUiWorkedExample } from "./GenUiQuiz";
+import { BeforeAfter } from "./BeforeAfter";
+import { NumberLine } from "./NumberLine";
+import { CoordinateGrid } from "./CoordinateGrid";
 import {
   GenUiActionButton,
   GenUiFormField,
@@ -39,6 +49,40 @@ const textColor = (color?: string) => {
   }
 };
 
+const DESIGN_SURFACE_TONES: Record<string, string> = {
+  default: "genui-tone genui-tone-default",
+  dashboard: "genui-tone genui-tone-dashboard",
+  lesson: "genui-tone genui-tone-lesson",
+  report: "genui-tone genui-tone-report",
+  media: "genui-tone genui-tone-media",
+};
+
+function resolveTone(raw: unknown): string {
+  const key = String(raw || "default").toLowerCase();
+  return DESIGN_SURFACE_TONES[key] || DESIGN_SURFACE_TONES.default;
+}
+
+const GenUiEnter: FC<{ index: number; children: ReactNode }> = ({
+  index,
+  children,
+}) => {
+  const reduce = useReducedMotion();
+  if (reduce) return <>{children}</>;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: DURATION.message,
+        ease: EASE_OUT,
+        delay: Math.min(index * 0.04, 0.28),
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
 const GenUiTabs: FC<{ items: GenUiNodeData[]; depth: number }> = ({
   items,
   depth,
@@ -62,8 +106,8 @@ const GenUiTabs: FC<{ items: GenUiNodeData[]; depth: number }> = ({
               className={classNames(
                 "rounded-md px-3 py-1.5 text-[12px] transition-colors",
                 selected
-                  ? "bg-white font-medium text-[var(--chat-text)] shadow-sm"
-                  : "text-[var(--chat-text-soft)] hover:bg-white/70"
+                  ? "bg-[var(--chat-surface)] font-medium text-[var(--chat-text)] shadow-sm"
+                  : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface)]/70"
               )}
               onClick={() => setActive(index)}
             >
@@ -124,42 +168,78 @@ const GenUiAccordion: FC<{ items: GenUiNodeData[]; depth: number }> = ({
 
 const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
   if (!node || !node.kind) return null;
-  const props = node.props || {};
+  const bind = useGenUiBind();
+  const rawProps = node.props || {};
+  const props = bind ? resolveBoundProps(rawProps, bind.values) : rawProps;
   const children = Array.isArray(node.children) ? node.children : [];
   const key = node.nodeId || `${node.kind}-${depth}`;
 
   // 组件按 kind 做纯渲染分派，所有子节点都通过 renderChildren 递归进入同一安全边界；
   // 未知 kind 的处理位于 switch 默认分支，保证新增节点至少能展示文本和子树。
-  const renderChildren = () =>
-    children.map((child, index) => (
-      <GenUiNode key={child.nodeId || `${key}-${index}`} node={child} depth={depth + 1} />
-    ));
+  // depth < 2 时做入场 stagger，深层树不再包 motion 以免性能抖动。
+  const renderChildren = (animate = false) =>
+    children.map((child, index) => {
+      const childNode = (
+        <GenUiNode
+          key={child.nodeId || `${key}-${index}`}
+          node={child}
+          depth={depth + 1}
+        />
+      );
+      if (!animate || depth >= 2) return childNode;
+      return (
+        <GenUiEnter key={child.nodeId || `${key}-enter-${index}`} index={index}>
+          {childNode}
+        </GenUiEnter>
+      );
+    });
 
   switch (node.kind) {
-    case "DesignSurface":
+    case "DesignSurface": {
+      const labKinds = new Set([
+        "ParametricLab",
+        "PythagorasLab",
+        "GeometryLab",
+        "InteractiveLab",
+        "ConceptDemo",
+        "AnimStepLab",
+        "KnowledgeDemo",
+        "Quiz",
+        "WorkedExample",
+        "BeforeAfter",
+        "NumberLine",
+        "CoordinateGrid",
+        "BindScope",
+      ]);
+      const onlyLabs =
+        children.length > 0 && children.every((c) => labKinds.has(String(c.kind || "")));
       return (
         <div
           key={key}
           className={classNames(
-            "rounded-2xl border border-[var(--chat-border)]/60 bg-[var(--chat-surface)] p-4",
-            props.padding === "lg" && "p-6",
-            props.padding === "sm" && "p-3",
+            resolveTone(props.tone || props.theme || props.variant),
+            onlyLabs
+              ? "p-0"
+              : "rounded-2xl border border-[var(--chat-border)]/60 p-4",
+            !onlyLabs && props.padding === "lg" && "p-6",
+            !onlyLabs && props.padding === "sm" && "p-3",
             props.padding === "none" && "p-0"
           )}
         >
-          {renderChildren()}
+          {renderChildren(true)}
         </div>
       );
+    }
     case "Stack":
       return (
         <div key={key} className="flex flex-col gap-3">
-          {renderChildren()}
+          {renderChildren(depth < 1)}
         </div>
       );
     case "Row":
       return (
         <div key={key} className="flex flex-wrap items-center gap-3">
-          {renderChildren()}
+          {renderChildren(depth < 1)}
         </div>
       );
     case "Grid": {
@@ -170,7 +250,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           className="grid gap-3"
           style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
         >
-          {renderChildren()}
+          {renderChildren(depth < 1)}
         </div>
       );
     }
@@ -257,7 +337,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         <div key={key} className="space-y-1">
           {props.label ? <div className="text-[12px] text-[var(--chat-text-soft)]">{props.label}</div> : null}
           <div className="h-2 overflow-hidden rounded-full bg-[var(--chat-surface-muted)]">
-            <div className="h-full rounded-full bg-[var(--chat-accent)]" style={{ width: `${value}%` }} />
+            <div
+              className="h-full rounded-full bg-[var(--chat-accent)] transition-[width] duration-500 ease-[var(--ease-out)]"
+              style={{ width: `${value}%` }}
+            />
           </div>
         </div>
       );
@@ -277,7 +360,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     case "Table": {
       const headers: string[] = Array.isArray(props.headers) ? props.headers : [];
       return (
-        <div key={key} className="max-h-[420px] overflow-auto rounded-lg border border-[var(--chat-border)]/60">
+        <div key={key} className="max-h-[min(60vh,640px)] overflow-auto rounded-lg border border-[var(--chat-border)]/60">
           <table className="min-w-full text-left text-[13px]">
             {headers.length ? (
               <thead className="sticky top-0 z-10 bg-[var(--chat-surface-muted)]/90 text-[var(--chat-text-soft)] backdrop-blur">
@@ -322,7 +405,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           key={key}
           src={String(props.src)}
           alt={String(props.alt || "")}
-          className="max-h-64 max-w-full rounded-lg object-contain"
+          className="max-h-[min(60vh,560px)] w-full rounded-lg object-contain"
         />
       ) : null;
     case "Icon":
@@ -359,6 +442,130 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         />
       );
     }
+    case "ParametricLab":
+    case "PythagorasLab":
+    case "GeometryLab":
+    case "InteractiveLab":
+      return (
+        <ParametricLab
+          key={key}
+          title={props.title}
+          description={props.description || props.subtitle}
+          scene={
+            node.kind === "PythagorasLab"
+              ? props.scene || "right_triangle"
+              : props.scene || props.preset
+          }
+          preset={
+            node.kind === "PythagorasLab"
+              ? "right_triangle"
+              : props.preset || props.scene
+          }
+          params={props.params}
+          outputs={props.outputs || props.formulas}
+          svg={props.svg || props.customSvg}
+          height={Number(props.height) || undefined}
+          showFormulas={props.showFormulas !== false && props.showFormula !== false}
+          formulaNote={props.formulaNote || props.formula || props.equation}
+          accent={props.accent || props.color}
+        />
+      );
+    case "ConceptDemo":
+    case "AnimStepLab":
+    case "KnowledgeDemo":
+      return (
+        <ConceptDemo
+          key={key}
+          title={props.title}
+          description={props.description || props.subtitle}
+          scene={props.scene || props.preset || props.mode}
+          steps={props.steps}
+          nodes={props.nodes}
+          edges={props.edges}
+          formulas={props.formulas || props.tokens}
+          left={props.left}
+          right={props.right}
+          leftTitle={props.leftTitle}
+          rightTitle={props.rightTitle}
+          height={Number(props.height) || undefined}
+          autoPlay={props.autoPlay !== false && props.autoplay !== false}
+          loop={props.loop !== false}
+          stepDuration={Number(props.stepDuration) || Number(props.duration) || undefined}
+        />
+      );
+    case "BindScope":
+    case "ReactiveScope":
+      return (
+        <GenUiBindScope
+          key={key}
+          params={props.params || props.state}
+          outputs={props.outputs}
+          showControls={props.showControls !== false}
+        >
+          {renderChildren()}
+        </GenUiBindScope>
+      );
+    case "Quiz":
+      return (
+        <GenUiQuiz
+          key={key}
+          title={props.title}
+          prompt={props.prompt || props.question}
+          options={props.options}
+          answer={props.answer || props.correct}
+          explanation={props.explanation || props.hint}
+          multi={Boolean(props.multi)}
+        />
+      );
+    case "WorkedExample":
+      return (
+        <GenUiWorkedExample
+          key={key}
+          title={props.title}
+          problem={props.problem || props.prompt}
+          steps={props.steps}
+          answer={props.answer}
+        />
+      );
+    case "BeforeAfter":
+    case "CompareSlider":
+      return (
+        <BeforeAfter
+          key={key}
+          before={props.before || props.left}
+          after={props.after || props.right}
+          beforeLabel={props.beforeLabel || props.leftLabel}
+          afterLabel={props.afterLabel || props.rightLabel}
+          height={Number(props.height) || undefined}
+        />
+      );
+    case "NumberLine":
+      return (
+        <NumberLine
+          key={key}
+          min={props.min}
+          max={props.max}
+          value={props.value}
+          points={props.points}
+          title={props.title}
+          height={Number(props.height) || undefined}
+        />
+      );
+    case "CoordinateGrid":
+      return (
+        <CoordinateGrid
+          key={key}
+          xmin={props.xmin ?? props.minX}
+          xmax={props.xmax ?? props.maxX}
+          ymin={props.ymin ?? props.minY}
+          ymax={props.ymax ?? props.maxY}
+          points={props.points}
+          vectors={props.vectors}
+          fn={props.fn || props.expr}
+          title={props.title}
+          height={Number(props.height) || undefined}
+        />
+      );
     case "Button":
     case "LinkButton":
     case "InteractiveButton":
@@ -410,7 +617,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           {Array.isArray(props.forecast) && props.forecast.length ? (
             <div className="mt-3 grid grid-cols-4 gap-2">
               {props.forecast.slice(0, 4).map((f: any, i: number) => (
-                <div key={i} className="rounded-lg bg-white/70 px-2 py-1 text-center text-[11px]">
+                <div key={i} className="rounded-lg bg-[var(--chat-surface-soft)] px-2 py-1 text-center text-[11px]">
                   <div className="text-[var(--chat-text-soft)]">{f.day || ""}</div>
                   <div className="text-base">{f.icon || ""}</div>
                   <div className="text-[var(--chat-text)]">{f.high || ""}/{f.low || ""}</div>
@@ -468,8 +675,10 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
       );
     case "QuoteCard":
       return (
-        <div key={key} className="rounded-xl border-l-4 border-[var(--chat-accent)] bg-[var(--chat-surface-soft)]/50 p-3">
-          <div className="text-[14px] italic text-[var(--chat-text)]">“{props.quote || props.value || ""}”</div>
+        <div key={key} className="rounded-xl border border-[var(--chat-border)]/60 bg-[var(--chat-surface-soft)]/50 p-3">
+          <div className="text-[14px] italic leading-relaxed text-[var(--chat-text)]">
+            “{props.quote || props.value || ""}”
+          </div>
           <div className="mt-2 text-[12px] text-[var(--chat-text-soft)]">
             — {props.author || ""}{props.role ? ` · ${props.role}` : ""}
           </div>
@@ -598,7 +807,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
       const frameTitle =
         typeof props.title === "string" && props.title.trim() ? props.title.trim() : "Embedded HTML";
       const h = Number(props.height);
-      const frameHeight = Number.isFinite(h) && h > 0 ? Math.min(2000, Math.max(120, Math.round(h))) : 320;
+      const frameHeight = Number.isFinite(h) && h > 0 ? Math.min(2000, Math.max(120, Math.round(h))) : undefined;
       const trimmed = rawHtml.trim();
       const srcDoc = !trimmed
         ? ""
@@ -624,8 +833,8 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
             title={frameTitle}
             srcDoc={srcDoc}
             sandbox="allow-scripts"
-            className="w-full border-0"
-            style={{ height: frameHeight }}
+            className="w-full border-0 min-h-[280px] max-h-[min(64vh,720px)] aspect-[16/10]"
+            style={frameHeight ? { height: frameHeight, maxHeight: "none", aspectRatio: "auto" } : undefined}
             referrerPolicy="no-referrer"
           />
         </div>
@@ -708,7 +917,7 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
               key={`${src}-${i}`}
               src={src}
               alt={props.caption || `image-${i + 1}`}
-              className="h-28 w-full rounded-lg object-cover"
+              className="aspect-[4/3] w-full rounded-lg object-cover"
             />
           ))}
         </div>

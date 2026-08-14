@@ -89,6 +89,89 @@ public final class GenUiCatalog {
                         "showLegend", "boolean",
                         "showGrid", "boolean"
                 )));
+        // Teaching / parametric labs — client-side sliders recompute formulas + scene (no chat turn)
+        list.add(entry("ParametricLab",
+                "Interactive teaching lab: drag sliders → formulas + SVG scene update live. "
+                        + "Use for math demos (Pythagoras, circle, functions). Prefer over static Chart for pedagogy.",
+                Map.of(
+                        "title", "string",
+                        "description", "string",
+                        "scene", "right_triangle|circle|rectangle|linear|quadratic|unit_circle|number_line|coordinate|custom_svg|none",
+                        "params", "[{id,label,value,min,max,step,unit}]",
+                        "outputs", "[{id,label,expr,format,unit}] expr uses param ids + sqrt/sin/cos/pi",
+                        "svg", "optional SVG markup with {{id}} placeholders when scene=custom_svg",
+                        "formulaNote", "string shown as equation badge",
+                        "height", "number",
+                        "showFormulas", "boolean"
+                )));
+        list.add(entry("PythagorasLab",
+                "Shortcut for ParametricLab scene=right_triangle (勾股定理 a²+b²=c²). Drag a/b → triangle + c update.",
+                Map.of(
+                        "title", "string",
+                        "description", "string",
+                        "params", "optional override [{id:a|b,...}]",
+                        "outputs", "optional override",
+                        "height", "number"
+                )));
+        list.add(entry("GeometryLab", "Alias of ParametricLab for geometry teaching demos",
+                Map.of("scene", "right_triangle|circle|rectangle|unit_circle", "params", "array", "outputs", "array", "title", "string")));
+        list.add(entry("InteractiveLab", "Alias of ParametricLab for general interactive formula demos",
+                Map.of("scene", "string", "params", "array", "outputs", "array", "title", "string", "svg", "string")));
+        // Concept animation demos — play/pause/scrub step narrative (no chat turn)
+        Map<String, String> conceptProps = new LinkedHashMap<>();
+        conceptProps.put("title", "string");
+        conceptProps.put("description", "string");
+        conceptProps.put("scene", "flow|stack|tree|formula|compare|sequence");
+        conceptProps.put("steps", "[{title,caption,duration,ms,highlight[],badge,formula}]");
+        conceptProps.put("nodes", "[{id,label}] for flow/stack/tree/sequence");
+        conceptProps.put("edges", "[{id,from,to,label}] for flow/tree/sequence");
+        conceptProps.put("formulas", "string[] tokens for scene=formula");
+        conceptProps.put("left", "string[] for scene=compare");
+        conceptProps.put("right", "string[] for scene=compare");
+        conceptProps.put("autoPlay", "boolean default true");
+        conceptProps.put("loop", "boolean default true");
+        conceptProps.put("height", "number");
+        list.add(entry("ConceptDemo",
+                "Animated concept walkthrough: auto-play steps with play/pause/scrub. "
+                        + "Use for knowledge demos (request flow, layering, tree, formula transform, compare). "
+                        + "Prefer over static Stepper/Timeline when user should SEE the idea unfold.",
+                conceptProps));
+        list.add(entry("AnimStepLab", "Alias of ConceptDemo for step-by-step concept animation",
+                Map.of("scene", "flow|stack|tree|formula|compare|sequence", "steps", "array", "title", "string")));
+        list.add(entry("KnowledgeDemo", "Alias of ConceptDemo for knowledge/concept animation demos",
+                Map.of("scene", "string", "steps", "array", "nodes", "array", "edges", "array", "title", "string")));
+        list.add(entry("BindScope",
+                "Reactive scope: sliders update sibling nodes. Children props may use {{expr}} or $id (e.g. Text value='{{a}}', Chart, NumberLine).",
+                Map.of(
+                        "params", "[{id,label,value,min,max,step}]",
+                        "outputs", "optional derived [{id,expr}] e.g. {id:c, expr:sqrt(a*a+b*b)}",
+                        "showControls", "boolean default true"
+                )));
+        list.add(entry("ReactiveScope", "Alias of BindScope",
+                Map.of("params", "array", "outputs", "array")));
+        list.add(entry("Quiz",
+                "Multiple-choice quiz with local reveal (no chat). Use after ConceptDemo/ParametricLab.",
+                Map.of(
+                        "prompt", "string question",
+                        "options", "string[] or [{id,label}]",
+                        "answer", "id or id[]",
+                        "explanation", "string shown after submit",
+                        "multi", "boolean"
+                )));
+        list.add(entry("WorkedExample",
+                "Step-by-step worked example; user reveals each step then final answer.",
+                Map.of("title", "string", "problem", "string", "steps", "[{title,body,answer}]", "answer", "final answer")));
+        list.add(entry("BeforeAfter",
+                "Drag-to-compare two images or text panels.",
+                Map.of("before", "url or text", "after", "url or text", "beforeLabel", "string", "afterLabel", "string")));
+        list.add(entry("CompareSlider", "Alias of BeforeAfter",
+                Map.of("before", "string", "after", "string")));
+        list.add(entry("NumberLine",
+                "Number line. Bind value/points via BindScope {{x}}.",
+                Map.of("min", "number", "max", "number", "value", "number or {{x}}", "points", "[{x,label}]", "title", "string")));
+        list.add(entry("CoordinateGrid",
+                "Coordinate plane with points/vectors/fn. Bind via BindScope.",
+                Map.of("xmin", "number", "xmax", "number", "points", "[{x,y,label}]", "vectors", "[{x,y}]", "fn", "y expr in x", "title", "string")));
         // Cards
         list.add(entry("Card", "Card container", Map.of("title", "string", "subtitle", "string", "variant", "default|elevated|outlined", "padding", "sm|md|lg")));
         list.add(entry("WeatherCard", "Weather card", Map.of("location", "string", "temperature", "string", "condition", "string", "icon", "string", "forecast", "array")));

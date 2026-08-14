@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmPromptGuidance;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactFormatter;
+import org.wwz.ai.domain.agent.runtime.cancel.PendingInjectMessage;
 import org.wwz.ai.domain.agent.runtime.dto.Memory;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
@@ -208,6 +209,8 @@ public abstract class BaseAgent {
                 }
                 currentStep++;
                 if (context != null) {
+                    // 步进边界 drain 控制面 inject（用户中途指导），再进入 think
+                    drainPendingInjectsIntoMemory();
                     // 每步进入前都刷新一次当前位置，供 LLM / tool 账本读取。
                     context.markExecutionPosition(getName(), currentStep);
                     // Plan Mode：sparse/full 提醒 + mid-run Enter 时补 system 指引
@@ -232,6 +235,33 @@ public abstract class BaseAgent {
         }
 
         return results.isEmpty() ? "No steps executed" : results.get(results.size() - 1);
+    }
+
+    /**
+     * 步进边界：把控制面 inject 写入 Memory，供下一轮 think 看到。
+     */
+    protected void drainPendingInjectsIntoMemory() {
+        if (context == null) {
+            return;
+        }
+        List<PendingInjectMessage> injects = context.drainPendingInjects();
+        if (injects == null || injects.isEmpty()) {
+            return;
+        }
+        for (PendingInjectMessage inject : injects) {
+            if (inject == null || StringUtils.isBlank(inject.getText())) {
+                continue;
+            }
+            String source = StringUtils.defaultIfBlank(inject.getSource(), PendingInjectMessage.SOURCE_USER);
+            String wrapped = "<system-reminder>\n"
+                    + "The user sent a mid-run guidance message (source=" + source + "). "
+                    + "Follow it carefully for the rest of this run.\n"
+                    + "</system-reminder>\n\n"
+                    + inject.getText().trim();
+            updateMemory(RoleType.USER, wrapped, null);
+            log.info("{} {} drained user inject source={} chars={}",
+                    context.getRequestId(), getName(), source, inject.getText().length());
+        }
     }
 
     /**
@@ -634,6 +664,7 @@ public abstract class BaseAgent {
         try {
             List<Message> compacted = compaction.applyIfNeededMidRun(
                     context.getSessionId(),
+                    context.resolveMemoryScope(),
                     context.getRequestId(),
                     current);
             if (compacted == null || compacted == current || compacted.equals(current)) {

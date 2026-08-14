@@ -52,6 +52,11 @@ type Props = {
   busy?: boolean;
   /** 任务进行中点击发送区停止本轮 */
   onStop?: () => void;
+  /**
+   * 任务进行中注入指导（控制面，不开新 run）。
+   * 提供后 busy 时仍可输入并发送，走 inject 而非 send。
+   */
+  onInject?: (text: string) => void | Promise<void>;
   size: string;
   product?: CHAT.Product;
   deepThink?: boolean;
@@ -140,6 +145,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     disabled,
     busy = false,
     onStop,
+    onInject,
     size,
     product,
     deepThink = false,
@@ -193,12 +199,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const uploadedFiles = attachmentOrder
     .map((id) => attachmentUploads[id]?.uploadedFile)
     .filter((file): file is CHAT.TFile => Boolean(file));
+  const canInject =
+    Boolean(onInject) &&
+    Boolean(question.trim()) &&
+    !disabled &&
+    busy &&
+    !hasUploadingAttachment &&
+    !hasFailedAttachment;
   const canSend =
     Boolean(question.trim()) &&
     !disabled &&
     !busy &&
     !hasUploadingAttachment &&
     !hasFailedAttachment;
+  const canSubmit = canSend || canInject;
   const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
 
   const handleAttachmentsAdded = useCallback(
@@ -242,6 +256,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     const trimmed = text.trim().slice(0, MAX_QUERY_CHARS);
     if (!trimmed || disabled || hasUploadingAttachment || hasFailedAttachment) return;
 
+    if (busy && onInject) {
+      void Promise.resolve(onInject(trimmed));
+      setQuestion("");
+      return;
+    }
+    if (busy) {
+      return;
+    }
+
     send(
       buildSubmitPayload({
         question: trimmed,
@@ -281,7 +304,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       return;
     }
 
-    if (!canSend) {
+    if (!canSubmit) {
       event.preventDefault();
       return;
     }
@@ -474,9 +497,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   </span>
                 </div>
               ) : null}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {busy && onStop ? (
+              {busy && onStop ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button
                       type="button"
                       className="relative flex size-8 items-center justify-center rounded-full border-0 bg-[#1d1d1f] p-0 text-white shadow-none transition-opacity hover:opacity-90"
@@ -489,24 +512,41 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     >
                       <span className="block size-2.5 rounded-[2px] bg-white" />
                     </button>
-                  ) : (
+                  </TooltipTrigger>
+                  <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
+                    停止
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {(!busy || onInject) ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <PromptInputSubmit
                       className={cn(
                         "reactor-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
                         "bg-[#1d1d1f] text-white hover:opacity-90",
                         "disabled:cursor-not-allowed disabled:bg-[#e8e8ed] disabled:text-[#aeaeb2] disabled:opacity-100"
                       )}
-                      disabled={!canSend}
+                      disabled={!canSubmit}
                       variant="ghost"
                     >
                       <ArrowUpIcon className="size-[15px] stroke-[2.25]" />
                     </PromptInputSubmit>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                  {busy ? (onStop ? "停止" : "任务进行中") : "发送"}
-                </TooltipContent>
-              </Tooltip>
+                  </TooltipTrigger>
+                  <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
+                    {busy && onInject ? "发送指导" : "发送"}
+                  </TooltipContent>
+                </Tooltip>
+              ) : busy ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="sr-only">任务进行中</span>
+                  </TooltipTrigger>
+                  <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
+                    任务进行中
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
             </PromptInputTools>
           </PromptInputFooter>
         </PromptInput>

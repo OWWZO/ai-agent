@@ -14,12 +14,16 @@ import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import reactor.core.publisher.Flux;
 
+import reactor.core.Disposable;
+
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 基于 Flux<ChatResponse> 的统一流式响应处理器。
@@ -80,9 +84,13 @@ public class StreamResponseHandler {
         int[] tokenIndex = new int[]{1};
         int[] emittedLength = new int[]{0};
         LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
+        AtomicReference<Disposable> subscription = new AtomicReference<>();
 
-        flux.subscribe(response -> {
+        Disposable disposable = flux.subscribe(response -> {
             try {
+                if (abortIfCancelled(context, future, subscription.get())) {
+                    return;
+                }
                 usageHolder[0] = usageHolder[0].mergeLatest(
                         LlmUsageSnapshot.resolve(response == null ? null : response.getMetadata()));
                 String chunkContent = extractText(response);
@@ -108,6 +116,9 @@ public class StreamResponseHandler {
             }
         }, future::completeExceptionally, () -> {
             try {
+                if (abortIfCancelled(context, future, subscription.get())) {
+                    return;
+                }
                 // onComplete 负责冲刷最后不足一个 interval 的增量，并发送可选的最终快照。
                 if (pushToClient && messageId != null && streamBuffer.length() > 0) {
                     context.getPrinter().send(messageId, context.getStreamMessageType(), streamBuffer.toString(), false);
@@ -128,6 +139,8 @@ public class StreamResponseHandler {
                 future.completeExceptionally(e);
             }
         });
+        subscription.set(disposable);
+        wireCancelDispose(context, future, disposable);
 
         return future;
     }
@@ -173,10 +186,14 @@ public class StreamResponseHandler {
         LlmUsageSnapshot[] usageHolder = new LlmUsageSnapshot[]{LlmUsageSnapshot.empty()};
         int[] chunkCount = new int[]{0};
         int[] toolDeltaCount = new int[]{0};
+        AtomicReference<Disposable> subscription = new AtomicReference<>();
 
-        flux.subscribe(
+        Disposable disposable = flux.subscribe(
             response -> {
                 try {
+                    if (abortIfCancelled(context, future, subscription.get())) {
+                        return;
+                    }
                     // 一个 ChatResponse 可能同时携带正文、reasoning 和多个 tool-call
                     // 片段，逐类合并后再按节流策略向前端发事件。
                     // 每个 chunk 同时可能包含正文、reasoning 和 tool_call delta，三类内容必须独立累积。
@@ -251,6 +268,9 @@ public class StreamResponseHandler {
 
             () -> {
                 try {
+                    if (abortIfCancelled(context, future, subscription.get())) {
+                        return;
+                    }
                     // 完成时再次拆分隐藏思考并冲刷尾部增量，再构造完整 toolCalls；
                     // 这是唯一允许把聚合参数交给后续工具调度的边界。
                     List<ToolCall> toolCalls = buildToolCalls(toolCallAccumulators);
@@ -324,8 +344,43 @@ public class StreamResponseHandler {
                 }
             }
         );
+        subscription.set(disposable);
+        wireCancelDispose(context, future, disposable);
 
         return future;
+    }
+
+    /**
+     * 用户停止 / 流断开时尽快 dispose 上游 LLM 流，避免继续烧 token 与假死等待。
+     */
+    private static void wireCancelDispose(AgentContext context,
+                                          CompletableFuture<?> future,
+                                          Disposable disposable) {
+        if (context == null || context.getRunCancellation() == null || disposable == null) {
+            return;
+        }
+        // 协作式取消没有统一 listener 总线：future 完成时若已取消则 dispose；
+        // 主循环每 chunk 也会检查 isRunCancelled 并主动 abort。
+        future.whenComplete((ignored, error) -> {
+            if (context.isRunCancelled() && !disposable.isDisposed()) {
+                disposable.dispose();
+            }
+        });
+    }
+
+    private static boolean abortIfCancelled(AgentContext context,
+                                            CompletableFuture<?> future,
+                                            Disposable disposable) {
+        if (context == null || !context.isRunCancelled() || future.isDone()) {
+            return false;
+        }
+        if (disposable != null && !disposable.isDisposed()) {
+            disposable.dispose();
+        }
+        future.completeExceptionally(new CancellationException(
+                "LLM stream aborted: " + StringUtils.defaultIfBlank(
+                        context.getRunCancelReason(), "user_stop")));
+        return true;
     }
 
     private boolean canAllocateStreamMessageId(AgentContext context) {

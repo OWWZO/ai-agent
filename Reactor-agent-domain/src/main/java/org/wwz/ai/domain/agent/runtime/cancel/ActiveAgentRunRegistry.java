@@ -13,6 +13,7 @@ import javax.annotation.Resource;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -32,6 +33,8 @@ public class ActiveAgentRunRegistry {
         private final String sessionId;
         private final String visitorId;
         private final RunCancellation cancellation;
+        /** 控制面 inject 队列：与 AgentContext 共享，不 begin 第二次 run */
+        private final ConcurrentLinkedQueue<PendingInjectMessage> pendingInjects = new ConcurrentLinkedQueue<>();
         private volatile AgentContext agentContext;
         private final AtomicReference<AgentMessageStream> stream = new AtomicReference<>();
 
@@ -56,6 +59,10 @@ public class ActiveAgentRunRegistry {
 
         public RunCancellation getCancellation() {
             return cancellation;
+        }
+
+        public ConcurrentLinkedQueue<PendingInjectMessage> getPendingInjects() {
+            return pendingInjects;
         }
 
         public AgentContext getAgentContext() {
@@ -136,12 +143,14 @@ public class ActiveAgentRunRegistry {
     public void bindContext(String requestId, AgentContext agentContext) {
         // Context 在执行树准备完成后才绑定，因此 stop 可能先于 bind 到达；这种情况下
         // 取消令牌仍然有效，后续 bind 会把同一令牌注入 context。
+        // inject 队列与 cancel 同理：bind 前到达的指导消息保留在 ActiveRun 队列中。
         ActiveRun run = byRequestId.get(requestId);
         if (run == null || agentContext == null) {
             return;
         }
         run.setAgentContext(agentContext);
         agentContext.setRunCancellation(run.getCancellation());
+        agentContext.bindPendingInjectQueue(run.getPendingInjects());
     }
 
     public void bindStream(String requestId, AgentMessageStream stream) {

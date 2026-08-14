@@ -160,42 +160,56 @@ export function normalizeAction(
   return null;
 }
 
-export function dispatchGenUiAction(
+export type GenUiDispatchResult = {
+  ok: boolean;
+  type?: GenUiActionType;
+  reason?: "invalid" | "error";
+  error?: unknown;
+};
+
+export async function dispatchGenUiAction(
   raw: unknown,
   ctx: GenUiActionContext = {}
-): void {
+): Promise<GenUiDispatchResult> {
   const action = normalizeAction(raw, ctx);
-  if (!action) return;
+  if (!action) {
+    return { ok: false, reason: "invalid" };
+  }
 
-  switch (action.type) {
-    case "send_message":
-      void adapters.sendMessage?.(action.payload, ctx);
-      break;
-    case "open_url":
-      if (adapters.openUrl) {
-        adapters.openUrl(action.payload, ctx);
-      } else if (typeof window !== "undefined") {
-        const target = action.payload.external === false ? "_self" : "_blank";
-        window.open(action.payload.url, target, "noopener,noreferrer");
-      }
-      break;
-    case "navigate":
-      if (adapters.navigate) {
-        adapters.navigate(action.payload, ctx);
-      } else if (typeof window !== "undefined") {
-        window.location.href = action.payload.route;
-      }
-      break;
-    case "patch_ui":
-      adapters.patchUi?.(action.payload, ctx);
-      break;
-    case "submit_form":
-      void adapters.submitForm?.(action.payload, ctx);
-      break;
+  try {
+    switch (action.type) {
+      case "send_message":
+        await adapters.sendMessage?.(action.payload, ctx);
+        break;
+      case "open_url":
+        if (adapters.openUrl) {
+          adapters.openUrl(action.payload, ctx);
+        } else if (typeof window !== "undefined") {
+          const target = action.payload.external === false ? "_self" : "_blank";
+          window.open(action.payload.url, target, "noopener,noreferrer");
+        }
+        break;
+      case "navigate":
+        if (adapters.navigate) {
+          adapters.navigate(action.payload, ctx);
+        } else if (typeof window !== "undefined") {
+          window.location.href = action.payload.route;
+        }
+        break;
+      case "patch_ui":
+        adapters.patchUi?.(action.payload, ctx);
+        break;
+      case "submit_form":
+        await adapters.submitForm?.(action.payload, ctx);
+        break;
+    }
+    return { ok: true, type: action.type };
+  } catch (error) {
+    return { ok: false, type: action.type, reason: "error", error };
   }
 }
 
-export function fireGenUiControl(
+export async function fireGenUiControl(
   props: Record<string, unknown>,
   ctx: GenUiActionContext = {},
   extra?: {
@@ -203,7 +217,7 @@ export function fireGenUiControl(
     formValues?: Record<string, unknown>;
     formId?: string;
   }
-): void {
+): Promise<GenUiDispatchResult> {
   const action = props.action;
   const actionId =
     typeof props.actionId === "string" ? props.actionId : undefined;
@@ -213,8 +227,8 @@ export function fireGenUiControl(
     ...extra,
   };
   if (action && typeof action === "object") {
-    dispatchGenUiAction(action, base);
-    return;
+    return dispatchGenUiAction(action, base);
   }
   // 仅当显式 action 为对象时分发；裸 actionId 不再触发聊天。
+  return { ok: false, reason: "invalid" };
 }

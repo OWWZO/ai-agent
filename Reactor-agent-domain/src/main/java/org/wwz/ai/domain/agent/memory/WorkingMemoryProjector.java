@@ -16,10 +16,19 @@ import java.util.List;
 public class WorkingMemoryProjector {
 
     public List<WorkingMemoryMessage> project(List<Message> messages, String sessionId, String requestId, Long runId) {
+        return project(messages, sessionId, WorkingMemoryScopes.MAIN, requestId, runId);
+    }
+
+    public List<WorkingMemoryMessage> project(List<Message> messages,
+                                              String sessionId,
+                                              String memoryScope,
+                                              String requestId,
+                                              Long runId) {
         // working_memory 是跨轮 prompt 的投影，不是历史回放账本；这里只保存下一轮 hydrate 所需字段。
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
+        String scope = WorkingMemoryScopes.normalize(memoryScope);
         List<WorkingMemoryMessage> rows = new ArrayList<>(messages.size());
         int seq = 0;
         for (Message message : messages) {
@@ -29,6 +38,7 @@ public class WorkingMemoryProjector {
             // session_env 必须入库：跨轮 messages 前缀续写依赖首轮 env
             rows.add(WorkingMemoryMessage.builder()
                     .sessionId(sessionId)
+                    .memoryScope(scope)
                     .requestId(requestId)
                     .runId(runId)
                     .seqNo(seq++)

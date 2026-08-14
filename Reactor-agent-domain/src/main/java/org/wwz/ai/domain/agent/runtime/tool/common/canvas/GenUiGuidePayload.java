@@ -45,11 +45,39 @@ public final class GenUiGuidePayload {
         guide.put("canvas_routing", List.of(
                 "Prose / Q&A / bullets → markdown (no tools).",
                 "Charts / KPI / dashboards / multi-card / data grids → emit_ui_tree.",
+                "Teaching / formula demos with drag sliders (Pythagoras, circle, functions) → ParametricLab or PythagorasLab (NOT static Text/Chart).",
+                "Concept / knowledge animation (playable steps, flow, layering, formula transform) → ConceptDemo or AnimStepLab.",
                 "Structured 3D (geometry/color/particles) → emit_ui_tree ThreeJsFrame.",
                 "Existing glb/gltf URL → emit_ui_tree Model3D (src required).",
                 "Free-form WebGL HTML → canvas_publish (window.THREE preloaded on bare pages).",
                 "Hosted webpage / landing / printable HTML report / page-scale layout → canvas_publish(mode=html).",
                 "If markdown is enough, stay in markdown; offer GenUI only when visual layout earns it."
+        ));
+        guide.put("teaching_labs", List.of(
+                "ParametricLab: client-side interactive lab. User drags sliders; formulas + scene update live (no send_message).",
+                "scene: right_triangle | circle | rectangle | linear | quadratic | unit_circle | custom_svg | none.",
+                "params: [{id,label,value,min,max,step,unit}]. outputs: [{id,label,expr,format}] with expr like sqrt(a*a+b*b).",
+                "Expr allows + - * / ^ ( ) and sqrt,abs,sin,cos,tan,min,max,pow,log,ln,exp,hypot,pi,e.",
+                "PythagorasLab: shortcut for 勾股定理 — defaults a,b sliders + c=sqrt(a²+b²) + live triangle.",
+                "Example tree root: {kind:'DesignSurface', children:[{kind:'PythagorasLab', props:{title:'勾股定理'}}]}.",
+                "custom_svg: set scene:'custom_svg' and svg:'<svg>...</svg>' with {{a}} placeholders for live numbers."
+        ));
+        guide.put("concept_animation", List.of(
+                "ConceptDemo / AnimStepLab / KnowledgeDemo: narrative animation with play/pause/prev/next/scrub (no chat).",
+                "scene: flow | stack | tree | formula | compare | sequence. Omit steps to use built-in demo for that scene.",
+                "steps: [{title, caption, duration(ms), highlight:[nodeOrEdgeId], badge}]. highlight drives emphasis + packet motion on edges.",
+                "flow/sequence: provide nodes+edges. stack: nodes as layers. tree: nodes+edges. formula: formulas string[]. compare: left/right string[].",
+                "Example: {kind:'ConceptDemo', props:{title:'HTTP 请求路径', scene:'flow'}}.",
+                "Example formula: {kind:'ConceptDemo', props:{scene:'formula', title:'勾股恒等式', formulas:['a²+b²','→','c²'], steps:[{title:'平方和',caption:'…',highlight:['f0']},…]}}.",
+                "Use ConceptDemo when the user should WATCH a concept unfold; use ParametricLab when they should DRAG parameters."
+        ));
+        guide.put("bind_and_practice", List.of(
+                "BindScope: params sliders + children props with {{expr}} or $id update live (no send_message).",
+                "Example: {kind:'BindScope', props:{params:[{id:'a',value:3,min:1,max:10}]}, children:[{kind:'Text', props:{value:'a = {{a}}'}},{kind:'NumberLine', props:{value:'{{a}}',min:-10,max:10}}]}.",
+                "outputs: [{id:'c', expr:'sqrt(a*a+b*b)'}] adds derived ids usable in {{c}}.",
+                "Quiz after a demo: {kind:'Quiz', props:{prompt:'c 等于？', options:['3','4','5'], answer:'c'}} (option id defaults a/b/c).",
+                "WorkedExample: reveal steps then final answer. BeforeAfter: drag compare two images/texts.",
+                "NumberLine / CoordinateGrid: standalone or inside BindScope. ParametricLab scene=number_line|coordinate also works."
         ));
         guide.put("layout_structure", List.of(
                 "Wrap visuals in DesignSurface (preset: minimal|editorial|card|slide|poster).",

@@ -10,4 +10,9 @@ export const agentRunApi = {
     api.post<Record<string, unknown>>("/api/agent/run/stop", payload) as unknown as Promise<
       Record<string, unknown>
     >,
+  /** 向进行中的 run 注入用户指导（控制面，不开新 SSE） */
+  inject: (payload: { sessionId?: string; requestId: string; text: string }) =>
+    api.post<Record<string, unknown>>("/api/agent/run/inject", payload) as unknown as Promise<
+      Record<string, unknown>
+    >,
 };

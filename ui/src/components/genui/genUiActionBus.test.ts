@@ -32,17 +32,23 @@ describe("genUiActionBus", () => {
     expect(action?.type).toBe("patch_ui");
   });
 
-  it("dispatches patch_ui to adapter, not sendMessage", () => {
+  it("dispatches patch_ui to adapter, not sendMessage", async () => {
     const patchUi = vi.fn();
     const sendMessage = vi.fn();
     registerGenUiActionAdapters({ patchUi, sendMessage });
-    dispatchGenUiAction({
+    const result = await dispatchGenUiAction({
       type: "patch_ui",
       payload: {
         patches: [{ op: "replace", path: "/root/props/title", value: "Y" }],
       },
     });
+    expect(result).toEqual({ ok: true, type: "patch_ui" });
     expect(patchUi).toHaveBeenCalledTimes(1);
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid when action cannot be normalized", async () => {
+    const result = await dispatchGenUiAction("bare-string");
+    expect(result).toEqual({ ok: false, reason: "invalid" });
   });
 });

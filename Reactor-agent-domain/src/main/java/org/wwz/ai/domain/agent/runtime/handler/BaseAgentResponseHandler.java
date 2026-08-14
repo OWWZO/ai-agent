@@ -234,6 +234,7 @@ public class BaseAgentResponseHandler {
             case "plan_approval":
             case "plan_mode_entered":
             case "session_tasks":
+            case "llm_retry":
             case "browser":
             case "code":
             case "html":

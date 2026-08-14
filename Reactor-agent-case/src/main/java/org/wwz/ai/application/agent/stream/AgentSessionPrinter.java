@@ -143,6 +143,9 @@ public class AgentSessionPrinter implements Printer {
                 case "plan_mode_entered":
                 case "session_tasks":
                 case "user_brief":
+                case "user_inject":
+                case "subagent_progress":
+                case "llm_retry":
                 case "browser":
                 case "code":
                 case "html":

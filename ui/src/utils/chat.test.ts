@@ -926,6 +926,42 @@ describe("chat reasoning progress", () => {
     expect(reasoning?.resultMap.isFinal).toBe(true);
   });
 
+  it("llm_retry 只更新 tip，不写入任务列表", () => {
+    const chat = {
+      sessionId: "session-retry-1",
+      requestId: "req-retry-1",
+      query: "测试重试",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(
+      {
+        messageId: "msg-retry-1",
+        taskId: "task-retry-1",
+        messageType: "task",
+        messageTime: "1",
+        resultMap: {
+          messageType: "llm_retry",
+          isFinal: false,
+          resultMap: {
+            attempt: 2,
+            maxAttempts: 6,
+            message: "模型请求失败，正在重试（第 2/6 次）…",
+          },
+        },
+      } as unknown as MESSAGE.EventData,
+      chat
+    );
+
+    expect(chat.tip).toBe("模型请求失败，正在重试（第 2/6 次）…");
+    expect(chat.multiAgent.tasks).toEqual([]);
+  });
+
   it("助手过程文一开始就收口深度思考，迟到 reasoning 只补字不重开流式", () => {
     const chat = {
       sessionId: "session-reasoning-2",

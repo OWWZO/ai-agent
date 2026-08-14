@@ -63,12 +63,16 @@ public final class SubAgentContextFactory {
                 .planModeState(parent.requirePlanModeState())
                 .workspaceRoot(parent.getWorkspaceRoot())
                 .dateInfo(parent.getDateInfo())
-                .isStream(Boolean.FALSE)
+                // 子 Agent 统一走流式 LLM（askTool stream=true），兼容仅支持 stream 的网关；
+                // 过程文仍由 SubAgentPrinter 折叠，不刷主时间线。
+                .isStream(Boolean.TRUE)
                 .streamMessageType(null)
                 .sopPrompt(null)
                 .basePrompt(null)
                 .historyDialogue(null)
                 .workingMemoryMessages(null)
+                // 共享父取消令牌，否则 /stop 杀不到嵌套子 Agent
+                .runCancellation(parent.getRunCancellation())
                 // 子代理不继承主会话 LTM 写入权；对齐 Hermes skip_memory=True
                 .skipMemory(Boolean.TRUE)
                 .ltmOwner(null)

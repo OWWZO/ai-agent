@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.Set;
 
 /**
- * 同步子 Agent 类型定义（对标 cc-haha AgentDefinition）。
+ * 子 Agent 类型定义（对标 cc-haha AgentDefinition）。
  * 描述 system prompt、工具 allow/deny 与步数上限。
  */
 @Data

@@ -1,5 +1,6 @@
-import { FC, memo, type ReactNode } from "react";
+import { FC, memo, useState, type ReactNode } from "react";
 import classNames from "classnames";
+import { Loader2 } from "lucide-react";
 import {
   GenUiFormProvider,
   formExtrasAtClick,
@@ -8,10 +9,12 @@ import {
 } from "./genUiForms";
 import { fireGenUiControl } from "./genUiActionBus";
 import { useGenUiRenderContext } from "./GenUiRenderContext";
+import { useGenUiBind } from "./GenUiBind";
 import type { GenUiNodeData } from "./GenUiNode";
+import { showMessage } from "@/utils";
 
 const FIELD_CLASS =
-  "w-full rounded-md border border-[var(--chat-border)]/70 bg-white px-3 py-2 text-[13px] text-[var(--chat-text)] focus:outline-none focus:ring-1 focus:ring-[var(--chat-accent)]";
+  "w-full rounded-md border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text)] focus:outline-none focus:ring-1 focus:ring-[var(--chat-accent)]";
 
 const s = (v: unknown): string =>
   typeof v === "string" ? v : v != null ? String(v) : "";
@@ -89,6 +92,14 @@ export const GenUiFormShell: FC<{
 
 GenUiFormShell.displayName = "GenUiFormShell";
 
+const ACTION_FEEDBACK: Record<string, string> = {
+  send_message: "已发送",
+  patch_ui: "界面已更新",
+  submit_form: "已提交",
+  open_url: "已打开链接",
+  navigate: "正在跳转",
+};
+
 export const GenUiActionButton: FC<{
   props: Record<string, any>;
   className?: string;
@@ -96,9 +107,11 @@ export const GenUiActionButton: FC<{
 }> = memo(({ props, className, toggle }) => {
   const ctx = useGenUiRenderContext();
   const scope = useGenUiFormScope();
+  const [loading, setLoading] = useState(false);
+  const [justDone, setJustDone] = useState(false);
   const label = props.label || props.value || props.text || "Button";
   const primary = props.variant === "primary";
-  const disabled = Boolean(props.disabled);
+  const disabled = Boolean(props.disabled) || loading;
   // 仅 object action 可点；裸 actionId 不再当聊天发送
   const hasAction = props.action && typeof props.action === "object";
   const href = props.href || props.url;
@@ -108,7 +121,7 @@ export const GenUiActionButton: FC<{
       <a
         href={String(href)}
         className={classNames(
-          "inline-flex items-center rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
+          "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
           primary
             ? "border-[var(--chat-accent)] bg-[var(--chat-accent)] text-white hover:opacity-90"
             : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text)] hover:bg-[var(--chat-surface-muted)]",
@@ -126,6 +139,7 @@ export const GenUiActionButton: FC<{
     <button
       type="button"
       disabled={disabled || !hasAction}
+      aria-busy={loading || undefined}
       title={
         props.tooltip
           ? String(props.tooltip)
@@ -134,21 +148,46 @@ export const GenUiActionButton: FC<{
             : undefined
       }
       className={classNames(
-        "inline-flex items-center rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
         primary
           ? "border-[var(--chat-accent)] bg-[var(--chat-accent)] text-white hover:opacity-90"
           : "border-[var(--chat-border)] bg-[var(--chat-surface)] text-[var(--chat-text)] hover:bg-[var(--chat-surface-muted)]",
+        justDone && !primary && "border-emerald-500/40 text-emerald-600",
         (disabled || !hasAction) && "cursor-not-allowed opacity-50",
         className
       )}
       onClick={() => {
-        if (disabled || !hasAction) return;
-        fireGenUiControl(props, ctx, {
+        if (disabled || !hasAction || loading) return;
+        setLoading(true);
+        void fireGenUiControl(props, ctx, {
           ...formExtrasAtClick(scope),
           ...(toggle ? { toggled: !Boolean(props.pressed ?? props.active) } : {}),
-        });
+        })
+          .then((result) => {
+            if (result.ok) {
+              setJustDone(true);
+              window.setTimeout(() => setJustDone(false), 1200);
+              const tip =
+                (typeof props.successMessage === "string" && props.successMessage) ||
+                (result.type ? ACTION_FEEDBACK[result.type] : "") ||
+                "完成";
+              showMessage()?.success(tip);
+            } else if (result.reason === "error") {
+              showMessage()?.error(
+                typeof props.errorMessage === "string"
+                  ? props.errorMessage
+                  : "操作失败，请重试"
+              );
+            } else {
+              showMessage()?.warning("未配置有效动作");
+            }
+          })
+          .finally(() => setLoading(false));
       }}
     >
+      {loading ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+      ) : null}
       {String(label)}
     </button>
   );
@@ -160,14 +199,28 @@ export const GenUiFormField: FC<{
   kind: string;
   props: Record<string, any>;
 }> = memo(({ kind, props }) => {
-  const name = s(props.name);
+  const name = s(props.name) || s(props.bind);
+  const bindApi = useGenUiBind();
+  const bindId = s(props.bind) || (bindApi?.has(name) ? name : "");
   const initial =
     props.value !== undefined
       ? props.value
       : props.checked !== undefined
         ? props.checked
         : undefined;
-  const { interactive, value, onChange } = useGenUiFormField(name, initial);
+  const formField = useGenUiFormField(name, initial);
+  const interactive = Boolean(bindId && bindApi) || formField.interactive;
+  const value =
+    bindId && bindApi
+      ? bindApi.values[bindId]
+      : formField.value;
+  const onChange = (v: unknown) => {
+    if (bindId && bindApi && typeof v === "number") {
+      bindApi.set(bindId, v);
+      return;
+    }
+    formField.onChange(v);
+  };
 
   if (!interactive) {
     return (
@@ -175,7 +228,7 @@ export const GenUiFormField: FC<{
         {props.label ? (
           <div className="text-[12px] text-[var(--chat-text-soft)]">{s(props.label)}</div>
         ) : null}
-        <div className="rounded-md border border-[var(--chat-border)]/70 bg-white px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
+        <div className="rounded-md border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] px-3 py-2 text-[13px] text-[var(--chat-text-soft)]">
           {s(props.placeholder || props.value) || "（只读展示）"}
         </div>
       </div>
@@ -258,7 +311,7 @@ export const GenUiFormField: FC<{
           >
             <span
               className={classNames(
-                "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                "inline-block h-4 w-4 transform rounded-full bg-[var(--chat-surface)] shadow transition-transform",
                 value ? "translate-x-[18px]" : "translate-x-0.5"
               )}
             />

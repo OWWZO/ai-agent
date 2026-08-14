@@ -18,6 +18,8 @@ public class WorkingMemoryMessage {
 
     private Long id;
     private String sessionId;
+    /** 与 turn.memory_scope 一致，便于按 scope 查询 */
+    private String memoryScope;
     private Long turnId;
     private String requestId;
     private Long runId;

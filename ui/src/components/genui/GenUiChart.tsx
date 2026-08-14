@@ -187,8 +187,12 @@ const GenUiChart: FC<Props> = memo(
     return (
       <div className="w-full min-w-0 space-y-1">
         <div
-          className="w-full min-h-[200px] rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] p-2"
-          style={{ height: Math.max(200, height) }}
+          className="w-full min-h-[240px] max-h-[min(52vh,560px)] aspect-[16/9] rounded-xl border border-[var(--chat-border)]/50 bg-[var(--chat-surface)] p-2"
+          style={
+            height && height !== 280
+              ? { minHeight: Math.max(200, height), height, maxHeight: "none", aspectRatio: "auto" }
+              : undefined
+          }
         >
           <div ref={ref} className="h-full w-full" />
         </div>

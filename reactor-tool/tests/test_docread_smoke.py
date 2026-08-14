@@ -99,6 +99,25 @@ def test_image_ocr_validates_extension_and_empty():
         assert "empty" in str(e).lower()
 
 
+def test_docread_finds_persistent_file_store_after_release_switch(monkeypatch, tmp_path):
+    from reactor_tool.tool.docread.paths import resolve_input_path
+
+    persistent_root = tmp_path / "data" / "file_db_dir"
+    session_root = persistent_root / "session-release-switch"
+    session_root.mkdir(parents=True)
+    source = session_root / "logs.csv"
+    source.write_text("name\nvalue\n", encoding="utf-8")
+
+    monkeypatch.setenv("FILE_SAVE_PATH", str(persistent_root))
+    (tmp_path / "new-release").mkdir()
+    monkeypatch.chdir(tmp_path / "new-release")
+
+    assert resolve_input_path(
+        "logs.csv",
+        request_id="session-release-switch",
+    ) == source.resolve()
+
+
 def test_html_processor_accepts_legacy_metadata_operation_name():
     import asyncio
 

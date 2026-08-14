@@ -7,8 +7,6 @@ import {
 } from "@/components/ai-elements/message";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
-import ThinkingMessage from "./ThinkingMessage";
-import RunPresenceBar from "./RunPresenceBar";
 import RunStatus from "@/components/ActionView/RunStatus";
 import { isPlanSolveConversation } from "@/utils/agentMode";
 import { collectChatArtifactFiles } from "@/utils/markdownArtifacts";
@@ -161,13 +159,6 @@ const DialogueComponent: FC<Props> = (props) => {
     // chat：流式 flush 会换新 chat 对象；localGenUiTick：客户端 patch_ui
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat, localGenUiTick, localScopeKey, localVersion]);
-  const hasAssistantPayload =
-    !!chat.response ||
-    !!thoughtText ||
-    !!displayedPlan ||
-    !!chat.tasks.length ||
-    !!chat.conclusion ||
-    !!featuredGenUi;
   const showStandaloneResponse =
     chat.agentType === 0 && !!chat.response && !chat.conclusion;
   const showProcessTimeline =
@@ -278,13 +269,7 @@ const DialogueComponent: FC<Props> = (props) => {
         </div>
       ) : null}
 
-      {/* 首包前：完整存在感；已有内容后：紧凑状态条 */}
-      {chat.loading && !hasAssistantPayload ? (
-        <ThinkingMessage tip={chat.tip} />
-      ) : null}
-      {chat.loading && hasAssistantPayload ? (
-        <RunPresenceBar hint={chat.tip || "正在推进任务…"} compact />
-      ) : null}
+      {/* 运行状态已上移到 ChatView 顶栏，对话区不再重复展示 tip */}
 
       {/* Cursor 风格过程时间线 */}
       {showProcessTimeline ? (
@@ -311,17 +296,15 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* GenUI：面向用户的可视化最终产物（过程之后、结论附近） */}
       {featuredGenUi ? (
-        <div className="timeline-segment-enter mt-4 w-full max-w-[min(960px,100%)]">
-          <div className="rounded-2xl border border-[var(--chat-border)]/60 bg-white p-3 shadow-[var(--chat-soft-shadow)]">
-            <GenUiInline
-              key={`genui-${chat.requestId}-${featuredGenUi.revision}`}
-              tree={featuredGenUi.tree}
-              patchCount={featuredGenUi.patchCount}
-              sessionId={chat.sessionId}
-              messageId={chat.requestId}
-              className="w-full max-w-none"
-            />
-          </div>
+        <div className="timeline-segment-enter mt-4 w-full max-w-[min(1080px,100%)]">
+          <GenUiInline
+            key={`genui-${chat.requestId}-${featuredGenUi.revision}`}
+            tree={featuredGenUi.tree}
+            patchCount={featuredGenUi.patchCount}
+            sessionId={chat.sessionId}
+            messageId={chat.requestId}
+            className="w-full max-w-none"
+          />
         </div>
       ) : null}
 

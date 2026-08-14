@@ -30,6 +30,9 @@ def session_roots(request_id: str, workspace_root: str | None = None) -> list[Pa
             pass
     # Reactor workspace default: skilloutput/{sessionId}
     cwd = Path.cwd()
+    file_save_path = Path(os.getenv("FILE_SAVE_PATH", "file_db_dir")).expanduser()
+    if not file_save_path.is_absolute():
+        file_save_path = cwd / file_save_path
     for candidate in (
         cwd / "skilloutput" / rid,
         cwd / "skilloutput" / rid / "output",
@@ -37,6 +40,8 @@ def session_roots(request_id: str, workspace_root: str | None = None) -> list[Pa
         OUTPUT_DIR,
         UPLOAD_DIR / rid,
         UPLOAD_DIR,
+        file_save_path / rid,
+        file_save_path,
         cwd,
     ):
         try:

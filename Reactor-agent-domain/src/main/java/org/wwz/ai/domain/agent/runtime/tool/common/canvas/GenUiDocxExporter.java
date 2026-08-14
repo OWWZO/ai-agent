@@ -137,6 +137,12 @@ public final class GenUiDocxExporter {
             }
             case "CodeBlock" -> out.add(p(str(props.get("code"))));
             case "Chart" -> out.add(p("Chart(" + str(props.get("chart")) + "): " + str(props.get("title"))));
+            case "ParametricLab", "PythagorasLab", "GeometryLab", "InteractiveLab" ->
+                    out.add(p("Interactive lab: " + firstNonBlank(props, "title", "scene", "preset")));
+            case "ConceptDemo", "AnimStepLab", "KnowledgeDemo" ->
+                    out.add(p("Concept demo: " + firstNonBlank(props, "title", "scene", "preset")));
+            case "Quiz", "WorkedExample", "BeforeAfter", "NumberLine", "CoordinateGrid", "BindScope" ->
+                    out.add(p(kind + ": " + firstNonBlank(props, "title", "prompt", "problem")));
             case "Image", "Video", "Model3D" -> out.add(p("[" + kind + "] " + str(props.get("src"))));
             case "Button", "LinkButton", "InteractiveButton", "ToggleButton" ->
                     out.add(p("[" + firstNonBlank(props, "label", "value", "text") + "]", true));
