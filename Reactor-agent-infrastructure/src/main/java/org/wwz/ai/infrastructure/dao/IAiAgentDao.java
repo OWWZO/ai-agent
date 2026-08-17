@@ -81,17 +81,4 @@ public interface IAiAgentDao {
      */
     List<AiAgent> queryAll();
 
-    /**
-     * 查询可用的 Fix 角色列表
-     * @return Fix 角色列表
-     */
-    List<AiAgent> queryAvailableFixRoles();
-
-    /**
-     * 按角色ID查询可用的 Fix 角色
-     * @param agentId 角色ID
-     * @return Fix 角色
-     */
-    AiAgent queryAvailableFixRoleByAgentId(@Param("agentId") String agentId);
-
 }

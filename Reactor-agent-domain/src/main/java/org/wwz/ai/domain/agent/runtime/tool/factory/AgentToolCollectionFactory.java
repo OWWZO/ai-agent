@@ -20,6 +20,8 @@ import org.wwz.ai.domain.agent.runtime.tool.common.planmode.ExitPlanModeTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskCreateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskGetTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskListTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.SendMessageTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskOutputTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskStopTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskUpdateTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TodoWriteTool;
@@ -64,10 +66,20 @@ import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ListMcpResourcesTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ReadMcpResourceTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.shell.BashTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillAuthorTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.skill.SkillTool;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGlobTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceGrepTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceListTool;
@@ -80,6 +92,7 @@ import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -98,6 +111,10 @@ public class AgentToolCollectionFactory {
     private final McpToolExecutor mcpToolExecutor;
     private final SkillRegistry skillRegistry;
     private final SkillRuntimeOptions skillRuntimeOptions;
+    private final SkillRuntimeLayout skillRuntimeLayout;
+    private final SkillMaterializer skillMaterializer;
+    private final SkillVirtualPaths skillVirtualPaths;
+    private final SkillPackageService skillPackageService;
     private final WorkspaceService workspaceService;
     private final WorkspaceRuntimeOptions workspaceRuntimeOptions;
     private final SubAgentRunner subAgentRunner;
@@ -133,23 +150,16 @@ public class AgentToolCollectionFactory {
         }
         if (fullToolCollection.getMcpToolMap() != null) {
             fullToolCollection.getMcpToolMap().forEach((name, tool) -> {
-                if (allowed.contains(name)) {
+                // 显式白名单；alwaysLoad MCP 在启用 ToolSearch 时对主 Agent 可见
+                if (allowed.contains(name)
+                        || allowed.contains("*")
+                        || (Boolean.TRUE.equals(tool.getAlwaysLoad()) && allowed.contains("ToolSearch"))) {
                     main.addMcpTool(tool);
                 }
             });
         }
         main.restoreTaskScopedState(fullToolCollection.snapshotTaskScopedState());
         return main;
-    }
-
-    public ToolCollection buildForParallelTask(AgentContext agentContext,
-                                               AgentRequest request,
-                                               ToolCollection parentToolCollection) {
-        ToolCollection childToolCollection = buildForPlanSolve(agentContext, request);
-        if (parentToolCollection != null) {
-            childToolCollection.restoreTaskScopedState(parentToolCollection.snapshotTaskScopedState());
-        }
-        return childToolCollection;
     }
 
     private ToolCollection build(AgentContext agentContext, AgentRequest request, SkillAttachScope attachScope) {
@@ -311,16 +321,8 @@ public class AgentToolCollectionFactory {
             }
         }
 
-        try {
-            // MCP 是动态外部能力，发现失败只降级远程工具；本地工具集合已经可以
-            // 独立工作，不能因为远端配置异常而让 Agent 无法启动。
-            // MCP 工具属于动态配置，发现失败只影响远程工具，不阻断本地工具集合构建。
-            for (McpToolInfo toolInfo : mcpToolExecutor.discoverConfiguredTools()) {
-                toolCollection.addMcpTool(toolInfo);
-            }
-        } catch (Exception e) {
-            log.error("{} add mcp tool failed", agentContext.getRequestId(), e);
-        }
+        attachMcpSurface(toolCollection, agentContext, request);
+        applySessionCapabilityFilter(toolCollection, agentContext);
 
         // 主 Agent 可派发子 Agent；dataAgent 场景不挂载
         if (!"dataAgent".equals(request.getOutputStyle()) && subAgentRunner != null && subAgentRegistry != null) {
@@ -334,6 +336,86 @@ public class AgentToolCollectionFactory {
             registerPlanModeTools(toolCollection, agentContext);
         }
         return toolCollection;
+    }
+
+    /**
+     * 装配 MCP 工具 + ToolSearch + Resources 元工具。
+     * always/auto 延迟模式下仅 alwaysLoad 工具进入 tools[]，其余进 DeferredMcpCatalog。
+     */
+    private void attachMcpSurface(ToolCollection toolCollection, AgentContext agentContext, AgentRequest request) {
+        List<McpToolInfo> discovered = List.of();
+        try {
+            // MCP 是动态外部能力，发现失败只降级远程工具；本地工具集合已经可以
+            // 独立工作，不能因为远端配置异常而让 Agent 无法启动。
+            discovered = mcpToolExecutor.discoverConfiguredTools();
+        } catch (Exception e) {
+            log.error("{} discover mcp tool failed", agentContext.getRequestId(), e);
+        }
+
+        DeferredMcpCatalog catalog = new DeferredMcpCatalog(discovered);
+        agentContext.setDeferredMcpCatalog(catalog);
+
+        boolean deferred = shouldDeferMcpTools(discovered.size());
+        if (deferred) {
+            for (McpToolInfo toolInfo : catalog.listActivated()) {
+                toolCollection.addMcpTool(toolInfo);
+            }
+            if (!"dataAgent".equals(request.getOutputStyle())) {
+                ToolSearchTool toolSearchTool = new ToolSearchTool();
+                addTool(toolCollection, toolSearchTool, agentContext, ToolSearchTool::setAgentContext);
+            }
+            log.info("{} MCP deferred mode: catalog={}, preloaded={}",
+                    agentContext.getRequestId(), catalog.size(), catalog.listActivated().size());
+        } else {
+            for (McpToolInfo toolInfo : discovered) {
+                toolCollection.addMcpTool(toolInfo);
+            }
+        }
+
+        if (!"dataAgent".equals(request.getOutputStyle())) {
+            registerMcpResourceTools(toolCollection, agentContext);
+        }
+    }
+
+    private void registerMcpResourceTools(ToolCollection toolCollection, AgentContext agentContext) {
+        boolean hasResources = false;
+        try {
+            hasResources = mcpToolExecutor.hasAnyResources();
+        } catch (Exception e) {
+            log.debug("{} probe mcp resources failed: {}", agentContext.getRequestId(), e.getMessage());
+        }
+        // 始终注册 list/read：无资源时返回空列表，避免能力探测抖动导致工具集签名抖动。
+        ListMcpResourcesTool listMcpResourcesTool = new ListMcpResourcesTool();
+        addTool(toolCollection, listMcpResourcesTool, agentContext, ListMcpResourcesTool::setAgentContext);
+
+        ReadMcpResourceTool readMcpResourceTool = new ReadMcpResourceTool();
+        addTool(toolCollection, readMcpResourceTool, agentContext, ReadMcpResourceTool::setAgentContext);
+
+        if (hasResources) {
+            log.info("{} MCP resource tools registered (resources present)", agentContext.getRequestId());
+        }
+    }
+
+    /**
+     * always → 延迟；standard → 全量；auto → 超过阈值才延迟。
+     */
+    private boolean shouldDeferMcpTools(int discoveredCount) {
+        String mode = reactorConfig.getMcpToolSearchMode();
+        if (mode == null || mode.isBlank()) {
+            mode = "always";
+        }
+        mode = mode.trim().toLowerCase();
+        if ("standard".equals(mode) || "false".equals(mode) || "off".equals(mode)) {
+            return false;
+        }
+        if ("auto".equals(mode)) {
+            int threshold = reactorConfig.getMcpToolSearchAutoThreshold() == null
+                    ? 8
+                    : Math.max(1, reactorConfig.getMcpToolSearchAutoThreshold());
+            return discoveredCount >= threshold;
+        }
+        // always / true / 默认
+        return true;
     }
 
     private static List<String> parseToolNames(String value) {
@@ -366,6 +448,12 @@ public class AgentToolCollectionFactory {
 
         TaskStopTool taskStopTool = new TaskStopTool();
         addTool(toolCollection, taskStopTool, agentContext, TaskStopTool::setAgentContext);
+
+        TaskOutputTool taskOutputTool = new TaskOutputTool();
+        addTool(toolCollection, taskOutputTool, agentContext, TaskOutputTool::setAgentContext);
+
+        SendMessageTool sendMessageTool = new SendMessageTool();
+        addTool(toolCollection, sendMessageTool, agentContext, SendMessageTool::setAgentContext);
 
         EnterPlanModeTool enterPlanModeTool = new EnterPlanModeTool(planArtifactStore);
         addTool(toolCollection, enterPlanModeTool, agentContext, EnterPlanModeTool::setAgentContext);
@@ -494,10 +582,52 @@ public class AgentToolCollectionFactory {
     }
 
     private void registerSkillTools(ToolCollection toolCollection, AgentContext agentContext) {
-        // path 浏览统一走 workspace_*；skill 目录已并入 workspace 可读根
-        // 脚本执行对齐 cc-haha：由 Bash / PowerShell 在 skill basePath 下运行，不再挂 script_runner_tool
-        SkillTool skillTool = new SkillTool(skillRegistry);
+        // skill 读写：workspace_* 虚拟路径 skills/ → runtime 库；执行：bash 沙箱物化 + skills/** sync-back
+        SkillTool skillTool = new SkillTool(skillRegistry, skillRuntimeLayout);
         addTool(toolCollection, skillTool, agentContext, SkillTool::setAgentContext);
+
+        // 可选遗留 skill_author（默认关闭；创作走 Skill Creator + workspace_*）
+        if (skillRuntimeOptions.isAuthoringEnabled() && skillPackageService != null) {
+            SkillAuthorTool authorTool = new SkillAuthorTool(skillPackageService, skillMaterializer);
+            addTool(toolCollection, authorTool, agentContext, SkillAuthorTool::setAgentContext);
+        }
+
+        if (skillRuntimeOptions.isSandboxBashEnabled() && workspaceService.isEnabled()) {
+            // 只发 HTTP 到 reactor-tool /v1/tool/bash；本机不执行
+            BashTool bashTool = new BashTool(skillRuntimeOptions, skillVirtualPaths);
+            addTool(toolCollection, bashTool, agentContext, BashTool::setAgentContext);
+        }
+    }
+
+    /**
+     * 会话级能力差集：禁用的 MCP 工具从本轮 ToolCollection 移除；
+     * skill 禁用由 SkillTool + AgentContext.disabledSkillNames 在执行期拦截。
+     */
+    private void applySessionCapabilityFilter(ToolCollection toolCollection, AgentContext agentContext) {
+        if (toolCollection == null || agentContext == null) {
+            return;
+        }
+        Set<String> disabledMcps = agentContext.getDisabledMcpIds();
+        if (disabledMcps == null || disabledMcps.isEmpty() || toolCollection.getMcpToolMap() == null) {
+            return;
+        }
+        List<String> toRemove = new ArrayList<>();
+        toolCollection.getMcpToolMap().forEach((name, info) -> {
+            if (info == null) {
+                return;
+            }
+            String mcpId = info.getMcpId() != null ? info.getMcpId() : info.getServerKey();
+            if (mcpId != null && disabledMcps.contains(mcpId)) {
+                toRemove.add(name);
+            }
+        });
+        for (String name : toRemove) {
+            toolCollection.getMcpToolMap().remove(name);
+        }
+        if (!toRemove.isEmpty()) {
+            log.info("{} session capability filtered mcp tools: {}",
+                    agentContext.getRequestId(), toRemove);
+        }
     }
 
     private enum SkillAttachScope {

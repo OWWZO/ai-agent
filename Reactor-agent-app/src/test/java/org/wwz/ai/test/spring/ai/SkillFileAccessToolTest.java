@@ -57,7 +57,7 @@ public class SkillFileAccessToolTest {
                 .maxGrepMatches(20)
                 .maxWriteChars(10000)
                 .build();
-        workspaceService = new WorkspaceService(workspaceOptions, new WorkspacePathGuard(), skillRegistry);
+        workspaceService = new WorkspaceService(workspaceOptions, new WorkspacePathGuard(), skillRegistry, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         agentContext = AgentContext.builder()
                 .requestId("req-skill-ws")
                 .sessionId("session-skill-ws")

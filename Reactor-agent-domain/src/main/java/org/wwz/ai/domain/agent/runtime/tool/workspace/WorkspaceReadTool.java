@@ -59,8 +59,8 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
         try {
             Map<String, Object> params = requireInputMap(input);
             Path filePath = requireAllowedPath(params);
-            if (!Files.isRegularFile(filePath)) {
-                return failResult("workspace_read 只支持读取文件路径: " + filePath);
+            if (!isReadableFile(filePath)) {
+                return failResult("workspace_read 只支持读取文件路径: " + toAgentPath(filePath));
             }
 
             if (isImage(filePath)) {
@@ -82,14 +82,15 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         && existing.getStartLine() == startLine
                         && existing.getLineCount() == lineCount
                         && isUnchanged(existing, mtimeMs, contentHash)) {
+                    String agentPath = toAgentPath(filePath);
                     Map<String, Object> unchanged = new LinkedHashMap<>();
                     unchanged.put("type", "file_unchanged");
                     unchanged.put("unchanged", Boolean.TRUE);
-                    unchanged.put("path", filePath.toString());
+                    unchanged.put("path", agentPath);
                     unchanged.put("startLine", startLine);
                     unchanged.put("lineCount", lineCount);
                     unchanged.put("message", FILE_UNCHANGED_STUB);
-                    unchanged.put("file", Map.of("filePath", filePath.toString()));
+                    unchanged.put("file", Map.of("filePath", agentPath));
                     return okResult(unchanged);
                 }
             }
@@ -118,14 +119,15 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
                         .contentHash(contentHash)
                         .build());
             }
+            String agentPath = toAgentPath(filePath);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("type", "text");
-            data.put("path", filePath.toString());
+            data.put("path", agentPath);
             data.put("startLine", startLine);
             data.put("endLine", fromIndex + (toIndex - fromIndex));
             data.put("content", body);
             data.put("file", Map.of(
-                    "filePath", filePath.toString(),
+                    "filePath", agentPath,
                     "content", body,
                     "numLines", toIndex - fromIndex,
                     "startLine", startLine,
@@ -159,13 +161,14 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
         }
         // observation 只保留元数据；整图走 base64Image，由 DomainMessageConverter 转成 Spring AI Media。
         String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+        String agentPath = toAgentPath(filePath);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("type", "image");
-        data.put("path", filePath.toString());
+        data.put("path", agentPath);
         data.put("mimeType", mimeType);
         data.put("size", bytes.length);
         data.put("file", Map.of(
-                "filePath", filePath.toString(),
+                "filePath", agentPath,
                 "type", mimeType,
                 "originalSize", bytes.length));
         data.put("message", "Image loaded as multimodal content; inspect the attached image media.");
@@ -182,6 +185,16 @@ public class WorkspaceReadTool extends AbstractWorkspacePathTool {
             case "png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif" -> true;
             default -> false;
         };
+    }
+
+    private boolean isReadableFile(Path filePath) {
+        if (Files.isRegularFile(filePath)) {
+            return true;
+        }
+        // Windows 某些会话目录的文件属性查询可能无法识别常规文件；存在且非目录时仍允许 UTF-8 读取。
+        return System.getProperty("os.name", "").startsWith("Windows")
+                && Files.exists(filePath)
+                && !Files.isDirectory(filePath);
     }
 
     private String extension(Path filePath) {

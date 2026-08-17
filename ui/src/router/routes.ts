@@ -7,6 +7,8 @@ export const ROUTES = {
   WORKSPACE_IMAGE_GENERATION: "/workspace/image-generation",
   WORKSPACE_SOP: "/workspace/sop",
   WORKSPACE_SUB_AGENTS: "/workspace/sub-agents",
+  WORKSPACE_MODELS: "/workspace/models",
+  WORKSPACE_CAPABILITIES: "/workspace/capabilities",
   NOT_FOUND: "*",
 } as const;
 

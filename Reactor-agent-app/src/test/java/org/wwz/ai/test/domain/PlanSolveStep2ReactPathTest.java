@@ -14,7 +14,7 @@ import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanSolvePrompt;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
-import org.wwz.ai.domain.agent.service.execute.planexecute.step.Step2PlanExecuteNode;
+import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.util.List;
@@ -32,7 +32,7 @@ public class PlanSolveStep2ReactPathTest {
         agent.getMemory().addMessage(Message.assistantMessage("这是最终答复。", null));
         agent.setState(AgentState.FINISHED);
 
-        String answer = Step2PlanExecuteNode.resolveFinalAnswer(agent, "这是最终答复。");
+        String answer = ReactFinalAnswerResolver.resolve(agent, "这是最终答复。");
         Assert.assertEquals("这是最终答复。", answer);
     }
 
@@ -51,7 +51,7 @@ public class PlanSolveStep2ReactPathTest {
         agent.getMemory().addMessage(Message.fromToolCalls("准备调用工具", List.of(call)));
         agent.setState(AgentState.FINISHED);
 
-        String answer = Step2PlanExecuteNode.resolveFinalAnswer(agent, "工具执行结果为: ok");
+        String answer = ReactFinalAnswerResolver.resolve(agent, "工具执行结果为: ok");
         Assert.assertTrue(answer.contains("未能生成面向用户") || answer.contains("最终说明"));
     }
 

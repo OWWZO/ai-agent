@@ -82,6 +82,7 @@ public class PlanModeToolsTest {
         Assert.assertEquals("TaskList", TaskToolNames.TASK_LIST);
         Assert.assertEquals("TodoWrite", TaskToolNames.TODO_WRITE);
         Assert.assertEquals("TaskStop", TaskToolNames.TASK_STOP);
+        Assert.assertEquals("TaskOutput", TaskToolNames.TASK_OUTPUT);
         Assert.assertEquals("EnterPlanMode", TaskToolNames.ENTER_PLAN_MODE);
         Assert.assertEquals("ExitPlanMode", TaskToolNames.EXIT_PLAN_MODE);
     }

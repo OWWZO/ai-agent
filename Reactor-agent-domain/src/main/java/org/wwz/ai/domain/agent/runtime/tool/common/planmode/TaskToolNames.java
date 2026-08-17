@@ -11,6 +11,8 @@ public final class TaskToolNames {
     public static final String TASK_UPDATE = "TaskUpdate";
     public static final String TASK_LIST = "TaskList";
     public static final String TASK_STOP = "TaskStop";
+    public static final String TASK_OUTPUT = "TaskOutput";
+    public static final String SEND_MESSAGE = "SendMessage";
     public static final String TODO_WRITE = "TodoWrite";
     public static final String ENTER_PLAN_MODE = "EnterPlanMode";
     public static final String EXIT_PLAN_MODE = "ExitPlanMode";

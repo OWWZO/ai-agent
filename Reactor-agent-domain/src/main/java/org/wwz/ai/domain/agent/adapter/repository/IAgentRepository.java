@@ -61,16 +61,6 @@ public interface IAgentRepository {
      */
     List<AiAgentVO> queryAvailableAgents();
 
-    /**
-     * 查询可用的 Fix 角色列表
-     */
-    List<AiAgentVO> queryAvailableFixRoles();
-
-    /**
-     * 按角色ID查询可用 Fix 角色
-     */
-    AiAgentVO queryAvailableFixRoleByAgentId(String aiAgentId);
-
     List<AiClientApiVO> queryAiClientApiVOListByApiIds(List<String> apiIdList);
 
 }

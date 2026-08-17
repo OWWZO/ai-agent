@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpPort;
 import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
+import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.wwz.ai.domain.agent.memory.SessionContextCompactionService;
 import org.wwz.ai.domain.agent.memory.ltm.BackgroundReviewService;
 import org.wwz.ai.domain.agent.memory.ltm.CuratedMemoryStore;
@@ -79,6 +80,9 @@ public class ReactorRuntimeDependencies {
     MemoryFlushService memoryFlushService;
 
     BackgroundReviewService backgroundReviewService;
+
+    /** 可选：会话 Todo / 后台任务持久化 */
+    TasklistPersistencePort tasklistPersistencePort;
 
     public ReactorConfig requireReactorConfig() {
         return Objects.requireNonNull(reactorConfig, "ReactorConfig must not be null");
@@ -166,13 +170,29 @@ public class ReactorRuntimeDependencies {
         return backgroundReviewService;
     }
 
+    public TasklistPersistencePort getOptionalTasklistPersistencePort() {
+        return tasklistPersistencePort;
+    }
+
     /**
      * 统一解析 LLM 配置。
-     * 优先读取 ReactorConfig.llmSettings，其次回退到 Environment 中的 llm.default.*。
+     * <ol>
+     *   <li>DB 管理台（{@link org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog}）— 热更新、免重启</li>
+     *   <li>ReactorConfig.llmSettings（yml）</li>
+     *   <li>Environment llm.default.*</li>
+     * </ol>
      */
     public LLMSettings resolveLlmSettings(String modelName) {
-        ReactorConfig config = requireReactorConfig();
         String normalizedModelName = modelName == null ? "" : modelName.trim();
+
+        if (llmDependencies != null && llmDependencies.getModelCatalog() != null) {
+            var fromDb = llmDependencies.getModelCatalog().resolve(normalizedModelName);
+            if (fromDb.isPresent()) {
+                return enrichSamplingFromYml(fromDb.get(), normalizedModelName);
+            }
+        }
+
+        ReactorConfig config = requireReactorConfig();
         if (config.getLlmSettingsMap() != null && !normalizedModelName.isBlank()) {
             LLMSettings settings = config.getLlmSettingsMap().get(normalizedModelName);
             if (settings != null) {
@@ -185,6 +205,42 @@ public class ReactorRuntimeDependencies {
             defaultConfig.setModel(normalizedModelName);
         }
         return defaultConfig;
+    }
+
+    /**
+     * DB 只保证 base/key/model；采样参数优先叠 yml 同名条目，否则用 llm.default。
+     */
+    private LLMSettings enrichSamplingFromYml(LLMSettings db, String modelRef) {
+        LLMSettings yml = null;
+        ReactorConfig config = reactorConfig;
+        if (config != null && config.getLlmSettingsMap() != null) {
+            if (db.getModel() != null && !db.getModel().isBlank()) {
+                yml = config.getLlmSettingsMap().get(db.getModel());
+            }
+            if (yml == null && modelRef != null && !modelRef.isBlank()) {
+                yml = config.getLlmSettingsMap().get(modelRef);
+            }
+        }
+        LLMSettings defaults = buildDefaultLlmSettings();
+        LLMSettings sample = yml != null ? yml : defaults;
+        String functionCallType = sample.getFunctionCallType();
+        if (functionCallType == null || functionCallType.isBlank()) {
+            functionCallType = defaults.getFunctionCallType();
+        }
+        return LLMSettings.builder()
+                .model(db.getModel())
+                .baseUrl(db.getBaseUrl())
+                .apiKey(db.getApiKey())
+                .interfaceUrl(db.getInterfaceUrl())
+                .maxTokens(sample.getMaxTokens() > 0 ? sample.getMaxTokens() : defaults.getMaxTokens())
+                .temperature(sample.getTemperature())
+                .maxInputTokens(sample.getMaxInputTokens() > 0 ? sample.getMaxInputTokens() : defaults.getMaxInputTokens())
+                .functionCallType(functionCallType)
+                .reasoningEffort(sample.getReasoningEffort())
+                .apiType(sample.getApiType())
+                .apiVersion(sample.getApiVersion())
+                .extParams(sample.getExtParams() != null ? sample.getExtParams() : new HashMap<>())
+                .build();
     }
 
     private LLMSettings buildDefaultLlmSettings() {

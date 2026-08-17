@@ -121,7 +121,7 @@ public class ToolSchemaNormalizerTest {
     @Test
     public void test_validSkillToolSchemasShouldNotEmitIncompleteSchemaWarning() {
         assertNoIncompleteSchemaWarning(
-                new SkillTool(null),
+                new SkillTool(null, null),
                 new WorkspaceReadTool(null, null),
                 new WorkspaceGrepTool(null, null)
         );

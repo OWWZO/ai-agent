@@ -10,6 +10,10 @@
 -- Agent assembly config (not execution facts):
 --   ai_agent_sub_agent_definition — custom SubAgent definitions for Agent tool
 --
+-- Session task surfaces (not ledger facts):
+--   ai_agent_session_todo — Todo V2 list (TaskCreate/List)
+--   ai_agent_background_task — background Agent/shell tasks (TaskOutput/Stop)
+--
 -- Do NOT add as a second main path:
 --   ai_agent_message*, ai_agent_turn, ai_agent_transcript_block,
 --   ai_agent_display_event, ai_agent_session_memory
@@ -147,6 +151,18 @@ CREATE TABLE IF NOT EXISTS ai_client_config (
     KEY idx_target_id (target_id)
 ) COMMENT='AI客户端统一关联配置表';
 
+CREATE TABLE IF NOT EXISTS ai_agent_session_capability (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    session_id  VARCHAR(64)  NOT NULL COMMENT '会话 ID',
+    kind        VARCHAR(16)  NOT NULL COMMENT 'skill|mcp',
+    ref_id      VARCHAR(128) NOT NULL COMMENT 'skill name 或 mcpId',
+    enabled     TINYINT      NOT NULL DEFAULT 0 COMMENT '0 关 1 开',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sess_kind_ref (session_id, kind, ref_id),
+    KEY idx_session (session_id)
+) COMMENT='会话能力差集开关';
+
 CREATE TABLE IF NOT EXISTS ai_client_model (
     id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
     model_id    VARCHAR(64)   NOT NULL COMMENT '全局唯一模型ID',
@@ -154,6 +170,8 @@ CREATE TABLE IF NOT EXISTS ai_client_model (
     model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途',
     model_name  VARCHAR(64)   NOT NULL COMMENT '模型名称',
     model_type  VARCHAR(32)   NOT NULL COMMENT '模型类型：openai、deepseek、claude',
+    supports_thinking TINYINT NOT NULL DEFAULT 0 COMMENT '是否支持深度思考',
+    context_window INT NULL DEFAULT NULL COMMENT '上下文窗口 token',
     status      TINYINT       NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
     create_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -939,3 +957,51 @@ CREATE TABLE IF NOT EXISTS ai_agent_ltm_fork_execution (
     KEY idx_ltm_fork_kind_status (fork_kind, status, deleted),
     KEY idx_ltm_fork_owner (owner_type, owner_id, deleted, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='LTM memory-only fork 执行观测';
+
+-- 会话 Todo + 后台运行任务（非 Execution Ledger）
+CREATE TABLE IF NOT EXISTS ai_agent_session_todo (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id      VARCHAR(64)    NOT NULL COMMENT '会话ID（listId）',
+    task_id         VARCHAR(32)    NOT NULL COMMENT 'Todo 任务ID（会话内自增序号）',
+    subject         VARCHAR(512)   NOT NULL COMMENT '短标题',
+    description     MEDIUMTEXT     NOT NULL COMMENT '任务详情',
+    active_form     VARCHAR(256)   NULL COMMENT '进行时文案',
+    owner           VARCHAR(128)   NULL COMMENT '负责人/owner',
+    status          VARCHAR(32)    NOT NULL DEFAULT 'pending' COMMENT 'pending|in_progress|completed',
+    blocks_json     JSON           NULL COMMENT '阻塞的任务 id 列表',
+    blocked_by_json JSON           NULL COMMENT '被阻塞依赖 id 列表',
+    metadata_json   JSON           NULL COMMENT '扩展元数据',
+    seq_no          INT            NOT NULL DEFAULT 0 COMMENT '排序序号（通常=task_id 数值）',
+    create_time     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted         TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_session_todo (session_id, task_id, deleted),
+    KEY idx_session_todo_session (session_id, deleted, seq_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话 Todo 任务列表（TaskCreate/List）';
+
+CREATE TABLE IF NOT EXISTS ai_agent_background_task (
+    id                     BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    session_id             VARCHAR(64)    NOT NULL COMMENT '会话ID',
+    task_id                VARCHAR(32)    NOT NULL COMMENT '后台任务ID',
+    type                   VARCHAR(32)    NOT NULL DEFAULT 'generic' COMMENT 'local_agent|local_shell|generic',
+    status                 VARCHAR(32)    NOT NULL DEFAULT 'running' COMMENT 'running|completed|stopped|failed',
+    description            VARCHAR(512)   NULL COMMENT '任务描述',
+    command                VARCHAR(512)   NULL COMMENT '命令/子类型摘要',
+    agent_id               VARCHAR(64)    NULL COMMENT '子 Agent id',
+    agent_type             VARCHAR(64)    NULL COMMENT 'subagent_type',
+    prompt                 MEDIUMTEXT     NULL COMMENT '派发 prompt',
+    output                 MEDIUMTEXT     NULL COMMENT '终态输出摘要',
+    error_msg              VARCHAR(1024)  NULL COMMENT '错误信息',
+    total_tool_use_count   INT            NULL COMMENT '工具调用次数',
+    total_duration_ms      BIGINT         NULL COMMENT '耗时毫秒',
+    started_at_ms          BIGINT         NULL COMMENT '开始时间 epoch ms',
+    ended_at_ms            BIGINT         NULL COMMENT '结束时间 epoch ms',
+    create_time            DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time            DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted                TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_session_bg_task (session_id, task_id, deleted),
+    KEY idx_session_bg_session (session_id, deleted, update_time DESC),
+    KEY idx_session_bg_status (session_id, status, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台运行任务（Agent run_in_background / TaskOutput）';

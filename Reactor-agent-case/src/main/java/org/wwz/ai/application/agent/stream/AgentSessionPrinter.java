@@ -146,6 +146,7 @@ public class AgentSessionPrinter implements Printer {
                 case "user_inject":
                 case "subagent_progress":
                 case "llm_retry":
+                case "context_usage":
                 case "browser":
                 case "code":
                 case "html":
@@ -161,6 +162,7 @@ public class AgentSessionPrinter implements Printer {
                     // 关联信息，必须在序列化后再合并，防止被 message 内容覆盖。
                     response.setResultMap(JSON.parseObject(JSON.toJSONString(message)));
                     response.getResultMap().put("agentType", agentType);
+                    response.getResultMap().put("messageType", messageType);
                     // 子 Agent 嵌套标签（parentToolUseId 等）经 extraResultMap 传入，
                     // 上面 setResultMap 会覆盖，这里再合并一次。
                     if (extraResultMap != null && !extraResultMap.isEmpty()) {

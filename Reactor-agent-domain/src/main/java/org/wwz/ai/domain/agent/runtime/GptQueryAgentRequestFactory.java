@@ -54,6 +54,9 @@ public class GptQueryAgentRequestFactory {
         request.setQuery(req.getQuery());
         request.setSessionFiles(req.getSessionFiles());
         request.setAiAgentId(req.getAiAgentId());
+        request.setModel(StringUtils.trimToNull(req.getModel()));
+        request.setThinking(req.getThinking());
+        request.setThinkingEffort(StringUtils.trimToNull(req.getThinkingEffort()));
 
         if ("chat".equalsIgnoreCase(req.getOutputStyle())) {
             request.setAgentType(AgentType.WORKFLOW.getValue());

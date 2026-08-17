@@ -47,6 +47,12 @@ public class AiClientModel {
      */
     private String modelUsage;
 
+    /** 是否支持深度思考（reasoning_effort） */
+    private Integer supportsThinking;
+
+    /** 上下文窗口（输入侧 token 上限） */
+    private Integer contextWindow;
+
     /**
      * 状态：0-禁用，1-启用
      */

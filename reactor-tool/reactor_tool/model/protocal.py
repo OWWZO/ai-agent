@@ -234,6 +234,45 @@ class ScriptRunnerRequest(BaseModel):
     timeout_seconds: int = Field(default=120, alias="timeoutSeconds", description="超时时间，单位秒")
 
 
+class BashSandboxRequest(BaseModel):
+    """会话沙箱 bash：物化 skill 库 → 执行命令 → skills/** 回写库。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId", description="会话/请求 ID")
+    command: str = Field(min_length=1, description="shell 命令（相对 cwd=workspaceRoot）")
+    workspace_root: str = Field(alias="workspaceRoot", description="会话工作区绝对路径（skilloutput/{sessionId}）")
+    skill_library_root: Optional[str] = Field(
+        default=None,
+        alias="skillLibraryRoot",
+        description="全局 skill 库绝对路径（runtime/skills）；为空则不物化/不同步 skill",
+    )
+    disabled_skill_names: List[str] = Field(
+        default_factory=list,
+        alias="disabledSkillNames",
+        description="本会话关闭的 skill 名，物化时跳过",
+    )
+    timeout_seconds: int = Field(default=120, alias="timeoutSeconds", ge=1, le=600)
+    max_output_chars: int = Field(default=64000, alias="maxOutputChars", ge=1024, le=500000)
+
+
+class BashSandboxResponse(BaseModel):
+    """bash 沙箱执行结果。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_id: str = Field(alias="requestId")
+    exit_code: Optional[int] = Field(default=None, alias="exitCode")
+    stdout: str = ""
+    stderr: str = ""
+    truncated: bool = False
+    timed_out: bool = Field(default=False, alias="timedOut")
+    duration_ms: int = Field(default=0, alias="durationMs")
+    skills_materialized: List[str] = Field(default_factory=list, alias="skillsMaterialized")
+    skills_synced_back: List[str] = Field(default_factory=list, alias="skillsSyncedBack")
+    cwd: str = Field(default=".", description="对 Agent 只暴露相对语义")
+
+
 class ScriptRunnerResponse(BaseModel):
     """script_runner 返回协议"""
 

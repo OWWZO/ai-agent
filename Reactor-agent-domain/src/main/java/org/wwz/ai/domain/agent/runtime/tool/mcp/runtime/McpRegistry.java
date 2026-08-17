@@ -14,6 +14,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.adapter.repository.IAgentRepository;
 import org.wwz.ai.domain.agent.model.valobj.AiClientToolMcpVO;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpResourceInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -55,6 +57,16 @@ public class McpRegistry {
      * 工具发现结果缓存：key 为 mcpId。
      */
     private final Map<String, List<McpToolInfo>> toolCache = new ConcurrentHashMap<>();
+
+    /**
+     * Resource 发现结果缓存：key 为 mcpId。
+     */
+    private final Map<String, List<McpResourceInfo>> resourceCache = new ConcurrentHashMap<>();
+
+    /**
+     * 是否具备 resources 能力：key 为 mcpId。
+     */
+    private final Map<String, Boolean> resourceCapabilityCache = new ConcurrentHashMap<>();
 
     /**
      * fix 策略使用的 ToolCallback 缓存：key 为 mcpId。
@@ -143,6 +155,137 @@ public class McpRegistry {
     }
 
     /**
+     * 全局启用 MCP 的 resources 列表。
+     */
+    public List<McpResourceInfo> listGlobalEnabledResources() {
+        ensureGlobalMcpsLoaded();
+        return listResourcesByMcpIds(globalEnabledMcpIds);
+    }
+
+    /**
+     * 按 mcpId 列表汇总 resources。
+     */
+    public List<McpResourceInfo> listResourcesByMcpIds(List<String> mcpIds) {
+        if (mcpIds == null || mcpIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        ensureMcpsLoaded(mcpIds);
+        List<McpResourceInfo> resources = new ArrayList<>();
+        for (String mcpId : new LinkedHashSet<>(mcpIds)) {
+            List<McpResourceInfo> one = resourceCache.get(mcpId);
+            if (one != null && !one.isEmpty()) {
+                resources.addAll(one);
+            }
+        }
+        return resources;
+    }
+
+    /**
+     * 按 mcpId 或 serverKey 过滤 resources；blank 时返回全局。
+     */
+    public List<McpResourceInfo> listResources(String serverOrMcpId) {
+        ensureGlobalMcpsLoaded();
+        if (StringUtils.isBlank(serverOrMcpId)) {
+            return listGlobalEnabledResources();
+        }
+        String mcpId = resolveMcpId(serverOrMcpId);
+        if (StringUtils.isBlank(mcpId)) {
+            return Collections.emptyList();
+        }
+        ensureMcpsLoaded(Collections.singletonList(mcpId));
+        List<McpResourceInfo> cached = resourceCache.get(mcpId);
+        return cached == null ? Collections.emptyList() : List.copyOf(cached);
+    }
+
+    /**
+     * 是否至少有一个全局 MCP 声明了 resources 能力或已列出资源。
+     */
+    public boolean hasAnyResources() {
+        ensureGlobalMcpsLoaded();
+        for (String mcpId : globalEnabledMcpIds) {
+            if (Boolean.TRUE.equals(resourceCapabilityCache.get(mcpId))) {
+                return true;
+            }
+            List<McpResourceInfo> resources = resourceCache.get(mcpId);
+            if (resources != null && !resources.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 读取单个 resource；server 可为 mcpId 或 serverKey。
+     */
+    public String readResource(String serverOrMcpId, String uri) {
+        if (StringUtils.isBlank(serverOrMcpId) || StringUtils.isBlank(uri)) {
+            return "Resource read Error. server and uri are required.";
+        }
+        ensureGlobalMcpsLoaded();
+        String mcpId = resolveMcpId(serverOrMcpId);
+        if (StringUtils.isBlank(mcpId)) {
+            return "Resource read Error. unknown server: " + serverOrMcpId;
+        }
+        ensureMcpsLoaded(Collections.singletonList(mcpId));
+        McpClientRuntime runtime = runtimeCache.get(mcpId);
+        if (runtime == null) {
+            return "Resource read Error. MCP client not available: " + mcpId;
+        }
+        try {
+            McpSchema.ReadResourceResult result = readResourceWithRuntime(runtime, uri.trim());
+            return formatResourceResult(mcpId, uri, result);
+        } catch (Exception e) {
+            log.error("MCP resource 读取失败: mcpId={}, uri={}, reason={}", mcpId, uri, e.getMessage(), e);
+            return "Resource read Error. " + StringUtils.defaultString(e.getMessage());
+        }
+    }
+
+    /**
+     * 将 serverKey / mcpId / 规范化 server 名解析为 mcpId。
+     */
+    public String resolveMcpId(String serverOrMcpId) {
+        if (StringUtils.isBlank(serverOrMcpId)) {
+            return null;
+        }
+        String key = serverOrMcpId.trim();
+        if (runtimeCache.containsKey(key)) {
+            return key;
+        }
+        String normalized = McpToolNamePolicy.normalizeSegment(key);
+        for (Map.Entry<String, McpClientRuntime> entry : runtimeCache.entrySet()) {
+            if (StringUtils.equals(entry.getKey(), key)) {
+                return entry.getKey();
+            }
+            McpServerDescriptor descriptor = entry.getValue() != null ? entry.getValue().getDescriptor() : null;
+            if (descriptor == null) {
+                continue;
+            }
+            if (StringUtils.equalsIgnoreCase(descriptor.resolveServerKey(), key)
+                    || StringUtils.equalsIgnoreCase(McpToolNamePolicy.normalizeSegment(descriptor.resolveServerKey()), normalized)
+                    || StringUtils.equalsIgnoreCase(descriptor.getMcpId(), key)) {
+                return entry.getKey();
+            }
+        }
+        // 工具缓存中的 serverKey 也可能匹配
+        for (Map.Entry<String, List<McpToolInfo>> entry : toolCache.entrySet()) {
+            List<McpToolInfo> tools = entry.getValue();
+            if (tools == null) {
+                continue;
+            }
+            for (McpToolInfo tool : tools) {
+                if (tool == null) {
+                    continue;
+                }
+                if (StringUtils.equalsIgnoreCase(tool.getServerKey(), key)
+                        || StringUtils.equalsIgnoreCase(McpToolNamePolicy.normalizeSegment(tool.getServerKey()), normalized)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * 根据 mcpId 列表获取可复用的同步客户端。
      */
     public McpSyncClient[] getSyncClientsByMcpIds(List<String> mcpIds) {
@@ -185,6 +328,7 @@ public class McpRegistry {
 
     /**
      * 统一执行 MCP 工具。
+     * {@code toolName} 可为 FQ 名或服务端原始名；wire 调用始终使用原始名。
      */
     public String executeTool(String mcpId, String toolName, Object args) {
         if (StringUtils.isBlank(mcpId) || StringUtils.isBlank(toolName)) {
@@ -200,14 +344,41 @@ public class McpRegistry {
             return buildErrorResult(toolName);
         }
 
+        String wireName = resolveWireToolName(mcpId, toolName);
         try {
-            McpSchema.CallToolResult result = callToolWithRuntime(runtime, toolName, args);
+            McpSchema.CallToolResult result = callToolWithRuntime(runtime, wireName, args);
             return formatToolResult(toolName, runtime.getDescriptor(), result);
         } catch (Exception e) {
-            log.error("MCP 工具执行失败: mcpId={}, toolName={}, reason={}",
-                    mcpId, toolName, e.getMessage(), e);
+            log.error("MCP 工具执行失败: mcpId={}, toolName={}, wireName={}, reason={}",
+                    mcpId, toolName, wireName, e.getMessage(), e);
             return buildErrorResult(toolName);
         }
+    }
+
+    /**
+     * FQ 名 → 服务端原始名；若已是原始名则原样返回。
+     */
+    private String resolveWireToolName(String mcpId, String toolName) {
+        List<McpToolInfo> tools = toolCache.get(mcpId);
+        if (tools != null) {
+            for (McpToolInfo tool : tools) {
+                if (tool == null) {
+                    continue;
+                }
+                if (StringUtils.equals(tool.getName(), toolName)
+                        || StringUtils.equals(tool.getOriginalName(), toolName)) {
+                    return tool.resolveWireName();
+                }
+            }
+        }
+        if (McpToolNamePolicy.isQualifiedName(toolName)) {
+            String body = toolName.substring(McpToolNamePolicy.PREFIX.length());
+            int idx = body.indexOf(McpToolNamePolicy.SEPARATOR);
+            if (idx > 0 && idx < body.length() - McpToolNamePolicy.SEPARATOR.length()) {
+                return body.substring(idx + McpToolNamePolicy.SEPARATOR.length());
+            }
+        }
+        return toolName;
     }
 
     /**
@@ -227,14 +398,18 @@ public class McpRegistry {
                 McpServerDescriptor descriptor = buildDescriptor(mcpVO);
                 McpClientRuntime runtime = runtimeFactory.createRuntime(descriptor);
                 List<McpToolInfo> tools = discoverTools(runtime);
+                ResourceDiscovery resourceDiscovery = discoverResources(runtime);
 
                 // 先替换缓存，再关闭旧连接，避免并发读线程拿到已关闭的客户端。
                 McpClientRuntime oldRuntime = runtimeCache.put(mcpVO.getMcpId(), runtime);
                 toolCache.put(mcpVO.getMcpId(), tools);
+                resourceCache.put(mcpVO.getMcpId(), resourceDiscovery.resources());
+                resourceCapabilityCache.put(mcpVO.getMcpId(), resourceDiscovery.supported());
                 toolCallbackCache.remove(mcpVO.getMcpId());
 
                 closeQuietly(oldRuntime, runtime);
-                log.info("MCP 预热成功: mcpId={}, toolCount={}", mcpVO.getMcpId(), tools.size());
+                log.info("MCP 预热成功: mcpId={}, toolCount={}, resourceCount={}, resourcesSupported={}",
+                        mcpVO.getMcpId(), tools.size(), resourceDiscovery.resources().size(), resourceDiscovery.supported());
             } catch (Exception e) {
                 log.error("MCP 预热失败: mcpId={}, reason={}", mcpVO.getMcpId(), e.getMessage(), e);
             }
@@ -274,9 +449,13 @@ public class McpRegistry {
      * 将数据库配置转换为统一的运行时描述对象。
      */
     private McpServerDescriptor buildDescriptor(AiClientToolMcpVO mcpVO) {
+        // serverKey 优先可读 mcpName，保证 FQ 工具名稳定且跨重载一致。
+        String serverKey = StringUtils.isNotBlank(mcpVO.getMcpName())
+                ? McpToolNamePolicy.normalizeSegment(mcpVO.getMcpName())
+                : McpToolNamePolicy.normalizeSegment(mcpVO.getMcpId());
         McpServerDescriptor.McpServerDescriptorBuilder builder = McpServerDescriptor.builder()
                 .mcpId(mcpVO.getMcpId())
-                .serverKey(mcpVO.getMcpId())
+                .serverKey(serverKey)
                 .transportType(mcpVO.getTransportType())
                 .requestTimeout(mcpVO.getRequestTimeout());
 
@@ -366,6 +545,8 @@ public class McpRegistry {
         for (String staleMcpId : staleMcpIds) {
             McpClientRuntime staleRuntime = runtimeCache.remove(staleMcpId);
             toolCache.remove(staleMcpId);
+            resourceCache.remove(staleMcpId);
+            resourceCapabilityCache.remove(staleMcpId);
             toolCallbackCache.remove(staleMcpId);
             removeClientBinding(staleMcpId);
             closeQuietly(staleRuntime, null);
@@ -411,19 +592,167 @@ public class McpRegistry {
     }
 
     /**
-     * 将 SDK 工具定义转成内部统一工具描述。
+     * 将 SDK 工具定义转成内部统一工具描述（FQ 名 + 原始名）。
      */
     private McpToolInfo toToolInfo(McpServerDescriptor descriptor, McpSchema.Tool tool) {
         String parameters = tool.inputSchema() == null ? "{}" : writeAsJson(tool.inputSchema());
+        String originalName = tool.name();
+        String serverKey = descriptor.resolveServerKey();
+        String qualifiedName = McpToolNamePolicy.buildQualifiedName(serverKey, originalName);
+        Map<String, Object> meta = tool.meta();
+        boolean alwaysLoad = meta != null && isTruthy(meta.get("anthropic/alwaysLoad"));
+        String searchHint = meta == null || meta.get("anthropic/searchHint") == null
+                ? null
+                : String.valueOf(meta.get("anthropic/searchHint"));
+        Boolean readOnly = null;
+        Boolean destructive = null;
+        if (tool.annotations() != null) {
+            readOnly = tool.annotations().readOnlyHint();
+            destructive = tool.annotations().destructiveHint();
+        }
+        String desc = StringUtils.defaultIfBlank(tool.description(), tool.title());
+        if (StringUtils.isBlank(desc)) {
+            desc = originalName + " (MCP)";
+        } else {
+            desc = desc + " [" + serverKey + " MCP]";
+        }
         return McpToolInfo.builder()
                 .mcpId(descriptor.getMcpId())
-                .name(tool.name())
-                .desc(StringUtils.defaultIfBlank(tool.description(), tool.title()))
+                .name(qualifiedName)
+                .originalName(originalName)
+                .desc(desc)
                 .parameters(parameters)
                 .transportType(descriptor.getTransportType())
-                .serverKey(descriptor.resolveServerKey())
+                .serverKey(serverKey)
+                .alwaysLoad(alwaysLoad)
+                .searchHint(searchHint)
+                .readOnlyHint(readOnly)
+                .destructiveHint(destructive)
                 .descriptor(descriptor)
                 .build();
+    }
+
+    /**
+     * 发现 resources；能力探测失败时降级为空列表，不阻断工具预热。
+     */
+    private ResourceDiscovery discoverResources(McpClientRuntime runtime) {
+        boolean supported = false;
+        try {
+            McpSchema.ServerCapabilities capabilities = runtime.getSyncClient().getServerCapabilities();
+            supported = capabilities != null && capabilities.resources() != null;
+        } catch (Exception e) {
+            log.debug("读取 MCP resources 能力失败: mcpId={}, reason={}",
+                    runtime.getDescriptor() != null ? runtime.getDescriptor().getMcpId() : "unknown",
+                    e.getMessage());
+        }
+
+        List<McpResourceInfo> resources = new ArrayList<>();
+        runtime.getLock().lock();
+        try {
+            String cursor = null;
+            do {
+                McpSchema.ListResourcesResult listResult = StringUtils.isBlank(cursor)
+                        ? runtime.getSyncClient().listResources()
+                        : runtime.getSyncClient().listResources(cursor);
+                if (listResult == null || listResult.resources() == null || listResult.resources().isEmpty()) {
+                    break;
+                }
+                supported = true;
+                for (McpSchema.Resource resource : listResult.resources()) {
+                    resources.add(toResourceInfo(runtime.getDescriptor(), resource));
+                }
+                cursor = listResult.nextCursor();
+            } while (StringUtils.isNotBlank(cursor));
+        } catch (Exception e) {
+            log.warn("MCP resources/list 失败（已忽略）: mcpId={}, reason={}",
+                    runtime.getDescriptor() != null ? runtime.getDescriptor().getMcpId() : "unknown",
+                    e.getMessage());
+        } finally {
+            runtime.getLock().unlock();
+        }
+        return new ResourceDiscovery(supported, List.copyOf(resources));
+    }
+
+    private McpResourceInfo toResourceInfo(McpServerDescriptor descriptor, McpSchema.Resource resource) {
+        return McpResourceInfo.builder()
+                .mcpId(descriptor.getMcpId())
+                .serverKey(descriptor.resolveServerKey())
+                .uri(resource.uri())
+                .name(resource.name())
+                .title(resource.title())
+                .description(resource.description())
+                .mimeType(resource.mimeType())
+                .size(resource.size())
+                .build();
+    }
+
+    private McpSchema.ReadResourceResult readResourceWithRuntime(McpClientRuntime runtime, String uri) {
+        McpSchema.ReadResourceRequest request = new McpSchema.ReadResourceRequest(uri);
+        if (isStdioRuntime(runtime)) {
+            McpClientRuntime transientRuntime = runtimeFactory.createRuntime(copyDescriptor(runtime.getDescriptor()));
+            try {
+                return transientRuntime.getSyncClient().readResource(request);
+            } finally {
+                closeRuntimeQuietly(transientRuntime);
+            }
+        }
+        runtime.getLock().lock();
+        try {
+            return runtime.getSyncClient().readResource(request);
+        } finally {
+            runtime.getLock().unlock();
+        }
+    }
+
+    private String formatResourceResult(String mcpId, String uri, McpSchema.ReadResourceResult result) {
+        if (result == null || result.contents() == null || result.contents().isEmpty()) {
+            return "Resource empty: " + uri;
+        }
+        StringBuilder text = new StringBuilder();
+        for (McpSchema.ResourceContents content : result.contents()) {
+            if (content instanceof McpSchema.TextResourceContents textContent) {
+                if (text.length() > 0) {
+                    text.append(System.lineSeparator());
+                }
+                if (StringUtils.isNotBlank(textContent.text())) {
+                    text.append(textContent.text());
+                }
+            } else if (content instanceof McpSchema.BlobResourceContents blobContent) {
+                if (text.length() > 0) {
+                    text.append(System.lineSeparator());
+                }
+                int blobLen = blobContent.blob() == null ? 0 : blobContent.blob().length();
+                text.append("[blob resource uri=")
+                        .append(StringUtils.defaultIfBlank(blobContent.uri(), uri))
+                        .append(", mimeType=")
+                        .append(StringUtils.defaultString(blobContent.mimeType()))
+                        .append(", base64Length=")
+                        .append(blobLen)
+                        .append(", mcpId=")
+                        .append(mcpId)
+                        .append(']');
+            } else if (content != null) {
+                if (text.length() > 0) {
+                    text.append(System.lineSeparator());
+                }
+                text.append(writeAsJson(content));
+            }
+        }
+        return text.length() == 0 ? writeAsJson(result) : text.toString();
+    }
+
+    private static boolean isTruthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        String text = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        return "true".equals(text) || "1".equals(text) || "yes".equals(text);
+    }
+
+    private record ResourceDiscovery(boolean supported, List<McpResourceInfo> resources) {
     }
 
     /**

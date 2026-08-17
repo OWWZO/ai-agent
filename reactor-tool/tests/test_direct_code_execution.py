@@ -113,6 +113,28 @@ class DirectCodeExecutionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(str(Path(session_root).resolve()), str(Path(result["workspace"]).resolve()))
             self.assertTrue((Path(session_root) / "output" / "a.txt").is_file())
 
+    async def test_should_resolve_file_names_from_workspace_for_resolve_input_path(self):
+        with tempfile.TemporaryDirectory() as session_root, patch(
+            "reactor_tool.tool.direct_code_execution.upload_file_by_path",
+            new=AsyncMock(return_value=None),
+        ):
+            workspace = Path(session_root)
+            (workspace / "run_backtest.py").write_text("print('script-ok')\n", encoding="utf-8")
+            result = await execute_code(CodeExecutionRequest(
+                requestId="session-file-names",
+                workspaceRoot=session_root,
+                permissionProfile="workspace",
+                fileNames=["run_backtest.py"],
+                source=(
+                    "from pathlib import Path\n"
+                    "path = resolve_input_path('run_backtest.py')\n"
+                    "print(Path(path).read_text(encoding='utf-8').strip())\n"
+                ),
+            ))
+            self.assertEqual("ok", result["status"], result)
+            self.assertIn("script-ok", result["stdout"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

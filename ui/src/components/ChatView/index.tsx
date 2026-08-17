@@ -535,6 +535,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   <GeneralInput
                     key={`input-${conversation.sessionId}-single`}
                     sessionId={conversation.sessionId}
+                    contextUsage={
+                      conversation.chatList?.[conversation.chatList.length - 1]
+                        ?.contextUsage ?? null
+                    }
                     placeholder={
                       conversation.role?.available === false
                         ? "当前角色已失效，请新建对话后重新选择角色"
@@ -662,6 +666,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     <GeneralInput
                       key={`input-${conversation.sessionId}-left`}
                       sessionId={conversation.sessionId}
+                      contextUsage={
+                        conversation.chatList?.[conversation.chatList.length - 1]
+                          ?.contextUsage ?? null
+                      }
                       placeholder={
                         conversation.role?.available === false
                           ? "当前角色已失效，请新建对话后重新选择角色"
@@ -810,6 +818,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 <GeneralInput
                   key={`input-${conversation.sessionId}-data`}
                   sessionId={conversation.sessionId}
+                  contextUsage={
+                    conversation.chatList?.[conversation.chatList.length - 1]
+                      ?.contextUsage ?? null
+                  }
                   placeholder={loading ? "任务进行中..." : "希望 Reactor 为你做哪些任务呢？"}
                   showBtn={false}
                   size="medium"

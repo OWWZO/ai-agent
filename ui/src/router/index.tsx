@@ -16,6 +16,8 @@ const WorkspaceMRag = React.lazy(() => import('@/pages/WorkspaceMRag'));
 const WorkspaceImageGeneration = React.lazy(() => import('@/pages/WorkspaceImageGeneration'));
 const WorkspaceSop = React.lazy(() => import('@/pages/WorkspaceSop'));
 const SubAgentAdmin = React.lazy(() => import('@/pages/SubAgentAdmin'));
+const ModelAdmin = React.lazy(() => import('@/pages/ModelAdmin'));
+const CapabilityLibrary = React.lazy(() => import('@/pages/CapabilityLibrary'));
 const NotFound = React.lazy(() => import('@/components/NotFound'));
 
 // 创建路由配置
@@ -81,6 +83,22 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading loading={true} className="h-full"/>}>
             <SubAgentAdmin />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.WORKSPACE_MODELS,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <ModelAdmin />
+          </Suspense>
+        ),
+      },
+      {
+        path: ROUTES.WORKSPACE_CAPABILITIES,
+        element: (
+          <Suspense fallback={<Loading loading={true} className="h-full"/>}>
+            <CapabilityLibrary />
           </Suspense>
         ),
       },

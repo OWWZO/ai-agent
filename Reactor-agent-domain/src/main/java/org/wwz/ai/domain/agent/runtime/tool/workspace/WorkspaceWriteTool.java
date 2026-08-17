@@ -78,22 +78,21 @@ public class WorkspaceWriteTool extends AbstractWorkspacePathTool {
                         .contentHash(WorkspaceReadStateStore.sha256Hex(content))
                         .build());
                 // 写计划文件时同步 PlanModeState（ExitPlanMode / UI 一致）。
-                String relative = toRelativePath(workspaceRoot, filePath);
-                if (relative != null
-                        && relative.replace('\\', '/').endsWith(org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.RELATIVE_PLAN_PATH)
+                String agentPlanPath = toAgentPath(filePath);
+                if (agentPlanPath != null
+                        && agentPlanPath.replace('\\', '/').endsWith(org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.RELATIVE_PLAN_PATH)
                         && agentContext.getPlanModeState() != null) {
-                    agentContext.getPlanModeState().setPlan(
-                            content,
-                            filePath.toAbsolutePath().normalize().toString());
+                    // 计划路径对 Agent/提示词只保留虚拟相对路径
+                    agentContext.getPlanModeState().setPlan(content, agentPlanPath);
                 }
             }
 
+            String agentPath = toAgentPath(filePath);
             String relativePath = toRelativePath(workspaceRoot, filePath);
             String registerNote = WorkspaceFileRegistration.registerLocalFile(
                     agentContext, relativePath, filePath, "写入文件");
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("path", filePath.toString());
-            data.put("relativePath", relativePath);
+            data.put("path", agentPath);
             data.put("chars", content.length());
             if (StringUtils.isNotBlank(registerNote)) {
                 data.put("registerNote", registerNote);

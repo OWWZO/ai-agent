@@ -61,7 +61,7 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             Map<String, Object> params = requireInputMap(input);
             Path filePath = requireWritablePath(params);
             if (!Files.isRegularFile(filePath)) {
-                return failResult("workspace_edit 只支持已存在的文件路径: " + filePath);
+                return failResult("workspace_edit 只支持已存在的文件路径: " + toAgentPath(filePath));
             }
 
             String absolutePath = filePath.toAbsolutePath().normalize().toString();
@@ -70,7 +70,8 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
             }
             WorkspaceFileReadState readState = agentContext.getWorkspaceFileReadState(absolutePath);
             if (readState == null) {
-                return failResult("You must use workspace_read at least once on this file before editing: " + absolutePath);
+                return failResult("You must use workspace_read at least once on this file before editing: "
+                        + toAgentPath(filePath));
             }
             long mtimeMs = Files.getLastModifiedTime(filePath).toMillis();
             String currentContent = Files.readString(filePath, StandardCharsets.UTF_8);
@@ -139,7 +140,7 @@ public class WorkspaceEditTool extends AbstractWorkspacePathTool {
                     agentContext, relativePath, filePath, "编辑文件");
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("path", filePath.toString());
+            data.put("path", toAgentPath(filePath));
             data.put("replacements", replaceAll ? occurrences : 1);
             data.put("charsBefore", original.length());
             data.put("charsAfter", updated.length());

@@ -9,6 +9,7 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
 import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
+import org.wwz.ai.domain.agent.runtime.llm.LlmUserFacingError;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
@@ -112,7 +113,7 @@ public class ReactImplAgent extends ReActAgent {
         } catch (Exception e) {
             log.error("{} react think error", context.getRequestId(), e);
             getMemory().addMessage(Message.assistantMessage(
-                    "Error encountered while processing: " + e.getMessage(), null));
+                    LlmUserFacingError.toUserMessage(e), null));
             setState(AgentState.FINISHED); // 标记智能体完成（终止后续流程）
             return false; // 思考失败
         }

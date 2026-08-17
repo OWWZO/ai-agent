@@ -73,35 +73,31 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
         return ToolResultPayload.okData(getName(), fields);
     }
 
-    /** 失败：LeAgent 风格 Error 前缀。 */
+    /** 失败：LeAgent 风格 Error 前缀（消息脱敏，不暴露宿主绝对路径）。 */
     protected ToolResultPayload failResult(String message) {
+        String safe = WorkspaceService.redactHostPaths(message);
         Map<String, Object> detail = new java.util.LinkedHashMap<>();
         detail.put("type", "tool_error");
         detail.put("tool", getName());
-        detail.put("message", message);
-        return ToolResultPayload.failureFrom(message, detail);
+        detail.put("message", safe);
+        return ToolResultPayload.failureFrom(safe, detail);
+    }
+
+    /** Agent 可见路径：skills/... 或会话相对路径。 */
+    protected String toAgentPath(Path absolutePath) {
+        try {
+            return workspaceService.toAgentVisiblePath(requireWorkspaceRoot(), absolutePath);
+        } catch (Exception e) {
+            return WorkspaceService.redactHostPaths(
+                    absolutePath == null ? null : absolutePath.toString());
+        }
     }
 
     protected String withWorkspaceHint(String description) {
-        String root;
-        try {
-            root = requireWorkspaceRoot().toString();
-        } catch (Exception e) {
-            root = agentContext == null ? null : agentContext.getWorkspaceRoot();
-        }
-        if (StringUtils.isBlank(root)) {
-            return description;
-        }
-        String hint = description + "\nWorking directory: " + root;
-        try {
-            var roots = workspaceService.listReadableRoots(Path.of(root));
-            if (roots != null && roots.size() > 1) {
-                hint += "\nAlso readable skill directories: " + (roots.size() - 1);
-            }
-        } catch (Exception ignore) {
-            // ignore hint enrichment failures
-        }
-        return hint;
+        // 不注入宿主绝对 cwd；契约：无前缀=会话工作区相对路径，skills/=全局技能库
+        return description
+                + "\nPath contract: paths are relative to the session workspace unless they start with skills/ "
+                + "(skills/<name>/... is the global skill library). Never use host absolute paths.";
     }
 
     protected int readInt(Map<String, Object> params, String fieldName, int defaultValue) {

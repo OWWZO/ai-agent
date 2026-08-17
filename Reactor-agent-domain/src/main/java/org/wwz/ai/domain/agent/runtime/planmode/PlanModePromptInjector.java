@@ -137,7 +137,12 @@ public final class PlanModePromptInjector {
         sb.append("Start with updating your todo list (TaskCreate / TodoWrite) if applicable.\n");
         sb.append("Restored mode=").append(StringUtils.defaultIfBlank(restoredMode, "default")).append(".\n");
         if (StringUtils.isNotBlank(planFilePath)) {
-            sb.append("Plan saved to: ").append(planFilePath).append("\n");
+            // 只展示相对/虚拟路径；若误传绝对路径则脱敏
+            String visible = planFilePath.replace('\\', '/');
+            if (visible.matches("(?i)^[a-z]:/.*") || visible.startsWith("/Users/") || visible.startsWith("/home/")) {
+                visible = org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.RELATIVE_PLAN_PATH;
+            }
+            sb.append("Plan saved to: ").append(visible).append("\n");
         }
         sb.append("\n## Approved Plan:\n\n");
         sb.append(StringUtils.defaultString(planContent));

@@ -73,7 +73,7 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
                     candidateFiles = pathStream.filter(Files::isRegularFile).toList();
                 }
             } else {
-                return failResult("workspace_grep 需要文件或目录路径: " + basePath);
+                return failResult("workspace_grep 需要文件或目录路径: " + toAgentPath(basePath));
             }
 
             List<Map<String, Object>> matches = new ArrayList<>();
@@ -108,7 +108,7 @@ public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
                 }
             }
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("path", basePath.toString());
+            data.put("path", toAgentPath(basePath));
             data.put("pattern", searchPattern);
             data.put("matches", matches);
             if (truncated) {

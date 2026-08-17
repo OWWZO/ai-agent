@@ -40,7 +40,7 @@ public class WorkspaceReadDedupTest {
                 .maxReadChars(10000)
                 .maxWriteChars(100000)
                 .build();
-        WorkspaceService service = new WorkspaceService(options, new WorkspacePathGuard(), null);
+        WorkspaceService service = new WorkspaceService(options, new WorkspacePathGuard(), null, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         agentContext = AgentContext.builder()
                 .requestId("req-dedup")
                 .sessionId("session-dedup")

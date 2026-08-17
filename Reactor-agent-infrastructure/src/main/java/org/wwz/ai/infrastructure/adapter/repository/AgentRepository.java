@@ -649,46 +649,6 @@ public class AgentRepository implements IAgentRepository {
     }
 
     @Override
-    public List<AiAgentVO> queryAvailableFixRoles() {
-        List<AiAgent> aiAgents = aiAgentDao.queryAvailableFixRoles();
-        List<AiAgentVO> aiAgentVOS = new ArrayList<>();
-        for (AiAgent aiAgent : aiAgents) {
-            aiAgentVOS.add(AiAgentVO.builder()
-                    .agentId(aiAgent.getAgentId())
-                    .agentName(aiAgent.getAgentName())
-                    .description(aiAgent.getDescription())
-                    .channel(aiAgent.getChannel())
-                    .strategy(aiAgent.getStrategy())
-                    .status(aiAgent.getStatus())
-                    .flowStepCount(aiAgent.getFlowStepCount())
-                    .build());
-        }
-        return aiAgentVOS;
-    }
-
-    @Override
-    public AiAgentVO queryAvailableFixRoleByAgentId(String aiAgentId) {
-        if (aiAgentId == null || aiAgentId.isBlank()) {
-            return null;
-        }
-
-        AiAgent aiAgent = aiAgentDao.queryAvailableFixRoleByAgentId(aiAgentId);
-        if (aiAgent == null) {
-            return null;
-        }
-
-        return AiAgentVO.builder()
-                .agentId(aiAgent.getAgentId())
-                .agentName(aiAgent.getAgentName())
-                .description(aiAgent.getDescription())
-                .channel(aiAgent.getChannel())
-                .strategy(aiAgent.getStrategy())
-                .status(aiAgent.getStatus())
-                .flowStepCount(aiAgent.getFlowStepCount())
-                .build();
-    }
-
-    @Override
     public List<AiClientApiVO> queryAiClientApiVOListByApiIds(List<String> apiIdList) {
         List<AiClientApiVO> aiClientApiVOS = new ArrayList<>();
         for (String apiId : apiIdList) {

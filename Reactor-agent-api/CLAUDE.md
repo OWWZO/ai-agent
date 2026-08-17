@@ -62,7 +62,6 @@
 - `AiAgentDrawConfigRequestDTO`: 绘图配置请求
 - `ArmoryAgentRequestDTO`: 装配 Agent 请求
 - `ArmoryApiRequestDTO`: 装配 API 请求
-- `AutoAgentRequestDTO`: 自动 Agent 请求
 
 ### 响应 DTO
 - `AdminUserResponseDTO`: 管理员用户响应

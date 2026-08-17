@@ -19,13 +19,6 @@ export function getDeviceHeaders(): Record<string, string> {
   return { "X-Device-Id": getDeviceId() };
 }
 
-export interface FixRoleItem {
-  agentId: string;
-  agentName: string;
-  description?: string;
-  defaultRole: boolean;
-}
-
 export interface VisitorBootstrapInfo {
   visitorId: string;
   username?: string;
@@ -86,11 +79,6 @@ export interface ConversationHistoryDetail {
   lastActiveAt?: string;
   runs: ConversationHistoryRunDetail[];
 }
-
-export const roleLibraryApi = {
-  list: () =>
-    api.get<FixRoleItem[]>(`/api/agent/role-library/list`) as unknown as Promise<FixRoleItem[]>,
-};
 
 export const visitorApi = {
   bootstrap: () =>

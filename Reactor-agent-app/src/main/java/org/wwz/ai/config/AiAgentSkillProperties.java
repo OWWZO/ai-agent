@@ -52,4 +52,25 @@ public class AiAgentSkillProperties {
      * grep_tool 默认最大匹配数
      */
     private int maxGrepMatches = 100;
+
+    /**
+     * 是否启用会话工作区 bash（materialize skill 后执行脚本）
+     */
+    private boolean sandboxBashEnabled = true;
+
+    /**
+     * 是否挂载遗留 skill_author（默认关）
+     */
+    private boolean authoringEnabled = false;
+
+    /**
+     * 手册 ${PYTHON} 与默认解释器
+     */
+    private String runtimePython = "python";
+
+    private int bashTimeoutSec = 120;
+
+    private int bashMaxTimeoutSec = 600;
+
+    private int bashOutputMaxChars = 64_000;
 }

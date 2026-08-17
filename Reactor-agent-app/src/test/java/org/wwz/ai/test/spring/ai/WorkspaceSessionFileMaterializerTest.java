@@ -36,7 +36,7 @@ public class WorkspaceSessionFileMaterializerTest {
                 .enabled(true)
                 .rootTemplate(workspaceRoot.toString())
                 .build();
-        WorkspaceService workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null);
+        WorkspaceService workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         fileArtifactPort = Mockito.mock(FileArtifactPort.class);
         materializer = new WorkspaceSessionFileMaterializer(workspaceService, fileArtifactPort);
 

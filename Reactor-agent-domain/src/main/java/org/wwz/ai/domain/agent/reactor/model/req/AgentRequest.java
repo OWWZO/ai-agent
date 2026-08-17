@@ -49,6 +49,15 @@ public class AgentRequest {
     private List<FileInformation> sessionFiles;
     private String outputStyle; // 交付物产出格式：html(网页模式）， docs(文档模式）， table(表格模式）
     private String aiAgentId;
+    /**
+     * 本轮模型引用：modelId 或上游 modelName；空则用 yml 默认（react/planner/executor.model_name）。
+     * 由 LlmModelCatalog 解析 DB 配置，支持前端热切换。
+     */
+    private String model;
+    /** 是否开启深度思考（本轮覆盖） */
+    private Boolean thinking;
+    /** 思考档位 low|medium|high */
+    private String thinkingEffort;
 
     @Data
     @Builder

@@ -1404,6 +1404,9 @@ export function useConversationStream(
       files: inputInfo.files,
       aiAgentId: inputInfo.aiAgentId,
       fallbackRoleAgentId: baseConversation.role?.agentId,
+      model: inputInfo.model,
+      thinking: inputInfo.thinking,
+      thinkingEffort: inputInfo.thinkingEffort,
     });
     let pendingConversation: CHAT.ConversationHistory | null = null;
     let pendingTaskData: ReturnType<typeof handleTaskData> | null = null;

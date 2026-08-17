@@ -18,6 +18,7 @@ public class LlmRequestRetryTest {
         Assert.assertTrue(LlmRequestRetry.isTransient(new IOException("Connection reset")));
         Assert.assertTrue(LlmRequestRetry.isTransient(new RuntimeException("Unexpected end-of-input")));
         Assert.assertTrue(LlmRequestRetry.isTransient(new RuntimeException("JSON parse error: response body is empty")));
+        Assert.assertTrue(LlmRequestRetry.isTransient(new RuntimeException("Unknown status code [524]")));
         Assert.assertFalse(LlmRequestRetry.isTransient(new IllegalArgumentException("invalid json payload")));
     }
 

@@ -12,13 +12,25 @@ export function buildSubmitPayload(params: {
   currentProductType?: string;
   uploadedFiles: CHAT.TFile[];
   chatRole: CHAT.ConversationRole | null;
+  model?: string;
+  thinking?: boolean;
+  thinkingEffort?: string | null;
 }) {
+  const model = params.model?.trim() || undefined;
+  const thinking = params.thinking;
+  const thinkingEffort = params.thinking
+    ? params.thinkingEffort || "medium"
+    : undefined;
+
   if (params.isDataAgent) {
     return {
       message: params.question.trim(),
       outputStyle: "dataAgent" as const,
       deepThink: false,
       files: params.uploadedFiles.length > 0 ? params.uploadedFiles : undefined,
+      model,
+      thinking,
+      thinkingEffort,
     };
   }
 
@@ -29,6 +41,9 @@ export function buildSubmitPayload(params: {
       deepThink: false,
       files: params.uploadedFiles.length > 0 ? params.uploadedFiles : undefined,
       aiAgentId: params.chatRole?.agentId,
+      model,
+      thinking,
+      thinkingEffort,
     };
   }
 
@@ -36,5 +51,8 @@ export function buildSubmitPayload(params: {
     message: params.question.trim(),
     deepThink: params.visibleMode === "research",
     files: params.uploadedFiles.length > 0 ? params.uploadedFiles : undefined,
+    model,
+    thinking,
+    thinkingEffort,
   };
 }

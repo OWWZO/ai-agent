@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from reactor_tool.tool.code_interpreter_policy import CodeInterpreterPermissionPolicy
+from reactor_tool.tool.sandbox_backend_config import get_sandbox_backend
 
 
 @dataclass
@@ -37,12 +38,64 @@ class PythonSandboxExecutionError(RuntimeError):
 
 
 class PythonSandboxExecutor:
+    """Facade: local subprocess runner or E2B cloud sandbox (CODE_SANDBOX_BACKEND)."""
+
+    def __init__(
+        self,
+        policy: CodeInterpreterPermissionPolicy,
+        timeout_seconds: float = 120.0,
+        initial_variables: dict[str, Any] | None = None,
+        *,
+        backend: str | None = None,
+        sandbox_factory: Any | None = None,
+    ):
+        backend_name = (backend or get_sandbox_backend()).strip().lower()
+        if backend_name == "e2b":
+            # Lazy import keeps local-only deployments free of e2b import cost/failures.
+            from reactor_tool.tool.e2b_sandbox_backend import E2BPythonSandboxExecutor
+
+            self._impl: Any = E2BPythonSandboxExecutor(
+                policy,
+                timeout_seconds,
+                initial_variables,
+                sandbox_factory=sandbox_factory,
+            )
+            self._local: _LocalPythonSandboxExecutor | None = None
+        elif backend_name == "local":
+            self._impl = None
+            self._local = _LocalPythonSandboxExecutor(policy, timeout_seconds, initial_variables)
+        else:
+            raise ValueError(f"Unsupported sandbox backend: {backend_name!r}")
+
+    def execute(self, code: str, source_file: str | None = None) -> PythonSandboxExecutionResult:
+        if self._impl is not None:
+            return self._impl.execute(code, source_file=source_file)
+        assert self._local is not None
+        return self._local.execute(code, source_file=source_file)
+
+    def produced_files(self) -> list[dict[str, Any]]:
+        if self._impl is not None:
+            return self._impl.produced_files()
+        assert self._local is not None
+        return self._local.produced_files()
+
+    def close(self) -> None:
+        if self._impl is not None:
+            self._impl.close()
+            return
+        if self._local is not None:
+            self._local.close()
+
+
+class _LocalPythonSandboxExecutor:
     """Keeps one isolated Python process for a single code-interpreter run."""
 
-    def __init__(self,
-                 policy: CodeInterpreterPermissionPolicy,
-                 timeout_seconds: float = 120.0,
-                 initial_variables: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        policy: CodeInterpreterPermissionPolicy,
+        timeout_seconds: float = 120.0,
+        initial_variables: dict[str, Any] | None = None,
+    ):
         self._policy = policy
         self._timeout_seconds = timeout_seconds
         self._initial_variables = initial_variables or {}
@@ -50,11 +103,14 @@ class PythonSandboxExecutor:
         self._lock = threading.Lock()
         self._produced_by_path: dict[str, dict[str, Any]] = {}
 
-    def execute(self, code: str) -> PythonSandboxExecutionResult:
+    def execute(self, code: str, source_file: str | None = None) -> PythonSandboxExecutionResult:
         with self._lock:
             # 同一个解释器会话可能保留变量和导入状态，因此请求必须串行发送，不能并发写入 JSONL 管道。
             self._ensure_started()
-            response = self._request({"type": "execute", "code": code})
+            payload: dict[str, Any] = {"type": "execute", "code": code}
+            if source_file:
+                payload["source_file"] = str(source_file)
+            response = self._request(payload)
             produced_files = list(response.get("produced_files") or [])
             for item in produced_files:
                 path = str(item.get("file_path") or "")

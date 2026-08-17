@@ -40,7 +40,7 @@ public class WorkspaceFileAccessToolTest {
                 .maxGrepMatches(20)
                 .maxWriteChars(10000)
                 .build();
-        workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null);
+        workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         agentContext = AgentContext.builder()
                 .requestId("req-ws-001")
                 .sessionId("session-ws-001")

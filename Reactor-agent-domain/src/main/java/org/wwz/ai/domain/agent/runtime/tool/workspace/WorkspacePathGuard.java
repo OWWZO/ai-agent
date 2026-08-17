@@ -38,6 +38,7 @@ public class WorkspacePathGuard {
                 return normalizedCandidate;
             }
         }
-        throw new WorkspaceAccessException("path is outside allowed roots: " + normalizedCandidate);
+        // 不对 Agent 暴露宿主绝对路径细节
+        throw new WorkspaceAccessException("path is outside allowed roots");
     }
 }

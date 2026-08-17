@@ -3,7 +3,9 @@ import { motion } from "motion/react";
 import classNames from "classnames";
 import { EASE_OUT, useMotionConfig } from "@/lib/motion";
 import {
+  Blocks,
   Bot,
+  Cpu,
   SquarePen,
   Search,
   MoreHorizontal,
@@ -27,6 +29,8 @@ type SidebarView =
   | "image-generation"
   | "sop"
   | "sub-agents"
+  | "models"
+  | "capabilities"
   | "featured";
 
 type NavItem = {
@@ -55,6 +59,16 @@ const navItems: NavItem[] = [
     key: "sub-agents",
     label: "子 Agent",
     icon: Bot,
+  },
+  {
+    key: "models",
+    label: "模型",
+    icon: Cpu,
+  },
+  {
+    key: "capabilities",
+    label: "能力库",
+    icon: Blocks,
   },
   {
     key: "featured",

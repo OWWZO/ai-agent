@@ -28,7 +28,9 @@ public final class LlmRequestRetry {
     private static final long DEFAULT_BASE_DELAY_MS = 500L;
     private static final long DEFAULT_MAX_DELAY_MS = 4000L;
 
-    private static final Set<Integer> TRANSIENT_STATUS_CODES = Set.of(408, 409, 425, 429, 500, 502, 503, 504);
+    // 含 Cloudflare 边缘错误 520–527（524 为源站超时），与网关 5xx 一并按瞬态重试。
+    private static final Set<Integer> TRANSIENT_STATUS_CODES = Set.of(
+            408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 527);
     private static final String[] TRANSIENT_MARKERS = {
             "upstream request failed",
             "temporarily unavailable",
@@ -322,6 +324,16 @@ public final class LlmRequestRetry {
         }
 
         try {
+            var rawMethod = throwable.getClass().getMethod("getRawStatusCode");
+            Object raw = rawMethod.invoke(throwable);
+            if (raw instanceof Integer integer) {
+                return integer;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
+        try {
             var responseMethod = throwable.getClass().getMethod("getResponse");
             Object response = responseMethod.invoke(throwable);
             if (response != null) {
@@ -344,6 +356,23 @@ public final class LlmRequestRetry {
             }
         } catch (Exception ignore) {
             // ignore
+        }
+
+        // 兼容 UnknownHttpStatusCodeException 等仅在 message 中带 [524] 的场景。
+        String message = throwable.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase(Locale.ROOT);
+            if (lower.contains("status")) {
+                java.util.regex.Matcher matcher =
+                        java.util.regex.Pattern.compile("\\[(\\d{3})]").matcher(message);
+                if (matcher.find()) {
+                    return Integer.parseInt(matcher.group(1));
+                }
+                matcher = java.util.regex.Pattern.compile("\\b(\\d{3})\\b").matcher(message);
+                if (matcher.find()) {
+                    return Integer.parseInt(matcher.group(1));
+                }
+            }
         }
         return null;
     }

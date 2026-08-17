@@ -3,6 +3,7 @@ package org.wwz.ai.domain.agent.runtime.tool.mcp.runtime;
 import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.runtime.dto.tool.McpResourceInfo;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 
 import java.util.Collections;
@@ -36,7 +37,35 @@ public class McpToolExecutor {
     }
 
     /**
-     * 执行单个 MCP 工具。
+     * 全局 resources。
+     */
+    public List<McpResourceInfo> listGlobalResources() {
+        return mcpRegistry.listGlobalEnabledResources();
+    }
+
+    /**
+     * 按 server / mcpId 列出 resources。
+     */
+    public List<McpResourceInfo> listResources(String serverOrMcpId) {
+        return mcpRegistry.listResources(serverOrMcpId);
+    }
+
+    /**
+     * 读取 resource。
+     */
+    public String readResource(String serverOrMcpId, String uri) {
+        return mcpRegistry.readResource(serverOrMcpId, uri);
+    }
+
+    /**
+     * 是否存在可用 resources。
+     */
+    public boolean hasAnyResources() {
+        return mcpRegistry.hasAnyResources();
+    }
+
+    /**
+     * 执行单个 MCP 工具（wire 使用 originalName）。
      */
     public String executeTool(McpToolInfo toolInfo, Object args) {
         if (toolInfo == null || StringUtils.isBlank(toolInfo.getName())) {
@@ -44,6 +73,7 @@ public class McpToolExecutor {
         }
 
         String mcpId = StringUtils.defaultIfBlank(toolInfo.getMcpId(), toolInfo.getServerKey());
-        return mcpRegistry.executeTool(mcpId, toolInfo.getName(), args);
+        String wireName = toolInfo.resolveWireName();
+        return mcpRegistry.executeTool(mcpId, wireName, args);
     }
 }

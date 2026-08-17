@@ -5,6 +5,7 @@ import lombok.Value;
 import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 
@@ -25,5 +26,8 @@ public class ReactorLlmDependencies {
     LlmChatResponseMapper responseMapper;
 
     StreamResponseHandler streamResponseHandler;
+
+    /** 可选：DB 模型目录；空则 resolveLlmSettings 仅走 yml。 */
+    LlmModelCatalog modelCatalog;
 }
 

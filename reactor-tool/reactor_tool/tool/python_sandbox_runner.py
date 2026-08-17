@@ -195,7 +195,8 @@ def main() -> int:
                 output_dir = Path(policy.output_dir).resolve()
                 workspace_root.mkdir(parents=True, exist_ok=True)
                 output_dir.mkdir(parents=True, exist_ok=True)
-                globals_env = {"__name__": "__sandbox__"}
+                # __name__/__file__ 在每次 execute 注入，贴近 python script.py；会话变量仍跨步保留。
+                globals_env = {"__name__": "__main__"}
                 globals_env.update(policy.to_runtime_variables())
                 globals_env.update(build_runtime_helpers(policy))
                 globals_env["__sandbox_np_ptp__"] = _sandbox_np_ptp
@@ -226,6 +227,11 @@ def main() -> int:
                 with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                     with activate_runtime_io_guard(policy):
                         source = str(request.get("code") or "")
+                        source_file = str(request.get("source_file") or "").strip()
+                        if not source_file:
+                            source_file = str((workspace_root / "__code_execution__.py").resolve())
+                        globals_env["__name__"] = "__main__"
+                        globals_env["__file__"] = source_file
                         exec(_compile_user_code(source), globals_env)
             except BaseException as exc:
                 status = "error"

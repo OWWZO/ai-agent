@@ -7,6 +7,7 @@ import {
   ChevronDownIcon,
   PlusIcon,
   SearchIcon,
+  Type,
   ZapIcon,
 } from "lucide-react";
 
@@ -40,6 +41,12 @@ import {
   productList,
 } from "@/utils/constants";
 import UploadAttachmentChip from "./UploadAttachmentChip";
+import { llmModelAdminApi, type LlmModelRecord } from "@/services/llmModelAdmin";
+import CapabilityPicker from "./CapabilityPicker";
+import ContextRing, { type ContextUsageView } from "./ContextRing";
+import MarkdownBar from "./MarkdownBar";
+import ModelPicker from "./ModelPicker";
+import ThinkingToggle, { type ThinkingEffort } from "./ThinkingToggle";
 import { buildSubmitPayload } from "./inputMode";
 import { useAttachmentUploads } from "./useAttachmentUploads";
 
@@ -48,6 +55,8 @@ type Props = {
   placeholder: string;
   showBtn: boolean;
   disabled: boolean;
+  /** SSE 推送的上下文占用 */
+  contextUsage?: ContextUsageView | null;
   /** Agent 任务进行中时，在发送按钮旁展示轻量运行指示 */
   busy?: boolean;
   /** 任务进行中点击发送区停止本轮 */
@@ -143,6 +152,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     placeholder,
     showBtn,
     disabled,
+    contextUsage = null,
     busy = false,
     onStop,
     onInject,
@@ -159,7 +169,16 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const [question, setQuestion] = useState("");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const [markdownBarOpen, setMarkdownBarOpen] = useState(false);
+  const [models, setModels] = useState<LlmModelRecord[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [thinking, setThinking] = useState(false);
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(null);
   const tempData = useRef<{ compositing?: boolean }>({});
+  const inputShellRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const {
     attachmentUploads,
     attachmentOrder,
@@ -183,6 +202,27 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     }
     lastStandardModeRef.current = currentMode === "quick" ? "think" : currentMode;
   }, [currentMode, product?.type]);
+
+  useEffect(() => {
+    // 启用模型列表：供输入框热切换；失败不阻断对话（空列表=用后端默认）
+    void llmModelAdminApi
+      .listEnabledModels()
+      .then((list) => {
+        const enabled = Array.isArray(list)
+          ? list.filter((m) => (m.status ?? 1) === 1)
+          : [];
+        setModels(enabled);
+        setSelectedModel((prev) => {
+          if (prev && enabled.some((m) => m.modelId === prev || m.modelName === prev)) {
+            return prev;
+          }
+          return enabled[0]?.modelId || "";
+        });
+      })
+      .catch(() => {
+        setModels([]);
+      });
+  }, []);
 
   const visibleMode = isDataAgent ? lastStandardModeRef.current : currentMode;
   const currentModeOption =
@@ -214,6 +254,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     !hasFailedAttachment;
   const canSubmit = canSend || canInject;
   const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
+
+  const currentModelMeta = models.find(
+    (m) => m.modelId === selectedModel || m.modelName === selectedModel
+  );
+  const supportsThinking =
+    (currentModelMeta?.supportsThinking ?? 0) === 1 ||
+    /grok|o1|o3|reason|r1/i.test(currentModelMeta?.modelName || selectedModel);
+
+  useEffect(() => {
+    const root = inputShellRef.current;
+    if (!root) return;
+    const el = root.querySelector("textarea");
+    textareaRef.current = el as HTMLTextAreaElement | null;
+  });
 
   const handleAttachmentsAdded = useCallback(
     (attachments: PromptInputAttachmentItem[]) => {
@@ -273,6 +327,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         currentProductType: product?.type,
         uploadedFiles,
         chatRole: chatRole || null,
+        model: selectedModel || undefined,
+        thinking: supportsThinking ? thinking : undefined,
+        thinkingEffort: supportsThinking && thinking ? thinkingEffort : undefined,
       })
     );
 
@@ -315,7 +372,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   return (
     <TooltipProvider>
-      <div className="w-full">
+      <div className="w-full" ref={inputShellRef}>
         <PromptInput
           accept={ATTACHMENT_ACCEPT}
           className={cn(
@@ -339,6 +396,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                 />
               )}
             </PromptInputAttachments>
+
+            {markdownBarOpen ? (
+              <MarkdownBar
+                textareaRef={textareaRef}
+                value={question}
+                onChange={handleQuestionChange}
+                disabled={disabled}
+              />
+            ) : null}
 
             <PromptInputTextarea
               className={cn(
@@ -473,6 +539,46 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       <span className="truncate">数据分析</span>
                     </button>
                   ) : null}
+
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    className={toolBtnClassName(markdownBarOpen, disabled)}
+                    title="格式工具条（Markdown）"
+                    onClick={() => setMarkdownBarOpen((v) => !v)}
+                  >
+                    <Type className="size-3.5 shrink-0 opacity-80" />
+                  </button>
+
+                  <CapabilityPicker
+                    sessionId={sessionId}
+                    disabled={disabled}
+                    triggerClassName={toolBtnClassName}
+                  />
+
+                  <ThinkingToggle
+                    supported={supportsThinking}
+                    thinking={thinking}
+                    effort={thinkingEffort}
+                    disabled={disabled}
+                    open={thinkingMenuOpen}
+                    onOpenChange={setThinkingMenuOpen}
+                    triggerClassName={toolBtnClassName}
+                    onChange={(on, effort) => {
+                      setThinking(on);
+                      setThinkingEffort(effort);
+                    }}
+                  />
+
+                  <ModelPicker
+                    models={models}
+                    value={selectedModel}
+                    onChange={setSelectedModel}
+                    disabled={disabled}
+                    open={modelMenuOpen}
+                    onOpenChange={setModelMenuOpen}
+                    triggerClassName={toolBtnClassName}
+                  />
                 </>
               ) : showRoleSelector ? (
                 <ChatRoleSelector
@@ -485,6 +591,11 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             </PromptInputTools>
 
             <PromptInputTools className="ml-auto shrink-0 items-center gap-1.5 self-end">
+              <ContextRing
+                usage={contextUsage}
+                inputChars={question.length}
+                contextWindow={currentModelMeta?.contextWindow}
+              />
               {busy ? (
                 <div
                   className="mr-0.5 flex items-center text-[12px] font-medium text-[#86868b]"

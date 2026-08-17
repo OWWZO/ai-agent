@@ -14,8 +14,11 @@ import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskListStore;
+import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceFileReadState;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
@@ -74,6 +77,28 @@ public class AgentContext {
      */
     String task;
 
+    /**
+     * 本轮模型引用（modelId 或上游 modelName）；空则 AgentBootstrap 用 yml 默认。
+     */
+    String model;
+
+    /** 本轮是否开深度思考；null=沿用模型配置 */
+    Boolean thinking;
+
+    /** 思考档位 low|medium|high */
+    String thinkingEffort;
+
+    /**
+     * 本会话禁用的 skill 名（差集）；空=全开。
+     */
+    @Builder.Default
+    java.util.Set<String> disabledSkillNames = java.util.Set.of();
+
+    /**
+     * 本会话禁用的 mcpId（差集）；空=全开。
+     */
+    @Builder.Default
+    java.util.Set<String> disabledMcpIds = java.util.Set.of();
 
     // ---- I/O & tools ----
     /**
@@ -104,6 +129,14 @@ public class AgentContext {
     @ToString.Exclude
     @JSONField(serialize = false)
     ToolCollection subAgentToolCollection;
+
+    /**
+     * 本 run MCP 延迟加载目录（ToolSearch 激活源）。
+     * 与 toolCollection.mcpToolMap 解耦：目录可含全量，map 仅含已激活。
+     */
+    @ToString.Exclude
+    @JSONField(serialize = false)
+    DeferredMcpCatalog deferredMcpCatalog;
 
     /**
      * Reactor 运行时依赖包。
@@ -214,11 +247,7 @@ public class AgentContext {
     Boolean ltmSideEffectsDisabled = Boolean.FALSE;
 
     /**
-     * 智能体类型标识
-     * 用途：
-     * 1. 逻辑路由：区分不同类型的Agent（如1=规划型Agent、2=执行型Agent、3=客服型Agent）；
-     * 2. 配置加载：根据类型加载对应的最大步骤、提示词模板、工具集合；
-     * 枚举值示例：1=PlanningAgent，2=ExecutorAgent
+     * 智能体类型标识（AgentType 数值：PLAN_SOLVE / REACT 等）
      */
     Integer agentType;
 
@@ -285,12 +314,12 @@ public class AgentContext {
     SessionTaskListStore sessionTaskList;
 
     /**
-     * 后台运行任务注册表（TaskStop）。
+     * 后台运行任务注册表（TaskStop / TaskOutput）。
+     * 懒创建并按 session 从 DB hydrate；勿在 builder 默认 new 空表。
      */
-    @Builder.Default
     @ToString.Exclude
     @JSONField(serialize = false)
-    RuntimeBackgroundTaskRegistry backgroundTasks = new RuntimeBackgroundTaskRegistry();
+    RuntimeBackgroundTaskRegistry backgroundTasks;
 
     /**
      * Plan Mode 状态（EnterPlanMode / ExitPlanMode）。
@@ -338,18 +367,32 @@ public class AgentContext {
         // 临时/测试上下文也不会共享默认列表。
         if (sessionTaskList == null) {
             String listId = sessionId != null && !sessionId.isBlank() ? sessionId : requestId;
-            sessionTaskList = new SessionTaskListStore(listId == null ? "default" : listId);
+            if (listId == null || listId.isBlank()) {
+                listId = "default";
+            }
+            TasklistPersistencePort port = resolveTasklistPersistence();
+            sessionTaskList = new SessionTaskListStore(listId, port);
         }
         return sessionTaskList;
     }
 
-    public RuntimeBackgroundTaskRegistry requireBackgroundTasks() {
-        // 这类运行态注册表允许由 builder 缺省创建，也兼容旧调用方传入 null；
-        // 懒创建集中在上下文边界，工具不需要自行维护生命周期。
+    public synchronized RuntimeBackgroundTaskRegistry requireBackgroundTasks() {
+        // 进程内按 session 共享 registry，保证跨轮 TaskOutput 能命中仍在跑的后台任务。
         if (backgroundTasks == null) {
-            backgroundTasks = new RuntimeBackgroundTaskRegistry();
+            String sid = sessionId != null && !sessionId.isBlank() ? sessionId : requestId;
+            if (sid == null || sid.isBlank()) {
+                sid = "default";
+            }
+            backgroundTasks = SessionBackgroundTaskHub.getOrCreate(sid, resolveTasklistPersistence());
         }
         return backgroundTasks;
+    }
+
+    private TasklistPersistencePort resolveTasklistPersistence() {
+        if (runtimeDependencies == null) {
+            return null;
+        }
+        return runtimeDependencies.getOptionalTasklistPersistencePort();
     }
 
     public PlanModeState requirePlanModeState() {
@@ -561,6 +604,11 @@ public class AgentContext {
                 .executionRecorder(executionRecorder)
                 .agentRunState(agentRunState)
                 .templateType(templateType)
+                // 并行 fork 必须共享后台任务表，否则 TaskOutput 在子上下文里 not_found
+                .backgroundTasks(requireBackgroundTasks())
+                .sessionTaskList(sessionTaskList != null ? sessionTaskList : null)
+                .planModeState(planModeState)
+                .runCancellation(runCancellation)
                 .build();
     }
 

@@ -12,9 +12,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * todo:后续实现前端拖拉编排组装agent模型配置
- * 基于 LLMSettings 解析并缓存 OpenAiChatModel。
- * 第一阶段优先复用 Reactor 既有 llm.settings，避免强依赖 Armory modelId 装配。
+ * 基于 {@link LLMSettings} 解析并缓存 OpenAiChatModel。
+ * <p>
+ * 配置来源由 {@link LlmModelCatalog} 统一解析（DB 优先、yml 兜底）；
+ * 管理台改 key/base 后通过 {@link #invalidateAll()} 清缓存，无需重启。
  */
 @Slf4j
 @Component
@@ -31,6 +32,11 @@ public class LlmChatModelResolver {
         }
         String cacheKey = buildCacheKey(settings);
         return modelCache.computeIfAbsent(cacheKey, key -> createModel(settings));
+    }
+
+    /** 管理台写模型/API 后清空实例缓存，保证下一请求用新 key/base。 */
+    public void invalidateAll() {
+        modelCache.clear();
     }
 
     private String buildCacheKey(LLMSettings settings) {

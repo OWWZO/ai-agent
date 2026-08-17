@@ -26,6 +26,10 @@ type BuildAgentStreamRequestInput = {
   files?: CHAT.TFile[]
   aiAgentId?: string
   fallbackRoleAgentId?: string
+  /** modelId 或上游 modelName */
+  model?: string
+  thinking?: boolean
+  thinkingEffort?: string
 }
 
 const resolvePreviewUrl = (file: CHAT.TFile) =>
@@ -68,9 +72,14 @@ export const buildAgentStreamRequest = ({
   files,
   aiAgentId,
   fallbackRoleAgentId,
+  model,
+  thinking,
+  thinkingEffort,
 }: BuildAgentStreamRequestInput) => {
   const sessionFiles = mapSessionFiles(files)
   const resolvedAgentId = aiAgentId || fallbackRoleAgentId
+  const modelRef = model?.trim()
+  const effort = thinkingEffort?.trim()
 
   return {
     sessionId,
@@ -82,5 +91,8 @@ export const buildAgentStreamRequest = ({
     ...(outputStyle === "chat" && resolvedAgentId
       ? { aiAgentId: resolvedAgentId }
       : {}),
+    ...(modelRef ? { model: modelRef } : {}),
+    ...(thinking !== undefined ? { thinking } : {}),
+    ...(thinking && effort ? { thinkingEffort: effort } : {}),
   }
 }

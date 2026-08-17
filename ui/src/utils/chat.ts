@@ -67,6 +67,11 @@ export const combineData = (
   currentChat: CHAT.ChatItem
 ) => {
   // 所有实时与历史事件都从这里进入状态模型；具体 messageType 处理分散在小函数中，避免两套回放逻辑漂移。
+  const innerType = eventData.resultMap?.messageType || eventData.messageType;
+  if (innerType === "context_usage") {
+    applyContextUsage(eventData, currentChat);
+    return currentChat;
+  }
   switch (eventData.messageType) {
     case "plan": {
       handlePlanMessage(eventData, currentChat);
@@ -85,6 +90,33 @@ export const combineData = (
   }
   return currentChat;
 };
+
+/** 从 SSE resultMap 提取上下文占用，供 ContextRing 使用（不进任务时间线）。 */
+function applyContextUsage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+) {
+  const map = (eventData.resultMap || {}) as Record<string, unknown>;
+  const num = (k: string) => {
+    const v = map[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : 0;
+  };
+  currentChat.contextUsage = {
+    sys: num("sys"),
+    tools: num("tools"),
+    history: num("history"),
+    files: num("files"),
+    max: Math.max(1, num("max") || 128000),
+    used: num("used") || num("sys") + num("tools") + num("history") + num("files"),
+    promptTokens:
+      typeof map.promptTokens === "number" ? map.promptTokens : undefined,
+    completionTokens:
+      typeof map.completionTokens === "number"
+        ? map.completionTokens
+        : undefined,
+    source: typeof map.source === "string" ? map.source : "estimate",
+  };
+}
 
 /**
  * 实时 SSE 的文件类事件会把 artifactRefs 放在 eventData 顶层，

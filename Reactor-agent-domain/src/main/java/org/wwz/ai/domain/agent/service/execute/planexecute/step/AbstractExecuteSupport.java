@@ -14,6 +14,6 @@ public abstract class AbstractExecuteSupport extends AbstractMultiThreadStrategy
 
     @Override
     protected void multiThread(AgentRequest requestParameter, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws ExecutionException, InterruptedException, TimeoutException {
-        // PlanSolve 链支持多线程执行子任务，扩展点可在 Step2PlanExecute 中实现
+        // PlanSolve 主路径为单 React 代理，无节点级多线程扩展
     }
 }

@@ -5,11 +5,13 @@ import org.wwz.ai.api.dto.AiClientApiQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientApiRequestDTO;
 import org.wwz.ai.api.dto.AiClientApiResponseDTO;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.infrastructure.dao.IAiClientApiDao;
 import org.wwz.ai.infrastructure.dao.po.AiClientApi;
 import org.wwz.ai.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +32,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
     @Resource
     private IAiClientApiDao aiClientApiDao;
 
+    @Resource
+    private ObjectProvider<LlmModelCatalog> llmModelCatalogProvider;
+
     @Override
     @PostMapping("/create")
     public Response<Boolean> createAiClientApi(@RequestBody AiClientApiRequestDTO request) {
@@ -42,6 +47,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
             aiClientApi.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientApiDao.insert(aiClientApi);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -77,6 +85,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
             aiClientApi.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientApiDao.updateById(aiClientApi);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -112,6 +123,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
             aiClientApi.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientApiDao.updateByApiId(aiClientApi);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -135,6 +149,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
             log.info("根据ID删除AI客户端API配置请求：{}", id);
 
             int result = aiClientApiDao.deleteById(id);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -158,6 +175,9 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
             log.info("根据API ID删除AI客户端API配置请求：{}", apiId);
 
             int result = aiClientApiDao.deleteByApiId(apiId);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -171,6 +191,13 @@ public class AiClientApiAdminController implements IAiClientApiAdminService {
                     .info(ResponseCode.UN_ERROR.getInfo())
                     .data(false)
                     .build();
+        }
+    }
+
+    private void invalidateLlmCatalog() {
+        LlmModelCatalog catalog = llmModelCatalogProvider.getIfAvailable();
+        if (catalog != null) {
+            catalog.invalidateAll();
         }
     }
 

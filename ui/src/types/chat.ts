@@ -24,10 +24,24 @@ declare global {
           event_count?: number;
           status?: string;
         };
+        /** 上下文占用（SSE context_usage） */
+        contextUsage?: ContextUsage;
         startedAt?: string;
         finishedAt?: string;
       }
     >;
+
+    export type ContextUsage = {
+      sys: number;
+      tools: number;
+      history: number;
+      files: number;
+      max: number;
+      used: number;
+      promptTokens?: number;
+      completionTokens?: number;
+      source?: string;
+    };
 
     export type TimelineEntry = {
       seq: number;
@@ -69,6 +83,12 @@ declare global {
       outputStyle?: string;
       deepThink: boolean;
       aiAgentId?: string;
+      /** 本轮模型 modelId 或上游 modelName；空=后端默认 */
+      model?: string;
+      /** 深度思考（本轮） */
+      thinking?: boolean;
+      /** low | medium | high */
+      thinkingEffort?: string;
     };
 
     export type TAbortController = {

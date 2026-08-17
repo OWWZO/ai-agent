@@ -25,6 +25,7 @@ public class WorkspacePathsTest {
                         .rootTemplate("${user.dir}/reactor-tool/skilloutput/{sessionId}")
                         .build(),
                 null,
+                null,
                 null
         );
         Path resolved = service.resolveRoot("session-align-001");
@@ -69,6 +70,7 @@ public class WorkspacePathsTest {
                         .enabled(true)
                         .rootTemplate(springExpanded)
                         .build(),
+                null,
                 null,
                 null
         );

@@ -5,17 +5,26 @@ import org.wwz.ai.api.dto.AiClientModelQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientModelRequestDTO;
 import org.wwz.ai.api.dto.AiClientModelResponseDTO;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.infrastructure.dao.IAiClientModelDao;
 import org.wwz.ai.infrastructure.dao.po.AiClientModel;
 import org.wwz.ai.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -31,6 +40,54 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     @Resource
     private IAiClientModelDao aiClientModelDao;
 
+    @Resource
+    private ObjectProvider<LlmModelCatalog> llmModelCatalogProvider;
+
+    @Resource
+    private ObjectProvider<LlmChatModelResolver> llmChatModelResolverProvider;
+
+    /**
+     * 真发一次极小请求测连接与延迟（对齐 agentic-rag POST /admin/model/{id}/test）。
+     * 失败不抛给网关：结果在 data.ok 里，便于前端展示。
+     */
+    @PostMapping("/test/{modelId}")
+    public Response<Map<String, Object>> testConnection(@PathVariable("modelId") String modelId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        LlmModelCatalog catalog = llmModelCatalogProvider.getIfAvailable();
+        LlmChatModelResolver resolver = llmChatModelResolverProvider.getIfAvailable();
+        if (catalog == null || resolver == null) {
+            body.put("ok", false);
+            body.put("ms", 0);
+            body.put("message", "模型目录未装配");
+            return Response.<Map<String, Object>>builder()
+                    .code(ResponseCode.SUCCESS.getCode())
+                    .info(ResponseCode.SUCCESS.getInfo())
+                    .data(body)
+                    .build();
+        }
+        try {
+            LLMSettings settings = catalog.resolve(modelId)
+                    .orElseThrow(() -> new IllegalStateException("找不到可用模型：" + modelId + "（需启用且配齐 API Key）"));
+            OpenAiChatModel chatModel = resolver.resolve(settings);
+            long start = System.currentTimeMillis();
+            chatModel.call(new Prompt(List.of(new UserMessage("ping"))));
+            long ms = System.currentTimeMillis() - start;
+            body.put("ok", true);
+            body.put("ms", ms);
+            body.put("message", "连接成功");
+        } catch (Exception e) {
+            log.warn("模型连接测试失败 modelId={}", modelId, e);
+            body.put("ok", false);
+            body.put("ms", 0);
+            body.put("message", "连接失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+        }
+        return Response.<Map<String, Object>>builder()
+                .code(ResponseCode.SUCCESS.getCode())
+                .info(ResponseCode.SUCCESS.getInfo())
+                .data(body)
+                .build();
+    }
+
     @Override
     @PostMapping("/create")
     public Response<Boolean> createAiClientModel(@RequestBody AiClientModelRequestDTO request) {
@@ -43,6 +100,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             aiClientModel.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientModelDao.insert(aiClientModel);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -78,6 +138,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             aiClientModel.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientModelDao.updateById(aiClientModel);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -113,6 +176,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             aiClientModel.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientModelDao.updateByModelId(aiClientModel);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -136,6 +202,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             log.info("根据ID删除AI客户端模型配置请求：{}", id);
 
             int result = aiClientModelDao.deleteById(id);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -159,6 +228,9 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             log.info("根据模型ID删除AI客户端模型配置请求：{}", modelId);
 
             int result = aiClientModelDao.deleteByModelId(modelId);
+            if (result > 0) {
+                invalidateLlmCatalog();
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -172,6 +244,13 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                     .info(ResponseCode.UN_ERROR.getInfo())
                     .data(false)
                     .build();
+        }
+    }
+
+    private void invalidateLlmCatalog() {
+        LlmModelCatalog catalog = llmModelCatalogProvider.getIfAvailable();
+        if (catalog != null) {
+            catalog.invalidateAll();
         }
     }
 

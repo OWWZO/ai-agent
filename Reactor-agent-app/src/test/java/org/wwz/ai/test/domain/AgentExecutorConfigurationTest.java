@@ -131,17 +131,15 @@ public class AgentExecutorConfigurationTest {
     }
 
     @Test
-    public void shouldExposeTaskExecutorDefaultsAndPlannerParallelismThroughRuntimeFixture() {
+    public void shouldExposeTaskExecutorDefaultsThroughRuntimeFixture() {
         AgentExecutorProperties properties = new AgentExecutorProperties();
         Assert.assertNotNull(properties.getTask());
         Assert.assertEquals("agent-task-", properties.getTask().getThreadNamePrefix());
 
         ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 3);
-
         ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
 
-        Assert.assertEquals(Integer.valueOf(3), runtimeDependencies.requireReactorConfig().getPlannerMaxParallelTasks());
+        Assert.assertNotNull(runtimeDependencies.requireReactorConfig());
         Assert.assertNotNull(runtimeDependencies.requireTaskExecutor());
     }
 

@@ -44,7 +44,7 @@ public class WorkspaceWriteSyncTest {
                 .rootTemplate(workspaceRoot.toString())
                 .maxWriteChars(100000)
                 .build();
-        WorkspaceService workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null);
+        WorkspaceService workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         writeTool = new WorkspaceWriteTool(workspaceService, options);
 
         fileArtifactPort = Mockito.mock(FileArtifactPort.class);

@@ -43,6 +43,8 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "ui_patch",
   // GenUI 只在对话主回复区展示，不进工作区
   "ui_tree",
+  // 上下文占用仅驱动 ContextRing
+  "context_usage",
 ]);
 
 /**

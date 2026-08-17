@@ -28,6 +28,14 @@ public class GptQueryReq {
     private String user;
     private String aiAgentId;
     /**
+     * 本轮模型引用（modelId 或上游 modelName）；空则后端默认。
+     */
+    private String model;
+    /** 是否开启深度思考（本轮覆盖） */
+    private Boolean thinking;
+    /** 思考档位 low|medium|high；thinking=true 且空时后端可用 medium */
+    private String thinkingEffort;
+    /**
      * 当前轮上传附件元数据，供 ReAct / PlanSolve 链路桥接到会话上下文。
      */
     private List<FileInformation> sessionFiles;

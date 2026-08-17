@@ -8,8 +8,10 @@ import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.memory.WorkingMemoryScopes;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
+import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
@@ -65,7 +67,7 @@ public class SubAgentRunner {
                               String description,
                               String prompt,
                               String subagentType) {
-        return run(parentContext, description, prompt, subagentType, null);
+        return run(parentContext, description, prompt, subagentType, null, null, null);
     }
 
     /**
@@ -76,11 +78,40 @@ public class SubAgentRunner {
                               String prompt,
                               String subagentType,
                               String resumeAgentId) {
+        return run(parentContext, description, prompt, subagentType, resumeAgentId, null, null);
+    }
+
+    public SubAgentResult run(AgentContext parentContext,
+                              String description,
+                              String prompt,
+                              String subagentType,
+                              String resumeAgentId,
+                              RunCancellation cancellationOverride) {
+        return run(parentContext, description, prompt, subagentType, resumeAgentId, cancellationOverride, null);
+    }
+
+    /**
+     * @param resumeAgentId         非空时续跑
+     * @param cancellationOverride  非空时覆盖子上下文取消令牌（后台 Agent 用任务级令牌）
+     * @param preferredAgentId      后台预分配 agentId（非 resume 时优先使用，便于 SendMessage 寻址）
+     */
+    public SubAgentResult run(AgentContext parentContext,
+                              String description,
+                              String prompt,
+                              String subagentType,
+                              String resumeAgentId,
+                              RunCancellation cancellationOverride,
+                              String preferredAgentId) {
         long start = System.currentTimeMillis();
         boolean resume = StringUtils.isNotBlank(resumeAgentId);
-        String agentId = resume
-                ? resumeAgentId.trim()
-                : SubAgentContextFactory.newAgentId();
+        String agentId;
+        if (resume) {
+            agentId = resumeAgentId.trim();
+        } else if (StringUtils.isNotBlank(preferredAgentId)) {
+            agentId = preferredAgentId.trim();
+        } else {
+            agentId = SubAgentContextFactory.newAgentId();
+        }
         // Plan Mode：强制 Explore 画像（对标 cchaha 只读子代理）
         String effectiveType = subagentType;
         if (parentContext != null
@@ -111,7 +142,8 @@ public class SubAgentRunner {
 
         try {
             SubAgentResult gated = concurrencyGate.runWithPermit(() ->
-                    runUnlocked(parentContext, description, prompt, definition, agentId, start, resume));
+                    runUnlocked(parentContext, description, prompt, definition, agentId, start, resume,
+                            cancellationOverride));
             if (gated == null) {
                 return failed(agentId, definition, description, prompt, start,
                         "子 Agent 并发已达上限(" + concurrencyGate.getMaxConcurrent()
@@ -130,7 +162,8 @@ public class SubAgentRunner {
                                        SubAgentDefinition definition,
                                        String agentId,
                                        long start,
-                                       boolean resume) {
+                                       boolean resume,
+                                       RunCancellation cancellationOverride) {
         boolean parentInPlanMode = parentContext.getPlanModeState() != null
                 && parentContext.getPlanModeState().isPlanMode();
         ToolCollection parentToolCollection = parentContext.getSubAgentToolCollection() != null
@@ -145,6 +178,13 @@ public class SubAgentRunner {
         }
         AgentContext childContext = SubAgentContextFactory.create(
                 parentContext, prompt, description, childTools, agentId, definition.getAgentType(), parentToolUseId);
+        // 后台 Agent：用任务级取消令牌，TaskStop 不误伤主 run；同步派发仍共享父令牌
+        if (cancellationOverride != null) {
+            childContext.setRunCancellation(cancellationOverride);
+        }
+        // 主→子 inject 邮箱（SendMessage / 用户指导）；与父 run 的 inject 队列隔离
+        String sessionKey = StringUtils.defaultIfBlank(parentContext.getSessionId(), parentContext.getRequestId());
+        childContext.bindPendingInjectQueue(SessionAgentMailboxHub.queue(sessionKey, agentId));
 
         String memoryScope = WorkingMemoryScopes.forSubAgent(agentId);
         childContext.setMemoryScope(memoryScope);
@@ -169,6 +209,7 @@ public class SubAgentRunner {
         // 默认每子 Agent 独占工具实例（ToolIsolation）；仅无法 fork 时才共享锁
         ContextScopedTool.bindAll(childTools, childContext);
 
+        SessionAgentMailboxHub.markActive(sessionKey, agentId, true);
         try {
             ReactImplAgent agent = new ReactImplAgent(childContext);
             agent.setName("subagent:" + definition.getAgentType());
@@ -217,6 +258,8 @@ public class SubAgentRunner {
                     parentContext.getRequestId(), definition.getAgentType(), agentId, e);
             return failed(agentId, definition, description, prompt, start,
                     e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        } finally {
+            SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
         }
     }
 

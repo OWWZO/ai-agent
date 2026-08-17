@@ -1,31 +1,38 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.skill;
 
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.dto.skill.SkillToolResult;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillDefinition;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillLoadException;
 import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout;
+import org.wwz.ai.domain.agent.runtime.tool.skill.SkillScriptDefinition;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * 按需读取 skill 正文、目录与脚本摘要的工具。
+ * 按需读取 skill 手册（注册表缓存）。路径契约：{@code skills/&lt;name&gt;}。
+ * 增删改文件请用 workspace_*（虚拟 skills/）；执行脚本请用 bash（沙箱物化 + sync-back）。
  */
 @Slf4j
-@Data
 @RequiredArgsConstructor
 public class SkillTool implements BaseTool {
 
     private final SkillRegistry skillRegistry;
+    private final SkillRuntimeLayout skillRuntimeLayout;
 
     private AgentContext agentContext;
+
+    public void setAgentContext(AgentContext agentContext) {
+        this.agentContext = agentContext;
+    }
 
     @Override
     public String getName() {
@@ -34,9 +41,11 @@ public class SkillTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        return "这是一个 skill 读取工具，用于按技能名称加载 SKILL.md 正文、技能目录和脚本摘要。\n"
-                + "调用时只需要传入 skill_name；返回的 basePath 可用 workspace_read/list/glob/grep 继续浏览（skill 目录已并入可读根）。\n"
-                + "如需执行 skill 内脚本，请用 Bash 或 PowerShell，在 basePath 下直接运行（不要再调用 script_runner_tool）。\n"
+        return "按技能名加载 SKILL.md 正文与脚本摘要（来自注册表缓存；本轮创建的 skill 可能需下轮才出现在列表）。\n"
+                + "路径契约：skills/<name>/... — workspace_read/write/edit/list/glob/grep 可直接操作（映射到全局 skill 库）。\n"
+                + "执行脚本：bash 工具会在沙箱 cwd 物化 skills/，命令示例 python skills/<name>/scripts/xxx.py；"
+                + "沙箱内对 skills/** 的修改会回写全局库（注册表本轮不刷新）。\n"
+                + "新建 skill：可在沙箱跑 Skill Creator 脚本，或 workspace_write skills/<new>/SKILL.md 等。\n"
                 + skillRegistry.buildSkillDescription();
     }
 
@@ -57,7 +66,6 @@ public class SkillTool implements BaseTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Object execute(Object input) {
         try {
             if (!(input instanceof Map<?, ?> rawInput)) {
@@ -68,24 +76,30 @@ public class SkillTool implements BaseTool {
             if (skillName.isBlank()) {
                 return ToolResultPayload.failureFrom("skill_name is required", null);
             }
+            if (agentContext != null
+                    && agentContext.getDisabledSkillNames() != null
+                    && agentContext.getDisabledSkillNames().contains(skillName)) {
+                return ToolResultPayload.failureFrom(
+                        "skill 「" + skillName + "」已在本会话关闭，请在能力面板中重新启用。", null);
+            }
 
-            // 工具只读取已注册快照，不在调用时重新扫描文件系统，保证正文和脚本摘要来自同一版本。
             SkillDefinition skillDefinition = skillRegistry.getRequiredSkill(skillName);
-            SkillToolResult result = SkillToolResult.builder()
-                    .name(skillDefinition.getName())
-                    .description(skillDefinition.getDescription())
-                    .basePath(skillDefinition.getBasePath())
-                    .content(skillDefinition.getContent())
-                    .availableScripts(skillDefinition.buildScriptSummaries())
-                    .build();
+            String skillDir = skillRuntimeLayout == null
+                    ? "skills/" + skillName
+                    : skillRuntimeLayout.dirOf(skillName);
+            String content = skillDefinition.getContent() == null ? "" : skillDefinition.getContent();
+            if (skillRuntimeLayout != null) {
+                content = skillRuntimeLayout.render(skillName, content);
+            }
+
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("tool", "skill_tool");
             data.put("ok", Boolean.TRUE);
-            data.put("name", result.getName());
-            data.put("description", result.getDescription());
-            data.put("basePath", result.getBasePath() == null ? null : result.getBasePath().toString());
-            data.put("availableScripts", result.getAvailableScripts());
-            data.put("content", result.getContent());
+            data.put("name", skillDefinition.getName());
+            data.put("description", skillDefinition.getDescription());
+            data.put("skillDir", skillDir);
+            data.put("availableScripts", buildScriptSummaries(skillDefinition, skillDir));
+            data.put("content", content);
             return ToolResultPayload.fromData(data);
         } catch (SkillLoadException e) {
             log.warn("{} skill_tool load failed, input={}",
@@ -100,5 +114,36 @@ public class SkillTool implements BaseTool {
                     e);
             return ToolResultPayload.failureFrom("skill_tool execute failed", null);
         }
+    }
+
+    private List<String> buildScriptSummaries(SkillDefinition skillDefinition, String skillDir) {
+        if (skillDefinition.getScripts() == null || skillDefinition.getScripts().isEmpty()) {
+            return skillDefinition.buildScriptSummaries();
+        }
+        List<String> lines = new ArrayList<>();
+        String python = skillRuntimeLayout == null ? "python" : skillRuntimeLayout.getPython();
+        String dir = skillDir == null ? "skills" : skillDir;
+        for (SkillScriptDefinition script : skillDefinition.getScripts().values()) {
+            if (script == null) {
+                continue;
+            }
+            String rel = script.getRelativePath() == null ? script.getScriptName() : script.getRelativePath();
+            String runtime = script.getRuntime() == null ? "python" : script.getRuntime();
+            String example;
+            if ("node".equalsIgnoreCase(runtime)) {
+                example = "node " + dir + "/" + rel;
+            } else if ("shell".equalsIgnoreCase(runtime) || "bash".equalsIgnoreCase(runtime)) {
+                example = "bash " + dir + "/" + rel;
+            } else if ("powershell".equalsIgnoreCase(runtime)) {
+                example = "powershell -File " + dir + "/" + rel;
+            } else {
+                example = python + " " + dir + "/" + rel;
+            }
+            String desc = script.getDescription() == null || script.getDescription().isBlank()
+                    ? "未提供说明" : script.getDescription();
+            lines.add(String.format("- %s | runtime=%s | path=%s | run: %s | %s",
+                    script.getScriptName(), runtime, rel, example, desc));
+        }
+        return lines;
     }
 }

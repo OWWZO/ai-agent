@@ -39,7 +39,7 @@ public class WorkspaceReadStateCrossTurnTest {
                 .maxReadChars(10000)
                 .maxWriteChars(100000)
                 .build();
-        workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null);
+        workspaceService = new WorkspaceService(options, new WorkspacePathGuard(), null, new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeOptions.builder().enabled(false).build()));
         store = new WorkspaceReadStateStore();
     }
 

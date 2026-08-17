@@ -162,6 +162,33 @@ class PythonSandboxExecutorTest(unittest.TestCase):
             finally:
                 executor.close()
 
+    def test_should_inject_file_and_main_name(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            workspace_root = Path(workspace)
+            output_dir = workspace_root / "output"
+            output_dir.mkdir()
+            script = workspace_root / "demo_run.py"
+            script.write_text("print('from-file')\n", encoding="utf-8")
+            policy = build_permission_policy(
+                profile="analysis",
+                workspace_root=str(workspace_root),
+                output_dir=str(output_dir),
+                input_files=[],
+            )
+            executor = PythonSandboxExecutor(policy, timeout_seconds=15)
+            try:
+                result = executor.execute(
+                    "from pathlib import Path\n"
+                    "print(__name__)\n"
+                    "print(Path(__file__).name)\n"
+                    "assert __name__ == '__main__'\n",
+                    source_file=str(script),
+                )
+                self.assertIn("__main__", result.stdout)
+                self.assertIn("demo_run.py", result.stdout)
+            finally:
+                executor.close()
+
     def test_should_rewrite_ndarray_ptp_for_numpy2(self):
         with tempfile.TemporaryDirectory() as workspace:
             workspace_root = Path(workspace)

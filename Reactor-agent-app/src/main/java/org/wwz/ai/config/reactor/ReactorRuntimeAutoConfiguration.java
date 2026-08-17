@@ -12,6 +12,7 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteStreamPort;
 import org.wwz.ai.domain.agent.runtime.llm.DomainMessageConverter;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
@@ -24,6 +25,7 @@ import org.wwz.ai.domain.agent.memory.ltm.LtmManager;
 import org.wwz.ai.domain.agent.memory.ltm.MemoryFlushService;
 import org.wwz.ai.domain.agent.memory.ltm.SessionSearchService;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import org.wwz.ai.domain.agent.runtime.tasklist.TasklistPersistencePort;
 import org.springframework.beans.factory.ObjectProvider;
 import org.wwz.ai.domain.agent.reactor.service.imagegeneration.IImageGenerationExecutionKernel;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentConcurrencyGate;
@@ -45,13 +47,15 @@ public class ReactorRuntimeAutoConfiguration {
                                                          OpenAiChatOptionsFactory chatOptionsFactory,
                                                          DomainMessageConverter messageConverter,
                                                          LlmChatResponseMapper responseMapper,
-                                                         StreamResponseHandler streamResponseHandler) {
+                                                         StreamResponseHandler streamResponseHandler,
+                                                         ObjectProvider<LlmModelCatalog> modelCatalogProvider) {
         return ReactorLlmDependencies.builder()
                 .chatModelResolver(chatModelResolver)
                 .chatOptionsFactory(chatOptionsFactory)
                 .messageConverter(messageConverter)
                 .responseMapper(responseMapper)
                 .streamResponseHandler(streamResponseHandler)
+                .modelCatalog(modelCatalogProvider.getIfAvailable())
                 .build();
     }
 
@@ -75,6 +79,7 @@ public class ReactorRuntimeAutoConfiguration {
                                                                    ObjectProvider<MemoryFlushService> memoryFlushServiceProvider,
                                                                    ObjectProvider<BackgroundReviewService> backgroundReviewServiceProvider,
                                                                    ObjectProvider<LtmProperties> ltmPropertiesProvider,
+                                                                   ObjectProvider<TasklistPersistencePort> tasklistPersistencePortProvider,
                                                                    AgentExecutorProperties agentExecutorProperties) {
         // SessionContextCompactionService 是接口，@Lazy 可走 JDK 代理；
         // 反向依赖用 ObjectProvider，避免对 final 的 ReactorRuntimeDependencies 做 CGLIB 代理。
@@ -98,6 +103,7 @@ public class ReactorRuntimeAutoConfiguration {
                 .sessionSearchService(sessionSearchServiceProvider.getIfAvailable())
                 .memoryFlushService(memoryFlushServiceProvider.getIfAvailable())
                 .backgroundReviewService(backgroundReviewServiceProvider.getIfAvailable())
+                .tasklistPersistencePort(tasklistPersistencePortProvider.getIfAvailable())
                 .ltmFlushMinTurns(ltmPropertiesProvider.getIfAvailable() == null
                         ? 6
                         : ltmPropertiesProvider.getIfAvailable().getFlushMinTurns())

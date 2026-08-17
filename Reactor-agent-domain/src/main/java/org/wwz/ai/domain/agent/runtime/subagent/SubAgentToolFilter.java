@@ -63,6 +63,8 @@ public final class SubAgentToolFilter {
         disallowed.add(AgentDispatchTool.NAME);
         // 对标 cc-haha ALL_AGENT_DISALLOWED：子 Agent 禁止 TaskStop / Enter/Exit PlanMode
         disallowed.add(TaskToolNames.TASK_STOP);
+        disallowed.add(TaskToolNames.TASK_OUTPUT);
+        disallowed.add(TaskToolNames.SEND_MESSAGE);
         disallowed.add(TaskToolNames.ENTER_PLAN_MODE);
         disallowed.add(TaskToolNames.EXIT_PLAN_MODE);
         disallowed.add(org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool.NAME);

@@ -44,6 +44,9 @@ public final class LlmPromptObservability {
         log.info("{} {}", requestId, reqLine);
         log.info("{} {}", requestId, roleLine);
 
+        // 推送上下文分段给前端 ContextRing（非阻塞；打印机缺失则跳过）
+        publishContextUsage(context, model, estimate);
+
         PromptSnapshot prev = LAST_BY_SESSION.get(sessionId);
         PromptSnapshot curr = new PromptSnapshot(
                 estimate.getSystemFingerprint(),
@@ -198,7 +201,55 @@ public final class LlmPromptObservability {
             bundle.setCachedPromptTokens(cachedPromptTokens);
             bundle.setObsLines(lines);
         }
+        // 上游真实 prompt_tokens 校准 ContextRing
+        if (promptTokens != null && promptTokens > 0) {
+            TokenCounter.PromptEstimate measuredEst = bundle == null ? null : bundle.getEstimate();
+            ContextUsagePayload measured = ContextUsagePayload.fromEstimate(
+                    measuredEst, resolveMaxTokens(context, model));
+            measured.setPromptTokens(promptTokens);
+            measured.setCompletionTokens(completionTokens);
+            measured.setUsed(promptTokens);
+            measured.setSource("measured");
+            emitContextUsage(context, measured);
+        }
         // keep bundle for finishLlmInvocation to read via current()
+    }
+
+    private static void publishContextUsage(AgentContext context,
+                                            String model,
+                                            TokenCounter.PromptEstimate estimate) {
+        try {
+            ContextUsagePayload payload = ContextUsagePayload.fromEstimate(estimate, resolveMaxTokens(context, model));
+            emitContextUsage(context, payload);
+        } catch (Exception e) {
+            log.debug("publish context usage skipped: {}", e.getMessage());
+        }
+    }
+
+    private static void emitContextUsage(AgentContext context, ContextUsagePayload payload) {
+        if (context == null || context.getPrinter() == null || payload == null) {
+            return;
+        }
+        try {
+            context.getPrinter().send("context_usage", payload);
+        } catch (Exception e) {
+            log.debug("emit context_usage failed: {}", e.getMessage());
+        }
+    }
+
+    private static int resolveMaxTokens(AgentContext context, String model) {
+        try {
+            if (context != null && context.getRuntimeDependencies() != null) {
+                LLMSettings settings = context.getRuntimeDependencies().resolveLlmSettings(
+                        StringUtils.defaultIfBlank(context.getModel(), model));
+                if (settings != null && settings.getMaxInputTokens() > 0) {
+                    return settings.getMaxInputTokens();
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return 128_000;
     }
 
     public static ObservationBundle current() {

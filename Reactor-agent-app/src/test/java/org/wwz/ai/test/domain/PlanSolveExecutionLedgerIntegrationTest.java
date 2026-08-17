@@ -2,123 +2,32 @@ package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.mockito.Mockito;
-import org.springframework.mock.env.MockEnvironment;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.BaseAgent;
-import org.wwz.ai.domain.agent.runtime.agent.ExecutorAgent;
-import org.wwz.ai.domain.agent.runtime.agent.PlanningAgent;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
 import org.wwz.ai.domain.agent.runtime.dto.File;
-import org.wwz.ai.domain.agent.runtime.dto.Message;
-import org.wwz.ai.domain.agent.runtime.dto.SubTaskExecutionResult;
-import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
-import org.wwz.ai.domain.agent.runtime.enums.AgentState;
-import org.wwz.ai.domain.agent.runtime.llm.LLM;
-import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.dto.Plan;
-import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
-import org.wwz.ai.domain.agent.service.execute.planexecute.step.Step2PlanExecuteNode;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * PlanSolve 并发工具账本运行时回归。
  */
 public class PlanSolveExecutionLedgerIntegrationTest {
-
-    @Test
-    public void shouldSupportNestedTaskAndToolConcurrencyWithoutBreakingLedger() {
-        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        ReactorConfig reactorConfig = new ReactorConfig();
-        ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 2);
-        ReflectionTestUtils.setField(reactorConfig, "plannerMaxSteps", 10);
-        ReflectionTestUtils.setField(reactorConfig, "executorModelName", "test-model");
-        ReflectionTestUtils.setField(reactorConfig, "maxObserve", "2048");
-        ReflectionTestUtils.setField(reactorConfig, "taskPrePrompt", "");
-        reactorConfig.setExecutorSystemPromptMap("{}");
-        reactorConfig.setExecutorNextStepPromptMap("{}");
-        reactorConfig.setExecutorSopPromptMap("{}");
-        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(
-                reactorConfig,
-                null,
-                new MockEnvironment()
-                        .withProperty("llm.default.base_url", "http://127.0.0.1")
-                        .withProperty("llm.default.apikey", "test-key")
-                        .withProperty("llm.default.model", "test-model")
-        );
-
-        AgentContext context = ExecutionLedgerFixtureFactory.newAgentContext("req-plan-nested-001", "session-plan-nested-001", ledger.recorder);
-        context.setPrinter(new SilentPrinter());
-        context.setRuntimeDependencies(runtimeDependencies);
-        context.setQuery("并发执行嵌套任务");
-        context.setDateInfo("2026-05-10");
-        context.setBasePrompt("");
-        context.setSopPrompt("");
-        context.setHistoryDialogue("");
-        context.getToolCollection().setAgentContext(context);
-        context.getToolCollection().addTool(new ParallelArtifactTool(context));
-        ExecutionLedgerFixtureFactory.activateRun(context, ledger.recorder, ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE);
-        ExecutionLedgerFixtureFactory.createLlmInvocation(
-                context,
-                ledger.recorder,
-                "executor",
-                2,
-                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
-        );
-
-        ExecutorAgent parentExecutor = new ExecutorAgent(context);
-        parentExecutor.getMemory().clear();
-        parentExecutor.getMemory().addMessage(Message.userMessage("父任务上下文", null));
-
-        NestedConcurrencyStepNode node = new NestedConcurrencyStepNode(reactorConfig, Executors.newFixedThreadPool(4));
-        List<SubTaskExecutionResult> childResults = node.runParallelTasks(
-                context,
-                AgentRequest.builder()
-                        .requestId(context.getRequestId())
-                        .sessionId(context.getSessionId())
-                        .query(context.getQuery())
-                        .outputStyle("html")
-                        .build(),
-                parentExecutor,
-                List.of("你的任务是：外层任务A", "你的任务是：外层任务B")
-        );
-        node.mergeIntoParent(parentExecutor, childResults);
-
-        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
-                .runId(context.getAgentRunState().getRunId())
-                .requestId(context.getRequestId())
-                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .finalSummaryText("nested summary")
-                .build());
-
-        ExecutionRunDetail detail = ledger.queryService.queryRunDetail(context.getRequestId());
-        Assert.assertEquals(4, detail.getToolInvocations().size());
-        Assert.assertEquals(4, detail.getArtifacts().size());
-        Assert.assertEquals(AgentState.FINISHED, parentExecutor.getState());
-        Assert.assertTrue(detail.getToolInvocations().stream().allMatch(item -> item.getStatus().equals(ExecutionLedgerConstants.STATUS_SUCCESS)));
-    }
 
     @Test
     public void shouldKeepDispatchOrderAndFailOpenForParallelTools() {
@@ -400,81 +309,6 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         Assert.assertEquals("新步骤A", nestedTask(historyFrames.get(3)));
     }
 
-    @Test
-    public void shouldPersistCompatibilityPlanningProgressForHistoryReplay() {
-        ExecutionLedgerFixtureFactory.LedgerTestContext ledger = ExecutionLedgerFixtureFactory.newLedgerTestContext();
-        AgentContext context = newPlanningAgentContext(
-                "req-plan-history-compat-001",
-                "session-plan-history-compat-001",
-                ledger.recorder,
-                "1"
-        );
-        Long runId = ExecutionLedgerFixtureFactory.activateRun(
-                context,
-                ledger.recorder,
-                ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
-        );
-        Long llmInvocationId = ExecutionLedgerFixtureFactory.createLlmInvocation(
-                context,
-                ledger.recorder,
-                "planning",
-                1,
-                ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
-        );
-        PlanningAgent agent = newCompatibilityPlanningAgent(context);
-        agent.setToolCalls(List.of(ExecutionLedgerFixtureFactory.newToolCall(
-                "plan-compat-tool-001",
-                "planning",
-                "{\"command\":\"create\",\"title\":\"兼容计划\",\"steps\":[\"步骤一\",\"步骤二\"]}"
-        )));
-
-        Assert.assertEquals("步骤一", agent.run(context.getQuery()));
-        ledger.recorder.finishLlmInvocation(LlmInvocationFinishRecord.builder()
-                .llmInvocationId(llmInvocationId)
-                .requestId(context.getRequestId())
-                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .responseText("先创建兼容计划")
-                .toolCallCount(1)
-                .finishReason("tool_calls")
-                .finishedAt(LocalDateTime.now())
-                .build());
-
-        Assert.assertEquals("步骤二", agent.run("步骤一执行完成"));
-        Assert.assertEquals("finish", agent.run("步骤二执行完成"));
-
-        ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
-                .runId(runId)
-                .requestId(context.getRequestId())
-                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
-                .finalSummaryText("兼容计划已完成")
-                .build());
-
-        ExecutionRunDetail detail = ledger.queryService.queryRunDetail(context.getRequestId());
-        List<ToolInvocationView> planningInvocations = detail.getToolInvocations().stream()
-                .filter(item -> "planning".equals(item.getToolName()))
-                .toList();
-
-        Assert.assertEquals(3, planningInvocations.size());
-        Assert.assertEquals(List.of("create", "mark_step", "mark_step"), planningInvocations.stream()
-                .map(item -> ((PlanningToolOutput) item.getStructuredOutput()).getCommand())
-                .toList());
-        PlanningToolOutput finalOutput = (PlanningToolOutput) planningInvocations.get(planningInvocations.size() - 1)
-                .getStructuredOutput();
-        Assert.assertEquals(List.of("completed", "completed"), finalOutput.getAfterPlan().getStepStatus());
-
-        List<GptProcessResult> historyFrames = ledger.replayService.queryConversationHistory(context.getSessionId())
-                .getRuns()
-                .get(0)
-                .getReplayFrames();
-
-        List<GptProcessResult> planFrames = historyFrames.stream()
-                .filter(frame -> "plan".equals(eventMessageType(frame)))
-                .toList();
-        Assert.assertEquals(3, planFrames.size());
-        Assert.assertEquals(List.of("completed", "completed"),
-                plainResultMap(planFrames.get(planFrames.size() - 1)).get("stepStatus"));
-    }
-
     @SuppressWarnings("unchecked")
     private String eventMessageType(GptProcessResult frame) {
         return String.valueOf(((Map<String, Object>) frame.getResultMap().get("eventData")).get("messageType"));
@@ -495,68 +329,6 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         return String.valueOf(((Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap")).get("task"));
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> plainResultMap(GptProcessResult frame) {
-        return (Map<String, Object>) ((Map<String, Object>) frame.getResultMap().get("eventData")).get("resultMap");
-    }
-
-    private AgentContext newPlanningAgentContext(String requestId,
-                                                 String sessionId,
-                                                 org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder recorder,
-                                                 String closeUpdate) {
-        ReactorConfig reactorConfig = new ReactorConfig();
-        reactorConfig.setPlannerSystemPromptMap("{}");
-        reactorConfig.setPlannerNextStepPromptMap("{}");
-        ReflectionTestUtils.setField(reactorConfig, "plannerModelName", "test-planner-model");
-        ReflectionTestUtils.setField(reactorConfig, "plannerMaxSteps", 10);
-        ReflectionTestUtils.setField(reactorConfig, "planningCloseUpdate", closeUpdate);
-        ReflectionTestUtils.setField(reactorConfig, "llmSettingsMap", Map.of(
-                "test-planner-model",
-                LLMSettings.builder()
-                        .model("test-planner-model")
-                        .maxTokens(1024)
-                        .temperature(0)
-                        .baseUrl("http://127.0.0.1")
-                        .interfaceUrl("/v1/chat/completions")
-                        .functionCallType("function_call")
-                        .apiKey("test-key")
-                        .maxInputTokens(4096)
-                        .build()
-        ));
-        ReactorRuntimeDependencies runtimeDependencies = ReactorRuntimeTestSupport.runtimeDependencies(reactorConfig);
-        ToolCollection toolCollection = new ToolCollection();
-        AgentContext context = AgentContext.builder()
-                .requestId(requestId)
-                .sessionId(sessionId)
-                .query("执行兼容计划")
-                .dateInfo("2026-05-05")
-                .basePrompt("")
-                .sopPrompt("")
-                .historyDialogue("")
-                .printer(new SilentPrinter())
-                .toolCollection(toolCollection)
-                .productFiles(new ArrayList<>())
-                .executionRecorder(recorder)
-                .isStream(false)
-                .runtimeDependencies(runtimeDependencies)
-                .build();
-        toolCollection.setAgentContext(context);
-        return context;
-    }
-
-    private PlanningAgent newCompatibilityPlanningAgent(AgentContext context) {
-        PlanningAgent agent = new PlanningAgent(context);
-        LLM llm = Mockito.mock(LLM.class);
-        Mockito.when(llm.askTool(Mockito.any(), Mockito.anyList(), Mockito.any(), Mockito.any(),
-                        Mockito.any(), Mockito.any(), Mockito.anyBoolean(), Mockito.anyBoolean(), Mockito.anyInt()))
-                .thenAnswer(invocation -> CompletableFuture.completedFuture(LLM.ToolCallResponse.builder()
-                        .content("mock planning thought")
-                        .toolCalls(agent.getToolCalls() == null ? List.of() : agent.getToolCalls())
-                        .build()));
-        agent.setLlm(llm);
-        return agent;
-    }
-
     private static final class TestAgent extends BaseAgent {
         private TestAgent(String name, AgentContext context) {
             setName(name);
@@ -566,75 +338,6 @@ public class PlanSolveExecutionLedgerIntegrationTest {
         @Override
         public String step() {
             return "";
-        }
-    }
-
-    private static final class NestedConcurrencyStepNode extends Step2PlanExecuteNode {
-        private final Executor taskExecutor;
-
-        private NestedConcurrencyStepNode(ReactorConfig reactorConfig, Executor taskExecutor) {
-            this.taskExecutor = taskExecutor;
-            ReflectionTestUtils.setField(this, "reactorConfig", reactorConfig);
-        }
-
-        @Override
-        protected Executor resolveTaskExecutor(AgentContext agentContext) {
-            return taskExecutor;
-        }
-
-        @Override
-        protected SubTaskExecutionResult executeSingleParallelTask(AgentContext parentContext,
-                                                                  AgentRequest request,
-                                                                  ExecutorAgent parentExecutor,
-                                                                  String task) {
-            AgentContext childContext = parentContext.forkForParallelTask(task);
-            childContext.setPrinter(new SilentPrinter());
-            childContext.setRuntimeDependencies(parentContext.getRuntimeDependencies());
-            ToolCollection childTools = new ToolCollection();
-            childTools.setAgentContext(childContext);
-            childTools.addTool(new ParallelArtifactTool(childContext));
-            childContext.setToolCollection(childTools);
-
-            ExecutionLedgerFixtureFactory.createLlmInvocation(
-                    childContext,
-                    parentContext.getExecutionRecorder(),
-                    "executor",
-                    3,
-                    ExecutionLedgerConstants.CALL_KIND_ASK_TOOL
-            );
-
-            TestAgent childAgent = new TestAgent("executor", childContext);
-            childAgent.availableTools = childContext.getToolCollection();
-            Map<String, String> toolResults = childAgent.executeTools(List.of(
-                    ExecutionLedgerFixtureFactory.newToolCall(
-                            task + "-tool-1",
-                            "parallel_artifact_tool",
-                            "{\"fileName\":\"" + task + "-1.md\",\"url\":\"https://file.example.com/" + task + "-1.md\",\"sleepMs\":50}"
-                    ),
-                    ExecutionLedgerFixtureFactory.newToolCall(
-                            task + "-tool-2",
-                            "parallel_artifact_tool",
-                            "{\"fileName\":\"" + task + "-2.md\",\"url\":\"https://file.example.com/" + task + "-2.md\",\"sleepMs\":10}"
-                    )
-            ));
-
-            return SubTaskExecutionResult.builder()
-                    .task(task)
-                    .taskResult(String.join("\n", toolResults.values()))
-                    .state(AgentState.FINISHED)
-                    .memoryIncrementMessages(List.of(Message.assistantMessage("child:" + task, null)))
-                    .build();
-        }
-
-        private List<SubTaskExecutionResult> runParallelTasks(AgentContext parentContext,
-                                                              AgentRequest request,
-                                                              ExecutorAgent parentExecutor,
-                                                              List<String> tasks) {
-            return executeParallelTasks(parentContext, request, parentExecutor, tasks);
-        }
-
-        private void mergeIntoParent(ExecutorAgent parentExecutor, List<SubTaskExecutionResult> results) {
-            mergeChildResultsIntoParent(parentExecutor, results);
         }
     }
 

@@ -26,6 +26,8 @@ public final class PlanModeToolPolicy {
             TaskToolNames.TASK_LIST,
             TaskToolNames.TODO_WRITE,
             TaskToolNames.TASK_STOP,
+            TaskToolNames.TASK_OUTPUT,
+            TaskToolNames.SEND_MESSAGE,
             "AskUserQuestion",
             AgentDispatchTool.NAME,
             "workspace_read",

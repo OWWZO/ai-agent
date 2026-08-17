@@ -14,6 +14,8 @@ import WorkspaceMRag from "@/pages/WorkspaceMRag";
 import WorkspaceImageGeneration from "@/pages/WorkspaceImageGeneration";
 import WorkspaceSop from "@/pages/WorkspaceSop";
 import SubAgentAdmin from "@/pages/SubAgentAdmin";
+import ModelAdmin from "@/pages/ModelAdmin";
+import CapabilityLibrary from "@/pages/CapabilityLibrary";
 import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
   GENERIC_TASK_PRODUCT,
@@ -31,11 +33,9 @@ import {
 } from "@/utils";
 import {
   conversationHistoryApi,
-  roleLibraryApi,
   visitorApi,
   type VisitorBootstrapInfo,
   type ConversationSessionItem,
-  type FixRoleItem,
 } from "@/services/agentConversation";
 import {
   featuredConversationApi,
@@ -91,6 +91,8 @@ type SidebarView =
   | "image-generation"
   | "sop"
   | "sub-agents"
+  | "models"
+  | "capabilities"
   | "featured";
 
 type InitialState = {
@@ -112,7 +114,7 @@ const EMPTY_FEATURED_FORM: FeaturedConversationFormState = {
 };
 
 const toConversationRole = (
-  role?: CHAT.FixRole | FixRoleItem | CHAT.ConversationRole | null
+  role?: CHAT.FixRole | CHAT.ConversationRole | null
 ): CHAT.ConversationRole | null => {
   if (!role) {
     return null;
@@ -286,22 +288,11 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           activeView === "image-generation" ||
           activeView === "sop" ||
           activeView === "sub-agents" ||
+          activeView === "models" ||
+          activeView === "capabilities" ||
           activeView === "featured"
         ? "min-h-0 flex-1 overflow-hidden"
         : "min-h-0 flex-1 overflow-auto";
-
-  useEffect(() => {
-    // 角色库是会话创建和输入渲染的前置数据；失败时保留空列表，让页面仍可
-    // 展示已有会话，而不是把角色接口故障扩散成整个 Home 不可用。
-    roleLibraryApi
-      .list()
-      .then((data: any) => {
-        setFixRoles(data || []);
-      })
-      .catch((error) => {
-        console.error("加载角色库失败", error);
-      });
-  }, []);
 
   const loadFeaturedCards = useCallback(async () => {
     // 精品对话属于首页附属内容，单独维护失败边界，不影响当前会话主链路。
@@ -987,6 +978,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
               <WorkspaceSop embedded />
             ) : activeView === "sub-agents" ? (
               <SubAgentAdmin embedded />
+            ) : activeView === "models" ? (
+              <ModelAdmin embedded />
+            ) : activeView === "capabilities" ? (
+              <CapabilityLibrary embedded />
             ) : activeView === "featured" ? (
               <FeaturedConversations
                 embedded

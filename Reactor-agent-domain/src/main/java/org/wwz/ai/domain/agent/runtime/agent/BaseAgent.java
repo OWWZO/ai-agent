@@ -27,6 +27,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.DeferredMcpCatalog;
 import org.wwz.ai.domain.agent.runtime.util.FileUtil;
 
 import java.util.ArrayList;
@@ -253,13 +254,16 @@ public abstract class BaseAgent {
                 continue;
             }
             String source = StringUtils.defaultIfBlank(inject.getSource(), PendingInjectMessage.SOURCE_USER);
+            String who = PendingInjectMessage.SOURCE_COORDINATOR.equals(source)
+                    ? "The main/coordinator agent"
+                    : "The user";
             String wrapped = "<system-reminder>\n"
-                    + "The user sent a mid-run guidance message (source=" + source + "). "
+                    + who + " sent a mid-run guidance message (source=" + source + "). "
                     + "Follow it carefully for the rest of this run.\n"
                     + "</system-reminder>\n\n"
                     + inject.getText().trim();
             updateMemory(RoleType.USER, wrapped, null);
-            log.info("{} {} drained user inject source={} chars={}",
+            log.info("{} {} drained inject source={} chars={}",
                     context.getRequestId(), getName(), source, inject.getText().length());
         }
     }
@@ -358,10 +362,23 @@ public abstract class BaseAgent {
                 }
             }
         }
+        // 对齐 cc-haha：deferred MCP 仅列名进 system，schema 仍走 ToolSearch
+        String deferredSig = "";
+        if (context != null && context.getDeferredMcpCatalog() != null) {
+            DeferredMcpCatalog catalog = context.getDeferredMcpCatalog();
+            String deferredBlock = catalog.formatAvailableDeferredToolsBlock();
+            if (StringUtils.isNotBlank(deferredBlock) && !systemTemplate.contains("<available-deferred-tools>")) {
+                systemTemplate = systemTemplate.trim() + "\n\n" + deferredBlock.trim() + "\n";
+            }
+            deferredSig = catalog.deferredNamesSignature();
+        }
         systemTemplate = canonicalizeSystemText(systemTemplate);
         // Freeze 仅作同 session 防御缓存；主稳定性来自确定性规范化
         String toolSig = LlmToolCallbackProvider.buildToolSignature(
                 context == null ? null : context.getToolCollection());
+        if (StringUtils.isNotBlank(deferredSig)) {
+            toolSig = toolSig + "|def:" + deferredSig;
+        }
         String agentSlot = StringUtils.defaultIfBlank(getName(), "agent")
                 + "|intent=" + intentPolicy.getCacheKey();
         String sessionId = context == null ? null : context.getSessionId();

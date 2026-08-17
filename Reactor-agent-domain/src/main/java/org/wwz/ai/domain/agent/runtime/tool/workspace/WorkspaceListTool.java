@@ -52,7 +52,7 @@ public class WorkspaceListTool extends AbstractWorkspacePathTool {
                 directoryPath = requireAllowedPath(params);
             }
             if (!Files.isDirectory(directoryPath)) {
-                return failResult("workspace_list 只支持目录路径: " + directoryPath);
+                return failResult("workspace_list 只支持目录路径: " + toAgentPath(directoryPath));
             }
 
             int maxDepth = Math.max(1, readInt(params, "max_depth", 2));
@@ -80,7 +80,7 @@ public class WorkspaceListTool extends AbstractWorkspacePathTool {
                 }
             }
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("path", directoryPath.toString());
+            data.put("path", toAgentPath(directoryPath));
             data.put("entries", entriesOut);
             if (truncated) {
                 data.put("truncated", Boolean.TRUE);

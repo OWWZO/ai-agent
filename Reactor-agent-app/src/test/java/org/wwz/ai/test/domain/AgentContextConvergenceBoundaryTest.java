@@ -92,7 +92,6 @@ public class AgentContextConvergenceBoundaryTest {
             "org.wwz.ai.domain.agent.ledger",
             "org.wwz.ai.domain.agent.memory",
             "org.wwz.ai.domain.agent.rag",
-            "org.wwz.ai.domain.agent.role",
             "org.wwz.ai.domain.agent.adapter.port"
     );
     private static final Path CASE_JAVA_DIR = PROJECT_ROOT.resolve("ai-agent-station-study-case")
@@ -141,28 +140,20 @@ public class AgentContextConvergenceBoundaryTest {
     }
 
     @Test
-    public void shouldProvideCaseLevelRoleAndRagSeamsForTrigger() {
-        Assert.assertTrue(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-case")
-                .resolve("src").resolve("main").resolve("java")
-                .resolve("org").resolve("wwz").resolve("ai").resolve("application").resolve("agent")
-                .resolve("role").resolve("IFixRoleQueryService.java")));
+    public void shouldNotProvideDeletedRoleSeams() {
         Assert.assertFalse(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-case")
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("application").resolve("agent")
-                .resolve("rag").resolve("IRagApplicationService.java")));
-    }
-
-    @Test
-    public void shouldPromoteRoleRagAndMemoryToUniquePrimaryOwnership() {
-        Assert.assertTrue("稳定主归属根不能为空", !STABLE_OWNERSHIP_ROOTS.isEmpty());
-        Assert.assertTrue(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-domain")
-                .resolve("src").resolve("main").resolve("java")
-                .resolve("org").resolve("wwz").resolve("ai").resolve("domain").resolve("agent")
-                .resolve("role").resolve("IFixRoleService.java")));
+                .resolve("role").resolve("IFixRoleQueryService.java")));
         Assert.assertFalse(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-domain")
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("domain").resolve("agent")
-                .resolve("rag").resolve("IRagService.java")));
+                .resolve("role").resolve("IFixRoleService.java")));
+    }
+
+    @Test
+    public void shouldPromoteMemoryAndLedgerToUniquePrimaryOwnership() {
+        Assert.assertTrue("稳定主归属根不能为空", !STABLE_OWNERSHIP_ROOTS.isEmpty());
         Assert.assertTrue(Files.exists(PROJECT_ROOT.resolve("ai-agent-station-study-domain")
                 .resolve("src").resolve("main").resolve("java")
                 .resolve("org").resolve("wwz").resolve("ai").resolve("domain").resolve("agent")

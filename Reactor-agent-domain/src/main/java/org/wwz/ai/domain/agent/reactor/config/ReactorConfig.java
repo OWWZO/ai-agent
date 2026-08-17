@@ -207,9 +207,6 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.clear_tool_message:1}")
     private String clearToolMessage;
 
-    @Value("${autobots.autoagent.planner.close_update:1}")
-    private String planningCloseUpdate;
-
     @Value("${autobots.autoagent.deep_search_page_count:3}")
     private String deepSearchPageCount;
 
@@ -222,11 +219,31 @@ public class ReactorConfig {
     /**
      * PlanSolve 主 Agent 可见的工具白名单。完整 tool_list 仍作为子 Agent 的工具来源。
      */
-    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,EnterPlanMode,ExitPlanMode,AskUserQuestion,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
+    @Value("${autobots.autoagent.plan-solve-main-tool-list:Agent,TaskCreate,TaskGet,TaskUpdate,TaskList,TodoWrite,TaskStop,TaskOutput,SendMessage,EnterPlanMode,ExitPlanMode,AskUserQuestion,ToolSearch,ListMcpResources,ReadMcpResource,workspace_read,workspace_list,workspace_glob,workspace_grep,workspace_write,workspace_edit,skill_tool,memory,session_search,emit_ui_patch,emit_ui_tree,list_ui_components,get_genui_guide,image_ocr,canvas_publish,pdf_reader,pdf_structure,word_reader,text_processor,markdown_processor,html_processor,excel_reader,csv_processor}")
     private String planSolveMainToolList;
 
     public void setPlanSolveMainToolList(String planSolveMainToolList) {
         this.planSolveMainToolList = planSolveMainToolList;
+    }
+
+    /**
+     * MCP 工具搜索模式：always=默认延迟+ToolSearch；standard=全量进 tools[]；auto=超过阈值才延迟。
+     */
+    @Value("${autobots.autoagent.mcp.tool-search-mode:always}")
+    private String mcpToolSearchMode;
+
+    public void setMcpToolSearchMode(String mcpToolSearchMode) {
+        this.mcpToolSearchMode = mcpToolSearchMode;
+    }
+
+    /**
+     * auto 模式下：deferred 候选数 ≥ 该阈值时启用 ToolSearch。
+     */
+    @Value("${autobots.autoagent.mcp.tool-search-auto-threshold:8}")
+    private Integer mcpToolSearchAutoThreshold;
+
+    public void setMcpToolSearchAutoThreshold(Integer mcpToolSearchAutoThreshold) {
+        this.mcpToolSearchAutoThreshold = mcpToolSearchAutoThreshold;
     }
 
     /**
@@ -242,9 +259,6 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.planner.max_steps:400}")
     private Integer plannerMaxSteps;
-
-    @Value("${autobots.autoagent.planner.max_parallel_tasks:2}")
-    private Integer plannerMaxParallelTasks;
 
     @Value("${autobots.autoagent.executor.max_steps:400}")
     private Integer executorMaxSteps;
@@ -427,9 +441,6 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.tool.task_complete_desc:当前task完成，请将当前task标记为 completed}")
     private String taskCompleteDesc;
-
-    @Value("${spring.ai.agent.chat.default-role-id:}")
-    private String chatDefaultRoleId;
 
     private static Map<String, String> parseStringMap(String json) {
         if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {

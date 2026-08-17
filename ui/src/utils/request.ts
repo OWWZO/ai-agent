@@ -15,7 +15,8 @@ const request: AxiosInstance = axios.create({
   baseURL: resolveServiceBaseUrl(SERVICE_BASE_URL),
   timeout: 10000,
   withCredentials: true,
-  headers: {'Content-Type': 'application/json',},
+  // 默认 JSON；上传 FormData 时在拦截器里去掉 Content-Type，避免 415
+  headers: { "Content-Type": "application/json" },
 });
 
 // 请求拦截器
@@ -23,6 +24,27 @@ request.interceptors.request.use(
   (config) => {
     // 兼容仍然依赖设备标识的上传与流式接口
     config.headers['X-Device-Id'] = getDeviceId();
+    // FormData 必须由浏览器带 multipart boundary；默认 application/json 会导致 415
+    if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+      if (config.headers && typeof config.headers === "object") {
+        // AxiosHeaders / 普通对象都兼容
+        const h = config.headers as Record<string, unknown> & {
+          delete?: (key: string) => void;
+          set?: (key: string, value: string) => void;
+        };
+        if (typeof h.delete === "function") {
+          h.delete("Content-Type");
+          h.delete("content-type");
+        } else {
+          delete h["Content-Type"];
+          delete h["content-type"];
+        }
+      }
+      // 上传解析 zip 可能超过默认 10s
+      if (config.timeout == null || config.timeout < 60000) {
+        config.timeout = 60000;
+      }
+    }
     return config;
   },
   (error) => {

@@ -13,6 +13,7 @@ import org.wwz.ai.domain.agent.runtime.dto.File;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePaths;
+import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 
 import java.util.LinkedHashMap;
@@ -38,8 +39,9 @@ public class CodeExecutionTool implements BaseTool {
                 + "3. 禁止写死绝对路径（如 D:\\\\...\\\\skilloutput\\\\session-...\\\\xxx），"
                 + "禁止仅用相对文件名 savefig('a.png') 或随意 Path('a.png') 期望自动注册"
                 + "（未走 build_output_path 的路径可能不上传、不展示）。\n"
-                + "4. 读会话输入文件用 resolve_input_path('文件名')；"
-                + "沙箱已注入 build_output_path / resolve_input_path / read_text_file / write_text_file，无需 import。";
+                + "4. 读会话输入：fileNames 填裸文件名（优先从当前会话工作区 / input 解析），"
+                + "也可用绝对路径或 http(s) 下载 URL；源码内用 resolve_input_path('文件名') 读取。\n"
+                + "5. 沙箱已注入 build_output_path / resolve_input_path / read_text_file / write_text_file，无需 import。";
     }
 
     @Override public Map<String, Object> toParams() {
@@ -57,7 +59,13 @@ public class CodeExecutionTool implements BaseTool {
         Map<String, Object> inputs = new LinkedHashMap<>(freeformObject);
         inputs.put("description", "注入 Python 全局变量的 JSON 对象");
         properties.put("inputs", inputs);
-        properties.put("fileNames", Map.of("type", "array", "items", Map.of("type", "string"), "description", "会话输入文件名"));
+        properties.put("fileNames", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "输入文件列表。优先填会话工作区裸文件名（如 run_backtest.py、data/sp500.csv），"
+                        + "系统会在 workspaceRoot 与 workspaceRoot/input 解析；也可填绝对路径或 http(s) URL。"
+                        + "不要把仅存在于工作区的文件误当成必须可下载的 URL。"
+        ));
         Map<String, Object> fileItem = new LinkedHashMap<>(freeformObject);
         fileItem.put("description", "工作区文件条目");
         properties.put("files", Map.of("type", "array", "items", fileItem, "description", "写入工作区的小型文本或 Base64 文件"));
@@ -106,13 +114,17 @@ public class CodeExecutionTool implements BaseTool {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("tool", "code_execution");
             data.put("status", response.getString("status"));
-            data.put("stdout", StringUtils.defaultString(response.getString("stdout")));
-            data.put("stderr", StringUtils.defaultString(response.getString("stderr")));
+            data.put("stdout", WorkspaceService.redactHostPaths(
+                    StringUtils.defaultString(response.getString("stdout"))));
+            data.put("stderr", WorkspaceService.redactHostPaths(
+                    StringUtils.defaultString(response.getString("stderr"))));
             if (response.get("result") != null) {
-                data.put("result", response.get("result"));
+                Object result = response.get("result");
+                data.put("result", result instanceof String s
+                        ? WorkspaceService.redactHostPaths(s) : result);
             }
             if (StringUtils.isNotBlank(response.getString("error"))) {
-                data.put("error", response.getString("error"));
+                data.put("error", WorkspaceService.redactHostPaths(response.getString("error")));
             }
             if (!fileInfo.isEmpty()) {
                 List<Map<String, Object>> files = new java.util.ArrayList<>();

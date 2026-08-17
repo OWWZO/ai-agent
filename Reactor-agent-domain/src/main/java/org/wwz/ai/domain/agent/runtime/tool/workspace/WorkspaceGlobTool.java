@@ -53,7 +53,7 @@ public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
                 basePath = requireAllowedPath(params);
             }
             if (!Files.isDirectory(basePath)) {
-                return failResult("workspace_glob 只支持目录路径: " + basePath);
+                return failResult("workspace_glob 只支持目录路径: " + toAgentPath(basePath));
             }
             Object patternValue = params.get("pattern");
             if (patternValue == null || String.valueOf(patternValue).isBlank()) {
@@ -81,7 +81,7 @@ public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
                 }
             }
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("path", basePath.toString());
+            data.put("path", toAgentPath(basePath));
             data.put("pattern", pattern);
             data.put("files", files);
             if (truncated) {

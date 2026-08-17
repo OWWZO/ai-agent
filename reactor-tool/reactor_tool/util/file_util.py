@@ -226,51 +226,86 @@ def flatten_search_file(s_file: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 @timer()
-async def get_file_path(file_name: str, word_dir: str) -> str:
-    if _is_local_file_reference(file_name):
+async def get_file_path(
+    file_name: str,
+    word_dir: str,
+    workspace_root: str | None = None,
+) -> str | None:
+    """解析输入文件路径：绝对本地路径 / 工作区相对名 / HTTP(S) URL。"""
+    name = (file_name or "").strip()
+    if not name:
+        return None
+
+    if _is_local_file_reference(name):
         # 本地引用已经是可用路径，不重复复制，避免同一文件在工作区产生无意义副本。
-        return str(_normalize_local_path(file_name))
-    else:
-        # 远端文件只取 basename 写入调用方工作目录，避免 URL 中的路径层级改变落盘位置。
-        b_content = b""
-        file_path = os.path.join(word_dir, os.path.basename(file_name))
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(file_name, timeout=99999) as response:
-                    response.raise_for_status() # 检查HTTP状态码，如果不是2xx则抛出异常
-                    while True:
-                        chunk = await response.content.read(1024)
-                        if not chunk:
-                            break
-                        b_content += chunk
-            except aiohttp.ClientError as e:
-                print(f"下载文件失败: {e}")
-                return None # 或者抛出异常
-            except TimeoutError:
-                print(f"下载文件超时: {file_name}")
-                return ""
-        with open(file_path, "wb") as f: 
-            f.write(b_content)
-        return file_path
+        return str(_normalize_local_path(name))
+
+    # 裸文件名或相对路径：先在会话工作区 / input 落点解析，避免被误当成 HTTP URL。
+    local_hit = _resolve_workspace_relative_file(
+        name,
+        workspace_root=workspace_root,
+        work_dir=word_dir,
+    )
+    if local_hit is not None:
+        return str(local_hit)
+
+    if not _looks_like_http_url(name):
+        print(f"下载文件失败: {name}（工作区未找到，且不是可下载 URL）")
+        logger.warning(
+            "Input file not found in workspace and not a downloadable URL: {}",
+            name,
+        )
+        return None
+
+    # 远端文件只取 basename 写入调用方工作目录，避免 URL 中的路径层级改变落盘位置。
+    b_content = b""
+    file_path = os.path.join(word_dir, os.path.basename(name.split("?", 1)[0]))
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(name, timeout=99999) as response:
+                response.raise_for_status()
+                while True:
+                    chunk = await response.content.read(1024)
+                    if not chunk:
+                        break
+                    b_content += chunk
+        except aiohttp.ClientError as e:
+            print(f"下载文件失败: {name} ({e})")
+            return None
+        except TimeoutError:
+            print(f"下载文件超时: {name}")
+            return ""
+    with open(file_path, "wb") as f:
+        f.write(b_content)
+    return file_path
 
 
 @timer()
-async def download_all_files_in_path(file_names: list[str], work_dir: str) -> List[Dict[str, Any]]:
+async def download_all_files_in_path(
+    file_names: list[str],
+    work_dir: str,
+    workspace_root: str | None = None,
+) -> List[Dict[str, Any]]:
     file_paths = []
-    for file_name in file_names:
+    for file_name in file_names or []:
         # 保持输入顺序并逐项记录失败，权限策略可以据此只允许访问成功落盘的文件。
         try:
+            resolved = await get_file_path(
+                file_name=file_name,
+                word_dir=work_dir,
+                workspace_root=workspace_root,
+            )
             file_paths.append(
                 {
-                    "file_name": os.path.basename(file_name),
-                    "file_path": await get_file_path(file_name=file_name, word_dir=work_dir),
+                    "file_name": os.path.basename(str(file_name).split("?", 1)[0]),
+                    "file_path": resolved or "",
                 }
             )
         except Exception as e:
             logger.warning(f"Failed to download file {file_name}. Exception: {e}")
             file_paths.append(
                 {
-                    "file_name": os.path.basename(file_name),
+                    "file_name": os.path.basename(str(file_name).split("?", 1)[0]),
                     "file_path": "",
                 }
             )
@@ -300,6 +335,76 @@ def _is_local_file_reference(file_name: str) -> bool:
     if file_name.startswith("/") or file_name.startswith("\\\\"):
         return True
     return len(file_name) >= 3 and file_name[1] == ":" and file_name[2] in {"\\", "/"}
+
+
+def _looks_like_http_url(file_name: str) -> bool:
+    """仅 http(s) 视为远端下载；裸文件名不得走 HTTP。"""
+    lowered = (file_name or "").strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _resolve_workspace_relative_file(
+    file_name: str,
+    *,
+    workspace_root: str | None,
+    work_dir: str | None,
+) -> Path | None:
+    """在会话工作区解析相对/裸文件名；禁止 .. 穿越出根目录。"""
+    name = (file_name or "").strip().replace("\\", "/")
+    if not name or name.startswith("/") or _looks_like_http_url(name) or _is_local_file_reference(name):
+        return None
+
+    roots: list[Path] = []
+    for raw in (workspace_root, work_dir):
+        text = (raw or "").strip()
+        if not text:
+            continue
+        try:
+            root = Path(text).expanduser().resolve()
+        except OSError:
+            continue
+        if root not in roots:
+            roots.append(root)
+
+    basename = Path(name).name
+    for root in roots:
+        candidates = [root / name]
+        if basename and basename != name:
+            candidates.append(root / basename)
+        candidates.append(root / "input" / basename)
+        if work_dir:
+            try:
+                wd = Path(work_dir).expanduser().resolve()
+            except OSError:
+                wd = None
+            if wd is not None and wd != root:
+                candidates.append(wd / basename)
+                candidates.append(wd / name)
+
+        seen: set[Path] = set()
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                # 候选可能落在 work_dir（input）而非 workspace 根；再对 work_dir 做 containment。
+                if work_dir:
+                    try:
+                        wd = Path(work_dir).expanduser().resolve()
+                        resolved.relative_to(wd)
+                    except (OSError, ValueError):
+                        continue
+                else:
+                    continue
+            if resolved.is_file():
+                return resolved
+    return None
 
 
 def _normalize_local_path(file_name: str) -> Path:

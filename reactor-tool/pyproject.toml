@@ -60,4 +60,5 @@ dependencies = [
     "linkify-it-py>=2.1.0",
     "latex2mathml>=3.81.0",
     "httpx>=0.28.0",
+    "e2b-code-interpreter>=1.5.0",
 ]

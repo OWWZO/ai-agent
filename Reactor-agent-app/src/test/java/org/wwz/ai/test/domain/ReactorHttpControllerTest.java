@@ -10,11 +10,9 @@ import org.wwz.ai.application.agent.dataquery.DataAgentApplicationService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.application.agent.dataquery.IDataAgentApplicationService;
 import org.wwz.ai.application.agent.query.GptQueryApplicationService;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
 import org.wwz.ai.domain.agent.reactor.data.QueryResult;
 import org.wwz.ai.domain.agent.reactor.data.dto.ColumnEsRecallReq;
 import org.wwz.ai.domain.agent.reactor.data.dto.ColumnVectorRecallReq;
@@ -23,9 +21,7 @@ import org.wwz.ai.domain.agent.reactor.model.req.DataAgentChatReq;
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
 import org.wwz.ai.trigger.http.AiAgentController;
 import org.wwz.ai.trigger.http.admin.AiClientRagOrderAdminController;
-import org.wwz.ai.trigger.http.agent.AgentRoleLibraryController;
 import org.wwz.ai.trigger.http.dataagent.DataAgentController;
-import org.wwz.ai.trigger.http.reactor.ReactorController;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 
 import java.lang.reflect.Method;
@@ -34,27 +30,26 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
- * 锁定 legacy Reactor / DataAgent HTTP 路由和代表性委派行为。
+ * 锁定生产入口（AiAgentController / DataAgent）路由与 case 委派边界。
  */
 public class ReactorHttpControllerTest {
 
     @Test
-    public void shouldExposeLegacyRouteSetFromTriggerControllers() {
-        Assert.assertTrue(ReactorController.class.getPackageName().startsWith("org.wwz.ai.trigger.http"));
+    public void shouldExposeProductionRouteSetFromTriggerControllers() {
+        Assert.assertTrue(AiAgentController.class.getPackageName().startsWith("org.wwz.ai.trigger.http"));
         Assert.assertTrue(DataAgentController.class.getPackageName().startsWith("org.wwz.ai.trigger.http"));
 
         Set<String> routes = new LinkedHashSet<>();
-        routes.addAll(extractRoutes(ReactorController.class));
+        routes.addAll(extractRoutes(AiAgentController.class));
         routes.addAll(extractRoutes(DataAgentController.class));
 
-        Assert.assertEquals(Set.of(
-                "POST /1/AutoAgent",
-                "REQUEST /1/web/health",
-                "REQUEST /1/web/api/v1/gpt/queryAgentStreamIncr",
+        Assert.assertFalse(routes.contains("POST /AutoAgent"));
+        Assert.assertTrue(routes.contains("REQUEST /web/api/v1/gpt/queryAgentStreamIncr")
+                || routes.contains("POST /web/api/v1/gpt/queryAgentStreamIncr"));
+        Assert.assertTrue(routes.containsAll(Set.of(
                 "POST /data/queryModelInfo",
                 "POST /data/vectorRecall",
                 "POST /data/esRecall",
@@ -64,15 +59,13 @@ public class ReactorHttpControllerTest {
                 "POST /data/getNl2SqlReq",
                 "GET /data/allModels",
                 "GET /data/previewData"
-        ), routes);
+        )));
+        Assert.assertFalse(routes.stream().anyMatch(route -> route.contains("/1/")));
     }
 
     @Test
     public void shouldInjectCaseOwnedServicesIntoAgentEntryControllers() {
         List<String> aiAgentFieldTypes = Arrays.stream(AiAgentController.class.getDeclaredFields())
-                .map(field -> field.getType().getName())
-                .collect(Collectors.toList());
-        List<String> reactorFieldTypes = Arrays.stream(ReactorController.class.getDeclaredFields())
                 .map(field -> field.getType().getName())
                 .collect(Collectors.toList());
         List<String> dataAgentFieldTypes = Arrays.stream(DataAgentController.class.getDeclaredFields())
@@ -84,24 +77,16 @@ public class ReactorHttpControllerTest {
         List<String> dataAgentApplicationFieldTypes = Arrays.stream(DataAgentApplicationService.class.getDeclaredFields())
                 .map(field -> field.getType().getName())
                 .collect(Collectors.toList());
-        List<String> roleLibraryFieldTypes = Arrays.stream(AgentRoleLibraryController.class.getDeclaredFields())
-                .map(field -> field.getType().getName())
-                .collect(Collectors.toList());
         List<String> ragAdminFieldTypes = Arrays.stream(AiClientRagOrderAdminController.class.getDeclaredFields())
                 .map(field -> field.getType().getName())
                 .collect(Collectors.toList());
 
-        Assert.assertTrue(aiAgentFieldTypes.contains("org.wwz.ai.application.agent.dispatch.IAgentDispatchService"));
+        Assert.assertFalse(aiAgentFieldTypes.contains("org.wwz.ai.application.agent.dispatch.IAgentDispatchService"));
         Assert.assertTrue(aiAgentFieldTypes.contains("org.wwz.ai.application.agent.armory.IArmoryService"));
         Assert.assertTrue(aiAgentFieldTypes.contains("org.wwz.ai.application.agent.query.IGptQueryApplicationService"));
         Assert.assertFalse(aiAgentFieldTypes.contains("org.wwz.ai.domain.agent.service.IAgentDispatchService"));
         Assert.assertFalse(aiAgentFieldTypes.contains("org.wwz.ai.domain.agent.service.IArmoryService"));
         Assert.assertFalse(aiAgentFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.IGptProcessService"));
-
-        Assert.assertTrue(reactorFieldTypes.contains("org.wwz.ai.application.agent.dispatch.IAgentDispatchService"));
-        Assert.assertTrue(reactorFieldTypes.contains("org.wwz.ai.application.agent.query.IGptQueryApplicationService"));
-        Assert.assertFalse(reactorFieldTypes.contains("org.wwz.ai.domain.agent.service.IAgentDispatchService"));
-        Assert.assertFalse(reactorFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.IGptProcessService"));
 
         Assert.assertTrue(dataAgentFieldTypes.contains("org.wwz.ai.application.agent.dataquery.IDataAgentApplicationService"));
         Assert.assertFalse(dataAgentFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.DataAgentService"));
@@ -120,35 +105,29 @@ public class ReactorHttpControllerTest {
         Assert.assertFalse(dataAgentApplicationFieldTypes.contains("org.wwz.ai.domain.agent.rag.SchemaRecallService"));
         Assert.assertFalse(dataAgentApplicationFieldTypes.contains("org.wwz.ai.domain.agent.reactor.service.ChatModelInfoService"));
 
-        Assert.assertTrue(roleLibraryFieldTypes.contains("org.wwz.ai.application.agent.role.IFixRoleQueryService"));
-        Assert.assertFalse(roleLibraryFieldTypes.contains("org.wwz.ai.domain.agent.role.IFixRoleService"));
-
         Assert.assertFalse(ragAdminFieldTypes.contains("org.wwz.ai.application.agent.rag.IRagApplicationService"));
         Assert.assertFalse(ragAdminFieldTypes.contains("org.wwz.ai.domain.agent.rag.IRagService"));
     }
 
     @Test
     public void shouldKeepRepresentativeDelegationAndResponseShapes() throws Exception {
-        ReactorController reactorController = new ReactorController();
+        AiAgentController aiAgentController = new AiAgentController();
         IGptQueryApplicationService gptQueryApplicationService = Mockito.mock(IGptQueryApplicationService.class);
-        ReflectionTestUtils.setField(reactorController, "gptQueryApplicationService", gptQueryApplicationService);
-        ReflectionTestUtils.setField(reactorController, "conversationSessionOwnershipApplicationService",
-                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
-        ReflectionTestUtils.setField(reactorController, "agentExecutorProperties", new AgentExecutorProperties());
-        ReflectionTestUtils.setField(reactorController, "dispatchExecutor", (Executor) Runnable::run);
-        ReflectionTestUtils.setField(reactorController, "heartbeatScheduler", new ConcurrentTaskScheduler());
+        ReflectionTestUtils.setField(aiAgentController, "gptQueryApplicationService", gptQueryApplicationService);
+        ReflectionTestUtils.setField(aiAgentController, "agentExecutorProperties", new AgentExecutorProperties());
+        ReflectionTestUtils.setField(aiAgentController, "heartbeatScheduler", new ConcurrentTaskScheduler());
 
         GptQueryReq gptQueryReq = new GptQueryReq();
         Mockito.doNothing().when(gptQueryApplicationService).queryAgentStreamIncr(Mockito.eq(gptQueryReq), Mockito.any());
 
-        Assert.assertNotNull(reactorController.queryAgentStreamIncr(gptQueryReq));
+        Assert.assertNotNull(aiAgentController.queryAgentStreamIncr(gptQueryReq));
         Mockito.verify(gptQueryApplicationService).queryAgentStreamIncr(
                 Mockito.eq(gptQueryReq),
                 Mockito.argThat(stream -> stream != null
                         && stream.getClass().getName().equals(
                         "org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream"))
         );
-        Assert.assertEquals("ok", reactorController.health().getBody());
+        Assert.assertEquals("ok", aiAgentController.health().getBody());
 
         DataAgentController dataAgentController = new DataAgentController();
         IDataAgentApplicationService dataAgentApplicationService = Mockito.mock(IDataAgentApplicationService.class);

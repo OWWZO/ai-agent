@@ -40,8 +40,12 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
         return _envelope(request, "error", str(exc), "", "", [], [], str(workspace),
                          error_type="syntax", source_file=str(source_file),
                          syntax_diagnostics=[{"line": exc.lineno, "column": exc.offset, "message": exc.msg}])
-    # 远端附件先落到 input，再把真实路径交给权限策略；用户代码不能直接访问外部 URL。
-    imported_files = await download_all_files_in_path(request.file_names, str(input_dir))
+    # 裸文件名优先落会话工作区；URL 才下载到 input/。解析结果交给权限策略供 resolve_input_path 使用。
+    imported_files = await download_all_files_in_path(
+        request.file_names,
+        str(input_dir),
+        workspace_root=str(workspace),
+    )
     policy = build_permission_policy(
         profile=request.permission_profile,
         workspace_root=str(workspace),
@@ -53,7 +57,13 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
     execution_result = None
     execution_error = None
     try:
-        execution_result = executor.execute(source)
+        # 注入 __file__/__name__：优先 workspaceFile 真实路径，否则 __last_source__.py。
+        logical_source = source_file
+        if request.workspace_file:
+            candidate = (workspace / request.workspace_file).resolve()
+            if workspace in candidate.parents and candidate.is_file():
+                logical_source = candidate
+        execution_result = executor.execute(source, source_file=str(logical_source))
         status, error, stdout, stderr = "ok", None, execution_result.stdout, execution_result.stderr
     except TimeoutError as exc:
         execution_error = exc

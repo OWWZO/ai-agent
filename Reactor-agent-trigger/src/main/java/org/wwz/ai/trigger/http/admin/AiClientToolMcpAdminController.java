@@ -5,6 +5,7 @@ import org.wwz.ai.api.dto.AiClientToolMcpQueryRequestDTO;
 import org.wwz.ai.api.dto.AiClientToolMcpRequestDTO;
 import org.wwz.ai.api.dto.AiClientToolMcpResponseDTO;
 import org.wwz.ai.api.response.Response;
+import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
 import org.wwz.ai.infrastructure.dao.IAiClientToolMcpDao;
 import org.wwz.ai.infrastructure.dao.po.AiClientToolMcp;
 import org.wwz.ai.types.enums.ResponseCode;
@@ -31,6 +32,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
     @Resource
     private IAiClientToolMcpDao aiClientToolMcpDao;
 
+    @Resource
+    private McpRegistry mcpRegistry;
+
     @Override
     @PostMapping("/create")
     public Response<Boolean> createAiClientToolMcp(@RequestBody AiClientToolMcpRequestDTO request) {
@@ -43,6 +47,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
             aiClientToolMcp.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientToolMcpDao.insert(aiClientToolMcp);
+            if (result > 0) {
+                reloadMcpRuntimeQuietly("create");
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -78,6 +85,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
             aiClientToolMcp.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientToolMcpDao.updateById(aiClientToolMcp);
+            if (result > 0) {
+                reloadMcpRuntimeQuietly("update-by-id");
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -113,6 +123,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
             aiClientToolMcp.setUpdateTime(LocalDateTime.now());
 
             int result = aiClientToolMcpDao.updateByMcpId(aiClientToolMcp);
+            if (result > 0) {
+                reloadMcpRuntimeQuietly("update-by-mcp-id");
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -136,6 +149,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
             log.info("根据ID删除MCP客户端配置：{}", id);
 
             int result = aiClientToolMcpDao.deleteById(id);
+            if (result > 0) {
+                reloadMcpRuntimeQuietly("delete-by-id");
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -159,6 +175,9 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
             log.info("根据MCP ID删除MCP客户端配置：{}", mcpId);
 
             int result = aiClientToolMcpDao.deleteByMcpId(mcpId);
+            if (result > 0) {
+                reloadMcpRuntimeQuietly("delete-by-mcp-id");
+            }
 
             return Response.<Boolean>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -397,6 +416,21 @@ public class AiClientToolMcpAdminController implements IAiClientToolMcpAdminServ
                     .info(ResponseCode.UN_ERROR.getInfo())
                     .data(null)
                     .build();
+        }
+    }
+
+    /**
+     * Admin 写库后热刷新 MCP 运行时缓存（失败只记日志，不回滚 DB）。
+     */
+    private void reloadMcpRuntimeQuietly(String action) {
+        if (mcpRegistry == null) {
+            return;
+        }
+        try {
+            mcpRegistry.preloadAllEnabledMcps();
+            log.info("MCP runtime reloaded after admin {}", action);
+        } catch (Exception e) {
+            log.warn("MCP runtime reload failed after admin {}: {}", action, e.getMessage());
         }
     }
 

@@ -51,6 +51,12 @@ public class AiClientModelRequestDTO implements Serializable {
      */
     private String modelUsage;
 
+    /** 是否支持深度思考：0/1 */
+    private Integer supportsThinking;
+
+    /** 上下文窗口 token */
+    private Integer contextWindow;
+
     /**
      * 状态：0-禁用，1-启用
      */

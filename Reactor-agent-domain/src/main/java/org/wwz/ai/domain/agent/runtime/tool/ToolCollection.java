@@ -169,8 +169,16 @@ public class ToolCollection {
             }
             return executor.executeTool(toolInfo, toolInput);
         }
-        // 分支3：工具不存在，记录错误日志
+        // 分支3：工具不存在；若在延迟目录中则提示先 ToolSearch
         else {
+            if (agentContext != null
+                    && agentContext.getDeferredMcpCatalog() != null
+                    && agentContext.getDeferredMcpCatalog().get(name) != null) {
+                String hint = "Error: Tool " + name + " is deferred. Call ToolSearch with select:"
+                        + name + " first, then retry.";
+                log.warn("requestId:{} {}", agentContext.getRequestId(), hint);
+                return hint;
+            }
             log.error("Error: Unknown tool {}", name);
         }
         return null;

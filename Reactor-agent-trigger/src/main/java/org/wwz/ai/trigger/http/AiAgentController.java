@@ -1,7 +1,6 @@
 package org.wwz.ai.trigger.http;
 
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,21 +11,14 @@ import org.wwz.ai.api.IAiAgentService;
 import org.wwz.ai.api.dto.AiAgentResponseDTO;
 import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
 import org.wwz.ai.api.dto.ArmoryApiRequestDTO;
-import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.armory.IArmoryService;
-import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.query.IGptQueryApplicationService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
-import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
-import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
-import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.model.valobj.AiAgentVO;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
-import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
-import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 import com.alibaba.fastjson.JSON;
 import org.springframework.web.bind.annotation.*;
@@ -34,16 +26,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.wwz.ai.trigger.http.reactor.support.SseLifecycleSupport;
 import org.wwz.ai.trigger.http.reactor.support.SseEmitterAgentSessionStream;
 
-import java.io.UnsupportedEncodingException;
 import java.util.*;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 
 import org.wwz.ai.domain.agent.reactor.model.req.GptQueryReq;
-import org.apache.commons.lang3.StringUtils;
 
 /**
- * AutoAgent 自动智能对话体
+ * Agent HTTP 入口：主对话 SSE、装配与健康检查。
  */
 @Slf4j
 @RestController
@@ -54,106 +43,17 @@ public class AiAgentController implements IAiAgentService {
     protected ReactorConfig reactorConfig;
 
     @Resource
-    private IAgentDispatchService agentDispatchService;
-
-    @Resource
     private IArmoryService armoryService;
 
     @Resource
     private IGptQueryApplicationService gptQueryApplicationService;
 
     @Resource
-    private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
-
-    @Resource
     private AgentExecutorProperties agentExecutorProperties;
-
-    @Resource
-    @Qualifier(AgentExecutorNames.DISPATCH_EXECUTOR)
-    private Executor dispatchExecutor;
 
     @Resource
     @Qualifier(AgentExecutorNames.HEARTBEAT_SCHEDULER)
     private TaskScheduler heartbeatScheduler;
-
-    /**
-     * 执行智能体调度
-     * @param request
-     * @return
-     * @throws UnsupportedEncodingException
-     */
-    @PostMapping("/AutoAgent")
-    public SseEmitter AutoAgent(@RequestBody AgentRequest request) throws UnsupportedEncodingException {
-
-        log.info("{} auto agent request: {}", request.getRequestId(), JSON.toJSONString(request));
-
-        Long AUTO_AGENT_SSE_TIMEOUT = 600 * 600 * 1000L;
-
-        SseEmitter emitter = SseLifecycleSupport.createEmitter(AUTO_AGENT_SSE_TIMEOUT);
-        try {
-            // 访客身份与会话归属校验必须在提交异步任务前完成，避免未授权请求已经进入 Agent 执行器。
-            String visitorId = resolveVisitorId(request);
-            request.setVisitorId(visitorId);
-            conversationSessionOwnershipApplicationService.ensureSessionAccessible(
-                    visitorId,
-                    request.getSessionId(),
-                    request.getQuery()
-            );
-        } catch (Exception e) {
-            log.warn("{} reject auto agent request before dispatch", request.getRequestId(), e);
-            emitter.completeWithError(e);
-            return emitter;
-        }
-        // 定义定时任务规则 定时发送心跳包
-        ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
-                heartbeatScheduler,
-                emitter,
-                request.getRequestId(),
-                agentExecutorProperties.getHeartbeat().getIntervalMillis(),
-                log
-        );
-
-        // 注册后续各种事件的处理逻辑
-        SseLifecycleSupport.registerLifecycle(emitter, request.getRequestId(), heartbeatFuture, log);
-
-        // 执行调度引擎：AgentRequest 贯穿 React 树，无转换
-        try {
-            // dispatch 进入受控执行器后立即返回 HTTP 响应；异步任务负责把 Agent 事件写入同一个 emitter。
-            AgentExecutorSupport.execute(dispatchExecutor, "dispatch", request.getRequestId(), () -> {
-                try {
-                    // 使用 IAgentDispatchService 进行策略调度
-                    // AgentRequest 直接传入，避免不必要的转换
-                    agentDispatchService.dispatch(request, new SseEmitterAgentSessionStream(emitter));
-
-                    //调用emitter对应方法触发资源回收
-                    emitter.complete();
-                } catch (Exception e) {
-                    // 任务内部异常需要结束 SSE；若客户端已经断开，completeWithError 失败只能记录日志。
-                    log.error("{} auto agent error", request.getRequestId(), e);
-                    try {
-                        emitter.completeWithError(e);
-                    } catch (Exception ex) {
-                        log.warn("{} emitter completeWithError failed", request.getRequestId(), ex);
-                    }
-                }
-            });
-        } catch (AgentExecutorBusyException e) {
-            log.warn("{} dispatch rejected", request.getRequestId(), e);
-            emitter.completeWithError(e);
-        }
-
-        return emitter;
-    }
-
-    private String resolveVisitorId(AgentRequest request) {
-        String contextVisitorId = VisitorRequestContext.currentVisitorId();
-        String visitorId = StringUtils.defaultIfBlank(contextVisitorId, request == null ? null : request.getVisitorId());
-        if (StringUtils.isBlank(visitorId)) {
-            throw new IllegalArgumentException("visitorId不能为空");
-        }
-        return visitorId;
-    }
-
 
     /**
      * 探活接口
@@ -168,7 +68,7 @@ public class AiAgentController implements IAiAgentService {
 
     /**
      * 处理Agent流式增量查询请求，返回SSE事件流。
-     * 进程内直接调度执行策略，不再 HTTP loopback 到 /AutoAgent。
+     * 进程内直接调度执行策略。
      *
      * @param params 查询请求参数对象，包含GPT查询所需信息
      * @return 返回SSE事件发射器，用于流式传输增量响应结果
@@ -176,7 +76,6 @@ public class AiAgentController implements IAiAgentService {
     @RequestMapping(value = "/web/api/v1/gpt/queryAgentStreamIncr", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
-        // 旧 GPT 入口仍复用 case 查询 seam，但直接在进程内适配为 SSE，避免 HTTP loopback 造成额外生命周期。
         SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,
@@ -195,47 +94,6 @@ public class AiAgentController implements IAiAgentService {
         }
         return emitter;
     }
-
-//    @RequestMapping(value = "auto_agent1", method = RequestMethod.POST)
-//    public ResponseBodyEmitter autoAgent(@RequestBody AutoAgentRequestDTO request, HttpServletResponse response) {
-//        log.info("AutoAgent流式执行请求开始，请求信息：{}", JSON.toJSONString(request));
-//
-//        try {
-//            // 设置SSE响应头
-//            response.setContentType("text/event-stream");
-//            response.setCharacterEncoding("UTF-8");
-//            response.setHeader("Cache-Control", "no-cache");
-//            response.setHeader("Connection", "keep-alive");
-//
-//            // 1. 创建流式输出对象
-//            ResponseBodyEmitter emitter = new ResponseBodyEmitter(Long.MAX_VALUE);
-//
-//            // 2. 构建执行命令实体
-//            ExecuteCommandEntity executeCommandEntity = ExecuteCommandEntity.builder()
-//                    .aiAgentId(request.getAiAgentId())
-//                    .message(request.getMessage())
-//                    .sessionId(request.getSessionId())
-//                    .maxStep(request.getMaxStep())
-//                    .build();
-//
-////            // 3. 调度处理
-////            agentDispatchService.dispatch(executeCommandEntity, emitter);
-//
-//            return emitter;
-//
-//        } catch (Exception e) {
-//            log.error("AutoAgent请求处理异常：{}", e.getMessage(), e);
-//            ResponseBodyEmitter errorEmitter = new ResponseBodyEmitter();
-//            try {
-//                errorEmitter.send("请求处理异常：" + e.getMessage());
-//                errorEmitter.complete();
-//            } catch (Exception ex) {
-//                log.error("发送错误信息失败：{}", ex.getMessage(), ex);
-//            }
-//            return errorEmitter;
-//        }
-//    }
-
 
     @RequestMapping(value = "armory_agent", method = RequestMethod.POST)
     @Override

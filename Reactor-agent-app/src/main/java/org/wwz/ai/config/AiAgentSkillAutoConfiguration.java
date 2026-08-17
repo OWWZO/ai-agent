@@ -34,6 +34,12 @@ public class AiAgentSkillAutoConfiguration {
                 .maxListEntries(properties.getMaxListEntries())
                 .maxGlobResults(properties.getMaxGlobResults())
                 .maxGrepMatches(properties.getMaxGrepMatches())
+                .sandboxBashEnabled(properties.isSandboxBashEnabled())
+                .authoringEnabled(properties.isAuthoringEnabled())
+                .runtimePython(properties.getRuntimePython())
+                .bashTimeoutSec(properties.getBashTimeoutSec())
+                .bashMaxTimeoutSec(properties.getBashMaxTimeoutSec())
+                .bashOutputMaxChars(properties.getBashOutputMaxChars())
                 .build();
     }
 }

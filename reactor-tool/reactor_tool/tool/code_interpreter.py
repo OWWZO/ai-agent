@@ -249,7 +249,11 @@ async def code_interpreter_agent(
         workspace_root = str(Path(work_dir).resolve())
         output_dir = str(Path(workspace_root).joinpath("output").resolve())
         os.makedirs(output_dir, exist_ok=True)
-        import_files = await download_all_files_in_path(file_names=file_names, work_dir=work_dir)
+        import_files = await download_all_files_in_path(
+            file_names=file_names,
+            work_dir=work_dir,
+            workspace_root=workspace_root,
+        )
         permission_policy = build_permission_policy(
             profile=permission_profile,
             workspace_root=workspace_root,

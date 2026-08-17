@@ -63,10 +63,11 @@ public class RegistryBackedToolCallback implements ToolCallback {
      */
     private String execute(String toolInput) {
         try {
-            return mcpRegistry.executeTool(toolInfo.getMcpId(), toolInfo.getName(), toolInput);
+            // ToolDefinition 使用 FQ 名；call 使用服务端原始名。
+            return mcpRegistry.executeTool(toolInfo.getMcpId(), toolInfo.resolveWireName(), toolInput);
         } catch (RuntimeException e) {
-            log.error("Registry ToolCallback 调用失败: mcpId={}, toolName={}, reason={}",
-                    toolInfo.getMcpId(), toolInfo.getName(), e.getMessage(), e);
+            log.error("Registry ToolCallback 调用失败: mcpId={}, toolName={}, wireName={}, reason={}",
+                    toolInfo.getMcpId(), toolInfo.getName(), toolInfo.resolveWireName(), e.getMessage(), e);
             throw e;
         }
     }

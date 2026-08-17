@@ -78,14 +78,97 @@ public class AgentToolCollectionFactoryTest {
         Assert.assertTrue(toolCollection.getToolMap().containsKey("WebFetch"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("skill_author"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("script_runner_tool"));
         Assert.assertTrue(toolCollection.getToolMap().containsKey("Agent"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("SendUserMessage"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("Brief"));
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("Bash"));
+        // workspace 未启用时不挂 bash；启用 workspace + sandboxBash 时见 shouldRegisterBashWhenWorkspaceEnabled
+        Assert.assertFalse(toolCollection.getToolMap().containsKey("bash"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("PowerShell"));
         Assert.assertFalse(toolCollection.getToolMap().containsKey("WebSearch"));
-        Assert.assertTrue(toolCollection.getMcpToolMap().containsKey("remote_tool"));
+        // standard 模式 + FQ 命名：mcp__{server}__{tool}
+        Assert.assertTrue(toolCollection.getMcpToolMap().keySet().stream()
+                .anyMatch(name -> name.endsWith("__remote_tool") || "remote_tool".equals(name)
+                        || name.contains("remote_tool")));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("ListMcpResources"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("ReadMcpResource"));
+    }
+
+    @Test
+    public void shouldDeferMcpToolsAndExposeToolSearchInAlwaysMode() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of(
+                McpToolInfo.builder()
+                        .mcpId("mcp-1")
+                        .serverKey("demo")
+                        .name("mcp__demo__remote_tool")
+                        .originalName("remote_tool")
+                        .desc("远程测试工具")
+                        .parameters("{}")
+                        .alwaysLoad(false)
+                        .build(),
+                McpToolInfo.builder()
+                        .mcpId("mcp-1")
+                        .serverKey("demo")
+                        .name("mcp__demo__always_tool")
+                        .originalName("always_tool")
+                        .desc("always load")
+                        .parameters("{}")
+                        .alwaysLoad(true)
+                        .build()
+        ));
+        Mockito.when(mcpToolExecutor.hasAnyResources()).thenReturn(false);
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMcpToolSearchMode("always");
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+
+        AgentContext ctx = buildAgentContext();
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("ToolSearch"));
+        Assert.assertTrue(toolCollection.getMcpToolMap().containsKey("mcp__demo__always_tool"));
+        Assert.assertFalse(toolCollection.getMcpToolMap().containsKey("mcp__demo__remote_tool"));
+        Assert.assertNotNull(ctx.getDeferredMcpCatalog());
+        Assert.assertEquals(2, ctx.getDeferredMcpCatalog().size());
+    }
+
+    @Test
+    public void shouldRegisterBashWhenWorkspaceEnabledAndSandboxBashOn() throws Exception {
+        DefaultSkillRegistry skillRegistry = createRegistry(true, true);
+        skillRegistry.refresh();
+
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        AgentToolCollectionFactory factory = newFactory(
+                buildReactorConfig(),
+                mcpToolExecutor,
+                skillRegistry,
+                SkillRuntimeOptions.builder()
+                        .enabled(true)
+                        .reactEnabled(true)
+                        .planSolveEnabled(true)
+                        .sandboxBashEnabled(true)
+                        .build(),
+                enabledWorkspaceService(),
+                enabledWorkspaceOptions()
+        );
+
+        AgentContext ctx = buildAgentContext();
+        ctx.setWorkspaceRoot(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/session-001");
+        ToolCollection toolCollection = factory.buildForReact(ctx, buildAgentRequest("html"));
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("skill_tool"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("bash"));
     }
 
     @Test
@@ -249,7 +332,8 @@ public class AgentToolCollectionFactoryTest {
         parentToolCollection.setCurrentTask("父任务");
 
         AgentContext childContext = parentContext.forkForParallelTask("子任务");
-        ToolCollection childToolCollection = factory.buildForParallelTask(childContext, request, parentToolCollection);
+        ToolCollection childToolCollection = factory.buildForPlanSolve(childContext, request);
+        childToolCollection.restoreTaskScopedState(parentToolCollection.snapshotTaskScopedState());
         childContext.setToolCollection(childToolCollection);
 
         Assert.assertNotSame(parentContext, childContext);
@@ -352,11 +436,24 @@ public class AgentToolCollectionFactoryTest {
                                                   WorkspaceRuntimeOptions workspaceRuntimeOptions) {
         SubAgentRegistry subAgentRegistry = new SubAgentRegistry();
         SubAgentRunner subAgentRunner = new SubAgentRunner(subAgentRegistry);
+        org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout layout =
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillRuntimeLayout(skillRuntimeOptions);
+        org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths virtualPaths =
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(skillRuntimeOptions);
+        org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer materializer =
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillMaterializer(
+                        virtualPaths, layout, skillRuntimeOptions);
+        org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService packageService =
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillPackageService(skillRuntimeOptions, skillRegistry);
         return new AgentToolCollectionFactory(
                 reactorConfig,
                 mcpToolExecutor,
                 skillRegistry,
                 skillRuntimeOptions,
+                layout,
+                materializer,
+                virtualPaths,
+                packageService,
                 workspaceService,
                 workspaceRuntimeOptions,
                 subAgentRunner,
@@ -371,7 +468,9 @@ public class AgentToolCollectionFactoryTest {
         return new WorkspaceService(
                 WorkspaceRuntimeOptions.builder().enabled(false).build(),
                 new WorkspacePathGuard(),
-                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class)
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class),
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(
+                        SkillRuntimeOptions.builder().enabled(false).build())
         );
     }
 
@@ -382,7 +481,9 @@ public class AgentToolCollectionFactoryTest {
                         .rootTemplate(System.getProperty("java.io.tmpdir") + "/reactor-agent-workspace-test/{sessionId}")
                         .build(),
                 new WorkspacePathGuard(),
-                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class)
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.tool.skill.SkillRegistry.class),
+                new org.wwz.ai.domain.agent.runtime.tool.skill.SkillVirtualPaths(
+                        SkillRuntimeOptions.builder().enabled(false).build())
         );
     }
 
@@ -415,7 +516,8 @@ public class AgentToolCollectionFactoryTest {
     private ReactorConfig buildReactorConfig() {
         ReactorConfig reactorConfig = new ReactorConfig();
         reactorConfig.setMultiAgentToolList("{\"default\":\"search,web_fetch,code,code_execution,multimodalagent\"}");
-        ReflectionTestUtils.setField(reactorConfig, "plannerMaxParallelTasks", 2);
+        // 既有用例默认 standard，避免 MCP deferred 改变 mcpToolMap 断言
+        reactorConfig.setMcpToolSearchMode("standard");
         return reactorConfig;
     }
 

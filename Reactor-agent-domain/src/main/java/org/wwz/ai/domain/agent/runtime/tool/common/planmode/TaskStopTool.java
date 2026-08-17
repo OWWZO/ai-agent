@@ -92,9 +92,13 @@ public class TaskStopTool implements BaseTool {
             }
             RuntimeBackgroundTask stopped = agentContext.requireBackgroundTasks().stop(id).orElse(before);
             Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("message", "已停止后台任务 " + id);
+            fields.put("message", "已停止后台任务 " + id + "（已发送取消令牌）");
             fields.put("task_id", stopped.getId());
             fields.put("task_type", stopped.getType());
+            fields.put("status", stopped.getStatus());
+            if (StringUtils.isNotBlank(stopped.getAgentId())) {
+                fields.put("agentId", stopped.getAgentId());
+            }
             if (StringUtils.isNotBlank(stopped.getCommand())) {
                 fields.put("command", stopped.getCommand());
             }

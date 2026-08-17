@@ -373,12 +373,11 @@ Reactor-agent/
 │   └── src/main/java/org/wwz/ai/api/
 │       ├── IAiAgentService.java                     # Agent 主服务契约
 │       ├── IAiClientToolMcpAdminService.java        # MCP 管理契约
-│       ├── dto/AutoAgentRequestDTO.java             # 主对话请求 DTO
 │       ├── dto/AiClientToolMcpRequestDTO.java       # MCP 配置 DTO
 │       └── response/Response.java                   # 统一返回体
 ├── Reactor-agent-trigger/                            # 入口适配层
 │   └── src/main/java/org/wwz/ai/trigger/
-│       ├── http/reactor/ReactorController.java      # Reactor 主对话入口
+│       ├── http/AiAgentController.java              # 主对话入口（SSE / AutoAgent）
 │       ├── http/dataagent/DataAgentController.java  # 数据 Agent 入口
 │       ├── http/agent/AgentConversationHistoryController.java # 历史会话接口
 │       ├── http/agent/AgentFileController.java      # 文件接口

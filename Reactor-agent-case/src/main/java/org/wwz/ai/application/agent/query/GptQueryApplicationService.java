@@ -26,7 +26,7 @@ import java.util.concurrent.Executor;
 /**
  * GPT 查询应用服务。
  * 主聊天路径在进程内直接调度执行策略，并把 {@code AgentResponse} 投影为浏览器侧结果；
- * 不再经 HTTP loopback 到 {@code /AutoAgent}。
+ * 主聊天唯一调度入口（不再经已删除的 {@code /AutoAgent} HTTP loopback）。
  */
 @Slf4j
 @Service

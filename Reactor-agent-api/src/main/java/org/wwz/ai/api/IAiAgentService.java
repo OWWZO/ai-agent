@@ -3,10 +3,7 @@ package org.wwz.ai.api;
 import org.wwz.ai.api.dto.AiAgentResponseDTO;
 import org.wwz.ai.api.dto.ArmoryAgentRequestDTO;
 import org.wwz.ai.api.dto.ArmoryApiRequestDTO;
-import org.wwz.ai.api.dto.AutoAgentRequestDTO;
 import org.wwz.ai.api.response.Response;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.util.List;
 
@@ -18,8 +15,6 @@ import java.util.List;
  * queryAvailableAgents 则只返回当前可供调用的智能体摘要。</p>
  */
 public interface IAiAgentService {
-
-//    ResponseBodyEmitter autoAgent(AutoAgentRequestDTO request, HttpServletResponse response);
 
     /**
      * 装配智能体

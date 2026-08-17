@@ -1,0 +1,23 @@
+{
+  "skill_name": "test-skill-demo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我整理一下待办：明天要交周报，登录还有超时，顺便看看文档，有空再整理桌面",
+      "expected_output": "A Markdown action checklist with P0/P1/P2 sections, verb-first items, and a one-line next step. Should put 周报 and 登录超时 in P0.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "standup notes: still on agent memory; blocked on API key; need to reply design review by EOD",
+      "expected_output": "Prioritized checklist marking API key and design review as higher priority than continuing memory work; include blocked status if relevant.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "把这些做成 checklist：1) 修 CI flaky test 2) 更新 README 安装步骤 3) 约下周 1:1",
+      "expected_output": "Markdown checklist with three action items under priorities; no invented extra work.",
+      "files": []
+    }
+  ]
+}

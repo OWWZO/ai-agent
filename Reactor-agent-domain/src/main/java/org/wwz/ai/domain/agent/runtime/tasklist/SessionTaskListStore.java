@@ -12,21 +12,54 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 会话级 Todo 任务列表存储（对标 cc-haha utils/tasks 内存版）。
- * listId 默认用 sessionId，保证同会话内主/子 Agent 共享（若挂到同一 AgentContext 引用）。
+ * 会话级 Todo 任务列表（对标 cc-haha utils/tasks）。
+ * 可选挂载 {@link TasklistPersistencePort} 实现跨 run 持久化。
  */
 public class SessionTaskListStore {
 
     private final String listId;
     private final AtomicInteger highWaterMark = new AtomicInteger(0);
     private final Map<String, SessionTaskItem> tasks = new ConcurrentHashMap<>();
+    private final TasklistPersistencePort persistence;
 
     public SessionTaskListStore(String listId) {
+        this(listId, null);
+    }
+
+    public SessionTaskListStore(String listId, TasklistPersistencePort persistence) {
         this.listId = StringUtils.defaultIfBlank(listId, "default");
+        this.persistence = persistence;
+        hydrate();
     }
 
     public String getListId() {
         return listId;
+    }
+
+    private void hydrate() {
+        if (persistence == null) {
+            return;
+        }
+        try {
+            List<SessionTaskItem> loaded = persistence.loadTodos(listId);
+            int max = persistence.loadTodoHighWaterMark(listId);
+            if (loaded != null) {
+                for (SessionTaskItem item : loaded) {
+                    if (item == null || StringUtils.isBlank(item.getId())) {
+                        continue;
+                    }
+                    tasks.put(item.getId(), item);
+                    try {
+                        max = Math.max(max, Integer.parseInt(item.getId()));
+                    } catch (NumberFormatException ignored) {
+                        // keep max
+                    }
+                }
+            }
+            highWaterMark.set(Math.max(0, max));
+        } catch (Exception ignored) {
+            // best-effort：hydrate 失败保持空列表
+        }
     }
 
     public synchronized SessionTaskItem create(String subject,
@@ -40,7 +73,6 @@ public class SessionTaskListStore {
             throw new IllegalArgumentException("description 不能为空");
         }
         String id = String.valueOf(highWaterMark.incrementAndGet());
-        // 自增序号只在 create 的同步区内分配，保证主 Agent 和子 Agent 共用 store 时不会得到重复 id。
         SessionTaskItem item = SessionTaskItem.builder()
                 .id(id)
                 .subject(subject.trim())
@@ -52,6 +84,7 @@ public class SessionTaskListStore {
                 .metadata(metadata == null ? new ConcurrentHashMap<>() : new ConcurrentHashMap<>(metadata))
                 .build();
         tasks.put(id, item);
+        persistUpsert(item);
         return item;
     }
 
@@ -74,7 +107,6 @@ public class SessionTaskListStore {
         if (item == null) {
             return Optional.empty();
         }
-        // update 是部分字段更新；null 表示保持原值，空字符串仅在显式允许的字段上清空。
         if (StringUtils.isNotBlank(subject)) {
             item.setSubject(subject.trim());
         }
@@ -95,7 +127,6 @@ public class SessionTaskListStore {
                 item.setBlocks(new ArrayList<>());
             }
             for (String id : addBlocks) {
-                // 阻塞关系按任务 id 去重，避免重复事件不断扩大内存列表。
                 if (StringUtils.isNotBlank(id) && !item.getBlocks().contains(id.trim())) {
                     item.getBlocks().add(id.trim());
                 }
@@ -111,10 +142,10 @@ public class SessionTaskListStore {
                 }
             }
         }
+        persistUpsert(item);
         return Optional.of(item);
     }
 
-    /** 兼容旧签名 */
     public synchronized Optional<SessionTaskItem> update(String taskId,
                                                          String subject,
                                                          String description,
@@ -137,22 +168,22 @@ public class SessionTaskListStore {
     }
 
     public synchronized boolean delete(String taskId) {
-        return tasks.remove(StringUtils.trimToEmpty(taskId)) != null;
+        boolean removed = tasks.remove(StringUtils.trimToEmpty(taskId)) != null;
+        if (removed) {
+            persistDelete(taskId);
+        }
+        return removed;
     }
 
-    /**
-     * TodoWrite 整表替换（对标 cc-haha TodoWrite 写 AppState.todos）。
-     * 若全部 completed，清空列表（与 cchaha allDone 清空一致）。
-     */
     public synchronized List<SessionTaskItem> replaceAll(List<Map<String, Object>> todoMaps) {
         List<SessionTaskItem> oldSnapshot = list();
         tasks.clear();
         highWaterMark.set(0);
         if (todoMaps == null || todoMaps.isEmpty()) {
+            persistReplace(List.of());
             return oldSnapshot;
         }
         boolean allDone = true;
-        // 先检查整表是否全部完成；完成列表按协议直接清空，不把历史完成项继续暴露为活动 Todo。
         for (Map<String, Object> raw : todoMaps) {
             if (raw == null) {
                 continue;
@@ -164,7 +195,7 @@ public class SessionTaskListStore {
             }
         }
         if (allDone) {
-            // cchaha: allDone ? [] : todos — 全部完成则清空
+            persistReplace(List.of());
             return oldSnapshot;
         }
         for (Map<String, Object> raw : todoMaps) {
@@ -183,11 +214,30 @@ public class SessionTaskListStore {
             String activeForm = StringUtils.trimToNull(str(raw.get("activeForm")));
             String description = firstNonBlank(str(raw.get("description")), content);
             String subject = firstNonBlank(str(raw.get("subject")), content);
-            // 忽略客户端 id，统一使用本地自增序号，避免跨轮/跨来源 id 冲突。
-            SessionTaskItem item = create(subject, description, activeForm, null);
+            SessionTaskItem item = createWithoutPersist(subject, description, activeForm, null);
             item.setStatus(status);
         }
+        persistReplace(list());
         return oldSnapshot;
+    }
+
+    private SessionTaskItem createWithoutPersist(String subject,
+                                                 String description,
+                                                 String activeForm,
+                                                 Map<String, Object> metadata) {
+        String id = String.valueOf(highWaterMark.incrementAndGet());
+        SessionTaskItem item = SessionTaskItem.builder()
+                .id(id)
+                .subject(subject.trim())
+                .description(description.trim())
+                .activeForm(StringUtils.trimToNull(activeForm))
+                .status(SessionTaskItem.STATUS_PENDING)
+                .blocks(new ArrayList<>())
+                .blockedBy(new ArrayList<>())
+                .metadata(metadata == null ? new ConcurrentHashMap<>() : new ConcurrentHashMap<>(metadata))
+                .build();
+        tasks.put(id, item);
+        return item;
     }
 
     public List<Map<String, Object>> toClientTaskList() {
@@ -202,7 +252,6 @@ public class SessionTaskListStore {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("listId", listId);
         body.put("tasks", toClientTaskList());
-        // 列表和统计从同一份当前快照计算，前端无需再按状态二次遍历或猜测总数。
         body.put("total", tasks.size());
         long pending = list().stream().filter(t -> SessionTaskItem.STATUS_PENDING.equals(t.getStatus())).count();
         long inProgress = list().stream().filter(t -> SessionTaskItem.STATUS_IN_PROGRESS.equals(t.getStatus())).count();
@@ -213,9 +262,41 @@ public class SessionTaskListStore {
         return body;
     }
 
+    private void persistUpsert(SessionTaskItem item) {
+        if (persistence == null || item == null) {
+            return;
+        }
+        try {
+            persistence.upsertTodo(listId, item);
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
+    private void persistDelete(String taskId) {
+        if (persistence == null) {
+            return;
+        }
+        try {
+            persistence.deleteTodo(listId, taskId);
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
+    private void persistReplace(List<SessionTaskItem> items) {
+        if (persistence == null) {
+            return;
+        }
+        try {
+            persistence.replaceTodos(listId, items == null ? List.of() : items);
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
     private static String normalizeStatus(String status) {
         String normalized = status.trim().toLowerCase().replace('-', '_');
-        // 对外兼容 done/inprogress 别名，内部只保留三种规范状态，保证排序和统计分支稳定。
         return switch (normalized) {
             case SessionTaskItem.STATUS_PENDING,
                  SessionTaskItem.STATUS_IN_PROGRESS,

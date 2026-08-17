@@ -1,11 +1,11 @@
 import classNames from "classnames";
-import { Bot, DatabaseZap, WandSparkles } from "lucide-react";
+import { Blocks, Bot, Cpu, DatabaseZap, WandSparkles } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { ROUTES } from "@/router/routes";
 
 type WorkspaceToolItem = {
-  key: "mrag" | "image-generation" | "sub-agents";
+  key: "mrag" | "image-generation" | "sub-agents" | "models" | "capabilities";
   label: string;
   description: string;
   icon: typeof DatabaseZap;
@@ -33,6 +33,20 @@ const workspaceToolItems: WorkspaceToolItem[] = [
     description: "自定义 prompt 与工具调度",
     icon: Bot,
     to: ROUTES.WORKSPACE_SUB_AGENTS,
+  },
+  {
+    key: "models",
+    label: "模型接入",
+    description: "API Key / 模型热配置",
+    icon: Cpu,
+    to: ROUTES.WORKSPACE_MODELS,
+  },
+  {
+    key: "capabilities",
+    label: "能力库",
+    description: "技能 zip / MCP 连接器",
+    icon: Blocks,
+    to: ROUTES.WORKSPACE_CAPABILITIES,
   },
 ];
 
