@@ -1,13 +1,10 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
-import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
-import org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestion;
-import org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestionRegistry;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
+import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
@@ -15,16 +12,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 向用户提问（对标 cc-haha AskUserQuestionTool）。
  * <p>
- * Web 适配：不占用 HTTP 请求线程空等，而是：
- * 1) SSE 推送 ask_user_question 卡片
- * 2) 工具线程在 Agent 工作线程上 await CompletableFuture
- * 3) 前端 POST /api/agent/ask-user/answer 完成 future
- * 4) 工具返回 answers，Agent 继续推理，同一条 SSE 继续吐流
+ * Continuation 版：校验参数后抛出 {@link UserInputRequiredException}，由上层持久化断点并结束 Run A；
+ * 不再在工具线程上 Future.get 阻塞等待。
  * </p>
  */
 @Slf4j
@@ -34,10 +27,8 @@ public class AskUserQuestionTool implements BaseTool {
     public static final String NAME = "AskUserQuestion";
 
     private AgentContext agentContext;
-    private PendingUserQuestionRegistry registry;
 
-    public AskUserQuestionTool(PendingUserQuestionRegistry registry) {
-        this.registry = registry;
+    public AskUserQuestionTool() {
     }
 
     @Override
@@ -50,8 +41,8 @@ public class AskUserQuestionTool implements BaseTool {
         return "向用户提出 1–4 个选择题以澄清需求、方案或偏好。"
                 + "每题 2–4 个选项；multiSelect=true 允许多选。"
                 + "不要用本工具问“计划可以吗？”（用 ExitPlanMode）。"
-                + "用户可能较久才回答；调用后会挂起直到用户提交或超时。"
-                + "仅主 Agent 可用。";
+                + "调用后当前 run 会结束并等待用户回答；用户提交后由 continuation run 继续。"
+                + "本轮必须是唯一 tool call。仅主 Agent 可用。";
     }
 
     @Override
@@ -121,69 +112,25 @@ public class AskUserQuestionTool implements BaseTool {
     @Override
     @SuppressWarnings("unchecked")
     public Object execute(Object input) {
-        try {
-            if (agentContext == null || registry == null) {
-                return fail("AskUserQuestion 未正确装配");
-            }
-            if (agentContext.getRequestId() != null && agentContext.getRequestId().contains(":sub:")) {
-                return fail("AskUserQuestion 不能在子 Agent 中使用");
-            }
-
-            Map<String, Object> params = coerceMap(input);
-            List<Map<String, Object>> questions = normalizeQuestions(params.get("questions"));
-            if (questions.isEmpty()) {
-                return fail("questions 不能为空（1–4 题）");
-            }
-
-            String toolCallId = null;
-            ToolArtifactSource source = agentContext.getCurrentToolArtifactSource();
-            if (source != null) {
-                toolCallId = source.getToolCallId();
-            }
-
-            PendingUserQuestion pending = registry.create(
-                    agentContext.getSessionId(),
-                    agentContext.getRequestId(),
-                    toolCallId,
-                    questions,
-                    null);
-
-            // 1) 推送到前端（SSE 卡片）
-            if (agentContext.getPrinter() != null) {
-                agentContext.getPrinter().send(
-                        pending.getQuestionId(),
-                        "ask_user_question",
-                        pending.toClientPayload(),
-                        false);
-            }
-
-            // 2) 在 Agent 工作线程阻塞等待（不阻塞 Tomcat 请求线程）
-            Map<String, String> answers;
-            try {
-                answers = registry.awaitAnswers(pending);
-            } catch (TimeoutException e) {
-                String msg = "用户在时限内未回答问题（timeout=" + pending.getTimeoutMs() + "ms）。请基于已有信息继续，或再次提问。";
-                return ToolResultPayload.failure(msg, msg, null, "timeout");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return fail("等待用户回答被中断");
-            } catch (RuntimeException e) {
-                return fail("等待用户回答失败：" + e.getMessage());
-            }
-
-            // 3) 打包回模型（JSON 结构化 observation）
-            Map<String, Object> fields = new LinkedHashMap<>();
-            fields.put("message", "User has answered your questions. Continue with the answers in mind.");
-            fields.put("questions", questions);
-            fields.put("answers", answers);
-            fields.put("questionId", pending.getQuestionId());
-            return ToolResultPayload.okData(NAME, fields);
-        } catch (Exception e) {
-            log.warn("AskUserQuestion failed", e);
-            return ToolResultPayload.failureFrom(
-                    "AskUserQuestion 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
-                    null);
+        if (agentContext == null) {
+            return fail("AskUserQuestion 未正确装配");
         }
+        if (agentContext.getRequestId() != null && agentContext.getRequestId().contains(":sub:")) {
+            return fail("AskUserQuestion 不能在子 Agent 中使用");
+        }
+
+        Map<String, Object> params = coerceMap(input);
+        List<Map<String, Object>> questions = normalizeQuestions(params.get("questions"));
+        if (questions.isEmpty()) {
+            return fail("questions 不能为空（1–4 题）");
+        }
+
+        String toolCallId = null;
+        ToolArtifactSource source = agentContext.getCurrentToolArtifactSource();
+        if (source != null) {
+            toolCallId = source.getToolCallId();
+        }
+        throw new UserInputRequiredException(questions, toolCallId);
     }
 
     @SuppressWarnings("unchecked")
@@ -203,18 +150,15 @@ public class AskUserQuestionTool implements BaseTool {
         return result;
     }
 
-    private static ToolResultPayload fail(String msg) {
-        return ToolResultPayload.failureFrom(msg, null);
-    }
-
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> coerceMap(Object input) {
+    private Map<String, Object> coerceMap(Object input) {
         if (input instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
         }
-        if (input == null) {
-            return Map.of();
-        }
-        return JSON.parseObject(JSON.toJSONString(input), Map.class);
+        return Map.of();
+    }
+
+    private static ToolResultPayload fail(String msg) {
+        return ToolResultPayload.failureFrom(msg, null);
     }
 }

@@ -497,8 +497,11 @@ public class MultiModalAgent implements ContextIsolatableTool {
         fileTool.setAgentContext(agentContext);
 
         String baseName = StringUtils.hasText(agentContext.getQuery())
-                ? agentContext.getQuery()
+                ? StringUtil.abbreviate(agentContext.getQuery(), 20, true)
                 : "多模态检索结果";
+        if (!StringUtils.hasText(baseName)) {
+            baseName = "多模态检索结果";
+        }
         String fileName = StringUtil.removeSpecialChars(baseName + "的多模态检索结果.md");
         if (!StringUtils.hasText(fileName)) {
             fileName = "多模态检索结果.md";

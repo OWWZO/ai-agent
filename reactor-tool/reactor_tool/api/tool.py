@@ -39,13 +39,11 @@ from reactor_tool.model.protocal import (
     NL2SQLRequest,
     SopChooseRequest,
     ScriptRunnerRequest,
-    BashSandboxRequest,
     MultimodalRAGRequest,
     EmbeddingProxyRequest,
     EmbeddingProxyResponse,
     WebFetchRequest,
     DocgenRequest,
-    CodeExecutionRequest,
 )
 from reactor_tool.tool.mrag.storage.models.mrag_session_model import MRagSessionModel
 from reactor_tool.tool.mrag.storage.models.mrag_turn_model import MRagTurnModel
@@ -265,27 +263,6 @@ async def post_code_interpreter(
             "fileInfo": file_info,
             "requestId": body.request_id,
         }
-
-
-@router.post("/code_execution")
-async def post_code_execution(body: CodeExecutionRequest):
-    """Run caller-supplied Python and return stdout, errors, and fileInfo."""
-    from reactor_tool.tool.direct_code_execution import execute_code
-
-    return await execute_code(body)
-
-
-@router.post("/bash")
-async def post_bash(body: BashSandboxRequest):
-    """会话沙箱 bash：物化 skill → 执行 → skills/** 回写全局库（与 code_execution 同 workspace）。"""
-    from reactor_tool.tool.bash_sandbox import run_bash_sandbox
-
-    try:
-        result = await run_bash_sandbox(body)
-        return result.model_dump(by_alias=True)
-    except Exception as exc:
-        logger.exception("[bash] request_id={} failed", body.request_id)
-        return _error_response(500, f"bash sandbox failed: {exc}")
 
 
 @router.post("/report")

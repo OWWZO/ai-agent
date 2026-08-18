@@ -16,6 +16,10 @@ import org.wwz.ai.domain.agent.memory.SessionContextMemoryService;
 import org.wwz.ai.domain.agent.memory.SessionWorkingMemoryService;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
 import java.util.List;
+import org.wwz.ai.application.agent.askuser.AskUserResumeApplicationService;
+import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationService;
+import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
+import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
@@ -41,6 +45,12 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
 
     @Resource
     private ActiveAgentRunRegistry activeAgentRunRegistry;
+
+    @Resource
+    private IUserQuestionRepository userQuestionRepository;
+
+    @Resource
+    private IPlanApprovalRepository planApprovalRepository;
 
     @Override
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
@@ -136,6 +146,18 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
         if (working != null && !working.isEmpty() && sessionContextCompactionService != null) {
             working = sessionContextCompactionService.applyIfNeeded(
                     request.getSessionId(), request.getRequestId(), working);
+        }
+        if (StringUtils.isNotBlank(request.getResumeQuestionId()) && userQuestionRepository != null) {
+            working = AskUserResumeApplicationService.appendAnswerObservation(
+                    working,
+                    userQuestionRepository.findByQuestionId(request.getResumeQuestionId()).orElse(null)
+            );
+        }
+        if (StringUtils.isNotBlank(request.getResumeApprovalId()) && planApprovalRepository != null) {
+            working = PlanApprovalResumeApplicationService.appendDecisionObservation(
+                    working,
+                    planApprovalRepository.findByApprovalId(request.getResumeApprovalId()).orElse(null)
+            );
         }
         request.setWorkingMemoryMessages(working == null ? List.of() : working);
         request.setHistoryDialogue("");

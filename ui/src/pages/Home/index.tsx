@@ -49,6 +49,7 @@ import {
   hydrateConversationFromReplayFrames,
   isHistoryDetailEmpty,
 } from "@/utils/conversationHistory";
+import { restoreHitlForSession } from "@/utils/hitlRestore";
 import { readActiveRun } from "@/utils/activeRunStorage";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
@@ -371,11 +372,16 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
 
         return conversationHistoryApi
           .getSessionDetail(initialSessionId)
-          .then((detail) => {
+          .then(async (detail) => {
             if (disposed || !detail || isHistoryDetailEmpty(detail)) {
               return;
             }
-            setCurrentConversation(hydrateConversationFromReplayFrames(detail));
+            const hydrated = hydrateConversationFromReplayFrames(detail);
+            const restored = await restoreHitlForSession(hydrated);
+            if (disposed) {
+              return;
+            }
+            setCurrentConversation(restored);
           })
           .catch((error) => {
             console.error("加载默认会话详情失败", error);
@@ -523,16 +529,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         setCurrentConversation(localConversation);
         setActiveView("chat");
         resetInput();
+        void restoreHitlForSession(localConversation).then((restored) => {
+          setCurrentConversation(restored);
+        });
         return;
       }
 
       conversationHistoryApi
         .getSessionDetail(session.sessionId)
-        .then((detail) => {
+        .then(async (detail) => {
           if (!detail || isHistoryDetailEmpty(detail)) {
             return;
           }
-          setCurrentConversation(hydrateConversationFromReplayFrames(detail));
+          const hydrated = hydrateConversationFromReplayFrames(detail);
+          const restored = await restoreHitlForSession(hydrated);
+          setCurrentConversation(restored);
           setActiveView("chat");
           resetInput();
         })

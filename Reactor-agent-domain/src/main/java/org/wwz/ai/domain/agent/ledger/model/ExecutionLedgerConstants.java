@@ -15,6 +15,8 @@ public final class ExecutionLedgerConstants {
     public static final int STATUS_FAILED = 2;
     public static final int STATUS_TIMEOUT = 3;
     public static final int STATUS_STOPPED = 4;
+    /** 执行片段已结束，等待外部输入（AskUserQuestion 等）；不算 RUNNING，不算失败 */
+    public static final int STATUS_WAITING_INPUT = 5;
 
     public static final String CALL_KIND_ASK = "ask";
     public static final String CALL_KIND_ASK_TOOL = "askTool";

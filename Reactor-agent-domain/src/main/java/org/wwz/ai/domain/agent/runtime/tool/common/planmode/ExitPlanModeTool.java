@@ -6,23 +6,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.artifact.ToolArtifactSource;
-import org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApproval;
-import org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApprovalRegistry;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalDecision;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore;
-import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 退出 Plan Mode 并提交计划供用户批准（对标 cc-haha ExitPlanModeV2Tool）。
  * <p>
- * 不自批：SSE 推送 plan_approval 卡片 → 工具线程 await → 用户 approve/reject 后返回。
+ * Continuation 版：校验并落盘计划后抛出 {@link PlanApprovalRequiredException}，
+ * 由上层持久化断点并结束 Run A；不再在工具线程上 Future.get 阻塞等待。
  * </p>
  */
 @Slf4j
@@ -30,11 +27,15 @@ import java.util.concurrent.TimeoutException;
 public class ExitPlanModeTool implements BaseTool {
 
     private AgentContext agentContext;
-    private PendingPlanApprovalRegistry approvalRegistry;
     private PlanArtifactStore planArtifactStore;
 
-    public ExitPlanModeTool(PendingPlanApprovalRegistry approvalRegistry, PlanArtifactStore planArtifactStore) {
-        this.approvalRegistry = approvalRegistry;
+    public ExitPlanModeTool(PlanArtifactStore planArtifactStore) {
+        this.planArtifactStore = planArtifactStore;
+    }
+
+    /** @deprecated 保留兼容旧装配签名；registry 已不再使用 */
+    @Deprecated
+    public ExitPlanModeTool(Object ignoredRegistry, PlanArtifactStore planArtifactStore) {
         this.planArtifactStore = planArtifactStore;
     }
 
@@ -49,7 +50,8 @@ public class ExitPlanModeTool implements BaseTool {
                 + "不要用 AskUserQuestion 问“计划可以吗？”——那是本工具职责。"
                 + "研究/搜索类任务不要调用。可选 plan 参数提交计划正文；"
                 + "也可事先写入 .reactor/plan.md。"
-                + "调用后会挂起直到用户批准或拒绝。";
+                + "调用后当前 run 会结束并等待用户批准；用户提交后由 continuation run 继续。"
+                + "本轮必须是唯一 tool call。";
     }
 
     @Override
@@ -69,7 +71,6 @@ public class ExitPlanModeTool implements BaseTool {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", "object");
         parameters.put("properties", properties);
-        // 全部可选；显式 required=[] 避免 ToolSchemaNormalizer 告警
         parameters.put("required", java.util.Collections.emptyList());
         return parameters;
     }
@@ -81,9 +82,6 @@ public class ExitPlanModeTool implements BaseTool {
             if (agentContext == null) {
                 return fail("ExitPlanMode 失败：无 AgentContext");
             }
-            if (approvalRegistry == null) {
-                return fail("ExitPlanMode 失败：PendingPlanApprovalRegistry 未注入");
-            }
             PlanModeState state = agentContext.requirePlanModeState();
             if (!state.isPlanMode()) {
                 return fail("ExitPlanMode 失败：当前不在 plan mode");
@@ -93,7 +91,6 @@ public class ExitPlanModeTool implements BaseTool {
             String planFromArg = trim(params.get("plan"));
             String planFilePathArg = trim(params.get("planFilePath"));
 
-            // 优先：参数 plan → 磁盘 plan → state.planContent
             String planContent = planFromArg;
             if (StringUtils.isBlank(planContent) && planArtifactStore != null) {
                 planContent = planArtifactStore.readPlan(agentContext.getSessionId()).orElse(null);
@@ -123,72 +120,9 @@ public class ExitPlanModeTool implements BaseTool {
                 toolCallId = source.getToolCallId();
             }
 
-            PendingPlanApproval pending = approvalRegistry.create(
-                    agentContext.getSessionId(),
-                    agentContext.getRequestId(),
-                    toolCallId,
-                    planContent,
-                    planFilePath,
-                    null);
-
-            // SSE：前端展示计划批准卡片
-            if (agentContext.getPrinter() != null) {
-                agentContext.getPrinter().send(
-                        pending.getApprovalId(),
-                        "plan_approval",
-                        pending.toClientPayload(),
-                        false);
-            }
-
-            PlanApprovalDecision decision;
-            try {
-                decision = approvalRegistry.awaitDecision(pending);
-            } catch (TimeoutException e) {
-                state.clearPendingApproval();
-                String msg = "用户在时限内未批准计划（timeout=" + pending.getTimeoutMs()
-                        + "ms）。仍停留在 plan mode，可修改计划后再次 ExitPlanMode。";
-                return ToolResultPayload.failure(msg, msg, null, "timeout");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                state.clearPendingApproval();
-                return fail("等待用户批准被中断");
-            } catch (RuntimeException e) {
-                state.clearPendingApproval();
-                return fail("等待用户批准失败：" + e.getMessage());
-            }
-
-            if (decision != null && decision.isApproved()) {
-                String finalPlan = StringUtils.isNotBlank(decision.getEditedPlanContent())
-                        ? decision.getEditedPlanContent()
-                        : planContent;
-                if (planArtifactStore != null) {
-                    planArtifactStore.writePlan(agentContext.getSessionId(), finalPlan)
-                            .ifPresent(p -> state.setPlan(finalPlan, p));
-                } else {
-                    state.setPlan(finalPlan, planFilePath);
-                }
-                String restored = state.exitPlanMode();
-                Map<String, Object> approved = new LinkedHashMap<>();
-                approved.put("approved", Boolean.TRUE);
-                approved.put("message", PlanModePromptInjector.buildApprovedPlanToolResult(
-                        finalPlan, state.getPlanFilePath(), restored));
-                approved.put("restoredMode", restored);
-                approved.put("plan", finalPlan);
-                approved.put("filePath", state.getPlanFilePath());
-                approved.put("approvalId", pending.getApprovalId());
-                return ToolResultPayload.okData(TaskToolNames.EXIT_PLAN_MODE, approved);
-            }
-
-            // rejected — 留在 plan mode
-            state.clearPendingApproval();
-            String feedback = decision == null ? null : decision.getFeedback();
-            Map<String, Object> rejected = new LinkedHashMap<>();
-            rejected.put("approved", Boolean.FALSE);
-            rejected.put("message", PlanModePromptInjector.buildRejectedPlanToolResult(feedback));
-            rejected.put("feedback", feedback);
-            rejected.put("approvalId", pending.getApprovalId());
-            rejected.put("stillInPlanMode", Boolean.TRUE);
-            return ToolResultPayload.okData(TaskToolNames.EXIT_PLAN_MODE, rejected);
+            throw new PlanApprovalRequiredException(planContent, planFilePath, toolCallId);
+        } catch (PlanApprovalRequiredException yield) {
+            throw yield;
         } catch (Exception e) {
             log.warn("ExitPlanMode failed", e);
             return fail("ExitPlanMode 失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));

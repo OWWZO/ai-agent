@@ -70,14 +70,23 @@ def register_middleware(app: FastAPI):
 
 
 def register_router(app: FastAPI):
-    from reactor_tool.api import api_router
-    app.include_router(api_router)
+    from reactor_tool.api import build_api_router
+
+    app.include_router(build_api_router())
 
 
-def resolve_worker_count(requested_workers: int, reload_enabled: bool = False) -> int:
-    """解析 Uvicorn worker 数；仅 reload 模式要求退回单进程。"""
+def resolve_worker_count(
+    requested_workers: int,
+    reload_enabled: bool = False,
+    *,
+    force_single_worker: bool = False,
+) -> int:
+    """解析 Uvicorn worker 数；reload / sandbox 角色要求单进程。"""
     if requested_workers < 1:
         raise ValueError("workers must be a positive integer")
+    if force_single_worker and requested_workers > 1:
+        print(f"sandbox role forces workers=1 (requested {requested_workers})")
+        return 1
     if reload_enabled and requested_workers > 1:
         print(f"reload mode forces workers=1 (requested {requested_workers})")
         return 1
@@ -89,14 +98,31 @@ if __name__ == "__main__":
     parser.add_option("--host", dest="host", type="string", default="0.0.0.0")
     parser.add_option("--port", dest="port", type="int", default=1601)
     parser.add_option("--workers", dest="workers", type="int", default=5)
+    parser.add_option(
+        "--role",
+        dest="role",
+        type="string",
+        default=None,
+        help="all|api|sandbox；也可用环境变量 REACTOR_TOOL_ROLE",
+    )
     (options, args) = parser.parse_args()
 
-    print(f"Start params: {options}")
+    if options.role:
+        os.environ["REACTOR_TOOL_ROLE"] = str(options.role).strip().lower()
+
+    from reactor_tool.service_role import get_service_role, sandbox_requires_single_worker
+
+    role = get_service_role()
+    print(f"Start params: {options} role={role}")
     # Logo 仅在主启动入口打印一次，避免多 worker 模式下每个子进程重复输出。
     print_logo()
 
     reload_enabled = os.getenv("ENV", "local") == "local"
-    workers = resolve_worker_count(options.workers, reload_enabled=reload_enabled)
+    workers = resolve_worker_count(
+        options.workers,
+        reload_enabled=reload_enabled,
+        force_single_worker=sandbox_requires_single_worker(role),
+    )
 
     app_factory_path = "server:create_app"
 

@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_dialogue_run (
     session_id              VARCHAR(64)    NOT NULL COMMENT '会话ID',
     visitor_id              VARCHAR(64)    NULL COMMENT '匿名访客ID',
     entry_agent             VARCHAR(32)    NOT NULL COMMENT '入口执行链 react / plan_solve',
-    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED',
+    status                  TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,4=STOPPED,5=WAITING_INPUT',
     query_text              MEDIUMTEXT     NULL COMMENT '用户原始问题',
     final_summary_text      MEDIUMTEXT     NULL COMMENT '最终总结文本',
     llm_call_count          INT            NOT NULL DEFAULT 0 COMMENT 'LLM 调用次数',
@@ -426,7 +426,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     tool_provider     VARCHAR(64)    NULL COMMENT '工具提供方 local / mcp',
     input_json        JSON           NOT NULL COMMENT '工具入参 JSON',
     llm_oberserve     MEDIUMTEXT     NULL COMMENT '回传给主智能体的最终 observation',
-    status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT',
+    status            TINYINT        NOT NULL DEFAULT 0 COMMENT '0=RUNNING,1=SUCCESS,2=FAILED,3=TIMEOUT,5=WAITING_INPUT',
     error_msg         TEXT           NULL COMMENT '错误信息',
     started_at        DATETIME(3)    NOT NULL COMMENT '开始时间',
     finished_at       DATETIME(3)    NULL COMMENT '结束时间',
@@ -441,6 +441,59 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_invocation (
     KEY idx_tool_name_create (tool_name, deleted, create_time DESC),
     KEY idx_tool_parent_call (run_id, parent_tool_call_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工具调用账本表';
+
+CREATE TABLE IF NOT EXISTS ai_agent_user_question (
+    id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    question_id          VARCHAR(64)    NOT NULL COMMENT '问题对外ID',
+    visitor_id           VARCHAR(64)    NULL COMMENT '访客ID',
+    session_id           VARCHAR(64)    NOT NULL COMMENT '会话ID',
+    source_run_id        BIGINT         NULL COMMENT '源 dialogue_run.id',
+    source_request_id    VARCHAR(64)    NOT NULL COMMENT '源 requestId',
+    tool_invocation_id   BIGINT         NULL COMMENT '源 tool_invocation.id',
+    tool_call_id         VARCHAR(128)   NULL COMMENT '模型 toolCallId',
+    questions_json       JSON           NOT NULL COMMENT '题目 JSON',
+    answers_json         JSON           NULL COMMENT '答案 JSON',
+    status               VARCHAR(32)    NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING|RESUME_PENDING|RESUMING|ANSWERED|TIMEOUT|CANCELLED|FAILED',
+    expires_at           DATETIME(3)    NULL COMMENT '过期时间',
+    resume_request_id    VARCHAR(64)    NULL COMMENT '续跑 requestId',
+    resume_context_json  JSON           NULL COMMENT '瘦续跑上下文（agentId/entryAgent/PlanMode）',
+    create_time          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted              TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_question_id (question_id, deleted),
+    UNIQUE KEY uk_user_question_resume (resume_request_id, deleted),
+    KEY idx_user_question_session_status (session_id, status, deleted, create_time DESC),
+    KEY idx_user_question_visitor (visitor_id, deleted, create_time DESC),
+    KEY idx_user_question_source_request (source_request_id, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AskUserQuestion 交互附属状态（非第二账本）';
+
+CREATE TABLE IF NOT EXISTS ai_agent_plan_approval (
+    id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    approval_id          VARCHAR(64)    NOT NULL COMMENT '审批对外ID',
+    visitor_id           VARCHAR(64)    NULL COMMENT '访客ID',
+    session_id           VARCHAR(64)    NOT NULL COMMENT '会话ID',
+    source_run_id        BIGINT         NULL COMMENT '源 dialogue_run.id',
+    source_request_id    VARCHAR(64)    NOT NULL COMMENT '源 requestId',
+    tool_invocation_id   BIGINT         NULL COMMENT '源 tool_invocation.id',
+    tool_call_id         VARCHAR(128)   NULL COMMENT '模型 toolCallId',
+    plan_content         MEDIUMTEXT     NOT NULL COMMENT '提交审批的计划正文',
+    plan_file_path       VARCHAR(512)   NULL COMMENT '计划文件路径',
+    decision_json        JSON           NULL COMMENT '决策 JSON（approved/feedback/editedPlanContent）',
+    status               VARCHAR(32)    NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING|RESUME_PENDING|RESUMING|ANSWERED|TIMEOUT|CANCELLED|FAILED',
+    expires_at           DATETIME(3)    NULL COMMENT '过期时间',
+    resume_request_id    VARCHAR(64)    NULL COMMENT '续跑 requestId',
+    resume_context_json  JSON           NULL COMMENT '瘦续跑上下文（agentId/entryAgent/PlanMode）',
+    create_time          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted              TINYINT(1)     NOT NULL DEFAULT 0 COMMENT '软删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_plan_approval_id (approval_id, deleted),
+    UNIQUE KEY uk_plan_approval_resume (resume_request_id, deleted),
+    KEY idx_plan_approval_session_status (session_id, status, deleted, create_time DESC),
+    KEY idx_plan_approval_visitor (visitor_id, deleted, create_time DESC),
+    KEY idx_plan_approval_source_request (source_request_id, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ExitPlanMode 计划审批附属状态（非第二账本）';
 
 CREATE TABLE IF NOT EXISTS ai_agent_tool_output_deep_search (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',

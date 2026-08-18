@@ -17,6 +17,7 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   FAILED: "失败",
   TIMEOUT: "超时",
   STOPPED: "已停止",
+  WAITING_INPUT: "等待回答",
 };
 
 const RecentSessionList = memo((props: RecentSessionListProps) => {

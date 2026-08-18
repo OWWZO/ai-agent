@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.application.agent.askuser.AskUserQuestionApplicationService;
+import org.wwz.ai.application.agent.planmode.PlanApprovalApplicationService;
 import org.wwz.ai.application.agent.dispatch.IAgentDispatchService;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.application.agent.stream.AgentSessionStream;
@@ -42,6 +44,12 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
     private ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
 
     @Resource
+    private AskUserQuestionApplicationService askUserQuestionApplicationService;
+
+    @Resource
+    private PlanApprovalApplicationService planApprovalApplicationService;
+
+    @Resource
     private Map<AgentType, AgentResponseHandler> handlerMap;
 
     @Resource
@@ -64,6 +72,19 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
                     agentRequest.getSessionId(),
                     agentRequest.getQuery()
             );
+            // 普通 query 闸门：存在未决 HITL 时拒绝，避免 hydrate 到未闭合 tool call
+            if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
+                    && StringUtils.isBlank(agentRequest.getResumeApprovalId())
+                    && askUserQuestionApplicationService != null
+                    && askUserQuestionApplicationService.hasOpenQuestion(agentRequest.getSessionId())) {
+                throw new IllegalStateException("当前会话有待回答的问题，请先回答或取消后再发送新消息");
+            }
+            if (StringUtils.isBlank(agentRequest.getResumeQuestionId())
+                    && StringUtils.isBlank(agentRequest.getResumeApprovalId())
+                    && planApprovalApplicationService != null
+                    && planApprovalApplicationService.hasOpenApproval(agentRequest.getSessionId())) {
+                throw new IllegalStateException("当前会话有待批准的计划，请先批准/拒绝或取消后再发送新消息");
+            }
         } catch (Exception e) {
             log.warn("{} reject gpt query before dispatch", agentRequest.getRequestId(), e);
             stream.completeWithError(e);

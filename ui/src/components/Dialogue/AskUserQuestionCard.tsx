@@ -1,7 +1,7 @@
 import { FC, memo, useMemo, useState } from "react";
 import { LoaderCircleIcon, MessageCircleQuestionIcon } from "lucide-react";
 import { message } from "antd";
-import { askUserApi } from "@/services/askUser";
+import { askUserApi, dispatchAskUserResume } from "@/services/askUser";
 
 type QuestionOption = {
   label: string;
@@ -19,21 +19,36 @@ type AskUserQuestionCardProps = {
   tool: CHAT.Task;
 };
 
+function coerceQuestionsRaw(raw: unknown): unknown {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
 function asQuestions(raw: unknown): QuestionItem[] {
-  if (!Array.isArray(raw)) {
+  const parsed = coerceQuestionsRaw(raw);
+  if (!Array.isArray(parsed)) {
     return [];
   }
-  return raw
+  return parsed
     .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
     .map((item) => ({
-      question: String(item.question || ""),
+      question: String(item.question || item.text || item.prompt || ""),
       header: item.header ? String(item.header) : undefined,
       multiSelect: Boolean(item.multiSelect),
       options: Array.isArray(item.options)
         ? item.options
             .filter((opt): opt is Record<string, unknown> => typeof opt === "object" && opt !== null)
             .map((opt) => ({
-              label: String(opt.label || ""),
+              label: String(opt.label || opt.value || ""),
               description: opt.description ? String(opt.description) : undefined,
             }))
         : [],
@@ -41,19 +56,34 @@ function asQuestions(raw: unknown): QuestionItem[] {
     .filter((item) => item.question);
 }
 
+/** 兼容 live SSE（questions 在 resultMap）与 restore 扁平结构（questions 在 tool 顶层） */
+function resolveAskUserQuestions(tool: CHAT.Task): unknown {
+  const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+  const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+  const toolAny = tool as unknown as Record<string, unknown>;
+  return (
+    nested.questions ||
+    resultMap.questions ||
+    toolAny.questions ||
+    undefined
+  );
+}
+
 /**
- * AskUserQuestion 挂起卡片（await 版 HITL）。
- * 用户提交后 POST /api/agent/ask-user/answer，唤醒后端 Agent 线程。
+ * AskUserQuestion 挂起卡片（continuation 版 HITL）。
+ * 提交答案后 CAS 拿 resumeRequestId，再派发事件让 ChatView 连接 resume SSE。
  */
 const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
   const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
   const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
-  const questionId = String(nested.questionId || resultMap.questionId || tool.messageId || "");
-  const questions = useMemo(
-    () => asQuestions(nested.questions || resultMap.questions),
-    [nested.questions, resultMap.questions]
+  const toolAny = tool as unknown as Record<string, unknown>;
+  const questionId = String(
+    nested.questionId || resultMap.questionId || toolAny.questionId || tool.messageId || ""
   );
-  const status = String(nested.status || resultMap.status || "pending");
+  const questions = useMemo(() => asQuestions(resolveAskUserQuestions(tool)), [tool]);
+  const status = String(
+    nested.status || resultMap.status || toolAny.status || "pending"
+  );
   const alreadyAnswered = status === "answered" || Boolean(resultMap.isFinal && status !== "pending");
 
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -117,12 +147,24 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
         questionId,
         answers: finalAnswers,
       });
-      if (res && (res as { accepted?: boolean }).accepted === false) {
-        message.warning(String((res as { message?: string }).message || "提交失败，问题可能已结束"));
+      if (res && res.accepted === false) {
+        message.warning(String(res.message || "提交失败，问题可能已结束"));
         return;
       }
       setSubmitted(true);
-      message.success("已提交，Agent 将继续执行");
+      const resumeRequestId = String(res?.resumeRequestId || "");
+      if (resumeRequestId) {
+        dispatchAskUserResume({
+          resumeRequestId,
+          sessionId: String(
+            nested.sessionId || resultMap.sessionId || toolAny.sessionId || ""
+          ),
+          questionId,
+        });
+        message.success("已提交，正在继续执行");
+      } else {
+        message.success("已提交");
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : "提交失败");
     } finally {

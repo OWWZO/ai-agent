@@ -34,6 +34,25 @@ describe("streamState presence & attention", () => {
     ).toBe(true);
   });
 
+  it("ask_user_question 会打开右侧工作区", () => {
+    expect(
+      isWorkspaceAttentionTask({
+        messageType: "ask_user_question",
+        resultMap: { messageType: "ask_user_question", status: "pending" },
+      } as CHAT.Task)
+    ).toBe(true);
+    expect(
+      resolveActionPanelVisibility({
+        taskList: [
+          {
+            messageType: "ask_user_question",
+            resultMap: { messageType: "ask_user_question", status: "pending" },
+          } as CHAT.Task,
+        ],
+      })
+    ).toBe(true);
+  });
+
   it("tool_call 不作为自动工作区注意力目标", () => {
     expect(
       isWorkspaceAttentionTask({

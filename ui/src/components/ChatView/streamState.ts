@@ -34,8 +34,6 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   "llm_retry",
   // 子 Agent 心跳，不进工作区/时间线注意力
   "subagent_progress",
-  // 仅状态条提示，不进工作区
-  "ask_user_question",
   "plan_approval",
   "plan_mode_entered",
   "session_tasks",
@@ -50,8 +48,10 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
 /**
  * 只有真正“值得抢焦点”的产物才自动打开右侧工作区。
  * tool_call / 纯 tool_result 只留在时间线，避免每一步工具都把双栏拉开。
+ * ask_user_question 交互卡片改到右侧工作区，需自动展开。
  */
 const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
+  "ask_user_question",
   "file",
   "html",
   "markdown",
@@ -409,6 +409,15 @@ export function resolveRunPresence(params: {
     };
   }
 
+  if (status === "WAITING_INPUT" || hasPendingAskUserQuestion(chat)) {
+    return {
+      phase: "idle",
+      hint: WAITING_USER_HELP_HINT,
+      attention: "workspace",
+      workspaceTitle: attentionTask ? workspaceTitle : undefined,
+    };
+  }
+
   if (!loading) {
     return {
       phase: "idle",
@@ -482,4 +491,129 @@ export function resolveWorkspaceCaption(task?: CHAT.Task, loading?: boolean) {
     return `正在产出：${title}`;
   }
   return title;
+}
+
+/** AskUserQuestion 挂起：顶栏 / tip 文案 */
+export const WAITING_USER_HELP_HINT = "需要你的帮助";
+
+function readAskUserStatus(tool?: CHAT.Task): string {
+  if (!tool) {
+    return "";
+  }
+  const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<string, unknown>;
+  return String(nested.status || tool.resultMap?.status || "").trim().toLowerCase();
+}
+
+/** 会话是否仍有未决 HITL（AskUserQuestion / PlanApproval） */
+export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean {
+  if (!chat) {
+    return false;
+  }
+  const runStatus = String(chat.metrics?.status || "").toUpperCase();
+  // 续跑中 / 已成功时不再因历史 WAITING 标记误判
+  if (runStatus === "RUNNING" || runStatus === "SUCCESS" || runStatus === "FAILED") {
+    // fall through to card status only
+  } else if (runStatus === "WAITING_INPUT") {
+    return true;
+  }
+  const groups = chat.multiAgent?.tasks || chat.tasks || [];
+  for (const group of groups) {
+    for (const tool of group || []) {
+      if (tool?.messageType === "ask_user_question") {
+        const status = readAskUserStatus(tool);
+        if (!status || status === "pending") {
+          return true;
+        }
+        continue;
+      }
+      if (tool?.messageType === "plan_approval") {
+        const status = readAskUserStatus(tool);
+        if (!status || status === "pending") {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/** 用户已提交答案后，把本地卡片标成 answered，避免 UI 仍停在等待态 */
+export function markAskUserQuestionsAnswered(chat: CHAT.ChatItem): CHAT.ChatItem {
+  const tasks = (chat.multiAgent?.tasks || []).map((group) =>
+    (group || []).map((tool) => {
+      if (tool?.messageType !== "ask_user_question") {
+        return tool;
+      }
+      const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = {
+        ...((prevMap.resultMap as Record<string, unknown> | undefined) || {}),
+        status: "answered",
+      };
+      return {
+        ...tool,
+        finish: true,
+        isFinal: true,
+        resultMap: {
+          ...prevMap,
+          status: "answered",
+          isFinal: true,
+          resultMap: nested,
+        },
+      } as CHAT.Task;
+    })
+  );
+  return {
+    ...chat,
+    multiAgent: {
+      ...(chat.multiAgent || { tasks: [] }),
+      tasks,
+    },
+  };
+}
+
+/** 用户已提交计划审批后，把本地卡片标成 decided */
+export function markPlanApprovalsDecided(chat: CHAT.ChatItem): CHAT.ChatItem {
+  const tasks = (chat.multiAgent?.tasks || []).map((group) =>
+    (group || []).map((tool) => {
+      if (tool?.messageType !== "plan_approval") {
+        return tool;
+      }
+      const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = {
+        ...((prevMap.resultMap as Record<string, unknown> | undefined) || {}),
+        status: "decided",
+      };
+      return {
+        ...tool,
+        finish: true,
+        isFinal: true,
+        resultMap: {
+          ...prevMap,
+          status: "decided",
+          isFinal: true,
+          resultMap: nested,
+        },
+      } as CHAT.Task;
+    })
+  );
+  return {
+    ...chat,
+    multiAgent: {
+      ...(chat.multiAgent || { tasks: [] }),
+      tasks,
+    },
+  };
+}
+
+/** 进入等待用户输入终态：不 loading、无停止、tip=需要你的帮助 */
+export function applyWaitingUserInputState(chat: CHAT.ChatItem): CHAT.ChatItem {
+  return {
+    ...chat,
+    loading: false,
+    tip: WAITING_USER_HELP_HINT,
+    metrics: {
+      ...(chat.metrics || {}),
+      status: "WAITING_INPUT",
+    },
+  };
 }

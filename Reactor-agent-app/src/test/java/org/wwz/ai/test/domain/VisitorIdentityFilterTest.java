@@ -108,6 +108,44 @@ public class VisitorIdentityFilterTest {
         Assert.assertEquals("visitor-follow", visitorSeenInChain.get());
     }
 
+    @Test
+    public void shouldBindVisitorForAskUserResumeEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-ask-user")
+                        .rawToken("token-ask-user")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/ask-user/resume");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-ask-user", visitorSeenInChain.get());
+    }
+
+    @Test
+    public void shouldBindVisitorForPlanApprovalResumeEndpoint() throws Exception {
+        AnonymousVisitorApplicationService service = Mockito.mock(AnonymousVisitorApplicationService.class);
+        Mockito.when(service.resolveOrCreate(Mockito.isNull(), Mockito.any(), Mockito.any()))
+                .thenReturn(AnonymousVisitorIdentity.builder()
+                        .visitorId("visitor-plan-approval")
+                        .rawToken("token-plan-approval")
+                        .newlyCreated(false)
+                        .build());
+        VisitorIdentityFilter filter = new VisitorIdentityFilter(service, buildCookieProperties(false, "Lax"));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/agent/plan-approval/resume");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> visitorSeenInChain = new AtomicReference<>();
+
+        filter.doFilter(request, response, captureVisitorChain(visitorSeenInChain));
+
+        Assert.assertEquals("visitor-plan-approval", visitorSeenInChain.get());
+    }
+
     private FilterChain captureVisitorChain(AtomicReference<String> visitorSeenInChain) {
         return (request, response) -> visitorSeenInChain.set(VisitorRequestContext.currentVisitorId());
     }

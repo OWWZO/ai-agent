@@ -13,9 +13,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * 全局挂起 Plan 批准注册表（进程内，对标 PendingUserQuestionRegistry）。
- * 无 @Slf4j：domain 单测 classpath 与 logback 冲突。
+ * @deprecated Continuation 后由 {@code ai_agent_plan_approval} + resume SSE 取代；
+ * 保留 bean 仅兼容旧测试与取消回退路径，主链路不再 await Future。
  */
+@Deprecated
 @Component
 public class PendingPlanApprovalRegistry {
 

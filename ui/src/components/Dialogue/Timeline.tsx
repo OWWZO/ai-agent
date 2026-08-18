@@ -38,7 +38,6 @@ import {
   canOpenTaskWorkspacePanel,
   isTimelineToolActive,
 } from "@/components/ChatView/streamState";
-import AskUserQuestionCard from "./AskUserQuestionCard";
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
@@ -124,7 +123,11 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       );
     }
     case "ask_user_question": {
-      return <AskUserQuestionCard tool={tool} />;
+      return (
+        <div className="mt-2 rounded-2xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface-soft)]/50 px-4 py-3 text-[13px] text-[var(--chat-text-soft)]">
+          需要你的选择 · 请在右侧工作区作答
+        </div>
+      );
     }
     case "plan_approval": {
       return <PlanApprovalCard tool={tool} />;

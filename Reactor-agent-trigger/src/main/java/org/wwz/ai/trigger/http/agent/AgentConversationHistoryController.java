@@ -152,6 +152,7 @@ public class AgentConversationHistoryController {
             case ExecutionLedgerConstants.STATUS_FAILED -> "FAILED";
             case ExecutionLedgerConstants.STATUS_TIMEOUT -> "TIMEOUT";
             case ExecutionLedgerConstants.STATUS_STOPPED -> "STOPPED";
+            case ExecutionLedgerConstants.STATUS_WAITING_INPUT -> "WAITING_INPUT";
             default -> "RUNNING";
         };
     }

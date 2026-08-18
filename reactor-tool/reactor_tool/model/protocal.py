@@ -235,7 +235,7 @@ class ScriptRunnerRequest(BaseModel):
 
 
 class BashSandboxRequest(BaseModel):
-    """会话沙箱 bash：物化 skill 库 → 执行命令 → skills/** 回写库。"""
+    """会话沙箱 bash：runtime/skills 直传沙箱 → 执行 → 增量回写库（无 workspace 中转拷贝）。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -245,12 +245,12 @@ class BashSandboxRequest(BaseModel):
     skill_library_root: Optional[str] = Field(
         default=None,
         alias="skillLibraryRoot",
-        description="全局 skill 库绝对路径（runtime/skills）；为空则不物化/不同步 skill",
+        description="全局 skill 库绝对路径（runtime/skills）；为空则不同步 skill",
     )
     disabled_skill_names: List[str] = Field(
         default_factory=list,
         alias="disabledSkillNames",
-        description="本会话关闭的 skill 名，物化时跳过",
+        description="本会话关闭的 skill 名，上传/链接时跳过",
     )
     timeout_seconds: int = Field(default=120, alias="timeoutSeconds", ge=1, le=600)
     max_output_chars: int = Field(default=64000, alias="maxOutputChars", ge=1024, le=500000)

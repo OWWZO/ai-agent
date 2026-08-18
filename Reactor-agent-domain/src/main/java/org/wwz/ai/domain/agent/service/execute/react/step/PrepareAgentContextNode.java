@@ -99,6 +99,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
         materializeSessionFiles(agentContext, request.getSessionFiles());
         hydrateWorkspaceReadState(agentContext);
+        restoreResumePlanMode(agentContext, request);
         LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
         // 运行账本记录本轮执行事实；working memory 只在本轮结束后作为下一轮 prompt 投影，
@@ -130,6 +131,50 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
 
 
+
+    @jakarta.annotation.Resource
+    private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
+
+    @jakarta.annotation.Resource
+    private org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore planArtifactStore;
+
+    private void restoreResumePlanMode(AgentContext agentContext, AgentRequest request) {
+        if (agentContext == null || request == null || org.apache.commons.lang3.StringUtils.isBlank(request.getResumeContextJson())) {
+            return;
+        }
+        org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext
+                .fromJson(request.getResumeContextJson())
+                .applyPlanModeTo(agentContext);
+        applyPlanApprovalDecision(agentContext, request);
+    }
+
+    private void applyPlanApprovalDecision(AgentContext agentContext, AgentRequest request) {
+        if (agentContext == null || request == null
+                || org.apache.commons.lang3.StringUtils.isBlank(request.getResumeApprovalId())
+                || planApprovalRepository == null) {
+            return;
+        }
+        var record = planApprovalRepository.findByApprovalId(request.getResumeApprovalId()).orElse(null);
+        if (record == null || record.getDecision() == null) {
+            return;
+        }
+        var state = agentContext.requirePlanModeState();
+        var decision = record.getDecision();
+        if (decision.isApproved()) {
+            String finalPlan = org.apache.commons.lang3.StringUtils.isNotBlank(decision.getEditedPlanContent())
+                    ? decision.getEditedPlanContent()
+                    : record.getPlanContent();
+            String planFilePath = record.getPlanFilePath();
+            if (planArtifactStore != null && org.apache.commons.lang3.StringUtils.isNotBlank(finalPlan)) {
+                planFilePath = planArtifactStore.writePlan(agentContext.getSessionId(), finalPlan)
+                        .orElse(planFilePath);
+            }
+            state.setPlan(finalPlan, planFilePath);
+            state.exitPlanMode();
+        } else {
+            state.clearPendingApproval();
+        }
+    }
 
     private void hydrateWorkspaceReadState(AgentContext agentContext) {
         if (workspaceReadStateStore == null || agentContext == null) {

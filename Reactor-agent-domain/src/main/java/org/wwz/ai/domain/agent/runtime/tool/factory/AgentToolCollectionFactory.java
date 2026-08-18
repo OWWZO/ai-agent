@@ -458,11 +458,11 @@ public class AgentToolCollectionFactory {
         EnterPlanModeTool enterPlanModeTool = new EnterPlanModeTool(planArtifactStore);
         addTool(toolCollection, enterPlanModeTool, agentContext, EnterPlanModeTool::setAgentContext);
 
-        ExitPlanModeTool exitPlanModeTool = new ExitPlanModeTool(pendingPlanApprovalRegistry, planArtifactStore);
+        ExitPlanModeTool exitPlanModeTool = new ExitPlanModeTool(planArtifactStore);
         addTool(toolCollection, exitPlanModeTool, agentContext, ExitPlanModeTool::setAgentContext);
 
         if (pendingUserQuestionRegistry != null) {
-            AskUserQuestionTool askUserQuestionTool = new AskUserQuestionTool(pendingUserQuestionRegistry);
+            AskUserQuestionTool askUserQuestionTool = new AskUserQuestionTool();
             addTool(toolCollection, askUserQuestionTool, agentContext, AskUserQuestionTool::setAgentContext);
         }
     }

@@ -1284,3 +1284,89 @@ describe("chat file task title", () => {
     expect(getPrimaryTaskFile(taskList[2])?.name).toBe("second-image.png");
   });
 });
+
+describe("chat context_usage", () => {
+  const createChat = () =>
+    ({
+      sessionId: "session-ctx-1",
+      requestId: "req-ctx-1",
+      query: "你好",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    }) as CHAT.ChatItem;
+
+  it("解析嵌套 resultMap 中的分段占用（实时 SSE）", () => {
+    const chat = createChat();
+    combineData(
+      {
+        messageOrder: 1,
+        messageType: "task",
+        messageId: "msg-ctx-1",
+        taskId: "task-ctx-1",
+        taskOrder: 1,
+        resultMap: {
+          messageType: "context_usage",
+          requestId: "req-ctx-1",
+          messageId: "msg-ctx-1",
+          resultMap: {
+            sys: 1200,
+            tools: 3400,
+            history: 18000,
+            files: 0,
+            max: 200000,
+            used: 22600,
+            source: "estimate",
+            messageType: "context_usage",
+          },
+        },
+      } as unknown as MESSAGE.EventData,
+      chat
+    );
+
+    expect(chat.contextUsage).toEqual({
+      sys: 1200,
+      tools: 3400,
+      history: 18000,
+      files: 0,
+      max: 200000,
+      used: 22600,
+      promptTokens: undefined,
+      completionTokens: undefined,
+      source: "estimate",
+    });
+  });
+
+  it("兼容扁平 resultMap（无嵌套）", () => {
+    const chat = createChat();
+    combineData(
+      {
+        messageOrder: 1,
+        messageType: "task",
+        messageId: "msg-ctx-2",
+        taskId: "task-ctx-1",
+        taskOrder: 2,
+        resultMap: {
+          messageType: "context_usage",
+          sys: 800,
+          tools: 1000,
+          history: 5000,
+          files: 100,
+          max: 128000,
+          used: 6900,
+          promptTokens: 6900,
+          source: "measured",
+        },
+      } as unknown as MESSAGE.EventData,
+      chat
+    );
+
+    expect(chat.contextUsage?.sys).toBe(800);
+    expect(chat.contextUsage?.used).toBe(6900);
+    expect(chat.contextUsage?.source).toBe("measured");
+    expect(chat.contextUsage?.promptTokens).toBe(6900);
+  });
+});

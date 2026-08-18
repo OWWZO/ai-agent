@@ -19,6 +19,7 @@ import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import { resolvePanelView } from "./panelResolver";
+import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;
@@ -131,6 +132,14 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
     switch (panelView.type) {
       case "empty":
         return null;
+      case "ask_user_question":
+        return (
+          <ContentWrapper key="ask_user_question">
+            <div className={classNames("h-full overflow-auto", !noPadding && "px-1 py-1")}>
+              <AskUserQuestionCard tool={panelView.tool as CHAT.Task} />
+            </div>
+          </ContentWrapper>
+        );
       case "search":
         return (
           <ContentWrapper key="search">
@@ -251,7 +260,7 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
       default:
         return null;
     }
-  }, [panelView]);
+  }, [panelView, noPadding]);
 
   const isImmersivePreview =
     panelView.type === "html" ||

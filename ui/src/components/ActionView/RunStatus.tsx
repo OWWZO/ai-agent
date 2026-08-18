@@ -44,6 +44,13 @@ const STATUS_META: Record<
     toneClass:
       "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text-soft)]",
   },
+  WAITING_INPUT: {
+    label: "等待回答",
+    description: "Agent 正在等待你的选择题答案。",
+    icon: Clock3,
+    toneClass:
+      "border-amber-200 bg-amber-50/85 text-amber-700",
+  },
 };
 
 const normalizeStatus = (status?: string | null) => {

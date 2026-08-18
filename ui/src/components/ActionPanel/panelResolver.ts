@@ -70,8 +70,14 @@ type EmptyPanelView = {
   type: "empty";
 };
 
+type AskUserQuestionPanelView = {
+  type: "ask_user_question";
+  tool: PanelItemType;
+};
+
 export type PanelView =
   | EmptyPanelView
+  | AskUserQuestionPanelView
   | SearchPanelView
   | HtmlPanelView
   | InlineHtmlPanelView
@@ -125,6 +131,13 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
 
   if (!taskItem) {
     return { type: "empty" };
+  }
+
+  if (taskItem.messageType === "ask_user_question") {
+    return {
+      type: "ask_user_question",
+      tool: taskItem,
+    };
   }
 
   // 解析顺序就是展示优先级：搜索/GenUI 先于文件，再到 markdown 兜底，避免同一事件被多个 renderer 抢占。

@@ -1,7 +1,7 @@
 import { FC, memo, useEffect, useState } from "react";
 import { ClipboardCheckIcon, LoaderCircleIcon } from "lucide-react";
 import { message } from "antd";
-import { planApprovalApi } from "@/services/planApproval";
+import { dispatchPlanApprovalResume, planApprovalApi } from "@/services/planApproval";
 
 type PlanApprovalCardProps = {
   tool: CHAT.Task;
@@ -28,7 +28,11 @@ function pickPlanFields(tool: CHAT.Task) {
 
 const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
   const { resultMap, approvalId, planContent, status } = pickPlanFields(tool);
-  const alreadyDone = status === "approved" || status === "rejected" || Boolean(resultMap.isFinal && status !== "pending");
+  const alreadyDone =
+    status === "approved" ||
+    status === "rejected" ||
+    status === "decided" ||
+    Boolean(resultMap.isFinal && status !== "pending");
 
   const [feedback, setFeedback] = useState("");
   const [editedPlan, setEditedPlan] = useState(planContent);
@@ -45,6 +49,29 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
 
   const submitted = alreadyDone || decision !== null;
 
+  const afterDecide = (
+    kind: "approved" | "rejected",
+    res: { accepted?: boolean; resumeRequestId?: string; sessionId?: string; message?: string } | undefined
+  ) => {
+    if (res && res.accepted === false) {
+      message.warning(String(res.message || "操作失败，请求可能已结束"));
+      return;
+    }
+    setDecision(kind);
+    const resumeRequestId = String(res?.resumeRequestId || "");
+    if (resumeRequestId) {
+      const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+      dispatchPlanApprovalResume({
+        resumeRequestId,
+        sessionId: String(res?.sessionId || nested.sessionId || resultMap.sessionId || ""),
+        approvalId,
+      });
+      message.success(kind === "approved" ? "计划已批准，正在继续执行" : "已拒绝，正在继续修订");
+      return;
+    }
+    message.success(kind === "approved" ? "计划已批准" : "已拒绝");
+  };
+
   const approve = async () => {
     if (!approvalId || submitting || submitted) {
       return;
@@ -56,12 +83,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         editedPlanContent: editedPlan !== planContent ? editedPlan : undefined,
         feedback: feedback.trim() || undefined,
       });
-      if (res && (res as { accepted?: boolean }).accepted === false) {
-        message.warning(String((res as { message?: string }).message || "批准失败，请求可能已结束"));
-        return;
-      }
-      setDecision("approved");
-      message.success("计划已批准，Agent 将开始实现");
+      afterDecide("approved", res);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "批准失败");
     } finally {
@@ -79,12 +101,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         approvalId,
         feedback: feedback.trim() || "需要修订计划",
       });
-      if (res && (res as { accepted?: boolean }).accepted === false) {
-        message.warning(String((res as { message?: string }).message || "拒绝失败，请求可能已结束"));
-        return;
-      }
-      setDecision("rejected");
-      message.success("已拒绝，Agent 将继续修订计划");
+      afterDecide("rejected", res);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "拒绝失败");
     } finally {

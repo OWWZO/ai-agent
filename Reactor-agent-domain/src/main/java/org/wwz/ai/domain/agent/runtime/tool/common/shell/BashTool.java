@@ -51,7 +51,7 @@ public class BashTool implements BaseTool {
         int maxSec = skillRuntimeOptions == null ? 600 : skillRuntimeOptions.getBashMaxTimeoutSec();
         return "在远端沙箱执行 shell（reactor-tool /v1/tool/bash；"
                 + "与 code_execution 相同 CODE_SANDBOX_BACKEND：local 或 e2b）。"
-                + "执行前会把全局 skill 库物化到沙箱 skills/<name>/；"
+                + "命令含 skills/ 时才会把全局 skill 库物化到沙箱 skills/<name>/（此后本会话 bash 保持 skill 沙箱）；"
                 + "命令示例：python skills/<name>/scripts/xxx.py。"
                 + "沙箱内对 skills/** 的修改会回写全局 skill 库（注册表本轮不刷新）。"
                 + "路径：无前缀=会话工作区相对路径，skills/=技能库；不要用宿主绝对路径。"

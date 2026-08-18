@@ -104,6 +104,10 @@ function hydrateRun(
     ...(currentChat.metrics || {}),
     status: runStatus,
   };
+  if (runStatus === "WAITING_INPUT") {
+    currentChat.tip = "需要你的帮助";
+    currentChat.loading = false;
+  }
 
   return buildConversationTaskData(currentChat, detail.deepThink).currentChat;
 }

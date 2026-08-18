@@ -423,15 +423,35 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     [conversation.chatList]
   );
 
-  // 顶栏只展示运行状态（含模型重试），不再显示会话标题
+  const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
+  const waitingUserInput =
+    String(activeChat?.metrics?.status || "").toUpperCase() === "WAITING_INPUT" ||
+    activeChat?.tip === "需要你的帮助";
+
+  useEffect(() => {
+    if (!waitingUserInput) {
+      return;
+    }
+    // 等待用户选择时强制打开右侧「动态」面板，展示 AskUserQuestion 卡片
+    setWorkspaceOpenRequested(true);
+    setIsRightCollapsed(false);
+    changeActionStatus(true);
+    setActiveTask(undefined);
+    setPendingPreviewFile(undefined);
+    actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
+  }, [waitingUserInput, changeActionStatus]);
+
+  // 顶栏只展示运行状态（含模型重试 / 等待用户），不再显示会话标题
   const headerStatus = useMemo(() => {
-    const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
+    if (waitingUserInput) {
+      return activeChat?.tip?.trim() || "需要你的帮助";
+    }
     if (!(loading || activeChat?.loading)) {
       return "";
     }
     const tip = activeChat?.tip?.trim();
     return tip || "正在推进任务…";
-  }, [conversation.chatList, loading]);
+  }, [activeChat?.loading, activeChat?.tip, loading, waitingUserInput]);
 
   const renderHeaderStatus = (opts?: { showDeepThink?: boolean; badge?: string }) => (
     <div className="flex min-w-0 items-center gap-3">
@@ -542,16 +562,29 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     placeholder={
                       conversation.role?.available === false
                         ? "当前角色已失效，请新建对话后重新选择角色"
-                        : loading
-                          ? "任务进行中，可发送指导…"
-                          : "希望 Reactor 为你做哪些任务呢？"
+                        : waitingUserInput
+                          ? "请先回答上方问题…"
+                          : loading
+                            ? "任务进行中，可发送指导…"
+                            : "希望 Reactor 为你做哪些任务呢？"
                     }
                     showBtn={false}
                     size="medium"
-                    busy={loading}
-                    disabled={!loading && conversation.role?.available === false}
-                    onStop={loading ? () => void stopActiveRun() : undefined}
-                    onInject={loading ? (text) => void injectActiveRun(text) : undefined}
+                    busy={loading && !waitingUserInput}
+                    disabled={
+                      waitingUserInput ||
+                      (!loading && conversation.role?.available === false)
+                    }
+                    onStop={
+                      loading && !waitingUserInput
+                        ? () => void stopActiveRun()
+                        : undefined
+                    }
+                    onInject={
+                      loading && !waitingUserInput
+                        ? (text) => void injectActiveRun(text)
+                        : undefined
+                    }
                     product={currentProduct}
                     deepThink={conversation.deepThink}
                     displayOutput={currentProduct}
@@ -673,16 +706,29 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                       placeholder={
                         conversation.role?.available === false
                           ? "当前角色已失效，请新建对话后重新选择角色"
-                          : loading
-                            ? "任务进行中，可发送指导…"
-                            : "希望 Reactor 为你做哪些任务呢？"
+                          : waitingUserInput
+                            ? "请先回答上方问题…"
+                            : loading
+                              ? "任务进行中，可发送指导…"
+                              : "希望 Reactor 为你做哪些任务呢？"
                       }
                       showBtn={false}
                       size="medium"
-                      busy={loading}
-                      disabled={!loading && conversation.role?.available === false}
-                      onStop={loading ? () => void stopActiveRun() : undefined}
-                      onInject={loading ? (text) => void injectActiveRun(text) : undefined}
+                      busy={loading && !waitingUserInput}
+                      disabled={
+                        waitingUserInput ||
+                        (!loading && conversation.role?.available === false)
+                      }
+                      onStop={
+                        loading && !waitingUserInput
+                          ? () => void stopActiveRun()
+                          : undefined
+                      }
+                      onInject={
+                        loading && !waitingUserInput
+                          ? (text) => void injectActiveRun(text)
+                          : undefined
+                      }
                       product={currentProduct}
                       deepThink={conversation.deepThink}
                       displayOutput={currentProduct}

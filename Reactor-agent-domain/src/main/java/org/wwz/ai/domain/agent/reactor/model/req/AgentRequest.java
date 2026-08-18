@@ -58,6 +58,18 @@ public class AgentRequest {
     private Boolean thinking;
     /** 思考档位 low|medium|high */
     private String thinkingEffort;
+    /**
+     * AskUserQuestion continuation：非空表示本轮是回答后续跑，query 应为空，
+     * 由策略在 hydrate 后追加对应 tool observation。
+     */
+    private String resumeQuestionId;
+    /**
+     * ExitPlanMode continuation：非空表示本轮是计划审批后续跑，query 应为空，
+     * 由策略在 hydrate 后追加 ExitPlanMode tool observation。
+     */
+    private String resumeApprovalId;
+    /** 续跑瘦快照 JSON（PlanMode / agent 配置），Prepare 时恢复 */
+    private String resumeContextJson;
 
     @Data
     @Builder

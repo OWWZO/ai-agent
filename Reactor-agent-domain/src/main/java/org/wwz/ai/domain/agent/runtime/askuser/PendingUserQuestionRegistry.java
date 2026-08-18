@@ -16,8 +16,9 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * 全局挂起问询注册表（进程内）。
- * key=questionId；支持按 session/request 查询与取消。
+ * @deprecated AskUserQuestion 已改为 DB continuation；仅保留兼容钩子，新逻辑见 {@link IUserQuestionRepository}。
  */
+@Deprecated
 @Slf4j
 @Component
 public class PendingUserQuestionRegistry {

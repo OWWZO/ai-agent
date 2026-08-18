@@ -5,12 +5,17 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactFinalAnswerResolver;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
+import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
+import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionYieldService;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalYieldService;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModePromptInjector;
 import org.wwz.ai.domain.agent.service.execute.planexecute.step.factory.DefaultPlanSolveAgentExecuteStrategyFactory;
 
@@ -27,6 +32,12 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
     @Resource
     private CloseTurnNode closeTurnNode;
 
+    @Resource
+    private UserQuestionYieldService userQuestionYieldService;
+
+    @Resource
+    private PlanApprovalYieldService planApprovalYieldService;
+
     @Override
     protected String doApply(AgentRequest requestParameter,
                              DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
@@ -38,13 +49,33 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
         }
 
         ReactImplAgent planner = createPlanSolvePlanner(agentContext);
-        String runResult = planner.run(agentContext.getQuery());
-        String finalAnswer = ReactFinalAnswerResolver.resolve(planner, runResult);
-
         dynamicContext.setExecutor(planner);
-        dynamicContext.setFinalAnswer(finalAnswer);
-
-        return router(requestParameter, dynamicContext);
+        try {
+            String runResult = planner.run(agentContext.getQuery());
+            String finalAnswer = ReactFinalAnswerResolver.resolve(planner, runResult);
+            dynamicContext.setFinalAnswer(finalAnswer);
+            return router(requestParameter, dynamicContext);
+        } catch (UserInputRequiredException yield) {
+            userQuestionYieldService.yieldAndNotify(
+                    agentContext,
+                    planner,
+                    requestParameter,
+                    yield,
+                    ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
+            );
+            dynamicContext.setWaitingUserInput(Boolean.TRUE);
+            return router(requestParameter, dynamicContext);
+        } catch (PlanApprovalRequiredException yield) {
+            planApprovalYieldService.yieldAndNotify(
+                    agentContext,
+                    planner,
+                    requestParameter,
+                    yield,
+                    ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE
+            );
+            dynamicContext.setWaitingUserInput(Boolean.TRUE);
+            return router(requestParameter, dynamicContext);
+        }
     }
 
     private ReactImplAgent createPlanSolvePlanner(AgentContext agentContext) {
@@ -71,6 +102,9 @@ public class RunReactLoopNode extends AbstractExecuteSupport {
     public StrategyHandler<AgentRequest, DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext, String> get(
             AgentRequest requestParameter,
             DefaultPlanSolveAgentExecuteStrategyFactory.DynamicContext dynamicContext) throws Exception {
+        if (dynamicContext != null && Boolean.TRUE.equals(dynamicContext.getWaitingUserInput())) {
+            return null;
+        }
         return closeTurnNode;
     }
 }

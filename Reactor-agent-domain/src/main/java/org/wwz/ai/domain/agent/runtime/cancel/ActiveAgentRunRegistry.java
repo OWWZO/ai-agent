@@ -96,6 +96,9 @@ public class ActiveAgentRunRegistry {
     @Resource
     private PendingPlanApprovalRegistry pendingPlanApprovalRegistry;
 
+    @Resource
+    private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
+
     /**
      * @deprecated 使用 {@link #begin(String, String, String)} 传入 visitorId 以启用单并发准入
      */
@@ -202,7 +205,9 @@ public class ActiveAgentRunRegistry {
         if (pendingUserQuestionRegistry != null) {
             pendingUserQuestionRegistry.cancelByRequestId(requestId, reason);
         }
-        if (pendingPlanApprovalRegistry != null) {
+        if (planApprovalRepository != null) {
+            planApprovalRepository.cancelBySourceRequestId(requestId, reason);
+        } else if (pendingPlanApprovalRegistry != null) {
             pendingPlanApprovalRegistry.cancelByRequestId(requestId, reason);
         }
         AgentContext ctx = run.getAgentContext();

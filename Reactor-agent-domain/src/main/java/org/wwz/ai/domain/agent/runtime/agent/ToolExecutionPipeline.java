@@ -19,7 +19,11 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.CanvasPublishArgSalvage;
 import org.wwz.ai.domain.agent.runtime.tool.canvas.EmitUiTreeArgSalvage;
+import org.wwz.ai.domain.agent.runtime.askuser.UserInputRequiredException;
+import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRequiredException;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -34,6 +38,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
@@ -72,6 +77,36 @@ final class ToolExecutionPipeline {
             return result;
         }
 
+        String soleYieldViolation = detectSoleYieldToolViolation(commands);
+        if (soleYieldViolation != null) {
+            Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
+            String code = "EXIT_PLAN_MODE".equals(soleYieldViolation)
+                    ? "EXIT_PLAN_MODE_MUST_BE_SOLE"
+                    : "ASK_USER_QUESTION_MUST_BE_SOLE";
+            String msg = "EXIT_PLAN_MODE".equals(soleYieldViolation)
+                    ? "ExitPlanMode 必须是本轮唯一 tool call，不能与其他工具并行"
+                    : "AskUserQuestion 必须是本轮唯一 tool call，不能与其他工具并行";
+            for (ToolCall command : commands) {
+                if (command == null || StringUtils.isBlank(command.getId())) {
+                    continue;
+                }
+                completeToolOutcome(
+                        result,
+                        command,
+                        toolFailureOutcome(msg, code),
+                        dispatchIndexMapping,
+                        true);
+            }
+            Map<String, ToolExecutionOutcome> ordered = new LinkedHashMap<>(commands.size());
+            for (ToolCall command : commands) {
+                if (command == null || StringUtils.isBlank(command.getId())) {
+                    continue;
+                }
+                ordered.put(command.getId(), result.get(command.getId()));
+            }
+            return ordered;
+        }
+
         Map<String, Integer> dispatchIndexMapping = buildDispatchIndexMapping(commands);
         Map<String, Long> toolInvocationIds = ensureToolInvocationIds(commands);
         AgentContext context = agent.getContext();
@@ -80,6 +115,7 @@ final class ToolExecutionPipeline {
         }
         emitToolCallRunningEvents(commands, dispatchIndexMapping);
 
+        AtomicReference<RuntimeException> yieldSignal = new AtomicReference<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(commands.size());
         List<CompletableFuture<?>> executionFutures = new ArrayList<>(commands.size());
         for (ToolCall toolCall : commands) {
@@ -93,20 +129,33 @@ final class ToolExecutionPipeline {
                 if (error != null && unwrapExecutionError(error) instanceof CancellationException) {
                     return null;
                 }
-                ToolExecutionOutcome finalOutcome = outcome;
                 if (error != null) {
                     Throwable root = unwrapExecutionError(error);
+                    if (root instanceof UserInputRequiredException userInputRequired) {
+                        yieldSignal.compareAndSet(null, userInputRequired);
+                        return null;
+                    }
+                    if (root instanceof PlanApprovalRequiredException planApprovalRequired) {
+                        yieldSignal.compareAndSet(null, planApprovalRequired);
+                        return null;
+                    }
                     String msg = root.getMessage() == null
                             ? root.getClass().getSimpleName()
                             : root.getMessage();
-                    finalOutcome = toolFailureOutcome("Tool execution error: " + msg, msg);
+                    completeToolOutcome(result, toolCall,
+                            toolFailureOutcome("Tool execution error: " + msg, msg),
+                            dispatchIndexMapping, true);
+                    return null;
                 }
-                completeToolOutcome(result, toolCall, finalOutcome, dispatchIndexMapping, true);
+                completeToolOutcome(result, toolCall, outcome, dispatchIndexMapping, true);
                 return null;
             }));
         }
 
         awaitToolBatch(futures, executionFutures);
+        if (yieldSignal.get() != null) {
+            throw yieldSignal.get();
+        }
         for (ToolCall command : commands) {
             if (command == null || StringUtils.isBlank(command.getId()) || result.containsKey(command.getId())) {
                 continue;
@@ -291,6 +340,10 @@ final class ToolExecutionPipeline {
             }
             return ToolExecutionOutcome.success(toolResult, llmObservation, payload.getStructuredOutput(),
                     payload.getBase64Image(), payload.getImageMimeType());
+        } catch (UserInputRequiredException yield) {
+            throw yield;
+        } catch (PlanApprovalRequiredException yield) {
+            throw yield;
         } catch (Exception e) {
             log.error("{} execute tool {} failed ", context.getRequestId(), toolName, e);
             return ToolExecutionOutcome.failure(
@@ -300,6 +353,32 @@ final class ToolExecutionPipeline {
                     e.getMessage()
             );
         }
+    }
+
+    /**
+     * @return "ASK_USER" / "EXIT_PLAN_MODE" when a yield tool is mixed with others; otherwise null
+     */
+    private String detectSoleYieldToolViolation(List<ToolCall> commands) {
+        boolean hasAsk = false;
+        boolean hasExit = false;
+        int total = 0;
+        for (ToolCall command : commands) {
+            if (command == null || command.getFunction() == null) {
+                continue;
+            }
+            total++;
+            String name = command.getFunction().getName();
+            if (AskUserQuestionTool.NAME.equals(name)) {
+                hasAsk = true;
+            }
+            if (TaskToolNames.EXIT_PLAN_MODE.equals(name)) {
+                hasExit = true;
+            }
+        }
+        if ((hasAsk || hasExit) && total > 1) {
+            return hasExit ? "EXIT_PLAN_MODE" : "ASK_USER";
+        }
+        return null;
     }
 
     private void awaitToolBatch(List<CompletableFuture<Void>> futures,

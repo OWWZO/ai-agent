@@ -96,7 +96,19 @@ function applyContextUsage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
-  const map = (eventData.resultMap || {}) as Record<string, unknown>;
+  // context_usage 经 BaseAgentResponseHandler default 分支会再包一层 resultMap，
+  // 同时兼容扁平结构（历史/测试）与嵌套结构（实时 SSE）。
+  const outer = (eventData.resultMap || {}) as Record<string, unknown>;
+  const nested =
+    outer.resultMap && isRecord(outer.resultMap)
+      ? (outer.resultMap as Record<string, unknown>)
+      : undefined;
+  const map: Record<string, unknown> = nested
+    ? {
+      ...outer,
+      ...nested,
+    }
+    : outer;
   const num = (k: string) => {
     const v = map[k];
     return typeof v === "number" && Number.isFinite(v) ? v : 0;

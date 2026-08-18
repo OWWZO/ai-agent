@@ -336,7 +336,14 @@ public class DeepSearchTool implements ContextIsolatableTool {
         if (uploaded.get() || StringUtils.isBlank(answer)) {
             return;
         }
-        String fileName = StringUtil.removeSpecialChars(StringUtils.defaultString(query) + "的搜索结果.md");
+        String baseName = StringUtil.abbreviate(StringUtils.defaultString(query), 20, true);
+        if (StringUtils.isBlank(baseName)) {
+            baseName = "搜索结果";
+        }
+        String fileName = StringUtil.removeSpecialChars(baseName + "的搜索结果.md");
+        if (StringUtils.isBlank(fileName)) {
+            fileName = "搜索结果.md";
+        }
         String fileDesc = answer.substring(0, Math.min(answer.length(), reactorConfig.getDeepSearchToolFileDescTruncateLen())) + "...";
         FileRequest fileRequest = FileRequest.builder()
                 .requestId(ctx.getRequestId())

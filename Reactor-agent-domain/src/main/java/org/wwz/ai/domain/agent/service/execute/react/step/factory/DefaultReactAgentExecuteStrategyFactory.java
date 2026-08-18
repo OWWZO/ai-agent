@@ -42,5 +42,7 @@ public class DefaultReactAgentExecuteStrategyFactory {
         private AgentContext agentContext;
         private ReActAgent executor;
         private String finalAnswer;
+        /** AskUserQuestion 让步后跳过 CloseTurn */
+        private Boolean waitingUserInput;
     }
 }

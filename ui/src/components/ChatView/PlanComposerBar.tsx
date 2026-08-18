@@ -5,7 +5,7 @@ import {
   LoaderCircleIcon,
 } from "lucide-react";
 import { message } from "antd";
-import { planApprovalApi } from "@/services/planApproval";
+import { dispatchPlanApprovalResume, planApprovalApi } from "@/services/planApproval";
 import {
   buildComposerPlanModel,
   type ComposerPlanModel,
@@ -90,14 +90,22 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
             editedPlan !== model.planContent ? editedPlan : undefined,
           feedback: feedback.trim() || undefined,
         });
-        if (res && (res as { accepted?: boolean }).accepted === false) {
-          message.warning(
-            String((res as { message?: string }).message || "批准失败")
-          );
+        if (res && res.accepted === false) {
+          message.warning(String(res.message || "批准失败"));
           return;
         }
         setLocalStatus("approved");
-        message.success("计划已批准，Agent 将开始实现");
+        const resumeRequestId = String(res?.resumeRequestId || "");
+        if (resumeRequestId) {
+          dispatchPlanApprovalResume({
+            resumeRequestId,
+            sessionId: String(res?.sessionId || ""),
+            approvalId: model.approvalId,
+          });
+          message.success("计划已批准，正在继续执行");
+        } else {
+          message.success("计划已批准");
+        }
       } catch (error) {
         message.error(error instanceof Error ? error.message : "批准失败");
       } finally {
@@ -115,14 +123,22 @@ const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> 
           approvalId: model.approvalId,
           feedback: feedback.trim() || "需要修订计划",
         });
-        if (res && (res as { accepted?: boolean }).accepted === false) {
-          message.warning(
-            String((res as { message?: string }).message || "拒绝失败")
-          );
+        if (res && res.accepted === false) {
+          message.warning(String(res.message || "拒绝失败"));
           return;
         }
         setLocalStatus("rejected");
-        message.success("已拒绝，Agent 将继续修订计划");
+        const resumeRequestId = String(res?.resumeRequestId || "");
+        if (resumeRequestId) {
+          dispatchPlanApprovalResume({
+            resumeRequestId,
+            sessionId: String(res?.sessionId || ""),
+            approvalId: model.approvalId,
+          });
+          message.success("已拒绝，正在继续修订");
+        } else {
+          message.success("已拒绝");
+        }
       } catch (error) {
         message.error(error instanceof Error ? error.message : "拒绝失败");
       } finally {
