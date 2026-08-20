@@ -139,6 +139,7 @@ vi.mock("./useConversationStream", () => ({
     stopActiveRun: vi.fn(),
     injectActiveRun: vi.fn(),
     regenerateLastMessage: vi.fn(),
+    undoLastUserTurn: vi.fn(() => null),
   }),
 }));
 

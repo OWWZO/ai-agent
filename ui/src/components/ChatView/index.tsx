@@ -6,7 +6,28 @@ import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
 import ActionView from "@/components/ActionView";
+import { ThinkingPanel } from "@/components/Dialogue/ThinkingPanel";
+import { ToolDiffPanel } from "@/components/Dialogue/ToolDiffPanel";
+import { AgentDetailPanel } from "@/components/Dialogue/AgentDetailPanel";
+import {
+  buildEditDiffCode,
+  extractEditPath,
+  resolveTaskToolArg,
+  resolveTaskToolName,
+  resolveTaskToolOutput,
+  resolveTaskToolStatus,
+  toolLabel,
+} from "@/components/Dialogue/tools";
+import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
+import BackgroundTasksDock from "./BackgroundTasksDock";
+import PlanComposerBar from "./PlanComposerBar";
+import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
+import {
+  findLatestPendingAskUser,
+  resolveHitlDockSlot,
+} from "./hitlDockModel";
+import { hasPendingAskUserQuestion } from "./streamState";
 import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
@@ -77,6 +98,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [workspaceOpenRequested, setWorkspaceOpenRequested] = useState(false);
   /** 打开工作区前缓存要点的文件，避免 ActionView 未挂载时 setFilePreview 丢失 */
   const [pendingPreviewFile, setPendingPreviewFile] = useState<CHAT.TFile>();
+  /** Kimi 右侧互斥 detail：thinking | toolDiff | agent | ActionView */
+  const [thinkingDetail, setThinkingDetail] = useState<string | null>(null);
+  const [toolDiffTask, setToolDiffTask] = useState<CHAT.Task | null>(null);
+  const [agentDetail, setAgentDetail] = useState<{
+    tool: CHAT.Task;
+    chat: CHAT.ChatItem;
+  } | null>(null);
+  const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
     leftPanelWidth,
     isDragging,
@@ -117,7 +146,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     injectActiveRun,
     streamingThoughtMap,
     sendMessage,
-    regenerateLastMessage,
+    undoLastUserTurn,
   } = useConversationStream({
     conversation,
     onConversationChange,
@@ -125,6 +154,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       // 新一轮请求开始后，工作区恢复自动跟随，避免仍停留在上一轮手动点开的旧任务上。
       setActiveTask(undefined);
       setPendingPreviewFile(undefined);
+      setThinkingDetail(null);
+      setToolDiffTask(null);
+      setAgentDetail(null);
       actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     },
     onTokenUseUp: () => {
@@ -144,31 +176,32 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 属于当前会话；这里只重置本组件持有的瞬时状态，历史内容由父状态提供。
     setDataLoading(false);
     setWorkspaceOpenRequested(false);
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
   }, [conversation.id]);
 
   useEffect(() => {
     // 任务列表会在流式过程中不断补全字段。保留稳定 key 后用最新任务替换
     // 当前选中对象，既能更新状态，又不会因为对象引用变化丢失用户选择。
-    setActiveTask((prevActiveTask) => {
-      if (!prevActiveTask) {
-        return prevActiveTask;
-      }
-
-      const activeTaskKey = getTaskStableKey(prevActiveTask);
-      if (!activeTaskKey) {
-        return prevActiveTask;
-      }
-
-      const matchedTask = taskList.find((task) => getTaskStableKey(task) === activeTaskKey);
-      if (matchedTask) {
-        return matchedTask;
-      }
-
-      if (getTaskStableKey(workspaceStreamTask) === activeTaskKey && workspaceStreamTask) {
+    const refreshTask = (prev?: CHAT.Task | null) => {
+      if (!prev) return prev ?? null;
+      const key = getTaskStableKey(prev);
+      if (!key) return prev;
+      const matched = taskList.find((task) => getTaskStableKey(task) === key);
+      if (matched) return matched;
+      if (getTaskStableKey(workspaceStreamTask) === key && workspaceStreamTask) {
         return workspaceStreamTask;
       }
+      return prev;
+    };
 
-      return prevActiveTask;
+    setActiveTask((prev) => refreshTask(prev) || undefined);
+    setToolDiffTask((prev) => refreshTask(prev));
+    setAgentDetail((prev) => {
+      if (!prev) return prev;
+      const nextTool = refreshTask(prev.tool);
+      return nextTool ? { ...prev, tool: nextTool } : prev;
     });
   }, [taskList, workspaceStreamTask]);
 
@@ -217,6 +250,96 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     runtime.draftController.commit(nextConversation);
   });
 
+  const openRightWorkspace = useMemoizedFn(() => {
+    setWorkspaceOpenRequested(true);
+    setIsRightCollapsed(false);
+    changeActionStatus(true);
+  });
+
+  const openThinkingPanel = useMemoizedFn((text: string) => {
+    setThinkingDetail(text);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    setPendingPreviewFile(undefined);
+    setActiveTask(undefined);
+    openRightWorkspace();
+  });
+
+  const syncThinkingPanel = useMemoizedFn((text: string) => {
+    setThinkingDetail((prev) => (prev == null ? prev : text));
+  });
+
+  const closeThinkingPanel = useMemoizedFn(() => {
+    setThinkingDetail(null);
+  });
+
+  const openToolDiffPanel = useMemoizedFn(
+    (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+      setToolDiffTask(task);
+      setThinkingDetail(null);
+      setAgentDetail(null);
+      setPendingPreviewFile(undefined);
+      setActiveTask(undefined);
+      openRightWorkspace();
+      if (chat) {
+        setActiveRunState({
+          status: chat.metrics?.status,
+          finishedAt: chat.finishedAt,
+        });
+      }
+    }
+  );
+
+  const closeToolDiffPanel = useMemoizedFn(() => {
+    setToolDiffTask(null);
+  });
+
+  const openAgentPanel = useMemoizedFn(
+    (task: CHAT.Task, chat: CHAT.ChatItem) => {
+      setAgentDetail({ tool: task, chat });
+      setThinkingDetail(null);
+      setToolDiffTask(null);
+      setPendingPreviewFile(undefined);
+      setActiveTask(undefined);
+      openRightWorkspace();
+      setActiveRunState({
+        status: chat.metrics?.status,
+        finishedAt: chat.finishedAt,
+      });
+    }
+  );
+
+  const closeAgentPanel = useMemoizedFn(() => {
+    setAgentDetail(null);
+  });
+
+  const closeExclusiveDetail = useMemoizedFn(() => {
+    if (thinkingDetail != null) {
+      closeThinkingPanel();
+      return true;
+    }
+    if (toolDiffTask) {
+      closeToolDiffPanel();
+      return true;
+    }
+    if (agentDetail) {
+      closeAgentPanel();
+      return true;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (closeExclusiveDetail()) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeExclusiveDetail]);
+
   const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
     // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
     if (!canOpenTaskWorkspacePanel(task)) {
@@ -224,12 +347,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     }
     // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
     // 上一轮打开的文件预览遮住用户刚选择的任务。
-    setWorkspaceOpenRequested(true);
-    setIsRightCollapsed(false);
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    openRightWorkspace();
     // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
     setPendingPreviewFile(undefined);
     actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
-    changeActionStatus(true);
     setActiveTask(task);
     setActiveRunState({
       status: chat?.metrics?.status,
@@ -239,9 +363,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
     // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
-    setWorkspaceOpenRequested(true);
-    setIsRightCollapsed(false);
-    changeActionStatus(true);
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    openRightWorkspace();
     setActiveRunState({
       status: chat?.metrics?.status,
       finishedAt: chat?.finishedAt,
@@ -262,11 +387,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [changeFile, onRegisterApi]);
 
   const changePlan = () => {
-    setWorkspaceOpenRequested(true);
-    setIsRightCollapsed(false);
-    changeActionStatus(true);
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    openRightWorkspace();
     actionViewRef.current?.openPlanView();
   };
+
+  const toolDiffView = useMemo(() => {
+    if (!toolDiffTask) return null;
+    const name = resolveTaskToolName(toolDiffTask);
+    const arg = resolveTaskToolArg(toolDiffTask);
+    return {
+      title: toolLabel(name),
+      path: extractEditPath(arg),
+      diffCode: buildEditDiffCode({ name, arg }),
+      output: resolveTaskToolOutput(toolDiffTask),
+      status: resolveTaskToolStatus(toolDiffTask),
+    };
+  }, [toolDiffTask]);
 
   const toggleRightPanel = useMemoizedFn(() => {
     setWorkspaceOpenRequested(true);
@@ -362,8 +501,26 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     }
   }, [inputInfoProp, onInputConsumed, readOnly, sendDataMessage, sendMessage]);
 
-  const handleRegenerate = useMemoizedFn(() => {
-    regenerateLastMessage();
+  const handleUndoLastTurn = useMemoizedFn(() => {
+    if (loading) {
+      return;
+    }
+    modal.confirm({
+      title: "撤销上一轮对话？",
+      content: "将删除最后一轮问答，并把你的问题填回输入框以便修改后重发。",
+      okText: "撤销",
+      cancelText: "取消",
+      onOk: () => {
+        const query = undoLastUserTurn();
+        if (query) {
+          setComposerDraft(query);
+        }
+      },
+    });
+  });
+
+  const clearComposerDraft = useMemoizedFn(() => {
+    setComposerDraft(null);
   });
 
   const loading = streamLoading || dataLoading;
@@ -426,20 +583,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const waitingUserInput =
     String(activeChat?.metrics?.status || "").toUpperCase() === "WAITING_INPUT" ||
-    activeChat?.tip === "需要你的帮助";
-
-  useEffect(() => {
-    if (!waitingUserInput) {
-      return;
-    }
-    // 等待用户选择时强制打开右侧「动态」面板，展示 AskUserQuestion 卡片
-    setWorkspaceOpenRequested(true);
-    setIsRightCollapsed(false);
-    changeActionStatus(true);
-    setActiveTask(undefined);
-    setPendingPreviewFile(undefined);
-    actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
-  }, [waitingUserInput, changeActionStatus]);
+    activeChat?.tip === "需要你的帮助" ||
+    hasPendingAskUserQuestion(activeChat);
+  const hitlDockSlot = useMemo(
+    () => resolveHitlDockSlot(activeChat, taskList),
+    [activeChat, taskList]
+  );
+  const pendingAskTool = useMemo(
+    () =>
+      hitlDockSlot === "ask"
+        ? findLatestPendingAskUser(activeChat, taskList)
+        : undefined,
+    [activeChat, taskList, hitlDockSlot]
+  );
 
   // 顶栏只展示运行状态（含模型重试 / 等待用户），不再显示会话标题
   const headerStatus = useMemo(() => {
@@ -452,6 +608,72 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     const tip = activeChat?.tip?.trim();
     return tip || "正在推进任务…";
   }, [activeChat?.loading, activeChat?.tip, loading, waitingUserInput]);
+
+  /** 底部 Dock：companions 常驻；pending HITL 替换 Composer */
+  const renderComposerStack = (inputKey: string) => (
+    <>
+      <BackgroundTasksDock chat={activeChat} onOpenAgent={openAgentPanel} />
+      <SessionTaskComposerBar chat={activeChat} taskList={taskList} />
+      {hitlDockSlot === "ask" && pendingAskTool ? (
+        <div className="mb-1" data-testid="hitl-dock-ask">
+          <AskUserQuestionCard tool={pendingAskTool} />
+        </div>
+      ) : hitlDockSlot === "approval" ? (
+        <div className="mb-1" data-testid="hitl-dock-approval">
+          <PlanComposerBar
+            chat={activeChat}
+            taskList={taskList}
+            structuredPlan={activeChat?.plan}
+            loading={loading}
+          />
+        </div>
+      ) : (
+        <>
+          <PlanComposerBar
+            chat={activeChat}
+            taskList={taskList}
+            structuredPlan={activeChat?.plan}
+            loading={loading}
+          />
+          <GeneralInput
+            key={inputKey}
+            sessionId={conversation.sessionId}
+            contextUsage={activeChat?.contextUsage ?? null}
+            placeholder={
+              conversation.role?.available === false
+                ? "当前角色已失效，请新建对话后重新选择角色"
+                : loading
+                  ? "任务进行中，可发送指导…"
+                  : "希望 Reactor 为你做哪些任务呢？"
+            }
+            showBtn={false}
+            size="medium"
+            busy={loading}
+            disabled={!loading && conversation.role?.available === false}
+            onStop={loading ? () => void stopActiveRun() : undefined}
+            onInject={loading ? (text) => void injectActiveRun(text) : undefined}
+            draftMessage={composerDraft}
+            onDraftConsumed={clearComposerDraft}
+            product={currentProduct}
+            deepThink={conversation.deepThink}
+            displayOutput={currentProduct}
+            chatRole={conversation.role}
+            chatRoles={chatRoles}
+            showRoleSelector={false}
+            onRoleSelect={onRoleSelect}
+            send={(info) =>
+              sendMessage({
+                ...info,
+                outputStyle: toRequestOutputStyle(conversation.productType),
+                deepThink: conversation.deepThink,
+                aiAgentId: conversation.role?.agentId,
+              })
+            }
+          />
+        </>
+      )}
+    </>
+  );
 
   const renderHeaderStatus = (opts?: { showDeepThink?: boolean; badge?: string }) => (
     <div className="flex min-w-0 items-center gap-3">
@@ -481,7 +703,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     </div>
   );
 
-  const renderChatDialogues = () => (
+  const renderChatDialogues = () => {
+    const lastRequestId =
+      conversation.chatList[conversation.chatList.length - 1]?.requestId;
+    return (
     <>
       {conversation.chatList.map((chat) => (
         <Dialogue
@@ -493,11 +718,32 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           changeTask={changeTask}
           changeFile={changeFile}
           changePlan={changePlan}
-          onRegenerate={readOnly ? undefined : handleRegenerate}
+          onUndo={
+            !readOnly &&
+            !loading &&
+            chat.requestId === lastRequestId
+              ? handleUndoLastTurn
+              : undefined
+          }
+          thinkingPanelOpen={thinkingDetail != null}
+          onOpenThinking={openThinkingPanel}
+          onSyncThinking={syncThinkingPanel}
+          onOpenToolDiff={openToolDiffPanel}
+          onOpenAgent={openAgentPanel}
         />
       ))}
+      {streamLoading ? (
+        <div
+          className="mt-3 flex items-center gap-2 pl-1 text-[var(--color-text-muted)]"
+          role="status"
+          aria-live="polite"
+        >
+          <MoonSpinner label="正在等待回复…" />
+        </div>
+      ) : null}
     </>
-  );
+    );
+  };
 
   const renderDataDialogues = () => {
     const visibleDataChats = optimisticDataChat
@@ -515,7 +761,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderMultAgent = () => {
     // 如果没有工作空间内容，显示单面板
-    if (!showAction && !workspaceOpenRequested) {
+    if (!showAction && !workspaceOpenRequested && thinkingDetail == null) {
       return (
         <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
           <div
@@ -548,59 +794,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             {!readOnly ? (
               <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
                 <div className="mx-auto w-full max-w-[860px]">
-                  <SessionTaskComposerBar
-                    chat={conversation.chatList?.[conversation.chatList.length - 1]}
-                    taskList={taskList}
-                  />
-                  <GeneralInput
-                    key={`input-${conversation.sessionId}-single`}
-                    sessionId={conversation.sessionId}
-                    contextUsage={
-                      conversation.chatList?.[conversation.chatList.length - 1]
-                        ?.contextUsage ?? null
-                    }
-                    placeholder={
-                      conversation.role?.available === false
-                        ? "当前角色已失效，请新建对话后重新选择角色"
-                        : waitingUserInput
-                          ? "请先回答上方问题…"
-                          : loading
-                            ? "任务进行中，可发送指导…"
-                            : "希望 Reactor 为你做哪些任务呢？"
-                    }
-                    showBtn={false}
-                    size="medium"
-                    busy={loading && !waitingUserInput}
-                    disabled={
-                      waitingUserInput ||
-                      (!loading && conversation.role?.available === false)
-                    }
-                    onStop={
-                      loading && !waitingUserInput
-                        ? () => void stopActiveRun()
-                        : undefined
-                    }
-                    onInject={
-                      loading && !waitingUserInput
-                        ? (text) => void injectActiveRun(text)
-                        : undefined
-                    }
-                    product={currentProduct}
-                    deepThink={conversation.deepThink}
-                    displayOutput={currentProduct}
-                    chatRole={conversation.role}
-                    chatRoles={chatRoles}
-                    showRoleSelector={false}
-                    onRoleSelect={onRoleSelect}
-                    send={(info) =>
-                      sendMessage({
-                        ...info,
-                        outputStyle: toRequestOutputStyle(conversation.productType),
-                        deepThink: conversation.deepThink,
-                        aiAgentId: conversation.role?.agentId,
-                      })
-                    }
-                  />
+                  {renderComposerStack(`input-${conversation.sessionId}-single`)}
                 </div>
               </div>
             ) : null}
@@ -692,59 +886,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                     "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
                     isFocusMode ? "px-2" : "px-4"
                   )}>
-                    <SessionTaskComposerBar
-                      chat={conversation.chatList?.[conversation.chatList.length - 1]}
-                      taskList={taskList}
-                    />
-                    <GeneralInput
-                      key={`input-${conversation.sessionId}-left`}
-                      sessionId={conversation.sessionId}
-                      contextUsage={
-                        conversation.chatList?.[conversation.chatList.length - 1]
-                          ?.contextUsage ?? null
-                      }
-                      placeholder={
-                        conversation.role?.available === false
-                          ? "当前角色已失效，请新建对话后重新选择角色"
-                          : waitingUserInput
-                            ? "请先回答上方问题…"
-                            : loading
-                              ? "任务进行中，可发送指导…"
-                              : "希望 Reactor 为你做哪些任务呢？"
-                      }
-                      showBtn={false}
-                      size="medium"
-                      busy={loading && !waitingUserInput}
-                      disabled={
-                        waitingUserInput ||
-                        (!loading && conversation.role?.available === false)
-                      }
-                      onStop={
-                        loading && !waitingUserInput
-                          ? () => void stopActiveRun()
-                          : undefined
-                      }
-                      onInject={
-                        loading && !waitingUserInput
-                          ? (text) => void injectActiveRun(text)
-                          : undefined
-                      }
-                      product={currentProduct}
-                      deepThink={conversation.deepThink}
-                      displayOutput={currentProduct}
-                      chatRole={conversation.role}
-                      chatRoles={chatRoles}
-                      showRoleSelector={false}
-                      onRoleSelect={onRoleSelect}
-                      send={(info) =>
-                        sendMessage({
-                          ...info,
-                          outputStyle: toRequestOutputStyle(conversation.productType),
-                          deepThink: conversation.deepThink,
-                          aiAgentId: conversation.role?.agentId,
-                        })
-                      }
-                    />
+                    {renderComposerStack(`input-${conversation.sessionId}-left`)}
                   </div>
                 ) : null}
               </div>
@@ -764,8 +906,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onPointerCancel={handleDragEnd}
             className={classNames(
               "group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
-              "hover:bg-[#0071e3]/10",
-              isDragging && "bg-[#0071e3]/15"
+              "hover:bg-[var(--chat-accent)]/10",
+              isDragging && "bg-[var(--chat-accent)]/15"
             )}
             title="拖拽调整左右区域宽度"
           >
@@ -775,7 +917,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               className={classNames(
                 "relative h-14 w-1 rounded-full transition-colors duration-150",
                 isDragging
-                  ? "bg-[#0071e3]"
+                  ? "bg-[var(--chat-accent)]"
                   : "bg-[#d2d2d7] group-hover:bg-[#86868b]"
               )}
             />
@@ -805,8 +947,46 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 <PanelLeftClose className="h-5 w-5" />
               </button>
             </div>
+          ) : thinkingDetail != null ? (
+            <ThinkingPanel
+              text={thinkingDetail}
+              onClose={() => {
+                closeThinkingPanel();
+                if (!showAction && !workspaceOpenRequested) {
+                  setIsRightCollapsed(true);
+                }
+              }}
+            />
+          ) : toolDiffView ? (
+            <ToolDiffPanel
+              title={toolDiffView.title}
+              path={toolDiffView.path}
+              diffCode={toolDiffView.diffCode}
+              output={toolDiffView.output}
+              status={toolDiffView.status}
+              onClose={() => {
+                closeToolDiffPanel();
+                if (!showAction && !workspaceOpenRequested) {
+                  setIsRightCollapsed(true);
+                }
+              }}
+            />
+          ) : agentDetail ? (
+            <AgentDetailPanel
+              tool={agentDetail.tool}
+              chat={agentDetail.chat}
+              changeActiveChat={changeTask}
+              changePlan={changePlan}
+              onOpenToolDiff={openToolDiffPanel}
+              onOpenAgent={openAgentPanel}
+              onClose={() => {
+                closeAgentPanel();
+                if (!showAction && !workspaceOpenRequested) {
+                  setIsRightCollapsed(true);
+                }
+              }}
+            />
           ) : (
-            // 展开状态 - 工作空间
             <ActionView
               activeTask={activeTask}
               streamTask={workspaceStreamTask}

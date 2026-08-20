@@ -1,15 +1,20 @@
 import { FC, memo, useEffect, useMemo, useState } from "react";
 import {
-  ChevronDownIcon,
-  ClipboardListIcon,
+  ChevronUpIcon,
   LoaderCircleIcon,
+  MinusIcon,
 } from "lucide-react";
 import { message } from "antd";
-import { dispatchPlanApprovalResume, planApprovalApi } from "@/services/planApproval";
+import {
+  dispatchPlanApprovalResume,
+  planApprovalApi,
+} from "@/services/planApproval";
+import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import {
   buildComposerPlanModel,
   type ComposerPlanModel,
 } from "./planComposerModel";
+import { cn } from "@/lib/utils";
 
 type PlanComposerBarProps = {
   chat?: CHAT.ChatItem;
@@ -20,6 +25,7 @@ type PlanComposerBarProps = {
 
 /**
  * 依附在输入框上方的计划条（Plan Mode / ExitPlanMode / PlanSolve stages）。
+ * plan_approval 源对齐 Kimi ApprovalCard plan_review 视觉。
  */
 const PlanComposerBar: FC<PlanComposerBarProps> = memo(
   ({ chat, taskList, structuredPlan, loading }) => {
@@ -36,209 +42,278 @@ const PlanComposerBar: FC<PlanComposerBarProps> = memo(
   }
 );
 
-const PlanComposerBarInner: FC<{ model: ComposerPlanModel; loading?: boolean }> = memo(
-  ({ model, loading }) => {
-    const [open, setOpen] = useState(true);
-    const [feedback, setFeedback] = useState("");
-    const [editedPlan, setEditedPlan] = useState(model.planContent);
-    const [submitting, setSubmitting] = useState(false);
-    const [localStatus, setLocalStatus] = useState(model.status);
+const PlanComposerBarInner: FC<{
+  model: ComposerPlanModel;
+  loading?: boolean;
+}> = memo(({ model, loading }) => {
+  const [minimized, setMinimized] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [editedPlan, setEditedPlan] = useState(model.planContent);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [localStatus, setLocalStatus] = useState(model.status);
 
-    useEffect(() => {
-      setEditedPlan(model.planContent);
-      setLocalStatus(model.status);
-      setFeedback("");
-      // 有新计划正文时默认展开
-      if (model.planContent.trim() && model.source === "plan_approval") {
-        setOpen(true);
-      }
-    }, [model.approvalId, model.planContent, model.source, model.status]);
+  useEffect(() => {
+    setEditedPlan(model.planContent);
+    setLocalStatus(model.status);
+    setFeedback("");
+    setFeedbackOpen(false);
+    if (model.planContent.trim() && model.source === "plan_approval") {
+      setMinimized(false);
+    }
+  }, [model.approvalId, model.planContent, model.source, model.status]);
 
-    const status = localStatus || model.status || "pending";
-    const isDecided = status === "approved" || status === "rejected";
-    const canApprove =
-      model.source === "plan_approval" &&
-      Boolean(model.approvalId) &&
-      status === "pending" &&
-      Boolean((editedPlan || model.planContent).trim());
-    const showActions =
-      model.source === "plan_approval" &&
-      status === "pending" &&
-      Boolean(model.approvalId) &&
-      !isDecided;
+  const status = localStatus || model.status || "pending";
+  const isDecided = status === "approved" || status === "rejected";
+  const canApprove =
+    model.source === "plan_approval" &&
+    Boolean(model.approvalId) &&
+    status === "pending" &&
+    Boolean((editedPlan || model.planContent).trim());
+  const showActions =
+    model.source === "plan_approval" &&
+    status === "pending" &&
+    Boolean(model.approvalId) &&
+    !isDecided;
+  const isApprovalSkin = model.source === "plan_approval";
 
-    const statusLabel =
-      status === "approved"
-        ? "已批准 · 只读"
-        : status === "rejected"
-          ? "已拒绝 · 只读"
-          : status === "planning"
-            ? "规划中"
-            : model.source === "plan_approval"
-              ? "待批准"
-              : "进行中";
+  const title =
+    status === "approved"
+      ? "计划已批准"
+      : status === "rejected"
+        ? "计划已拒绝"
+        : isApprovalSkin
+          ? "计划审批"
+          : model.title;
 
-    const approve = async () => {
-      if (!model.approvalId || submitting || !canApprove) {
+  const approve = async () => {
+    if (!model.approvalId || submitting || !canApprove) return;
+    setSubmitting(true);
+    setPendingAction("approvePlan");
+    try {
+      const res = await planApprovalApi.approve({
+        approvalId: model.approvalId,
+        editedPlanContent:
+          editedPlan !== model.planContent ? editedPlan : undefined,
+        feedback: feedback.trim() || undefined,
+      });
+      if (res && res.accepted === false) {
+        message.warning(String(res.message || "批准失败"));
         return;
       }
-      setSubmitting(true);
-      try {
-        const res = await planApprovalApi.approve({
+      setLocalStatus("approved");
+      const resumeRequestId = String(res?.resumeRequestId || "");
+      if (resumeRequestId) {
+        dispatchPlanApprovalResume({
+          resumeRequestId,
+          sessionId: String(res?.sessionId || ""),
           approvalId: model.approvalId,
-          editedPlanContent:
-            editedPlan !== model.planContent ? editedPlan : undefined,
-          feedback: feedback.trim() || undefined,
         });
-        if (res && res.accepted === false) {
-          message.warning(String(res.message || "批准失败"));
-          return;
-        }
-        setLocalStatus("approved");
-        const resumeRequestId = String(res?.resumeRequestId || "");
-        if (resumeRequestId) {
-          dispatchPlanApprovalResume({
-            resumeRequestId,
-            sessionId: String(res?.sessionId || ""),
-            approvalId: model.approvalId,
-          });
-          message.success("计划已批准，正在继续执行");
-        } else {
-          message.success("计划已批准");
-        }
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : "批准失败");
-      } finally {
-        setSubmitting(false);
+        message.success("计划已批准，正在继续执行");
+      } else {
+        message.success("计划已批准");
       }
-    };
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "批准失败");
+    } finally {
+      setSubmitting(false);
+      setPendingAction(null);
+    }
+  };
 
-    const reject = async () => {
-      if (!model.approvalId || submitting || status !== "pending") {
+  const reject = async (label: string, fb?: string) => {
+    if (!model.approvalId || submitting || status !== "pending") return;
+    setSubmitting(true);
+    setPendingAction(label);
+    try {
+      const res = await planApprovalApi.reject({
+        approvalId: model.approvalId,
+        feedback: (fb ?? feedback).trim() || label,
+      });
+      if (res && res.accepted === false) {
+        message.warning(String(res.message || "拒绝失败"));
         return;
       }
-      setSubmitting(true);
-      try {
-        const res = await planApprovalApi.reject({
+      setLocalStatus("rejected");
+      setFeedbackOpen(false);
+      const resumeRequestId = String(res?.resumeRequestId || "");
+      if (resumeRequestId) {
+        dispatchPlanApprovalResume({
+          resumeRequestId,
+          sessionId: String(res?.sessionId || ""),
           approvalId: model.approvalId,
-          feedback: feedback.trim() || "需要修订计划",
         });
-        if (res && res.accepted === false) {
-          message.warning(String(res.message || "拒绝失败"));
-          return;
-        }
-        setLocalStatus("rejected");
-        const resumeRequestId = String(res?.resumeRequestId || "");
-        if (resumeRequestId) {
-          dispatchPlanApprovalResume({
-            resumeRequestId,
-            sessionId: String(res?.sessionId || ""),
-            approvalId: model.approvalId,
-          });
-          message.success("已拒绝，正在继续修订");
-        } else {
-          message.success("已拒绝");
-        }
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : "拒绝失败");
-      } finally {
-        setSubmitting(false);
+        message.success("已拒绝，正在继续修订");
+      } else {
+        message.success("已拒绝");
       }
-    };
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "拒绝失败");
+    } finally {
+      setSubmitting(false);
+      setPendingAction(null);
+    }
+  };
 
+  if (isApprovalSkin) {
     return (
-      <div className="mb-2 overflow-hidden rounded-2xl border border-[var(--chat-border)]/45 bg-[var(--chat-surface)]/95 shadow-[var(--shadow-sm)]">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[var(--chat-surface-soft)]/60"
-        >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-[var(--chat-accent)]/12 text-[var(--chat-accent)]">
-            {loading && status === "planning" ? (
-              <LoaderCircleIcon className="size-4 animate-spin" />
+      <div
+        className={cn(
+          "kimi-ui-card kimi-appr mb-2",
+          minimized && "is-minimized"
+        )}
+      >
+        <div className="kimi-ui-card__head">
+          <span className="kimi-appr-ic">!</span>
+          <span className="kimi-appr-title">{title}</span>
+          {!minimized && showActions ? (
+            <span className="kimi-appr-badge">需要确认</span>
+          ) : null}
+          {isDecided ? (
+            <span className="kimi-appr-badge">
+              {status === "rejected" ? "只读 · 已拒绝" : "只读 · 已批准"}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="kimi-appr-min"
+            aria-label={minimized ? "展开" : "收起"}
+            onClick={() => setMinimized((v) => !v)}
+          >
+            {minimized ? (
+              <ChevronUpIcon className="size-4" />
             ) : (
-              <ClipboardListIcon className="size-4" />
+              <MinusIcon className="size-4" />
             )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-[13px] font-semibold text-[var(--chat-text)]">
-                {model.title}
-              </span>
-              <span className="shrink-0 rounded-full bg-[var(--chat-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--chat-text-soft)]">
-                {statusLabel}
-              </span>
-            </div>
-            <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--chat-text-soft)]">
-              {model.planContent.replace(/\s+/g, " ").slice(0, 80) || "暂无正文"}
-            </div>
-          </div>
-          <ChevronDownIcon
-            className={[
-              "size-4 shrink-0 text-[var(--chat-text-soft)] transition-transform",
-              open ? "rotate-180" : "",
-            ].join(" ")}
-          />
-        </button>
+          </button>
+        </div>
 
-        {open ? (
-          <div className="border-t border-[var(--chat-border)]/30 px-3 pb-3 pt-2">
-            {showActions ? (
-              <textarea
-                value={editedPlan}
-                onChange={(event) => setEditedPlan(event.target.value)}
-                disabled={submitting}
-                rows={8}
-                className="mb-2 max-h-[220px] min-h-[120px] w-full resize-y rounded-xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface-soft)]/50 px-3 py-2 font-sans text-[12px] leading-5 text-[var(--chat-text)] outline-none focus:border-[var(--chat-accent)]/40"
-                placeholder="计划 Markdown 正文"
-              />
-            ) : (
-              <pre className="mb-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-[var(--chat-border)]/30 bg-[var(--chat-surface-soft)]/40 px-3 py-2 font-sans text-[12px] leading-5 text-[var(--chat-text)]">
-                {editedPlan || model.planContent || "(空计划)"}
-              </pre>
-            )}
-
-            {showActions ? (
-              <>
-                <input
-                  type="text"
-                  disabled={submitting}
-                  placeholder="可选：拒绝反馈或备注"
-                  value={feedback}
-                  onChange={(event) => setFeedback(event.target.value)}
-                  className="mb-2 w-full rounded-xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface)] px-3 py-2 text-[12px] text-[var(--chat-text)] outline-none focus:border-[var(--chat-accent)]/40"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
+        {!minimized ? (
+          <>
+            <div className="kimi-ui-card__body">
+              <div className="kimi-appr-plan">
+                {showActions ? (
+                  <textarea
+                    value={editedPlan}
+                    onChange={(event) => setEditedPlan(event.target.value)}
                     disabled={submitting}
-                    onClick={() => void reject()}
-                    className="rounded-xl border border-[var(--chat-border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--chat-text)] transition-colors hover:bg-[var(--chat-interactive-hover)] disabled:opacity-60"
-                  >
-                    {submitting ? "处理中…" : "拒绝并修订"}
-                  </button>
+                    rows={8}
+                    placeholder="计划 Markdown 正文"
+                  />
+                ) : (
+                  <MarkdownRenderer
+                    markDownContent={editedPlan || model.planContent || "(空计划)"}
+                  />
+                )}
+              </div>
+
+              {feedbackOpen && showActions ? (
+                <div className="kimi-appr-feedback">
+                  <textarea
+                    value={feedback}
+                    onChange={(event) => setFeedback(event.target.value)}
+                    rows={2}
+                    placeholder="说明需要如何修订计划…"
+                    disabled={submitting}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void reject("Revise", feedback);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setFeedbackOpen(false);
+                        setFeedback("");
+                      }
+                    }}
+                  />
+                  <div className="kimi-appr-hint">Enter 提交修订 · Esc 取消</div>
+                </div>
+              ) : null}
+            </div>
+
+            {showActions ? (
+              <div className="kimi-ui-card__foot">
+                <div className="kimi-appr-actions">
                   <button
                     type="button"
+                    className="kimi-appr-btn is-primary"
                     disabled={submitting || !canApprove}
                     onClick={() => void approve()}
-                    className={[
-                      "rounded-xl px-3 py-1.5 text-[12px] font-medium transition-colors",
-                      canApprove && !submitting
-                        ? "bg-[var(--chat-accent)] text-white hover:opacity-90"
-                        : "cursor-not-allowed bg-[var(--chat-border)]/40 text-[var(--chat-text-soft)]",
-                    ].join(" ")}
                   >
-                    {submitting ? "处理中…" : "批准并开始实现"}
+                    {pendingAction === "approvePlan" ? (
+                      <LoaderCircleIcon className="size-3.5 animate-spin" />
+                    ) : null}
+                    批准计划
+                    <span className="kimi-appr-kbd">1</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="kimi-appr-btn"
+                    disabled={submitting}
+                    onClick={() => setFeedbackOpen(true)}
+                  >
+                    修订
+                    <span className="kimi-appr-kbd">2</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="kimi-appr-btn is-danger"
+                    disabled={submitting}
+                    onClick={() => void reject("Reject and Exit")}
+                  >
+                    {pendingAction === "Reject and Exit" ? (
+                      <LoaderCircleIcon className="size-3.5 animate-spin" />
+                    ) : null}
+                    拒绝并退出
+                    <span className="kimi-appr-kbd">3</span>
                   </button>
                 </div>
-              </>
+              </div>
             ) : null}
-          </div>
+          </>
         ) : null}
       </div>
     );
   }
-);
+
+  // structured_plan / plan_mode：轻量折叠条，不伪装审批卡
+  return (
+    <div className="kimi-ui-card mb-2">
+      <button
+        type="button"
+        onClick={() => setMinimized((v) => !v)}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+      >
+        <span className="kimi-appr-ic" style={{ color: "var(--color-accent)" }}>
+          {loading && status === "planning" ? (
+            <LoaderCircleIcon className="size-4 animate-spin" />
+          ) : (
+            "≡"
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text)]">
+          {model.title}
+        </span>
+        <span className="shrink-0 rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-text-muted)]">
+          {status === "planning" ? "规划中" : "进行中"}
+        </span>
+        {minimized ? (
+          <ChevronUpIcon className="size-4 text-[var(--color-text-muted)]" />
+        ) : (
+          <MinusIcon className="size-4 text-[var(--color-text-muted)]" />
+        )}
+      </button>
+      {!minimized ? (
+        <div className="kimi-ui-card__body border-t border-[var(--color-line)]">
+          <pre className="max-h-[200px] overflow-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-5 text-[var(--color-text)]">
+            {editedPlan || model.planContent || "(空计划)"}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
+});
 
 PlanComposerBar.displayName = "PlanComposerBar";
 PlanComposerBarInner.displayName = "PlanComposerBarInner";

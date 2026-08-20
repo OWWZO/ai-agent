@@ -95,6 +95,8 @@ type UseConversationStreamResult = {
   /** 向进行中的 run 注入用户指导（不开新 SSE） */
   injectActiveRun: (text: string) => Promise<boolean>;
   regenerateLastMessage: () => void;
+  /** 撤销末轮并返回 user query；busy 时返回 null */
+  undoLastUserTurn: () => string | null;
 };
 
 const CONNECTION_LOST_HINT = "连接暂时断开，任务仍在后台执行";
@@ -2175,6 +2177,26 @@ export function useConversationStream(
     });
   });
 
+  /** Kimi 式 Undo：删除末轮对话，返回 user query 供回填输入框 */
+  const undoLastUserTurn = useMemoizedFn((): string | null => {
+    if (loading) {
+      return null;
+    }
+    const activeConversation = conversationRef.current;
+    const chatList = activeConversation.chatList || [];
+    const last = chatList[chatList.length - 1];
+    if (!last?.query) {
+      return null;
+    }
+    const query = last.query;
+    onConversationChange(activeConversation.id, {
+      ...activeConversation,
+      chatList: chatList.slice(0, -1),
+      updatedAt: Date.now(),
+    });
+    return query;
+  });
+
   const stopActiveRun = useMemoizedFn(async () => {
     const requestId = activeRequestIdRef.current;
     const activeConversation = conversationRef.current;
@@ -2265,5 +2287,6 @@ export function useConversationStream(
     stopActiveRun,
     injectActiveRun,
     regenerateLastMessage,
+    undoLastUserTurn,
   };
 }

@@ -48,10 +48,9 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
 /**
  * 只有真正“值得抢焦点”的产物才自动打开右侧工作区。
  * tool_call / 纯 tool_result 只留在时间线，避免每一步工具都把双栏拉开。
- * ask_user_question 交互卡片改到右侧工作区，需自动展开。
+ * ask_user_question / plan_approval 交互在底部 Dock，不抢右侧工作区。
  */
 const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
-  "ask_user_question",
   "file",
   "html",
   "markdown",

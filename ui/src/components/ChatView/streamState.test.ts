@@ -34,13 +34,13 @@ describe("streamState presence & attention", () => {
     ).toBe(true);
   });
 
-  it("ask_user_question 会打开右侧工作区", () => {
+  it("ask_user_question 不抢右侧工作区（交互在底部 Dock）", () => {
     expect(
       isWorkspaceAttentionTask({
         messageType: "ask_user_question",
         resultMap: { messageType: "ask_user_question", status: "pending" },
       } as CHAT.Task)
-    ).toBe(true);
+    ).toBe(false);
     expect(
       resolveActionPanelVisibility({
         taskList: [
@@ -50,7 +50,7 @@ describe("streamState presence & attention", () => {
           } as CHAT.Task,
         ],
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("tool_call 不作为自动工作区注意力目标", () => {
@@ -152,7 +152,7 @@ describe("streamState presence & attention", () => {
     ).toBe(true);
   });
 
-  it("ui_patch 事件会刷新工作区以反映已合并 tree", () => {
+  it("ui_patch 不抢工作区（GenUI 在对话主区展示）", () => {
     expect(
       shouldRefreshWorkspaceTask({
         messageType: "task",
@@ -166,7 +166,7 @@ describe("streamState presence & attention", () => {
           patches: [{ op: "replace", path: "/root/props/title", value: "X" }],
         },
       } as unknown as MESSAGE.EventData)
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("发送后首包前应为 queued/thinking 存在感", () => {
