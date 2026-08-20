@@ -14,7 +14,6 @@ import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiCompatibleSseChatStreamClient;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -49,7 +48,6 @@ public class ReactorRuntimeAutoConfiguration {
                                                          DomainMessageConverter messageConverter,
                                                          LlmChatResponseMapper responseMapper,
                                                          StreamResponseHandler streamResponseHandler,
-                                                         ObjectProvider<OpenAiCompatibleSseChatStreamClient> sseChatStreamClientProvider,
                                                          ObjectProvider<LlmModelCatalog> modelCatalogProvider) {
         return ReactorLlmDependencies.builder()
                 .chatModelResolver(chatModelResolver)
@@ -57,7 +55,6 @@ public class ReactorRuntimeAutoConfiguration {
                 .messageConverter(messageConverter)
                 .responseMapper(responseMapper)
                 .streamResponseHandler(streamResponseHandler)
-                .openAiCompatibleSseChatStreamClient(sseChatStreamClientProvider.getIfAvailable())
                 .modelCatalog(modelCatalogProvider.getIfAvailable())
                 .build();
     }

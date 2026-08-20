@@ -12,8 +12,6 @@ import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.LlmToolCallbackProvider;
 import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiCompatibleChatCompletionRequestFactory;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiCompatibleSseChatStreamClient;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpRegistry;
 import org.wwz.ai.domain.agent.runtime.tool.mcp.runtime.McpToolExecutor;
@@ -73,15 +71,12 @@ public final class ReactorRuntimeTestSupport {
         LlmChatResponseMapper responseMapper = new LlmChatResponseMapper();
         ReflectionTestUtils.setField(streamResponseHandler, "reactorConfig", reactorConfig);
         ReflectionTestUtils.setField(streamResponseHandler, "chatResponseMapper", responseMapper);
-        OpenAiCompatibleSseChatStreamClient sseChatStreamClient =
-                new OpenAiCompatibleSseChatStreamClient(new OpenAiCompatibleChatCompletionRequestFactory());
         ReactorLlmDependencies llmDependencies = ReactorLlmDependencies.builder()
                 .chatModelResolver(new LlmChatModelResolver())
                 .chatOptionsFactory(chatOptionsFactory)
                 .messageConverter(messageConverter)
                 .responseMapper(responseMapper)
                 .streamResponseHandler(streamResponseHandler)
-                .openAiCompatibleSseChatStreamClient(sseChatStreamClient)
                 .build();
         RemoteHttpPort remoteHttpPort = overrideRemoteHttpPort != null
                 ? overrideRemoteHttpPort

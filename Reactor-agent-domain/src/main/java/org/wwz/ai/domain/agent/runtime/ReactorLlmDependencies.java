@@ -7,7 +7,6 @@ import org.wwz.ai.domain.agent.runtime.llm.LlmChatModelResolver;
 import org.wwz.ai.domain.agent.runtime.llm.LlmChatResponseMapper;
 import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 import org.wwz.ai.domain.agent.runtime.llm.OpenAiChatOptionsFactory;
-import org.wwz.ai.domain.agent.runtime.llm.OpenAiCompatibleSseChatStreamClient;
 import org.wwz.ai.domain.agent.runtime.llm.StreamResponseHandler;
 
 /**
@@ -27,12 +26,6 @@ public class ReactorLlmDependencies {
     LlmChatResponseMapper responseMapper;
 
     StreamResponseHandler streamResponseHandler;
-
-    /**
-     * 可选：旁路 Spring AI tool-call window 合并的 OpenAI 兼容 SSE 直解客户端。
-     * 为空时 function_call 流式回退 chatModel.stream()。
-     */
-    OpenAiCompatibleSseChatStreamClient openAiCompatibleSseChatStreamClient;
 
     /** 可选：DB 模型目录；空则 resolveLlmSettings 仅走 yml。 */
     LlmModelCatalog modelCatalog;
