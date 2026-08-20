@@ -155,11 +155,19 @@ public class PlanApprovalResumeApplicationService {
     public static List<Message> appendDecisionObservation(List<Message> working,
                                                           PlanApprovalRecord record) {
         List<Message> messages = working == null ? new ArrayList<>() : new ArrayList<>(working);
-        if (record == null || StringUtils.isBlank(record.getToolCallId())) {
+        if (record == null) {
+            return messages;
+        }
+        String toolCallId = PlanApprovalObservationSupport.resolveExitPlanToolCallId(
+                messages, record.getToolCallId());
+        if (StringUtils.isBlank(toolCallId)) {
             return messages;
         }
         String observation = PlanApprovalObservationSupport.buildDecisionObservation(record);
-        messages.add(Message.toolMessage(observation, record.getToolCallId(), null));
+        messages.removeIf(message -> message != null
+                && message.getRole() == org.wwz.ai.domain.agent.runtime.enums.RoleType.TOOL
+                && toolCallId.equals(message.getToolCallId()));
+        messages.add(Message.toolMessage(observation, toolCallId, null));
         return messages;
     }
 }

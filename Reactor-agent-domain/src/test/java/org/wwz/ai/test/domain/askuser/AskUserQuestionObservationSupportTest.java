@@ -5,6 +5,9 @@ import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.askuser.AskUserQuestionObservationSupport;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionRecord;
 import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionStatuses;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.tool.common.planmode.AskUserQuestionTool;
 
 import java.util.List;
 import java.util.Map;
@@ -37,5 +40,33 @@ public class AskUserQuestionObservationSupportTest {
         Assert.assertEquals("ask_user_question", payload.get("messageType"));
         Assert.assertEquals("pending", payload.get("status"));
         Assert.assertEquals("uq_1", payload.get("questionId"));
+    }
+
+    @Test
+    public void resolveAskUserToolCallIdPrefersPreferredThenUnpaired() {
+        Assert.assertEquals("fc_pref", AskUserQuestionObservationSupport.resolveAskUserToolCallId(
+                List.of(), "fc_pref"));
+
+        Message assistant = Message.fromToolCalls("ask", List.of(
+                ToolCall.builder()
+                        .id("fc_ask")
+                        .type("function")
+                        .function(ToolCall.Function.builder()
+                                .name(AskUserQuestionTool.NAME)
+                                .arguments("{\"questions\":[]}")
+                                .build())
+                        .build()
+        ));
+        Assert.assertEquals("fc_ask", AskUserQuestionObservationSupport.resolveAskUserToolCallId(
+                List.of(assistant), null));
+
+        Message waiting = Message.toolMessage(
+                AskUserQuestionObservationSupport.buildWaitingObservation(List.of(), "uq_1"),
+                "fc_ask",
+                null);
+        Assert.assertEquals("fc_ask", AskUserQuestionObservationSupport.resolveAskUserToolCallId(
+                List.of(assistant, waiting), null));
+        Assert.assertTrue(AskUserQuestionObservationSupport.hasToolResult(
+                List.of(assistant, waiting), "fc_ask"));
     }
 }

@@ -43,9 +43,21 @@ public class PlanApprovalYieldService {
         }
         String approvalId = "pa_" + UUID.randomUUID().toString().replace("-", "");
         Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
+        String toolCallId = PlanApprovalObservationSupport.resolveExitPlanToolCallId(
+                executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
+                signal.getToolCallId());
+        if (StringUtils.isNotBlank(toolCallId)
+                && executor != null
+                && executor.getMemory() != null
+                && !PlanApprovalObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
+            executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
+                    PlanApprovalObservationSupport.buildWaitingObservation(signal.getPlanContent(), approvalId),
+                    toolCallId,
+                    null));
+        }
         Long toolInvocationId = null;
-        if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(signal.getToolCallId())) {
-            toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(signal.getToolCallId());
+        if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(toolCallId)) {
+            toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
         }
         PlanApprovalResumeContext resumeContext = PlanApprovalResumeContext.from(agentContext, request, entryAgent);
         String visitorId = request == null ? null : request.getVisitorId();
@@ -57,7 +69,7 @@ public class PlanApprovalYieldService {
                 .sourceRunId(runId)
                 .sourceRequestId(agentContext.getRequestId())
                 .toolInvocationId(toolInvocationId)
-                .toolCallId(signal.getToolCallId())
+                .toolCallId(toolCallId)
                 .planContent(signal.getPlanContent())
                 .planFilePath(signal.getPlanFilePath())
                 .status(PlanApprovalStatuses.PENDING)
@@ -81,7 +93,7 @@ public class PlanApprovalYieldService {
                     .runId(runId)
                     .requestId(agentContext.getRequestId())
                     .sessionId(agentContext.getSessionId())
-                    .toolCallId(signal.getToolCallId())
+                    .toolCallId(toolCallId)
                     .toolName(TaskToolNames.EXIT_PLAN_MODE)
                     .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
                     .finishedAt(LocalDateTime.now())
@@ -97,7 +109,7 @@ public class PlanApprovalYieldService {
 
         scheduleCardAfterCommit(agentContext, record);
         log.info("{} yielded PlanApproval approvalId={} toolCallId={}",
-                agentContext.getRequestId(), approvalId, signal.getToolCallId());
+                agentContext.getRequestId(), approvalId, toolCallId);
         return record;
     }
 

@@ -79,6 +79,26 @@ public class AgentSessionPrinter implements Printer {
                 messageId = StringUtil.getUUID();
             }
 
+            if ("tool_call_delta".equals(messageType)) {
+                // [tool-stream-diag] 确认 delta 已越过 domain printer → case SSE 边界
+                String argsHint = "";
+                if (message instanceof Map<?, ?> map) {
+                    Object raw = map.get("argumentsRaw");
+                    if (raw == null) {
+                        raw = map.get("argumentsText");
+                    }
+                    if (raw != null) {
+                        argsHint = " argsLen=" + String.valueOf(raw).length();
+                    }
+                    Object tn = map.get("toolName");
+                    Object tcid = map.get("toolCallId");
+                    log.info("{} [tool-stream-diag] AgentSessionPrinter tool_call_delta messageId={} toolName={} toolCallId={}{}",
+                            request.getRequestId(), messageId, tn, tcid, argsHint);
+                } else {
+                    log.info("{} [tool-stream-diag] AgentSessionPrinter tool_call_delta messageId={} msgClass={}",
+                            request.getRequestId(), messageId, message == null ? null : message.getClass().getName());
+                }
+            }
             log.info("{} stream send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
 
             boolean finish = "result".equals(messageType);
@@ -138,6 +158,7 @@ public class AgentSessionPrinter implements Printer {
                     response.setToolResult((AgentResponse.ToolResult) message);
                     break;
                 case "tool_call":
+                case "tool_call_delta":
                 case "ask_user_question":
                 case "plan_approval":
                 case "plan_mode_entered":

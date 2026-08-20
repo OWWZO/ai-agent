@@ -43,9 +43,22 @@ public class UserQuestionYieldService {
         }
         String questionId = "uq_" + UUID.randomUUID().toString().replace("-", "");
         Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
+        // yield 时 memory 只有 assistant.tool_calls、尚无 tool result；先补 waiting 占位，避免网关 400。
+        String toolCallId = AskUserQuestionObservationSupport.resolveAskUserToolCallId(
+                executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
+                signal.getToolCallId());
+        if (StringUtils.isNotBlank(toolCallId)
+                && executor != null
+                && executor.getMemory() != null
+                && !AskUserQuestionObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
+            executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
+                    AskUserQuestionObservationSupport.buildWaitingObservation(signal.getQuestions(), questionId),
+                    toolCallId,
+                    null));
+        }
         Long toolInvocationId = null;
-        if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(signal.getToolCallId())) {
-            toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(signal.getToolCallId());
+        if (agentContext.getAgentRunState() != null && StringUtils.isNotBlank(toolCallId)) {
+            toolInvocationId = agentContext.getAgentRunState().resolveToolInvocationId(toolCallId);
         }
         UserQuestionResumeContext resumeContext = UserQuestionResumeContext.from(agentContext, request, entryAgent);
         String visitorId = request == null ? null : request.getVisitorId();
@@ -57,7 +70,7 @@ public class UserQuestionYieldService {
                 .sourceRunId(runId)
                 .sourceRequestId(agentContext.getRequestId())
                 .toolInvocationId(toolInvocationId)
-                .toolCallId(signal.getToolCallId())
+                .toolCallId(toolCallId)
                 .questions(signal.getQuestions())
                 .status(UserQuestionStatuses.PENDING)
                 .expiresAt(LocalDateTime.now().plusMinutes(DEFAULT_TIMEOUT_MINUTES))
@@ -80,7 +93,7 @@ public class UserQuestionYieldService {
                     .runId(runId)
                     .requestId(agentContext.getRequestId())
                     .sessionId(agentContext.getSessionId())
-                    .toolCallId(signal.getToolCallId())
+                    .toolCallId(toolCallId)
                     .toolName(AskUserQuestionTool.NAME)
                     .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
                     .finishedAt(LocalDateTime.now())
@@ -96,7 +109,7 @@ public class UserQuestionYieldService {
 
         scheduleAskCardAfterCommit(agentContext, record);
         log.info("{} yielded AskUserQuestion questionId={} toolCallId={}",
-                agentContext.getRequestId(), questionId, signal.getToolCallId());
+                agentContext.getRequestId(), questionId, toolCallId);
         return record;
     }
 

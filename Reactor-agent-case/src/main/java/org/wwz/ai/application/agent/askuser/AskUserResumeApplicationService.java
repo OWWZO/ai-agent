@@ -156,17 +156,25 @@ public class AskUserResumeApplicationService {
     }
 
     /**
-     * 在 hydrate 后的 working memory 末尾追加 tool observation。
+     * 用真实答案替换 waiting 占位（或补齐缺失的）tool observation，保证 function-call 成对。
      */
     public static List<Message> appendAnswerObservation(List<Message> working,
                                                         UserQuestionRecord record) {
         List<Message> messages = working == null ? new ArrayList<>() : new ArrayList<>(working);
-        if (record == null || StringUtils.isBlank(record.getToolCallId())) {
+        if (record == null) {
+            return messages;
+        }
+        String toolCallId = AskUserQuestionObservationSupport.resolveAskUserToolCallId(
+                messages, record.getToolCallId());
+        if (StringUtils.isBlank(toolCallId)) {
             return messages;
         }
         String observation = AskUserQuestionObservationSupport.buildAnswerObservation(
                 record.getQuestions(), record.getAnswers(), record.getQuestionId());
-        messages.add(Message.toolMessage(observation, record.getToolCallId(), null));
+        messages.removeIf(message -> message != null
+                && message.getRole() == org.wwz.ai.domain.agent.runtime.enums.RoleType.TOOL
+                && toolCallId.equals(message.getToolCallId()));
+        messages.add(Message.toolMessage(observation, toolCallId, null));
         return messages;
     }
 }
