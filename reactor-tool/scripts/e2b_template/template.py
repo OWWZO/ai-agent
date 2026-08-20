@@ -57,5 +57,5 @@ template = (
         no_install_recommends=True,
     )
     # Download browser binaries into the image (not at runtime).
-    .run_cmd("python -m playwright install chromium")
+    .run_cmd("python -m playwright install chromium", user="root")
 )

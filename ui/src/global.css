@@ -1,4 +1,5 @@
 @import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/inter";
 @import "@fontsource/instrument-serif/400.css";
 @import "@fontsource/instrument-serif/400-italic.css";
 @import "@fontsource/jetbrains-mono/400.css";
@@ -58,11 +59,68 @@
   --chat-border: oklch(0.88 0.008 85);
   --chat-border-strong: oklch(0.8 0.01 80);
   --chat-divider: oklch(0.9 0.006 85);
-  --chat-accent: oklch(0.56 0.14 258);
-  --chat-accent-soft: oklch(0.94 0.03 258);
-  --chat-accent-muted: oklch(0.64 0.08 258);
   --chat-interactive-hover: #f5f5f7;
   --chat-interactive-active: #eeeeef;
+
+  /* Kimi design-tokens v2 (additive; tool cards / markdown skin consume these) */
+  --accent-primary: #1783ff;
+  --color-bg: #ffffff;
+  --color-surface: #fafbfc;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f3f5f8;
+  --color-text: rgba(0, 0, 0, 0.9);
+  --color-text-muted: #6b7280;
+  --color-text-faint: #9aa3af;
+  --color-line: #e7eaee;
+  --color-line-strong: #d4d9e0;
+  --color-accent: #1783ff;
+  --color-accent-hover: #0f6fe0;
+  --color-accent-soft: #e8f3ff;
+  --color-accent-bd: #cfe6ff;
+  /* Chat accent → kimi v2（单一真相源） */
+  --chat-accent: var(--color-accent);
+  --chat-accent-soft: var(--color-accent-soft);
+  --chat-accent-muted: var(--color-accent-hover);
+  --color-success: #0e7a38;
+  --color-success-soft: #e7f6ee;
+  --color-danger: #c0392b;
+  --color-danger-soft: #fbeaea;
+  --color-warning: #a9610a;
+  --color-warning-soft: #fbf1e0;
+  --color-warning-bd: #f0d9b8;
+  --color-text-on-accent: #ffffff;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --p-ic-md: 18px;
+  --p-focus-ring: 0 0 0 3px var(--color-accent-soft);
+  --p-table-cell-max: 700px;
+  --kimi-radius-sm: 6px;
+  --kimi-radius-md: 8px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --content-font-size: 15px;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+  --weight-medium: 500;
+  --weight-semibold: 700;
+  --font-ui:
+    "Inter Variable",
+    "Inter",
+    "Instrument Sans Variable",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    system-ui,
+    sans-serif;
+  --duration-fast: 120ms;
+  --duration-base: 160ms;
+  --duration-slow: 260ms;
 
   /* Status Colors - semantic, theme-aware */
   --status-success-bg: oklch(0.95 0.03 155);
@@ -131,9 +189,9 @@
   /* 全局画布：保留 Manus 灰底 */
   --page-gradient: #ffffff;
 
-  /* Motion tokens */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Motion tokens (Kimi ease-out) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-press: 150ms;
   --duration-tooltip: 150ms;
@@ -177,11 +235,34 @@
   --chat-border: oklch(0.2 0.01 80 / 0.1);
   --chat-border-strong: oklch(0.25 0.015 80 / 0.15);
   --chat-divider: oklch(0.27 0.012 80 / 0.35);
-  --chat-accent: oklch(0.7 0.12 258);
-  --chat-accent-soft: oklch(0.24 0.045 258);
-  --chat-accent-muted: oklch(0.62 0.08 258);
   --chat-interactive-hover: oklch(0.22 0.014 75);
   --chat-interactive-active: oklch(0.27 0.016 75);
+
+  --accent-primary: #58a6ff;
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-raised: #1c2128;
+  --color-surface-sunken: #0d1117;
+  --color-text: #c9cdd4;
+  --color-text-muted: #9aa0a8;
+  --color-text-faint: #6b7280;
+  --color-line: #2d333b;
+  --color-line-strong: #3d444d;
+  --color-accent: #58a6ff;
+  --color-accent-hover: #79b8ff;
+  --color-accent-soft: rgba(88, 166, 255, 0.14);
+  --color-accent-bd: #1f4f7a;
+  --chat-accent: var(--color-accent);
+  --chat-accent-soft: var(--color-accent-soft);
+  --chat-accent-muted: var(--color-accent-hover);
+  --color-success: #3fb950;
+  --color-success-soft: rgba(63, 185, 80, 0.15);
+  --color-danger: #f85149;
+  --color-danger-soft: rgba(248, 81, 73, 0.15);
+  --color-warning: #d29922;
+  --color-warning-soft: rgba(210, 153, 34, 0.14);
+  --color-warning-bd: rgba(210, 153, 34, 0.28);
+  --color-text-on-accent: #0d1117;
 
   /* Status Colors - dark mode */
   --status-success-bg: oklch(0.2 0.06 155);
@@ -409,88 +490,310 @@ ol {
   -webkit-mask-image: none;
 }
 
-/* 对话区排版：收敛为产品工具气质，避免正文像营销页或文档页。 */
+/* 对话区排版：Kimi Markdown skin（对照 kimi-web Markdown.vue） */
 .chat-dialogue {
-  color: var(--chat-text);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.75;
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--content-font-size);
+  line-height: 1.6;
   letter-spacing: 0;
 }
 
-.chat-dialogue .chat-markdown {
-  color: var(--chat-text);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.78;
+/* 隔离 github-markdown.css：终答路径以 kimi token 为准 */
+.markdown-body.kimi-md,
+.kimi-md,
+.chat-dialogue .chat-markdown,
+.chat-dialogue .kimi-md,
+.ai-chat-markdown.kimi-md {
+  font: 400 var(--content-font-size) / 1.6 var(--font-ui);
+  color: var(--color-text);
+  word-break: break-word;
   max-width: 74ch;
+  background: transparent;
+  line-height: 1.6;
 }
 
+.markdown-body.kimi-md > :first-child,
+.kimi-md > :first-child {
+  margin-top: 0;
+}
+.markdown-body.kimi-md > :last-child,
+.kimi-md > :last-child {
+  margin-bottom: 0;
+}
+
+/* 终答正文略加重，贴近 kimi-web .a-msg .msg */
+.conclusion-markdown.kimi-md {
+  font-weight: 500;
+}
+
+.kimi-md h1,
+.kimi-md h2,
+.kimi-md h3,
+.kimi-md h4,
 .chat-dialogue .chat-markdown h1,
 .chat-dialogue .chat-markdown h2,
 .chat-dialogue .chat-markdown h3,
 .chat-dialogue .chat-markdown h4 {
-  margin-top: 1.35em;
-  margin-bottom: 0.55em;
-  color: var(--chat-text);
-  font-family: var(--font-sans);
-  font-weight: 650;
-  letter-spacing: 0;
-  line-height: 1.35;
+  color: var(--color-text);
+  font-optical-sizing: auto;
+  font-weight: 600;
+  margin: 0.85em 0 0.35em;
+  line-height: var(--leading-tight, 1.25);
   border-bottom: 0;
+  letter-spacing: 0;
+  font-family: var(--font-ui);
 }
 
-.chat-dialogue .chat-markdown h1 { font-size: 1.15rem; }
-.chat-dialogue .chat-markdown h2 { font-size: 1.08rem; }
-.chat-dialogue .chat-markdown h3 { font-size: 1rem; }
-.chat-dialogue .chat-markdown h4 { font-size: 0.95rem; }
-
-.chat-dialogue .chat-markdown p,
-.chat-dialogue .chat-markdown ul,
-.chat-dialogue .chat-markdown ol,
-.chat-dialogue .chat-markdown blockquote,
-.chat-dialogue .chat-markdown table {
-  margin-top: 0.65em;
-  margin-bottom: 0.65em;
+.kimi-md h1,
+.chat-dialogue .chat-markdown h1 {
+  font-size: max(var(--text-xl), calc(var(--content-font-size) + 3px));
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 4px;
+}
+.kimi-md h2,
+.chat-dialogue .chat-markdown h2 {
+  font-size: max(var(--text-lg), calc(var(--content-font-size) + 2px));
+}
+.kimi-md h3,
+.chat-dialogue .chat-markdown h3 {
+  font-size: max(var(--text-lg), calc(var(--content-font-size) + 1px));
+}
+.kimi-md h4,
+.chat-dialogue .chat-markdown h4 {
+  font-size: max(var(--text-base), calc(var(--content-font-size) + 1px));
+  color: var(--color-text-muted);
 }
 
+.kimi-md p,
+.chat-dialogue .chat-markdown p {
+  margin: 0.8rem 0;
+}
+
+.kimi-md ul,
+.kimi-md ol,
 .chat-dialogue .chat-markdown ul,
 .chat-dialogue .chat-markdown ol {
-  padding-left: 1.25em;
+  padding-left: 1.4em;
+  margin: 0.6em 0;
 }
 
-.chat-dialogue .chat-markdown li + li {
-  margin-top: 0.28em;
+.kimi-md li,
+.chat-dialogue .chat-markdown li {
+  margin: 0.3em 0;
 }
 
+.kimi-md strong,
+.chat-dialogue .chat-markdown strong {
+  color: color-mix(in srgb, var(--color-text) 86%, var(--color-text-muted));
+  font-weight: var(--weight-semibold);
+}
+
+.kimi-md a,
+.chat-dialogue .chat-markdown a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.kimi-md a:hover,
+.chat-dialogue .chat-markdown a:hover {
+  text-decoration: underline;
+}
+
+.kimi-md blockquote,
+.chat-dialogue .chat-markdown blockquote {
+  margin: 0.5em 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--color-line);
+  color: var(--color-text-muted);
+}
+
+.kimi-md hr,
+.chat-dialogue .chat-markdown hr {
+  border: none;
+  border-top: 1px solid var(--color-line);
+  margin: 0.8em 0;
+}
+
+.markdown-body.kimi-md code:not(pre code),
+.kimi-md code:not(pre code),
+.kimi-md .kimi-inline-code,
 .chat-dialogue .chat-markdown code:not(pre code) {
+  font: 0.9em var(--font-mono);
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+  padding: 0 4px;
   border: 0;
-  border-radius: 6px;
-  background: #f3f4f6;
-  color: #111827;
-  font-size: 0.875em;
+  border-radius: var(--kimi-radius-sm);
   font-weight: 500;
-  padding: 0.15em 0.45em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
-.dark .chat-dialogue .chat-markdown code:not(pre code) {
-  background: oklch(30% 0 0);
-  color: oklch(95% 0 0);
-}
-
-.chat-dialogue .chat-markdown pre {
-  border: 1px solid var(--chat-border);
-  border-radius: 0.75rem;
-  background: var(--json-view-inner-bg);
-}
-
+/* 表格：横向滚动包在表自身，避免撑破对话列（对照 kimi-web .table-node-wrapper） */
+.kimi-md table,
 .chat-dialogue .chat-markdown table {
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  margin: 0.5em 0;
   display: block;
+  width: max-content;
+  min-width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  border-color: var(--chat-border);
+  table-layout: auto;
+}
+.kimi-md th,
+.kimi-md td,
+.chat-dialogue .chat-markdown th,
+.chat-dialogue .chat-markdown td {
+  border: 1px solid var(--color-line);
+  padding: 4px 10px;
+  text-align: left;
+  max-width: var(--p-table-cell-max);
+  vertical-align: top;
+}
+.kimi-md th,
+.chat-dialogue .chat-markdown th {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+.kimi-md tbody tr:hover,
+.chat-dialogue .chat-markdown tbody tr:hover {
+  background-color: transparent;
+}
+
+/* 压住 github-markdown 对 pre/code 的 12px / 系统字体 */
+.markdown-body.kimi-md pre,
+.markdown-body.kimi-md code {
+  font-family: var(--font-mono);
+  font-size: inherit;
+}
+
+/* Kimi code / diff fences（对照 kimi-web .code-block-container） */
+.kimi-code-fence,
+.kimi-diff-wrap {
+  margin: 0.6em 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.kimi-code-fence-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-text-muted);
+  font: var(--text-xs) var(--font-mono);
+}
+
+.kimi-code-fence-lang {
+  margin-right: auto;
+  font-family: var(--font-ui);
+}
+
+.kimi-code-fence-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--kimi-radius-sm);
+  cursor: pointer;
+  padding: 2px 6px;
+  transition:
+    background var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+.kimi-code-fence-copy:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+}
+.kimi-code-fence-copy:focus-visible {
+  outline: none;
+  box-shadow: var(--p-focus-ring);
+}
+
+/* tokens 渲染：body 本身就是 pre，不再注入 Shiki HTML 字符串 */
+.kimi-code-fence-body,
+.kimi-code-fence-fallback {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--color-surface-sunken);
+  font: var(--text-sm) / 1.65 var(--font-mono);
+  color: var(--color-text);
+  line-height: 1.65;
+}
+.kimi-code-fence-body > code,
+.kimi-code-fence-fallback > code {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  font: inherit;
+  color: inherit;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  display: block;
+}
+.kimi-code-line {
+  display: inline;
+}
+
+.kimi-diff-pre {
+  margin: 0;
+  padding: 12px 0;
+  overflow-x: auto;
+  background: var(--color-surface-sunken);
+}
+.kimi-diff-pre code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  font: var(--text-sm) / 1.65 var(--font-mono);
+  color: var(--color-text);
+}
+.kimi-diff-line {
+  display: block;
+  width: 100%;
+  padding: 0 14px;
+}
+.kimi-diff-sign {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+.kimi-diff-text {
+  color: var(--color-text);
+}
+.kimi-diff-add {
+  background: var(--color-success-soft);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-success) 55%, transparent);
+}
+.kimi-diff-add .kimi-diff-sign {
+  color: var(--color-success);
+}
+.kimi-diff-del {
+  background: var(--color-danger-soft);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-danger) 55%, transparent);
+}
+.kimi-diff-del .kimi-diff-sign {
+  color: var(--color-danger);
+}
+.kimi-diff-hunk {
+  background: var(--color-surface);
+}
+.kimi-diff-hunk .kimi-diff-text {
+  color: var(--color-text-muted);
 }
 
 /* 终答/对话 Markdown 内嵌图：限制尺寸，避免占满整列 */
@@ -943,7 +1246,11 @@ ol {
   width: 2px;
   height: 1.1em;
   margin-left: 2px;
-  background: linear-gradient(180deg, #0071e3 0%, #4040ff 100%);
+  background: linear-gradient(
+    180deg,
+    var(--chat-accent) 0%,
+    var(--color-accent-hover) 100%
+  );
   border-radius: 1px;
   vertical-align: middle;
   will-change: opacity;
@@ -1094,6 +1401,1246 @@ ol {
   font-variant-numeric: tabular-nums;
   font-weight: 400;
   color: var(--chat-text-muted);
+}
+
+/* Kimi-style tool cards */
+.kimi-tool-row {
+  margin: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  overflow: hidden;
+  transition: border-color var(--duration-base) var(--ease-out);
+}
+
+.kimi-tool-row.is-error {
+  border-color: color-mix(in srgb, var(--color-danger) 25%, var(--color-bg));
+}
+
+.kimi-tool-row.is-stacked {
+  border: none;
+  border-radius: 0;
+}
+
+.kimi-tool-row.is-stack-middle,
+.kimi-tool-row.is-stack-last {
+  border-top: 1px solid var(--color-line);
+}
+
+.kimi-tool-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  width: 100%;
+  padding: 0 11px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: var(--text-sm) / 1.4 var(--font-mono);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.kimi-tool-row.is-open .kimi-tool-row-head,
+.kimi-tool-row-head:hover {
+  background: var(--color-surface-sunken);
+}
+
+.kimi-tool-row.is-error .kimi-tool-row-head {
+  background: color-mix(in srgb, var(--color-danger) 4%, var(--color-bg));
+}
+
+.kimi-tool-row-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--color-text-faint);
+}
+
+.kimi-tool-row-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kimi-tool-row-name {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  flex: none;
+}
+
+.kimi-tool-row-arg {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.kimi-tool-row-trailing {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.kimi-tool-row-chip {
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  flex: none;
+}
+
+.kimi-tool-row-time {
+  color: var(--color-text-faint);
+}
+
+.kimi-tool-row-status {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.kimi-tool-row-status.is-ok {
+  color: var(--color-success);
+}
+
+.kimi-tool-row-status.is-error {
+  color: var(--color-danger);
+}
+
+.kimi-tool-row-body {
+  display: grid;
+  grid-template-rows: minmax(0, 0fr);
+  overflow: hidden;
+  transition: grid-template-rows var(--duration-base) var(--ease-out);
+}
+
+.kimi-tool-row-body.is-open {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.kimi-tool-row-body-pad {
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 12px 12px;
+  background: var(--color-surface-sunken);
+  border-top: 1px solid var(--color-line);
+  color: var(--color-text);
+  font: var(--text-sm) / 1.65 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kimi-tool-row-summary {
+  color: var(--color-text);
+  border-bottom: 1px dashed var(--color-line);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+/* 工具入参流：对齐终答区域，直接铺开，不塞进折叠卡 */
+.kimi-tool-arg-stream {
+  width: 100%;
+  margin: 2px 0 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md, 10px);
+  background: var(--color-surface-raised, var(--color-surface));
+}
+
+.kimi-tool-arg-stream-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+  color: var(--color-text);
+  font: 600 12px / 1.3 var(--font-ui, inherit);
+}
+
+.kimi-tool-arg-stream-glyph {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.kimi-tool-arg-stream-name {
+  flex: none;
+}
+
+.kimi-tool-arg-stream-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kimi-tool-arg-stream-chip {
+  flex: none;
+  color: var(--color-text-faint);
+  font: 11px / 1 var(--font-ui, inherit);
+}
+
+.kimi-tool-stream-preview {
+  margin-top: 2px;
+  margin-bottom: 6px;
+}
+
+.kimi-tool-stream-preview.is-prominent {
+  margin: 0;
+}
+
+.kimi-tool-stream-preview-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--color-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kimi-tool-stream-preview-pulse {
+  color: var(--color-accent, #3b82f6);
+  font-size: 8px;
+  animation: kimi-tool-stream-pulse 1.1s ease-in-out infinite;
+}
+
+.kimi-tool-stream-preview-body {
+  margin: 0;
+  max-height: min(52vh, 480px);
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md, 8px);
+  background: var(--color-surface-sunken, var(--color-surface-raised));
+  color: var(--color-text);
+  font: 13px / 1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  scrollbar-gutter: stable;
+}
+
+.kimi-tool-stream-preview.is-prominent .kimi-tool-stream-preview-body {
+  border-color: color-mix(in srgb, var(--color-accent, #3b82f6) 22%, var(--color-line));
+  background: color-mix(
+    in srgb,
+    var(--color-accent, #3b82f6) 4%,
+    var(--color-surface-sunken, var(--color-surface-raised))
+  );
+}
+
+.kimi-tool-stream-preview-cursor {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--color-accent, #3b82f6);
+  animation: kimi-tool-stream-blink 1s step-end infinite;
+}
+
+@keyframes kimi-tool-stream-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes kimi-tool-stream-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.kimi-agent-open-btn {
+  flex: none;
+  background: none;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font: 11px / 1.2 var(--font-ui, inherit);
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.kimi-agent-open-btn:hover {
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
+}
+
+.kimi-tool-output {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface-raised);
+}
+
+.kimi-tool-output.is-scroll {
+  max-height: calc(50 * 1lh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.kimi-tool-output-empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.kimi-tool-output.is-error {
+  border-color: color-mix(in srgb, #ef4444 35%, var(--color-line));
+  background: color-mix(in srgb, #ef4444 6%, var(--color-surface-raised));
+  color: color-mix(in srgb, #b91c1c 70%, var(--color-text));
+}
+
+.kimi-tool-output.is-error .kimi-tool-output-empty {
+  color: color-mix(in srgb, #b91c1c 80%, var(--color-text-muted));
+  font-style: normal;
+}
+
+.kimi-tool-group {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  overflow: hidden;
+}
+
+.kimi-tool-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 11px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kimi-tool-group-head:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+}
+
+.kimi-tool-group-title {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.kimi-tool-group-meta {
+  color: var(--color-text-faint);
+}
+
+.kimi-tool-group-chevron {
+  margin-left: auto;
+  color: var(--color-text-faint);
+  flex: none;
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.kimi-tool-group.is-open .kimi-tool-group-chevron {
+  transform: rotate(90deg);
+}
+
+.kimi-tool-group-body {
+  display: grid;
+  grid-template-rows: minmax(0, 0fr);
+  overflow: hidden;
+  transition: grid-template-rows var(--duration-base) var(--ease-out);
+}
+
+.kimi-tool-group-body.is-open {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.kimi-tool-group-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kw-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-text-faint);
+  flex: none;
+}
+
+.kw-dot--ok {
+  background: var(--color-success);
+}
+
+.kw-dot--error {
+  background: var(--color-danger);
+}
+
+.kw-dot--suspended {
+  background: var(--color-warning);
+}
+
+.kw-dot--running {
+  background: var(--color-accent);
+  animation: kw-dot-pulse 1.4s var(--ease-out) infinite;
+}
+
+@keyframes kw-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kw-dot--running {
+    animation: none;
+  }
+
+  .kimi-tool-row-body,
+  .kimi-tool-group-body,
+  .kimi-tool-group-chevron,
+  .kimi-think-wrap,
+  .kimi-detail-panel,
+  .kimi-thinking-panel {
+    transition: none !important;
+  }
+}
+
+/* Kimi thinking block / panel */
+.kimi-think {
+  margin: 0;
+}
+
+.kimi-think-wrap {
+  display: grid;
+  grid-template-rows: 1fr 0fr;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: grid-template-rows var(--duration-slow) var(--ease-out);
+}
+
+.kimi-think-wrap.is-collapsed {
+  grid-template-rows: 0fr 1fr;
+}
+
+.kimi-think-anim,
+.kimi-think-prev-anim {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.kimi-think-wrap.is-collapsed:hover .kimi-think-teaser {
+  color: var(--color-text);
+}
+
+.kimi-think-wrap:not(.is-collapsed):hover .kimi-think-live {
+  color: var(--color-text-muted);
+}
+
+.kimi-think-teaser {
+  color: var(--color-text-faint);
+  font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
+  font-weight: 425;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: block;
+}
+
+.kimi-think-live {
+  font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
+  font-weight: 425;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: calc(var(--leading-relaxed) * 1em * 5);
+  overflow-y: auto;
+}
+
+.kimi-thinking-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.kimi-thinking-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+
+.kimi-thinking-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 12px 14px;
+  font: var(--text-base) / var(--leading-relaxed) var(--font-ui);
+  font-weight: 425;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Kimi exclusive detail panels (diff / agent) */
+.kimi-detail-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.kimi-detail-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+
+.kimi-detail-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.kimi-agent-phase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+
+.kimi-agent-phase-badge.is-running {
+  border-color: color-mix(in srgb, var(--color-accent, #1783ff) 35%, var(--color-line));
+  color: var(--color-accent, #1783ff);
+}
+
+.kimi-agent-phase-badge.is-ok {
+  border-color: color-mix(in srgb, var(--color-success, #0e7a38) 35%, var(--color-line));
+  color: var(--color-success, #0e7a38);
+}
+
+.kimi-agent-phase-badge.is-error {
+  border-color: color-mix(in srgb, var(--color-danger, #c0392b) 35%, var(--color-line));
+  color: var(--color-danger, #c0392b);
+}
+
+.kimi-agent-field-label {
+  display: block;
+  color: var(--color-text-faint);
+  font: 11px / 1.4 var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.kimi-agent-field-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12.5px / 1.55 var(--font-mono, ui-monospace, monospace);
+  color: var(--color-text-muted);
+}
+
+.kimi-agent-live {
+  color: var(--color-text);
+}
+
+.kimi-agent-progress-group + .kimi-agent-progress-group {
+  margin-top: 8px;
+}
+
+.kimi-agent-progress-call {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--color-text);
+  font: 12px / 1.5 var(--font-mono, ui-monospace, monospace);
+  margin-bottom: 2px;
+}
+
+.kimi-agent-progress-glyph {
+  color: var(--color-text-faint);
+  flex: none;
+  margin-top: 1px;
+}
+
+.kimi-agent-progress-output {
+  padding-left: 14px;
+}
+
+.kimi-agent-progress-line {
+  color: var(--color-text-muted);
+  font: 12px / 1.5 var(--font-mono, ui-monospace, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kimi-agent-progress-fold {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent, #1783ff);
+  font: 11px / 1.4 var(--font-ui, inherit);
+  cursor: pointer;
+}
+
+.kimi-agent-progress-fold:hover {
+  text-decoration: underline;
+}
+
+.kimi-detail-panel-empty {
+  padding: 32px 20px;
+  color: var(--color-text-faint);
+  font-size: var(--ui-font-size, 13px);
+  text-align: center;
+}
+
+/* Kimi MoonSpinner */
+.ui-moon {
+  display: inline-block;
+  position: relative;
+  line-height: 1;
+  user-select: none;
+  flex: none;
+}
+.ui-moon--sm { width: 14px; height: 14px; font-size: 14px; }
+.ui-moon--md { width: 18px; height: 18px; font-size: 18px; }
+.ui-moon--lg { width: 24px; height: 24px; font-size: 24px; }
+.ui-moon__frame {
+  position: absolute;
+  inset: 0;
+  display: block;
+  text-align: center;
+  opacity: 0;
+  animation-name: ui-moon-frame;
+  animation-duration: 960ms;
+  animation-timing-function: steps(1, end);
+  animation-iteration-count: infinite;
+  animation-delay: var(--moon-frame-delay);
+}
+.ui-moon--fast .ui-moon__frame {
+  animation-duration: 480ms;
+  animation-delay: var(--moon-frame-fast-delay);
+}
+@keyframes ui-moon-frame {
+  0%, 12.49% { opacity: 1; }
+  12.5%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-moon__frame { animation: none; opacity: 0; }
+  .ui-moon__frame:nth-child(4) { opacity: 1; }
+}
+
+.kimi-newmsg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-raised, #fff);
+  color: var(--color-text);
+  font: 500 var(--text-sm) / 1 var(--font-ui);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition:
+    background var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
+}
+.kimi-newmsg-pill:hover {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-line-strong);
+}
+
+/* 底部后台任务 Dock：表面对齐 kimi-ui-card，布局仍用 React 结构 */
+.kimi-dock-card {
+  overflow: hidden;
+  margin: 0 0 var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-ui);
+}
+.kimi-dock-card__head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.kimi-dock-card__head:hover {
+  background: var(--color-surface-sunken);
+}
+.kimi-dock-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--color-line);
+  padding: 8px;
+}
+.kimi-dock-card__row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--kimi-radius-sm);
+  padding: 6px 10px;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.kimi-dock-card__row:hover {
+  background: var(--color-surface-sunken);
+}
+.kimi-dock-card__row.is-fail {
+  background: var(--color-danger-soft);
+}
+.kimi-dock-card__row.is-done {
+  opacity: 0.75;
+}
+
+/* Kimi attention cards (AskUser / PlanApproval) */
+.kimi-ui-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  overflow: hidden;
+  margin: var(--space-2) 0;
+}
+.kimi-ui-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+.kimi-ui-card__body {
+  padding: 14px;
+  color: var(--color-text-muted);
+}
+.kimi-ui-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+.kimi-ui-card.is-minimized .kimi-ui-card__body,
+.kimi-ui-card.is-minimized .kimi-ui-card__foot {
+  display: none;
+}
+.kimi-ui-card.is-minimized .kimi-ui-card__head {
+  border-bottom: none;
+}
+
+.kimi-qcard {
+  border-color: var(--color-accent-bd);
+}
+.kimi-qcard .kimi-ui-card__head {
+  background: var(--color-accent-soft);
+  border-bottom-color: var(--color-accent-bd);
+}
+.kimi-qcard-ic {
+  width: var(--p-ic-md);
+  height: var(--p-ic-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+}
+.kimi-qcard-title {
+  color: var(--color-accent-hover);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+.kimi-qcard-step {
+  color: var(--color-text-muted);
+  font: var(--text-xs) var(--font-ui);
+  margin-left: var(--space-1);
+}
+.kimi-qcard-min {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--kimi-radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.kimi-qcard-min:hover {
+  background: color-mix(in oklab, var(--color-accent) 10%, transparent);
+  color: var(--color-text);
+}
+.kimi-qcard-peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font: var(--text-xs) var(--font-ui);
+}
+.kimi-qcard-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.kimi-qcard-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: var(--text-xs) var(--font-ui);
+  cursor: pointer;
+  padding: 0;
+}
+.kimi-qcard-dot.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font-weight: var(--weight-medium);
+}
+.kimi-qcard-dot.is-answered:not(.is-active) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.kimi-qcard-chip {
+  display: inline-flex;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-sm);
+  background: var(--color-surface-raised);
+  padding: 0 6px;
+  font: var(--text-xs) var(--font-mono);
+  color: var(--color-text-muted);
+}
+.kimi-qcard-text {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  margin-bottom: var(--space-2);
+  line-height: var(--leading-normal);
+}
+.kimi-qcard-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.kimi-qcard-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  cursor: pointer;
+  font: var(--text-sm) / var(--leading-normal) var(--font-ui);
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  transition:
+    background var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
+  user-select: none;
+}
+.kimi-qcard-opt:hover:not(:disabled) {
+  background: var(--color-surface-sunken);
+}
+.kimi-qcard-opt.is-selected {
+  border-color: var(--color-accent-bd);
+  background: var(--color-accent-soft);
+}
+.kimi-qcard-opt:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+.kimi-qcard-opt-key {
+  color: var(--color-text-muted);
+  font: var(--weight-medium) var(--text-xs) var(--font-ui);
+  width: 12px;
+  flex: none;
+  text-align: center;
+}
+.kimi-qcard-opt-glyph {
+  color: var(--color-accent-hover);
+  font: var(--text-base) var(--font-mono);
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+.kimi-qcard-opt-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kimi-qcard-opt-label {
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+.kimi-qcard-opt-desc {
+  color: var(--color-text-muted);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-normal) var(--font-ui);
+}
+.kimi-qcard-other {
+  flex: 1;
+  min-width: 0;
+  font: var(--text-base) var(--font-ui);
+  border: none;
+  border-bottom: 1px solid var(--color-line);
+  outline: none;
+  padding: 2px var(--space-1);
+  color: var(--color-text);
+  background: transparent;
+}
+.kimi-qcard-other:focus-visible {
+  border-bottom-color: var(--color-accent);
+  box-shadow: 0 1px 0 0 var(--color-accent);
+}
+.kimi-qcard-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  flex-wrap: wrap;
+}
+.kimi-qcard-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--kimi-radius-sm);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: var(--weight-medium) var(--text-sm) / 1 var(--font-ui);
+  cursor: pointer;
+}
+.kimi-qcard-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.kimi-qcard-btn.is-primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+.kimi-qcard-btn.is-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.kimi-qcard-btn.is-ghost:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
+}
+
+.kimi-appr {
+  border-color: var(--color-warning-bd);
+}
+.kimi-appr .kimi-ui-card__head {
+  background: var(--color-warning-soft);
+  border-bottom-color: var(--color-warning-bd);
+}
+.kimi-appr-ic {
+  width: var(--p-ic-md);
+  height: var(--p-ic-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-warning);
+  font-weight: var(--weight-semibold);
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+}
+.kimi-appr-title {
+  color: var(--color-warning);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  flex: none;
+}
+.kimi-appr-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-warning-bd);
+  background: color-mix(in oklab, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+  padding: 0 8px;
+  height: 22px;
+  font: var(--weight-medium) var(--text-xs) / 1 var(--font-ui);
+}
+.kimi-appr-min {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--kimi-radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.kimi-appr-min:hover {
+  background: color-mix(in oklab, var(--color-warning) 12%, transparent);
+  color: var(--color-text);
+}
+.kimi-appr-path {
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font: var(--text-xs) var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kimi-appr-plan {
+  max-height: 50vh;
+  overflow-y: auto;
+  color: var(--color-text);
+}
+.kimi-appr-plan textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+  font: var(--text-sm) / 1.65 var(--font-ui);
+  padding: var(--space-2) var(--space-3);
+  outline: none;
+}
+.kimi-appr-plan textarea:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: var(--p-focus-ring);
+}
+.kimi-appr-feedback {
+  margin-top: var(--space-3);
+}
+.kimi-appr-feedback textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: var(--text-sm) var(--font-ui);
+  padding: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-sm);
+  resize: none;
+  outline: none;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+.kimi-appr-feedback textarea:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: var(--p-focus-ring);
+}
+.kimi-appr-hint {
+  font: var(--text-xs) var(--font-ui);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+.kimi-appr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  flex-wrap: wrap;
+}
+.kimi-appr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--kimi-radius-sm);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: var(--weight-medium) var(--text-sm) / 1 var(--font-ui);
+  cursor: pointer;
+}
+.kimi-appr-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.kimi-appr-btn.is-primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+.kimi-appr-btn.is-danger {
+  border-color: color-mix(in oklab, var(--color-danger) 35%, var(--color-line));
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+.kimi-appr-kbd {
+  opacity: 0.75;
+  margin-left: 4px;
+  font: var(--text-xs) var(--font-mono);
+}
+
+/* AskUser answered result (ToolRow body) */
+.kimi-au-list {
+  display: flex;
+  flex-direction: column;
+  font: var(--text-sm) / var(--leading-normal) var(--font-ui);
+}
+.kimi-au-block {
+  padding: 4px 0;
+}
+.kimi-au-block + .kimi-au-block {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-line);
+}
+.kimi-au-q {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.kimi-au-hdr {
+  font: var(--text-xs) var(--font-mono);
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-sm);
+  padding: 0 6px;
+  flex: none;
+}
+.kimi-au-qtext {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+.kimi-au-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kimi-au-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  color: var(--color-text-faint);
+}
+.kimi-au-opt.is-sel {
+  border-color: var(--color-accent-bd);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+.kimi-au-glyph {
+  font: var(--text-base) var(--font-mono);
+  color: var(--color-text-faint);
+  width: 14px;
+  text-align: center;
+  flex: none;
+}
+.kimi-au-opt.is-sel .kimi-au-glyph {
+  color: var(--color-accent-hover);
+}
+.kimi-au-desc {
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  margin-left: 2px;
+}
+.kimi-au-opt.is-sel .kimi-au-desc {
+  color: var(--color-text-muted);
+}
+.kimi-au-dismissed {
+  color: var(--color-text-muted);
+  font: italic var(--text-sm) / var(--leading-normal) var(--font-ui);
+}
+.kimi-au-raw {
+  padding: 11px 13px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--kimi-radius-md);
+  background: var(--color-surface-raised);
+  font: var(--text-sm) / 1.65 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .timeline-assistant-reply {
@@ -1466,9 +3013,9 @@ ol {
 .stagger-700 { animation-delay: 700ms; }
 .stagger-800 { animation-delay: 800ms; }
 
-/* Unified markdown code block style (incl. reasoning stream) */
-.ai-chat-markdown pre,
-.markdown-body pre {
+/* Legacy markdown pre — exclude Kimi fences */
+.ai-chat-markdown:not(.kimi-md) pre,
+.markdown-body:not(.kimi-md) pre {
   margin: 0.75rem 0;
   padding: 0.9rem 1rem;
   border: 1px solid var(--chat-border);
@@ -1478,8 +3025,8 @@ ol {
   overflow: auto;
 }
 
-.ai-chat-markdown pre code,
-.markdown-body pre code {
+.ai-chat-markdown:not(.kimi-md) pre code,
+.markdown-body:not(.kimi-md) pre code {
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.65;
@@ -1492,8 +3039,8 @@ ol {
   border: none;
 }
 
-.ai-chat-markdown code:not(pre code),
-.markdown-body code:not(pre code) {
+.ai-chat-markdown:not(.kimi-md) code:not(pre code),
+.markdown-body:not(.kimi-md) code:not(pre code) {
   font-family: var(--font-mono);
   font-size: 0.875em;
   font-weight: 500;
@@ -1506,44 +3053,22 @@ ol {
   -webkit-box-decoration-break: clone;
 }
 
-.dark .ai-chat-markdown code:not(pre code),
-.dark .markdown-body code:not(pre code) {
+.dark .ai-chat-markdown:not(.kimi-md) code:not(pre code),
+.dark .markdown-body:not(.kimi-md) code:not(pre code) {
   background: oklch(30% 0 0);
   color: oklch(95% 0 0);
 }
 
-/* 最终总结区域 markdown 标题缩小，避免在对话卡片中显得过大 */
-.conclusion-markdown.markdown-body h1 {
-  font-size: 1.35em;
-  margin-top: 0.75em;
-  margin-bottom: 0.5em;
-  padding-bottom: 0.2em;
-}
-.conclusion-markdown.markdown-body h2 {
-  font-size: 1.2em;
-  margin-top: 0.6em;
-  margin-bottom: 0.4em;
-  padding-bottom: 0.2em;
-}
-.conclusion-markdown.markdown-body h3 {
-  font-size: 1.1em;
-  margin-top: 0.5em;
-  margin-bottom: 0.35em;
-}
-.conclusion-markdown.markdown-body h4 {
-  font-size: 1em;
-  margin-top: 0.5em;
-  margin-bottom: 0.3em;
-}
-.conclusion-markdown.markdown-body h5,
-.conclusion-markdown.markdown-body h6 {
-  font-size: 0.9em;
-  margin-top: 0.4em;
-  margin-bottom: 0.25em;
+.markdown-body.kimi-md,
+.ai-chat-markdown.kimi-md {
+  font-size: var(--content-font-size);
+  line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.ai-chat-markdown,
-.markdown-body {
+.ai-chat-markdown:not(.kimi-md),
+.markdown-body:not(.kimi-md) {
   font-size: 1rem;
   line-height: 1.85;
   word-break: break-word;
@@ -1569,49 +3094,6 @@ ol {
 /* GenUI surface tones + patch flash */
 .genui-root {
   position: relative;
-}
-
-.genui-tone {
-  background: var(--chat-surface);
-  transition:
-    background-color 0.25s var(--ease-out),
-    border-color 0.25s var(--ease-out),
-    box-shadow 0.25s var(--ease-out);
-}
-
-.genui-tone-default {
-  background: var(--chat-surface);
-}
-
-.genui-tone-dashboard {
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--chat-accent-soft) 55%, var(--chat-surface) 45%) 0%,
-      var(--chat-surface) 48%
-    );
-  box-shadow: var(--shadow-sm);
-}
-
-.genui-tone-lesson {
-  background: color-mix(in oklab, var(--chat-surface-soft) 70%, var(--chat-surface) 30%);
-  border-style: solid;
-}
-
-.genui-tone-report {
-  background: var(--chat-surface);
-  box-shadow: var(--shadow-xs);
-  border-color: color-mix(in oklab, var(--chat-border) 80%, var(--chat-accent) 20%);
-}
-
-.genui-tone-media {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--chat-surface-muted) 40%, var(--chat-surface) 60%) 0%,
-      var(--chat-surface) 100%
-    );
-  padding-block: 1rem;
 }
 
 .genui-patch-flash {
