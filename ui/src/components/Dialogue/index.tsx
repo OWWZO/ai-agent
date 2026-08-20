@@ -6,7 +6,6 @@ import {
   MessageContent,
 } from "@/components/ai-elements/message";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
-import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import RunStatus from "@/components/ActionView/RunStatus";
 import { isPlanSolveConversation } from "@/utils/agentMode";
 import { collectChatArtifactFiles } from "@/utils/markdownArtifacts";
@@ -38,7 +37,12 @@ type Props = {
   changeTask?: (task: CHAT.Task, chat?: CHAT.ChatItem) => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   changePlan?: () => void;
-  onRegenerate?: () => void;
+  onUndo?: () => void;
+  thinkingPanelOpen?: boolean;
+  onOpenThinking?: (text: string) => void;
+  onSyncThinking?: (text: string) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
 const ConclusionSection: FC<{
@@ -46,7 +50,8 @@ const ConclusionSection: FC<{
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
   sessionArtifactFiles?: CHAT.TFile[];
 }> = ({ chat, changeFile, sessionArtifactFiles }) => {
-  const summary = resolveTaskSummaryText(chat.conclusion) || "任务已完成";
+  const summaryText = resolveTaskSummaryText(chat.conclusion);
+  const summary = summaryText || "任务已完成";
   const summaryStreaming =
     !!chat.loading && chat.conclusion?.messageType === "agent_stream";
   const attachmentFiles = useMemo(
@@ -62,14 +67,20 @@ const ConclusionSection: FC<{
   }, [chat, sessionArtifactFiles]);
   return (
     <div className="mt-5">
-      <div className="mb-3 px-1 py-1">
-        <MarkdownRenderer
-          markDownContent={summary}
-          isStreaming={summaryStreaming}
-          artifactFiles={artifactFiles}
-          className="chat-markdown conclusion-markdown text-[15px] leading-[1.75] tracking-[-0.01em] text-[var(--chat-text)]"
-        />
-      </div>
+      {/* 对齐 kimi-web a-msg：终答正文 + 底部复制脚 */}
+      <Message from="assistant" className="min-w-0 w-full">
+        <MessageContent>
+          <MarkdownRenderer
+            markDownContent={summary}
+            isStreaming={summaryStreaming}
+            artifactFiles={artifactFiles}
+            className="chat-markdown conclusion-markdown kimi-md"
+          />
+        </MessageContent>
+        {!summaryStreaming && summaryText ? (
+          <MessageToolbar response={summaryText} alwaysVisible />
+        ) : null}
+      </Message>
       <AttachmentList
         files={attachmentFiles}
         preview={true}
@@ -88,7 +99,12 @@ const DialogueComponent: FC<Props> = (props) => {
     changeTask,
     changeFile,
     changePlan,
-    onRegenerate,
+    onUndo,
+    thinkingPanelOpen = false,
+    onOpenThinking,
+    onSyncThinking,
+    onOpenToolDiff,
+    onOpenAgent,
   } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
@@ -175,6 +191,19 @@ const DialogueComponent: FC<Props> = (props) => {
     changeTask?.(task, targetChat);
   }, [changeTask]);
 
+  useEffect(() => {
+    if (thinkingPanelOpen && thoughtText) {
+      onSyncThinking?.(thoughtText);
+    }
+  }, [thinkingPanelOpen, thoughtText, onSyncThinking]);
+
+  const handleOpenThinking = useCallback(
+    (text: string) => {
+      onOpenThinking?.(text);
+    },
+    [onOpenThinking]
+  );
+
   const handleThoughtPrev = useCallback(() => {
     setThoughtVersionIndex((current) => Math.max(current - 1, 0));
   }, []);
@@ -224,12 +253,15 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* 用户消息 */}
       {chat.query ? (
-        <div className="user-message-enter mt-5 ml-auto flex w-full max-w-[85%] justify-end">
+        <div className="user-message-enter mt-5 ml-auto flex w-full max-w-[78%] flex-col items-end gap-1">
           <Message from="user" className="max-w-full">
             <MessageContent>
               {chat.query}
             </MessageContent>
           </Message>
+          {onUndo && !chat.loading ? (
+            <MessageToolbar onUndo={onUndo} />
+          ) : null}
         </div>
       ) : null}
 
@@ -243,27 +275,17 @@ const DialogueComponent: FC<Props> = (props) => {
 
       {/* AI 回复（Markdown） */}
       {showStandaloneResponse ? (
-        <div className="mt-7 flex w-full max-w-[90%] items-end gap-2 md:max-w-[80%]">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center self-end rounded-full"
-            style={{ boxShadow: "var(--chat-soft-shadow)" }}
-            aria-hidden="true"
-          >
-            <AnimatedOrb size={32} />
-          </div>
-          <Message from="assistant" className="min-w-0 flex-1">
+        <div className="mt-7 w-full max-w-[94%]">
+          <Message from="assistant" className="min-w-0 w-full">
             <MessageContent>
               <MarkdownRenderer
                 markDownContent={chat.response}
                 isStreaming={chat.loading}
-                className="chat-markdown"
+                className="chat-markdown kimi-md"
               />
             </MessageContent>
             {!chat.loading ? (
-              <MessageToolbar
-                response={chat.response}
-                onRegenerate={onRegenerate}
-              />
+              <MessageToolbar response={chat.response} />
             ) : null}
           </Message>
         </div>
@@ -290,6 +312,9 @@ const DialogueComponent: FC<Props> = (props) => {
             changeActiveChat={changeActiveChat}
             changePlan={changePlan}
             changeFile={changeFile}
+            onOpenThinking={handleOpenThinking}
+            onOpenToolDiff={onOpenToolDiff}
+            onOpenAgent={onOpenAgent}
           />
         </div>
       ) : null}
@@ -333,7 +358,12 @@ const Dialogue = memo(
     prev.changeTask === next.changeTask &&
     prev.changeFile === next.changeFile &&
     prev.changePlan === next.changePlan &&
-    prev.onRegenerate === next.onRegenerate
+    prev.onUndo === next.onUndo &&
+    prev.thinkingPanelOpen === next.thinkingPanelOpen &&
+    prev.onOpenThinking === next.onOpenThinking &&
+    prev.onSyncThinking === next.onSyncThinking &&
+    prev.onOpenToolDiff === next.onOpenToolDiff &&
+    prev.onOpenAgent === next.onOpenAgent
 );
 
 export default Dialogue;

@@ -59,8 +59,8 @@ const resolvePlanStepTone = (status?: string) => {
   switch (status) {
     case "completed":
       return {
-        badgeClass: "bg-[#0071e3]/10 text-[#0071e3]",
-        dotClass: "bg-[#0071e3]",
+        badgeClass: "bg-[var(--chat-accent)]/10 text-[var(--chat-accent)]",
+        dotClass: "bg-[var(--chat-accent)]",
         label: "已完成",
       };
     case "in_progress":

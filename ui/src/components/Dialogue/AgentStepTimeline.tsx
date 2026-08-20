@@ -1,55 +1,44 @@
 import {
   FC,
   memo,
-  useCallback,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  BrainIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  FilePenLineIcon,
-  FileTextIcon,
-  GlobeIcon,
-  SearchIcon,
-  TerminalIcon,
-  BotIcon,
-  WrenchIcon,
-  MessageCircleQuestionIcon,
-  CodeIcon,
-  PackageIcon,
-} from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
-import {
   resolveDeepSearchStage,
   shouldRenderDeepSearchPreview,
 } from "@/utils/deepSearch";
 import { cn } from "@/lib/utils";
-import { canOpenTaskWorkspacePanel } from "@/components/ChatView/streamState";
 import { DeepSearchPreviewItem, ToolItem } from "./Timeline";
 import {
   deriveAgentProcessModel,
   type ProcessSegment,
   type ProcessStepGroup,
-  type ProcessStepKind,
   type ProcessStepRow,
 } from "./agentProcessModel";
 import UserBriefCard from "./UserBriefCard";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import { resolveTaskSummaryText } from "./contentHelpers";
+import { ThinkingBlock } from "./ThinkingBlock";
+import {
+  isAgentDispatchTask,
+  isRunInBackgroundAgent,
+} from "@/utils/chat/subagent";
+import {
+  ToolCallView,
+  ToolGroup,
+  aggregateToolStatuses,
+  resolveStackPosition,
+} from "./tools";
 
 type AgentStepTimelineProps = {
   chat: CHAT.ChatItem;
@@ -67,6 +56,9 @@ type AgentStepTimelineProps = {
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  onOpenThinking?: (text: string) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
 const RICH_INLINE_TYPES = new Set([
@@ -85,8 +77,11 @@ function asText(value: unknown): string {
 
 function normalizeComparableText(value: string): string {
   return value
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/[`*_#>\[\]()]/g, " ")
+    // 保留代码围栏内部源码；纯代码回复也需要参与终答去重比较。
+    .replace(/```[^\r\n]*\r?\n([\s\S]*?)```/g, "$1")
+    .replace(/[`*_#>()]/g, " ")
+    .replaceAll("[", " ")
+    .replaceAll("]", " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -131,7 +126,8 @@ function resolveSegmentComparableText(segment: ProcessSegment): string {
 }
 
 /** 与底部 conclusion 同文案的时间线条目视为重复（终答不当思考/过程） */
-function isDuplicateOfConclusion(
+// eslint-disable-next-line react-refresh/only-export-components
+export function isDuplicateOfConclusion(
   segment: ProcessSegment,
   conclusionText: string
 ): boolean {
@@ -154,12 +150,20 @@ function isDuplicateOfConclusion(
   return textsNearlyEqual(segmentText, conclusionText);
 }
 
+function isAgentStep(step: ProcessStepRow): boolean {
+  return (
+    step.kind === "agent" ||
+    Boolean(step.tool.children?.length) ||
+    isAgentDispatchTask(step.tool)
+  );
+}
+
 function isRichInlineStep(step: ProcessStepRow): boolean {
   const messageType = step.tool.messageType || "";
   if (RICH_INLINE_TYPES.has(messageType)) {
     return true;
   }
-  if (step.kind === "agent" || Boolean(step.tool.children?.length)) {
+  if (isAgentStep(step)) {
     return true;
   }
   if (messageType === "deep_search") {
@@ -167,38 +171,6 @@ function isRichInlineStep(step: ProcessStepRow): boolean {
   }
   return false;
 }
-
-const stepKindIcon = (kind: ProcessStepKind, _active?: boolean) => {
-  const className = "size-[15px] shrink-0 text-[var(--chat-text-muted)]";
-  switch (kind) {
-    case "thinking":
-      return <BrainIcon className={className} />;
-    case "read":
-      return <FileTextIcon className={className} />;
-    case "edit":
-    case "file":
-      return <FilePenLineIcon className={className} />;
-    case "terminal":
-      return <TerminalIcon className={className} />;
-    case "search":
-      return <SearchIcon className={className} />;
-    case "browser":
-      return <GlobeIcon className={className} />;
-    case "code":
-      return <CodeIcon className={className} />;
-    case "agent":
-      return <BotIcon className={className} />;
-    case "interactive":
-      return <MessageCircleQuestionIcon className={className} />;
-    case "user_message":
-      return <MessageCircleQuestionIcon className={className} />;
-    case "artifact":
-      return <PackageIcon className={className} />;
-    default:
-      // Active state uses text shimmer (thinking-shimmer), not a fast spinner.
-      return <WrenchIcon className={className} />;
-  }
-};
 
 const DurationBadge: FC<{ label?: string; active?: boolean }> = ({
   label,
@@ -304,53 +276,33 @@ type StepRowContext = {
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
   changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  onOpenThinking?: (text: string) => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
 const CompactStepRow: FC<{
   step: ProcessStepRow;
   ctx: StepRowContext;
 }> = memo(({ step, ctx }) => {
-  const [open, setOpen] = useState(() => step.active && step.kind === "thinking");
   const isThought = step.kind === "thinking";
   const thoughtText = asText(step.tool.toolThought);
   const rich = isRichInlineStep(step);
 
-  useEffect(() => {
-    if (step.active && isThought) {
-      setOpen(true);
-    } else if (!step.active && isThought && thoughtText) {
-      setOpen(false);
-    }
-  }, [step.active, isThought, thoughtText]);
-
-  // 组内仅原生 CoT；折叠头与视频一致（时长在右侧，不写「已思考 N 秒」）
+  // 组内原生 CoT：Kimi 5 行直播窗 / 末段 teaser，点击开右侧面板
   if (isThought) {
     return (
       <div className="timeline-segment-enter py-0.5" data-testid="llm-reasoning-step">
-        <Reasoning
-          isStreaming={step.active}
-          open={open}
-          onOpenChange={setOpen}
-          duration={
-            step.durationMs != null
-              ? Math.max(1, Math.round(step.durationMs / 1000))
-              : undefined
-          }
-          className="not-prose mb-0"
-        >
-          <ReasoningTrigger
-            className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent"
-            getThinkingMessage={(streaming) => (
-              <ThinkingRowHeader
-                streaming={streaming}
-                durationLabel={step.durationLabel}
-              />
-            )}
-          />
-          <ReasoningContent className="pl-6 text-[13px] leading-6 text-[var(--chat-text-muted)]">
-            {thoughtText || "…"}
-          </ReasoningContent>
-        </Reasoning>
+        <ThinkingRowHeader
+          streaming={step.active}
+          durationLabel={step.durationLabel}
+        />
+        <ThinkingBlock
+          text={thoughtText || "…"}
+          streaming={step.active}
+          onOpen={() => ctx.onOpenThinking?.(thoughtText || "…")}
+          className="mt-1 pl-1"
+        />
       </div>
     );
   }
@@ -363,6 +315,28 @@ const CompactStepRow: FC<{
     return (
       <div className="timeline-assistant-reply timeline-segment-enter px-1 py-1 pl-7">
         {text}
+      </div>
+    );
+  }
+
+  // 前台子 Agent：时间线内联卡；后台 run_in_background 只进 Dock
+  if (isAgentStep(step)) {
+    if (isRunInBackgroundAgent(step.tool)) {
+      return null;
+    }
+    return (
+      <div className="py-0.5">
+        <ToolCallView
+          tool={step.tool}
+          chat={ctx.chat}
+          durationMs={step.durationMs}
+          durationLabel={step.durationLabel}
+          defaultExpanded={step.active}
+          changeActiveChat={ctx.changeActiveChat}
+          changePlan={ctx.changePlan}
+          onOpenAgent={ctx.onOpenAgent}
+          onOpenToolDiff={ctx.onOpenToolDiff}
+        />
       </div>
     );
   }
@@ -400,48 +374,20 @@ const CompactStepRow: FC<{
     );
   }
 
-  const titleText = step.detail
-    ? `${step.title} 「${step.detail}」`
-    : step.title;
-
-  const canOpenPanel =
-    step.tool.messageType === "plan" || canOpenTaskWorkspacePanel(step.tool);
-
   return (
-    <button
-      type="button"
-      className={cn(
-        "timeline-tool-row group flex w-full min-h-8 items-center gap-2 py-[5px] text-left",
-        canOpenPanel ? "cursor-pointer" : "cursor-default"
-      )}
-      onClick={() => {
-        if (!canOpenPanel) {
-          return;
-        }
-        if (step.tool.messageType === "plan") {
-          ctx.changePlan?.();
-          return;
-        }
-        ctx.changeActiveChat(step.tool, ctx.chat);
-      }}
-    >
-      <div className="flex size-[15px] shrink-0 items-center justify-center text-[var(--chat-text-muted)]">
-        {stepKindIcon(step.kind, step.active)}
-      </div>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-left text-[14.5px] font-medium leading-5 tracking-[-0.01em] text-[var(--chat-text-muted)]",
-          canOpenPanel && "group-hover:text-[var(--chat-text)]",
-          step.active && "thinking-shimmer"
-        )}
-      >
-        {titleText}
-      </span>
-      {canOpenPanel ? (
-        <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--chat-text-muted)] opacity-55" />
-      ) : null}
-      <DurationBadge label={step.durationLabel} active={step.active} />
-    </button>
+    <div className="py-0.5">
+      <ToolCallView
+        tool={step.tool}
+        chat={ctx.chat}
+        durationMs={step.durationMs}
+        durationLabel={step.durationLabel}
+        defaultExpanded={step.active}
+        changeActiveChat={ctx.changeActiveChat}
+        changePlan={ctx.changePlan}
+        onOpenToolDiff={ctx.onOpenToolDiff}
+        onOpenAgent={ctx.onOpenAgent}
+      />
+    </div>
   );
 });
 
@@ -464,6 +410,45 @@ const StepGroupBlock: FC<{
       setOpen(false);
     }
   }, [forceOpen, group.active, group.completed, canCollapse]);
+
+  const toolCardSteps = group.steps.filter(
+    (step) =>
+      step.kind !== "thinking" &&
+      step.kind !== "assistant_reply" &&
+      !isRichInlineStep(step) &&
+      !isRunInBackgroundAgent(step.tool)
+  );
+  const allToolCards =
+    toolCardSteps.length > 0 && toolCardSteps.length === group.steps.length;
+
+  if (allToolCards) {
+    const tools = toolCardSteps.map((step) => step.tool);
+    return (
+      <div className="timeline-segment-enter w-full py-0.5">
+        <ToolGroup
+          count={toolCardSteps.length}
+          aggregateStatus={aggregateToolStatuses(tools)}
+          defaultOpen={forceOpen || open || group.active || !group.completed}
+        >
+          {toolCardSteps.map((step, index) => (
+            <ToolCallView
+              key={step.id}
+              tool={step.tool}
+              chat={ctx.chat}
+              durationMs={step.durationMs}
+              durationLabel={step.durationLabel}
+              stackPosition={resolveStackPosition(index, toolCardSteps.length)}
+              defaultExpanded={step.active}
+              changeActiveChat={ctx.changeActiveChat}
+              changePlan={ctx.changePlan}
+              onOpenToolDiff={ctx.onOpenToolDiff}
+              onOpenAgent={ctx.onOpenAgent}
+            />
+          ))}
+        </ToolGroup>
+      </div>
+    );
+  }
 
   const stepsBody = (
     <div className="timeline-rail relative ml-[7px] pl-3.5">
@@ -549,46 +534,26 @@ const UserMessageSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => (
 
 UserMessageSegment.displayName = "UserMessageSegment";
 
-/** 折叠「深度思考」：默认收起；流式时文字光效 */
-const ThinkingSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => {
-  const [open, setOpen] = useState(false);
+/** 分段深度思考：Kimi 直播窗 / teaser */
+const ThinkingSegment: FC<{
+  step: ProcessStepRow;
+  onOpenThinking?: (text: string) => void;
+}> = memo(({ step, onOpenThinking }) => {
   const thoughtText = asText(step.tool.toolThought);
   const streaming = step.active;
 
-  useEffect(() => {
-    if (streaming) {
-      setOpen(true);
-    } else if (thoughtText) {
-      setOpen(false);
-    }
-  }, [streaming, thoughtText]);
-
   return (
     <div className="timeline-segment-enter py-0.5" data-testid="process-thinking">
-      <Reasoning
-        isStreaming={streaming}
-        open={open}
-        onOpenChange={setOpen}
-        duration={
-          step.durationMs != null
-            ? Math.max(1, Math.round(step.durationMs / 1000))
-            : undefined
-        }
-        className="not-prose mb-0"
-      >
-        <ReasoningTrigger
-          className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent"
-          getThinkingMessage={(isStreaming) => (
-            <ThinkingRowHeader
-              streaming={isStreaming}
-              durationLabel={step.durationLabel}
-            />
-          )}
-        />
-        <ReasoningContent className="pl-6 text-[13px] leading-6 text-[var(--chat-text-muted)]">
-          {thoughtText || "…"}
-        </ReasoningContent>
-      </Reasoning>
+      <ThinkingRowHeader
+        streaming={streaming}
+        durationLabel={step.durationLabel}
+      />
+      <ThinkingBlock
+        text={thoughtText || "…"}
+        streaming={streaming}
+        onOpen={() => onOpenThinking?.(thoughtText || "…")}
+        className="mt-1"
+      />
     </div>
   );
 });
@@ -599,13 +564,13 @@ ThinkingSegment.displayName = "ThinkingSegment";
 const AssistantReplySegment: FC<{ text: string; streaming?: boolean }> = memo(
   ({ text, streaming }) => (
     <div
-      className="timeline-assistant-reply timeline-segment-enter mt-0.5 mb-2 w-full px-1 pl-7"
+      className="timeline-assistant-reply timeline-segment-enter mt-0.5 mb-2 w-full max-w-[94%] px-1"
       data-testid="process-assistant-reply"
     >
       <MarkdownRenderer
         markDownContent={text}
         isStreaming={Boolean(streaming)}
-        className="chat-markdown text-[15px] leading-[1.75] tracking-[-0.01em] text-[var(--chat-text)]"
+        className="chat-markdown kimi-md"
       />
     </div>
   )
@@ -620,7 +585,7 @@ const FinalReplySegment: FC<{ text: string }> = memo(({ text }) => (
   >
     <MarkdownRenderer
       markDownContent={text}
-      className="chat-markdown conclusion-markdown text-[15px] leading-[1.75] tracking-[-0.01em] text-[var(--chat-text)]"
+      className="chat-markdown conclusion-markdown kimi-md"
     />
   </div>
 ));
@@ -656,7 +621,12 @@ const ProcessSegmentView: FC<{
   ctx: StepRowContext;
 }> = memo(({ segment, isLast, loading, conclusionText = "", ctx }) => {
   if (segment.type === "thinking") {
-    return <ThinkingSegment step={segment.step} />;
+    return (
+      <ThinkingSegment
+        step={segment.step}
+        onOpenThinking={ctx.onOpenThinking}
+      />
+    );
   }
   if (segment.type === "assistant_reply") {
     return (
@@ -713,7 +683,7 @@ ProcessSegmentView.displayName = "ProcessSegmentView";
 /**
  * 产品级 Agent 过程时间线：
  * 深度思考 → 意图句 → 可折叠步骤组（左轨竖线 + 图标 + 耗时）
- * 富交互步骤内联复用 Timeline.ToolItem，避免能力回退。
+ * 富交互步骤内联复用 Timeline.ToolItem；工具卡统一走 ToolCallView（registry 分发）。
  */
 const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
   const {
@@ -732,6 +702,9 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
     changeActiveChat,
     changePlan,
     changeFile,
+    onOpenThinking,
+    onOpenToolDiff,
+    onOpenAgent,
   } = props;
 
   const model = useMemo(
@@ -756,30 +729,26 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
     ]
   );
 
-  const [thoughtOpen, setThoughtOpen] = useState(() => Boolean(thoughtStreaming));
-
-  useEffect(() => {
-    // 深度思考流式时展开；思考结束即折叠（不等整轮 chat 结束）
-    if (thoughtStreaming) {
-      setThoughtOpen(true);
-    } else if (thoughtText) {
-      setThoughtOpen(false);
-    }
-  }, [thoughtStreaming, thoughtText]);
-
   const ctx = useMemo<StepRowContext>(
     () => ({
       chat,
       changeActiveChat,
       changePlan,
       changeFile,
+      onOpenThinking,
+      onOpenToolDiff,
+      onOpenAgent,
     }),
-    [chat, changeActiveChat, changePlan, changeFile]
+    [
+      chat,
+      changeActiveChat,
+      changePlan,
+      changeFile,
+      onOpenThinking,
+      onOpenToolDiff,
+      onOpenAgent,
+    ]
   );
-
-  const handleThoughtOpenChange = useCallback((open: boolean) => {
-    setThoughtOpen(open);
-  }, []);
 
   if (!model.hasProcess && !planSlot) {
     return null;
@@ -793,42 +762,30 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
     >
       {model.thought ? (
         <div className="timeline-segment-enter mb-2">
-          <Reasoning
-            isStreaming={model.thought.streaming}
-            open={thoughtOpen}
-            onOpenChange={handleThoughtOpenChange}
-            duration={
-              model.thought.durationMs != null
-                ? Math.max(1, Math.round(model.thought.durationMs / 1000))
-                : undefined
-            }
-            className="not-prose mb-0"
-          >
-            <ReasoningTrigger className="m-0 rounded-none px-0 py-1.5 hover:bg-transparent">
-              {model.thought.versionLabel ? (
-                <ThoughtHeader
-                  streaming={model.thought.streaming}
-                  durationLabel={model.thought.durationLabel}
-                  versionLabel={model.thought.versionLabel}
-                  onPrev={onThoughtPrev}
-                  onNext={onThoughtNext}
-                  canPrev={canThoughtPrev}
-                  canNext={canThoughtNext}
-                />
-              ) : (
-                <ThinkingRowHeader
-                  streaming={model.thought.streaming}
-                  durationLabel={model.thought.durationLabel}
-                />
-              )}
-            </ReasoningTrigger>
-            <ReasoningContent className="pl-7 text-[13px] leading-6 text-[var(--chat-text-soft)]">
-              {model.thought.text}
-            </ReasoningContent>
-          </Reasoning>
-
-          {!thoughtOpen && model.intentLine ? (
-            <p className="timeline-assistant-reply mt-1 pl-7 text-[13px] leading-6">
+          {model.thought.versionLabel ? (
+            <ThoughtHeader
+              streaming={model.thought.streaming}
+              durationLabel={model.thought.durationLabel}
+              versionLabel={model.thought.versionLabel}
+              onPrev={onThoughtPrev}
+              onNext={onThoughtNext}
+              canPrev={canThoughtPrev}
+              canNext={canThoughtNext}
+            />
+          ) : (
+            <ThinkingRowHeader
+              streaming={model.thought.streaming}
+              durationLabel={model.thought.durationLabel}
+            />
+          )}
+          <ThinkingBlock
+            text={model.thought.text}
+            streaming={model.thought.streaming}
+            onOpen={() => onOpenThinking?.(model.thought!.text)}
+            className="mt-1"
+          />
+          {!model.thought.streaming && model.intentLine ? (
+            <p className="timeline-assistant-reply mt-1 text-[13px] leading-6">
               {model.intentLine}
             </p>
           ) : null}
@@ -886,6 +843,9 @@ export const AgentStepTimeline = memo(
     prev.changeActiveChat === next.changeActiveChat &&
     prev.changePlan === next.changePlan &&
     prev.changeFile === next.changeFile &&
+    prev.onOpenThinking === next.onOpenThinking &&
+    prev.onOpenToolDiff === next.onOpenToolDiff &&
+    prev.onOpenAgent === next.onOpenAgent &&
     prev.onThoughtPrev === next.onThoughtPrev &&
     prev.onThoughtNext === next.onThoughtNext &&
     prev.canThoughtPrev === next.canThoughtPrev &&

@@ -86,7 +86,7 @@ const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
       {message ? (
         <MarkdownRenderer
           markDownContent={message}
-          className="chat-markdown text-[14px] leading-relaxed"
+          className="chat-markdown kimi-md text-[14px] leading-relaxed"
         />
       ) : null}
       {attachments.length > 0 ? (

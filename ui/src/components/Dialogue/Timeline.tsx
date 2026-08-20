@@ -41,6 +41,7 @@ import {
 import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
+import { AskUserToolCall } from "./tools/AskUserToolCall";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -123,13 +124,58 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       );
     }
     case "ask_user_question": {
+      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+      const toolAny = tool as unknown as Record<string, unknown>;
+      const askStatus = String(
+        nested.status || resultMap.status || toolAny.status || "pending"
+      );
+      const answered =
+        askStatus === "answered" ||
+        Boolean(resultMap.isFinal && askStatus !== "pending") ||
+        Boolean(nested.answers || resultMap.answers || toolAny.answers);
+      if (answered) {
+        return (
+          <div className="py-0.5">
+            <AskUserToolCall tool={tool} />
+          </div>
+        );
+      }
+      // 交互主面在底部 Dock；时间线只留提示条
       return (
-        <div className="mt-2 rounded-2xl border border-[var(--chat-border)]/40 bg-[var(--chat-surface-soft)]/50 px-4 py-3 text-[13px] text-[var(--chat-text-soft)]">
-          需要你的选择 · 请在右侧工作区作答
+        <div className="kimi-ui-card kimi-qcard">
+          <div className="kimi-ui-card__head">
+            <span className="kimi-qcard-ic">?</span>
+            <span className="kimi-qcard-title">提问</span>
+            <span className="kimi-appr-badge" style={{ marginLeft: "auto" }}>
+              待回答
+            </span>
+          </div>
+          <div className="kimi-ui-card__body">请在底部输入区作答</div>
         </div>
       );
     }
     case "plan_approval": {
+      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+      const toolAny = tool as unknown as Record<string, unknown>;
+      const approvalStatus = String(
+        nested.status || resultMap.status || toolAny.status || "pending"
+      ).toLowerCase();
+      const pending = !approvalStatus || approvalStatus === "pending";
+      if (pending) {
+        return (
+          <div className="kimi-ui-card kimi-appr">
+            <div className="kimi-ui-card__head">
+              <span className="kimi-qcard-title">计划审批</span>
+              <span className="kimi-appr-badge" style={{ marginLeft: "auto" }}>
+                待确认
+              </span>
+            </div>
+            <div className="kimi-ui-card__body">请在底部输入区确认计划</div>
+          </div>
+        );
+      }
       return <PlanApprovalCard tool={tool} />;
     }
     case "session_tasks": {

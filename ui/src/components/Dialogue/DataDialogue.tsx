@@ -15,7 +15,7 @@ const DataDialogue: FC<Props> = (props) => {
   return (
     <div className="flex h-full flex-col text-[14px] font-normal text-[#111827]">
       {chat.query ? (
-        <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[85%] justify-end">
+        <div className="user-message-enter mt-6 ml-auto flex w-full max-w-[78%] justify-end">
           <Message from="user" className="max-w-full">
             <MessageContent>{chat.query}</MessageContent>
           </Message>
