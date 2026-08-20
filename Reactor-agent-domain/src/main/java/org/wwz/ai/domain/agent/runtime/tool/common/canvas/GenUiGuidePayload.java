@@ -45,7 +45,7 @@ public final class GenUiGuidePayload {
         guide.put("canvas_routing", List.of(
                 "Prose / Q&A / bullets → markdown (no tools).",
                 "Charts / KPI / dashboards / multi-card / data grids → emit_ui_tree.",
-                "Teaching / formula demos with drag sliders (Pythagoras, circle, functions) → ParametricLab or PythagorasLab (NOT static Text/Chart).",
+                "Teaching / formula demos with drag sliders (Pythagoras, circle, functions) → ParametricLab or PythagorasLab (NOT a static chart).",
                 "Concept / knowledge animation (playable steps, flow, layering, formula transform) → ConceptDemo or AnimStepLab.",
                 "Structured 3D (geometry/color/particles) → emit_ui_tree ThreeJsFrame.",
                 "Existing glb/gltf URL → emit_ui_tree Model3D (src required).",
@@ -59,7 +59,7 @@ public final class GenUiGuidePayload {
                 "params: [{id,label,value,min,max,step,unit}]. outputs: [{id,label,expr,format}] with expr like sqrt(a*a+b*b).",
                 "Expr allows + - * / ^ ( ) and sqrt,abs,sin,cos,tan,min,max,pow,log,ln,exp,hypot,pi,e.",
                 "PythagorasLab: shortcut for 勾股定理 — defaults a,b sliders + c=sqrt(a²+b²) + live triangle.",
-                "Example tree root: {kind:'DesignSurface', children:[{kind:'PythagorasLab', props:{title:'勾股定理'}}]}.",
+                "Example tree root: {kind:'PythagorasLab', props:{title:'勾股定理'}}.",
                 "custom_svg: set scene:'custom_svg' and svg:'<svg>...</svg>' with {{a}} placeholders for live numbers."
         ));
         guide.put("concept_animation", List.of(
@@ -73,26 +73,22 @@ public final class GenUiGuidePayload {
         ));
         guide.put("bind_and_practice", List.of(
                 "BindScope: params sliders + children props with {{expr}} or $id update live (no send_message).",
-                "Example: {kind:'BindScope', props:{params:[{id:'a',value:3,min:1,max:10}]}, children:[{kind:'Text', props:{value:'a = {{a}}'}},{kind:'NumberLine', props:{value:'{{a}}',min:-10,max:10}}]}.",
+                "Example: {kind:'BindScope', props:{params:[{id:'a',value:3,min:1,max:10}]}, children:[{kind:'NumberLine', props:{value:'{{a}}',min:-10,max:10}}]}.",
                 "outputs: [{id:'c', expr:'sqrt(a*a+b*b)'}] adds derived ids usable in {{c}}.",
                 "Quiz after a demo: {kind:'Quiz', props:{prompt:'c 等于？', options:['3','4','5'], answer:'c'}} (option id defaults a/b/c).",
                 "WorkedExample: reveal steps then final answer. BeforeAfter: drag compare two images/texts.",
                 "NumberLine / CoordinateGrid: standalone or inside BindScope. ParametricLab scene=number_line|coordinate also works."
         ));
         guide.put("layout_structure", List.of(
-                "Wrap visuals in DesignSurface (preset: minimal|editorial|card|slide|poster).",
-                "Use Stack/Grid/Row for layout; keep nesting shallow (≤3–4 levels).",
-                "One primary Heading per section; group content in Card."
-        ));
-        guide.put("typography", List.of(
-                "Heading for titles; Text for body; Markdown only when needed.",
-                "Prefer List+ListItem over manual bullet Text nodes."
+                "Use domain components such as Card, FeatureGrid, KpiBoard, Table and Chart to structure visual output.",
+                "Keep nesting shallow (≤3–4 levels) and prefer a small number of meaningful components.",
+                "Use the normal assistant message for prose, headings, Markdown and feedback text."
         ));
         guide.put("anti_patterns", List.of(
                 "Invalid kind / snake_case kinds.",
                 "Props beside kind instead of under props.",
                 "Emoji on every line.",
-                "Flat 10+ peer nodes without Card/Stack/Grid."
+                "Flat 10+ peer nodes without a domain container such as Card."
         ));
         guide.put("subset_note",
                 "Reactor currently validates a high-frequency kind subset only. "

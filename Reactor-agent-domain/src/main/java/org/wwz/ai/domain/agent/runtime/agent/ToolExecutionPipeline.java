@@ -545,7 +545,14 @@ final class ToolExecutionPipeline {
             payload.put("toolInvocationId", String.valueOf(toolInvocationId));
         }
 
-        Object input = parseToolCallInput(command.getFunction().getArguments());
+        // 保留原始入参字符串，供前端在 running 阶段继续展示（对齐 LeAgent argumentsRaw）。
+        String rawArguments = command.getFunction().getArguments();
+        if (StringUtils.isNotBlank(rawArguments)) {
+            payload.put("argumentsText", rawArguments);
+            payload.put("argumentsRaw", rawArguments);
+        }
+
+        Object input = parseToolCallInput(rawArguments);
         if (input != null) {
             payload.put("input", input);
         }

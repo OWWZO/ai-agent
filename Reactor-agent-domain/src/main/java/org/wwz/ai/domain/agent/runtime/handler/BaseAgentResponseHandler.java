@@ -230,11 +230,13 @@ public class BaseAgentResponseHandler {
                 appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "tool_call":
+            case "tool_call_delta":
             case "ask_user_question":
             case "plan_approval":
             case "plan_mode_entered":
             case "session_tasks":
             case "llm_retry":
+            case "subagent_progress":
             case "browser":
             case "code":
             case "html":

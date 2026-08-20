@@ -15,7 +15,7 @@ public class GenUiSchemaTest {
                 "kind", "Card",
                 "props", Map.of("title", "Hello"),
                 "children", List.of(
-                        Map.of("kind", "Text", "props", Map.of("value", "world"))
+                        Map.of("kind", "Stat", "props", Map.of("label", "world", "value", "1"))
                 )
         );
         Map<String, Object> normalized = GenUiSchema.validateUiTree(tree);

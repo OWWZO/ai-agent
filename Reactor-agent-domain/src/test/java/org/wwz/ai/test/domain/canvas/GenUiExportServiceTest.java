@@ -17,15 +17,22 @@ public class GenUiExportServiceTest {
         Assert.assertTrue(GenUiCatalog.isAllowedKind("ThreeJsFrame"));
         Assert.assertTrue(GenUiCatalog.isAllowedKind("SlideDeck"));
         Assert.assertTrue(GenUiCatalog.listCatalog().size() >= 50);
+        for (String removedKind : new String[]{
+                "Stack", "Grid", "Row", "Spacer", "ScrollArea", "Tabs", "Accordion", "DesignSurface",
+                "Heading", "Text", "Markdown", "Badge", "Tag", "Divider", "Callout", "Alert",
+                "TabItem", "AccordionItem"
+        }) {
+            Assert.assertFalse("removed GenUI kind should not be allowed: " + removedKind,
+                    GenUiCatalog.isAllowedKind(removedKind));
+        }
     }
 
     @Test
     public void exportPdfAndDocx() {
         Map<String, Object> tree = Map.of(
-                "kind", "Stack",
+                "kind", "Card",
+                "props", Map.of("title", "Report"),
                 "children", List.of(
-                        Map.of("kind", "Heading", "props", Map.of("level", 1, "value", "Report")),
-                        Map.of("kind", "Text", "props", Map.of("value", "Hello export")),
                         Map.of("kind", "Stat", "props", Map.of("label", "KPI", "value", "42", "delta", "+3%"))
                 )
         );

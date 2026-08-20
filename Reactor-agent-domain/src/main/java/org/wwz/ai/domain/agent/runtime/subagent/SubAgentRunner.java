@@ -319,11 +319,15 @@ public class SubAgentRunner {
         }
         try {
             java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            // 与前端 agentRuntime 契约对齐：kind=heartbeat|text|line
+            payload.put("kind", "heartbeat");
+            payload.put("phase", "working");
             payload.put("agentId", agentId);
             payload.put("agentType", agentType);
             payload.put("description", description);
             payload.put("elapsedMs", System.currentTimeMillis() - startMs);
             payload.put("status", "running");
+            // parentToolUseId / subAgent* 由 SubAgentPrinter 自动注入
             childContext.getPrinter().send("subagent_progress", payload);
         } catch (Exception e) {
             log.debug("subagent progress heartbeat skipped id={}: {}", agentId, e.getMessage());

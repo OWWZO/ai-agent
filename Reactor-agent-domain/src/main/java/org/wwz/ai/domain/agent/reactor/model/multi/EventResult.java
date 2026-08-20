@@ -81,6 +81,7 @@ public class EventResult {
         add("tool_thought");
         add("llm_reasoning");
         add("tool_call");
+        add("tool_call_delta");
         add("data_analysis");
     }};
 

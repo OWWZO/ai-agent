@@ -34,26 +34,10 @@ public final class GenUiCatalog {
 
     private static List<Map<String, Object>> buildCatalog() {
         List<Map<String, Object>> list = new ArrayList<>();
-        // 按布局、排版、数据展示、卡片、交互和嵌入能力分组，保持提示目录可读且便于扩展。
-        list.add(entry("Stack", "Vertical flex stack", Map.of("gap", "number", "align", "start|center|end|stretch", "padding", "number")));
-        list.add(entry("Grid", "CSS grid", Map.of("columns", "1-6", "gap", "number", "minChildWidth", "string")));
-        list.add(entry("Row", "Horizontal flex row", Map.of("gap", "number", "justify", "start|center|end|between|around")));
-        list.add(entry("Spacer", "Vertical whitespace", Map.of("size", "number px")));
-        list.add(entry("ScrollArea", "Scrollable area", Map.of("maxHeight", "number px")));
-        list.add(entry("Tabs", "Tab container; children TabItem", Map.of("defaultTab", "string")));
-        list.add(entry("TabItem", "Tab pane", Map.of("label", "string")));
-        list.add(entry("Accordion", "Accordion container; children AccordionItem", Map.of()));
-        list.add(entry("AccordionItem", "Accordion section", Map.of("title", "string", "defaultOpen", "boolean")));
+        // 按容器、数据展示、卡片、交互和嵌入能力分组，保持提示目录可读且便于扩展。
         list.add(entry("AspectBox", "Fixed aspect frame", Map.of("ratio", "16:9|4:3|1:1|3:2", "maxWidth", "number")));
-        list.add(entry("DesignSurface", "Themed wrapper", Map.of("preset", "minimal|editorial|card|slide|poster|brutalist|geek", "padding", "none|sm|md|lg")));
-        // Typography
-        list.add(entry("Text", "Body text", Map.of("value", "string", "size", "xs|sm|base|lg", "color", "muted|default|primary|success|warning|error", "bold", "boolean")));
-        list.add(entry("Heading", "Section title", Map.of("level", "1-4", "value", "string")));
-        list.add(entry("Divider", "Horizontal rule", Map.of("label", "optional string")));
         list.add(entry("Skeleton", "Loading placeholder", Map.of("lines", "number", "variant", "text|card|avatar")));
         // Data display
-        list.add(entry("Badge", "Status badge", Map.of("value", "string", "variant", "default|primary|success|warning|error|info")));
-        list.add(entry("Tag", "Tag label", Map.of("label", "string", "color", "gray|blue|green|red|yellow|purple")));
         list.add(entry("Stat", "KPI stat", Map.of("label", "string", "value", "string", "delta", "string", "trend", "up|down|neutral")));
         list.add(entry("Progress", "Progress bar", Map.of("value", "0-100", "label", "string", "color", "primary|success|warning|error")));
         list.add(entry("Avatar", "Avatar", Map.of("src", "url", "name", "string", "size", "sm|md|lg")));
@@ -77,7 +61,6 @@ public final class GenUiCatalog {
         list.add(entry("List", "List container", Map.of("ordered", "boolean", "variant", "default|bordered|separated")));
         list.add(entry("ListItem", "List item", Map.of("value", "string", "icon", "string")));
         list.add(entry("CodeBlock", "Code block", Map.of("code", "string", "language", "string", "title", "string")));
-        list.add(entry("Markdown", "Markdown block", Map.of("content", "string", "value", "string")));
         list.add(entry("Chart", "Interactive chart (ECharts). Prefer over canvas_publish for pie/bar/line.",
                 Map.of(
                         "chart", "line|bar|area|pie",
@@ -141,7 +124,7 @@ public final class GenUiCatalog {
         list.add(entry("KnowledgeDemo", "Alias of ConceptDemo for knowledge/concept animation demos",
                 Map.of("scene", "string", "steps", "array", "nodes", "array", "edges", "array", "title", "string")));
         list.add(entry("BindScope",
-                "Reactive scope: sliders update sibling nodes. Children props may use {{expr}} or $id (e.g. Text value='{{a}}', Chart, NumberLine).",
+                "Reactive scope: sliders update sibling nodes. Children props may use {{expr}} or $id (e.g. Chart, NumberLine).",
                 Map.of(
                         "params", "[{id,label,value,min,max,step}]",
                         "outputs", "optional derived [{id,expr}] e.g. {id:c, expr:sqrt(a*a+b*b)}",
@@ -217,9 +200,6 @@ public final class GenUiCatalog {
                 Map.of("name", "string", "label", "string", "accept", "string")));
         list.add(entry("Textarea", "Textarea (interactive inside Form with name)",
                 Map.of("name", "string", "label", "string", "value", "string", "rows", "number")));
-        // Feedback
-        list.add(entry("Alert", "Alert banner", Map.of("message", "string", "variant", "info|success|warning|error")));
-        list.add(entry("Callout", "Callout", Map.of("title", "string", "message", "string", "variant", "info|success|warning|error")));
         // Embed
         list.add(entry("HostedCanvasFrame", "Hosted canvas frame", Map.of("canvasId", "string", "height", "number")));
         list.add(entry("HtmlFrame", "Sandboxed HTML frame", Map.of("html", "string", "height", "number", "title", "string")));
