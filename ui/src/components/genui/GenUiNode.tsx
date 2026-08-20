@@ -1,7 +1,6 @@
-import { FC, memo, useState, type ReactNode } from "react";
+import { FC, memo, type ReactNode } from "react";
 import classNames from "classnames";
 import { motion, useReducedMotion } from "motion/react";
-import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import GenUiChart from "./GenUiChart";
 import GenUiModel3D from "./GenUiModel3D";
@@ -49,19 +48,6 @@ const textColor = (color?: string) => {
   }
 };
 
-const DESIGN_SURFACE_TONES: Record<string, string> = {
-  default: "genui-tone genui-tone-default",
-  dashboard: "genui-tone genui-tone-dashboard",
-  lesson: "genui-tone genui-tone-lesson",
-  report: "genui-tone genui-tone-report",
-  media: "genui-tone genui-tone-media",
-};
-
-function resolveTone(raw: unknown): string {
-  const key = String(raw || "default").toLowerCase();
-  return DESIGN_SURFACE_TONES[key] || DESIGN_SURFACE_TONES.default;
-}
-
 const GenUiEnter: FC<{ index: number; children: ReactNode }> = ({
   index,
   children,
@@ -80,89 +66,6 @@ const GenUiEnter: FC<{ index: number; children: ReactNode }> = ({
     >
       {children}
     </motion.div>
-  );
-};
-
-const GenUiTabs: FC<{ items: GenUiNodeData[]; depth: number }> = ({
-  items,
-  depth,
-}) => {
-  // Tabs/Accordion 自己持有展示状态，节点树只描述内容；切换面板不会修改模型生成的树，
-  // 从而保证历史回放和重新渲染仍使用同一份 GenUI 数据。
-  const [active, setActive] = useState(0);
-  const safeActive = Math.min(Math.max(active, 0), Math.max(items.length - 1, 0));
-  const current = items[safeActive];
-  return (
-    <div className="overflow-hidden rounded-xl border border-[var(--chat-border)]/60">
-      <div className="flex flex-wrap gap-1 border-b border-[var(--chat-border)]/50 bg-[var(--chat-surface-soft)]/50 p-1.5">
-        {items.map((item, index) => {
-          const label =
-            item.props?.label || item.props?.title || `标签 ${index + 1}`;
-          const selected = index === safeActive;
-          return (
-            <button
-              key={item.nodeId || `tab-${index}`}
-              type="button"
-              className={classNames(
-                "rounded-md px-3 py-1.5 text-[12px] transition-colors",
-                selected
-                  ? "bg-[var(--chat-surface)] font-medium text-[var(--chat-text)] shadow-sm"
-                  : "text-[var(--chat-text-soft)] hover:bg-[var(--chat-surface)]/70"
-              )}
-              onClick={() => setActive(index)}
-            >
-              {String(label)}
-            </button>
-          );
-        })}
-      </div>
-      <div className="p-3">
-        {current ? (
-          <GenUiNode node={current} depth={depth + 1} />
-        ) : (
-          <div className="text-[12px] text-[var(--chat-text-soft)]">暂无内容</div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const GenUiAccordion: FC<{ items: GenUiNodeData[]; depth: number }> = ({
-  items,
-  depth,
-}) => {
-  // Accordion 只允许一个分组展开，避免深层 GenUI 在消息流中同时展开造成高度失控。
-  const [open, setOpen] = useState(0);
-  return (
-    <div className="space-y-2">
-      {items.map((item, index) => {
-        const label =
-          item.props?.label || item.props?.title || `分组 ${index + 1}`;
-        const expanded = open === index;
-        return (
-          <div
-            key={item.nodeId || `acc-${index}`}
-            className="overflow-hidden rounded-lg border border-[var(--chat-border)]/60"
-          >
-            <button
-              type="button"
-              className="flex w-full items-center justify-between bg-[var(--chat-surface-soft)]/40 px-3 py-2 text-left text-[13px] font-medium text-[var(--chat-text)]"
-              onClick={() => setOpen(expanded ? -1 : index)}
-            >
-              <span>{String(label)}</span>
-              <span className="text-[11px] text-[var(--chat-text-soft)]">
-                {expanded ? "收起" : "展开"}
-              </span>
-            </button>
-            {expanded ? (
-              <div className="border-t border-[var(--chat-border)]/40 p-3">
-                <GenUiNode node={{ ...item, kind: "Stack" }} depth={depth + 1} />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
   );
 };
 
@@ -195,67 +98,6 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
     });
 
   switch (node.kind) {
-    case "DesignSurface": {
-      const labKinds = new Set([
-        "ParametricLab",
-        "PythagorasLab",
-        "GeometryLab",
-        "InteractiveLab",
-        "ConceptDemo",
-        "AnimStepLab",
-        "KnowledgeDemo",
-        "Quiz",
-        "WorkedExample",
-        "BeforeAfter",
-        "NumberLine",
-        "CoordinateGrid",
-        "BindScope",
-      ]);
-      const onlyLabs =
-        children.length > 0 && children.every((c) => labKinds.has(String(c.kind || "")));
-      return (
-        <div
-          key={key}
-          className={classNames(
-            resolveTone(props.tone || props.theme || props.variant),
-            onlyLabs
-              ? "p-0"
-              : "rounded-2xl border border-[var(--chat-border)]/60 p-4",
-            !onlyLabs && props.padding === "lg" && "p-6",
-            !onlyLabs && props.padding === "sm" && "p-3",
-            props.padding === "none" && "p-0"
-          )}
-        >
-          {renderChildren(true)}
-        </div>
-      );
-    }
-    case "Stack":
-      return (
-        <div key={key} className="flex flex-col gap-3">
-          {renderChildren(depth < 1)}
-        </div>
-      );
-    case "Row":
-      return (
-        <div key={key} className="flex flex-wrap items-center gap-3">
-          {renderChildren(depth < 1)}
-        </div>
-      );
-    case "Grid": {
-      const columns = Math.min(6, Math.max(1, Number(props.columns) || 2));
-      return (
-        <div
-          key={key}
-          className="grid gap-3"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-        >
-          {renderChildren(depth < 1)}
-        </div>
-      );
-    }
-    case "Spacer":
-      return <div key={key} style={{ height: Number(props.size) || 12 }} />;
     case "AspectBox":
       return (
         <div key={key} className="w-full overflow-hidden rounded-xl border border-[var(--chat-border)]/50">
@@ -276,47 +118,6 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
           ) : null}
           {renderChildren()}
         </div>
-      );
-    case "Heading": {
-      const level = Math.min(4, Math.max(1, Number(props.level) || 2));
-      const size =
-        level === 1 ? "text-2xl" : level === 2 ? "text-xl" : level === 3 ? "text-lg" : "text-base";
-      const text = props.value || props.text || props.title || "";
-      const className = classNames(size, "font-semibold tracking-tight text-[var(--chat-text)]");
-      if (level === 1) return <h1 key={key} className={className}>{text}</h1>;
-      if (level === 2) return <h2 key={key} className={className}>{text}</h2>;
-      if (level === 3) return <h3 key={key} className={className}>{text}</h3>;
-      return <h4 key={key} className={className}>{text}</h4>;
-    }
-    case "Text":
-      return (
-        <p key={key} className={classNames("text-[14px] leading-6", textColor(props.color), props.bold && "font-medium")}>
-          {props.value || props.text || props.content || ""}
-        </p>
-      );
-    case "Markdown":
-      return (
-        <div key={key} className="chat-markdown text-[14px]">
-          <MarkdownRenderer markDownContent={String(props.content || props.value || props.text || "")} />
-        </div>
-      );
-    case "Divider":
-      return (
-        <div key={key} className="my-2 flex items-center gap-2">
-          <div className="h-px flex-1 bg-[var(--chat-border)]/70" />
-          {props.label ? <span className="text-[12px] text-[var(--chat-text-soft)]">{props.label}</span> : null}
-          <div className="h-px flex-1 bg-[var(--chat-border)]/70" />
-        </div>
-      );
-    case "Badge":
-    case "Tag":
-      return (
-        <span
-          key={key}
-          className="inline-flex rounded-full border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] px-2 py-0.5 text-[12px] text-[var(--chat-text)]"
-        >
-          {props.value || props.label || props.text || ""}
-        </span>
       );
     case "Stat":
       return (
@@ -686,7 +487,6 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         </div>
       );
     case "AlertCard":
-    case "Callout":
       return (
         <div key={key} className="rounded-xl border border-[var(--chat-border)]/70 bg-[var(--chat-surface)] p-3">
           {props.title ? <div className="text-[13px] font-semibold text-[var(--chat-text)]">{props.title}</div> : null}
@@ -770,35 +570,9 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         </ol>
       );
     }
-    case "Tabs": {
-      const tabItems = children.filter((c) => c.kind === "TabItem");
-      const items = tabItems.length ? tabItems : children;
-      return <GenUiTabs key={key} items={items} depth={depth} />;
-    }
-    case "Accordion": {
-      const accItems = children.filter((c) => c.kind === "AccordionItem");
-      const items = accItems.length ? accItems : children;
-      return <GenUiAccordion key={key} items={items} depth={depth} />;
-    }
     case "ChipGroup":
       return (
         <div key={key} className="flex flex-wrap gap-1.5">
-          {renderChildren()}
-        </div>
-      );
-    case "ScrollArea":
-      return (
-        <div
-          key={key}
-          className="max-h-[360px] space-y-2 overflow-auto rounded-lg border border-[var(--chat-border)]/40 p-2"
-        >
-          {renderChildren()}
-        </div>
-      );
-    case "TabItem":
-    case "AccordionItem":
-      return (
-        <div key={key} className="space-y-2">
           {renderChildren()}
         </div>
       );
@@ -982,25 +756,6 @@ const GenUiNode: FC<Props> = memo(({ node, depth = 0 }) => {
         >
           暂不支持交互组件：{node.kind}
           {props.title || props.label ? `（${props.title || props.label}）` : ""}
-          {renderChildren()}
-        </div>
-      );
-    case "Alert":
-      return (
-        <div
-          key={key}
-          className={classNames(
-            "rounded-lg border px-3 py-2 text-[13px]",
-            props.variant === "error"
-                ? "border-red-200 bg-red-50 text-red-700"
-              : props.variant === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : props.variant === "warning"
-                  ? "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-                  : "border-[var(--chat-border)] bg-[var(--chat-surface-soft)] text-[var(--chat-text)]"
-          )}
-        >
-          {props.message || props.description || props.value || props.text || ""}
           {renderChildren()}
         </div>
       );

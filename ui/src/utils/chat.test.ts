@@ -11,9 +11,126 @@ import {
   buildDeepSearchPreviewModel,
   shouldRenderDeepSearchWorkspace,
 } from "./deepSearch";
+import { resolveTaskToolArg } from "@/components/Dialogue/tools/toolTaskAdapter";
 import { getPrimaryTaskFile } from "./taskArtifacts";
 
 type DeepSearchStage = "extend" | "search" | "report";
+
+describe("流式工具参数", () => {
+  it("优先展示尚未闭合的累计 argumentsText", () => {
+    const task = {
+      messageType: "tool_call",
+      resultMap: {
+        toolName: "workspace_grep",
+        status: "streaming",
+        argumentsText: '{"query":"spring',
+      },
+    } as CHAT.Task;
+
+    expect(resolveTaskToolArg(task)).toBe('{"query":"spring');
+  });
+
+  it("tool_call_delta 多帧应合并为单卡且 argumentsRaw 递增，running 后仍保留 args", () => {
+    const currentChat = {
+      sessionId: "session-stream-args",
+      requestId: "req-stream-args",
+      query: "写一段代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    const frame = (opts: {
+      messageId: string;
+      toolCallId: string;
+      streamToolKey: string;
+      argumentsText: string;
+      messageType?: string;
+      status?: string;
+      isFinal?: boolean;
+      input?: Record<string, unknown>;
+    }): MESSAGE.EventData => {
+      const innerType = opts.messageType || "tool_call_delta";
+      return {
+        messageType: "task",
+        messageId: opts.messageId,
+        taskId: "task-stream-args",
+        taskOrder: 1,
+        messageOrder: 1,
+        resultMap: {
+          requestId: "req-stream-args",
+          messageId: opts.messageId,
+          messageType: innerType,
+          messageTime: "1714041600999",
+          finish: Boolean(opts.isFinal),
+          isFinal: Boolean(opts.isFinal),
+          resultMap: {
+            messageType: innerType,
+            isFinal: Boolean(opts.isFinal),
+            status: opts.status || "streaming",
+            toolName: "code_execute",
+            toolCallId: opts.toolCallId,
+            streamToolKey: opts.streamToolKey,
+            argumentsText: opts.argumentsText,
+            argumentsRaw: opts.argumentsText,
+            summary: "正在生成 code_execute 参数…",
+            ...(opts.input ? { input: opts.input } : {}),
+          },
+        },
+      } as unknown as MESSAGE.EventData;
+    };
+
+    const streamKey = "stream-tool-abc";
+    combineData(
+      frame({
+        messageId: streamKey,
+        toolCallId: streamKey,
+        streamToolKey: streamKey,
+        argumentsText: '{"code":"print(1',
+      }),
+      currentChat
+    );
+    combineData(
+      frame({
+        messageId: streamKey,
+        toolCallId: "call-real-1",
+        streamToolKey: streamKey,
+        argumentsText: '{"code":"print(123)"}',
+      }),
+      currentChat
+    );
+    combineData(
+      frame({
+        messageId: streamKey,
+        toolCallId: "call-real-1",
+        streamToolKey: streamKey,
+        argumentsText: '{"code":"print(123)"}',
+        messageType: "tool_call",
+        status: "running",
+        input: { code: "print(123)" },
+      }),
+      currentChat
+    );
+
+    expect(currentChat.multiAgent.tasks).toHaveLength(1);
+    expect(currentChat.multiAgent.tasks[0]).toHaveLength(1);
+    const card = currentChat.multiAgent.tasks[0][0];
+    expect(card.messageType).toBe("tool_call");
+    expect(card.messageId).toBe(streamKey);
+    expect(card.resultMap?.status).toBe("running");
+    expect(card.resultMap?.toolCallId).toBe("call-real-1");
+    expect(card.resultMap?.argsStreaming).toBe(false);
+    expect(card.resultMap?.argumentsRaw).toContain("print(123)");
+    expect(resolveTaskToolArg(card as CHAT.Task)).toContain("print(123)");
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+    expect(taskList).toHaveLength(1);
+    expect(resolveTaskToolArg(taskList[0])).toContain("print(123)");
+  });
+});
 
 function createDoc(link: string, title: string, content: string): MESSAGE.Doc {
   return {

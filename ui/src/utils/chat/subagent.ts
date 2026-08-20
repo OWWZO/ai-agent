@@ -16,6 +16,12 @@ export type SubAgentDisplay = {
   totalToolUseCount?: number;
   totalDurationMs?: number;
   errorMsg: string;
+  runInBackground: boolean;
+  /** 子 Agent 直播文本（SSE subagent_progress kind=text） */
+  liveText: string;
+  /** Calling… / heartbeat 进度行 */
+  progressLines: string[];
+  elapsedMs?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -39,13 +45,24 @@ function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
   if (isRecord(toolParam)) {
     return toolParam;
   }
+  // tool_call 经 buildTaskFromEventData spread 后，input 可能在 task 顶层
+  const top = task as Record<string, unknown> | undefined;
+  if (isRecord(top?.input)) {
+    return top.input as Record<string, unknown>;
+  }
+  if (isRecord(top?.toolParam)) {
+    return top.toolParam as Record<string, unknown>;
+  }
   return {};
 }
 
 function resolveToolName(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
+  const top = task as Record<string, unknown> | undefined;
   return asText(
     task?.toolResult?.toolName ||
-      (task?.resultMap as Record<string, unknown> | undefined)?.toolName
+      (task?.resultMap as Record<string, unknown> | undefined)?.toolName ||
+      // tool_call spread 后 toolName 常在顶层
+      top?.toolName
   );
 }
 
@@ -63,6 +80,46 @@ export function isAgentDispatchTask(task?: Partial<CHAT.Task> | Partial<MESSAGE.
     toolName === AGENT_DISPATCH_TOOL_NAME
   ) {
     return true;
+  }
+  return false;
+}
+
+/** 是否后台子 Agent（Dock Tasks；前台仍走内联 Agent 卡） */
+export function isRunInBackgroundAgent(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task || !isAgentDispatchTask(task)) {
+    return false;
+  }
+  const input = pickInput(task) as Record<string, unknown>;
+  if (input.run_in_background === true || input.runInBackground === true) {
+    return true;
+  }
+  const resultMap = (task.resultMap || {}) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  if (
+    resultMap.run_in_background === true ||
+    resultMap.runInBackground === true ||
+    nested.run_in_background === true ||
+    nested.runInBackground === true
+  ) {
+    return true;
+  }
+  const observation = asText(
+    task.toolResult?.toolResult || resultMap.toolResult || resultMap.answer
+  );
+  if (/run_in_background\s*[:=]\s*true/i.test(observation)) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(observation) as Record<string, unknown>;
+    if (isRecord(parsed) && (parsed.run_in_background === true || parsed.runInBackground === true)) {
+      return true;
+    }
+  } catch {
+    // ignore
   }
   return false;
 }
@@ -203,6 +260,18 @@ export function resolveSubAgentDisplay(
     status = "running";
   }
 
+  const resultMap = (task?.resultMap || {}) as Record<string, unknown>;
+  const progressLines = Array.isArray(resultMap.subAgentProgressLines)
+    ? (resultMap.subAgentProgressLines as unknown[]).filter(
+        (line): line is string => typeof line === "string" && line.trim().length > 0
+      )
+    : [];
+  const liveText = asText(resultMap.subAgentLiveText);
+  const elapsedMs =
+    typeof resultMap.subAgentElapsedMs === "number"
+      ? resultMap.subAgentElapsedMs
+      : undefined;
+
   return {
     isAgent: isAgentDispatchTask(task),
     description,
@@ -214,6 +283,10 @@ export function resolveSubAgentDisplay(
     totalToolUseCount: parsed.totalToolUseCount,
     totalDurationMs: parsed.totalDurationMs,
     errorMsg: parsed.errorMsg,
+    runInBackground: isRunInBackgroundAgent(task),
+    liveText,
+    progressLines,
+    elapsedMs,
   };
 }
 

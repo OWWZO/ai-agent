@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * 未接线参考实现（P5 冻结）。
+ * 运行时工具卡主路径：Dialogue/tools/ToolCallView + .kimi-tool-row。
+ * 勿与 ToolCallView 双轨并存渲染。
+ */
+
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,

@@ -1,16 +1,15 @@
 import ReactMarkdown from 'react-markdown';
 import gfm from 'remark-gfm';
-import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Empty, Image, Modal } from 'antd';
 import classNames from 'classnames';
 import { Expand, X } from 'lucide-react';
 import { usePanelContext } from './PanelProvider';
 import mermaid from 'mermaid';
 import {
-  CodeBlock as ShadcnCodeBlock,
-  CodeBlockCopyButton,
-} from '@/components/ai-elements/code-block';
-import { MessageResponse } from '@/components/ai-elements/message';
+  DiffCodeFence,
+  KimiCodeFence,
+} from '@/components/Dialogue/markdown/KimiCodeFence';
 import {
   resolveMarkdownArtifactHref,
   resolveMarkdownMediaKind,
@@ -136,33 +135,67 @@ const Mermaid: ReactorType.FC = (props) => {
   );
 };
 
-const CodeBlock: ReactorType.FC<{
-  inline?: boolean;
-}> = ({ inline, className, children }) => {
-  const match = /language-(\w+)/.exec(className || '');
-
-  if (match?.[1] === 'mermaid') {
-    return <Mermaid>{children}</Mermaid>;
+function childrenToText(children: unknown): string {
+  if (children == null || typeof children === "boolean") {
+    return "";
   }
-
-  if (!inline && match) {
-    const rawLang = match[1];
-    const safeLanguage = (rawLang in bundledLanguages ? rawLang : 'text') as BundledLanguage;
-    const codeString = Array.isArray(children)
-      ? children.join('')
-      : typeof children === 'string'
-        ? children
-        : String(children);
-
-    return (
-      <ShadcnCodeBlock code={codeString.trim()} language={safeLanguage}>
-        <CodeBlockCopyButton />
-      </ShadcnCodeBlock>
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(childrenToText).join("");
+  }
+  if (typeof children === "object" && "props" in children) {
+    return childrenToText(
+      (children as { props?: { children?: unknown } }).props?.children
     );
   }
+  return "";
+}
 
-  return <code className={className}>{children}</code>;
+const CodeBlock: ReactorType.FC<{
+  inline?: boolean;
+  className?: string;
+  children?: unknown;
+}> = ({ inline, className, children, ...rest }) => {
+  // Streamdown 用 data-block 标记围栏；react-markdown 用 inline=false
+  const isBlock =
+    !inline || Object.prototype.hasOwnProperty.call(rest, "data-block");
+  const match = /language-(\w+)/.exec(className || "");
+  const trimmed = childrenToText(children).replace(/\n$/, "");
+
+  if (match?.[1] === "mermaid") {
+    return <Mermaid>{children as ReactNode}</Mermaid>;
+  }
+
+  if (isBlock && match?.[1] === "diff") {
+    return <DiffCodeFence code={trimmed} />;
+  }
+
+  if (isBlock && match) {
+    const rawLang = match[1];
+    const safeLanguage = (
+      rawLang in bundledLanguages ? rawLang : "text"
+    ) as BundledLanguage;
+    return <KimiCodeFence code={trimmed} language={safeLanguage} />;
+  }
+
+  // 无 language 的多行 fence：仍按代码块渲染，避免掉进行内 chip
+  if (isBlock && trimmed.includes("\n")) {
+    return <KimiCodeFence code={trimmed} language="text" />;
+  }
+
+  return <code className={cnInlineCode(className)}>{children as ReactNode}</code>;
 };
+
+/** react-markdown 默认 pre>code；我们的 fence 自带外壳，必须拆掉外层 pre，否则套住 Shiki 的 pre 会重复渲染 HTML 源码 */
+const MarkdownPre: ReactorType.FC<{ children?: ReactNode }> = ({
+  children,
+}) => <>{children}</>;
+
+function cnInlineCode(className?: string) {
+  return classNames('kimi-inline-code', className);
+}
 
 const MarkdownRenderer: ReactorType.FC<{
   markDownContent?: string;
@@ -230,6 +263,7 @@ const MarkdownRenderer: ReactorType.FC<{
     };
 
     return {
+      pre: MarkdownPre,
       code: CodeBlock,
       a: MarkdownLink,
       img: MarkdownImage,
@@ -248,23 +282,10 @@ const MarkdownRenderer: ReactorType.FC<{
     return <Empty description="暂无内容" className='mx-auto mt-32' />;
   }
 
-  if (isStreaming) {
-    return (
-      <div className={classNames('w-full markdown-body', className)}>
-        <MessageResponse
-          isStreaming
-          showStreamingCursor={false}
-          disableAutoScroll
-          components={markdownComponents}
-        >
-          {normalizedContent}
-        </MessageResponse>
-      </div>
-    );
-  }
-
+  // 流式/落定统一走 ReactMarkdown + KimiCodeFence(tokens)。
+  // 不再用 Streamdown 自带 Shiki：会与自定义 code 叠出「高亮 + HTML 源码」两段。
   return (
-    <div className={classNames('w-full markdown-body', className)}>
+    <div className={classNames('w-full markdown-body kimi-md', className)}>
       <ReactMarkdown
         remarkPlugins={[gfm]}
         components={markdownComponents}

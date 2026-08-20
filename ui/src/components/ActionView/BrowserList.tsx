@@ -72,7 +72,7 @@ const BrowserDetail: React.FC<{ item: BrowserItem; onBack: () => void }> = ({
                   <Link2 className="h-3 w-3 text-[#86868b]" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-[#0071e3] transition-colors group-hover:underline">
+                  <p className="text-[13px] font-medium text-[var(--chat-accent)] transition-colors group-hover:underline">
                     {ele.name}
                   </p>
                   {ele.pageContent && (

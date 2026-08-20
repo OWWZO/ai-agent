@@ -41,6 +41,48 @@ export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
   return {};
 }
 
+export function resolveToolCallArgumentsText(resultMap?: MESSAGE.ResultMap) {
+  if (!resultMap) {
+    return "";
+  }
+  // LeAgent 对齐：argumentsRaw 优先；兼容历史 argumentsText
+  if (typeof resultMap.argumentsRaw === "string" && resultMap.argumentsRaw) {
+    return resultMap.argumentsRaw;
+  }
+  if (typeof resultMap.argumentsText === "string" && resultMap.argumentsText) {
+    return resultMap.argumentsText;
+  }
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as MESSAGE.ResultMap)
+    : null;
+  if (typeof nested?.argumentsRaw === "string" && nested.argumentsRaw) {
+    return nested.argumentsRaw;
+  }
+  return typeof nested?.argumentsText === "string" ? nested.argumentsText : "";
+}
+
+/** 流式 tool_call 卡片稳定键：streamToolKey > toolCallId > messageId */
+export function resolveToolCallStreamKey(
+  task?: Partial<MESSAGE.Task> | Partial<CHAT.Task> | MESSAGE.ResultMap
+) {
+  if (!task) {
+    return "";
+  }
+  const record = task as Record<string, unknown>;
+  const resultMap = (record.resultMap || record) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap)
+    ? (resultMap.resultMap as Record<string, unknown>)
+    : {};
+  return pickFirstText(
+    resultMap.streamToolKey,
+    nested.streamToolKey,
+    record.streamToolKey,
+    resolveTaskToolCallId(task as Partial<MESSAGE.Task>),
+    typeof record.messageId === "string" ? record.messageId : "",
+    typeof resultMap.messageId === "string" ? resultMap.messageId : ""
+  );
+}
+
 export function resolveToolCallTargetName(resultMap?: MESSAGE.ResultMap) {
   const input = resolveToolCallInput(resultMap);
   // 文件类工具的目标字段历史上多次改名，按稳定性从显式主文件名到 path 依次回退。
@@ -86,6 +128,9 @@ export function resolveToolCallActionText(task: CHAT.Task) {
   }
   if (status === "failed") {
     return "工具调用失败";
+  }
+  if (status === "streaming" || status === "preparing") {
+    return "正在生成工具参数";
   }
   if (task.resultMap?.isFinal) {
     return "工具调用完成";

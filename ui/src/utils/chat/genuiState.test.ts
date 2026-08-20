@@ -126,14 +126,14 @@ describe("genuiState merge", () => {
       resultMap: {
         tree: {
           schemaVersion: "1",
-          root: { kind: "Stack", props: {}, children: [] },
+          root: { kind: "Card", props: {}, children: [] },
         },
       },
     };
     const featured = findFeaturedGenUi([
       [{ task: "", children: [{ messageType: "tool_result" }, treeTask] } as any],
     ]);
-    expect(featured?.tree?.root?.kind).toBe("Stack");
+    expect(featured?.tree?.root?.kind).toBe("Card");
   });
 
   it("rebuilds featured tree from multiAgent patches relative to originalTree", () => {

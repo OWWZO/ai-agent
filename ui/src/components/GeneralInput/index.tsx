@@ -77,6 +77,9 @@ type Props = {
   send: (p: CHAT.TInputInfo) => void;
   onSelectionChange?: (selection: { product: CHAT.Product; deepThink: boolean }) => void;
   onRoleSelect?: (role: CHAT.FixRole) => void;
+  /** 外部回填（Undo 上一轮 user query） */
+  draftMessage?: string | null;
+  onDraftConsumed?: () => void;
 };
 
 type InputModeKey = "quick" | "think" | "research";
@@ -165,6 +168,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     send,
     onSelectionChange,
     onRoleSelect,
+    draftMessage = null,
+    onDraftConsumed,
   } = props;
 
   const [question, setQuestion] = useState("");
@@ -268,6 +273,15 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     const el = root.querySelector("textarea");
     textareaRef.current = el as HTMLTextAreaElement | null;
   });
+
+  useEffect(() => {
+    if (!draftMessage) return;
+    setQuestion(draftMessage.slice(0, MAX_QUERY_CHARS));
+    onDraftConsumed?.();
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, [draftMessage, onDraftConsumed]);
 
   const handleAttachmentsAdded = useCallback(
     (attachments: PromptInputAttachmentItem[]) => {
@@ -645,7 +659,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     </PromptInputSubmit>
                   </TooltipTrigger>
                   <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
-                    {busy && onInject ? "发送指导" : "发送"}
+                    {busy && onInject ? "发送指导（注入当前任务）" : "发送"}
                   </TooltipContent>
                 </Tooltip>
               ) : busy ? (

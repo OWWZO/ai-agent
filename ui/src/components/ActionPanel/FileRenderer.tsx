@@ -121,7 +121,7 @@ const resolveUnavailableReason = (error: Error) => {
   return message || "引用资源不存在或已失效";
 };
 
-/** ClawsGO 风格源码视图：行号 + one-light 高亮，无多余外壳 */
+/** 源码视图：行号 + github-light 高亮，无多余外壳 */
 const SourceCodeView: React.FC<{
   code: string;
   language: BundledLanguage;

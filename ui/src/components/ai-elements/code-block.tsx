@@ -60,15 +60,16 @@ export async function highlightCode(
     ? [lineNumberTransformer]
     : [];
 
+  // 与 kimi-web Markdown.vue 一致：github-light / github-dark
   return await Promise.all([
     codeToHtml(code, {
       lang: language,
-      theme: "one-light",
+      theme: "github-light",
       transformers,
     }),
     codeToHtml(code, {
       lang: language,
-      theme: "one-dark-pro",
+      theme: "github-dark",
       transformers,
     }),
   ]);

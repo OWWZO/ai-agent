@@ -19,7 +19,7 @@ import { PanelProvider } from ".";
 import { useMemoizedFn } from "ahooks";
 import { getPrimaryTaskFile } from "@/utils/taskArtifacts";
 import { resolvePanelView } from "./panelResolver";
-import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
+
 
 interface ActionPanelProps {
   taskItem?: PanelItemType;
@@ -136,7 +136,13 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         return (
           <ContentWrapper key="ask_user_question">
             <div className={classNames("h-full overflow-auto", !noPadding && "px-1 py-1")}>
-              <AskUserQuestionCard tool={panelView.tool as CHAT.Task} />
+              <div className="kimi-ui-card kimi-qcard">
+                <div className="kimi-ui-card__head">
+                  <span className="kimi-qcard-ic">?</span>
+                  <span className="kimi-qcard-title">提问</span>
+                </div>
+                <div className="kimi-ui-card__body">请在底部输入区作答</div>
+              </div>
             </div>
           </ContentWrapper>
         );

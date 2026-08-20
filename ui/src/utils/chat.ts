@@ -31,6 +31,9 @@ import {
   pickFirstText,
   resolveTaskToolCallId,
   resolveToolCallActionText,
+  resolveToolCallArgumentsText,
+  resolveToolCallInput,
+  resolveToolCallStreamKey,
   resolveToolCallTargetName,
 } from "./chat/toolCalls";
 import { ensureOriginalTree, mergeUiPatchIntoTasks } from "@/utils/chat/genuiState";
@@ -40,6 +43,7 @@ import {
   isAgentDispatchTask,
   resolveParentToolUseId,
 } from "./chat/subagent";
+import type { SubAgentProgressKind } from "@/types/agentRuntime";
 
 type NestedTaskResultMap = MESSAGE.ResultMap & {
   resultMap?: MESSAGE.ResultMap;
@@ -243,7 +247,8 @@ function handleTaskMessageByType(
       handleLlmRetryMessage(eventData, currentChat);
       break;
     case "subagent_progress":
-      // 子 Agent 静默心跳：不进时间线/工作区，避免误显示「正在调用工具」
+      // 不进时间线/工作区；进度挂到父 Agent 卡片事实字段，供详情面板投影
+      handleSubAgentProgressMessage(eventData, currentChat);
       break;
     case "tool_thought":
       // 助手过程 content（有 tool 时），不是思考
@@ -269,6 +274,8 @@ function handleTaskMessageByType(
       handleDeepSearchMessage(eventData, currentChat, taskIndex);
       break;
     case "tool_call":
+    case "tool_call_delta":
+      // tool_call_delta：参数生成增量（LeAgent 对齐）；tool_call：running/success/failed
       handleToolCallMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "ask_user_question":
@@ -310,6 +317,148 @@ function finalizeOpenNativeReasoning(currentChat: CHAT.ChatItem) {
         ...(tool.resultMap || {}),
         isFinal: true,
       };
+    }
+  }
+}
+
+function asTextField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveSubAgentProgressKind(
+  map: Record<string, unknown>
+): SubAgentProgressKind {
+  const kind = asTextField(map.kind || map.subAgentProgressKind).toLowerCase();
+  if (kind === "text" || kind === "line" || kind === "heartbeat") {
+    return kind;
+  }
+  if (asTextField(map.text)) {
+    return "text";
+  }
+  if (asTextField(map.line)) {
+    return "line";
+  }
+  return "heartbeat";
+}
+
+/**
+ * 将 subagent_progress 挂到父 Agent 工具卡（按 parentToolUseId），不插入新时间线条目。
+ */
+function handleSubAgentProgressMessage(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+) {
+  const resultMap = toNestedResultMap(eventData.resultMap);
+  const nested = toNestedResultMap(resultMap.resultMap);
+  const merged: Record<string, unknown> = {
+    ...resultMap,
+    ...nested,
+  };
+  const parentToolUseId = asTextField(
+    merged.parentToolUseId ||
+      resolveParentToolUseId(eventData.resultMap) ||
+      resolveParentToolUseId(eventData as unknown as Record<string, unknown>)
+  );
+  if (!parentToolUseId || !currentChat.multiAgent?.tasks?.length) {
+    return;
+  }
+
+  const kind = resolveSubAgentProgressKind(merged);
+  const line = asTextField(merged.line);
+  const textChunk = asTextField(merged.text);
+  const elapsedMs =
+    typeof merged.elapsedMs === "number"
+      ? merged.elapsedMs
+      : typeof merged.subAgentElapsedMs === "number"
+        ? merged.subAgentElapsedMs
+        : undefined;
+  const phase = asTextField(merged.phase || merged.subAgentPhase);
+  const status = asTextField(merged.status);
+
+  for (const group of currentChat.multiAgent.tasks) {
+    if (!group?.length) continue;
+    for (const task of group) {
+      const toolCallId = resolveTaskToolCallId(task);
+      const messageId = asTextField(task.messageId);
+      if (toolCallId !== parentToolUseId && messageId !== parentToolUseId) {
+        continue;
+      }
+      const toolName = asTextField(
+        task.toolResult?.toolName || task.resultMap?.toolName
+      );
+      // 优先 Agent 卡；同 toolCallId 的占位 tool_call 也接收进度
+      if (
+        !isAgentDispatchTask(task) &&
+        toolName &&
+        toolName !== AGENT_DISPATCH_TOOL_NAME
+      ) {
+        continue;
+      }
+
+      const prev = (task.resultMap || {}) as MESSAGE.ResultMap;
+      const prevLines = Array.isArray(prev.subAgentProgressLines)
+        ? [...prev.subAgentProgressLines]
+        : [];
+      let nextLines = prevLines;
+      let nextLiveText = asTextField(prev.subAgentLiveText);
+
+      if (kind === "line" && line) {
+        nextLines = [...prevLines, line].slice(-80);
+      } else if (kind === "heartbeat") {
+        const agentType = asTextField(merged.agentType || merged.subAgentType);
+        const desc = asTextField(merged.description || merged.subAgentDescription);
+        const elapsedLabel =
+          typeof elapsedMs === "number" && Number.isFinite(elapsedMs)
+            ? `${Math.round(elapsedMs / 1000)}s`
+            : "";
+        const heartbeat = [
+          "running",
+          agentType,
+          desc,
+          elapsedLabel,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        if (heartbeat) {
+          // 心跳只保留最新一行，避免刷屏
+          const withoutOldHeartbeat = prevLines.filter(
+            (item) => !item.startsWith("running ·")
+          );
+          nextLines = [...withoutOldHeartbeat, heartbeat].slice(-80);
+        }
+      } else if (kind === "text" && textChunk) {
+        nextLiveText = `${nextLiveText}${textChunk}`;
+      }
+
+      const topToolCallId = asTextField(
+        (task as { toolCallId?: string }).toolCallId || toolCallId
+      );
+      const topToolName = asTextField(
+        task.toolResult?.toolName ||
+          (task as { toolName?: string }).toolName ||
+          toolName
+      );
+
+      task.resultMap = {
+        ...prev,
+        toolCallId: prev.toolCallId || topToolCallId || undefined,
+        toolName: prev.toolName || topToolName || undefined,
+        input: prev.input || (task as { input?: Record<string, unknown> }).input,
+        subAgentProgressKind: kind,
+        subAgentPhase: phase || prev.subAgentPhase || (status === "running" ? "working" : prev.subAgentPhase),
+        subAgentElapsedMs: elapsedMs ?? prev.subAgentElapsedMs,
+        subAgentLiveText: nextLiveText || prev.subAgentLiveText,
+        subAgentProgressLines: nextLines,
+        parentToolUseId: prev.parentToolUseId || parentToolUseId,
+        subAgentId:
+          asTextField(merged.agentId || merged.subAgentId) || prev.subAgentId,
+        subAgentType:
+          asTextField(merged.agentType || merged.subAgentType) || prev.subAgentType,
+        subAgentDescription:
+          asTextField(merged.description || merged.subAgentDescription) ||
+          prev.subAgentDescription,
+      };
+      return;
     }
   }
 }
@@ -749,8 +898,9 @@ function handleToolCallMessage(
   taskIndex: number,
   toolIndex: number
 ) {
-  const nextTask = buildTaskFromEventData(eventData);
+  const nextTask = normalizeIncomingToolCallTask(buildTaskFromEventData(eventData));
   const toolCallId = resolveTaskToolCallId(nextTask);
+  const streamKey = resolveToolCallStreamKey(nextTask);
 
   if (taskIndex === -1) {
     currentChat.multiAgent.tasks.push([nextTask]);
@@ -763,16 +913,196 @@ function handleToolCallMessage(
     return;
   }
 
-  if (toolIndex !== -1) {
-    const currentTask = taskGroup[toolIndex];
+  // messageId 命中，或 streamToolKey/toolCallId 命中同一流式占位卡（真实 id 晚到时 messageId 仍是 streamKey）
+  let targetIndex = toolIndex;
+  if (targetIndex === -1 && streamKey) {
+    targetIndex = findLastTaskIndex(taskGroup, (item) => {
+      if (item.messageType !== "tool_call") {
+        return false;
+      }
+      const existingKey = resolveToolCallStreamKey(item);
+      const existingCallId = resolveTaskToolCallId(item);
+      return (
+        existingKey === streamKey ||
+        (!!toolCallId && existingCallId === toolCallId) ||
+        (!!toolCallId && existingKey === toolCallId) ||
+        (!!existingCallId && existingCallId === streamKey)
+      );
+    });
+  }
+  // running 事件通常 messageId=真实 toolCallId，且可能不带 streamToolKey；
+  // 若仍有一张未完成的同名 streaming 卡，并入它，避免双卡。
+  if (targetIndex === -1) {
+    const nextName = String(
+      nextTask.resultMap?.toolName ||
+        (nextTask.resultMap as { resultMap?: { toolName?: string } })?.resultMap
+          ?.toolName ||
+        ""
+    );
+    const nextStatus = String(nextTask.resultMap?.status || "").toLowerCase();
+    if (nextName && nextStatus && nextStatus !== "streaming") {
+      targetIndex = findLastTaskIndex(taskGroup, (item) => {
+        if (item.messageType !== "tool_call") return false;
+        const st = String(item.resultMap?.status || "").toLowerCase();
+        const stillStreamingArgs = item.resultMap?.argsStreaming === true;
+        if (st !== "streaming" && st !== "preparing" && !stillStreamingArgs) return false;
+        if (item.resultMap?.isFinal || item.isFinal) return false;
+        const existingName = String(item.resultMap?.toolName || "");
+        return !existingName || existingName === nextName;
+      });
+    }
+  }
+
+  if (targetIndex !== -1) {
+    const currentTask = taskGroup[targetIndex];
     if (currentTask?.messageType !== "tool_call") {
       return;
     }
-    taskGroup[toolIndex] = nextTask;
+    taskGroup[targetIndex] = mergeToolCallStreamingTask(currentTask, nextTask);
     return;
   }
 
   taskGroup.push(nextTask);
+}
+
+/**
+ * tool_call_delta → 统一成 tool_call 卡片语义，并标记 argsStreaming。
+ */
+function normalizeIncomingToolCallTask(task: MESSAGE.Task): MESSAGE.Task {
+  const outerType = String(task.messageType || "").toLowerCase();
+  const resultMap = (task.resultMap || {}) as MESSAGE.ResultMap;
+  const nestedType = String(resultMap.messageType || "").toLowerCase();
+  const isDelta = outerType === "tool_call_delta" || nestedType === "tool_call_delta";
+  const status = String(resultMap.status || "").toLowerCase();
+  const args =
+    resolveToolCallArgumentsText(resultMap) ||
+    (typeof resultMap.argumentsRaw === "string" ? resultMap.argumentsRaw : "") ||
+    (typeof resultMap.argumentsText === "string" ? resultMap.argumentsText : "");
+
+  const nextMap: MESSAGE.ResultMap = {
+    ...resultMap,
+    messageType: "tool_call",
+    status: status || (isDelta ? "streaming" : status),
+    argumentsText: args || resultMap.argumentsText,
+    argumentsRaw: args || resultMap.argumentsRaw || resultMap.argumentsText,
+    argsStreaming:
+      isDelta ||
+      status === "streaming" ||
+      status === "preparing" ||
+      resultMap.argsStreaming === true,
+  };
+
+  return {
+    ...task,
+    messageType: "tool_call",
+    resultMap: nextMap,
+  } as MESSAGE.Task;
+}
+
+/**
+ * 合并流式/执行态 tool_call(_delta)：
+ * - 保留更长的 argumentsRaw/argumentsText
+ * - 状态按 streaming→running→success 升级
+ * - argsStreaming 与 status 解耦：delta 期间 true，running 后仍可短暂保留已生成的完整 args 展示
+ */
+function mergeToolCallStreamingTask(
+  previous: MESSAGE.Task,
+  next: MESSAGE.Task
+): MESSAGE.Task {
+  const prevMap = (previous.resultMap || {}) as MESSAGE.ResultMap;
+  const nextMap = (next.resultMap || {}) as MESSAGE.ResultMap;
+  const prevNested = toNestedResultMap(prevMap.resultMap);
+  const nextNested = toNestedResultMap(nextMap.resultMap);
+
+  const prevArgs =
+    resolveToolCallArgumentsText(prevMap) ||
+    resolveToolCallArgumentsText(prevNested as MESSAGE.ResultMap);
+  const nextArgs =
+    resolveToolCallArgumentsText(nextMap) ||
+    resolveToolCallArgumentsText(nextNested as MESSAGE.ResultMap);
+  const mergedArgs =
+    nextArgs.length >= prevArgs.length ? nextArgs : prevArgs || nextArgs;
+
+  const statusRank = (status?: string) => {
+    const s = String(status || "").toLowerCase();
+    if (s === "success" || s === "failed" || s === "error") return 3;
+    if (s === "running") return 2;
+    if (s === "streaming" || s === "preparing") return 1;
+    return 0;
+  };
+  const prevStatus = String(prevMap.status || prevNested.status || "");
+  const nextStatus = String(nextMap.status || nextNested.status || "");
+  const mergedStatus =
+    statusRank(nextStatus) >= statusRank(prevStatus) ? nextStatus || prevStatus : prevStatus;
+
+  const nextMessageType = String(
+    next.messageType || nextMap.messageType || nextNested.messageType || ""
+  ).toLowerCase();
+  const prevArgsStreaming =
+    prevMap.argsStreaming === true ||
+    (prevNested as { argsStreaming?: boolean }).argsStreaming === true;
+  const nextArgsStreamingExplicit =
+    nextMap.argsStreaming === true ||
+    (nextNested as { argsStreaming?: boolean }).argsStreaming === true;
+  const nextArgsStreamingFalse =
+    nextMap.argsStreaming === false ||
+    (nextNested as { argsStreaming?: boolean }).argsStreaming === false;
+  // delta 事件或显式 true → 参数仍在涨；终态 isFinal / 显式 false → 停
+  let mergedArgsStreaming = false;
+  if (nextArgsStreamingFalse || Boolean(nextMap.isFinal) || Boolean(next.isFinal)) {
+    mergedArgsStreaming = false;
+  } else if (
+    nextMessageType === "tool_call_delta" ||
+    nextArgsStreamingExplicit ||
+    String(mergedStatus).toLowerCase() === "streaming" ||
+    String(mergedStatus).toLowerCase() === "preparing"
+  ) {
+    mergedArgsStreaming = true;
+  } else if (prevArgsStreaming && String(mergedStatus).toLowerCase() === "running") {
+    // running 刚到：参数已完整，停止逐字，但仍保留完整 args 文本供展示
+    mergedArgsStreaming = false;
+  } else {
+    mergedArgsStreaming = prevArgsStreaming;
+  }
+
+  const mergedResultMap: MESSAGE.ResultMap = {
+    ...prevMap,
+    ...nextMap,
+    // 卡片语义统一为 tool_call，避免 delta 类型把渲染分流打乱
+    messageType: "tool_call",
+    status: mergedStatus || nextMap.status || prevMap.status,
+    toolName: nextMap.toolName || prevMap.toolName,
+    toolCallId: nextMap.toolCallId || prevMap.toolCallId,
+    streamToolKey:
+      (nextMap as { streamToolKey?: string }).streamToolKey ||
+      (prevMap as { streamToolKey?: string }).streamToolKey,
+    argumentsText: mergedArgs || nextMap.argumentsText || prevMap.argumentsText,
+    argumentsRaw:
+      mergedArgs ||
+      nextMap.argumentsRaw ||
+      prevMap.argumentsRaw ||
+      nextMap.argumentsText ||
+      prevMap.argumentsText,
+    argsStreaming: mergedArgsStreaming,
+    input: nextMap.input ?? prevMap.input,
+    summary: nextMap.summary || prevMap.summary,
+    isFinal: Boolean(nextMap.isFinal || prevMap.isFinal),
+    errorMsg: nextMap.errorMsg || prevMap.errorMsg,
+  };
+
+  // 稳定 messageId：优先沿用已有流式卡 id，避免 React 列表闪烁
+  const stableMessageId =
+    previous.messageId ||
+    (prevMap as { messageId?: string }).messageId ||
+    next.messageId;
+
+  return {
+    ...previous,
+    ...next,
+    messageId: stableMessageId,
+    messageType: "tool_call",
+    resultMap: mergedResultMap,
+  } as MESSAGE.Task;
 }
 
 /**
@@ -965,6 +1295,31 @@ function handleNonStreamingMessage(
         !(nextTask as CHAT.Task).children
       ) {
         (nextTask as CHAT.Task).children = previous.children;
+      }
+      // 保留 subagent_progress 投影字段，避免终态覆盖丢掉直播进度
+      if (previous?.resultMap && isAgentDispatchTask(previous)) {
+        const prevMap = previous.resultMap;
+        const nextMap = (nextTask.resultMap || {}) as MESSAGE.ResultMap;
+        nextTask.resultMap = {
+          ...nextMap,
+          subAgentLiveText: nextMap.subAgentLiveText || prevMap.subAgentLiveText,
+          subAgentProgressLines:
+            nextMap.subAgentProgressLines?.length
+              ? nextMap.subAgentProgressLines
+              : prevMap.subAgentProgressLines,
+          subAgentElapsedMs:
+            nextMap.subAgentElapsedMs ?? prevMap.subAgentElapsedMs,
+          subAgentPhase: nextMap.subAgentPhase || prevMap.subAgentPhase,
+          subAgentProgressKind:
+            nextMap.subAgentProgressKind || prevMap.subAgentProgressKind,
+          run_in_background:
+            nextMap.run_in_background ??
+            prevMap.run_in_background ??
+            (resolveToolCallInput(prevMap).run_in_background as boolean | undefined),
+          runInBackground:
+            nextMap.runInBackground ??
+            prevMap.runInBackground,
+        };
       }
       taskGroup[placeholderIndex] = nextTask;
       return;

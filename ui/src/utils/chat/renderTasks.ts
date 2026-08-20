@@ -133,6 +133,15 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
     resultMap.summary || "",
     resultMap.toolName || "",
     resultMap.toolCallId || "",
+    // 流式入参增长必须使签名失效，否则 WeakMap 会卡住旧 argumentsText
+    typeof resultMap.argumentsText === "string"
+      ? resultMap.argumentsText.length
+      : 0,
+    typeof (resultMap as { resultMap?: { argumentsText?: string } }).resultMap
+      ?.argumentsText === "string"
+      ? (resultMap as { resultMap?: { argumentsText?: string } }).resultMap!
+          .argumentsText!.length
+      : 0,
     toolCallTargetName,
     task.toolThought?.length || 0,
     resultMap.answer?.length || 0,

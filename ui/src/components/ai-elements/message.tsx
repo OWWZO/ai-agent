@@ -416,7 +416,7 @@ const useNearBottomAutoScroll = (enabled: boolean, trigger: string) => {
     const parent = container.parentElement?.parentElement;
     if (!parent) return;
 
-    const scrollThreshold = 140;
+    const scrollThreshold = 80;
     const isNearBottom =
       parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
 

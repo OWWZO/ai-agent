@@ -105,7 +105,7 @@ const PlanView: ReactorType.FC<{
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[var(--chat-surface-muted)]">
                 <motion.div
-                  className="h-full w-full origin-left rounded-full bg-[#0071e3]/90"
+                  className="h-full w-full origin-left rounded-full bg-[var(--chat-accent)]/90"
                   initial={false}
                   animate={{ transform: `scaleX(${pct / 100})` }}
                   transition={

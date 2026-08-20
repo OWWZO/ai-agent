@@ -63,9 +63,9 @@ export const GradientSpinner: React.FC<{
       <svg viewBox="0 0 24 24" fill="none" className="w-full h-full">
         <defs>
           <linearGradient id="spinner-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#0071e3" stopOpacity="0" />
-            <stop offset="50%" stopColor="#0071e3" />
-            <stop offset="100%" stopColor="#4040ff" />
+            <stop offset="0%" stopColor="var(--chat-accent)" stopOpacity="0" />
+            <stop offset="50%" stopColor="var(--chat-accent)" />
+            <stop offset="100%" stopColor="var(--color-accent-hover)" />
           </linearGradient>
         </defs>
         <circle

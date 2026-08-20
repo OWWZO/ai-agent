@@ -204,6 +204,15 @@ declare global {
       toolProvider?: string
       dispatchIndex?: number
       summary?: string
+      /** tool_call 流式阶段的当前累计参数文本，可能尚未形成合法 JSON */
+      argumentsText?: string
+      /** 对齐 LeAgent：累计原始入参（与 argumentsText 同义，优先用于展示） */
+      argumentsRaw?: string
+      /** 流式 tool_call 卡片稳定键（后端 streamKey，messageId 同源） */
+      streamToolKey?: string
+      streamToolIndex?: number
+      /** 参数流是否仍在增长（tool_call_delta 期间 true；终态 false） */
+      argsStreaming?: boolean
       errorMsg?: string
       input?: Record<string, unknown>
       toolParam?: Record<string, unknown>
@@ -212,6 +221,20 @@ declare global {
       subAgentId?: string
       subAgentType?: string
       subAgentDescription?: string
+      /** 后台子 Agent（Dock）；也可出现在 input.run_in_background */
+      runInBackground?: boolean
+      run_in_background?: boolean
+      /**
+       * subagent_progress 投影字段（挂在父 Agent 卡片 resultMap 上，不进时间线）。
+       * kind: heartbeat | text | line
+       */
+      subAgentProgressKind?: 'heartbeat' | 'text' | 'line' | string
+      subAgentPhase?: string
+      subAgentElapsedMs?: number
+      subAgentLiveText?: string
+      subAgentProgressLines?: string[]
+      /** 工具流式输出行（未来 tool_output / 现有 codeOutput 归一） */
+      toolOutputLines?: string[]
       artifactRefs?: ArtifactReference[]
       plannerRoundId?: string
       refList?: {

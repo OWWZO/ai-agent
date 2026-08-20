@@ -138,8 +138,8 @@ export const LoadingGradient: React.FC<{ size?: number; className?: string }> = 
       >
         <defs>
           <linearGradient id="loading-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#0071e3" />
-            <stop offset="100%" stopColor="#4040ff" />
+            <stop offset="0%" stopColor="var(--chat-accent)" />
+            <stop offset="100%" stopColor="var(--color-accent-hover)" />
           </linearGradient>
         </defs>
         <motion.circle

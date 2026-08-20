@@ -20,7 +20,7 @@ export const getStatusIcon = (status?: CHAT.PlanStatus) => {
       return (
         <div className={iconWrap} aria-hidden>
           <Loader2
-            className="h-4 w-4 animate-spin text-[#0071e3]"
+            className="h-4 w-4 animate-spin text-[var(--chat-accent)]"
             strokeWidth={2}
           />
         </div>

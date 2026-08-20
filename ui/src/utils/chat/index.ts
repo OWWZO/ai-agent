@@ -33,7 +33,9 @@ export {
   pickFirstText,
   resolveTaskToolCallId,
   resolveToolCallActionText,
+  resolveToolCallArgumentsText,
   resolveToolCallInput,
+  resolveToolCallStreamKey,
   resolveToolCallTargetName,
 } from "./toolCalls";
 
@@ -56,8 +58,19 @@ export {
   buildSubAgentMarkdown,
   formatSubAgentDuration,
   isAgentDispatchTask,
+  isRunInBackgroundAgent,
   parseAgentObservation,
   resolveParentToolUseId,
   resolveSubAgentDisplay,
   type SubAgentDisplay,
 } from "./subagent";
+
+export {
+  projectAgentMember,
+  projectAgentMemberByToolCallId,
+  projectAssistantChatTurn,
+  projectDockTasks,
+  projectTurnBlocks,
+  taskToToolCall,
+  turnBlockSignature,
+} from "./agentRuntimeProjector";
