@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -188,6 +189,11 @@ public class StreamResponseHandler {
         int[] toolDeltaCount = new int[]{0};
         AtomicReference<Disposable> subscription = new AtomicReference<>();
 
+        log.info("{} [tool-stream-diag] handleToolCallStream subscribe start, pushToClient={}, printerNull={}",
+                context == null ? "-" : context.getRequestId(),
+                pushToClient,
+                context == null || context.getPrinter() == null);
+        int[] emitCount = new int[]{0};
         Disposable disposable = flux.subscribe(
             response -> {
                 try {
@@ -202,9 +208,32 @@ public class StreamResponseHandler {
                     AssistantMessage output = generation != null ? generation.getOutput() : null;
 
                     // 收集 tool_call 片段（仅聚合，不阻塞 content 推送）
-                    if (output != null && output.getToolCalls() != null) {
+                    if (output != null && output.getToolCalls() != null && !output.getToolCalls().isEmpty()) {
                         toolDeltaCount[0] += output.getToolCalls().size();
+                        if (chunkCount[0] <= 12 || toolDeltaCount[0] <= 8 || chunkCount[0] % 20 == 0) {
+                            AssistantMessage.ToolCall sample = output.getToolCalls().get(0);
+                            log.info("{} [tool-stream-diag] handler chunk#{} toolDeltasInChunk={} sampleId='{}' "
+                                            + "sampleName='{}' sampleArgLen={} accumulatorsBefore={}",
+                                    context == null ? "-" : context.getRequestId(),
+                                    chunkCount[0],
+                                    output.getToolCalls().size(),
+                                    sample.id(),
+                                    sample.name(),
+                                    sample.arguments() == null ? 0 : sample.arguments().length(),
+                                    toolCallAccumulators.size());
+                        }
                         mergeToolCalls(output.getToolCalls(), toolCallAccumulators);
+                        int beforeEmit = emitCount[0];
+                        emitToolCallDeltaEvents(context, toolCallAccumulators, pushToClient, emitCount);
+                        if (emitCount[0] > beforeEmit) {
+                            ToolCallAccumulator acc = toolCallAccumulators.values().stream().findFirst().orElse(null);
+                            log.info("{} [tool-stream-diag] emitted tool_call_delta#{} name='{}' argsLen={} streamKey={}",
+                                    context == null ? "-" : context.getRequestId(),
+                                    emitCount[0],
+                                    acc == null ? null : acc.name,
+                                    acc == null || acc.arguments == null ? 0 : acc.arguments.length(),
+                                    acc == null ? null : acc.streamKey);
+                        }
                     }
 
                     // 流式 delta：禁止 trim（token 常带 leading space）
@@ -273,7 +302,27 @@ public class StreamResponseHandler {
                     }
                     // 完成时再次拆分隐藏思考并冲刷尾部增量，再构造完整 toolCalls；
                     // 这是唯一允许把聚合参数交给后续工具调度的边界。
+                    // 定稿前再冲一帧：带上真实 toolCallId + 完整 argumentsText，方便前端与 running 对齐。
+                    flushToolCallDeltaEvents(context, toolCallAccumulators, pushToClient);
                     List<ToolCall> toolCalls = buildToolCalls(toolCallAccumulators);
+                    log.info("{} [tool-stream-diag] handleToolCallStream complete: chunks={}, toolDeltas={}, "
+                                    + "accumulators={}, builtToolCalls={}, emitCount={}, pushToClient={}, finishReason={}",
+                            context == null ? "-" : context.getRequestId(),
+                            chunkCount[0],
+                            toolDeltaCount[0],
+                            toolCallAccumulators.size(),
+                            toolCalls == null ? 0 : toolCalls.size(),
+                            emitCount[0],
+                            pushToClient,
+                            finishReason[0]);
+                    for (ToolCallAccumulator acc : toolCallAccumulators.values()) {
+                        log.info("{} [tool-stream-diag] final accumulator: id='{}' name='{}' argsLen={} streamKey={}",
+                                context == null ? "-" : context.getRequestId(),
+                                acc.id,
+                                acc.name,
+                                acc.arguments == null ? 0 : acc.arguments.length(),
+                                acc.streamKey);
+                    }
                     // 整轮再 split 一次，兜底 <think> 跨 chunk 或仅 final metadata
                     ReasoningContentExtractor.SplitResult finalSplit =
                             ReasoningContentExtractor.split(allContent.toString(), allReasoning.toString());
@@ -457,29 +506,149 @@ public class StreamResponseHandler {
                                 Map<String, ToolCallAccumulator> toolCallAccumulators) {
         int index = 0;
         for (AssistantMessage.ToolCall toolCall : toolCalls) {
-            // Prefer stable id. When id is blank (some OpenAI-compatible deltas), pin by stream order
-            // so name/arguments fragments still merge onto the same accumulator.
-            String key = StringUtils.isNotBlank(toolCall.id())
-                    ? toolCall.id()
-                    : ("idx#" + index);
-            // If this fragment carries an id that already exists, use it; also migrate idx key when id appears.
-            if (StringUtils.isNotBlank(toolCall.id()) && toolCallAccumulators.containsKey(toolCall.id())) {
+            // Prefer stable id. When id is blank (OpenAI 后续 delta 常只带 index)，
+            // 按 streamIndex / idx# 回填到同一 accumulator，避免 arguments 碎片拆卡。
+            final int streamIndex = index;
+            String key;
+            if (StringUtils.isNotBlank(toolCall.id())) {
                 key = toolCall.id();
-            } else if (StringUtils.isNotBlank(toolCall.id()) && toolCallAccumulators.containsKey("idx#" + index)) {
-                ToolCallAccumulator existing = toolCallAccumulators.remove("idx#" + index);
-                toolCallAccumulators.put(toolCall.id(), existing);
-                key = toolCall.id();
+                if (toolCallAccumulators.containsKey("idx#" + streamIndex)
+                        && !toolCallAccumulators.containsKey(toolCall.id())) {
+                    ToolCallAccumulator existing = toolCallAccumulators.remove("idx#" + streamIndex);
+                    toolCallAccumulators.put(toolCall.id(), existing);
+                }
+            } else {
+                String byIndex = findAccumulatorKeyByStreamIndex(toolCallAccumulators, streamIndex);
+                key = StringUtils.isNotBlank(byIndex) ? byIndex : ("idx#" + streamIndex);
             }
-            ToolCallAccumulator accumulator = toolCallAccumulators.computeIfAbsent(key, ignored -> new ToolCallAccumulator());
-            accumulator.merge(toolCall, chatResponseMapper);
+            ToolCallAccumulator accumulator = toolCallAccumulators.computeIfAbsent(key, ignored -> {
+                ToolCallAccumulator created = new ToolCallAccumulator();
+                // 展示用稳定 key：无真实 id 时也能立刻推前端，且 messageId 全程不变。
+                created.streamKey = "stream-tool-" + StringUtil.getUUID();
+                created.streamIndex = streamIndex;
+                return created;
+            });
+            if (StringUtils.isBlank(accumulator.streamKey)) {
+                accumulator.streamKey = "stream-tool-" + StringUtil.getUUID();
+            }
+            accumulator.streamIndex = streamIndex;
+            accumulator.merge(toolCall);
             index++;
         }
+    }
+
+    private static String findAccumulatorKeyByStreamIndex(Map<String, ToolCallAccumulator> toolCallAccumulators,
+                                                          int streamIndex) {
+        if (toolCallAccumulators == null || toolCallAccumulators.isEmpty()) {
+            return null;
+        }
+        String idxKey = "idx#" + streamIndex;
+        if (toolCallAccumulators.containsKey(idxKey)) {
+            return idxKey;
+        }
+        for (Map.Entry<String, ToolCallAccumulator> entry : toolCallAccumulators.entrySet()) {
+            ToolCallAccumulator value = entry.getValue();
+            if (value != null && value.streamIndex == streamIndex) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 将已经聚合的 tool-call 状态实时推给前端；这里只做展示，不把参数交给执行层。
+     * messageId 固定为 streamKey，避免真实 toolCallId 晚到时前端拆成两张卡。
+     */
+    private void emitToolCallDeltaEvents(AgentContext context,
+                                         Map<String, ToolCallAccumulator> toolCallAccumulators,
+                                         boolean pushToClient) {
+        emitToolCallDeltaEvents(context, toolCallAccumulators, pushToClient, null);
+    }
+
+    private void emitToolCallDeltaEvents(AgentContext context,
+                                         Map<String, ToolCallAccumulator> toolCallAccumulators,
+                                         boolean pushToClient,
+                                         int[] emitCount) {
+        if (!pushToClient || context == null || context.getPrinter() == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("[tool-stream-diag] skip emit: pushToClient={} printerNull={}",
+                        pushToClient, context == null || context.getPrinter() == null);
+            }
+            return;
+        }
+        for (ToolCallAccumulator accumulator : toolCallAccumulators.values()) {
+            if (!accumulator.shouldEmitDelta()) {
+                continue;
+            }
+            sendToolCallDelta(context, accumulator);
+            if (emitCount != null) {
+                emitCount[0]++;
+            }
+        }
+    }
+
+    /** 忽略节流，把当前聚合态全部推出去（流结束前使用）。 */
+    private void flushToolCallDeltaEvents(AgentContext context,
+                                          Map<String, ToolCallAccumulator> toolCallAccumulators,
+                                          boolean pushToClient) {
+        if (!pushToClient || context == null || context.getPrinter() == null) {
+            return;
+        }
+        for (ToolCallAccumulator accumulator : toolCallAccumulators.values()) {
+            if (StringUtils.isBlank(accumulator.name) && StringUtils.isEmpty(accumulator.arguments)) {
+                continue;
+            }
+            accumulator.markEmitted();
+            sendToolCallDelta(context, accumulator);
+        }
+    }
+
+    private void sendToolCallDelta(AgentContext context, ToolCallAccumulator accumulator) {
+        String streamKey = StringUtils.defaultIfBlank(accumulator.streamKey, accumulator.id);
+        if (StringUtils.isBlank(streamKey)) {
+            return;
+        }
+        String displayToolCallId = StringUtils.isNotBlank(accumulator.id)
+                ? accumulator.id
+                : streamKey;
+        // 对齐 LeAgent：专用 tool_call_delta 事件 + 累计 argumentsRaw/argumentsText。
+        // messageId 固定 streamKey，前端与后续 running tool_call 用 streamToolKey/toolCallId 并卡。
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageType", "tool_call_delta");
+        payload.put("status", "streaming");
+        if (StringUtils.isNotBlank(accumulator.name)) {
+            payload.put("toolName", accumulator.name);
+        }
+        payload.put("toolCallId", displayToolCallId);
+        payload.put("streamToolKey", streamKey);
+        if (accumulator.streamIndex >= 0) {
+            payload.put("streamToolIndex", accumulator.streamIndex);
+        }
+        if (StringUtils.isNotEmpty(accumulator.arguments)) {
+            // argumentsRaw：与 LeAgent 同名字段；argumentsText：兼容既有 FE 合并逻辑
+            payload.put("argumentsRaw", accumulator.arguments);
+            payload.put("argumentsText", accumulator.arguments);
+        }
+        payload.put("summary", StringUtils.isNotBlank(accumulator.name)
+                ? ("正在生成 " + accumulator.name + " 参数…")
+                : "正在生成工具参数…");
+        payload.put("isFinal", false);
+        if (log.isInfoEnabled()) {
+            log.info("{} [tool-stream-diag] printer.send tool_call_delta streamKey={} toolCallId={} "
+                            + "toolName={} argsLen={}",
+                    context.getRequestId(),
+                    streamKey,
+                    displayToolCallId,
+                    accumulator.name,
+                    accumulator.arguments == null ? 0 : accumulator.arguments.length());
+        }
+        context.getPrinter().send(streamKey, "tool_call_delta", payload, false);
     }
 
     private List<ToolCall> buildToolCalls(Map<String, ToolCallAccumulator> toolCallAccumulators) {
         List<ToolCall> toolCalls = new ArrayList<>();
         for (ToolCallAccumulator accumulator : toolCallAccumulators.values()) {
-            ToolCall toolCall = accumulator.toToolCall();
+            ToolCall toolCall = accumulator.toToolCall(chatResponseMapper);
             if (toolCall != null) {
                 toolCalls.add(toolCall);
             }
@@ -491,12 +660,19 @@ public class StreamResponseHandler {
      * 聚合流式 tool call 片段，兼容累计返回和增量返回两种模式。
      */
     private static class ToolCallAccumulator {
+        /** 前端卡片稳定主键（printer messageId），全程不变 */
+        private String streamKey;
+        private int streamIndex = -1;
         private String id;
         private String type;
         private String name;
         private String arguments = "";
+        private String lastEmittedName;
+        private String lastEmittedArguments;
+        private int lastEmittedArgsLength;
+        private long lastEmittedAtMs;
 
-        void merge(AssistantMessage.ToolCall toolCall, LlmChatResponseMapper responseMapper) {
+        void merge(AssistantMessage.ToolCall toolCall) {
             if (StringUtils.isNotBlank(toolCall.id())) {
                 this.id = toolCall.id();
             }
@@ -522,19 +698,64 @@ public class StreamResponseHandler {
                 return;
             }
             this.arguments = this.arguments + incomingArguments;
-            this.arguments = responseMapper.normalizeToolArguments(this.arguments);
         }
 
-        ToolCall toToolCall() {
+        /**
+         * 有 name 或已有参数即可展示；无真实 id 也推。
+         * 大参数按长度/时间节流，避免每个 token 刷爆 SSE，但仍保持可见增长。
+         */
+        boolean shouldEmitDelta() {
+            boolean hasName = StringUtils.isNotBlank(name);
+            boolean hasArgs = StringUtils.isNotEmpty(arguments);
+            if (!hasName && !hasArgs) {
+                return false;
+            }
+            if (Objects.equals(lastEmittedName, name)
+                    && Objects.equals(lastEmittedArguments, arguments)) {
+                return false;
+            }
+            long now = System.currentTimeMillis();
+            int argsLen = arguments == null ? 0 : arguments.length();
+            int grew = argsLen - lastEmittedArgsLength;
+            boolean firstEmit = lastEmittedName == null && lastEmittedArguments == null;
+            boolean nameChanged = !Objects.equals(lastEmittedName, name);
+            // 贴近终答 token 节奏：有增长就尽快推，前端 useStreamingText 再做逐字追赶
+            boolean enoughGrowth = grew >= 1;
+            boolean enoughTime = lastEmittedAtMs > 0 && (now - lastEmittedAtMs) >= 16;
+            // 首帧 / 改名 / JSON 顶层闭合立即发；其余按增长或时间节流
+            boolean looksComplete = hasArgs
+                    && (arguments.endsWith("}") || arguments.endsWith("]"));
+            if (!firstEmit && !nameChanged && !enoughGrowth && !enoughTime && !looksComplete) {
+                return false;
+            }
+            markEmitted();
+            return true;
+        }
+
+        void markEmitted() {
+            lastEmittedName = name;
+            lastEmittedArguments = arguments;
+            lastEmittedArgsLength = arguments == null ? 0 : arguments.length();
+            lastEmittedAtMs = System.currentTimeMillis();
+        }
+
+        ToolCall toToolCall(LlmChatResponseMapper responseMapper) {
             if (StringUtils.isBlank(name)) {
                 return null;
             }
+            String resolvedId = StringUtils.isNotBlank(id)
+                    ? id
+                    : StringUtils.defaultIfBlank(streamKey, StringUtil.getUUID());
+            String rawArgs = StringUtils.defaultIfBlank(arguments, "{}");
+            String normalizedArgs = responseMapper != null
+                    ? responseMapper.normalizeToolArguments(rawArgs)
+                    : rawArgs;
             return ToolCall.builder()
-                    .id(id)
+                    .id(resolvedId)
                     .type(StringUtils.defaultIfBlank(type, "function"))
                     .function(ToolCall.Function.builder()
                             .name(name)
-                            .arguments(StringUtils.defaultIfBlank(arguments, "{}"))
+                            .arguments(normalizedArgs)
                             .build())
                     .build();
         }

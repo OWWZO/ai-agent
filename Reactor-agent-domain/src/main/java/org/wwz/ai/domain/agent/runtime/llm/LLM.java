@@ -32,6 +32,7 @@ import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.runtime.ReactorLlmDependencies;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -52,7 +53,8 @@ import java.util.regex.Pattern;
  * LLM 领域门面。
  * <p>
  * 统一处理消息转换、模型调用、工具调用、流式增量和 LLM invocation 账本。
- * 主路径全部走 Spring AI；struct_parse 仅作为无原生 tools[] 时的兼容协议。
+ * 非流式与配置装配主路径走 Spring AI；function_call 流式旁路 OpenAiApi tool-call
+ * window 合并，直解 OpenAI 兼容 SSE delta；struct_parse 为无原生 tools[] 时的兼容协议。
  */
 @Slf4j
 @Data
@@ -91,6 +93,8 @@ public class LLM {
     private final transient DomainMessageConverter messageConverter;
     private final transient LlmChatResponseMapper responseMapper;
     private final transient StreamResponseHandler streamResponseHandler;
+    /** 可选：旁路 Spring AI tool-call 合并的 OpenAI 兼容 SSE 直解。 */
+    private final transient OpenAiCompatibleSseChatStreamClient openAiCompatibleSseChatStreamClient;
     /** false 表示本实例已是备援路径，禁止再嵌套 fallback。 */
     private final boolean allowModelFallback;
 
@@ -111,6 +115,7 @@ public class LLM {
         this.messageConverter = llmDependencies.getMessageConverter();
         this.responseMapper = llmDependencies.getResponseMapper();
         this.streamResponseHandler = llmDependencies.getStreamResponseHandler();
+        this.openAiCompatibleSseChatStreamClient = llmDependencies.getOpenAiCompatibleSseChatStreamClient();
 
         LLMSettings config = this.runtimeDependencies.resolveLlmSettings(modelName);
         this.llmSettings = config;
@@ -388,15 +393,31 @@ public class LLM {
                 return askToolWithStructParse(
                         context, messages, systemMsgs, tools, temperature, stream, timeout, startTime, invocationHandle);
             }
-            // function_call 主路径：Spring AI 负责 tools[] 与 tool_choice。
-            Prompt prompt = buildPrompt(
-                    mergeMessages(systemMsgs, messages),
-                    chatOptionsFactory.buildToolOptions(llmSettings, temperature, tools, toolChoice)
-            );
+            // function_call 主路径：Spring AI 负责 tools[] 与 tool_choice 装配；
+            // 流式旁路 OpenAiApi tool-call window 合并，直解 SSE delta。
+            OpenAiChatOptions toolOptions = chatOptionsFactory.buildToolOptions(
+                    llmSettings, temperature, tools, toolChoice);
+            Prompt prompt = buildPrompt(mergeMessages(systemMsgs, messages), toolOptions);
             OpenAiChatModel chatModel = resolveChatModel();
 
-            log.info("{} call llm askTool via Spring AI, model={}, stream={}, mode=function_call",
-                    context.getRequestId(), model, stream);
+            boolean useDirectSse = stream
+                    && openAiCompatibleSseChatStreamClient != null
+                    && runtimeDependencies.getRemoteStreamPort() != null;
+            // [tool-stream-diag] 定位是否真正走旁路；bean/port 任一为空会静默回退 Spring AI 合并路径
+            log.info("{} [tool-stream-diag] askTool path decision: via={}, model={}, stream={}, "
+                            + "sseClientNull={}, remoteStreamPortNull={}, functionCallType={}",
+                    context.getRequestId(),
+                    useDirectSse ? "OpenAI-compatible SSE bypass" : "Spring AI",
+                    model,
+                    stream,
+                    openAiCompatibleSseChatStreamClient == null,
+                    runtimeDependencies.getRemoteStreamPort() == null,
+                    functionCallType);
+            log.info("{} call llm askTool via {}, model={}, stream={}, mode=function_call",
+                    context.getRequestId(),
+                    useDirectSse ? "OpenAI-compatible SSE bypass" : "Spring AI",
+                    model,
+                    stream);
 
             String retryLabel = "llm-askTool:" + model;
             if (!stream) {
@@ -427,7 +448,8 @@ public class LLM {
 
             CompletableFuture<ToolCallResponse> streamFuture = streamResponseHandler.handleToolCallStream(
                     context,
-                    LlmRequestRetry.stream(retryLabel, () -> chatModel.stream(prompt), retryNotifier(context)),
+                    LlmRequestRetry.stream(retryLabel, () -> openToolCallStream(prompt, toolOptions, timeout),
+                            retryNotifier(context)),
                     startTime,
                     pushToClient
             ).orTimeout(timeout, TimeUnit.SECONDS);
@@ -648,6 +670,30 @@ public class LLM {
 
     private Prompt buildPrompt(List<Message> domainMessages, OpenAiChatOptions options) {
         return new Prompt(messageConverter.convert(domainMessages), options);
+    }
+
+    /**
+     * function_call 流式入口：优先旁路 Spring AI tool-call 合并，直解 SSE delta；
+     * 客户端或 RemoteStreamPort 不可用时回退 chatModel.stream()。
+     */
+    private Flux<ChatResponse> openToolCallStream(Prompt prompt, OpenAiChatOptions toolOptions, int timeoutSeconds) {
+        if (openAiCompatibleSseChatStreamClient != null && runtimeDependencies.getRemoteStreamPort() != null) {
+            log.info("[tool-stream-diag] openToolCallStream USING SSE bypass, model={}, baseUrl={}, timeoutSec={}",
+                    model, baseUrl, timeoutSeconds);
+            return openAiCompatibleSseChatStreamClient.stream(
+                    runtimeDependencies.getRemoteStreamPort(),
+                    llmSettings,
+                    prompt,
+                    toolOptions,
+                    timeoutSeconds > 0 ? timeoutSeconds : 300L
+            );
+        }
+        log.warn("[tool-stream-diag] openToolCallStream FALLBACK chatModel.stream (Spring AI merge), "
+                        + "sseClientNull={}, portNull={}, model={}",
+                openAiCompatibleSseChatStreamClient == null,
+                runtimeDependencies.getRemoteStreamPort() == null,
+                model);
+        return resolveChatModel().stream(prompt);
     }
 
     private List<Message> mergeMessages(List<Message> systemMsgs, List<Message> messages) {

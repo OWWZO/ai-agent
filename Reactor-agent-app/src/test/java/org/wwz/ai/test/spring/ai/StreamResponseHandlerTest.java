@@ -165,6 +165,119 @@ public class StreamResponseHandlerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    public void test_handleToolCallStreamPushesArgumentDeltasBeforeExecution() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-tool-arguments")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(
+                        toolChunk("", new AssistantMessage.ToolCall(
+                                "call-stream", "function", "workspace_grep", "{\"query\":\"spr"), null, null),
+                        toolChunk("", new AssistantMessage.ToolCall(
+                                "call-stream", "function", "workspace_grep", "ing\"}"), "tool_calls", 12)
+                ),
+                System.currentTimeMillis() - 10
+        ).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        List<PrinterMessage> toolCallEvents = printer.messages.stream()
+                .filter(message -> "tool_call_delta".equals(message.messageType))
+                .toList();
+        // 中间增量帧 + onComplete flush，至少 2 帧
+        Assert.assertTrue("应推送多帧 tool_call_delta，实际=" + toolCallEvents.size(),
+                toolCallEvents.size() >= 2);
+        // messageId 为稳定 streamKey，全程相同；toolCallId 才是真实 call id
+        String stableId = toolCallEvents.get(0).messageId;
+        Assert.assertNotEquals("call-stream", stableId);
+        Assert.assertTrue(String.valueOf(stableId).startsWith("stream-tool-"));
+        for (PrinterMessage event : toolCallEvents) {
+            Assert.assertEquals(stableId, event.messageId);
+            Assert.assertEquals("call-stream",
+                    ((Map<String, Object>) event.message).get("toolCallId"));
+            Assert.assertFalse(event.isFinal);
+        }
+        Assert.assertEquals("{\"query\":\"spr",
+                ((Map<String, Object>) toolCallEvents.get(0).message).get("argumentsText"));
+        Assert.assertEquals("{\"query\":\"spr",
+                ((Map<String, Object>) toolCallEvents.get(0).message).get("argumentsRaw"));
+        Map<String, Object> lastPayload =
+                (Map<String, Object>) toolCallEvents.get(toolCallEvents.size() - 1).message;
+        Assert.assertEquals("{\"query\":\"spring\"}", lastPayload.get("argumentsText"));
+        Assert.assertEquals("{\"query\":\"spring\"}", lastPayload.get("argumentsRaw"));
+        Assert.assertEquals("tool_call_delta", lastPayload.get("messageType"));
+        Assert.assertFalse(printer.messages.stream().anyMatch(message -> "tool_result".equals(message.messageType)));
+        Assert.assertEquals("{\"query\":\"spring\"}",
+                response.getToolCalls().get(0).getFunction().getArguments());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void test_handleToolCallStreamEmitsBeforeRealToolCallIdArrives() throws Exception {
+        StreamResponseHandler handler = new StreamResponseHandler();
+        ReactorConfig reactorConfig = new ReactorConfig();
+        reactorConfig.setMessageInterval("{\"llm\":\"1,1\"}");
+        ReflectionTestUtils.setField(handler, "reactorConfig", reactorConfig);
+        ReflectionTestUtils.setField(handler, "chatResponseMapper", new LlmChatResponseMapper());
+
+        RecordingPrinter printer = new RecordingPrinter();
+        AgentContext context = AgentContext.builder()
+                .requestId("req-tool-no-id-first")
+                .isStream(true)
+                .streamMessageType("tool_thought")
+                .printer(printer)
+                .build();
+
+        // 兼容接口常见形态：先 name+args 无 id，后补 id
+        LLM.ToolCallResponse response = handler.handleToolCallStream(
+                context,
+                Flux.just(
+                        toolChunk("", new AssistantMessage.ToolCall(
+                                "", "function", "code_execute", "{\"code\":\"print("), null, null),
+                        toolChunk("", new AssistantMessage.ToolCall(
+                                "", "function", "code_execute", "1)\"}"), null, null),
+                        toolChunk("", new AssistantMessage.ToolCall(
+                                "call-late-id", "function", "code_execute", ""), "tool_calls", 8)
+                ),
+                System.currentTimeMillis() - 10
+        ).get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        List<PrinterMessage> toolCallEvents = printer.messages.stream()
+                .filter(message -> "tool_call_delta".equals(message.messageType))
+                .toList();
+        Assert.assertTrue("应在真实 id 到达前就推送 tool_call_delta", toolCallEvents.size() >= 2);
+        String stableMessageId = toolCallEvents.get(0).messageId;
+        Assert.assertTrue(stableMessageId.startsWith("stream-tool-"));
+        for (PrinterMessage event : toolCallEvents) {
+            Assert.assertEquals("全程 messageId 应稳定", stableMessageId, event.messageId);
+        }
+        Map<String, Object> first = (Map<String, Object>) toolCallEvents.get(0).message;
+        Assert.assertEquals("code_execute", first.get("toolName"));
+        Assert.assertEquals(stableMessageId, first.get("toolCallId"));
+        Assert.assertTrue(String.valueOf(first.get("argumentsText")).contains("print"));
+        Assert.assertTrue(String.valueOf(first.get("argumentsRaw")).contains("print"));
+
+        Map<String, Object> last = (Map<String, Object>) toolCallEvents.get(toolCallEvents.size() - 1).message;
+        Assert.assertEquals("call-late-id", last.get("toolCallId"));
+        Assert.assertEquals("{\"code\":\"print(1)\"}", last.get("argumentsText"));
+        Assert.assertEquals("{\"code\":\"print(1)\"}", last.get("argumentsRaw"));
+        Assert.assertEquals("call-late-id", response.getToolCalls().get(0).getId());
+        Assert.assertEquals("{\"code\":\"print(1)\"}",
+                response.getToolCalls().get(0).getFunction().getArguments());
+    }
+
+    @Test
     public void test_handleToolCallStreamKeepsMessageIdWhenForwardingIsDisabled() throws Exception {
         StreamResponseHandler handler = new StreamResponseHandler();
         ReactorConfig reactorConfig = new ReactorConfig();
