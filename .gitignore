@@ -65,6 +65,7 @@ Thumbs.db
 /.claude/
 /.codex/
 /.specify/
+/.omo/
 /CLAUDE.md
 /AGENTS.md
 /PROMPT_CONTEXT_MEMORY_REARCH.md
