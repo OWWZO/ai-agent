@@ -205,6 +205,7 @@ describe("agentRuntimeProjector", () => {
       return id === "tc-parent";
     });
     expect(parent?.resultMap?.subAgentElapsedMs).toBe(5000);
+    expect(parent?.resultMap?.parentToolUseId).toBeUndefined();
     expect(parent?.resultMap?.subAgentProgressLines).toEqual(
       expect.arrayContaining([
         expect.stringContaining("running ·"),

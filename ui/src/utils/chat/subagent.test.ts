@@ -84,12 +84,54 @@ describe("subagent display", () => {
         toolResult:
           "status=completed\nagentType=Explore\ntotalToolUseCount=3\ntotalDurationMs=2500\n\ndone",
       },
-      resultMap: { status: "success", isFinal: true },
+      resultMap: {
+        status: "success",
+        isFinal: true
+      },
     } as unknown as CHAT.Task;
 
     expect(buildSubAgentAction(completed).action).toBe("子智能体完成");
     expect(buildSubAgentAction(completed).name).toContain("3 tools");
     expect(buildSubAgentMarkdown(completed)).toContain("done");
+  });
+
+  it("does not treat Agent dispatch receipt JSON as sub-agent content", () => {
+    const receipt = JSON.stringify({
+      tool: "Agent",
+      ok: true,
+      status: "running",
+      task_id: "09ae2a848328",
+      agentId: "3fb3c8953a4d4dd0",
+      task_type: "local_agent",
+      description: "制作交互式 HTML",
+      agentType: "general-purpose",
+      run_in_background: true,
+      message: "后台子 Agent 已启动。用 TaskOutput 取结果",
+    });
+    const parsed = parseAgentObservation(receipt);
+    expect(parsed.status).toBe("running");
+    expect(parsed.content).toBe("");
+
+    const display = resolveSubAgentDisplay({
+      messageType: "tool_result",
+      toolResult: {
+        toolName: "Agent",
+        toolResult: receipt,
+      },
+      resultMap: {
+        toolName: "Agent",
+        status: "success",
+        isFinal: true,
+        input: {
+          description: "制作交互式 HTML",
+          prompt: "make html",
+          subagent_type: "general-purpose",
+          run_in_background: true,
+        },
+      },
+    } as unknown as CHAT.Task);
+    expect(display.status).toBe("running");
+    expect(display.content).toBe("");
   });
 
   it("formats duration", () => {
@@ -113,7 +155,10 @@ describe("subagent display", () => {
       resolveParentToolUseId({
         messageType: "tool_call",
         resultMap: {
-          resultMap: { parentToolUseId: "parent-2", toolName: "deep_search" },
+          resultMap: {
+            parentToolUseId: "parent-2",
+            toolName: "deep_search"
+          },
         },
       } as unknown as CHAT.Task)
     ).toBe("parent-2");

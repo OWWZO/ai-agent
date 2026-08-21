@@ -264,6 +264,7 @@ function createToolCallEvent(options?: {
   toolName?: string;
   toolCallId?: string;
   toolInvocationId?: string;
+  streamToolKey?: string;
   summary?: string;
   input?: Record<string, unknown>;
   isFinal?: boolean;
@@ -289,8 +290,14 @@ function createToolCallEvent(options?: {
         toolName: options?.toolName || "file_tool",
         toolCallId: options?.toolCallId || "tool-call-file-001",
         toolInvocationId: options?.toolInvocationId || "1001",
+        ...(options?.streamToolKey
+          ? { streamToolKey: options.streamToolKey }
+          : {}),
         summary: options?.summary || "正在调用 file_tool",
-        input: options?.input || { command: "get", fileName: "风险日报.md" },
+        input: options?.input || {
+          command: "get",
+          fileName: "风险日报.md"
+        },
         ...(options?.parentToolUseId
           ? { parentToolUseId: options.parentToolUseId }
           : {}),
@@ -370,9 +377,7 @@ function createToolResultEvent(options?: {
       toolResult: {
         toolName: options?.toolName || "web_search",
         toolResult: "{\"data\":[]}",
-        toolParam: {
-          query: options?.query || "风险日报",
-        },
+        toolParam: {query: options?.query || "风险日报",},
         ...(options?.toolCallId === null
           ? {}
           : { toolCallId: options?.toolCallId || "tool-call-file-001" }),
@@ -1186,6 +1191,359 @@ describe("chat file task title", () => {
     expect(timelineChildren[0].resultMap?.toolName).toBe("Agent");
     expect(timelineChildren[0].children?.length).toBe(1);
     expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
+  });
+
+  it("子事件先于父 Agent 时仍应嵌套，不进主时间线", () => {
+    const currentChat = {
+      sessionId: "session-subagent-order-1",
+      requestId: "req-subagent-order-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "child-grep-first",
+      taskId: "task-order-1",
+      toolCallId: "child-grep-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "parent-agent-call",
+    }), currentChat);
+
+    combineData(createToolCallEvent({
+      messageId: "agent-call-later",
+      taskId: "task-order-1",
+      toolCallId: "parent-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "搜索 API",
+        prompt: "find endpoints",
+        subagent_type: "Explore",
+      },
+      status: "running",
+    }), currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].resultMap?.toolName || taskList[0].toolResult?.toolName).toBe("Agent");
+
+    const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
+    expect(timelineChildren).toHaveLength(1);
+    expect(timelineChildren[0].resultMap?.toolName).toBe("Agent");
+    expect(timelineChildren[0].children?.length).toBe(1);
+    expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
+  });
+
+  it("同步 Agent 终态缺少 toolCallId 时仍替换原卡片并保留子工具", () => {
+    const currentChat = {
+      sessionId: "session-sync-agent-final-1",
+      requestId: "req-sync-agent-final-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "sync-agent-message",
+      taskId: "task-sync-agent",
+      toolCallId: "sync-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "搜索 API",
+        prompt: "find endpoints",
+        subagent_type: "Explore",
+      },
+      status: "running",
+    }), currentChat);
+    combineData(createToolCallEvent({
+      messageId: "sync-child-message",
+      taskId: "task-sync-agent",
+      toolCallId: "sync-child-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "sync-agent-call",
+    }), currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "sync-agent-message",
+      taskId: "task-sync-agent",
+      taskOrder: 3,
+      messageOrder: 3,
+      resultMap: {
+        messageType: "tool_result",
+        messageId: "sync-agent-message",
+        messageTime: "1714041600999",
+        isFinal: true,
+        finish: true,
+        toolResult: {
+          toolName: "Agent",
+          toolResult: "status=completed\\nagentType=Explore\\n\\nok",
+        },
+      },
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].toolResult?.toolName).toBe("Agent");
+    const agent = renderedChat.tasks[0]?.[0]?.children?.[0];
+    expect(agent?.toolResult?.toolName).toBe("Agent");
+    expect(agent?.children?.[0].resultMap?.toolName).toBe("workspace_grep");
+  });
+
+  it("父卡 toolCallId 与子事件 parentToolUseId 别名不一致时仍应挂载", () => {
+    const currentChat = {
+      sessionId: "session-subagent-alias-1",
+      requestId: "req-subagent-alias-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: {
+        tasks: [
+          [
+            {
+              messageType: "tool_call",
+              messageId: "stream-agent-key",
+              messageTime: "1714041600555",
+              resultMap: {
+                messageType: "tool_call",
+                status: "running",
+                toolName: "Agent",
+                toolCallId: "real-agent-call",
+                streamToolKey: "stream-agent-key",
+                input: {
+                  description: "搜索 API",
+                  prompt: "find endpoints",
+                  subagent_type: "Explore",
+                },
+              },
+            } as unknown as MESSAGE.Task,
+            {
+              messageType: "tool_call",
+              messageId: "child-grep-alias",
+              messageTime: "1714041600556",
+              resultMap: {
+                messageType: "tool_call",
+                status: "running",
+                toolName: "workspace_grep",
+                toolCallId: "child-grep-call",
+                parentToolUseId: "stream-agent-key",
+                input: { pattern: "Controller" },
+              },
+            } as unknown as MESSAGE.Task,
+          ],
+        ],
+      },
+    } as CHAT.ChatItem;
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
+    expect(timelineChildren).toHaveLength(1);
+    expect(timelineChildren[0].resultMap?.toolName).toBe("Agent");
+    expect(timelineChildren[0].children?.length).toBe(1);
+    expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
+  });
+
+  it("有 parentToolUseId 但父 Agent 永不出现时，子工具不得进入主时间线", () => {
+    const currentChat = {
+      sessionId: "session-subagent-orphan-1",
+      requestId: "req-subagent-orphan-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "orphan-grep-1",
+      taskId: "task-orphan-1",
+      toolCallId: "orphan-grep-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "missing-parent-agent",
+    }), currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(0);
+    const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
+    expect(timelineChildren).toHaveLength(0);
+  });
+
+  it("subagent_progress 后父 Agent 仍留在 taskList，且不写入自身 parentToolUseId", () => {
+    const currentChat = {
+      sessionId: "session-progress-parent-1",
+      requestId: "req-progress-parent-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "parent-agent-call",
+      taskId: "task-progress-1",
+      toolCallId: "parent-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "搜索 API",
+        prompt: "find endpoints",
+        subagent_type: "Explore",
+      },
+      status: "running",
+    }), currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "prog-1",
+      taskId: "task-progress-1",
+      taskOrder: 1,
+      messageOrder: 2,
+      resultMap: {
+        messageType: "subagent_progress",
+        messageId: "prog-1",
+        messageTime: "1714041600500",
+        kind: "heartbeat",
+        phase: "working",
+        status: "running",
+        parentToolUseId: "parent-agent-call",
+        agentId: "sub-1",
+        agentType: "Explore",
+        description: "搜索 API",
+        elapsedMs: 3000,
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    combineData(createToolCallEvent({
+      messageId: "child-grep-1",
+      taskId: "task-progress-1",
+      toolCallId: "child-grep-call",
+      toolName: "workspace_grep",
+      input: { pattern: "Controller" },
+      status: "running",
+      parentToolUseId: "parent-agent-call",
+    }), currentChat);
+
+    const parentFact = currentChat.multiAgent.tasks[0]?.find(
+      (task) =>
+        (task.resultMap?.toolCallId || task.messageId) === "parent-agent-call"
+    );
+    expect(parentFact?.resultMap?.parentToolUseId).toBeUndefined();
+    expect(parentFact?.resultMap?.subAgentProgressLines?.length).toBeGreaterThan(0);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].resultMap?.toolName || taskList[0].toolResult?.toolName).toBe("Agent");
+    expect(taskList[0].children?.some((child) => child.resultMap?.toolName === "workspace_grep")).toBe(true);
+    expect(renderedChat.tasks[0]?.[0]?.children?.[0]?.children?.length).toBe(1);
+  });
+
+  it("带 parentToolUseId 的 result 挂到子 Agent 工作区，不覆盖主对话终答", () => {
+    const currentChat = {
+      sessionId: "session-subagent-result-1",
+      requestId: "req-subagent-result-1",
+      query: "做个页面",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "agent-call-1",
+      taskId: "task-sub-result-1",
+      toolCallId: "parent-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "制作交互式 HTML",
+        prompt: "make html",
+        subagent_type: "general-purpose",
+      },
+      status: "success",
+      isFinal: true,
+    }), currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "sub-final-1",
+      taskId: "task-sub-result-1",
+      taskOrder: 2,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-subagent-result-1",
+        messageId: "sub-final-1",
+        messageType: "result",
+        messageTime: "1714041600999",
+        finish: true,
+        isFinal: true,
+        result: "页面已经生成完毕。",
+        taskSummary: "页面已经生成完毕。",
+        parentToolUseId: "parent-agent-call",
+        resultMap: { parentToolUseId: "parent-agent-call" },
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const { currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(renderedChat.conclusion).toBeUndefined();
+    const agentCard = renderedChat.tasks[0]?.[0]?.children?.[0];
+    expect(agentCard?.resultMap?.toolName || agentCard?.toolResult?.toolName).toBe("Agent");
+    expect(agentCard?.children?.some((child) => child.messageType === "result")).toBe(true);
+    expect(
+      agentCard?.children?.find((child) => child.messageType === "result")?.result
+    ).toContain("页面已经生成完毕");
   });
 
   it("tool_call 阶段会立即生成可见的工具调用占位卡片", () => {

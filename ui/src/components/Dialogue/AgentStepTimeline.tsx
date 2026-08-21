@@ -405,11 +405,8 @@ const StepGroupBlock: FC<{
   useEffect(() => {
     if (forceOpen || group.active) {
       setOpen(true);
-    } else if (canCollapse && group.completed) {
-      // 步骤全部完成后自动折叠（含单步组）
-      setOpen(false);
     }
-  }, [forceOpen, group.active, group.completed, canCollapse]);
+  }, [forceOpen, group.active]);
 
   const toolCardSteps = group.steps.filter(
     (step) =>

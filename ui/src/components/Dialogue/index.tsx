@@ -19,6 +19,7 @@ import { MessageToolbar } from "./MessageToolbar";
 import { resolveTaskSummaryText } from "./contentHelpers";
 import GenUiInline from "@/components/genui/GenUiInline";
 import { findFeaturedGenUi } from "@/utils/chat/genuiState";
+import { buildConversationTaskData } from "@/utils/chat";
 import { applyUiPatches } from "@/components/genui/applyUiPatch";
 import {
   genUiLocalScopeKey,
@@ -108,6 +109,17 @@ const DialogueComponent: FC<Props> = (props) => {
   } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
+  const timelineChat = useMemo(() => {
+    const hasTimelineChildren = (chat.tasks || []).some((group) =>
+      (group || []).some((container) => (container.children || []).length > 0)
+    );
+    if (hasTimelineChildren || !(chat.multiAgent?.tasks || []).length) {
+      return chat;
+    }
+    // 工作区使用 taskList，主对话使用 chat.tasks；流式快照短暂不同步时，
+    // 从事实层重建一次时间线，避免主 Agent 的思考和执行步骤消失。
+    return buildConversationTaskData(chat, deepThink).currentChat;
+  }, [chat, deepThink]);
   const plannerRounds = useMemo(
     () => buildPlannerRoundsForDisplay(chat, streamingThought),
     [chat, streamingThought]
@@ -179,7 +191,7 @@ const DialogueComponent: FC<Props> = (props) => {
     chat.agentType === 0 && !!chat.response && !chat.conclusion;
   const showProcessTimeline =
     !showStandaloneResponse &&
-    (!!thoughtText || !!displayedPlan || chat.tasks.length > 0);
+    (!!thoughtText || !!displayedPlan || timelineChat.tasks.length > 0);
   // plan_thought 的 isFinal 只表示本轮规划思考完成，不等于整个 Agent 已结束。
   // 只有尚未收到思考终态的最新轮次才允许闪动，后续工具执行阶段保持静止。
   const thoughtStreaming =
@@ -297,7 +309,7 @@ const DialogueComponent: FC<Props> = (props) => {
       {showProcessTimeline ? (
         <div className="mt-5 w-full max-w-[min(960px,100%)]">
           <AgentStepTimeline
-            chat={chat}
+            chat={timelineChat}
             isPlanSolveMessage={isPlanSolveMessage}
             thoughtText={thoughtText}
             thoughtStreaming={thoughtStreaming}

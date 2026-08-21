@@ -439,6 +439,8 @@ function handleSubAgentProgressMessage(
           toolName
       );
 
+      // 父 Agent 卡只收进度投影字段；绝不能写入 parentToolUseId，
+      // 否则 handleTaskData 会把它当成“子事件”踢出 taskList / 时间线。
       task.resultMap = {
         ...prev,
         toolCallId: prev.toolCallId || topToolCallId || undefined,
@@ -449,7 +451,6 @@ function handleSubAgentProgressMessage(
         subAgentElapsedMs: elapsedMs ?? prev.subAgentElapsedMs,
         subAgentLiveText: nextLiveText || prev.subAgentLiveText,
         subAgentProgressLines: nextLines,
-        parentToolUseId: prev.parentToolUseId || parentToolUseId,
         subAgentId:
           asTextField(merged.agentId || merged.subAgentId) || prev.subAgentId,
         subAgentType:
@@ -1244,10 +1245,7 @@ function handleNonStreamingMessage(
       taskGroup.push(nextTask);
       return;
     }
-    const placeholderIndex = findToolCallPlaceholderIndex(
-      taskGroup,
-      resolveTaskToolCallId(nextTask)
-    );
+    const placeholderIndex = findToolCallPlaceholderForTask(taskGroup, nextTask);
     const toolCallId = resolveTaskToolCallId(nextTask);
 
     if (isImageGenerationToolResultTask(nextTask)) {
@@ -1302,6 +1300,10 @@ function handleNonStreamingMessage(
         const nextMap = (nextTask.resultMap || {}) as MESSAGE.ResultMap;
         nextTask.resultMap = {
           ...nextMap,
+          // Agent 终态包可能只带 messageId；保留占位卡身份，后续子事件仍能找到父卡。
+          toolCallId: nextMap.toolCallId || prevMap.toolCallId,
+          streamToolKey:
+            nextMap.streamToolKey || prevMap.streamToolKey,
           subAgentLiveText: nextMap.subAgentLiveText || prevMap.subAgentLiveText,
           subAgentProgressLines:
             nextMap.subAgentProgressLines?.length
@@ -1341,6 +1343,124 @@ function handleNonStreamingMessage(
     ]);
   }
 
+}
+
+/**
+ * tool_result 的终态包在不同协议入口可能只保留 messageId 或 streamToolKey；
+ * 同步 Agent 完成时必须仍能命中原始 tool_call，否则主工作区会出现“卡片消失”。
+ */
+function findToolCallPlaceholderForTask(
+  tasks: MESSAGE.Task[],
+  task: MESSAGE.Task
+) {
+  const toolCallId = resolveTaskToolCallId(task);
+  const streamKey = resolveToolCallStreamKey(task);
+  const messageId = pickFirstText(task.messageId);
+  return findLastTaskIndex(tasks, (candidate) => {
+    if (candidate.messageType !== "tool_call") {
+      return false;
+    }
+    const candidateToolCallId = resolveTaskToolCallId(candidate);
+    const candidateStreamKey = resolveToolCallStreamKey(candidate);
+    return Boolean(
+      (toolCallId && candidateToolCallId === toolCallId) ||
+      (streamKey && candidateStreamKey === streamKey) ||
+      (messageId && candidate.messageId === messageId)
+    );
+  });
+}
+
+/** 父 Agent 卡片可被 parentToolUseId 命中的全部别名（流式早期 id / messageId 可能不一致） */
+function collectAgentParentKeys(item: CHAT.Task): string[] {
+  const record = item as Record<string, unknown>;
+  const resultMap = (record.resultMap || {}) as Record<string, unknown>;
+  const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+  const keys = [
+    resolveTaskToolCallId(item),
+    pickFirstText(item.messageId, resultMap.messageId, nested.messageId),
+    pickFirstText(record.id, (item as { id?: string }).id),
+    pickFirstText(
+      resultMap.streamToolKey,
+      nested.streamToolKey,
+      record.streamToolKey
+    ),
+  ].filter((key): key is string => Boolean(key));
+  return Array.from(new Set(keys));
+}
+
+function upsertNestedChild(parent: CHAT.Task, child: CHAT.Task) {
+  if (!parent.children) {
+    parent.children = [];
+  }
+  const childId =
+    resolveTaskToolCallId(child) || child.messageId || child.id || "";
+  if (!childId) {
+    parent.children.push(child);
+    return;
+  }
+  const existingIndex = parent.children.findIndex(
+    (item) =>
+      (resolveTaskToolCallId(item) || item.messageId || item.id) === childId
+  );
+  if (existingIndex >= 0) {
+    parent.children[existingIndex] = child;
+  } else {
+    parent.children.push(child);
+  }
+}
+
+function attachChildrenToParent(parent: CHAT.Task, children: CHAT.Task[]) {
+  for (const child of children) {
+    upsertNestedChild(parent, child);
+  }
+}
+
+function registerAgentParentKeys(
+  agentParentByToolCallId: Map<string, CHAT.Task>,
+  pendingByParentId: Map<string, CHAT.Task[]>,
+  item: CHAT.Task
+) {
+  if (!item.children) {
+    item.children = [];
+  }
+  for (const key of collectAgentParentKeys(item)) {
+    agentParentByToolCallId.set(key, item);
+    const pending = pendingByParentId.get(key);
+    if (!pending?.length) {
+      continue;
+    }
+    attachChildrenToParent(item, pending);
+    pendingByParentId.delete(key);
+  }
+}
+
+function nestChildrenUnderParent(
+  agentParentByToolCallId: Map<string, CHAT.Task>,
+  pendingByParentId: Map<string, CHAT.Task[]>,
+  parentToolUseId: string,
+  children: CHAT.Task[]
+) {
+  const parent = agentParentByToolCallId.get(parentToolUseId);
+  if (parent) {
+    attachChildrenToParent(parent, children);
+    return;
+  }
+  // 父卡尚未登记：暂存，绝不平铺进主时间线（避免子工具卡泄漏）
+  const pending = pendingByParentId.get(parentToolUseId) || [];
+  pending.push(...children);
+  pendingByParentId.set(parentToolUseId, pending);
+}
+
+/** 进度事件曾把父卡自身 id 写成 parentToolUseId，需识别并忽略 */
+function isSelfReferentialParentId(
+  task: Partial<CHAT.Task> | Partial<MESSAGE.Task> | Record<string, unknown>,
+  parentToolUseId: string
+) {
+  if (!parentToolUseId) {
+    return false;
+  }
+  const ownKeys = collectAgentParentKeys(task as CHAT.Task);
+  return ownKeys.includes(parentToolUseId);
 }
 
 /**
@@ -1407,69 +1527,72 @@ export const handleTaskData = (
     ]
     : Array.from({ length: validTasks?.length || 0 }, () => []);
 
+  // 跨 taskGroup 共享父索引：子工具与父 Agent 可能落在不同组，禁止因组隔离而平铺泄漏。
+  // pending：父卡尚未出现时暂存子工具；重建结束仍无父则不出主时间线（右侧靠 Agent.children）。
+  const agentParentByToolCallId = new Map<string, CHAT.Task>();
+  const pendingByParentId = new Map<string, CHAT.Task[]>();
+
   validTasks?.forEach((taskGroup, groupIndex) => {
     const timelineTaskGroup = ensureTimelineTaskGroup(chatList, groupIndex);
-    // 父 Agent 事件先登记，后续带 parentToolUseId 的子事件才能嵌套到正确卡片；父事件缺失时保留到主时间线。
-    // toolCallId -> 已渲染的 Agent 父卡片，用于挂载子工具（cc-haha nested）
-    const agentParentByToolCallId = new Map<string, CHAT.Task>();
+
+    // Pass 1：先登记本组全部 Agent 父卡（含多别名），再处理挂载，消除「子先于父」单遍 miss
+    const processedGroup: Array<{
+      task: MESSAGE.Task;
+      processedInfo: CHAT.Task[];
+      parentToolUseId: string;
+    }> = [];
 
     taskGroup?.forEach((task, taskIndex) => {
       const time = task.messageTime;
       const id = time?.concat(String(taskIndex));
-
       const processedInfo = processTaskForRender(task, id);
-      const parentToolUseId = resolveParentToolUseId(task);
+      // Agent 父卡若被误写入自身 parentToolUseId，按无父处理，避免自嵌套后从 taskList 消失。
+      const rawParentId = resolveParentToolUseId(task);
+      const parentToolUseId = isSelfReferentialParentId(task, rawParentId)
+        ? ""
+        : rawParentId;
+      processedGroup.push({
+        task,
+        processedInfo,
+        parentToolUseId
+      });
 
-      // 先登记 Agent 父卡片，供后续子事件挂载
-      if (!parentToolUseId) {
-        for (const item of processedInfo) {
-          if (isAgentDispatchTask(item)) {
-            // toolCallId 优先；messageId 在 realtime tool_call 中常等于 toolCallId
-            const agentToolCallId = pickFirstText(
-              resolveTaskToolCallId(item),
-              item.messageId,
-              (item as { id?: string }).id
-            );
-            if (agentToolCallId) {
-              if (!item.children) {
-                item.children = [];
-              }
-              agentParentByToolCallId.set(agentToolCallId, item);
-            }
-          }
+      for (const item of processedInfo) {
+        if (isAgentDispatchTask(item)) {
+          registerAgentParentKeys(
+            agentParentByToolCallId,
+            pendingByParentId,
+            item
+          );
         }
       }
+    });
 
+    // Pass 2：挂载子工具 / 推入主时间线
+    for (const { task, processedInfo, parentToolUseId } of processedGroup) {
       if (task.messageType === "task") {
         upsertTimelineTaskContainer(timelineTaskGroup, task);
       // 深度研究里的 task_summary 属于任务级总结，必须保留在时间线中；
       // 只有请求级 result 才应该落在底部最终结论区。
+      } else if (task?.messageType === "result" && parentToolUseId) {
+        nestChildrenUnderParent(
+          agentParentByToolCallId,
+          pendingByParentId,
+          parentToolUseId,
+          processedInfo
+        );
       } else if (task?.messageType !== "result") {
         if (parentToolUseId) {
-          // 子 Agent 工具：嵌套到父 Agent 卡片，不进主时间线平铺
-          const parent = agentParentByToolCallId.get(parentToolUseId);
-          if (parent) {
-            if (!parent.children) {
-              parent.children = [];
-            }
-            for (const child of processedInfo) {
-              const childId = resolveTaskToolCallId(child) || child.messageId || child.id;
-              const existingIndex = parent.children.findIndex(
-                (item) =>
-                  (resolveTaskToolCallId(item) || item.messageId || item.id) === childId
-              );
-              if (existingIndex >= 0) {
-                parent.children[existingIndex] = child;
-              } else {
-                parent.children.push(child);
-              }
-            }
-          } else {
-            // 父卡片尚未到达时先落到主时间线，避免丢事件
-            ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
-          }
+          nestChildrenUnderParent(
+            agentParentByToolCallId,
+            pendingByParentId,
+            parentToolUseId,
+            processedInfo
+          );
         } else {
-          ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(...processedInfo);
+          ensureTimelineTaskContainer(timelineTaskGroup, task).children.push(
+            ...processedInfo
+          );
         }
       }
 
@@ -1484,12 +1607,12 @@ export const handleTaskData = (
         plan = task.plan;
       }
 
-      if (task?.messageType === "result") {
+      if (task?.messageType === "result" && !parentToolUseId) {
         requestConclusion = task;
       } else if (task?.messageType === "task_summary") {
         fallbackTaskSummary = task;
       }
-    });
+    }
   });
 
   const streamConclusion =

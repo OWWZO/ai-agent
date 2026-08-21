@@ -209,7 +209,7 @@ export function parseAgentObservation(text?: string) {
           typeof parsed.totalToolUseCount === "number" ? parsed.totalToolUseCount : undefined,
         totalDurationMs:
           typeof parsed.totalDurationMs === "number" ? parsed.totalDurationMs : undefined,
-        content: asText(parsed.content) || raw,
+        content: asText(parsed.content),
         errorMsg: asText(parsed.errorMsg),
       };
     }
@@ -248,14 +248,20 @@ export function resolveSubAgentDisplay(
   const resultStatus = asText(
     (task?.resultMap as Record<string, unknown> | undefined)?.status
   );
-  if (task?.messageType === "tool_call" && !task?.resultMap?.isFinal && resultStatus !== "success") {
+  if (parsed.status === "running") {
     status = "running";
-  } else if (parsed.status === "completed" || resultStatus === "success") {
-    status = "completed";
   } else if (parsed.status === "failed" || resultStatus === "failed") {
     status = "failed";
-  } else if (task?.resultMap?.isFinal) {
-    status = observationText ? "completed" : "unknown";
+  } else if (parsed.status === "completed") {
+    status = "completed";
+  } else if (
+    task?.messageType === "tool_call" &&
+    !task?.resultMap?.isFinal &&
+    resultStatus !== "success"
+  ) {
+    status = "running";
+  } else if (resultStatus === "success" || task?.resultMap?.isFinal) {
+    status = parsed.content || observationText ? "completed" : "unknown";
   } else if (task?.messageType === "tool_call") {
     status = "running";
   }
@@ -263,8 +269,8 @@ export function resolveSubAgentDisplay(
   const resultMap = (task?.resultMap || {}) as Record<string, unknown>;
   const progressLines = Array.isArray(resultMap.subAgentProgressLines)
     ? (resultMap.subAgentProgressLines as unknown[]).filter(
-        (line): line is string => typeof line === "string" && line.trim().length > 0
-      )
+      (line): line is string => typeof line === "string" && line.trim().length > 0
+    )
     : [];
   const liveText = asText(resultMap.subAgentLiveText);
   const elapsedMs =
@@ -279,7 +285,7 @@ export function resolveSubAgentDisplay(
     prompt,
     status,
     agentId: parsed.agentId,
-    content: parsed.content || (status === "running" ? "" : observationText),
+    content: parsed.content,
     totalToolUseCount: parsed.totalToolUseCount,
     totalDurationMs: parsed.totalDurationMs,
     errorMsg: parsed.errorMsg,

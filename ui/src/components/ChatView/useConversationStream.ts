@@ -19,6 +19,7 @@ import {
   handleTaskData,
   normalizeEventData,
 } from "@/utils/chat";
+import { resolveParentToolUseId } from "@/utils/chat/subagent";
 import {
   hydrateConversationFromReplayFrames,
 } from "@/utils/conversationHistory";
@@ -1096,7 +1097,11 @@ export function useConversationStream(
       const isPlanThoughtEvent = eventData.messageType === "plan_thought";
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       currentChat = combineData(eventData, currentChat);
-      if (eventData.resultMap?.messageType === "result") {
+      // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
+      if (
+        eventData.resultMap?.messageType === "result" &&
+        !resolveParentToolUseId(eventData)
+      ) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
@@ -1947,7 +1952,11 @@ export function useConversationStream(
       currentChat = combineData(eventData, currentChat);
       // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
       // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
-      if (eventData.resultMap?.messageType === "result") {
+      // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
+      if (
+        eventData.resultMap?.messageType === "result" &&
+        !resolveParentToolUseId(eventData)
+      ) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {

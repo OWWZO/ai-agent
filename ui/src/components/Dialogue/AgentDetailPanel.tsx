@@ -1,21 +1,23 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
+import { chatItemFromSubAgent } from "@/utils/chat/subAgentChat";
 import { projectAgentMember } from "@/utils/chat/agentRuntimeProjector";
-import { ToolCallView, resolveStackPosition } from "./tools";
 import {
-  buildAgentProgressGroups,
-  foldCount,
   formatAgentElapsed,
   resolveAgentPhaseLabel,
   resolveAgentPhaseTone,
-  shouldFoldGroup,
-  OUTPUT_HEAD,
-  OUTPUT_TAIL,
-  type AgentProgressGroup,
 } from "./agentProgressGroups";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "./tools/StatusDot";
+import { AgentStepTimeline } from "./AgentStepTimeline";
+import {
+  Message,
+  MessageContent,
+} from "@/components/ai-elements/message";
+import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
+import { MessageToolbar } from "./MessageToolbar";
+import { resolveTaskSummaryText } from "./contentHelpers";
 
 type AgentDetailPanelProps = {
   tool: CHAT.Task;
@@ -26,55 +28,6 @@ type AgentDetailPanelProps = {
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
-
-function ProgressGroupView({ group }: { group: AgentProgressGroup }) {
-  const [expanded, setExpanded] = useState(false);
-  const folded = shouldFoldGroup(group) && !expanded;
-
-  return (
-    <div className="kimi-agent-progress-group">
-      {group.call ? (
-        <div className="kimi-agent-progress-call">
-          <span className="kimi-agent-progress-glyph" aria-hidden>
-            ▶
-          </span>
-          {group.call}
-        </div>
-      ) : null}
-      {group.output.length > 0 ? (
-        <div className="kimi-agent-progress-output">
-          {folded ? (
-            <>
-              {group.output.slice(0, OUTPUT_HEAD).map((line, li) => (
-                <div key={`h-${li}`} className="kimi-agent-progress-line">
-                  {line}
-                </div>
-              ))}
-              <button
-                type="button"
-                className="kimi-agent-progress-fold"
-                onClick={() => setExpanded(true)}
-              >
-                … ({foldCount(group)} more)
-              </button>
-              {group.output.slice(-OUTPUT_TAIL).map((line, li) => (
-                <div key={`t-${li}`} className="kimi-agent-progress-line">
-                  {line}
-                </div>
-              ))}
-            </>
-          ) : (
-            group.output.map((line, li) => (
-              <div key={li} className="kimi-agent-progress-line">
-                {line}
-              </div>
-            ))
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export const AgentDetailPanel = memo(function AgentDetailPanel({
   tool,
@@ -89,11 +42,36 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
   const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool]);
   const member = useMemo(() => projectAgentMember(tool), [tool]);
   const nested = tool.children || [];
-  const progressGroups = useMemo(() => buildAgentProgressGroups(tool), [tool]);
-  const liveText = (sub.liveText || "").trimEnd();
+  const syntheticChat = useMemo(
+    () => chatItemFromSubAgent(tool, chat),
+    [tool, chat]
+  );
   const duration = formatAgentElapsed(sub);
   const phaseLabel = resolveAgentPhaseLabel(member?.phase, sub.status);
   const phaseTone = resolveAgentPhaseTone(phaseLabel);
+  const conclusionText = resolveTaskSummaryText(syntheticChat.conclusion);
+  const hasTimeline = syntheticChat.tasks.length > 0;
+  const hasBody =
+    Boolean(syntheticChat.query) || hasTimeline || Boolean(conclusionText);
+
+  const handleChangeActiveChat = useCallback(
+    (task: CHAT.Task) => {
+      changeActiveChat?.(task, chat);
+    },
+    [changeActiveChat, chat]
+  );
+  const handleOpenToolDiff = useCallback(
+    (task: CHAT.Task) => {
+      onOpenToolDiff?.(task, chat);
+    },
+    [onOpenToolDiff, chat]
+  );
+  const handleOpenAgent = useCallback(
+    (task: CHAT.Task) => {
+      onOpenAgent?.(task, chat);
+    },
+    [onOpenAgent, chat]
+  );
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -105,9 +83,8 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     nested.length,
     sub.content,
     sub.status,
-    liveText,
-    progressGroups.length,
-    progressGroups.map((g) => g.output.length).join(","),
+    sub.liveText,
+    syntheticChat.loading,
   ]);
 
   return (
@@ -156,69 +133,42 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
           </div>
         ) : null}
 
-        {sub.subagentType ? (
-          <div className="mb-2 font-mono text-[12px] text-[var(--color-text-muted)]">
-            {sub.subagentType}
+        {syntheticChat.query ? (
+          <div className="user-message-enter mt-3 ml-auto flex w-full max-w-[78%] flex-col items-end gap-1">
+            <Message from="user" className="max-w-full">
+              <MessageContent>{syntheticChat.query}</MessageContent>
+            </Message>
           </div>
         ) : null}
 
-        {sub.prompt ? (
-          <div className="kimi-agent-field mb-3">
-            <div className="kimi-agent-field-label">Task</div>
-            <pre className="kimi-agent-field-body">{sub.prompt}</pre>
+        {hasTimeline ? (
+          <div className="mt-4 w-full">
+            <AgentStepTimeline
+              chat={syntheticChat}
+              isPlanSolveMessage={false}
+              changeActiveChat={handleChangeActiveChat}
+              changePlan={changePlan}
+              onOpenToolDiff={handleOpenToolDiff}
+              onOpenAgent={handleOpenAgent}
+            />
           </div>
         ) : null}
 
-        {liveText ? (
-          <div className="kimi-agent-field mb-3">
-            <div className="kimi-agent-field-label">Output</div>
-            <pre className="kimi-agent-field-body kimi-agent-live">{liveText}</pre>
-          </div>
-        ) : null}
-
-        {progressGroups.length > 0 ? (
-          <div className="kimi-agent-field mb-3">
-            <div className="kimi-agent-field-label">Progress</div>
-            <div className="kimi-agent-field-body">
-              {progressGroups.map((group) => (
-                <ProgressGroupView key={group.key} group={group} />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {nested.length > 0 ? (
-          <div className="kimi-agent-field mb-3">
-            <div className="kimi-agent-field-label">Tools</div>
-            <div className="flex flex-col gap-0.5">
-              {nested.map((child, index) => (
-                <ToolCallView
-                  key={child.id || child.messageId || child.taskId || index}
-                  tool={child}
-                  chat={chat}
-                  stackPosition={resolveStackPosition(index, nested.length)}
-                  defaultExpanded={false}
-                  changeActiveChat={changeActiveChat || (() => undefined)}
-                  changePlan={changePlan}
-                  onOpenToolDiff={onOpenToolDiff}
-                  onOpenAgent={onOpenAgent}
+        {conclusionText ? (
+          <div className="timeline-segment-enter mt-3 w-full">
+            <Message from="assistant" className="min-w-0 w-full">
+              <MessageContent>
+                <MarkdownRenderer
+                  markDownContent={conclusionText}
+                  className="chat-markdown conclusion-markdown kimi-md"
                 />
-              ))}
-            </div>
+              </MessageContent>
+              <MessageToolbar response={conclusionText} alwaysVisible />
+            </Message>
           </div>
         ) : null}
 
-        {sub.content ? (
-          <div className="kimi-agent-field mb-3">
-            <div className="kimi-agent-field-label">Result</div>
-            <pre className="kimi-agent-field-body">{sub.content}</pre>
-          </div>
-        ) : null}
-
-        {!sub.content &&
-        nested.length === 0 &&
-        !liveText &&
-        progressGroups.length === 0 ? (
+        {!hasBody ? (
           <div className="kimi-detail-panel-empty">
             {sub.status === "running" ? "子智能体执行中…" : "暂无详情"}
           </div>
