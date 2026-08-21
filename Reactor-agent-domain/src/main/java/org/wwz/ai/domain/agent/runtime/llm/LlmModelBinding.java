@@ -19,4 +19,6 @@ public class LlmModelBinding {
     String apiKey;
     /** 对话补全路径；空则调用方用默认 /v1/chat/completions 或 /chat/completions。 */
     String completionsPath;
+    /** 上下文窗口（输入侧 token 上限）。 */
+    Integer contextWindow;
 }

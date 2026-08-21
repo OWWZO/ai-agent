@@ -122,7 +122,9 @@ public class LlmModelCatalog {
                 .interfaceUrl(path != null ? path : "/chat/completions")
                 .maxTokens(16384)
                 .temperature(0.0)
-                .maxInputTokens(100000)
+                .maxInputTokens(binding.getContextWindow() != null && binding.getContextWindow() > 0
+                        ? binding.getContextWindow()
+                        : 100000)
                 .functionCallType("function_call")
                 .build();
     }

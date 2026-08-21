@@ -56,6 +56,7 @@ public class LlmModelConfigRepository implements ILlmModelConfigRepository {
                     .completionsPath(StringUtils.hasText(api.getCompletionsPath())
                             ? api.getCompletionsPath().trim()
                             : null)
+                    .contextWindow(model.getContextWindow())
                     .build());
         }
         return result;
