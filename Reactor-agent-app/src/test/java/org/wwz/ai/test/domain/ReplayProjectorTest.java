@@ -434,7 +434,7 @@ public class ReplayProjectorTest {
     }
 
     @Test
-    public void shouldProjectSubAgentToolsEvenWhenSubAgentLlmThoughtIsSkipped() {
+    public void shouldProjectSubAgentThoughtNestedUnderParent() {
         LocalDateTime now = LocalDateTime.of(2026, 5, 2, 17, 40, 0);
         LlmInvocationView parentLlm = LlmInvocationView.builder()
                 .id(301L)
@@ -485,21 +485,20 @@ public class ReplayProjectorTest {
                 .toolInvocations(List.of(parentAgentTool, nestedTool))
                 .build());
 
-        Assert.assertEquals(3, frames.size());
+        Assert.assertEquals(4, frames.size());
         Assert.assertEquals("tool_thought", frameResultMap(frames.get(0)).get("messageType"));
         Assert.assertEquals("tool_result", frameResultMap(frames.get(1)).get("messageType"));
         Assert.assertEquals("Agent", toolResult(frames.get(1)).get("toolName"));
-        Assert.assertEquals("tool_result", frameResultMap(frames.get(2)).get("messageType"));
-        Assert.assertEquals("workspace_grep", toolResult(frames.get(2)).get("toolName"));
+        Assert.assertEquals("tool_thought", frameResultMap(frames.get(2)).get("messageType"));
+        Assert.assertEquals("子智能体内部思考，不应出现在主时间线", frameResultMap(frames.get(2)).get("toolThought"));
         Assert.assertEquals("parent-agent-call", frameResultMap(frames.get(2)).get("parentToolUseId"));
-        Assert.assertEquals("abc123subagent", frameResultMap(frames.get(2)).get("subAgentId"));
+        Assert.assertEquals("tool_result", frameResultMap(frames.get(3)).get("messageType"));
+        Assert.assertEquals("workspace_grep", toolResult(frames.get(3)).get("toolName"));
+        Assert.assertEquals("parent-agent-call", frameResultMap(frames.get(3)).get("parentToolUseId"));
+        Assert.assertEquals("abc123subagent", frameResultMap(frames.get(3)).get("subAgentId"));
         // 同 task 组才能被前端挂到 Agent.children
         Assert.assertEquals(eventTaskId(frames.get(1)), eventTaskId(frames.get(2)));
-        // 子 Agent 思考不得出现
-        for (GptProcessResult frame : frames) {
-            Object thought = frameResultMap(frame).get("toolThought");
-            Assert.assertFalse(String.valueOf(thought).contains("子智能体内部思考"));
-        }
+        Assert.assertEquals(eventTaskId(frames.get(1)), eventTaskId(frames.get(3)));
     }
 
     @Test
@@ -583,6 +582,52 @@ public class ReplayProjectorTest {
         Assert.assertEquals(2, frameArtifactRefs(frames.get(0)).size());
         Assert.assertEquals("report.html", frameFileList(frames.get(0)).get(0).get("fileName"));
         Assert.assertEquals("artifact-checklist-md", frameArtifactRefs(frames.get(0)).get(1).get("resourceKey"));
+    }
+
+    @Test
+    public void nestedSubAgentResultMustNotSuppressMainRunSummary() {
+        LocalDateTime now = LocalDateTime.of(2026, 5, 2, 20, 10, 0);
+        DialogueRunView run = DialogueRunView.builder()
+                .requestId("req-nested-result-summary")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("主 Agent 最终结论")
+                .startedAt(now.minusMinutes(3))
+                .finishedAt(now)
+                .build();
+        LlmInvocationView subagentLlm = LlmInvocationView.builder()
+                .id(701L)
+                .agentName("subagent:Explore")
+                .responseText("子 Agent 内部终答")
+                .toolCallCount(0)
+                .startedAt(now.minusMinutes(2))
+                .finishedAt(now.minusMinutes(1))
+                .build();
+        ToolInvocationView nestedTool = ToolInvocationView.builder()
+                .id(702L)
+                .llmInvocationId(701L)
+                .toolCallId("child-tool-1")
+                .toolName("workspace_grep")
+                .parentToolCallId("parent-agent-call")
+                .subAgentType("Explore")
+                .subAgentId("abc123subagent")
+                .llmObservation("matched")
+                .startedAt(now.minusMinutes(2))
+                .finishedAt(now.minusMinutes(1))
+                .build();
+
+        List<GptProcessResult> frames = replayProjector.projectHistoryFrames(ReplayFactBundle.builder()
+                .run(run)
+                .llmInvocations(List.of(subagentLlm))
+                .toolInvocations(List.of(nestedTool))
+                .build());
+
+        boolean hasMainSummary = frames.stream().anyMatch(frame ->
+                "主 Agent 最终结论".equals(frameResultMap(frame).get("result")));
+        Assert.assertTrue(hasMainSummary);
+        boolean hasNestedResult = frames.stream().anyMatch(frame ->
+                "result".equals(frameResultMap(frame).get("messageType"))
+                        && "parent-agent-call".equals(frameResultMap(frame).get("parentToolUseId")));
+        Assert.assertTrue(hasNestedResult);
     }
 
     @Test

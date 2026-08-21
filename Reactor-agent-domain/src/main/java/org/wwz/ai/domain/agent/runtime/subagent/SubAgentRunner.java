@@ -102,6 +102,22 @@ public class SubAgentRunner {
                               String resumeAgentId,
                               RunCancellation cancellationOverride,
                               String preferredAgentId) {
+        return run(parentContext, description, prompt, subagentType, resumeAgentId,
+                cancellationOverride, preferredAgentId, null);
+    }
+
+    /**
+     * @param explicitParentToolUseId 调用方在父线程捕获的 Agent 工具 toolCallId。
+     *                                异步派发必须显式传入，不能依赖后台线程的 ThreadLocal。
+     */
+    public SubAgentResult run(AgentContext parentContext,
+                              String description,
+                              String prompt,
+                              String subagentType,
+                              String resumeAgentId,
+                              RunCancellation cancellationOverride,
+                              String preferredAgentId,
+                              String explicitParentToolUseId) {
         long start = System.currentTimeMillis();
         boolean resume = StringUtils.isNotBlank(resumeAgentId);
         String agentId;
@@ -143,7 +159,7 @@ public class SubAgentRunner {
         try {
             SubAgentResult gated = concurrencyGate.runWithPermit(() ->
                     runUnlocked(parentContext, description, prompt, definition, agentId, start, resume,
-                            cancellationOverride));
+                            cancellationOverride, explicitParentToolUseId));
             if (gated == null) {
                 return failed(agentId, definition, description, prompt, start,
                         "子 Agent 并发已达上限(" + concurrencyGate.getMaxConcurrent()
@@ -163,7 +179,8 @@ public class SubAgentRunner {
                                        String agentId,
                                        long start,
                                        boolean resume,
-                                       RunCancellation cancellationOverride) {
+                                       RunCancellation cancellationOverride,
+                                       String explicitParentToolUseId) {
         boolean parentInPlanMode = parentContext.getPlanModeState() != null
                 && parentContext.getPlanModeState().isPlanMode();
         ToolCollection parentToolCollection = parentContext.getSubAgentToolCollection() != null
@@ -171,7 +188,9 @@ public class SubAgentRunner {
                 : parentContext.getToolCollection();
         ToolCollection childTools = SubAgentToolFilter.filter(
                 parentToolCollection, definition, parentInPlanMode);
-        String parentToolUseId = resolveParentToolUseId(parentContext);
+        String parentToolUseId = StringUtils.isNotBlank(explicitParentToolUseId)
+                ? explicitParentToolUseId.trim()
+                : resolveParentToolUseId(parentContext);
         if (StringUtils.isBlank(parentToolUseId)) {
             log.warn("{} subagent spawn without parentToolUseId type={} id={} — nested tools will not attach to Agent card",
                     parentContext.getRequestId(), definition.getAgentType(), agentId);
@@ -236,6 +255,7 @@ public class SubAgentRunner {
                 String runResult = agent.run(prompt);
                 finished.set(true);
                 String content = finalizeContent(agent, runResult);
+                emitSubAgentFinalReply(childContext, content);
                 int toolUseCount = countToolUses(agent);
                 persistSubWorkingMemory(childContext, agent, definition);
 
@@ -303,6 +323,20 @@ public class SubAgentRunner {
         // request_id 列宽 64：过长时用短形态
         String shortId = "sr:" + agentId + ":" + suffix;
         return shortId.length() <= 64 ? shortId : shortId.substring(0, 64);
+    }
+
+    private static void emitSubAgentFinalReply(AgentContext childContext, String content) {
+        if (childContext == null
+                || childContext.getPrinter() == null
+                || StringUtils.isBlank(content)
+                || StringUtils.isBlank(childContext.getParentToolUseId())) {
+            return;
+        }
+        try {
+            childContext.getPrinter().send("result", content);
+        } catch (Exception e) {
+            log.debug("subagent final reply skipped id={}: {}", childContext.getSubAgentId(), e.getMessage());
+        }
     }
 
     private static void emitSubAgentProgress(AgentContext childContext,

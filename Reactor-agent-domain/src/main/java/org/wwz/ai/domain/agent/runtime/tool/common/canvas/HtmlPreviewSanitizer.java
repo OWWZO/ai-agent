@@ -85,13 +85,20 @@ public final class HtmlPreviewSanitizer {
     private static final String PREVIEW_IFRAME_BOOTSTRAP = """
             <script>/* __reactorPreviewIframeBootstrap */
             (function () {
+              var lastH = -1;
+              var syncing = false;
               function syncViewport() {
+                if (syncing) return;
                 var h = window.innerHeight || document.documentElement.clientHeight || 0;
-                if (h > 0) {
+                if (h <= 0 || h === lastH) return;
+                syncing = true;
+                try {
+                  lastH = h;
                   document.documentElement.style.height = h + 'px';
                   document.body.style.minHeight = h + 'px';
+                } finally {
+                  syncing = false;
                 }
-                window.dispatchEvent(new Event('resize'));
               }
               syncViewport();
               window.addEventListener('load', function () {

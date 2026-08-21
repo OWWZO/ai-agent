@@ -195,13 +195,15 @@ public class BaseAgentResponseHandler {
             payload.put("digitalEmployee", agentResponse.getDigitalEmployee());
         }
 
-        switch (agentResponse.getMessageType()) {
+            switch (agentResponse.getMessageType()) {
             case "tool_thought":
                 payload.put("toolThought", agentResponse.getToolThought());
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "llm_reasoning":
                 // 仅原生 CoT；禁止再塞进 toolThought（避免被当过程文/假思考）
                 payload.put("reasoningContent", agentResponse.getReasoningContent());
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             case "task":
                 payload.put("task", agentResponse.getTask());
@@ -268,6 +270,7 @@ public class BaseAgentResponseHandler {
                         payload.put("fileList", agentResponse.getResultMap().get("fileList"));
                     }
                 }
+                appendSubAgentNestingTags(payload, agentResponse.getResultMap());
                 break;
             default:
                 if (agentResponse.getResultMap() != null) {

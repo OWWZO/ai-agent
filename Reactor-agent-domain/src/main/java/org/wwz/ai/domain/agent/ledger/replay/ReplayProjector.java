@@ -93,7 +93,9 @@ public class ReplayProjector {
         }
         List<ProjectedReplayEvent> events = new ArrayList<>();
         for (LlmInvocationView invocation : bundle.getLlmInvocations()) {
-            if (shouldSkipLlmReplay(invocation) || StringUtils.isBlank(invocation.getResponseText())) {
+            if (shouldSkipInternalLlmReplay(invocation)
+                    || isSubagentLlm(invocation)
+                    || StringUtils.isBlank(invocation.getResponseText())) {
                 continue;
             }
             String messageType = resolveLlmMessageType(invocation);
@@ -123,11 +125,20 @@ public class ReplayProjector {
         List<LlmInvocationView> llmInvocations = sortLlmInvocations(bundle.getLlmInvocations());
         for (LlmInvocationView llmInvocation : llmInvocations) {
             List<ToolInvocationView> linkedTools = toolsByLlmInvocationId.get(llmInvocation.getId());
-            if (shouldSkipLlmReplay(llmInvocation)) {
-                // 子 Agent 思考/过程文不进主时间线，但其工具必须投影。
-                // 否则 parentToolUseId 嵌套在历史回放中丢失，前端 SubAgent 展开为空。
+            if (shouldSkipInternalLlmReplay(llmInvocation)) {
                 appendLinkedToolEvents(events, linkedTools, artifactsByInvocationId, state);
                 continue;
+            }
+
+            String subagentParentId = null;
+            if (isSubagentLlm(llmInvocation)) {
+                subagentParentId = resolveSubAgentParentToolUseId(
+                        llmInvocation, linkedTools, bundle.getToolInvocations());
+                if (StringUtils.isBlank(subagentParentId)) {
+                    // 无法挂到父卡：只投影工具，避免思考泄漏到主时间线
+                    appendLinkedToolEvents(events, linkedTools, artifactsByInvocationId, state);
+                    continue;
+                }
             }
 
             String messageType = null;
@@ -140,7 +151,8 @@ public class ReplayProjector {
                         state,
                         llmInvocation,
                         "llm_reasoning",
-                        null
+                        null,
+                        subagentParentId
                 ));
             }
             // content：有 tool 时才是过程文；无 tool 的 content 是终答，由 run finalSummary / result 交付，不进时间线
@@ -152,7 +164,19 @@ public class ReplayProjector {
                         state,
                         llmInvocation,
                         messageType,
-                        resolvePlannerRoundId(messageType, linkedTools)
+                        resolvePlannerRoundId(messageType, linkedTools),
+                        subagentParentId
+                ));
+            } else if (isSubagentLlm(llmInvocation)
+                    && StringUtils.isNotBlank(llmInvocation.getResponseText())
+                    && (llmInvocation.getToolCallCount() == null || llmInvocation.getToolCallCount() == 0)) {
+                events.add(buildLlmReplayEvent(
+                        bundle,
+                        state,
+                        llmInvocation,
+                        "result",
+                        null,
+                        subagentParentId
                 ));
             }
 
@@ -201,17 +225,67 @@ public class ReplayProjector {
      * <p>
      * 注意：仅跳过 LLM 过程文，不跳过其关联工具（见 {@link #projectMixedHistory}）。
      */
-    private boolean shouldSkipLlmReplay(LlmInvocationView invocation) {
+    private boolean shouldSkipInternalLlmReplay(LlmInvocationView invocation) {
         if (invocation == null) {
             return true;
         }
-        if (ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind())
-                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT.equals(invocation.getCallKind())) {
-            return true;
+        return ExecutionLedgerConstants.CALL_KIND_INTERNAL_DIGITAL_EMPLOYEE.equals(invocation.getCallKind())
+                || ExecutionLedgerConstants.CALL_KIND_INTERNAL_COMPACT.equals(invocation.getCallKind());
+    }
+
+    private boolean isSubagentLlm(LlmInvocationView invocation) {
+        if (invocation == null) {
+            return false;
         }
-        // 对齐 SubAgentPrinter：子 Agent 过程思考不进主时间线
         String agentName = invocation.getAgentName();
         return StringUtils.isNotBlank(agentName) && agentName.startsWith("subagent:");
+    }
+
+    private String resolveSubAgentParentToolUseId(LlmInvocationView invocation,
+                                                  List<ToolInvocationView> linkedTools,
+                                                  List<ToolInvocationView> allTools) {
+        String fromLinked = firstParentToolCallId(linkedTools);
+        if (StringUtils.isNotBlank(fromLinked)) {
+            return fromLinked;
+        }
+        String type = subagentTypeFromAgentName(invocation == null ? null : invocation.getAgentName());
+        if (allTools != null) {
+            for (ToolInvocationView tool : allTools) {
+                if (tool == null || StringUtils.isBlank(tool.getParentToolCallId())) {
+                    continue;
+                }
+                if (StringUtils.isNotBlank(type)
+                        && type.equalsIgnoreCase(StringUtils.defaultString(tool.getSubAgentType()))) {
+                    return tool.getParentToolCallId();
+                }
+            }
+            for (ToolInvocationView tool : allTools) {
+                if (tool != null && StringUtils.isNotBlank(tool.getParentToolCallId())) {
+                    return tool.getParentToolCallId();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String firstParentToolCallId(List<ToolInvocationView> tools) {
+        if (tools == null) {
+            return null;
+        }
+        for (ToolInvocationView tool : tools) {
+            if (tool != null && StringUtils.isNotBlank(tool.getParentToolCallId())) {
+                return tool.getParentToolCallId();
+            }
+        }
+        return null;
+    }
+
+    private String subagentTypeFromAgentName(String agentName) {
+        if (StringUtils.isBlank(agentName) || !agentName.startsWith("subagent:")) {
+            return null;
+        }
+        String type = agentName.substring("subagent:".length()).trim();
+        return type.isEmpty() ? null : type;
     }
 
     private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
@@ -219,6 +293,15 @@ public class ReplayProjector {
                                                      LlmInvocationView invocation,
                                                      String messageType,
                                                      String plannerRoundId) {
+        return buildLlmReplayEvent(bundle, state, invocation, messageType, plannerRoundId, null);
+    }
+
+    private ProjectedReplayEvent buildLlmReplayEvent(ReplayFactBundle bundle,
+                                                     EventResult state,
+                                                     LlmInvocationView invocation,
+                                                     String messageType,
+                                                     String plannerRoundId,
+                                                     String parentToolUseId) {
         syncPlannerRoundState(state, messageType, plannerRoundId);
         List<Map<String, Object>> artifactRefs = null;
         if ("result".equals(messageType)) {
@@ -232,7 +315,7 @@ public class ReplayProjector {
                 .messageId(resolveLlmMessageId(invocation, messageType))
                 .messageType(resolveOuterMessageType(messageType))
                 .messageOrder(state.getAndIncrOrder(state.getTaskId() + ":" + messageType))
-                .resultMap(buildLlmResponse(bundle, invocation, messageType, plannerRoundId))
+                .resultMap(buildLlmResponse(bundle, invocation, messageType, plannerRoundId, parentToolUseId))
                 .artifactRefs(artifactRefs)
                 .build();
     }
@@ -341,11 +424,34 @@ public class ReplayProjector {
                 continue;
             }
             Object messageType = resultMap.get("messageType");
-            if ("result".equals(messageType) || "task_summary".equals(messageType)) {
-                return true;
+            if (!"result".equals(messageType) && !"task_summary".equals(messageType)) {
+                continue;
             }
+            // 子 Agent 嵌套 result 不能冒充主会话终答，否则会跳过 run finalSummary 补齐。
+            if (hasNestedSubAgentParent(resultMap)) {
+                continue;
+            }
+            return true;
         }
         return false;
+    }
+
+    private boolean hasNestedSubAgentParent(Map<?, ?> resultMap) {
+        if (resultMap == null || resultMap.isEmpty()) {
+            return false;
+        }
+        if (StringUtils.isNotBlank(stringOrNull(resultMap.get("parentToolUseId")))) {
+            return true;
+        }
+        Object nested = resultMap.get("resultMap");
+        if (nested instanceof Map<?, ?> nestedMap) {
+            return StringUtils.isNotBlank(stringOrNull(nestedMap.get("parentToolUseId")));
+        }
+        return false;
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private String resolveRunMessageTime(DialogueRunView run) {
@@ -379,6 +485,14 @@ public class ReplayProjector {
                                     LlmInvocationView invocation,
                                     String messageType,
                                     String plannerRoundId) {
+        return buildLlmResponse(bundle, invocation, messageType, plannerRoundId, null);
+    }
+
+    private Object buildLlmResponse(ReplayFactBundle bundle,
+                                    LlmInvocationView invocation,
+                                    String messageType,
+                                    String plannerRoundId,
+                                    String parentToolUseId) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("requestId", bundle == null || bundle.getRun() == null ? null : bundle.getRun().getRequestId());
         response.put("messageId", resolveLlmMessageId(invocation, messageType));
@@ -411,7 +525,30 @@ public class ReplayProjector {
             response.put("result", invocation.getResponseText());
             response.put("taskSummary", invocation.getResponseText());
         }
+        appendSubAgentLlmNesting(response, invocation, parentToolUseId);
         return response;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void appendSubAgentLlmNesting(Map<String, Object> response,
+                                          LlmInvocationView invocation,
+                                          String parentToolUseId) {
+        if (response == null || StringUtils.isBlank(parentToolUseId)) {
+            return;
+        }
+        response.put("parentToolUseId", parentToolUseId);
+        String type = subagentTypeFromAgentName(invocation == null ? null : invocation.getAgentName());
+        if (StringUtils.isNotBlank(type)) {
+            response.put("subAgentType", type);
+        }
+        Map<String, Object> nested = response.get("resultMap") instanceof Map<?, ?> existing
+                ? new LinkedHashMap<>((Map<String, Object>) existing)
+                : new LinkedHashMap<>();
+        nested.put("parentToolUseId", parentToolUseId);
+        if (StringUtils.isNotBlank(type)) {
+            nested.put("subAgentType", type);
+        }
+        response.put("resultMap", nested);
     }
 
     private void syncPlannerRoundState(EventResult state, String messageType, String plannerRoundId) {

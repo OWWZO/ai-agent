@@ -7,6 +7,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -101,7 +102,10 @@ public class AgentSessionPrinter implements Printer {
             }
             log.info("{} stream send {} {} {}", request.getRequestId(), messageType, message, digitalEmployee);
 
-            boolean finish = "result".equals(messageType);
+            // 子 Agent 终答也走 messageType=result，但带 parentToolUseId/subAgentId；
+            // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。
+            boolean finish = "result".equals(messageType)
+                    && !isNestedSubAgentEvent(message, extraResultMap);
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("agentType", agentType);
 
@@ -209,7 +213,13 @@ public class AgentSessionPrinter implements Printer {
                         response.setResultMap(taskResult);
                         response.setResult(taskResult.get("taskSummary").toString());
                     }
+                    if (response.getResultMap() == null) {
+                        response.setResultMap(new HashMap<>());
+                    }
                     response.getResultMap().put("agentType", agentType);
+                    if (extraResultMap != null && !extraResultMap.isEmpty()) {
+                        response.getResultMap().putAll(extraResultMap);
+                    }
                     break;
                 default:
                     break;
@@ -258,5 +268,31 @@ public class AgentSessionPrinter implements Printer {
     @Override
     public void updateAgentType(AgentType agentType) {
         this.agentType = agentType.getValue();
+    }
+
+    /**
+     * 子 Agent 事件经 {@link SubAgentPrinter} 注入 parentToolUseId / subAgentId。
+     * 这类 result 只表示子任务结束，不是主会话终态。
+     */
+    public static boolean isNestedSubAgentEvent(Object message, Map<String, Object> extraResultMap) {
+        if (hasSubAgentScopeTag(extraResultMap)) {
+            return true;
+        }
+        if (message instanceof Map<?, ?> map) {
+            return hasSubAgentScopeTag(map);
+        }
+        return false;
+    }
+
+    private static boolean hasSubAgentScopeTag(Map<?, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return false;
+        }
+        return hasNonBlankTag(map.get(SubAgentPrinter.KEY_PARENT_TOOL_USE_ID))
+                || hasNonBlankTag(map.get(SubAgentPrinter.KEY_SUB_AGENT_ID));
+    }
+
+    private static boolean hasNonBlankTag(Object value) {
+        return value != null && StringUtils.isNotBlank(String.valueOf(value));
     }
 }

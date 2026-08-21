@@ -32,6 +32,9 @@ public class HtmlPreviewSanitizerTest {
         Assert.assertTrue(out.contains("window.__x=1"));
         Assert.assertTrue(out.contains("__reactorPreviewIframeBootstrap"));
         Assert.assertFalse(out.contains("script-src 'none'"));
+        // Must not re-dispatch resize while listening to it (infinite sync loop).
+        Assert.assertFalse(out.contains("dispatchEvent(new Event('resize'))"));
+        Assert.assertTrue(out.contains("var lastH = -1"));
     }
 
     @Test

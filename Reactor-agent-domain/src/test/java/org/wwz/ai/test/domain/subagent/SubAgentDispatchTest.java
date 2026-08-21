@@ -31,6 +31,10 @@ public class SubAgentDispatchTest {
         Assert.assertTrue(registry.find(SubAgentRegistry.TYPE_GENERAL_PURPOSE).isPresent());
         Assert.assertEquals(SubAgentRegistry.TYPE_GENERAL_PURPOSE,
                 registry.resolveOrDefault(null).getAgentType());
+        Assert.assertEquals(Integer.valueOf(200),
+                registry.require(SubAgentRegistry.TYPE_EXPLORE).getMaxSteps());
+        Assert.assertEquals(Integer.valueOf(200),
+                registry.require(SubAgentRegistry.TYPE_GENERAL_PURPOSE).getMaxSteps());
     }
 
     @Test

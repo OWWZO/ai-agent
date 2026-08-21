@@ -171,13 +171,18 @@ public class AgentDispatchTool implements BaseTool {
                 return ToolResultPayload.failureFrom("Agent 执行失败：无 AgentContext", null);
             }
 
+            // 必须在当前线程捕获：currentToolArtifactSource 是 ThreadLocal，
+            // 后台线程不会继承，否则子事件丢失 parentToolUseId 并泄漏到主时间线。
+            String parentToolUseId = captureParentToolUseId(agentContext);
+
             if (background) {
-                return executeBackground(description, prompt, subagentType, resumeAgentId);
+                return executeBackground(description, prompt, subagentType, resumeAgentId, parentToolUseId);
             }
 
             SubAgentResult result = subAgentRunner.run(
                     agentContext, description, prompt, subagentType,
-                    StringUtils.isBlank(resumeAgentId) ? null : resumeAgentId);
+                    StringUtils.isBlank(resumeAgentId) ? null : resumeAgentId,
+                    null, null, parentToolUseId);
             Map<String, Object> data = buildObservationData(result);
             if (StringUtils.isNotBlank(resumeAgentId)) {
                 data.put("resumed", true);
@@ -198,7 +203,8 @@ public class AgentDispatchTool implements BaseTool {
     private Object executeBackground(String description,
                                      String prompt,
                                      String subagentType,
-                                     String resumeAgentId) {
+                                     String resumeAgentId,
+                                     String parentToolUseId) {
         RuntimeBackgroundTaskRegistry registry = agentContext.requireBackgroundTasks();
         RuntimeBackgroundTask task = registry.registerLocalAgent(description, subagentType, prompt);
         RunCancellation taskCancel = task.getCancellation() != null
@@ -226,7 +232,7 @@ public class AgentDispatchTool implements BaseTool {
         Future<?> future = BACKGROUND_EXECUTOR.submit(() -> {
             try {
                 SubAgentResult result = subAgentRunner.run(
-                        parent, desc, pmt, type, resume, taskCancel, preferredAgentId);
+                        parent, desc, pmt, type, resume, taskCancel, preferredAgentId, parentToolUseId);
                 registry.bindAgentId(taskId, result.getAgentId());
                 if (taskCancel.isCancelled()
                         || RuntimeBackgroundTask.STATUS_STOPPED.equals(
@@ -295,6 +301,13 @@ public class AgentDispatchTool implements BaseTool {
             body.put("errorMsg", result.getErrorMsg());
         }
         return body;
+    }
+
+    private static String captureParentToolUseId(AgentContext parent) {
+        if (parent == null || parent.getCurrentToolArtifactSource() == null) {
+            return null;
+        }
+        return StringUtils.trimToNull(parent.getCurrentToolArtifactSource().getToolCallId());
     }
 
     private static String trimToString(Object value) {

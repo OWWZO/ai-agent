@@ -166,7 +166,7 @@ public class SubAgentRegistry {
                         "data_analysis",
                         "multimodalagent_tool"
                 ))
-                .maxSteps(8)
+                .maxSteps(200)
                 .build();
     }
 
@@ -184,7 +184,7 @@ public class SubAgentRegistry {
                         """)
                 .allowedTools(Set.of("*"))
                 .disallowedTools(Set.of())
-                .maxSteps(15)
+                .maxSteps(200)
                 .build();
     }
 }

@@ -52,10 +52,7 @@ public class SubAgentPrinter implements Printer {
         if (delegate == null) {
             return;
         }
-        // 子 Agent 思考过程默认不刷主时间线，只保留工具活动（对齐 cc-haha 折叠）
-        if ("tool_thought".equals(messageType) || "llm_reasoning".equals(messageType)) {
-            return;
-        }
+        // 思考 / 过程回复 / 终答都打 parentToolUseId，由前端挂到右侧工作区，不进主时间线。
         Object enrichedMessage = enrichMessage(message);
         Map<String, Object> enrichedExtra = enrichExtra(extraResultMap);
         delegate.send(messageId, messageType, enrichedMessage, enrichedExtra, digitalEmployee, isFinal);
