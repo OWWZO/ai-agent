@@ -3,6 +3,7 @@
 Base: code-interpreter-v1 (keeps run_code kernel).
 Adds: common data stack + Playwright Chromium for browser automation.
 """
+
 from __future__ import annotations
 
 from e2b import Template
@@ -13,6 +14,7 @@ TEMPLATE_ALIAS = "reactor-code-playwright"
 # Keep in sync with code_interpreter authorized analysis libs where practical.
 _PIP_PACKAGES = [
     "playwright",
+    "websockets",
     "pandas",
     "numpy",
     "matplotlib",

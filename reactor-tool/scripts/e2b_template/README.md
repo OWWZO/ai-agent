@@ -4,6 +4,7 @@
 
 - 数据分析常用包（pandas / numpy / matplotlib …）
 - **Playwright + Chromium** 及系统依赖
+- **websockets**
 
 ## 构建
 
