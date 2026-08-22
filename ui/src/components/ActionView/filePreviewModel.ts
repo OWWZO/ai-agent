@@ -84,7 +84,9 @@ export function resolvePreviewTitle(
   if (messageType === "deep_search") {
     const stage = resolveDeepSearchStage(resultMap?.messageType);
     const titleQueries =
-      stage === "report" ? resultMap?.query : resultMap?.searchResult?.query;
+      stage === "report"
+        ? resultMap?.query
+        : resultMap?.chapterTitle || resultMap?.searchResult?.query;
     return resolveDeepSearchTitle(stage, titleQueries);
   }
 
@@ -99,7 +101,11 @@ export function resolvePreviewLeadingIcon(
   }
 
   const stage = resolveDeepSearchStage(taskItem.resultMap?.messageType);
-  return stage === "extend" || stage === "search" ? "search" : undefined;
+  return stage === "extend" ||
+    stage === "search" ||
+    stage === "chapter_summary"
+    ? "search"
+    : undefined;
 }
 
 export function resolvePreviewCanPreview(

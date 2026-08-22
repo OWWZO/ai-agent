@@ -1,7 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
-import { chatItemFromSubAgent } from "@/utils/chat/subAgentChat";
+import {
+  chatItemFromSubAgent,
+  subAgentLiveRevision,
+} from "@/utils/chat/subAgentChat";
 import { projectAgentMember } from "@/utils/chat/agentRuntimeProjector";
 import {
   formatAgentElapsed,
@@ -22,6 +25,8 @@ import { resolveTaskSummaryText } from "./contentHelpers";
 type AgentDetailPanelProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
+  /** 子步骤原地突变时由父组件每帧重算，用来打破 tool/chat 引用不变导致的 memo */
+  liveRevision?: string;
   onClose?: () => void;
   changeActiveChat?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   changePlan?: () => void;
@@ -32,6 +37,7 @@ type AgentDetailPanelProps = {
 export const AgentDetailPanel = memo(function AgentDetailPanel({
   tool,
   chat,
+  liveRevision,
   onClose,
   changeActiveChat,
   changePlan,
@@ -39,12 +45,13 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
   onOpenAgent,
 }: AgentDetailPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool]);
-  const member = useMemo(() => projectAgentMember(tool), [tool]);
+  const revision = liveRevision ?? subAgentLiveRevision(tool);
+  const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool, revision]);
+  const member = useMemo(() => projectAgentMember(tool), [tool, revision]);
   const nested = tool.children || [];
   const syntheticChat = useMemo(
     () => chatItemFromSubAgent(tool, chat),
-    [tool, chat]
+    [tool, chat, revision]
   );
   const duration = formatAgentElapsed(sub);
   const phaseLabel = resolveAgentPhaseLabel(member?.phase, sub.status);
@@ -81,6 +88,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     el.scrollTop = el.scrollHeight;
   }, [
     nested.length,
+    revision,
     sub.content,
     sub.status,
     sub.liveText,

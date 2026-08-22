@@ -165,6 +165,34 @@ public class BashTool implements BaseTool {
                     response.get("skillsMaterialized"), response.get("skills_materialized"), List.of()));
             data.put("skills_synced_back", firstNonNull(
                     response.get("skillsSyncedBack"), response.get("skills_synced_back"), List.of()));
+            Object fileInfo = firstNonNull(response.get("fileInfo"), response.get("file_info"));
+            if (fileInfo instanceof List<?> files && !files.isEmpty()) {
+                List<Map<String, Object>> produced = new ArrayList<>();
+                for (Object item : files) {
+                    if (!(item instanceof Map<?, ?> rawFile)) {
+                        continue;
+                    }
+                    Map<String, Object> file = new LinkedHashMap<>();
+                    Object fileName = firstNonNull(rawFile.get("fileName"), rawFile.get("file_name"));
+                    Object url = firstNonNull(rawFile.get("domainUrl"), rawFile.get("domain_url"),
+                            rawFile.get("ossUrl"), rawFile.get("oss_url"),
+                            rawFile.get("downloadUrl"), rawFile.get("download_url"));
+                    Object fileSize = firstNonNull(rawFile.get("fileSize"), rawFile.get("file_size"));
+                    if (fileName != null) {
+                        file.put("file_name", fileName);
+                    }
+                    if (url != null) {
+                        file.put("url", url);
+                    }
+                    if (fileSize != null) {
+                        file.put("file_size", fileSize);
+                    }
+                    produced.add(file);
+                }
+                if (!produced.isEmpty()) {
+                    data.put("produced_files", produced);
+                }
+            }
             return ToolResultPayload.fromData(data);
         } catch (Exception e) {
             log.error("{} bash remote execute error, input={}",

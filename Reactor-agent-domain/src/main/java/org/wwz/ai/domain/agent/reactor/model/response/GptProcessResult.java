@@ -42,4 +42,7 @@ public class GptProcessResult {
 
     /** 单个 Agent run 内单调递增的投影事件序号，用于 follow 续绑增量回放。 */
     private long eventSeq;
+
+    /** follow_pending 建议前端下次续绑等待的毫秒数。 */
+    private Long retryMs;
 }

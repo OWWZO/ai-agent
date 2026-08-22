@@ -44,6 +44,17 @@ public class DeepSearchLlmObservationTest {
                         ))
                         .build())
                 .build());
+        builder.recordEvent(DeepSearchrResponse.builder()
+                .messageType("chapter_summary")
+                .chapterId("C1")
+                .chapterTitle("中国新能源车出口数据")
+                .chapterOrder(1)
+                .chapterSummary("出口量持续增长。")
+                .searchResult(DeepSearchrResponse.SearchResult.builder()
+                        .query(List.of("中国新能源车出口数据"))
+                        .docs(List.of(List.of(doc("海关总署：出口量创新高", "https://example.com/customs", "出口量持续增长"))))
+                        .build())
+                .build());
         builder.recordFinalAnswer("新能源车出口趋势", "综合多个来源，新能源车出口继续增长，欧洲需求回暖。");
 
         ToolResultPayload payload = builder.buildPayload("fallback");
@@ -53,13 +64,16 @@ public class DeepSearchLlmObservationTest {
         Assert.assertNotNull(structuredOutput);
         Assert.assertEquals("deep_search", structuredOutput.getToolName());
         Assert.assertEquals("新能源车出口趋势", structuredOutput.getQuery());
-        Assert.assertEquals(3, structuredOutput.getStages().size());
+        Assert.assertEquals(4, structuredOutput.getStages().size());
+        Assert.assertEquals(1, structuredOutput.getChapters().size());
         Assert.assertTrue(structuredOutput.getStages().stream().anyMatch(stage -> "search".equals(stage.getStage())));
+        Assert.assertTrue(structuredOutput.getStages().stream().anyMatch(stage -> "chapter_summary".equals(stage.getStage())));
         Assert.assertFalse(llmObservation.containsKey("stages"));
         Assert.assertEquals("deep_search", llmObservation.getString("tool"));
         Assert.assertEquals("新能源车出口趋势", llmObservation.getString("query"));
         Assert.assertEquals(2, llmObservation.getJSONArray("subQueries").size());
         Assert.assertEquals(2, llmObservation.getJSONArray("results").size());
+        Assert.assertEquals(1, llmObservation.getJSONArray("chapters").size());
         Assert.assertFalse(payload.getFailed());
         Assert.assertTrue(payload.getLlmObservation().contains("海关总署：出口量创新高"));
         Assert.assertTrue(payload.getLlmObservation().contains("https://example.com/customs"));

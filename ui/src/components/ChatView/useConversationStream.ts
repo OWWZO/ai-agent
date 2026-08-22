@@ -978,7 +978,12 @@ export function useConversationStream(
         };
         pendingConversation = draftController.replaceLastItem({ ...currentChat });
         scheduleNonChatFlush(false);
-        scheduleFollowReconnect(conversationId, requestId);
+        const retryMs = Number(data.retryMs);
+        scheduleFollowReconnect(
+          conversationId,
+          requestId,
+          Number.isFinite(retryMs) && retryMs > 0 ? retryMs : undefined
+        );
         return;
       }
 
@@ -1098,11 +1103,19 @@ export function useConversationStream(
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       currentChat = combineData(eventData, currentChat);
       // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
-      if (
+      // 有后台任务时后端会推迟 finished；这里仍收口主对话 loading，SSE 继续接收结算事件。
+      const isRootResult =
         eventData.resultMap?.messageType === "result" &&
-        !resolveParentToolUseId(eventData)
-      ) {
+        !resolveParentToolUseId(eventData);
+      if (isRootResult) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        if (!finished) {
+          currentChat.loading = false;
+          currentChat.tip = "";
+          if (streamStillActive) {
+            setLoading(false);
+          }
+        }
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
         scheduleWorkspaceStreamTask(currentChat, finished);
@@ -1161,8 +1174,12 @@ export function useConversationStream(
           eventData.messageType === "llm_reasoning" ||
           eventData.messageType === "tool_call" ||
           eventData.messageType === "tool_result" ||
+          eventData.messageType === "subagent_progress" ||
           eventData.resultMap?.messageType === "tool_call" ||
           eventData.resultMap?.messageType === "tool_result" ||
+          eventData.resultMap?.messageType === "tool_thought" ||
+          eventData.resultMap?.messageType === "llm_reasoning" ||
+          eventData.resultMap?.messageType === "subagent_progress" ||
           eventData.resultMap?.messageType === "context_usage" ||
           eventData.resultMap?.messageType === "ui_tree" ||
           eventData.resultMap?.messageType === "ui_patch";
@@ -1941,6 +1958,30 @@ export function useConversationStream(
         return;
       }
 
+      // stream_settle 可能无 eventData，但仍带 finished=true，用于关闭后台观察流。
+      if (packageType === "result" && finished && !resultMap?.eventData) {
+        clearActiveRun(requestId);
+        followReconnectContextsRef.current.delete(requestId);
+        followReconnectAttemptsRef.current.delete(requestId);
+        clearFollowReconnectTimer(requestId);
+        unbindLiveStream(conversationId, abortController);
+        currentChat = {
+          ...currentChat,
+          loading: false,
+          tip: "",
+          metrics: {
+            ...(currentChat.metrics || {}),
+            status: "SUCCESS",
+          },
+        };
+        if (streamStillActive) {
+          setLoading(false);
+        }
+        pendingConversation = draftController.replaceLastItem({ ...currentChat });
+        scheduleNonChatFlush(true);
+        return;
+      }
+
       const eventData = normalizeEventData(resultMap?.eventData);
       if (!eventData) {
         return;
@@ -1953,11 +1994,24 @@ export function useConversationStream(
       // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
       // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
       // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
-      if (
+      // 有后台任务时后端会推迟 finished；这里仍收口主对话 loading，SSE 继续接收结算事件。
+      const isRootResult =
         eventData.resultMap?.messageType === "result" &&
-        !resolveParentToolUseId(eventData)
-      ) {
+        !resolveParentToolUseId(eventData);
+      if (isRootResult) {
         currentChat.conclusion = buildTaskFromEventData(eventData) as CHAT.Task;
+        if (!finished) {
+          currentChat.loading = false;
+          currentChat.tip = "";
+          // 保持 RUNNING，供后台 SSE 断线后仍可 follow
+          currentChat.metrics = {
+            ...(currentChat.metrics || {}),
+            status: currentChat.metrics?.status || "RUNNING",
+          };
+          if (streamStillActive) {
+            setLoading(false);
+          }
+        }
       }
       if (streamStillActive && shouldRefreshWorkspaceTask(eventData)) {
         scheduleWorkspaceStreamTask(currentChat, finished);
@@ -2065,10 +2119,14 @@ export function useConversationStream(
           eventData.messageType === "llm_reasoning" ||
           eventData.messageType === "tool_call" ||
           eventData.messageType === "tool_result" ||
+          eventData.messageType === "subagent_progress" ||
           eventData.resultMap?.messageType === "ask_user_question" ||
           eventData.resultMap?.messageType === "plan_approval" ||
           eventData.resultMap?.messageType === "tool_call" ||
           eventData.resultMap?.messageType === "tool_result" ||
+          eventData.resultMap?.messageType === "tool_thought" ||
+          eventData.resultMap?.messageType === "llm_reasoning" ||
+          eventData.resultMap?.messageType === "subagent_progress" ||
           eventData.resultMap?.messageType === "context_usage" ||
           eventData.resultMap?.messageType === "ui_tree" ||
           eventData.resultMap?.messageType === "ui_patch";
@@ -2076,9 +2134,31 @@ export function useConversationStream(
       }
     };
 
+    const shouldKeepObserving = () => {
+      if (currentChat.loading) return true;
+      if (followReconnectContextsRef.current.has(requestId)) return true;
+      const runStatus = String(currentChat.metrics?.status || "").toUpperCase();
+      if (runStatus === "RUNNING") return true;
+      return (currentChat.multiAgent?.tasks || []).flat().some((task) => {
+        if (!task) return false;
+        const map = (task.resultMap || {}) as Record<string, unknown>;
+        const background =
+          map.run_in_background === true || map.runInBackground === true;
+        if (!background) return false;
+        const obs = String(
+          task.toolResult?.toolResult || map.toolResult || map.answer || ""
+        );
+        return (
+          String(map.status || "").toLowerCase() === "running" ||
+          /"status"\s*:\s*"running"/i.test(obs)
+        );
+      });
+    };
+
     const handleError = (error: unknown) => {
       console.error("SSE stream error", error);
-      if (!currentChat.loading) {
+      // 主结论已收口 loading=false，但后台子 Agent 仍可能在跑；不能因 loading 关掉 follow。
+      if (!shouldKeepObserving()) {
         return;
       }
       const live = liveStreamsRef.current.get(conversationId);
@@ -2121,7 +2201,7 @@ export function useConversationStream(
 
     const handleClose = () => {
       scheduleNonChatFlush(true);
-      if (!currentChat.loading) {
+      if (!shouldKeepObserving()) {
         return;
       }
       const live = liveStreamsRef.current.get(conversationId);

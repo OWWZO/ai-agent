@@ -319,7 +319,8 @@ const CompactStepRow: FC<{
     );
   }
 
-  // 前台子 Agent：时间线内联卡；后台 run_in_background 只进 Dock
+  // 前台子 Agent：时间线内联卡；后台 run_in_background 只进 Dock。
+  // 子工具轨迹只在右侧 AgentDetailPanel，不泄漏进主时间线。
   if (isAgentStep(step)) {
     if (isRunInBackgroundAgent(step.tool)) {
       return null;
@@ -655,8 +656,13 @@ const ProcessSegmentView: FC<{
     completed: visibleSteps.every((step) => step.completed) && !visibleSteps.some((step) => step.active),
   };
 
-  // 单步且已完成：直接展示工具行；进行中/多步走可折叠组，完成后自动收起
-  if (visibleGroup.stepCount <= 1 && visibleGroup.completed) {
+  const hasDeepSearch = visibleGroup.steps.some(
+    (step) => step.tool.messageType === "deep_search"
+  );
+
+  // 单步且已完成：直接展示工具行；进行中/多步走可折叠组。
+  // deep_search 查询卡始终展开，避免 URL / 章节总结被折叠吞掉。
+  if (visibleGroup.stepCount <= 1 && visibleGroup.completed && !hasDeepSearch) {
     return (
       <div className="w-full">
         {visibleGroup.steps.map((step) => (
@@ -668,7 +674,9 @@ const ProcessSegmentView: FC<{
   return (
     <StepGroupBlock
       group={visibleGroup}
-      defaultOpen={visibleGroup.active || !visibleGroup.completed}
+      defaultOpen={
+        visibleGroup.active || !visibleGroup.completed || hasDeepSearch
+      }
       forceOpen={visibleGroup.active}
       ctx={ctx}
     />

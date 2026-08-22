@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeepSearchPreviewModel,
+  buildDeepSearchChapterWorkspaceModel,
   buildDeepSearchExtendMarkdown,
   buildDeepSearchResultItems,
   formatDeepSearchQueryText,
@@ -27,14 +28,16 @@ function createDoc(link: string, title: string, content: string): MESSAGE.Doc {
 }
 
 function createPreviewTask(
-  stage: "extend" | "search" | "report",
-  searchResult: DeepSearchPreviewSearchResult
+  stage: "extend" | "search" | "chapter_summary" | "report",
+  searchResult: DeepSearchPreviewSearchResult,
+  extra?: Partial<CHAT.Task["resultMap"]>
 ): DeepSearchPreviewTask {
   return {
     messageType: "deep_search",
     resultMap: {
       messageType: stage,
       searchResult,
+      ...extra,
     } as CHAT.Task["resultMap"],
   };
 }
@@ -43,6 +46,7 @@ describe("deepSearch utils", () => {
   it("优先使用显式阶段，并在缺失时回退到事件子类型", () => {
     expect(resolveDeepSearchStage("extend", "search")).toBe("extend");
     expect(resolveDeepSearchStage(undefined, "report")).toBe("report");
+    expect(resolveDeepSearchStage("chapter_summary")).toBe("chapter_summary");
     expect(resolveDeepSearchStage(undefined, "unknown")).toBe("search");
   });
 
@@ -52,6 +56,9 @@ describe("deepSearch utils", () => {
     );
     expect(resolveDeepSearchTitle("extend", ["子问题A", "子问题B"])).toBe(
       "搜索中：子问题A / 子问题B"
+    );
+    expect(resolveDeepSearchTitle("chapter_summary", ["子问题A"])).toBe(
+      "章节：子问题A"
     );
   });
 
@@ -65,15 +72,18 @@ describe("deepSearch utils", () => {
 
   it("快照态的 extend 阶段仍保持正在搜索文案", () => {
     expect(resolveDeepSearchActionText("extend", true)).toBe("正在搜索");
+    expect(resolveDeepSearchActionText("chapter_summary", true)).toBe("章节完成");
   });
 
   it("区分左侧预览阶段和右侧工作区阶段", () => {
     expect(shouldRenderDeepSearchPreview("extend")).toBe(true);
     expect(shouldRenderDeepSearchPreview("search")).toBe(true);
+    expect(shouldRenderDeepSearchPreview("chapter_summary")).toBe(true);
     expect(shouldRenderDeepSearchPreview("report")).toBe(false);
     expect(shouldRenderDeepSearchWorkspace("extend")).toBe(false);
     expect(shouldRenderDeepSearchWorkspace("search")).toBe(true);
-    expect(shouldRenderDeepSearchWorkspace("report")).toBe(true);
+    expect(shouldRenderDeepSearchWorkspace("chapter_summary")).toBe(true);
+    expect(shouldRenderDeepSearchWorkspace("report")).toBe(false);
   });
 
   it("为 extend 阶段构建左侧紧凑查询预览模型", () => {
@@ -125,14 +135,70 @@ describe("deepSearch utils", () => {
     expect(resultItems).toHaveLength(2);
   });
 
-  it("report 阶段不会继续生成查询预览模型", () => {
+  it("章节完成后预览可点击，并生成章节工作区模型", () => {
+    const doc = createDoc("https://example.com/a", "来源A", "内容A");
+    const task = createPreviewTask(
+      "chapter_summary",
+      {
+        query: ["问题A"],
+        docs: [doc],
+      },
+      {
+        chapterTitle: "问题A",
+        chapterOrder: 1,
+        chapterSummary: "这是章节总结",
+      }
+    );
+
+    const preview = buildDeepSearchPreviewModel(task);
+    const workspace = buildDeepSearchChapterWorkspaceModel(task);
+
+    expect(preview).toMatchObject({
+      stage: "chapter_summary",
+      statusLabel: "章节完成",
+      interactive: true,
+      hasSummary: true,
+    });
+    expect(workspace).toMatchObject({
+      title: "问题A",
+      summary: "这是章节总结",
+      order: 1,
+      isStreaming: false,
+    });
+    expect(workspace?.sources).toHaveLength(1);
+  });
+
+  it("章节流式总结时预览展示正在生成状态", () => {
+    const preview = buildDeepSearchPreviewModel(
+      createPreviewTask(
+        "chapter_summary",
+        {
+          query: ["问题A"],
+          docs: [createDoc("https://example.com/a", "来源A", "内容A")],
+        },
+        {
+          chapterTitle: "问题A",
+          chapterSummary: "部分总结",
+          chapterStreaming: true,
+        }
+      )
+    );
+
+    expect(preview).toMatchObject({
+      statusLabel: "正在总结章节",
+      summaryStreaming: true,
+      loading: true,
+    });
+    expect(preview?.description).toContain("点击查看右侧详情");
+  });
+
+  it("report 阶段不会继续生成查询预览模型或报告工作区模型", () => {
     const model = buildDeepSearchPreviewModel(
       createPreviewTask("report", {
         query: ["问题A"],
         docs: [],
       })
     );
-
     expect(model).toBeUndefined();
   });
 });

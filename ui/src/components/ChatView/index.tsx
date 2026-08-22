@@ -20,7 +20,10 @@ import {
 } from "@/components/Dialogue/tools";
 import { MoonSpinner } from "@/components/ui/MoonSpinner";
 import SessionTaskComposerBar from "./SessionTaskComposerBar";
-import BackgroundTasksDock from "./BackgroundTasksDock";
+import BackgroundTasksDock, {
+  findAgentTaskByToolCallId,
+  findLatestRunningAgentTask,
+} from "./BackgroundTasksDock";
 import PlanComposerBar from "./PlanComposerBar";
 import AskUserQuestionCard from "@/components/Dialogue/AskUserQuestionCard";
 import {
@@ -48,6 +51,8 @@ import {
 import { canOpenTaskWorkspacePanel } from "./streamState";
 import { useWorkspacePanels } from "./useWorkspacePanels";
 import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
+import { resolveTaskToolCallId } from "@/utils/chat/toolCalls";
+import { subAgentLiveRevision } from "@/utils/chat/subAgentChat";
 import { collectSessionFileTasks } from "@/components/ActionView/workspaceFiles";
 import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
 
@@ -105,6 +110,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     tool: CHAT.Task;
     chat: CHAT.ChatItem;
   } | null>(null);
+  const agentPanelClosedRef = useRef(false);
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
     leftPanelWidth,
@@ -156,6 +162,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       setPendingPreviewFile(undefined);
       setThinkingDetail(null);
       setToolDiffTask(null);
+      agentPanelClosedRef.current = false;
       setAgentDetail(null);
       actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     },
@@ -178,6 +185,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setWorkspaceOpenRequested(false);
     setThinkingDetail(null);
     setToolDiffTask(null);
+    agentPanelClosedRef.current = false;
     setAgentDetail(null);
   }, [conversation.id]);
 
@@ -198,12 +206,27 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
     setActiveTask((prev) => refreshTask(prev) || undefined);
     setToolDiffTask((prev) => refreshTask(prev));
+    // Agent 详情优先按 toolCallId 从最新 chat 回找：后台 Dock 打开的卡常不在顶层
+    // taskList 身份空间里，仅靠 getTaskStableKey 会一直卡在打开瞬间的快照。
     setAgentDetail((prev) => {
       if (!prev) return prev;
-      const nextTool = refreshTask(prev.tool);
-      return nextTool ? { ...prev, tool: nextTool } : prev;
+      const latestChat =
+        conversation.chatList?.[conversation.chatList.length - 1] || prev.chat;
+      const toolCallId =
+        resolveTaskToolCallId(prev.tool) ||
+        prev.tool.messageId ||
+        prev.tool.id ||
+        "";
+      const fromChat =
+        latestChat && toolCallId
+          ? findAgentTaskByToolCallId(latestChat, toolCallId)
+          : null;
+      const nextTool = fromChat || refreshTask(prev.tool);
+      if (!nextTool) return prev;
+      if (nextTool === prev.tool && latestChat === prev.chat) return prev;
+      return { tool: nextTool, chat: latestChat || prev.chat };
     });
-  }, [taskList, workspaceStreamTask]);
+  }, [taskList, workspaceStreamTask, conversation.chatList]);
 
   const commitConversation = useMemoizedFn(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -310,6 +333,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   );
 
   const closeAgentPanel = useMemoizedFn(() => {
+    agentPanelClosedRef.current = true;
     setAgentDetail(null);
   });
 
@@ -581,6 +605,52 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   );
 
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
+  const liveAgentDetail = useMemo(() => {
+    if (!agentDetail) {
+      return null;
+    }
+    const liveChat =
+      conversation.chatList.find(
+        (item) => item.requestId === agentDetail.chat.requestId
+      ) || agentDetail.chat;
+    const toolId =
+      resolveTaskToolCallId(agentDetail.tool) ||
+      agentDetail.tool.messageId ||
+      agentDetail.tool.id ||
+      "";
+    const liveTool =
+      findAgentTaskByToolCallId(liveChat, toolId) || agentDetail.tool;
+    return { tool: liveTool, chat: liveChat };
+  }, [agentDetail, conversation.chatList]);
+  // children 在 handleTaskData 里原地 push，chatList/tool 引用经常不变；
+  // 每轮渲染读当前 children，才能把子 Agent 轨迹推进右侧面板。
+  const agentLiveRevision = liveAgentDetail
+    ? subAgentLiveRevision(liveAgentDetail.tool)
+    : "";
+
+  useEffect(() => {
+    if (agentPanelClosedRef.current || agentDetail) {
+      return;
+    }
+    if (thinkingDetail != null || toolDiffTask) {
+      return;
+    }
+    if (!(streamLoading || activeChat?.loading)) {
+      return;
+    }
+    const tool = findLatestRunningAgentTask(activeChat);
+    if (!tool) {
+      return;
+    }
+    openAgentPanel(tool, activeChat);
+  }, [
+    activeChat,
+    agentDetail,
+    openAgentPanel,
+    streamLoading,
+    thinkingDetail,
+    toolDiffTask,
+  ]);
   const waitingUserInput =
     String(activeChat?.metrics?.status || "").toUpperCase() === "WAITING_INPUT" ||
     activeChat?.tip === "需要你的帮助" ||
@@ -971,10 +1041,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 }
               }}
             />
-          ) : agentDetail ? (
+          ) : liveAgentDetail ? (
             <AgentDetailPanel
-              tool={agentDetail.tool}
-              chat={agentDetail.chat}
+              tool={liveAgentDetail.tool}
+              chat={liveAgentDetail.chat}
+              liveRevision={agentLiveRevision}
               changeActiveChat={changeTask}
               changePlan={changePlan}
               onOpenToolDiff={openToolDiffPanel}

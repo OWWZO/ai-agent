@@ -77,9 +77,11 @@ public class AiAgentController implements IAiAgentService {
     public SseEmitter queryAgentStreamIncr(@RequestBody GptQueryReq params) {
         String requestId = Objects.toString(params.getRequestId(), "legacy-gpt-query");
         SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
+        SseEmitterAgentSessionStream stream = new SseEmitterAgentSessionStream(emitter);
         ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                 heartbeatScheduler,
                 emitter,
+                stream,
                 requestId,
                 agentExecutorProperties.getHeartbeat().getIntervalMillis(),
                 log,
@@ -87,7 +89,7 @@ public class AiAgentController implements IAiAgentService {
         );
         SseLifecycleSupport.registerLifecycle(emitter, requestId, heartbeatFuture, log);
         try {
-            gptQueryApplicationService.queryAgentStreamIncr(params, new SseEmitterAgentSessionStream(emitter));
+            gptQueryApplicationService.queryAgentStreamIncr(params, stream);
         } catch (Exception e) {
             log.error("{} queryAgentStreamIncr bootstrap error", requestId, e);
             emitter.completeWithError(e);

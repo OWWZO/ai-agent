@@ -27,23 +27,25 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AgentRunFollowApplicationService {
 
+    public static final long PENDING_RETRY_MS = 800L;
+
     private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private final ConversationSessionOwnershipApplicationService conversationSessionOwnershipApplicationService;
     private final IExecutionLedgerReadRepository executionLedgerReadRepository;
 
     /**
-     * @return true 已挂上活跃 run；false 表示无法续绑 live 流，已向 observer 推送 follow_idle / follow_pending 并 complete
+     * 首次 follow：校验归属后尝试续绑。PENDING 时不 complete，由入口挂住 SSE 再试。
      */
-    public boolean follow(String sessionId,
-                          String requestId,
-                          long lastEventSeq,
-                          AgentSessionStream observer) {
+    public FollowAttachResult follow(String sessionId,
+                                     String requestId,
+                                     long lastEventSeq,
+                                     AgentSessionStream observer) {
         if (observer == null) {
-            return false;
+            return FollowAttachResult.IDLE;
         }
         if (StringUtils.isBlank(requestId)) {
             completeIdle(observer, requestId);
-            return false;
+            return FollowAttachResult.IDLE;
         }
 
         try {
@@ -58,21 +60,63 @@ public class AgentRunFollowApplicationService {
         } catch (SessionOwnershipDeniedException | IllegalArgumentException e) {
             log.warn("follow rejected requestId={} sessionId={}", requestId, sessionId, e);
             completeIdle(observer, requestId);
-            return false;
+            return FollowAttachResult.IDLE;
         }
 
+        return attachAttempt(sessionId, requestId, lastEventSeq, observer);
+    }
+
+    /**
+     * 挂起后续试：不再读 visitor 线程上下文，只尝试续绑或根据 ledger 收口。
+     */
+    public FollowAttachResult retryAttach(String sessionId,
+                                          String requestId,
+                                          long lastEventSeq,
+                                          AgentSessionStream observer) {
+        if (observer == null || observer.isAborted()) {
+            return FollowAttachResult.IDLE;
+        }
+        if (StringUtils.isBlank(requestId)) {
+            completeIdle(observer, requestId);
+            return FollowAttachResult.IDLE;
+        }
+        return attachAttempt(sessionId, requestId, lastEventSeq, observer);
+    }
+
+    public void completePending(AgentSessionStream observer, String requestId) {
+        completePending(observer, requestId, PENDING_RETRY_MS);
+    }
+
+    public void completePending(AgentSessionStream observer, String requestId, long retryMs) {
+        if (observer == null) {
+            return;
+        }
+        try {
+            observer.send(AgentResponseProjectionStream.buildFollowPending(requestId, retryMs));
+        } catch (Exception e) {
+            log.debug("send follow_pending failed requestId={}", requestId, e);
+        }
+        try {
+            observer.complete();
+        } catch (Exception e) {
+            log.debug("complete follow pending failed requestId={}", requestId, e);
+        }
+    }
+
+    private FollowAttachResult attachAttempt(String sessionId,
+                                             String requestId,
+                                             long lastEventSeq,
+                                             AgentSessionStream observer) {
         Optional<ActiveAgentRunRegistry.ActiveRun> found = activeAgentRunRegistry.find(requestId);
         if (found.isEmpty()) {
-            // registry 空时查 ledger：仍 RUNNING 则让前端继续退避，不要当任务结束。
             if (isLedgerRunStillRunning(requestId)) {
                 log.info("follow pending, no active run in registry but ledger RUNNING requestId={}",
                         requestId);
-                completePending(observer, requestId);
-                return false;
+                return FollowAttachResult.PENDING;
             }
             log.info("follow idle, no active run requestId={}", requestId);
             completeIdle(observer, requestId);
-            return false;
+            return FollowAttachResult.IDLE;
         }
 
         ActiveAgentRunRegistry.ActiveRun run = found.get();
@@ -82,7 +126,7 @@ public class AgentRunFollowApplicationService {
             log.warn("follow session mismatch requestId={} expected={} actual={}",
                     requestId, sessionId, run.getSessionId());
             completeIdle(observer, requestId);
-            return false;
+            return FollowAttachResult.IDLE;
         }
 
         AgentContext agentContext = run.getAgentContext();
@@ -90,27 +134,24 @@ public class AgentRunFollowApplicationService {
         if (!(printer instanceof AgentSessionPrinter sessionPrinter)) {
             log.warn("follow unavailable, printer not ready requestId={}", requestId);
             if (isLedgerRunStillRunning(requestId)) {
-                completePending(observer, requestId);
-            } else {
-                completeIdle(observer, requestId);
+                return FollowAttachResult.PENDING;
             }
-            return false;
+            completeIdle(observer, requestId);
+            return FollowAttachResult.IDLE;
         }
 
         AgentSessionStream root = sessionPrinter.attachObserver(observer, lastEventSeq);
         if (root == null) {
             if (isLedgerRunStillRunning(requestId)) {
-                completePending(observer, requestId);
-            } else {
-                completeIdle(observer, requestId);
+                return FollowAttachResult.PENDING;
             }
-            return false;
+            completeIdle(observer, requestId);
+            return FollowAttachResult.IDLE;
         }
 
-        // 根流仍是投影流，stop / 终态 complete 走同一条链路；observer 只是其下游 SSE。
         activeAgentRunRegistry.bindStream(requestId, root);
         log.info("follow attached requestId={} sessionId={}", requestId, run.getSessionId());
-        return true;
+        return FollowAttachResult.ATTACHED;
     }
 
     private boolean isLedgerRunStillRunning(String requestId) {
@@ -119,7 +160,6 @@ public class AgentRunFollowApplicationService {
             if (run == null || run.getStatus() == null) {
                 return false;
             }
-            // 用 equals，避免装箱比较踩坑导致误判 idle。
             return Integer.valueOf(ExecutionLedgerConstants.STATUS_RUNNING).equals(run.getStatus());
         } catch (Exception e) {
             log.warn("query ledger run status failed requestId={}", requestId, e);
@@ -137,19 +177,6 @@ public class AgentRunFollowApplicationService {
             observer.complete();
         } catch (Exception e) {
             log.debug("complete follow idle failed requestId={}", requestId, e);
-        }
-    }
-
-    private void completePending(AgentSessionStream observer, String requestId) {
-        try {
-            observer.send(AgentResponseProjectionStream.buildFollowPending(requestId));
-        } catch (Exception e) {
-            log.debug("send follow_pending failed requestId={}", requestId, e);
-        }
-        try {
-            observer.complete();
-        } catch (Exception e) {
-            log.debug("complete follow pending failed requestId={}", requestId, e);
         }
     }
 }

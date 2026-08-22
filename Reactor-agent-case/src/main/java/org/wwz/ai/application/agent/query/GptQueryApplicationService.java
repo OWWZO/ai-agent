@@ -17,6 +17,7 @@ import org.wwz.ai.domain.agent.runtime.GptQueryAgentRequestFactory;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
@@ -109,8 +110,9 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
         try {
             // dispatch 内部只产出领域响应，projection stream 负责转成前端协议；正常路径
             // 由这里统一 complete，避免策略自己关闭流造成重复完成或遗漏尾事件。
+            // 若仍有 run_in_background 子任务，必须保持投影流，等待后台 tool_result / stream_settle。
             agentDispatchService.dispatch(agentRequest, projectingStream);
-            projectingStream.complete();
+            completeProjectionUnlessBackgroundRunning(agentRequest, projectingStream);
         } catch (Exception e) {
             // 浏览器主动断开属于下游终止，不再把它包装成服务端失败；其它异常才发 error，
             // 这样前端能区分用户取消与 Agent 执行错误。
@@ -134,5 +136,23 @@ public class GptQueryApplicationService implements IGptQueryApplicationService {
             throw new IllegalArgumentException("visitorId不能为空");
         }
         return visitorId;
+    }
+
+    /**
+     * 主 Agent 返回后：无后台任务则关流；有后台任务则留给 stream_settle 关流。
+     */
+    public static void completeProjectionUnlessBackgroundRunning(AgentRequest agentRequest,
+                                                                 AgentResponseProjectionStream projectingStream) {
+        if (projectingStream == null) {
+            return;
+        }
+        String sessionId = agentRequest == null ? null : agentRequest.getSessionId();
+        if (SessionBackgroundTaskHub.hasRunning(
+                SessionBackgroundTaskHub.keyFor(sessionId, agentRequest.getRequestId()))) {
+            log.info("{} defer projection complete: background tasks still running sessionId={}",
+                    agentRequest == null ? "-" : agentRequest.getRequestId(), sessionId);
+            return;
+        }
+        projectingStream.complete();
     }
 }

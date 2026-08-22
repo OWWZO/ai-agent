@@ -3,6 +3,7 @@ package org.wwz.ai.trigger.http.reactor.support;
 import org.slf4j.Logger;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.wwz.ai.application.agent.stream.AgentSessionStream;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -31,19 +32,13 @@ public final class SseLifecycleSupport {
         return createEmitter(LONG_LIVED_SSE_TIMEOUT_MS);
     }
 
-    public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
-                                                    SseEmitter emitter,
-                                                    String requestId,
-                                                    long heartbeatIntervalMillis,
-                                                    Logger log) {
-        return startHeartbeat(scheduler, emitter, requestId, heartbeatIntervalMillis, log, "heartbeat");
-    }
-
     /**
      * 向浏览器主聊天路径发送结构化心跳（如 GptProcessResult），避免前端 JSON.parse 失败。
+     * 心跳必须走 {@code sender}，与业务帧串行化，禁止直接 {@code emitter.send}。
      */
     public static ScheduledFuture<?> startHeartbeat(TaskScheduler scheduler,
                                                     SseEmitter emitter,
+                                                    AgentSessionStream sender,
                                                     String requestId,
                                                     long heartbeatIntervalMillis,
                                                     Logger log,
@@ -51,8 +46,28 @@ public final class SseLifecycleSupport {
         // 心跳只是连接保活，不参与 Agent 业务；客户端断开或发送失败时必须关闭 emitter 让调度资源回收。
         return scheduler.scheduleAtFixedRate(() -> {
             try {
+                if (sender != null && sender.isAborted()) {
+                    log.info("{} heartbeat stopped because SSE stream is aborted", requestId);
+                    try {
+                        emitter.complete();
+                    } catch (Exception ignored) {
+                        // already completed
+                    }
+                    return;
+                }
                 log.info("{} send heartbeat", requestId);
-                emitter.send(heartbeatPayload);
+                if (sender != null) {
+                    sender.send(heartbeatPayload);
+                } else {
+                    emitter.send(heartbeatPayload);
+                }
+                if (sender != null && sender.isAborted()) {
+                    try {
+                        emitter.complete();
+                    } catch (Exception ignored) {
+                        // already completed
+                    }
+                }
             } catch (Exception e) {
                 if (SseClientDisconnectDetector.isClientDisconnected(e)
                         || isEmitterAlreadyCompleted(e)) {

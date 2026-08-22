@@ -9,12 +9,14 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.DeepSearchrResponse;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchChapter;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.HashSet;
@@ -24,7 +26,7 @@ import java.util.Set;
 
 /**
  * deep_search 结构化结果构建器。
- * 负责把流式三阶段事件归并成 typed output，并生成主智能体需要的紧凑 observation。
+ * 负责把流式事件（含章节总结）归并成 typed output，并生成主智能体需要的紧凑 observation。
  */
 public class DeepSearchStructuredResultBuilder {
 
@@ -38,9 +40,15 @@ public class DeepSearchStructuredResultBuilder {
      */
     private static final int OBSERVATION_DOC_SUMMARY_MAX_LEN = 180;
 
+    /**
+     * 章节总结写入 observation 时的最大长度。
+     */
+    private static final int OBSERVATION_CHAPTER_SUMMARY_MAX_LEN = 400;
+
     private final LinkedHashSet<String> decomposedQueries = new LinkedHashSet<>();
     private final LinkedHashMap<String, List<DeepSearchrResponse.SearchDoc>> searchResults = new LinkedHashMap<>();
     private final Map<String, Set<String>> searchResultDedup = new LinkedHashMap<>();
+    private final LinkedHashMap<String, DeepSearchChapter> chapters = new LinkedHashMap<>();
     private String query;
     private String finalAnswer;
 
@@ -59,13 +67,16 @@ public class DeepSearchStructuredResultBuilder {
             this.query = response.getQuery().trim();
         }
         String messageType = StringUtils.defaultString(response.getMessageType());
-        // 流式事件按 extend/search/report 分阶段归并；未知事件不改变已构建结果。
         if ("extend".equals(messageType)) {
             recordExtend(response.getSearchResult());
             return;
         }
         if ("search".equals(messageType)) {
             recordSearch(response.getSearchResult());
+            return;
+        }
+        if ("chapter_summary".equals(messageType)) {
+            recordChapterSummary(response);
             return;
         }
         if ("report".equals(messageType)) {
@@ -101,11 +112,11 @@ public class DeepSearchStructuredResultBuilder {
     public ToolResultPayload buildPayload(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
         DeepSearchToolOutput output = buildOutput(normalizedAnswer);
-        // 用对象 llmData，由中央 serialize_for_llm 出 JSON；结构化输出与紧凑 observation 分工不同。
         DeepSearchObservationOutput observation = DeepSearchObservationOutput.builder()
                 .tool("deep_search")
                 .query(query)
                 .subQueries(new ArrayList<>(decomposedQueries))
+                .chapters(buildObservationChapters())
                 .results(buildObservationResults())
                 .answerSummary(normalizedAnswer)
                 .build();
@@ -114,7 +125,6 @@ public class DeepSearchStructuredResultBuilder {
 
     /**
      * 生成给主智能体使用的 observation。
-     * 来源文档仍做紧凑摘要；总结文章 answerSummary 全量返回。
      */
     public String buildLlmObservation(String fallbackAnswer) {
         String normalizedAnswer = StringUtils.defaultIfBlank(finalAnswer, StringUtils.defaultString(fallbackAnswer));
@@ -122,6 +132,7 @@ public class DeepSearchStructuredResultBuilder {
                 .tool("deep_search")
                 .query(query)
                 .subQueries(new ArrayList<>(decomposedQueries))
+                .chapters(buildObservationChapters())
                 .results(buildObservationResults())
                 .answerSummary(normalizedAnswer)
                 .build();
@@ -162,12 +173,56 @@ public class DeepSearchStructuredResultBuilder {
                     continue;
                 }
                 String dedupKey = buildDocDedupKey(doc);
-                // 同一子查询可能跨多个 SSE 事件重复返回文档，去重后保留首次出现顺序。
                 if (dedupBucket.add(dedupKey)) {
                     docsBucket.add(copyDoc(doc));
                 }
             }
         }
+    }
+
+    private void recordChapterSummary(DeepSearchrResponse response) {
+        String chapterId = StringUtils.defaultIfBlank(response.getChapterId(),
+                "C" + (chapters.size() + 1));
+        String title = StringUtils.defaultIfBlank(response.getChapterTitle(), chapterId);
+        String content = StringUtils.defaultIfBlank(response.getChapterContent(), title);
+        Integer order = response.getChapterOrder() == null ? chapters.size() + 1 : response.getChapterOrder();
+        String summary = StringUtils.defaultIfBlank(response.getChapterSummary(), response.getAnswer());
+
+        List<String> queries = new ArrayList<>();
+        List<DeepSearchDoc> docs = new ArrayList<>();
+        if (response.getSearchResult() != null) {
+            if (CollectionUtils.isNotEmpty(response.getSearchResult().getQuery())) {
+                for (String item : response.getSearchResult().getQuery()) {
+                    String normalized = StringUtils.trimToNull(item);
+                    if (normalized != null) {
+                        queries.add(normalized);
+                        decomposedQueries.add(normalized);
+                    }
+                }
+            }
+            if (CollectionUtils.isNotEmpty(response.getSearchResult().getDocs())) {
+                for (List<DeepSearchrResponse.SearchDoc> bucket : response.getSearchResult().getDocs()) {
+                    if (bucket == null) {
+                        continue;
+                    }
+                    docs.addAll(toDocs(bucket));
+                }
+            }
+        }
+        if (queries.isEmpty()) {
+            queries.add(title);
+        }
+
+        chapters.put(chapterId, DeepSearchChapter.of(
+                chapterId,
+                title,
+                content,
+                order,
+                queries,
+                docs,
+                StringUtils.defaultString(summary),
+                "completed"
+        ));
     }
 
     private void recordReportChunk(String answerChunk) {
@@ -193,10 +248,38 @@ public class DeepSearchStructuredResultBuilder {
             }
             stages.add(DeepSearchStage.search(results));
         }
+        for (DeepSearchChapter chapter : orderedChapters()) {
+            List<DeepSearchQueryResult> chapterResults = new ArrayList<>();
+            if (CollectionUtils.isNotEmpty(chapter.getQueries())) {
+                for (String chapterQuery : chapter.getQueries()) {
+                    List<DeepSearchDoc> docsForQuery = searchResults.containsKey(chapterQuery)
+                            ? toDocs(searchResults.get(chapterQuery))
+                            : chapter.getDocs();
+                    chapterResults.add(DeepSearchQueryResult.of(chapterQuery, docsForQuery));
+                }
+            } else {
+                chapterResults.add(DeepSearchQueryResult.of(chapter.getTitle(), chapter.getDocs()));
+            }
+            stages.add(DeepSearchStage.chapterSummary(
+                    chapter.getChapterId(),
+                    chapter.getTitle(),
+                    chapter.getContent(),
+                    chapter.getOrder(),
+                    chapter.getSummary(),
+                    chapter.getQueries(),
+                    chapterResults
+            ));
+        }
         if (StringUtils.isNotBlank(normalizedAnswer)) {
             stages.add(DeepSearchStage.report(normalizedAnswer));
         }
-        return DeepSearchToolOutput.of(query, normalizedAnswer, stages);
+        return DeepSearchToolOutput.of(query, normalizedAnswer, stages, orderedChapters());
+    }
+
+    private List<DeepSearchChapter> orderedChapters() {
+        List<DeepSearchChapter> list = new ArrayList<>(chapters.values());
+        list.sort(Comparator.comparing(chapter -> chapter.getOrder() == null ? Integer.MAX_VALUE : chapter.getOrder()));
+        return list;
     }
 
     private String buildDocDedupKey(DeepSearchrResponse.SearchDoc doc) {
@@ -241,7 +324,6 @@ public class DeepSearchStructuredResultBuilder {
             List<DeepSearchrResponse.SearchDoc> rawDocs = entry.getValue();
             if (rawDocs != null) {
                 int docLimit = Math.min(rawDocs.size(), OBSERVATION_DOC_LIMIT_PER_QUERY);
-                // observation 只保留少量摘要以控制主 Agent 上下文；完整文档仍在 typed output 中。
                 for (int idx = 0; idx < docLimit; idx++) {
                     DeepSearchrResponse.SearchDoc rawDoc = rawDocs.get(idx);
                     if (rawDoc == null) {
@@ -262,6 +344,21 @@ public class DeepSearchStructuredResultBuilder {
         return results;
     }
 
+    private List<DeepSearchObservationChapter> buildObservationChapters() {
+        List<DeepSearchObservationChapter> result = new ArrayList<>();
+        for (DeepSearchChapter chapter : orderedChapters()) {
+            result.add(DeepSearchObservationChapter.builder()
+                    .chapterId(chapter.getChapterId())
+                    .title(chapter.getTitle())
+                    .content(chapter.getContent())
+                    .order(chapter.getOrder())
+                    .queries(chapter.getQueries())
+                    .summary(truncate(StringUtils.defaultString(chapter.getSummary()), OBSERVATION_CHAPTER_SUMMARY_MAX_LEN))
+                    .build());
+        }
+        return result;
+    }
+
     private String truncate(String text, int maxLen) {
         String normalized = StringUtils.trimToEmpty(text);
         if (normalized.length() <= maxLen) {
@@ -278,8 +375,22 @@ public class DeepSearchStructuredResultBuilder {
         private String tool;
         private String query;
         private List<String> subQueries;
+        private List<DeepSearchObservationChapter> chapters;
         private List<DeepSearchObservationQueryResult> results;
         private String answerSummary;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DeepSearchObservationChapter {
+        private String chapterId;
+        private String title;
+        private String content;
+        private Integer order;
+        private List<String> queries;
+        private String summary;
     }
 
     @Data

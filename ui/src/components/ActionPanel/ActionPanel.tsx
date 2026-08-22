@@ -12,6 +12,7 @@ import ImageRenderer from "./ImageRenderer";
 import PdfRenderer from "./PdfRenderer";
 import WordRenderer from "./WordRenderer";
 import SearchListRenderer from "./SearchListRenderer";
+import DeepSearchChapterPanel from "./DeepSearchChapterPanel";
 import DocumentFallback from "./DocumentFallback";
 import { JsonViewer } from "./JsonViewer";
 import { PanelItemType } from "./type";
@@ -150,6 +151,12 @@ const ActionPanel: ReactorType.FC<ActionPanelProps> = React.memo((props) => {
         return (
           <ContentWrapper key="search">
             <SearchListRenderer list={panelView.searchList} />
+          </ContentWrapper>
+        );
+      case "deep-search-chapter":
+        return (
+          <ContentWrapper key="deep-search-chapter">
+            <DeepSearchChapterPanel model={panelView.model} />
           </ContentWrapper>
         );
       case "html":

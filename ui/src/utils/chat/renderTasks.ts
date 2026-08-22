@@ -37,9 +37,27 @@ function cloneResultMapSnapshot(
   }
 
   // 只复制渲染链会读取的可变数组，保留其它字段引用以控制复制成本。
+  const chapters = resultMap.chapters
+    ? Object.fromEntries(
+        Object.entries(resultMap.chapters).map(([key, chapter]) => [
+          key,
+          chapter
+            ? {
+                ...chapter,
+                queries: [...(chapter.queries || [])],
+                docs: (chapter.docs || []).map((bucket) =>
+                  Array.isArray(bucket) ? [...bucket] : []
+                ),
+              }
+            : chapter,
+        ])
+      )
+    : resultMap.chapters;
+
   return {
     ...resultMap,
     searchResult: cloneSearchResultSnapshot(resultMap.searchResult),
+    chapters,
     fileInfo: [...(resultMap.fileInfo || [])],
     fileList: [...(resultMap.fileList || [])],
     refList: [...(resultMap.refList || [])],
@@ -103,6 +121,20 @@ function getGenUiRenderSignature(resultMap?: MESSAGE.ResultMap): string {
   ].join(",");
 }
 
+function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
+  const chapters = resultMap?.chapters;
+  if (!chapters) {
+    return "";
+  }
+  return Object.keys(chapters)
+    .sort()
+    .map((key) => {
+      const chapter = chapters[key];
+      return `${key}:${chapter?.summary?.length || 0}:${chapter?.docs?.length || 0}:${chapter?.streaming ? 1 : 0}`;
+    })
+    .join(",");
+}
+
 function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
   const resultMap = task.resultMap || {};
   const searchResult = resultMap.searchResult;
@@ -131,8 +163,18 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
     resultMap.searchFinish ? "1" : "0",
     resultMap.status || "",
     resultMap.summary || "",
-    resultMap.toolName || "",
-    resultMap.toolCallId || "",
+    resultMap.toolName ||
+      (resultMap as { resultMap?: { toolName?: string } }).resultMap?.toolName ||
+      "",
+    resultMap.toolCallId ||
+      (resultMap as { resultMap?: { toolCallId?: string } }).resultMap
+        ?.toolCallId ||
+      "",
+    Array.isArray(resultMap.subAgentProgressLines)
+      ? resultMap.subAgentProgressLines.length
+      : 0,
+    String(resultMap.subAgentLiveText || "").length,
+    resultMap.subAgentElapsedMs ?? "",
     // 流式入参增长必须使签名失效，否则 WeakMap 会卡住旧 argumentsText
     typeof resultMap.argumentsText === "string"
       ? resultMap.argumentsText.length
@@ -151,9 +193,10 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
     artifactRefs[0]?.resourceKey || artifactRefs[0]?.previewUrl || artifactRefs[0]?.downloadUrl || "",
     querySignature,
     docsSignature,
+    getChaptersSignature(resultMap as MESSAGE.ResultMap),
     Array.isArray(plan?.stepStatus) ? plan.stepStatus.join(",") : "",
     // emit_ui_patch mutates ui_tree in place; include GenUI markers so render cache invalidates.
-    getGenUiRenderSignature(resultMap),
+    getGenUiRenderSignature(resultMap as MESSAGE.ResultMap),
   ].join("|");
 }
 
@@ -176,39 +219,167 @@ function createRenderTask(
   return nextTask;
 }
 
+function findChapterForQuery(
+  chapters: Record<string, MESSAGE.DeepSearchChapterState> | undefined | null,
+  query: string
+): MESSAGE.DeepSearchChapterState | undefined {
+  if (!chapters || !query) {
+    return undefined;
+  }
+  return Object.values(chapters).find((chapter) => {
+    if (!chapter) {
+      return false;
+    }
+    if (chapter.chapterTitle === query) {
+      return true;
+    }
+    return Array.isArray(chapter.queries) && chapter.queries.includes(query);
+  });
+}
+
+function isDeepSearchStageMap(resultMap?: MESSAGE.ResultMap | null): boolean {
+  if (!resultMap) {
+    return false;
+  }
+  const stage = String(resultMap.messageType || "");
+  return Boolean(
+    resultMap.searchResult ||
+      resultMap.chapters ||
+      resultMap.chapterSummary ||
+      resultMap.chapterId ||
+      stage === "extend" ||
+      stage === "search" ||
+      stage === "chapter_summary" ||
+      stage === "report"
+  );
+}
+
+function resolveDeepSearchInnerMap(
+  task: RenderableTask
+): MESSAGE.ResultMap | undefined {
+  const nested = task.resultMap as MESSAGE.ResultMap | undefined;
+  if (isDeepSearchStageMap(nested) && nested?.messageType !== "deep_search") {
+    return nested;
+  }
+  if (isDeepSearchStageMap(nested?.resultMap)) {
+    return nested?.resultMap;
+  }
+  if (nested?.searchResult || nested?.chapters || nested?.chapterSummary) {
+    return nested;
+  }
+  // 兼容历史扁平载荷：searchResult 直接挂在 task 上
+  const flat = task as MESSAGE.ResultMap & RenderableTask;
+  if (flat.searchResult) {
+    return flat as unknown as MESSAGE.ResultMap;
+  }
+  return nested?.resultMap || nested;
+}
+
+function inferDeepSearchStage(inner?: MESSAGE.ResultMap): string {
+  const raw = String(inner?.messageType || "");
+  if (
+    raw === "extend" ||
+    raw === "search" ||
+    raw === "chapter_summary" ||
+    raw === "report"
+  ) {
+    return raw;
+  }
+  if (inner?.chapterSummary || inner?.chapterId) {
+    return "chapter_summary";
+  }
+  if (String(inner?.answer || "").trim() && !inner?.searchResult?.query?.length) {
+    return "report";
+  }
+  if (inner?.searchFinish === false) {
+    return "extend";
+  }
+  if (inner?.searchFinish === true) {
+    return "search";
+  }
+  return raw || "search";
+}
+
 function processDeepSearchTask(
   task: RenderableTask,
   baseId: string
 ): CHAT.Task[] {
-  const messageType = task.resultMap?.messageType;
+  const inner = resolveDeepSearchInnerMap(task);
+  const messageType = inferDeepSearchStage(inner);
+
   if (messageType === "report") {
-    return [
-      createRenderTask(task, baseId),
-    ];
+    const reportTask = createRenderTask(task, baseId);
+    if (reportTask.resultMap && inner && reportTask.resultMap !== inner) {
+      reportTask.resultMap = {
+        ...reportTask.resultMap,
+        ...inner,
+        messageType: "report",
+      };
+    }
+    return [reportTask];
   }
 
-  if (messageType === "extend" || messageType === "search") {
-    const queries = task.resultMap?.searchResult?.query || [];
+  const queries = (inner?.searchResult?.query || []).filter(Boolean);
+  const chapterTitles = Object.values(inner?.chapters || {})
+    .map((chapter) => String(chapter?.chapterTitle || "").trim())
+    .filter(Boolean);
+  const effectiveQueries = queries.length ? queries : chapterTitles;
 
-    // 查询分解和检索阶段都按 query 拆分；没有真实 query 时不制造伪占位项。
-    if (!queries.length) {
-      return [];
+  // 没有 query 也至少保留一张卡，避免工具卡在中间态被拆空。
+  if (!effectiveQueries.length) {
+    const fallback = createRenderTask(task, baseId);
+    if (fallback.resultMap && inner && fallback.resultMap !== inner) {
+      fallback.resultMap = {
+        ...fallback.resultMap,
+        ...inner,
+        messageType: messageType === "extend" ? "extend" : "search",
+      };
+    }
+    return [fallback];
+  }
+
+  return effectiveQueries.map((query: string, index: number) => {
+    const chapter = findChapterForQuery(inner?.chapters, query);
+    const rawDocs =
+      inner?.searchResult?.docs?.[index] ||
+      chapter?.docs?.[0];
+    const docs = Array.isArray(rawDocs) ? rawDocs : rawDocs ? [rawDocs] : [];
+    const searchResult = {
+      query: [query],
+      docs,
+    };
+
+    const renderTask = createRenderTask(
+      task,
+      baseId.concat(String(index)),
+      searchResult
+    );
+
+    if (!renderTask.resultMap) {
+      renderTask.resultMap = {} as CHAT.Task["resultMap"];
     }
 
-    return queries.map((query: string, index: number) => {
-      const rawDocs = task.resultMap.searchResult?.docs?.[index];
-      const searchResult = {
-        query: [query],
-        docs: Array.isArray(rawDocs) ? rawDocs : rawDocs ? [rawDocs] : [],
-      };
+    const hasSummary = Boolean(chapter?.summary);
+    const cardStage = hasSummary
+      ? "chapter_summary"
+      : docs.length
+        ? "search"
+        : "extend";
+    renderTask.resultMap = {
+      ...renderTask.resultMap,
+      messageType: cardStage,
+      searchResult: searchResult as CHAT.Task["resultMap"]["searchResult"],
+      chapterId: chapter?.chapterId,
+      chapterTitle: chapter?.chapterTitle || query,
+      chapterOrder: chapter?.chapterOrder ?? index + 1,
+      chapterSummary: chapter?.summary || "",
+      chapterStreaming: Boolean(chapter?.streaming),
+      answer: chapter?.summary || "",
+      chapters: inner?.chapters,
+    };
 
-      return createRenderTask(task, baseId.concat(String(index)), searchResult);
-    });
-  }
-
-  return [
-    createRenderTask(task, baseId),
-  ];
+    return renderTask;
+  });
 }
 
 export function processTaskForRender(

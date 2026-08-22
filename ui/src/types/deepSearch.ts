@@ -9,12 +9,27 @@ export type DeepSearchCardItem = {
   metaLabel?: string;
 };
 
+export type DeepSearchStage = "extend" | "search" | "chapter_summary" | "report";
+
 export type DeepSearchPreviewModel = {
-  stage: "extend" | "search";
+  stage: Exclude<DeepSearchStage, "report">;
   query: string;
   statusLabel: string;
   description: string;
   loading: boolean;
   interactive: boolean;
   resultCount: number;
+  hasSummary?: boolean;
+  summary?: string;
+  summaryStreaming?: boolean;
+  sources?: DeepSearchCardItem[];
+};
+
+export type DeepSearchChapterWorkspaceModel = {
+  title: string;
+  content?: string;
+  summary: string;
+  sources: DeepSearchCardItem[];
+  order?: number;
+  isStreaming?: boolean;
 };

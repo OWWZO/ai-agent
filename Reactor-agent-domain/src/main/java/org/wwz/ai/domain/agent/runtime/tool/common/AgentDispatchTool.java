@@ -4,8 +4,11 @@ import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
+import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentContextFactory;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinition;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
@@ -14,7 +17,9 @@ import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
 import java.util.ArrayList;
@@ -50,11 +55,19 @@ public class AgentDispatchTool implements BaseTool {
 
     private final SubAgentRunner subAgentRunner;
     private final SubAgentRegistry subAgentRegistry;
+    private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private AgentContext agentContext;
 
     public AgentDispatchTool(SubAgentRunner subAgentRunner, SubAgentRegistry subAgentRegistry) {
+        this(subAgentRunner, subAgentRegistry, null);
+    }
+
+    public AgentDispatchTool(SubAgentRunner subAgentRunner,
+                             SubAgentRegistry subAgentRegistry,
+                             ActiveAgentRunRegistry activeAgentRunRegistry) {
         this.subAgentRunner = subAgentRunner;
         this.subAgentRegistry = subAgentRegistry;
+        this.activeAgentRunRegistry = activeAgentRunRegistry;
     }
 
     @Override
@@ -226,6 +239,7 @@ public class AgentDispatchTool implements BaseTool {
         final AgentContext parent = agentContext;
         final String taskId = task.getId();
         final String sessionKey = StringUtils.defaultIfBlank(parent.getSessionId(), parent.getRequestId());
+        final ActiveAgentRunRegistry runRegistry = activeAgentRunRegistry;
         // 在子线程 markActive 之前也可投递（队列先建好）
         SessionAgentMailboxHub.queue(sessionKey, preferredAgentId);
 
@@ -249,19 +263,33 @@ public class AgentDispatchTool implements BaseTool {
                         t.setTotalToolUseCount(result.getTotalToolUseCount());
                         t.setTotalDurationMs(result.getTotalDurationMs());
                     });
+                    emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, false, runRegistry);
                     return;
                 }
                 if (result.isCompleted()) {
                     registry.complete(taskId, result);
+                    emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, true, runRegistry);
                 } else {
                     registry.fail(taskId, result);
+                    emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, false, runRegistry);
                 }
             } catch (Exception e) {
                 log.error("{} background subagent failed taskId={}", parent.getRequestId(), taskId, e);
                 if (taskCancel.isCancelled()) {
+                    emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, null, false, runRegistry);
                     return;
                 }
-                registry.fail(taskId, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                registry.fail(taskId, err);
+                SubAgentResult failed = SubAgentResult.builder()
+                        .status(SubAgentResult.STATUS_FAILED)
+                        .agentId(preferredAgentId)
+                        .agentType(type)
+                        .description(desc)
+                        .prompt(pmt)
+                        .errorMsg(err)
+                        .build();
+                emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, failed, false, runRegistry);
             }
         });
         registry.bindFuture(taskId, future);
@@ -301,6 +329,89 @@ public class AgentDispatchTool implements BaseTool {
             body.put("errorMsg", result.getErrorMsg());
         }
         return body;
+    }
+
+    /**
+     * 后台子 Agent 结束后：
+     * 1) 用同 toolCallId 的 tool_result 覆盖父 Agent 卡 observation（Dock 从 running → done/fail）
+     * 2) 仅当父 run 已 finish 且没有 running 后台任务时，才 stream_settle / registry.end
+     */
+    private static void emitBackgroundSettlement(AgentContext parent,
+                                                 String parentToolUseId,
+                                                 String description,
+                                                 String prompt,
+                                                 String subagentType,
+                                                 SubAgentResult result,
+                                                 boolean completed,
+                                                 ActiveAgentRunRegistry runRegistry) {
+        if (parent == null) {
+            return;
+        }
+        Printer printer = parent.getPrinter();
+        if (printer == null) {
+            return;
+        }
+        try {
+            if (StringUtils.isNotBlank(parentToolUseId)) {
+                Map<String, Object> data = result == null
+                        ? new LinkedHashMap<>()
+                        : buildObservationData(result);
+                data.put("tool", NAME);
+                data.put("ok", completed);
+                data.put("run_in_background", true);
+                if (result == null) {
+                    data.put("status", completed
+                            ? SubAgentResult.STATUS_COMPLETED
+                            : SubAgentResult.STATUS_FAILED);
+                    data.put("description", description);
+                    data.put("agentType", subagentType);
+                } else if (!completed && StringUtils.isBlank(String.valueOf(data.get("status")))) {
+                    data.put("status", SubAgentResult.STATUS_FAILED);
+                }
+
+                Map<String, Object> toolParam = new LinkedHashMap<>();
+                toolParam.put("description", description);
+                toolParam.put("prompt", prompt);
+                toolParam.put("subagent_type",
+                        StringUtils.defaultIfBlank(subagentType, SubAgentRegistry.TYPE_GENERAL_PURPOSE));
+                toolParam.put("run_in_background", true);
+
+                String observation = ToolObservationSerializer.serializeSuccess(data);
+                AgentResponse.ToolResult toolResult = AgentResponse.ToolResult.builder()
+                        .toolName(NAME)
+                        .toolCallId(parentToolUseId)
+                        .toolParam(toolParam)
+                        .toolResult(observation)
+                        .build();
+                Map<String, Object> extra = new LinkedHashMap<>();
+                extra.put("run_in_background", true);
+                extra.put("status", completed ? "success" : "failed");
+                extra.put("isFinal", true);
+                printer.send(parentToolUseId, "tool_result", toolResult, extra, null, true);
+            }
+            if (shouldSettleParentStream(parent)) {
+                Map<String, Object> settle = new LinkedHashMap<>();
+                settle.put("reason", "background_idle");
+                printer.send("stream_settle", settle);
+                if (runRegistry != null && StringUtils.isNotBlank(parent.getRequestId())) {
+                    runRegistry.end(parent.getRequestId());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("background settlement emit skipped: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 后台任务清空后，只有父 run 已经 finishRun 才允许关观察流。
+     * 父 Agent 仍在思考时结束后台任务，不得 stream_settle / registry.end。
+     */
+    public static boolean shouldSettleParentStream(AgentContext parent) {
+        if (parent == null || !parent.isTurnClosed()) {
+            return false;
+        }
+        return !SessionBackgroundTaskHub.hasRunning(
+                SessionBackgroundTaskHub.keyFor(parent.getSessionId(), parent.getRequestId()));
     }
 
     private static String captureParentToolUseId(AgentContext parent) {

@@ -83,6 +83,7 @@ declare global {
       packageType: string
       errorMsg: string
       eventSeq?: number
+      retryMs?: number
     }
 
     interface MultiAgent {
@@ -176,6 +177,14 @@ declare global {
       isFinal?: boolean
       searchFinish?: boolean
       answer?: string
+      chapterId?: string
+      chapterTitle?: string
+      chapterContent?: string
+      chapterOrder?: number
+      chapterSummary?: string
+      chapterStreaming?: boolean
+      /** deep_search 分章总结缓存，key 为 chapterId 或章节标题 */
+      chapters?: Record<string, DeepSearchChapterState>
       taskSummary?: string
       fileList?: FileInfo[]
       fileInfo?: FileInfo[]
@@ -253,6 +262,17 @@ declare global {
     interface SearchResult {
       docs: Doc[][]
       query: string[]
+    }
+
+    interface DeepSearchChapterState {
+      chapterId?: string
+      chapterTitle?: string
+      chapterContent?: string
+      chapterOrder?: number
+      summary?: string
+      streaming?: boolean
+      queries?: string[]
+      docs?: Doc[][]
     }
 
     interface Doc {

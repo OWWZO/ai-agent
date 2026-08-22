@@ -51,6 +51,33 @@ describe("subagent display", () => {
     expect(display.status).toBe("completed");
   });
 
+  it("reads toolName and prompt from live nested resultMap", () => {
+    const task = {
+      messageType: "tool_call",
+      resultMap: {
+        agentType: 5,
+        messageType: "tool_call",
+        resultMap: {
+          messageType: "tool_call",
+          status: "running",
+          toolName: "Agent",
+          toolCallId: "parent-agent-call",
+          input: {
+            description: "调研主流媒体评论抓取",
+            prompt: "抓取主流媒体评论并总结",
+            subagent_type: "Explore",
+          },
+        },
+      },
+    } as unknown as CHAT.Task;
+
+    expect(isAgentDispatchTask(task)).toBe(true);
+    const display = resolveSubAgentDisplay(task);
+    expect(display.prompt).toBe("抓取主流媒体评论并总结");
+    expect(display.description).toBe("调研主流媒体评论抓取");
+    expect(display.status).toBe("running");
+  });
+
   it("buildAction text for running and completed", () => {
     const running = {
       messageType: "tool_call",

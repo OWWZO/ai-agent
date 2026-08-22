@@ -7,6 +7,7 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.dto.tool.McpToolInfo;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
+import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRunner;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
@@ -119,6 +120,7 @@ public class AgentToolCollectionFactory {
     private final WorkspaceRuntimeOptions workspaceRuntimeOptions;
     private final SubAgentRunner subAgentRunner;
     private final SubAgentRegistry subAgentRegistry;
+    private final ActiveAgentRunRegistry activeAgentRunRegistry;
     private final PendingUserQuestionRegistry pendingUserQuestionRegistry;
     private final PendingPlanApprovalRegistry pendingPlanApprovalRegistry;
     private final PlanArtifactStore planArtifactStore;
@@ -327,7 +329,8 @@ public class AgentToolCollectionFactory {
         // 主 Agent 可派发子 Agent；dataAgent 场景不挂载
         if (!"dataAgent".equals(request.getOutputStyle()) && subAgentRunner != null && subAgentRegistry != null) {
             // 子 Agent 派发工具只挂在主 Agent 上，避免 dataAgent 或子任务再次无限扩散执行边界。
-            AgentDispatchTool agentDispatchTool = new AgentDispatchTool(subAgentRunner, subAgentRegistry);
+            AgentDispatchTool agentDispatchTool =
+                    new AgentDispatchTool(subAgentRunner, subAgentRegistry, activeAgentRunRegistry);
             addTool(toolCollection, agentDispatchTool, agentContext, AgentDispatchTool::setAgentContext);
         }
 

@@ -85,6 +85,7 @@ public class AgentAskUserController {
                 ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                         heartbeatScheduler,
                         emitter,
+                        stream,
                         resumeRequestId,
                         15_000L,
                         log,

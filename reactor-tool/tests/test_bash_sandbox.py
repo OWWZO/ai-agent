@@ -45,6 +45,48 @@ def test_local_link_skills_and_run():
     assert "1" in (result.stdout or "")
 
 
+def test_local_bash_uploads_changed_workspace_files():
+    tmp = Path(tempfile.mkdtemp())
+    workspace = tmp / "session_ws"
+    workspace.mkdir()
+    uploaded: list[str] = []
+
+    async def fake_upload(file_path: str, request_id: str):
+        uploaded.append(file_path)
+        return {
+            "fileName": Path(file_path).name,
+            "domainUrl": f"https://files.test/{Path(file_path).name}",
+            "fileSize": Path(file_path).stat().st_size,
+        }
+
+    previous_upload = bash_sandbox.upload_file_by_path
+    previous_backend = os.environ.get("CODE_SANDBOX_BACKEND")
+    bash_sandbox.upload_file_by_path = fake_upload  # type: ignore[assignment]
+    os.environ["CODE_SANDBOX_BACKEND"] = "local"
+    try:
+        result = asyncio.run(
+            run_bash_sandbox(
+                BashSandboxRequest(
+                    requestId="sess-upload",
+                    command="echo ok > output.txt",
+                    workspaceRoot=str(workspace),
+                    timeoutSeconds=30,
+                )
+            )
+        )
+    finally:
+        bash_sandbox.upload_file_by_path = previous_upload  # type: ignore[assignment]
+        if previous_backend is None:
+            os.environ.pop("CODE_SANDBOX_BACKEND", None)
+        else:
+            os.environ["CODE_SANDBOX_BACKEND"] = previous_backend
+
+    assert result.exit_code == 0
+    assert uploaded == [str(workspace / "output.txt")]
+    assert result.file_info[0]["domainUrl"] == "https://files.test/output.txt"
+    assert result.produced_files[0]["file_name"] == "output.txt"
+
+
 def test_incremental_write_skill_file_skips_same_content():
     tmp = Path(tempfile.mkdtemp())
     lib = tmp / "runtime_skills"

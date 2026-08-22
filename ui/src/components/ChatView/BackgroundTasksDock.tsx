@@ -9,7 +9,10 @@ import {
   projectDockTasks,
   projectAgentMemberByToolCallId,
 } from "@/utils/chat/agentRuntimeProjector";
-import { isAgentDispatchTask } from "@/utils/chat/subagent";
+import {
+  isAgentDispatchTask,
+  resolveSubAgentDisplay,
+} from "@/utils/chat/subagent";
 import { resolveTaskToolCallId } from "@/utils/chat/toolCalls";
 import type { DockTaskItem } from "@/types/agentRuntime";
 import { StatusDot } from "@/components/Dialogue/tools/StatusDot";
@@ -49,6 +52,37 @@ export function findAgentTaskByToolCallId(
     if (hit) return hit;
   }
   return null;
+}
+
+export function findLatestRunningAgentTask(
+  chat?: CHAT.ChatItem
+): CHAT.Task | null {
+  if (!chat) return null;
+  let latest: CHAT.Task | null = null;
+  const visit = (task?: CHAT.Task) => {
+    if (!task) return;
+    if (
+      isAgentDispatchTask(task) &&
+      resolveSubAgentDisplay(task).status === "running"
+    ) {
+      latest = task;
+    }
+    for (const child of task.children || []) {
+      visit(child);
+    }
+  };
+  for (const group of chat.tasks || []) {
+    for (const container of group || []) {
+      visit(container as CHAT.Task);
+    }
+  }
+  if (latest) return latest;
+  for (const group of chat.multiAgent?.tasks || []) {
+    for (const task of group || []) {
+      visit(task as CHAT.Task);
+    }
+  }
+  return latest;
 }
 
 function TaskRow({

@@ -19,6 +19,7 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
     private final AtomicBoolean localTermination = new AtomicBoolean(false);
     private final AtomicBoolean abortNotified = new AtomicBoolean(false);
     private final List<Runnable> abortHandlers = new CopyOnWriteArrayList<>();
+    private final Object sendLock = new Object();
 
     public SseEmitterAgentSessionStream(SseEmitter emitter) {
         this.emitter = emitter;
@@ -29,34 +30,40 @@ public class SseEmitterAgentSessionStream implements AgentSessionStream {
 
     @Override
     public void send(Object payload) throws Exception {
-        if (closed.get()) {
-            return;
-        }
-        try {
-            // emitter.send 可能在客户端断开时抛出容器特定异常，统一转换为 aborted 状态并通知观察者。
-            emitter.send(payload);
-        } catch (Exception ex) {
-            if (SseClientDisconnectDetector.isClientDisconnected(ex)) {
-                markAborted();
+        synchronized (sendLock) {
+            if (closed.get()) {
                 return;
             }
-            throw ex;
+            try {
+                // 心跳与业务帧共用此锁，避免并发 emitter.send 打坏 SSE。
+                emitter.send(payload);
+            } catch (Exception ex) {
+                if (SseClientDisconnectDetector.isClientDisconnected(ex)) {
+                    markAborted();
+                    return;
+                }
+                throw ex;
+            }
         }
     }
 
     @Override
     public void complete() {
-        localTermination.set(true);
-        if (closed.compareAndSet(false, true)) {
-            emitter.complete();
+        synchronized (sendLock) {
+            localTermination.set(true);
+            if (closed.compareAndSet(false, true)) {
+                emitter.complete();
+            }
         }
     }
 
     @Override
     public void completeWithError(Throwable throwable) {
-        localTermination.set(true);
-        if (closed.compareAndSet(false, true)) {
-            emitter.completeWithError(throwable);
+        synchronized (sendLock) {
+            localTermination.set(true);
+            if (closed.compareAndSet(false, true)) {
+                emitter.completeWithError(throwable);
+            }
         }
     }
 

@@ -1,3 +1,5 @@
+import type { DeepSearchChapterWorkspaceModel } from "@/types/deepSearch";
+import { buildDeepSearchChapterWorkspaceModel } from "@/utils/deepSearch";
 import type { PanelItemType, SearchListItem } from "./type";
 
 export interface PanelResolverMessageTypes {
@@ -55,6 +57,11 @@ type SearchPanelView = {
   searchList: SearchListItem[];
 };
 
+type DeepSearchChapterPanelView = {
+  type: "deep-search-chapter";
+  model: DeepSearchChapterWorkspaceModel;
+};
+
 type JsonPanelView = {
   type: "json";
   jsonData: object;
@@ -79,6 +86,7 @@ export type PanelView =
   | EmptyPanelView
   | AskUserQuestionPanelView
   | SearchPanelView
+  | DeepSearchChapterPanelView
   | HtmlPanelView
   | InlineHtmlPanelView
   | FilePanelView
@@ -157,6 +165,17 @@ export function resolvePanelView(params: ResolvePanelViewParams): PanelView {
     usePpt,
     useGenUi,
   } = msgTypes || {};
+
+  if (taskItem.messageType === "deep_search") {
+    const deepSearchTask = taskItem as unknown as Pick<CHAT.Task, "messageType" | "resultMap">;
+    const chapterModel = buildDeepSearchChapterWorkspaceModel(deepSearchTask);
+    if (chapterModel) {
+      return {
+        type: "deep-search-chapter",
+        model: chapterModel,
+      };
+    }
+  }
 
   if (searchList?.length) {
     return {

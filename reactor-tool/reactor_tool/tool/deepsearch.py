@@ -6,38 +6,66 @@
 # =====================
 """深度搜索（DeepSearch）主流程。
 
-链路：查询拆解 → 多引擎检索去重 → 推理是否继续搜 → 多轮循环 → 最终回答。
+链路：查询拆解升格为章节 → 分章并发检索 → 分章总结 → 轻量反思补搜 → 合并终稿。
 依赖 search_component 子模块与 MixSearch 混合检索引擎。
 """
+
 import asyncio
 import json
 import os
 import time
+from dataclasses import dataclass, field
 from functools import partial
 from typing import List, AsyncGenerator, Tuple
 
 from reactor_tool.util.log_util import logger
-from reactor_tool.util.llm_util import ask_llm
 from reactor_tool.model.document import Doc
 from reactor_tool.util.log_util import timer
-from reactor_tool.tool.search_component.query_process import query_decompose
-from reactor_tool.tool.search_component.answer import answer_question
+from reactor_tool.tool.search_component.query_process import (
+    plan_chapter_search,
+    query_decompose,
+)
+from reactor_tool.tool.search_component.chapter import (
+    docs_to_html,
+    summarize_chapter_stream,
+    update_chapter_summary,
+    merge_chapters,
+)
 from reactor_tool.tool.search_component.reasoning import search_reasoning
 from reactor_tool.tool.search_component.search_engine import MixSearch
 from reactor_tool.model.protocal import StreamMode
-from reactor_tool.util.file_util import truncate_files
-from reactor_tool.model.context import LLMModelInfoFactory
+
+
+@dataclass
+class ChapterState:
+    """单章研究状态。"""
+
+    chapter_id: str
+    title: str
+    content: str
+    order: int
+    queries: List[str] = field(default_factory=list)
+    docs: List[Doc] = field(default_factory=list)
+    summary: str = ""
+    status: str = "pending"
+    error: str = ""
 
 
 class DeepSearch:
-    """深度搜索工具：多引擎 + 多轮检索推理 + 总结回答。"""
+    """深度搜索工具：章节升格 + 并发分章研究 + 轻量反思 + 合并回答。"""
 
     def __init__(self, engines: List[str] = []):
         """初始化搜索引擎开关；未传 engines 时读 USE_SEARCH_ENGINE 环境变量。"""
-        normalized_engines = [engine.strip().lower() for engine in engines if engine and engine.strip()]
+        normalized_engines = [
+            engine.strip().lower() for engine in engines if engine and engine.strip()
+        ]
         if not normalized_engines:
             env_value = os.getenv("USE_SEARCH_ENGINE", "ddg")
-            normalized_engines = [engine.strip().lower() for engine in env_value.split(",") if engine.strip()]
+            normalized_engines = [
+                engine.strip().lower()
+                for engine in env_value.split(",")
+                if engine.strip()
+            ]
         if not normalized_engines:
             normalized_engines = ["ddg"]
 
@@ -48,7 +76,6 @@ class DeepSearch:
         use_sogou = "sogou" in normalized_engines
         use_serp = "serp" in normalized_engines
         use_exa = "exa" in normalized_engines
-        # 绑定混合搜索：单 query 检索并去重
         self._search_single_query = partial(
             MixSearch().search_and_dedup,
             use_ddg=use_ddg,
@@ -59,122 +86,114 @@ class DeepSearch:
             use_exa=use_exa,
             use_jina_reader=False,
         )
-        self.searched_queries = []  # 已搜过的子查询，避免重复
-        self.current_docs = []  # 累计检索到的文档
-
-    def search_docs_str(self, model: str = None) -> str:
-        """将当前文档列表格式化为带编号的 HTML，供 LLM 引用；按模型上下文截断。"""
-        current_docs_str = ""
-        max_tokens = LLMModelInfoFactory.get_context_length(model)
-        truncate_docs = truncate_files(self.current_docs, max_tokens=int(max_tokens * 0.8)) if model else self.current_docs
-        for i, doc in enumerate(truncate_docs, start=1):
-            current_docs_str += f"文档编号〔{i}〕. \n{doc.to_html()}\n"
-        return current_docs_str
+        self.searched_queries: List[str] = []
+        self.current_docs: List[Doc] = []
 
     @timer()
     async def run(
-            self,
-            query: str,
-            request_id: str = None,
-            max_loop: int = 1,
-            stream: bool = False,
-            stream_mode: StreamMode = StreamMode(),
-            *args,
-            **kwargs
+        self,
+        query: str,
+        request_id: str = None,
+        max_loop: int = 1,
+        stream: bool = False,
+        stream_mode: StreamMode = StreamMode(),
+        *args,
+        **kwargs,
     ) -> AsyncGenerator[str, None]:
         """深度搜索主循环（流式 yield SSE 数据片段）。"""
 
-        # deadline 覆盖查询拆解、检索、继续搜索判断和最终回答四个阶段；每个 await
-        # 都使用剩余时间，超时后统一输出当前已积累结果，避免客户端收到悬挂流。
-        # 默认超时时间提升到 20 分钟，避免深度搜索在多轮检索和总结时被过早中断。
-        total_timeout_seconds = int(os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "1200"))
+        total_timeout_seconds = int(
+            os.getenv("DEEPSEARCH_TOTAL_TIMEOUT_SECONDS", "1200")
+        )
         deadline = time.monotonic() + total_timeout_seconds
 
         def _remaining_timeout() -> float:
             return max(0.1, deadline - time.monotonic())
 
-        current_loop = 1
-        try:
-            # 执行深度搜索循环
-            while current_loop <= max_loop:
-                # 每轮先发 extend/search 中间事件，再更新 current_docs；这些事件是前端
-                # 的过程态，最终 report 才是本次 DeepSearch 的终态事实。
-                logger.info(f"{request_id} 第 {current_loop} 轮深度搜索...")
-                # 查询分解
-                sub_queries = await asyncio.wait_for(
-                    query_decompose(query=query),
-                    timeout=_remaining_timeout(),
-                )
+        # 轻量反思默认关闭；需要时设 DEEPSEARCH_LIGHT_REFLECTION=1
+        _ = max_loop
+        enable_light_reflection = str(
+            os.getenv("DEEPSEARCH_LIGHT_REFLECTION", "0")
+        ).lower() in ("1", "true", "yes")
 
-                yield json.dumps({
+        try:
+            logger.info(f"{request_id} 开始章节化深度搜索...")
+            sub_queries = await asyncio.wait_for(
+                query_decompose(query=query),
+                timeout=_remaining_timeout(),
+            )
+            if not sub_queries:
+                sub_queries = [{"title": query, "content": query}]
+
+            chapters = [
+                ChapterState(
+                    chapter_id=f"C{idx}",
+                    title=str(item.get("title") or "").strip(),
+                    content=str(item.get("content") or item.get("title") or "").strip(),
+                    order=idx,
+                )
+                for idx, item in enumerate(sub_queries, start=1)
+                if str(item.get("title") or "").strip()
+            ]
+
+            yield json.dumps(
+                {
                     "requestId": request_id,
                     "query": query,
-                    "searchResult": {"query": sub_queries, "docs": [[]] * len(sub_queries)},
+                    "searchResult": {
+                        "query": [c.title for c in chapters],
+                        "chapters": [
+                            {
+                                "chapterId": c.chapter_id,
+                                "chapterTitle": c.title,
+                                "chapterContent": c.content,
+                                "chapterOrder": c.order,
+                            }
+                            for c in chapters
+                        ],
+                        "docs": [[] for _ in chapters],
+                    },
                     "isFinal": False,
-                    "messageType": "extend"
-                }, ensure_ascii=False)
+                    "messageType": "extend",
+                },
+                ensure_ascii=False,
+            )
 
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
 
-                # 去除已经检索过的query
-                sub_queries = [sub_query for sub_query in sub_queries
-                               if sub_query not in self.searched_queries]
-                # 并行搜索并去重
-                searched_docs, docs_list = await asyncio.wait_for(
-                    self._search_queries_and_dedup(
-                        queries=sub_queries,
-                        request_id=request_id,
-                    ),
-                    timeout=_remaining_timeout(),
-                )
+            truncate_len = int(os.getenv("SINGLE_PAGE_MAX_SIZE", 200))
+            flush_every = max(1, int(getattr(stream_mode, "token", None) or 5))
+            async for event in self._iter_research_events(
+                query=query,
+                chapters=chapters,
+                request_id=request_id,
+                enable_light_reflection=enable_light_reflection,
+                remaining_timeout=_remaining_timeout,
+                truncate_len=truncate_len,
+                flush_every=flush_every,
+            ):
+                yield event
 
-                truncate_len = int(os.getenv("SINGLE_PAGE_MAX_SIZE", 200))
-                yield json.dumps(
-                    {
-                        "requestId": request_id,
-                        "query": query,
-                        "searchResult": {
-                            "query": sub_queries,
-                            "docs": [[d.to_dict(truncate_len=truncate_len) for d in docs_l] for docs_l in docs_list]
-                        },
-                        "isFinal": False,
-                        "messageType": "search"
-                    }, ensure_ascii=False)
+            for chapter in chapters:
+                self.current_docs.extend(chapter.docs)
+                self.searched_queries.extend(chapter.queries)
 
-                # 更新上下文
-                self.current_docs.extend(searched_docs)
-                self.searched_queries.extend(sub_queries)
+            chapter_sections = [
+                {
+                    "id": c.chapter_id,
+                    "title": c.title,
+                    "content": c.content,
+                    "order": c.order,
+                    "summary": c.summary or f"（章节「{c.title}」暂无可用总结）",
+                }
+                for c in chapters
+            ]
 
-                # 如果是最后一轮，直接跳出
-                if current_loop == max_loop:
-                    break
-
-                # 推理验证是否需要继续搜索
-                reasoning_result = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        search_reasoning,
-                        request_id=request_id,
-                        query=query,
-                        content=self.search_docs_str(os.getenv("SEARCH_REASONING_MODEL")),
-                    ),
-                    timeout=_remaining_timeout(),
-                )
-
-                # 如果推理判断已经可以回答，跳出循环
-                if reasoning_result.get("is_verify", "1") in ["1", 1]:
-                    logger.info(f"{request_id} reasoning 判断没有得到新的查询，流程结束")
-                    break
-
-                current_loop += 1
-
-            # 生成最终答案
-            # answer_question 仍以异步生成器提供片段；stream 模式按 token 数切成 report
-            # 事件，非 stream 模式则只在最后一个事件携带完整答案。
             answer = ""
             acc_content = ""
             acc_token = 0
-            answer_stream = answer_question(
-                query=query, search_content=self.search_docs_str(os.getenv("SEARCH_ANSWER_MODEL"))
+            answer_stream = merge_chapters(
+                query=query, chapter_sections=chapter_sections
             )
             while True:
                 try:
@@ -187,81 +206,355 @@ class DeepSearch:
 
                 if stream:
                     if acc_token >= stream_mode.token:
-                        yield json.dumps({
-                            "requestId": request_id,
-                            "query": query,
-                            "searchResult": {
-                                "query": [],
-                                "docs": [],
+                        yield json.dumps(
+                            {
+                                "requestId": request_id,
+                                "query": query,
+                                "searchResult": {"query": [], "docs": []},
+                                "answer": acc_content,
+                                "isFinal": False,
+                                "messageType": "report",
                             },
-                            "answer": acc_content,
-                            "isFinal": False,
-                            "messageType": "report"
-                        }, ensure_ascii=False)
+                            ensure_ascii=False,
+                        )
                         acc_content = ""
                         acc_token = 0
                     acc_content += chunk
                     acc_token += 1
                 answer += chunk
+
             if stream and acc_content:
-                yield json.dumps({
+                yield json.dumps(
+                    {
+                        "requestId": request_id,
+                        "query": query,
+                        "searchResult": {"query": [], "docs": []},
+                        "answer": acc_content,
+                        "isFinal": False,
+                        "messageType": "report",
+                    },
+                    ensure_ascii=False,
+                )
+
+            yield json.dumps(
+                {
                     "requestId": request_id,
                     "query": query,
-                    "searchResult": {
-                        "query": [],
-                        "docs": [],
-                    },
-                    "answer": acc_content,
-                    "isFinal": False,
-                    "messageType": "report"
-                }, ensure_ascii=False)
-            yield json.dumps({
-                    "requestId": request_id,
-                    "query": query,
-                    "searchResult": {
-                        "query": [],
-                        "docs": [],
-                    },
+                    "searchResult": {"query": [], "docs": []},
                     "answer": "" if stream else answer,
                     "isFinal": True,
-                    "messageType": "report"
-                }, ensure_ascii=False)
+                    "messageType": "report",
+                },
+                ensure_ascii=False,
+            )
+
         except asyncio.TimeoutError:
-            # 超时是可预期的降级路径：保留已发送的检索事件，并发送一个明确终态，
-            # 不把超时当作普通异常重新抛出导致 SSE 没有收尾。
-            logger.warning(f"{request_id} deepsearch total timeout after {total_timeout_seconds}s")
-            fallback_answer = "深度搜索超时，已返回当前可用结果，请基于已有搜索内容继续处理。"
-            yield json.dumps({
+            logger.warning(
+                f"{request_id} deepsearch total timeout after {total_timeout_seconds}s"
+            )
+            fallback_answer = (
+                "深度搜索超时，已返回当前可用结果，请基于已有搜索内容继续处理。"
+            )
+            yield json.dumps(
+                {
+                    "requestId": request_id,
+                    "query": query,
+                    "searchResult": {"query": [], "docs": []},
+                    "answer": fallback_answer,
+                    "isFinal": True,
+                    "messageType": "report",
+                },
+                ensure_ascii=False,
+            )
+
+    def _dumps_search_event(
+        self,
+        query: str,
+        request_id: str,
+        chapters: List[ChapterState],
+        truncate_len: int,
+    ) -> str:
+        """按章节顺序输出累计检索结果，前端按 query 原位更新卡片。"""
+        queries = []
+        docs = []
+        for chapter in chapters:
+            chapter_queries = chapter.queries or [chapter.content or chapter.title]
+            for index, chapter_query in enumerate(chapter_queries):
+                queries.append(chapter_query)
+                docs.append(
+                    [doc.to_dict(truncate_len=truncate_len) for doc in chapter.docs]
+                    if index == 0
+                    else []
+                )
+        return json.dumps(
+            {
                 "requestId": request_id,
                 "query": query,
                 "searchResult": {
-                    "query": [],
-                    "docs": [],
+                    "query": queries,
+                    "docs": docs,
                 },
-                "answer": fallback_answer,
-                "isFinal": True,
-                "messageType": "report"
-            }, ensure_ascii=False)
+                "isFinal": False,
+                "messageType": "search",
+            },
+            ensure_ascii=False,
+        )
+
+    def _dumps_chapter_summary_event(
+        self,
+        query: str,
+        request_id: str,
+        chapter: ChapterState,
+        summary: str,
+        truncate_len: int,
+        streaming: bool,
+    ) -> str:
+        chapter_queries = chapter.queries or [chapter.content or chapter.title]
+        chapter_docs_groups = [
+            [d.to_dict(truncate_len=truncate_len) for d in chapter.docs]
+        ]
+        while len(chapter_docs_groups) < len(chapter_queries):
+            chapter_docs_groups.append([])
+        return json.dumps(
+            {
+                "requestId": request_id,
+                "query": query,
+                "chapterId": chapter.chapter_id,
+                "chapterTitle": chapter.title,
+                "chapterContent": chapter.content,
+                "chapterOrder": chapter.order,
+                "chapterSummary": summary,
+                "chapterStreaming": streaming,
+                "answer": summary,
+                "searchResult": {
+                    "query": chapter_queries,
+                    "docs": chapter_docs_groups,
+                },
+                "isFinal": False,
+                "messageType": "chapter_summary",
+            },
+            ensure_ascii=False,
+        )
+
+    async def _iter_research_events(
+        self,
+        query: str,
+        chapters: List[ChapterState],
+        request_id: str,
+        enable_light_reflection: bool,
+        remaining_timeout,
+        truncate_len: int,
+        flush_every: int,
+    ) -> AsyncGenerator[str, None]:
+        """并发研究各章，检索完成和总结增量立刻推给前端。"""
+        max_concurrent = max(
+            1, int(os.getenv("CHAPTER_THREAD_NUM", os.getenv("SEARCH_THREAD_NUM", 5)))
+        )
+        semaphore = asyncio.Semaphore(max_concurrent)
+        event_queue: asyncio.Queue = asyncio.Queue()
+        chapter_by_id = {chapter.chapter_id: chapter for chapter in chapters}
+
+        async def _one(chapter: ChapterState) -> None:
+            async with semaphore:
+                try:
+                    await self._research_one_chapter(
+                        query=query,
+                        chapter=chapter,
+                        request_id=request_id,
+                        enable_light_reflection=enable_light_reflection,
+                        remaining_timeout=remaining_timeout,
+                        event_queue=event_queue,
+                        flush_every=flush_every,
+                    )
+                finally:
+                    await event_queue.put({"kind": "done"})
+
+        workers = [asyncio.create_task(_one(chapter)) for chapter in chapters]
+        finished = 0
+        while finished < len(chapters):
+            item = await event_queue.get()
+            kind = item.get("kind")
+            if kind == "done":
+                finished += 1
+                continue
+            if kind == "search":
+                yield self._dumps_search_event(
+                    query, request_id, chapters, truncate_len
+                )
+                continue
+            if kind == "chapter_summary":
+                chapter = chapter_by_id.get(item.get("chapter_id"))
+                if chapter is None:
+                    continue
+                yield self._dumps_chapter_summary_event(
+                    query,
+                    request_id,
+                    chapter,
+                    item.get("summary") or "",
+                    truncate_len,
+                    bool(item.get("streaming")),
+                )
+
+        await asyncio.gather(*workers, return_exceptions=True)
+
+    async def _research_one_chapter(
+        self,
+        query: str,
+        chapter: ChapterState,
+        request_id: str,
+        enable_light_reflection: bool,
+        remaining_timeout,
+        event_queue: asyncio.Queue,
+        flush_every: int,
+    ) -> ChapterState:
+        """单章：初搜 → 流式总结 →（可选）轻量反思补搜 → 更新总结。"""
+        answer_model = os.getenv("SEARCH_ANSWER_MODEL", "gpt-4.1")
+
+        async def _emit_search() -> None:
+            await event_queue.put({"kind": "search"})
+
+        async def _emit_summary(summary: str, streaming: bool) -> None:
+            await event_queue.put(
+                {
+                    "kind": "chapter_summary",
+                    "chapter_id": chapter.chapter_id,
+                    "summary": summary,
+                    "streaming": streaming,
+                }
+            )
+
+        try:
+            search_plan = await asyncio.wait_for(
+                plan_chapter_search(
+                    query=query,
+                    chapter_title=chapter.title,
+                    chapter_content=chapter.content,
+                ),
+                timeout=remaining_timeout(),
+            )
+            initial_queries = search_plan.get("search_queries") or [
+                chapter.content or query
+            ]
+            chapter.queries.extend(
+                item for item in initial_queries if item and item not in chapter.queries
+            )
+            docs, _ = await asyncio.wait_for(
+                self._search_queries_and_dedup(
+                    queries=chapter.queries,
+                    request_id=request_id,
+                ),
+                timeout=remaining_timeout(),
+            )
+            chapter.docs = docs
+            chapter.status = "searched"
+            await _emit_search()
+
+            acc = ""
+            pending = 0
+            stream = summarize_chapter_stream(
+                query=query,
+                chapter_title=chapter.title,
+                chapter_content=chapter.content,
+                chapter_order=chapter.order,
+                search_content=docs_to_html(docs, model=answer_model),
+            )
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream.__anext__(),
+                        timeout=remaining_timeout(),
+                    )
+                except StopAsyncIteration:
+                    break
+                if not chunk:
+                    continue
+                acc += chunk
+                pending += 1
+                chapter.summary = acc
+                if pending >= flush_every:
+                    await _emit_summary(acc, True)
+                    pending = 0
+            chapter.summary = acc
+            chapter.status = "summarized"
+            await _emit_summary(acc, False)
+
+            if enable_light_reflection and chapter.summary:
+                reasoning_result = await asyncio.wait_for(
+                    search_reasoning(
+                        request_id=request_id,
+                        query=f"{query} / 章节：{chapter.title}",
+                        content=chapter.summary,
+                        history_query_list=list(chapter.queries),
+                    ),
+                    timeout=remaining_timeout(),
+                )
+                if reasoning_result.get("is_verify", "1") not in ["1", 1]:
+                    rewrite_query = (
+                        reasoning_result.get("rewrite_query") or ""
+                    ).strip()
+                    if rewrite_query and rewrite_query not in chapter.queries:
+                        more_docs, _ = await asyncio.wait_for(
+                            self._search_queries_and_dedup(
+                                queries=[rewrite_query],
+                                request_id=request_id,
+                            ),
+                            timeout=remaining_timeout(),
+                        )
+                        chapter.queries.append(rewrite_query)
+                        seen = {d.content for d in chapter.docs if d.content}
+                        for doc in more_docs:
+                            if doc.content and doc.content not in seen:
+                                chapter.docs.append(doc)
+                                seen.add(doc.content)
+                        await _emit_search()
+                        chapter.summary = await asyncio.wait_for(
+                            update_chapter_summary(
+                                query=query,
+                                chapter_title=chapter.title,
+                                chapter_content=chapter.content,
+                                chapter_order=chapter.order,
+                                previous_summary=chapter.summary,
+                                search_content=docs_to_html(
+                                    more_docs, model=answer_model
+                                ),
+                            ),
+                            timeout=remaining_timeout(),
+                        )
+                        chapter.status = "reflected"
+                        await _emit_summary(chapter.summary, False)
+                    else:
+                        logger.info(
+                            f"{request_id} chapter={chapter.chapter_id} 反思认为不足但无有效 rewrite_query"
+                        )
+
+            chapter.status = "completed"
+            return chapter
+        except Exception as exc:
+            logger.exception(
+                f"{request_id} chapter={chapter.chapter_id} research failed: {exc}"
+            )
+            chapter.status = "failed"
+            chapter.error = str(exc)
+            if not chapter.summary:
+                chapter.summary = f"章节「{chapter.title}」研究失败：{exc}"
+            await _emit_summary(chapter.summary, False)
+            return chapter
 
     async def _search_queries_and_dedup(
-            self,
-            queries: List[str],
-            request_id: str,
+        self,
+        queries: List[str],
+        request_id: str,
     ) -> Tuple[List[Doc], List[List[Doc]]]:
         """异步并行搜索多个查询并去重，避免阻塞当前 Uvicorn 事件循环。"""
-        # semaphore 限制的是本轮子查询的并发预算；gather 保持结果与 queries 顺序，
-        # 返回的 results 用于前端按子查询展示，deduped_docs 用于后续统一上下文。
         max_concurrent = max(1, int(os.getenv("SEARCH_THREAD_NUM", 5)))
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def _search_one(query: str) -> List[Doc]:
+        async def _search_one(q: str) -> List[Doc]:
             async with semaphore:
-                return await self._search_single_query(query, request_id)
+                return await self._search_single_query(q, request_id)
 
-        # 搜索引擎本身已经是异步实现，这里直接复用当前事件循环并限制并发量。
-        results = await asyncio.gather(*(_search_one(query) for query in queries))
+        results = await asyncio.gather(*(_search_one(q) for q in queries))
         all_docs = [doc for docs in results for doc in docs]
-        # 去重
         seen_content = set()
         deduped_docs = []
         for doc in all_docs:

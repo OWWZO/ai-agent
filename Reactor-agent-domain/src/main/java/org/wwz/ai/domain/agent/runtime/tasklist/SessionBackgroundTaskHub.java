@@ -20,9 +20,31 @@ public final class SessionBackgroundTaskHub {
     }
 
     public static RuntimeBackgroundTaskRegistry getOrCreate(String sessionId,
-                                                            TasklistPersistencePort persistence) {
-        String key = StringUtils.defaultIfBlank(sessionId, "default").trim();
+                                                             TasklistPersistencePort persistence) {
+        String key = keyFor(sessionId);
         return BY_SESSION.computeIfAbsent(key, sid -> new RuntimeBackgroundTaskRegistry(sid, persistence));
+    }
+
+    /** 当前 session 是否仍有 running 后台任务（用于延迟关闭主 SSE） */
+    public static boolean hasRunning(String sessionId) {
+        String key = keyFor(sessionId);
+        RuntimeBackgroundTaskRegistry registry = BY_SESSION.get(key);
+        return registry != null && !registry.listRunning().isEmpty();
+    }
+
+    public static boolean hasRunning(String sessionId, String requestId) {
+        RuntimeBackgroundTaskRegistry registry = BY_SESSION.get(keyFor(sessionId, requestId));
+        return registry != null && !registry.listRunning().isEmpty();
+    }
+
+    /** 与 AgentContext.requireBackgroundTasks 使用同一套会话回退规则。 */
+    public static String keyFor(String sessionId) {
+        return StringUtils.defaultIfBlank(sessionId, "default").trim();
+    }
+
+    public static String keyFor(String sessionId, String requestId) {
+        return StringUtils.defaultIfBlank(sessionId,
+                StringUtils.defaultIfBlank(requestId, "default")).trim();
     }
 
     /** 测试或会话清理用 */

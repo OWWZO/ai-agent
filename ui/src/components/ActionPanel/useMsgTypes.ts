@@ -1,6 +1,9 @@
 import { isHTML, isValidJSON } from "@/utils";
 import { isAgentDispatchTask } from "@/utils/chat/subagent";
-import { buildDeepSearchResultItems } from "@/utils/deepSearch";
+import {
+  buildDeepSearchResultItems,
+  resolveDeepSearchStage,
+} from "@/utils/deepSearch";
 import { useMemo } from "react";
 import { PanelItemType, SearchListItem } from "./type";
 import {
@@ -48,8 +51,11 @@ export const getSearchList = (taskItem?: PanelItemType) => {
       url: item.sourceUrl
     }));
   }
-  if (messageType === 'deep_search' && resultMap.messageType === 'search') {
-    return buildDeepSearchResultItems(resultMap?.searchResult?.docs) as SearchListItem[];
+  if (messageType === "deep_search") {
+    const stage = resolveDeepSearchStage(resultMap?.messageType);
+    if (stage === "search" || stage === "chapter_summary") {
+      return buildDeepSearchResultItems(resultMap?.searchResult?.docs) as SearchListItem[];
+    }
   }
   return [];
 };

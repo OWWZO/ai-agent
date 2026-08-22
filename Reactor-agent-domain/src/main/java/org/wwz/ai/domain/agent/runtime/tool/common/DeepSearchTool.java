@@ -22,8 +22,8 @@ import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -91,12 +91,16 @@ public class DeepSearchTool implements ContextIsolatableTool {
         Map<String, Object> taskParam = new HashMap<>();
         taskParam.put("type", "string");
         taskParam.put("description", "需要搜索的query");
+        Map<String, Object> reportFileNameParam = new HashMap<>();
+        reportFileNameParam.put("type", "string");
+        reportFileNameParam.put("description", "最终研究报告文件名称，例如：新能源汽车行业研究报告.md");
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("type", "object");
         Map<String, Object> properties = new HashMap<>();
         properties.put("query", taskParam);
+        properties.put("reportFileName", reportFileNameParam);
         parameters.put("properties", properties);
-        parameters.put("required", Collections.singletonList("query"));
+        parameters.put("required", List.of("query", "reportFileName"));
 
         return parameters;
     }
@@ -111,6 +115,9 @@ public class DeepSearchTool implements ContextIsolatableTool {
             ReactorConfig reactorConfig = requireReactorConfig(ctx);
             Map<String, Object> params = (Map<String, Object>) input;
             String query = (String) params.get("query");
+            String reportFileName = params.get("reportFileName") == null
+                    ? null
+                    : String.valueOf(params.get("reportFileName"));
             Map<String, Object> srcConfig = new HashMap<>();
 
             Map<String, Object> bingConfig = new HashMap<>();
@@ -119,6 +126,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
             DeepSearchRequest request = DeepSearchRequest.builder()
                     .request_id(ctx.getRequestId() + ":" + StringUtil.generateRandomString(5))
                     .query(query)
+                    .report_file_name(reportFileName)
                     .agent_id("1")
                     .scene_type("auto_agent")
                     .src_configs(srcConfig)
@@ -223,7 +231,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                 return;
                             }
                             resultBuilder.recordFinalAnswer(searchResponse.getQuery(), searchResponse.getAnswer());
-                            uploadFinalAnswerWithRetry(ctx, artifactSource, searchResponse.getQuery(),
+                            uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getReport_file_name(),
+                                    searchResponse.getQuery(),
                                     searchResponse.getAnswer(), reactorConfig, fileTool, finalAnswerUploaded);
                             // 总结文章全量回传，供 observation / fallback 使用，不再截断
                             resultRef.set(searchResponse.getAnswer());
@@ -238,19 +247,22 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         if (searchResponse.getSearchResult() != null
                                 && searchResponse.getSearchResult().getQuery() != null
                                 && searchResponse.getSearchResult().getDocs() != null) {
-                            for (int idx = 0; idx < searchResponse.getSearchResult().getQuery().size(); idx++) {
-                                contentMap.put(searchResponse.getSearchResult().getQuery().get(idx),
-                                        searchResponse.getSearchResult().getDocs().get(idx));
+                            List<String> eventQueries = searchResponse.getSearchResult().getQuery();
+                            List<List<DeepSearchrResponse.SearchDoc>> eventDocs = searchResponse.getSearchResult().getDocs();
+                            // query/docs 可能因章节补搜不同步，按较短一侧对齐，避免 IndexOutOfBoundsException。
+                            int alignedSize = Math.min(eventQueries.size(), eventDocs.size());
+                            for (int idx = 0; idx < alignedSize; idx++) {
+                                contentMap.put(eventQueries.get(idx), eventDocs.get(idx));
                             }
                         }
 
                         if ("extend".equals(searchResponse.getMessageType())) {
                             messageIdRef.set(StringUtil.getUUID());
                             searchResponse.setSearchFinish(false);
-                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                         } else if ("search".equals(searchResponse.getMessageType())) {
                             searchResponse.setSearchFinish(true);
-                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                             FileRequest fileRequest = FileRequest.builder()
                                     .requestId(ctx.getRequestId())
                                     .fileName(searchResponse.getQuery() + "_search_result.txt")
@@ -258,6 +270,12 @@ public class DeepSearchTool implements ContextIsolatableTool {
                                     .content(JSON.toJSONString(contentMap))
                                     .build();
                             fileTool.uploadFile(fileRequest, false, true, artifactSource);
+                        } else if ("chapter_summary".equals(searchResponse.getMessageType())) {
+                            if (messageIdRef.get().isEmpty()) {
+                                messageIdRef.set(StringUtil.getUUID());
+                            }
+                            searchResponse.setSearchFinish(true);
+                            ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                         } else if ("report".equals(searchResponse.getMessageType())) {
                             if (currentIndex == 1 && messageIdRef.get().isEmpty()) {
                                 messageIdRef.set(StringUtil.getUUID());
@@ -290,7 +308,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         resultBuilder.recordFinalAnswer(searchRequest.getQuery(), stringBuilderAll.toString());
                         resultRef.set(stringBuilderAll.toString());
                     }
-                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getQuery(),
+                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getReport_file_name(),
+                            searchRequest.getQuery(),
                             stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
                     if (!future.isDone()) {
                         future.complete(resultBuilder.buildPayload(resultRef.get()));
@@ -300,7 +319,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                 @Override
                 public void onFailure(Throwable throwable, Integer statusCode, String responseBody) {
                     streamSession.set(null);
-                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getQuery(),
+                    uploadFinalAnswerWithRetry(ctx, artifactSource, searchRequest.getReport_file_name(),
+                            searchRequest.getQuery(),
                             stringBuilderAll.toString(), reactorConfig, fileTool, finalAnswerUploaded);
                     if (throwable == null && statusCode == null) {
                         if (!future.isDone()) {
@@ -328,6 +348,7 @@ public class DeepSearchTool implements ContextIsolatableTool {
 
     private void uploadFinalAnswerWithRetry(AgentContext ctx,
                                             ToolArtifactSource artifactSource,
+                                            String requestedFileName,
                                             String query,
                                             String answer,
                                             ReactorConfig reactorConfig,
@@ -336,11 +357,14 @@ public class DeepSearchTool implements ContextIsolatableTool {
         if (uploaded.get() || StringUtils.isBlank(answer)) {
             return;
         }
-        String baseName = StringUtil.abbreviate(StringUtils.defaultString(query), 20, true);
-        if (StringUtils.isBlank(baseName)) {
-            baseName = "搜索结果";
+        String fileName = sanitizeReportFileName(requestedFileName);
+        if (StringUtils.isBlank(fileName)) {
+            String baseName = StringUtil.abbreviate(StringUtils.defaultString(query), 20, true);
+            if (StringUtils.isBlank(baseName)) {
+                baseName = "搜索结果";
+            }
+            fileName = StringUtil.removeSpecialChars(baseName + "的搜索结果.md");
         }
-        String fileName = StringUtil.removeSpecialChars(baseName + "的搜索结果.md");
         if (StringUtils.isBlank(fileName)) {
             fileName = "搜索结果.md";
         }
@@ -365,6 +389,17 @@ public class DeepSearchTool implements ContextIsolatableTool {
             }
         }
         log.error("{} deep_search final answer upload exhausted, answerLength={}", ctx.getRequestId(), answer.length());
+    }
+
+    private String sanitizeReportFileName(String requestedFileName) {
+        String fileName = StringUtils.trimToEmpty(requestedFileName)
+                .replace('/', '_')
+                .replace('\\', '_');
+        fileName = StringUtil.removeSpecialChars(fileName);
+        if (StringUtils.isBlank(fileName)) {
+            return "";
+        }
+        return fileName.toLowerCase().endsWith(".md") ? fileName : fileName + ".md";
     }
 
     /**

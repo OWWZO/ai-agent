@@ -1,4 +1,8 @@
-import { shouldRenderDeepSearchWorkspace } from "@/utils/deepSearch";
+import {
+  resolveChapterSummary,
+  resolveDeepSearchStage,
+  shouldRenderDeepSearchWorkspace,
+} from "@/utils/deepSearch";
 import { buildAction } from "@/utils/chat";
 import { isAgentDispatchTask } from "@/utils/chat/subagent";
 import { getTaskFiles } from "@/utils/taskArtifacts";
@@ -317,6 +321,22 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
   }
   if (tool.messageType === "tool_call") {
     return !isTaskFinal(tool) && tool.resultMap?.status !== "success";
+  }
+  if (tool.messageType === "deep_search") {
+    const stage = resolveDeepSearchStage(tool.resultMap?.messageType);
+    if (stage === "report") {
+      return !isTaskFinal(tool);
+    }
+    if (stage === "extend") {
+      return true;
+    }
+    if (tool.resultMap?.chapterStreaming) {
+      return true;
+    }
+    if (stage === "chapter_summary") {
+      return false;
+    }
+    return !resolveChapterSummary(tool.resultMap);
   }
   if (CRAFTING_MESSAGE_TYPES.has(tool.messageType || "")) {
     return !isTaskFinal(tool);

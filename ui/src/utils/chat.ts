@@ -1,6 +1,7 @@
 import { getPrimaryTaskFile, getPrimaryTaskFileName, normalizeTaskFile } from "@/utils/taskArtifacts";
 import {
   formatDeepSearchQueryText,
+  isDeepSearchStage,
   resolveDeepSearchActionText,
   resolveDeepSearchStage,
 } from "@/utils/deepSearch";
@@ -246,6 +247,9 @@ function handleTaskMessageByType(
       // 仅更新状态条，不进入任务时间线
       handleLlmRetryMessage(eventData, currentChat);
       break;
+    case "stream_settle":
+      // 后台任务收口信号：只驱动 finished，不进时间线
+      break;
     case "subagent_progress":
       // 不进时间线/工作区；进度挂到父 Agent 卡片事实字段，供详情面板投影
       handleSubAgentProgressMessage(eventData, currentChat);
@@ -341,6 +345,57 @@ function resolveSubAgentProgressKind(
   return "heartbeat";
 }
 
+type ChatWithPendingSubAgentProgress = CHAT.ChatItem & {
+  pendingSubAgentProgress?: Record<string, MESSAGE.EventData[]>;
+};
+
+function enqueuePendingSubAgentProgress(
+  currentChat: CHAT.ChatItem,
+  parentToolUseId: string,
+  eventData: MESSAGE.EventData
+) {
+  const chat = currentChat as ChatWithPendingSubAgentProgress;
+  const bucket = { ...(chat.pendingSubAgentProgress || {}) };
+  const list = bucket[parentToolUseId] ? [...bucket[parentToolUseId]] : [];
+  list.push(eventData);
+  bucket[parentToolUseId] = list.slice(-80);
+  chat.pendingSubAgentProgress = bucket;
+}
+
+function flushPendingSubAgentProgress(
+  currentChat: CHAT.ChatItem,
+  parentIds: Array<string | undefined>
+) {
+  const chat = currentChat as ChatWithPendingSubAgentProgress;
+  const bucket = chat.pendingSubAgentProgress;
+  if (!bucket) {
+    return;
+  }
+  const keys = parentIds.map((id) => asTextField(id)).filter(Boolean);
+  if (!keys.length) {
+    return;
+  }
+  const next = { ...bucket };
+  for (const key of keys) {
+    const events = next[key];
+    if (!events?.length) {
+      continue;
+    }
+    const leftover: MESSAGE.EventData[] = [];
+    for (const event of events) {
+      if (!applySubAgentProgress(event, currentChat)) {
+        leftover.push(event);
+      }
+    }
+    if (leftover.length) {
+      next[key] = leftover;
+    } else {
+      delete next[key];
+    }
+  }
+  chat.pendingSubAgentProgress = Object.keys(next).length ? next : undefined;
+}
+
 /**
  * 将 subagent_progress 挂到父 Agent 工具卡（按 parentToolUseId），不插入新时间线条目。
  */
@@ -348,6 +403,26 @@ function handleSubAgentProgressMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem
 ) {
+  if (applySubAgentProgress(eventData, currentChat)) {
+    return;
+  }
+  const resultMap = toNestedResultMap(eventData.resultMap);
+  const nested = toNestedResultMap(resultMap.resultMap);
+  const parentToolUseId = asTextField(
+    resultMap.parentToolUseId ||
+      nested.parentToolUseId ||
+      resolveParentToolUseId(eventData.resultMap) ||
+      resolveParentToolUseId(eventData as unknown as Record<string, unknown>)
+  );
+  if (parentToolUseId) {
+    enqueuePendingSubAgentProgress(currentChat, parentToolUseId, eventData);
+  }
+}
+
+function applySubAgentProgress(
+  eventData: MESSAGE.EventData,
+  currentChat: CHAT.ChatItem
+): boolean {
   const resultMap = toNestedResultMap(eventData.resultMap);
   const nested = toNestedResultMap(resultMap.resultMap);
   const merged: Record<string, unknown> = {
@@ -360,7 +435,7 @@ function handleSubAgentProgressMessage(
       resolveParentToolUseId(eventData as unknown as Record<string, unknown>)
   );
   if (!parentToolUseId || !currentChat.multiAgent?.tasks?.length) {
-    return;
+    return false;
   }
 
   const kind = resolveSubAgentProgressKind(merged);
@@ -459,9 +534,10 @@ function handleSubAgentProgressMessage(
           asTextField(merged.description || merged.subAgentDescription) ||
           prev.subAgentDescription,
       };
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 /**
@@ -850,12 +926,53 @@ export function handleNewTask(
  * @param taskIndex 任务索引
  * @param toolIndex 工具索引
  */
+function isDeepSearchStageMap(resultMap?: MESSAGE.ResultMap | null): boolean {
+  if (!resultMap) {
+    return false;
+  }
+  return Boolean(
+    resultMap.searchResult ||
+      resultMap.chapters ||
+      resultMap.chapterSummary ||
+      resultMap.chapterId ||
+      isDeepSearchStage(resultMap.messageType)
+  );
+}
+
+function resolveDeepSearchEventPayload(
+  eventData: MESSAGE.EventData
+): MESSAGE.ResultMap {
+  const wrapper = toNestedResultMap(eventData.resultMap);
+  // 新协议：阶段载荷在 resultMap.resultMap；旧扁平协议：searchResult 直接挂在外层。
+  if (isDeepSearchStageMap(wrapper.resultMap)) {
+    return wrapper.resultMap as MESSAGE.ResultMap;
+  }
+  if (isDeepSearchStageMap(wrapper)) {
+    return wrapper;
+  }
+  const nested = wrapper.resultMap;
+  if (isDeepSearchStageMap(nested?.resultMap)) {
+    return nested?.resultMap as MESSAGE.ResultMap;
+  }
+  return nested || {};
+}
+
+function materializeDeepSearchTask(eventData: MESSAGE.EventData): MESSAGE.Task {
+  const nextTask = buildTaskFromEventData(eventData);
+  const stageMap = { ...resolveDeepSearchEventPayload(eventData) };
+  stageMap.answer = stageMap.answer || "";
+  ensureSearchResult(stageMap);
+  nextTask.messageType = "deep_search";
+  nextTask.resultMap = stageMap;
+  return nextTask;
+}
+
 function handleDeepSearchMessage(
   eventData: MESSAGE.EventData,
   currentChat: CHAT.ChatItem,
   taskIndex: number
 ) {
-  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
+  const resultMap = resolveDeepSearchEventPayload(eventData);
   const nextTask = buildTaskFromEventData(eventData);
   const placeholderIndex =
     taskIndex === -1
@@ -864,6 +981,13 @@ function handleDeepSearchMessage(
         currentChat.multiAgent.tasks[taskIndex] || [],
         resolveTaskToolCallId(nextTask)
       );
+  const rawStage = String(resultMap?.messageType || "");
+  // 分章总结并入既有 search 工具的 chapters 缓存，避免覆盖多 query 检索结果。
+  if (rawStage === "chapter_summary" && taskIndex !== -1) {
+    if (mergeDeepSearchChapterSummary(currentChat, taskIndex, eventData.messageId, resultMap)) {
+      return;
+    }
+  }
   const stage = resolveDeepSearchStage(resultMap?.messageType);
   const toolIndex =
     taskIndex === -1
@@ -878,15 +1002,90 @@ function handleDeepSearchMessage(
     if (toolIndex !== -1) {
       updateExistingTaskTool(currentChat, taskIndex, toolIndex, resultMap);
     } else if (placeholderIndex !== -1) {
-      resultMap.answer = resultMap?.answer || "";
-      ensureSearchResult(resultMap);
-      currentChat.multiAgent.tasks[taskIndex][placeholderIndex] = buildTaskFromEventData(eventData);
+      currentChat.multiAgent.tasks[taskIndex][placeholderIndex] =
+        materializeDeepSearchTask(eventData);
     } else {
       addNewToolToExistingTask(currentChat, taskIndex, eventData);
     }
   } else {
     addNewTask(currentChat, eventData);
   }
+}
+
+/**
+ * 将 chapter_summary 合并进同一 messageId 的非 report deep_search 工具。
+ * 返回 true 表示已处理，调用方无需再走通用更新路径。
+ */
+function mergeDeepSearchChapterSummary(
+  currentChat: CHAT.ChatItem,
+  taskIndex: number,
+  messageId: string | undefined,
+  resultMap: MESSAGE.ResultMap
+): boolean {
+  const taskGroup = currentChat.multiAgent.tasks[taskIndex] || [];
+  const toolIndex = findDeepSearchToolIndex(taskGroup, messageId, "search");
+  if (toolIndex === -1) {
+    return false;
+  }
+
+  const target = taskGroup[toolIndex];
+  if (!target.resultMap) {
+    target.resultMap = {} as MESSAGE.ResultMap;
+  }
+  ensureSearchResult(target.resultMap);
+  if (!target.resultMap.chapters) {
+    target.resultMap.chapters = {};
+  }
+
+  const chapterTitle =
+    String(resultMap.chapterTitle || "").trim() ||
+    String(resultMap.searchResult?.query?.[0] || "").trim() ||
+    "未命名章节";
+  const chapterId =
+    String(resultMap.chapterId || "").trim() || chapterTitle;
+  const summary = String(
+    resultMap.chapterSummary || resultMap.answer || ""
+  ).trim();
+
+  const previous = target.resultMap.chapters[chapterId];
+  const streaming = resultMap.chapterStreaming === true;
+  const nextSummary =
+    streaming && previous?.summary && summary.startsWith(previous.summary)
+      ? summary
+      : summary || previous?.summary || "";
+
+  target.resultMap.chapters[chapterId] = {
+    chapterId,
+    chapterTitle,
+    chapterContent: String(resultMap.chapterContent || previous?.chapterContent || chapterTitle).trim(),
+    chapterOrder: resultMap.chapterOrder ?? previous?.chapterOrder,
+    summary: nextSummary,
+    streaming,
+    queries: [...(resultMap.searchResult?.query || previous?.queries || [chapterTitle])],
+    docs: (resultMap.searchResult?.docs || previous?.docs || []).map((bucket) =>
+      Array.isArray(bucket) ? [...bucket] : []
+    ),
+  };
+
+  // 若主 searchResult 尚无该章节 docs，则按标题对齐补齐，保证分卡能展示来源。
+  const queries = target.resultMap.searchResult?.query || [];
+  const docs = target.resultMap.searchResult?.docs || [];
+  const chapterQueries = resultMap.searchResult?.query || previous?.queries || [];
+  const matchedIndex = queries.findIndex(
+    (item) => item === chapterTitle || chapterQueries.includes(item)
+  );
+  if (matchedIndex >= 0) {
+    while (docs.length <= matchedIndex) {
+      docs.push([]);
+    }
+    const incomingDocs = resultMap.searchResult?.docs?.[0];
+    if (Array.isArray(incomingDocs) && incomingDocs.length && (!docs[matchedIndex] || docs[matchedIndex].length === 0)) {
+      docs[matchedIndex] = [...incomingDocs];
+    }
+    target.resultMap.searchResult!.docs = docs;
+  }
+
+  return true;
 }
 
 /**
@@ -905,6 +1104,11 @@ function handleToolCallMessage(
 
   if (taskIndex === -1) {
     currentChat.multiAgent.tasks.push([nextTask]);
+    flushPendingSubAgentProgress(currentChat, [
+      toolCallId,
+      asTextField(nextTask.messageId),
+      streamKey,
+    ]);
     return;
   }
 
@@ -960,38 +1164,90 @@ function handleToolCallMessage(
       return;
     }
     taskGroup[targetIndex] = mergeToolCallStreamingTask(currentTask, nextTask);
+    flushPendingSubAgentProgress(currentChat, [
+      toolCallId,
+      asTextField(nextTask.messageId),
+      streamKey,
+    ]);
     return;
   }
 
   taskGroup.push(nextTask);
+  flushPendingSubAgentProgress(currentChat, [
+    toolCallId,
+    asTextField(nextTask.messageId),
+    streamKey,
+  ]);
+}
+
+function nestedToolPayload(resultMap?: MESSAGE.ResultMap): MESSAGE.ResultMap | undefined {
+  const nested = toNestedResultMap(resultMap).resultMap;
+  if (!nested || typeof nested !== "object") {
+    return undefined;
+  }
+  return nested as MESSAGE.ResultMap;
 }
 
 /**
  * tool_call_delta → 统一成 tool_call 卡片语义，并标记 argsStreaming。
+ * 实时 SSE 经 AgentSessionPrinter 把真实载荷放在 resultMap.resultMap；
+ * 这里提升 toolName/input/toolCallId，让 live 与 history 共用同一套父卡识别。
  */
 function normalizeIncomingToolCallTask(task: MESSAGE.Task): MESSAGE.Task {
   const outerType = String(task.messageType || "").toLowerCase();
   const resultMap = (task.resultMap || {}) as MESSAGE.ResultMap;
-  const nestedType = String(resultMap.messageType || "").toLowerCase();
-  const isDelta = outerType === "tool_call_delta" || nestedType === "tool_call_delta";
-  const status = String(resultMap.status || "").toLowerCase();
+  const nested = nestedToolPayload(resultMap);
+  const nestedType = String(
+    resultMap.messageType || nested?.messageType || ""
+  ).toLowerCase();
+  const isDelta =
+    outerType === "tool_call_delta" || nestedType === "tool_call_delta";
+  const status = String(
+    resultMap.status || nested?.status || ""
+  ).toLowerCase();
   const args =
     resolveToolCallArgumentsText(resultMap) ||
+    resolveToolCallArgumentsText(nested) ||
     (typeof resultMap.argumentsRaw === "string" ? resultMap.argumentsRaw : "") ||
     (typeof resultMap.argumentsText === "string" ? resultMap.argumentsText : "");
+  const hoistedInput =
+    resolveToolCallInput(resultMap) ||
+    resolveToolCallInput(nested);
 
   const nextMap: MESSAGE.ResultMap = {
+    ...(nested || {}),
     ...resultMap,
     messageType: "tool_call",
     status: status || (isDelta ? "streaming" : status),
-    argumentsText: args || resultMap.argumentsText,
-    argumentsRaw: args || resultMap.argumentsRaw || resultMap.argumentsText,
+    toolName: resultMap.toolName || nested?.toolName,
+    toolCallId: resultMap.toolCallId || nested?.toolCallId,
+    streamToolKey:
+      (resultMap as { streamToolKey?: string }).streamToolKey ||
+      (nested as { streamToolKey?: string } | undefined)?.streamToolKey,
+    input:
+      Object.keys(hoistedInput).length > 0
+        ? hoistedInput
+        : resultMap.input ?? nested?.input,
+    argumentsText: args || resultMap.argumentsText || nested?.argumentsText,
+    argumentsRaw:
+      args ||
+      resultMap.argumentsRaw ||
+      nested?.argumentsRaw ||
+      resultMap.argumentsText ||
+      nested?.argumentsText,
     argsStreaming:
       isDelta ||
       status === "streaming" ||
       status === "preparing" ||
-      resultMap.argsStreaming === true,
+      resultMap.argsStreaming === true ||
+      nested?.argsStreaming === true,
+    parentToolUseId:
+      (resultMap as { parentToolUseId?: string }).parentToolUseId ||
+      (nested as { parentToolUseId?: string } | undefined)?.parentToolUseId,
   };
+  if (nested) {
+    nextMap.resultMap = nested;
+  }
 
   return {
     ...task,
@@ -1139,8 +1395,14 @@ function updateExistingTaskTool(
   resultMap: MESSAGE.ResultMap
 ) {
   const targetTool = currentChat.multiAgent.tasks[taskIndex][toolIndex];
+  if (!targetTool.resultMap) {
+    targetTool.resultMap = {} as MESSAGE.ResultMap;
+    ensureSearchResult(targetTool.resultMap);
+  }
   targetTool.resultMap.isFinal = resultMap?.isFinal;
-  targetTool.resultMap.messageType = resultMap?.messageType;
+  if (resultMap?.messageType) {
+    targetTool.resultMap.messageType = resultMap.messageType;
+  }
   updateSearchResult(targetTool.resultMap, resultMap?.searchResult);
   const nextAnswer = resultMap?.answer || "";
 
@@ -1172,25 +1434,15 @@ function addNewToolToExistingTask(
   taskIndex: number,
   eventData: MESSAGE.EventData
 ) {
-  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
-
-  resultMap.answer = resultMap?.answer || "";
-  ensureSearchResult(resultMap);
-
-  currentChat.multiAgent.tasks[taskIndex].push(buildTaskFromEventData(eventData));
+  currentChat.multiAgent.tasks[taskIndex].push(materializeDeepSearchTask(eventData));
 }
 
 /**
  * 添加新任务
  */
 function addNewTask(currentChat: CHAT.ChatItem, eventData: MESSAGE.EventData) {
-  const resultMap = toNestedResultMap(eventData.resultMap).resultMap || {};
-
-  resultMap.answer = resultMap?.answer || "";
-  ensureSearchResult(resultMap);
-
   currentChat.multiAgent.tasks.push([
-    buildTaskFromEventData(eventData),
+    materializeDeepSearchTask(eventData),
   ]);
 }
 
@@ -1302,6 +1554,8 @@ function handleNonStreamingMessage(
           ...nextMap,
           // Agent 终态包可能只带 messageId；保留占位卡身份，后续子事件仍能找到父卡。
           toolCallId: nextMap.toolCallId || prevMap.toolCallId,
+          toolName: nextMap.toolName || prevMap.toolName,
+          input: nextMap.input || prevMap.input,
           streamToolKey:
             nextMap.streamToolKey || prevMap.streamToolKey,
           subAgentLiveText: nextMap.subAgentLiveText || prevMap.subAgentLiveText,
@@ -1348,6 +1602,7 @@ function handleNonStreamingMessage(
 /**
  * tool_result 的终态包在不同协议入口可能只保留 messageId 或 streamToolKey；
  * 同步 Agent 完成时必须仍能命中原始 tool_call，否则主工作区会出现“卡片消失”。
+ * 后台 Agent 结算会再发一条同 toolCallId 的 tool_result，也需命中已替换的卡片。
  */
 function findToolCallPlaceholderForTask(
   tasks: MESSAGE.Task[],
@@ -1357,7 +1612,10 @@ function findToolCallPlaceholderForTask(
   const streamKey = resolveToolCallStreamKey(task);
   const messageId = pickFirstText(task.messageId);
   return findLastTaskIndex(tasks, (candidate) => {
-    if (candidate.messageType !== "tool_call") {
+    if (
+      candidate.messageType !== "tool_call" &&
+      candidate.messageType !== "tool_result"
+    ) {
       return false;
     }
     const candidateToolCallId = resolveTaskToolCallId(candidate);

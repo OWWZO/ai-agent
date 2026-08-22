@@ -96,6 +96,38 @@ function mergeProcessChildren(
 }
 
 /**
+ * 子 Agent 任务原地突变（children / liveText / status），对象引用不变。
+ * 详情面板用这个指纹打破 memo，才能边跑边刷轨迹。
+ */
+export function subAgentLiveRevision(tool: CHAT.Task): string {
+  const children = Array.isArray(tool.children) ? tool.children : [];
+  const childKey = children
+    .map((child) => {
+      const map = (child.resultMap || {}) as Record<string, unknown>;
+      return [
+        child.messageId || child.id || "",
+        child.messageType || "",
+        child.finish ? "1" : "0",
+        String(map.status || ""),
+        String(child.toolThought || "").length,
+        String(child.result || "").length,
+        Array.isArray(child.children) ? child.children.length : 0,
+      ].join(":");
+    })
+    .join("|");
+  const map = (tool.resultMap || {}) as Record<string, unknown>;
+  return [
+    children.length,
+    childKey,
+    String(map.status || ""),
+    String(map.subAgentLiveText || "").length,
+    Array.isArray(map.subAgentProgressLines)
+      ? map.subAgentProgressLines.length
+      : 0,
+  ].join("#");
+}
+
+/**
  * 把子 Agent 任务投影成主对话同款 ChatItem，供时间线 / 终答复用。
  * 不改 SSE 事实，只做展示层派生。
  */
@@ -108,10 +140,14 @@ export function chatItemFromSubAgent(
   const nested = Array.isArray(tool.children) ? tool.children : [];
   const conclusionText = resolveNestedConclusion(nested) || asText(sub.content);
   const processNested = nested.filter((child) => child.messageType !== "result");
-  // liveText 优先；若只有 Calling/heartbeat 进度行，也投影成可见过程文，避免工作区空白。
+  // liveText 是真实过程增量。heartbeat 进度行不能冒充轨迹；
+  // 只有还没有任何子步骤时才拿来占位，避免把「running · …」当成执行过程。
+  const heartbeatText = Array.isArray(sub.progressLines)
+    ? sub.progressLines.filter(Boolean).join("\n")
+    : "";
   const liveText =
     asText(sub.liveText) ||
-    (Array.isArray(sub.progressLines) ? sub.progressLines.filter(Boolean).join("\n") : "");
+    (processNested.length === 0 ? heartbeatText : "");
   const liveTask = liveText
     ? buildLiveTextTask(tool, liveText, running)
     : null;

@@ -1,8 +1,16 @@
-import type { DeepSearchCardItem, DeepSearchPreviewModel } from "@/types/deepSearch";
+import type {
+  DeepSearchCardItem,
+  DeepSearchChapterWorkspaceModel,
+  DeepSearchPreviewModel,
+  DeepSearchStage,
+} from "@/types/deepSearch";
 
-export type DeepSearchStage = "extend" | "search" | "report";
-
-const DEEP_SEARCH_STAGES: DeepSearchStage[] = ["extend", "search", "report"];
+const DEEP_SEARCH_STAGES: DeepSearchStage[] = [
+  "extend",
+  "search",
+  "chapter_summary",
+  "report",
+];
 
 export function isDeepSearchStage(value: unknown): value is DeepSearchStage {
   return typeof value === "string" && DEEP_SEARCH_STAGES.includes(value as DeepSearchStage);
@@ -51,6 +59,9 @@ export function resolveDeepSearchActionText(
   if (normalizedStage === "report") {
     return isFinal ? "总结完成" : "正在总结";
   }
+  if (normalizedStage === "chapter_summary") {
+    return "章节完成";
+  }
   if (normalizedStage === "search") {
     return "搜索完成";
   }
@@ -65,7 +76,10 @@ export function resolveDeepSearchTitle(
   const queryText = formatDeepSearchQueryText(queries);
 
   if (normalizedStage === "report") {
-    return queryText || "深度搜索";
+    return queryText || "研究报告";
+  }
+  if (normalizedStage === "chapter_summary") {
+    return queryText ? `章节：${queryText}` : "章节研究";
   }
   if (normalizedStage === "extend") {
     return queryText ? `搜索中：${queryText}` : "正在搜索";
@@ -94,12 +108,19 @@ export function buildDeepSearchExtendMarkdown(queries: unknown): string {
 
 export function shouldRenderDeepSearchPreview(stage: unknown): boolean {
   const normalizedStage = resolveDeepSearchStage(stage);
-  return normalizedStage === "extend" || normalizedStage === "search";
+  return (
+    normalizedStage === "extend" ||
+    normalizedStage === "search" ||
+    normalizedStage === "chapter_summary"
+  );
 }
 
 export function shouldRenderDeepSearchWorkspace(stage: unknown): boolean {
   const normalizedStage = resolveDeepSearchStage(stage);
-  return normalizedStage === "search" || normalizedStage === "report";
+  return (
+    normalizedStage === "search" ||
+    normalizedStage === "chapter_summary"
+  );
 }
 
 function formatCountLabel(count: number, unit: string): string {
@@ -156,24 +177,78 @@ export function buildDeepSearchResultItems(value: unknown): DeepSearchCardItem[]
   }, []);
 }
 
+type DeepSearchResultMapLike = {
+  messageType?: string;
+  chapterSummary?: string;
+  chapterTitle?: string;
+  chapterContent?: string;
+  chapterOrder?: number;
+  chapterStreaming?: boolean;
+  answer?: string;
+  query?: string;
+  isFinal?: boolean;
+  searchResult?: {
+    query?: string[];
+    docs?: unknown;
+  };
+  chapters?: Record<string, MESSAGE.DeepSearchChapterState>;
+};
+
+export function resolveChapterSummary(resultMap?: DeepSearchResultMapLike | null): string {
+  if (!resultMap) {
+    return "";
+  }
+  return String(
+    resultMap.chapterSummary ||
+      (resolveDeepSearchStage(resultMap.messageType) === "chapter_summary"
+        ? resultMap.answer
+        : "") ||
+      ""
+  ).trim();
+}
+
+export function findChapterStateForQuery(
+  resultMap: DeepSearchResultMapLike | undefined,
+  query: string
+): MESSAGE.DeepSearchChapterState | undefined {
+  if (!resultMap?.chapters || !query) {
+    return undefined;
+  }
+  const chapters = Object.values(resultMap.chapters);
+  return chapters.find((chapter) => {
+    if (!chapter) {
+      return false;
+    }
+    if (chapter.chapterTitle === query) {
+      return true;
+    }
+    return Array.isArray(chapter.queries) && chapter.queries.includes(query);
+  });
+}
+
 export function buildDeepSearchPreviewModel(
-  task: Pick<CHAT.Task, "messageType" | "resultMap">
+  task: { messageType?: string; resultMap?: DeepSearchResultMapLike | null }
 ): DeepSearchPreviewModel | undefined {
   if (task.messageType !== "deep_search") {
     return undefined;
   }
 
-  // extend/search 只生成轻量预览，report 交给工作区完整结果渲染，防止同一任务出现两套主展示。
+  // extend/search/chapter_summary 生成轻量预览；report 不再渲染工作区报告。
   const stage = resolveDeepSearchStage(task.resultMap?.messageType);
-  if (stage !== "extend" && stage !== "search") {
+  if (stage === "report") {
     return undefined;
   }
 
   const query =
+    String(task.resultMap?.chapterTitle || "").trim() ||
     formatDeepSearchQueryText(task.resultMap?.searchResult?.query) ||
     "未命名搜索方向";
+  const chapterSummary = resolveChapterSummary(task.resultMap);
+  const resultItems = buildDeepSearchResultItems(task.resultMap?.searchResult?.docs);
+  const resultCount = resultItems.length;
+  const summaryStreaming = Boolean(task.resultMap?.chapterStreaming);
 
-  if (stage === "extend") {
+  if (stage === "extend" && !chapterSummary && resultCount === 0) {
     return {
       stage,
       query,
@@ -182,14 +257,34 @@ export function buildDeepSearchPreviewModel(
       loading: true,
       interactive: false,
       resultCount: 0,
+      hasSummary: false,
+      summaryStreaming: false,
+      sources: [],
     };
   }
 
-  const resultItems = buildDeepSearchResultItems(task.resultMap?.searchResult?.docs);
-  const resultCount = resultItems.length;
+  if (stage === "chapter_summary" || chapterSummary) {
+    return {
+      stage: chapterSummary ? "chapter_summary" : stage,
+      query,
+      statusLabel: summaryStreaming ? "正在总结章节" : "章节完成",
+      description: resultCount
+        ? `${formatCountLabel(resultCount, "条来源")}${summaryStreaming ? "，正在生成章节总结，点击查看右侧详情。" : "，含章节总结，点击查看右侧详情。"}`
+        : summaryStreaming
+          ? "章节总结生成中，点击查看右侧详情。"
+          : "章节总结已生成，点击查看右侧详情。",
+      loading: summaryStreaming,
+      interactive: true,
+      resultCount,
+      hasSummary: true,
+      summary: chapterSummary,
+      summaryStreaming,
+      sources: resultItems,
+    };
+  }
 
   return {
-    stage,
+    stage: "search",
     query,
     statusLabel: "搜索完成",
     description: resultCount
@@ -198,5 +293,38 @@ export function buildDeepSearchPreviewModel(
     loading: false,
     interactive: true,
     resultCount,
+    hasSummary: false,
+    summaryStreaming: false,
+    sources: resultItems,
+  };
+}
+
+export function buildDeepSearchChapterWorkspaceModel(
+  task: { messageType?: string; resultMap?: DeepSearchResultMapLike | null }
+): DeepSearchChapterWorkspaceModel | undefined {
+  if (task.messageType !== "deep_search") {
+    return undefined;
+  }
+  const stage = resolveDeepSearchStage(task.resultMap?.messageType);
+  if (stage === "report" || stage === "extend") {
+    return undefined;
+  }
+
+  const summary = resolveChapterSummary(task.resultMap);
+  const sources = buildDeepSearchResultItems(task.resultMap?.searchResult?.docs);
+  if (!summary && sources.length === 0) {
+    return undefined;
+  }
+
+  return {
+    title:
+      String(task.resultMap?.chapterTitle || "").trim() ||
+      formatDeepSearchQueryText(task.resultMap?.searchResult?.query) ||
+      "章节研究",
+    content: String(task.resultMap?.chapterContent || "").trim() || undefined,
+    summary,
+    sources,
+    order: task.resultMap?.chapterOrder,
+    isStreaming: Boolean(task.resultMap?.chapterStreaming),
   };
 }

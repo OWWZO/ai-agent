@@ -8,6 +8,7 @@ import org.springframework.beans.BeanUtils;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentPrinter;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 import org.wwz.ai.domain.agent.reactor.model.req.AgentRequest;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
@@ -104,8 +105,13 @@ public class AgentSessionPrinter implements Printer {
 
             // 子 Agent 终答也走 messageType=result，但带 parentToolUseId/subAgentId；
             // 不得把主会话投影流标成 finished，否则主 Agent 仍在跑时 SSE 会被提前关闭。
-            boolean finish = "result".equals(messageType)
-                    && !isNestedSubAgentEvent(message, extraResultMap);
+            // 后台 run_in_background 任务未完成时同样不能 finished，否则后续子事件全部丢失。
+            boolean nestedSubAgent = isNestedSubAgentEvent(message, extraResultMap);
+            boolean backgroundRunning = SessionBackgroundTaskHub.hasRunning(
+                    request == null ? null : request.getSessionId(),
+                    request == null ? null : request.getRequestId());
+            boolean finish = ("result".equals(messageType) && !nestedSubAgent && !backgroundRunning)
+                    || "stream_settle".equals(messageType);
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("agentType", agentType);
 
@@ -180,6 +186,24 @@ public class AgentSessionPrinter implements Printer {
                 case "file":
                 case "knowledge":
                 case "deep_search":
+                    // deep_search 载荷自身带 extend/search/chapter_summary/report 阶段。
+                    // 必须嵌套进 resultMap.resultMap，不能把外层 messageType=deep_search 覆盖掉阶段字段，
+                    // 否则前端无法按章节拆成多张查询卡。
+                    {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> stagePayload = JSON.parseObject(JSON.toJSONString(message));
+                        Map<String, Object> wrapper = new HashMap<>();
+                        wrapper.put("agentType", agentType);
+                        wrapper.put("messageType", messageType);
+                        wrapper.put("resultMap", stagePayload);
+                        if (extraResultMap != null && !extraResultMap.isEmpty()) {
+                            wrapper.putAll(extraResultMap);
+                            // 避免 extra 误覆盖嵌套阶段载荷
+                            wrapper.put("resultMap", stagePayload);
+                        }
+                        response.setResultMap(wrapper);
+                    }
+                    break;
                 case "data_analysis":
                 case "ui_tree":
                 case "ui_patch":
@@ -196,6 +220,9 @@ public class AgentSessionPrinter implements Printer {
                     break;
                 case "agent_stream":
                     response.setResult((String) message);
+                    break;
+                case "stream_settle":
+                    // 后台任务全部结束后关闭 SSE；不覆盖主结论内容。
                     break;
                 case "result":
                     // result 是本轮终态事件：兼容字符串、Map 和普通对象三种旧调用形态，

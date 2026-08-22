@@ -260,6 +260,9 @@ public class BaseAgentResponseHandler {
             case "agent_stream":
                 payload.put("result", agentResponse.getResult());
                 break;
+            case "stream_settle":
+                // 仅关闭观察流，不带结论正文
+                break;
             case "result":
                 payload.put("result", agentResponse.getResult());
                 if (agentResponse.getResultMap() != null) {

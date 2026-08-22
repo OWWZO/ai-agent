@@ -10,6 +10,9 @@ import org.wwz.ai.domain.agent.runtime.dto.Plan;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchChapter;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
@@ -155,11 +158,44 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         if (row == null) {
             return null;
         }
+        List<DeepSearchStage> stages = readStages(stringValue(row, "stages_json", "stagesJson"));
         return DeepSearchToolOutput.of(
                 stringValue(row, "query"),
                 stringValue(row, "answer_summary", "answerSummary"),
-                readStages(stringValue(row, "stages_json", "stagesJson"))
+                stages,
+                rebuildChapters(stages)
         );
+    }
+
+    private List<DeepSearchChapter> rebuildChapters(List<DeepSearchStage> stages) {
+        List<DeepSearchChapter> chapters = new ArrayList<>();
+        if (stages == null) {
+            return chapters;
+        }
+        for (DeepSearchStage stage : stages) {
+            if (stage == null || !"chapter_summary".equals(stage.getStage())) {
+                continue;
+            }
+            List<DeepSearchDoc> docs = new ArrayList<>();
+            if (stage.getResults() != null) {
+                for (DeepSearchQueryResult result : stage.getResults()) {
+                    if (result != null && result.getDocs() != null) {
+                        docs.addAll(result.getDocs());
+                    }
+                }
+            }
+            chapters.add(DeepSearchChapter.of(
+                    stage.getChapterId(),
+                    stage.getChapterTitle(),
+                    stage.getChapterContent(),
+                    stage.getChapterOrder(),
+                    stage.getQueries(),
+                    docs,
+                    stage.getChapterSummary(),
+                    "completed"
+            ));
+        }
+        return chapters;
     }
 
     private ToolStructuredOutput toFileToolOutput(Map<String, Object> row) {

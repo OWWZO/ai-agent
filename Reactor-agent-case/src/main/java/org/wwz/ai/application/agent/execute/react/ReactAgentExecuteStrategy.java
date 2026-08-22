@@ -21,6 +21,7 @@ import org.wwz.ai.application.agent.planmode.PlanApprovalResumeApplicationServic
 import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.service.execute.react.step.factory.DefaultReactAgentExecuteStrategyFactory;
 
 /**
@@ -110,7 +111,13 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
             }
             throw e;
         } finally {
-            activeAgentRunRegistry.end(request.getRequestId());
+            // 后台子 Agent 仍在跑时保留 ActiveRun，否则 /run/follow 无法续绑观察流。
+            if (!SessionBackgroundTaskHub.hasRunning(request.getSessionId())) {
+                activeAgentRunRegistry.end(request.getRequestId());
+            } else {
+                log.info("{} defer ActiveAgentRunRegistry.end: background tasks still running",
+                        request.getRequestId());
+            }
         }
     }
 

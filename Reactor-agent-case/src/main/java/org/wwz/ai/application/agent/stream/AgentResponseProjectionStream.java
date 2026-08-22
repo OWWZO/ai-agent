@@ -65,13 +65,17 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
     }
 
     public void rebindDownstream(AgentSessionStream next, long lastEventSeq) {
-        if (next == null || closed.get()) {
+        if (next == null) {
             return;
         }
         downstreamRef.set(next);
         wireDownstreamAbort(next);
         log.info("{} rebind projection downstream", request == null ? "-" : request.getRequestId());
-        replayBufferedFrames(next, lastEventSeq);
+        boolean wasClosed = closed.get();
+        replayBufferedFrames(next, lastEventSeq, wasClosed);
+        if (wasClosed && !next.isAborted()) {
+            next.complete();
+        }
     }
 
     @Override
@@ -189,6 +193,10 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
      * registry 暂无但 ledger 仍 RUNNING：提示前端继续退避重连，不要当任务结束。
      */
     public static GptProcessResult buildFollowPending(String requestId) {
+        return buildFollowPending(requestId, null);
+    }
+
+    public static GptProcessResult buildFollowPending(String requestId, Long retryMs) {
         GptProcessResult result = new GptProcessResult();
         result.setFinished(false);
         result.setStatus("success");
@@ -200,6 +208,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         result.setReqId(requestId);
         result.setPackageType("follow_pending");
         result.setEncrypted(false);
+        result.setRetryMs(retryMs);
         return result;
     }
 
@@ -223,7 +232,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         }
     }
 
-    private void replayBufferedFrames(AgentSessionStream next, long lastEventSeq) {
+    private void replayBufferedFrames(AgentSessionStream next, long lastEventSeq, boolean allowClosed) {
         List<GptProcessResult> snapshot;
         synchronized (bufferLock) {
             snapshot = new ArrayList<>(replayBuffer);
@@ -237,7 +246,7 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
             if (frame.getEventSeq() > 0 && frame.getEventSeq() <= lastEventSeq) {
                 continue;
             }
-            if (next.isAborted() || closed.get()) {
+            if (next.isAborted() || (!allowClosed && closed.get())) {
                 return;
             }
             try {

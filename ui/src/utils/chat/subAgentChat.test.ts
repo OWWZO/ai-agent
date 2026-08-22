@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatItemFromSubAgent } from "./subAgentChat";
+import { chatItemFromSubAgent, subAgentLiveRevision } from "./subAgentChat";
 import { deriveAgentProcessModel } from "@/components/Dialogue/agentProcessModel";
 import { resolveTaskSummaryText } from "@/components/Dialogue/contentHelpers";
 
@@ -116,6 +116,58 @@ describe("chatItemFromSubAgent", () => {
     expect(
       model.segments[1].type === "assistant_reply" && model.segments[1].text
     ).toBe("正在查看目录结构");
+  });
+
+  it("liveRevision changes when nested children grow or stream", () => {
+    const tool = agentTool({ children: [] });
+    const before = subAgentLiveRevision(tool);
+    tool.children = [
+      {
+        id: "read-1",
+        messageId: "read-1",
+        messageType: "tool_call",
+        resultMap: { toolName: "Read", status: "running" },
+        finish: false,
+        isFinal: false,
+      } as CHAT.Task,
+    ];
+    const afterAdd = subAgentLiveRevision(tool);
+    expect(afterAdd).not.toBe(before);
+    tool.children[0].toolThought = "正在读文件";
+    expect(subAgentLiveRevision(tool)).not.toBe(afterAdd);
+  });
+
+  it("does not inject heartbeat progress lines when nested tools already exist", () => {
+    const tool = agentTool({
+      resultMap: {
+        toolName: "Agent",
+        status: "running",
+        input: {
+          prompt: "scan ui/",
+          subagent_type: "Explore",
+        },
+        subAgentProgressLines: ["running · Explore · 调研媒体评论抓取 · 12s"],
+      },
+      children: [
+        {
+          id: "read-1",
+          messageId: "read-1",
+          messageType: "tool_call",
+          resultMap: {
+            toolName: "Read",
+            status: "running",
+          },
+          finish: false,
+          isFinal: false,
+        } as CHAT.Task,
+      ],
+    });
+
+    const chat = chatItemFromSubAgent(tool, parentChat());
+    const children = chat.tasks[0][0].children || [];
+    expect(children).toHaveLength(1);
+    expect(children[0].resultMap?.toolName).toBe("Read");
+    expect(children.some((child) => String(child.toolThought || "").includes("running ·"))).toBe(false);
   });
 
   it("does not inject liveText when nested tool_thought already exists", () => {

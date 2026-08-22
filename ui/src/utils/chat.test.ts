@@ -8,11 +8,13 @@ import {
   handleTaskData,
 } from "./chat";
 import {
+  buildDeepSearchChapterWorkspaceModel,
   buildDeepSearchPreviewModel,
   shouldRenderDeepSearchWorkspace,
 } from "./deepSearch";
 import { resolveTaskToolArg } from "@/components/Dialogue/tools/toolTaskAdapter";
 import { getPrimaryTaskFile } from "./taskArtifacts";
+import { chatItemFromSubAgent } from "./chat/subAgentChat";
 
 type DeepSearchStage = "extend" | "search" | "report";
 
@@ -569,7 +571,7 @@ describe("chat deep_search progress", () => {
       reportChildren.every((item) =>
         shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("会话快照重建会恢复左侧预览与右侧详情的阶段分工", () => {
@@ -611,6 +613,116 @@ describe("chat deep_search progress", () => {
     ).toBe(true);
   });
 
+  it("章节总结会挂到对应查询卡，工作区能看到该章 URL 与总结", () => {
+    const currentChat = {
+      sessionId: "session-1",
+      requestId: "req-1",
+      query: "原始问题",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createDeepSearchEvent("search"), currentChat);
+    combineData(
+      {
+        messageType: "task",
+        messageId: "msg-1",
+        taskId: "task-1",
+        taskOrder: 1,
+        messageOrder: 3,
+        resultMap: {
+          requestId: "req-1",
+          messageId: "msg-1",
+          messageType: "deep_search",
+          messageTime: "1714041600003",
+          finish: false,
+          isFinal: true,
+          resultMap: {
+            messageType: "chapter_summary",
+            requestId: "req-1",
+            isFinal: false,
+            chapterId: "C1",
+            chapterTitle: "子问题一",
+            chapterOrder: 1,
+            chapterSummary: "章节一的研究总结",
+            answer: "章节一的研究总结",
+            searchResult: {
+              query: ["子问题一"],
+              docs: [[createDoc("https://example.com/a", "结果A", "内容A")]],
+            },
+            fileInfo: [],
+          },
+        },
+      } as unknown as MESSAGE.EventData,
+      currentChat
+    );
+    combineData(
+      {
+        messageType: "task",
+        messageId: "msg-1",
+        taskId: "task-1",
+        taskOrder: 1,
+        messageOrder: 4,
+        resultMap: {
+          requestId: "req-1",
+          messageId: "msg-1",
+          messageType: "deep_search",
+          messageTime: "1714041600004",
+          finish: false,
+          isFinal: true,
+          resultMap: {
+            messageType: "chapter_summary",
+            requestId: "req-1",
+            isFinal: false,
+            chapterId: "C2",
+            chapterTitle: "子问题二",
+            chapterOrder: 2,
+            chapterSummary: "章节二的研究总结",
+            answer: "章节二的研究总结",
+            searchResult: {
+              query: ["子问题二"],
+              docs: [[createDoc("https://example.com/b", "结果B", "内容B")]],
+            },
+            fileInfo: [],
+          },
+        },
+      } as unknown as MESSAGE.EventData,
+      currentChat
+    );
+
+    const { currentChat: renderedChat, taskList } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+    const children = (renderedChat.tasks[0]?.[0]?.children || []).filter(
+      (item) => item.messageType === "deep_search" && item.resultMap?.messageType !== "report"
+    );
+    const previewModels = children.map((item) => buildDeepSearchPreviewModel(item));
+    const chapterModels = children.map((item) =>
+      buildDeepSearchChapterWorkspaceModel(item)
+    );
+
+    expect(children).toHaveLength(2);
+    expect(previewModels[0]?.query).toBe("子问题一");
+    expect(previewModels[1]?.query).toBe("子问题二");
+    expect(previewModels.every((item) => item?.stage === "chapter_summary")).toBe(true);
+    expect(chapterModels[0]).toMatchObject({
+      title: "子问题一",
+      summary: "章节一的研究总结",
+    });
+    expect(chapterModels[0]?.sources).toHaveLength(1);
+    expect(chapterModels[1]).toMatchObject({
+      title: "子问题二",
+      summary: "章节二的研究总结",
+    });
+    expect(taskList.filter((item) => item.resultMap?.messageType === "chapter_summary")).toHaveLength(2);
+  });
+
   it("report 阶段不会覆盖已有的搜索完成卡片", () => {
     const currentChat = {
       sessionId: "session-1",
@@ -639,6 +751,87 @@ describe("chat deep_search progress", () => {
     expect(previewModels[0]?.stage).toBe("search");
     expect(previewModels[1]?.stage).toBe("search");
     expect(previewModels[2]).toBeUndefined();
+  });
+
+  it("双层嵌套 resultMap 仍能拆出查询卡", () => {
+    const currentChat = createChatItem({
+      messageTime: "1714041600000",
+      taskId: "task-1",
+      messageType: "deep_search",
+      requestId: "req-1",
+      messageId: "msg-1",
+      resultMap: {
+        messageType: "deep_search",
+        resultMap: {
+          messageType: "search",
+          searchResult: {
+            query: ["子问题一", "子问题二"],
+            docs: [
+              [createDoc("https://example.com/a", "结果A", "内容A")],
+              [createDoc("https://example.com/b", "结果B", "内容B")],
+            ],
+          },
+        },
+      },
+    } as MESSAGE.Task);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+    expect(taskList).toHaveLength(2);
+    expect(taskList.map((task) => task.resultMap?.searchResult?.query?.[0])).toEqual([
+      "子问题一",
+      "子问题二",
+    ]);
+  });
+
+  it("部分章节先有检索结果时只把该卡切到 search，其余保持搜索中", () => {
+    const currentChat = createChatItem({
+      messageTime: "1714041600000",
+      taskId: "task-1",
+      messageType: "deep_search",
+      requestId: "req-1",
+      messageId: "msg-1",
+      resultMap: {
+        messageType: "search",
+        searchResult: {
+          query: ["子问题一", "子问题二"],
+          docs: [[createDoc("https://example.com/a", "结果A", "内容A")], []],
+        },
+      },
+    } as MESSAGE.Task);
+
+    const { currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+    const children = renderedChat.tasks[0]?.[0]?.children || [];
+    const previewModels = children.map((item) => buildDeepSearchPreviewModel(item));
+
+    expect(previewModels[0]?.stage).toBe("search");
+    expect(previewModels[0]?.resultCount).toBe(1);
+    expect(previewModels[1]?.stage).toBe("extend");
+    expect(previewModels[1]?.loading).toBe(true);
+  });
+
+  it("没有 query 时仍保留一张 deep_search 卡", () => {
+    const currentChat = createChatItem({
+      messageTime: "1714041600000",
+      taskId: "task-1",
+      messageType: "deep_search",
+      requestId: "req-1",
+      messageId: "msg-1",
+      resultMap: {
+        messageType: "search",
+        searchResult: {
+          query: [],
+          docs: [],
+        },
+      },
+    } as MESSAGE.Task);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+    expect(taskList).toHaveLength(1);
+    expect(taskList[0].messageType).toBe("deep_search");
   });
 
   it("deep_search 的稳定标识会区分 search 卡片和 report 卡片", () => {
@@ -1193,6 +1386,103 @@ describe("chat file task title", () => {
     expect(timelineChildren[0].children?.[0].resultMap?.toolName).toBe("workspace_grep");
   });
 
+  it("实时双层 resultMap 的 Agent tool_call 应识别父卡并挂上子工具与 prompt", () => {
+    const currentChat = {
+      sessionId: "session-subagent-live-wrap-1",
+      requestId: "req-subagent-live-wrap-1",
+      query: "调研媒体",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData({
+      messageType: "task",
+      messageId: "agent-live-1",
+      taskId: "task-live-wrap-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        requestId: "req-subagent-live-wrap-1",
+        messageId: "agent-live-1",
+        messageType: "tool_call",
+        messageTime: "1714041600555",
+        finish: false,
+        isFinal: false,
+        resultMap: {
+          agentType: 5,
+          messageType: "tool_call",
+          resultMap: {
+            messageType: "tool_call",
+            status: "running",
+            toolName: "Agent",
+            toolCallId: "parent-agent-live",
+            input: {
+              description: "调研主流媒体评论抓取",
+              prompt: "抓取主流媒体评论并总结",
+              subagent_type: "Explore",
+            },
+          },
+        },
+      },
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "child-live-grep",
+      taskId: "task-live-wrap-1",
+      taskOrder: 1,
+      messageOrder: 2,
+      resultMap: {
+        requestId: "req-subagent-live-wrap-1",
+        messageId: "child-live-grep",
+        messageType: "tool_call",
+        messageTime: "1714041600666",
+        finish: false,
+        isFinal: false,
+        parentToolUseId: "parent-agent-live",
+        resultMap: {
+          agentType: 5,
+          messageType: "tool_call",
+          parentToolUseId: "parent-agent-live",
+          resultMap: {
+            messageType: "tool_call",
+            status: "running",
+            toolName: "workspace_grep",
+            toolCallId: "child-grep-live",
+            parentToolUseId: "parent-agent-live",
+            input: { pattern: "评论" },
+          },
+        },
+      },
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const { taskList, currentChat: renderedChat } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+
+    expect(taskList).toHaveLength(1);
+    const agent = renderedChat.tasks[0]?.[0]?.children?.[0];
+    expect(agent?.resultMap?.toolName).toBe("Agent");
+    expect(agent?.resultMap?.input).toMatchObject({
+      prompt: "抓取主流媒体评论并总结",
+      description: "调研主流媒体评论抓取",
+    });
+    expect(agent?.children).toHaveLength(1);
+    expect(agent?.children?.[0].resultMap?.toolName).toBe("workspace_grep");
+
+    const panelChat = chatItemFromSubAgent(agent as CHAT.Task, renderedChat);
+    expect(panelChat.query).toBe("抓取主流媒体评论并总结");
+    expect(panelChat.tasks[0][0].children?.[0].resultMap?.toolName).toBe(
+      "workspace_grep"
+    );
+  });
+
   it("子事件先于父 Agent 时仍应嵌套，不进主时间线", () => {
     const currentChat = {
       sessionId: "session-subagent-order-1",
@@ -1406,6 +1696,168 @@ describe("chat file task title", () => {
     expect(taskList).toHaveLength(0);
     const timelineChildren = renderedChat.tasks[0]?.[0]?.children || [];
     expect(timelineChildren).toHaveLength(0);
+  });
+
+  it("后台 Agent 二次 tool_result 应覆盖 observation 并离开 running", () => {
+    const currentChat = {
+      sessionId: "session-bg-settle-1",
+      requestId: "req-bg-settle-1",
+      query: "后台探索",
+      files: [],
+      forceStop: false,
+      loading: false,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createToolCallEvent({
+      messageId: "bg-agent-call",
+      taskId: "task-bg-1",
+      toolCallId: "bg-agent-call",
+      toolName: "Agent",
+      input: {
+        description: "后台探查",
+        prompt: "scan",
+        subagent_type: "Explore",
+        run_in_background: true,
+      },
+      status: "running",
+    }), currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "bg-agent-call",
+      taskId: "task-bg-1",
+      taskOrder: 1,
+      messageOrder: 2,
+      resultMap: {
+        messageType: "tool_result",
+        messageId: "bg-agent-call",
+        messageTime: "1714041600500",
+        isFinal: true,
+        finish: true,
+        run_in_background: true,
+        toolResult: {
+          toolName: "Agent",
+          toolCallId: "bg-agent-call",
+          toolParam: {
+            description: "后台探查",
+            prompt: "scan",
+            subagent_type: "Explore",
+            run_in_background: true,
+          },
+          toolResult: JSON.stringify({
+            status: "running",
+            run_in_background: true,
+            description: "后台探查",
+          }),
+        },
+      },
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    combineData({
+      messageType: "task",
+      messageId: "bg-agent-call",
+      taskId: "task-bg-1",
+      taskOrder: 1,
+      messageOrder: 3,
+      resultMap: {
+        messageType: "tool_result",
+        messageId: "bg-agent-call",
+        messageTime: "1714041600999",
+        isFinal: true,
+        finish: true,
+        run_in_background: true,
+        status: "success",
+        toolResult: {
+          toolName: "Agent",
+          toolCallId: "bg-agent-call",
+          toolParam: {
+            description: "后台探查",
+            prompt: "scan",
+            subagent_type: "Explore",
+            run_in_background: true,
+          },
+          toolResult: JSON.stringify({
+            status: "completed",
+            run_in_background: true,
+            description: "后台探查",
+            content: "探查完成",
+            totalDurationMs: 1200,
+          }),
+        },
+      },
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    const { taskList } = handleTaskData(
+      currentChat,
+      false,
+      currentChat.multiAgent
+    );
+    expect(taskList).toHaveLength(1);
+    const observation = String(
+      taskList[0].toolResult?.toolResult || taskList[0].resultMap?.toolResult || ""
+    );
+    expect(observation).toContain("completed");
+    expect(observation).not.toContain("\"status\":\"running\"");
+  });
+
+  it("subagent_progress 先于父 Agent 卡到达时暂存，父卡出现后再挂上", () => {
+    const currentChat = {
+      sessionId: "session-progress-pending-1",
+      requestId: "req-progress-pending-1",
+      query: "探索代码",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData({
+      messageType: "task",
+      messageId: "prog-early-1",
+      taskId: "task-progress-pending-1",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        messageType: "subagent_progress",
+        messageId: "prog-early-1",
+        messageTime: "1714041600400",
+        kind: "heartbeat",
+        phase: "working",
+        status: "running",
+        parentToolUseId: "parent-agent-pending",
+        agentId: "sub-pending-1",
+        agentType: "Explore",
+        description: "搜索 API",
+        elapsedMs: 1200,
+      } as unknown as MESSAGE.Task,
+    } as unknown as MESSAGE.EventData, currentChat);
+
+    expect(currentChat.multiAgent.tasks).toHaveLength(0);
+
+    combineData(createToolCallEvent({
+      messageId: "parent-agent-pending",
+      taskId: "task-progress-pending-1",
+      toolCallId: "parent-agent-pending",
+      toolName: "Agent",
+      input: {
+        description: "搜索 API",
+        prompt: "find endpoints",
+        subagent_type: "Explore",
+      },
+      status: "running",
+    }), currentChat);
+
+    const parentFact = currentChat.multiAgent.tasks[0]?.find(
+      (task) =>
+        (task.resultMap?.toolCallId || task.messageId) === "parent-agent-pending"
+    );
+    expect(parentFact?.resultMap?.subAgentProgressLines?.length).toBeGreaterThan(0);
+    expect(parentFact?.resultMap?.parentToolUseId).toBeUndefined();
   });
 
   it("subagent_progress 后父 Agent 仍留在 taskList，且不写入自身 parentToolUseId", () => {

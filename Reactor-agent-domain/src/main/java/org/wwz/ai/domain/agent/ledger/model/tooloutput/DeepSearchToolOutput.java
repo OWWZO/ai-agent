@@ -21,11 +21,25 @@ public class DeepSearchToolOutput implements ToolStructuredOutput {
 
     private List<DeepSearchStage> stages = new ArrayList<>();
 
+    private List<DeepSearchChapter> chapters = new ArrayList<>();
+
     /**
      * 统一工厂，避免运行时依赖 Lombok Builder 内部类。
      */
     public static DeepSearchToolOutput of(String query, String answerSummary, List<DeepSearchStage> stages) {
-        return new DeepSearchToolOutput(query, answerSummary, stages == null ? new ArrayList<>() : new ArrayList<>(stages));
+        return of(query, answerSummary, stages, null);
+    }
+
+    public static DeepSearchToolOutput of(String query,
+                                          String answerSummary,
+                                          List<DeepSearchStage> stages,
+                                          List<DeepSearchChapter> chapters) {
+        return new DeepSearchToolOutput(
+                query,
+                answerSummary,
+                stages == null ? new ArrayList<>() : new ArrayList<>(stages),
+                chapters == null ? new ArrayList<>() : new ArrayList<>(chapters)
+        );
     }
 
     @Override

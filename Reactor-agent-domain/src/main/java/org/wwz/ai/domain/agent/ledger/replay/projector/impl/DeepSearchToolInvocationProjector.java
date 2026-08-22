@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * deep_search projector。
  */
 /**
- * DeepSearch 工具的历史回放投影器，恢复搜索阶段、查询结果和引用信息。
+ * DeepSearch 工具的历史回放投影器，恢复搜索阶段、章节总结、查询结果和引用信息。
  */
 public class DeepSearchToolInvocationProjector extends AbstractToolInvocationProjector {
 
@@ -49,6 +49,7 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
             Map<String, Object> resultMap = switch (stageType) {
                 case "extend" -> buildExtendResult(output, stage);
                 case "search" -> buildSearchResult(output, stage);
+                case "chapter_summary" -> buildChapterSummaryResult(output, stage);
                 case "report" -> buildReportResult(output, stage);
                 default -> Map.of();
             };
@@ -108,6 +109,52 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
                 docList.add(docMap);
             }
             docs.add(docList);
+        }
+        Map<String, Object> searchResult = new LinkedHashMap<>();
+        searchResult.put("query", queries);
+        searchResult.put("docs", docs);
+        resultMap.put("searchResult", searchResult);
+        return resultMap;
+    }
+
+    private Map<String, Object> buildChapterSummaryResult(DeepSearchToolOutput output, DeepSearchStage stage) {
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        resultMap.put("messageType", "chapter_summary");
+        resultMap.put("isFinal", true);
+        resultMap.put("searchFinish", true);
+        resultMap.put("query", output.getQuery());
+        resultMap.put("chapterId", StringUtils.defaultString(stage.getChapterId()));
+        resultMap.put("chapterTitle", StringUtils.defaultString(stage.getChapterTitle()));
+        resultMap.put("chapterContent", StringUtils.defaultString(stage.getChapterContent(), stage.getChapterTitle()));
+        resultMap.put("chapterOrder", stage.getChapterOrder());
+        resultMap.put("chapterSummary", StringUtils.defaultString(stage.getChapterSummary()));
+        resultMap.put("answer", StringUtils.defaultString(stage.getChapterSummary()));
+
+        List<String> queries = stage.getQueries() == null ? new ArrayList<>() : new ArrayList<>(stage.getQueries());
+        List<List<Map<String, Object>>> docs = new ArrayList<>();
+        if (stage.getResults() != null) {
+            for (DeepSearchQueryResult item : stage.getResults()) {
+                if (item == null) {
+                    continue;
+                }
+                if (!queries.contains(StringUtils.defaultString(item.getQuery()))) {
+                    queries.add(StringUtils.defaultString(item.getQuery()));
+                }
+                List<Map<String, Object>> docList = new ArrayList<>();
+                for (DeepSearchDoc doc : item.getDocs()) {
+                    if (doc == null) {
+                        continue;
+                    }
+                    Map<String, Object> docMap = new LinkedHashMap<>();
+                    docMap.put("title", StringUtils.defaultString(doc.getTitle()));
+                    docMap.put("link", StringUtils.defaultString(doc.getLink()));
+                    if (StringUtils.isNotBlank(doc.getSummary())) {
+                        docMap.put("content", doc.getSummary());
+                    }
+                    docList.add(docMap);
+                }
+                docs.add(docList);
+            }
         }
         Map<String, Object> searchResult = new LinkedHashMap<>();
         searchResult.put("query", queries);

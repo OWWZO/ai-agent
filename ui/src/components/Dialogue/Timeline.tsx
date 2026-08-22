@@ -593,18 +593,21 @@ const TimelineTaskBlock: FC<{
   const digitalEmployee = resolveDigitalEmployee(task);
   const taskCompleted = isTimelineTaskContainerCompleted(task);
   const hasActiveChild = children.some((tool) => isTimelineToolActive(tool));
+  const hasDeepSearchChild = children.some(
+    (tool) => tool.messageType === "deep_search"
+  );
   const canCollapse = children.length > 1 && taskCompleted && !hasActiveChild;
   const [expanded, setExpanded] = useState(() => !canCollapse);
 
   useEffect(() => {
     // active 子工具优先级高于完成后的默认折叠：实时事件到达时展开，整组完成且
-    // 没有活动子项时收起。这里同步的是展示状态，不会修改后端任务数据。
-    if (hasActiveChild) {
+    // 没有活动子项时收起。deep_search 查询卡保持展开，避免来源和章节总结被吞掉。
+    if (hasActiveChild || hasDeepSearchChild) {
       setExpanded(true);
     } else if (canCollapse) {
       setExpanded(false);
     }
-  }, [canCollapse, hasActiveChild]);
+  }, [canCollapse, hasActiveChild, hasDeepSearchChild]);
 
   return (
     <div

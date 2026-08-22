@@ -15,6 +15,7 @@ import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
 import org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalObservationSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRecord;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalResumeContext;
@@ -119,7 +120,12 @@ public class PlanApprovalResumeApplicationService {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             planApprovalRepository.markAnswered(record.getApprovalId());
-            projectingStream.complete();
+            if (!SessionBackgroundTaskHub.hasRunning(agentRequest.getSessionId())) {
+                projectingStream.complete();
+            } else {
+                log.info("{} defer projection complete after plan-approval resume: background running",
+                        agentRequest.getRequestId());
+            }
         } catch (Exception e) {
             log.error("{} plan-approval resume failed approvalId={}",
                     agentRequest.getRequestId(), record.getApprovalId(), e);

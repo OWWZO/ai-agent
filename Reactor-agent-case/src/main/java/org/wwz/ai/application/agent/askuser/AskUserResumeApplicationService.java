@@ -19,6 +19,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.executor.AgentExecutorSupport;
 import org.wwz.ai.domain.agent.runtime.handler.AgentResponseHandler;
+import org.wwz.ai.domain.agent.runtime.tasklist.SessionBackgroundTaskHub;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.exception.AgentExecutorBusyException;
 import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
@@ -122,7 +123,12 @@ public class AskUserResumeApplicationService {
         try {
             agentDispatchService.dispatch(agentRequest, projectingStream);
             userQuestionRepository.markAnswered(record.getQuestionId());
-            projectingStream.complete();
+            if (!SessionBackgroundTaskHub.hasRunning(agentRequest.getSessionId())) {
+                projectingStream.complete();
+            } else {
+                log.info("{} defer projection complete after ask-user resume: background running",
+                        agentRequest.getRequestId());
+            }
         } catch (Exception e) {
             log.error("{} ask-user resume failed questionId={}",
                     agentRequest.getRequestId(), record.getQuestionId(), e);

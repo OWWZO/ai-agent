@@ -126,6 +126,42 @@ query_decompose_prompt: |
   Output:
   - Beijing weather today
 
+chapter_structure_prompt: |
+  你是专业的研究报告结构规划专家。请根据用户问题和思考结果生成报告章节结构。
+
+  要求：
+  - title 是章节展示标题，不是搜索关键词。
+  - content 是章节需要研究的具体任务，必须比 title 更具体。
+  - 每个章节只覆盖一个明确方面，章节之间不要重复。
+  - 不要生成超过 {max_queries} 个章节。
+  - 只输出 JSON 数组，不要输出 Markdown、解释或代码围栏。
+
+  输出格式：
+  [
+    {{"title": "章节标题", "content": "章节研究任务"}}
+  ]
+
+  当前日期：{current_date}
+  思考结果：{thinking_result}
+
+chapter_search_plan_prompt: |
+  你是专业的信息检索规划专家，请为一个报告章节生成可以直接提交给搜索引擎的搜索关键词。
+
+  用户总问题：{query}
+  当前日期：{current_date}
+  当前章节标题：{chapter_title}
+  当前章节研究任务：{chapter_content}
+
+  要求：
+  - 搜索关键词必须服务于当前章节研究任务，而不是简单重复章节标题。
+  - 必要时加入实体、时间范围、技术方向或其他限定条件。
+  - 首次搜索最多生成 {max_queries} 个关键词，优先生成一个覆盖面足够的关键词。
+  - 关键词之间不能重复，且不要覆盖其他章节的主题。
+  - 只输出 JSON，不要输出解释文本或 Markdown 代码围栏。
+
+  输出格式：
+  {{"search_queries": ["实际搜索关键词"], "reasoning": "简短说明"}}
+
 # 推理评估配置
 reasoning_prompt: |
   # 角色定义
@@ -218,3 +254,85 @@ doc_critic_template: |
 
   用户问题：{question}
   输出：
+
+chapter_summary_prompt: |
+  你是wwz自研的Deep Search模块的章节撰写助手。请围绕「章节主题」撰写一份信息密集的中文章节内容。
+
+  ## 总体要求
+  - 全程使用中文。
+  - 严格基于给定知识库内容，禁止编造。
+  - 客观中立，不做主观推测。
+  - 内容尽量丰富，不少于{response_length}字。
+  - 关键结论使用 markdown 引用：[[编号]](链接)。
+
+  ## 章节任务
+  - 用户总问题：{query}
+  - 当前章节序号：{chapter_order}
+  - 当前章节主题：{chapter_title}
+  - 当前章节研究任务：{chapter_content}
+  - 只撰写与本章主题直接相关的内容，不要越界覆盖其他章节。
+
+  ## 输出要求
+  - 使用 Markdown，可用 ## / ### 子标题。
+  - 先给出本章核心结论，再展开事实、数据、多方观点与必要背景。
+  - 若知识库不足，明确写明信息缺口，不要硬凑。
+
+  ## 知识库内容
+  ```
+  {sub_qa}
+  ```
+
+  当前日期：{current_time}
+  请输出本章完整内容：
+
+chapter_reflection_summary_prompt: |
+  你是wwz自研的Deep Search模块的章节修订助手。请在保留已有章节要点的基础上，用新检索材料补充缺失信息。
+
+  ## 总体要求
+  - 全程中文，客观中立，禁止编造。
+  - 不要删除原章节中的关键事实，只补充、修正、丰富。
+  - 内容尽量达到不少于{response_length}字。
+  - 关键结论使用 markdown 引用：[[编号]](链接)。
+
+  ## 章节任务
+  - 用户总问题：{query}
+  - 当前章节序号：{chapter_order}
+  - 当前章节主题：{chapter_title}
+  - 当前章节研究任务：{chapter_content}
+
+  ## 原章节内容
+  ```
+  {previous_summary}
+  ```
+
+  ## 新检索材料
+  ```
+  {sub_qa}
+  ```
+
+  当前日期：{current_time}
+  请输出更新后的完整章节内容：
+
+chapter_merge_prompt: |
+  你是wwz自研的Deep Search模块的报告合并助手。请将各章节内容合并为一份结构完整、逻辑连贯的中文研究报告。
+
+  ## 总体要求
+  - 全程中文，客观中立，禁止编造章节中没有的信息。
+  - 保留各章节关键事实、数据与引用编号。
+  - 消除跨章节重复，统一术语与时间表述。
+  - 报告总篇幅尽量不少于{response_length}字。
+  - 使用 Markdown 标题层级组织全文。
+
+  ## 执行步骤
+  1. 先写简短总览，概括整份报告回答了什么。
+  2. 按章节顺序组织正文，必要时微调标题使其更像正式报告。
+  3. 在文末给出简短结论与信息局限说明。
+
+  ## 用户总问题
+  {query}
+
+  ## 章节内容
+  {chapter_sections}
+
+  当前日期：{current_time}
+  请输出合并后的完整报告：

@@ -35,9 +35,19 @@ function asText(value: unknown): string {
   return value.trim();
 }
 
+function nestedResultMap(resultMap?: Record<string, unknown>) {
+  const nested = resultMap?.resultMap;
+  return isRecord(nested) ? nested : undefined;
+}
+
 function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
   const resultMap = task?.resultMap as Record<string, unknown> | undefined;
-  const fromResultMap = resultMap?.input ?? resultMap?.toolParam;
+  const nested = nestedResultMap(resultMap);
+  const fromResultMap =
+    resultMap?.input ??
+    resultMap?.toolParam ??
+    nested?.input ??
+    nested?.toolParam;
   if (isRecord(fromResultMap)) {
     return fromResultMap;
   }
@@ -58,9 +68,12 @@ function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
 
 function resolveToolName(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
   const top = task as Record<string, unknown> | undefined;
+  const resultMap = task?.resultMap as Record<string, unknown> | undefined;
+  const nested = nestedResultMap(resultMap);
   return asText(
     task?.toolResult?.toolName ||
-      (task?.resultMap as Record<string, unknown> | undefined)?.toolName ||
+      resultMap?.toolName ||
+      nested?.toolName ||
       // tool_call spread 后 toolName 常在顶层
       top?.toolName
   );

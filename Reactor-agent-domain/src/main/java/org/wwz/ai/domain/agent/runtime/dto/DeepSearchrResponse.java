@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * DeepSearch 工具响应模型，承载搜索阶段结果和最终摘要。
+ * DeepSearch 工具响应模型，承载搜索阶段结果、章节总结和最终摘要。
  */
 @Data
 @Builder
@@ -21,8 +21,14 @@ public class DeepSearchrResponse {
     private SearchResult searchResult;
     private Boolean isFinal;
     private Boolean searchFinish; // 搜索结果是否结束
-    private String messageType; // extend、search、report
+    private String messageType; // extend、search、chapter_summary、report
     private String toolCallId;
+    private String chapterId;
+    private String chapterTitle;
+    private String chapterContent;
+    private Integer chapterOrder;
+    private String chapterSummary;
+    private Boolean chapterStreaming;
 
     @Data
     @Builder

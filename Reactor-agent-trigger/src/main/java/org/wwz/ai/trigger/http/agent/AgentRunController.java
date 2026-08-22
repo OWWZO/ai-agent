@@ -14,6 +14,7 @@ import org.wwz.ai.api.response.Response;
 import org.wwz.ai.application.agent.run.AgentRunFollowApplicationService;
 import org.wwz.ai.application.agent.run.AgentRunInjectApplicationService;
 import org.wwz.ai.application.agent.run.AgentRunStopApplicationService;
+import org.wwz.ai.application.agent.run.FollowAttachResult;
 import org.wwz.ai.application.agent.stream.AgentResponseProjectionStream;
 import org.wwz.ai.trigger.http.agent.vo.AgentRunFollowReqVO;
 import org.wwz.ai.trigger.http.agent.vo.AgentRunInjectReqVO;
@@ -25,9 +26,13 @@ import org.wwz.ai.types.agent.config.AgentExecutorProperties;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import javax.annotation.Resource;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Agent 运行控制入口。
@@ -39,6 +44,9 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/agent/run")
 public class AgentRunController {
+
+    private static final long FOLLOW_PARK_INTERVAL_MS = 200L;
+    private static final int FOLLOW_PARK_MAX_TICKS = 50;
 
     @Resource
     private AgentRunStopApplicationService agentRunStopApplicationService;
@@ -120,6 +128,7 @@ public class AgentRunController {
     /**
      * 刷新后续绑仍在后台执行的 run：不重跑 Agent，只替换浏览器 SSE 观察流。
      * 若 run 已结束，推送 follow_idle 后关闭连接。
+     * ledger 仍 RUNNING 但 registry 暂缺时挂住 SSE 短轮询，避免 follow_pending 空转。
      * <p>先 follow 再启心跳：idle 立即 complete 时不会留下打到已关闭 emitter 的心跳任务。</p>
      */
     @PostMapping(value = "/follow", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -140,18 +149,22 @@ public class AgentRunController {
         SseEmitter emitter = SseLifecycleSupport.createLongLivedEmitter();
         SseEmitterAgentSessionStream stream = new SseEmitterAgentSessionStream(emitter);
         try {
-            boolean attached = agentRunFollowApplicationService.follow(
+            FollowAttachResult result = agentRunFollowApplicationService.follow(
                     sessionId, requestId, req.getLastEventSeq(), stream);
-            if (attached) {
+            if (result == FollowAttachResult.ATTACHED || result == FollowAttachResult.PENDING) {
                 ScheduledFuture<?> heartbeatFuture = SseLifecycleSupport.startHeartbeat(
                         heartbeatScheduler,
                         emitter,
+                        stream,
                         requestId,
                         agentExecutorProperties.getHeartbeat().getIntervalMillis(),
                         log,
                         AgentResponseProjectionStream.buildHeartbeat(requestId)
                 );
                 SseLifecycleSupport.registerLifecycle(emitter, requestId, heartbeatFuture, log);
+                if (result == FollowAttachResult.PENDING) {
+                    parkFollow(sessionId, requestId, req.getLastEventSeq(), stream);
+                }
             }
         } catch (Exception e) {
             log.error("{} follow bootstrap error", requestId, e);
@@ -162,5 +175,38 @@ public class AgentRunController {
             }
         }
         return emitter;
+    }
+
+    private void parkFollow(String sessionId,
+                            String requestId,
+                            long lastEventSeq,
+                            SseEmitterAgentSessionStream stream) {
+        AtomicInteger ticks = new AtomicInteger();
+        AtomicReference<ScheduledFuture<?>> futureRef = new AtomicReference<>();
+        ScheduledFuture<?> future = heartbeatScheduler.scheduleAtFixedRate(() -> {
+            if (stream.isAborted()) {
+                cancelPark(futureRef);
+                return;
+            }
+            FollowAttachResult result = agentRunFollowApplicationService.retryAttach(
+                    sessionId, requestId, lastEventSeq, stream);
+            if (result == FollowAttachResult.ATTACHED || result == FollowAttachResult.IDLE) {
+                cancelPark(futureRef);
+                return;
+            }
+            if (ticks.incrementAndGet() >= FOLLOW_PARK_MAX_TICKS) {
+                agentRunFollowApplicationService.completePending(stream, requestId);
+                cancelPark(futureRef);
+            }
+        }, Instant.now().plusMillis(FOLLOW_PARK_INTERVAL_MS), Duration.ofMillis(FOLLOW_PARK_INTERVAL_MS));
+        futureRef.set(future);
+        stream.onAbort(() -> cancelPark(futureRef));
+    }
+
+    private static void cancelPark(AtomicReference<ScheduledFuture<?>> futureRef) {
+        ScheduledFuture<?> future = futureRef.getAndSet(null);
+        if (future != null) {
+            future.cancel(false);
+        }
     }
 }

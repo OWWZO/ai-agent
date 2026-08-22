@@ -34,32 +34,32 @@ public class DeepSearchBuilderCompatibilityTest {
         Method recordFinalAnswer = builderClass.getMethod("recordFinalAnswer", String.class, String.class);
         Method buildPayload = builderClass.getMethod("buildPayload", String.class);
 
-        Object searchDoc = searchDocClass.getConstructor(String.class, String.class, String.class, String.class)
-                .newInstance("web", repeat("出口量持续增长，", 12), "海关总署：出口量创新高", "https://example.com/customs");
-        Object extendEvent = responseClass
-                .getConstructor(String.class, String.class, String.class, searchResultClass, Boolean.class, Boolean.class, String.class)
-                .newInstance(
-                        null,
-                        "新能源车出口趋势",
-                        null,
-                        searchResultClass.getConstructor(List.class, List.class)
-                                .newInstance(List.of("中国新能源车出口数据"), null),
-                        Boolean.FALSE,
-                        Boolean.FALSE,
-                        "extend"
-                );
-        Object searchEvent = responseClass
-                .getConstructor(String.class, String.class, String.class, searchResultClass, Boolean.class, Boolean.class, String.class)
-                .newInstance(
-                        null,
-                        "新能源车出口趋势",
-                        null,
-                        searchResultClass.getConstructor(List.class, List.class)
-                                .newInstance(List.of("中国新能源车出口数据"), List.of(List.of(searchDoc))),
-                        Boolean.FALSE,
-                        Boolean.FALSE,
-                        "search"
-                );
+        Object searchDoc = searchDocClass.getDeclaredConstructor().newInstance();
+        invokeSetter(searchDocClass, searchDoc, "setDoc_type", String.class, "web");
+        invokeSetter(searchDocClass, searchDoc, "setContent", String.class, repeat("出口量持续增长，", 12));
+        invokeSetter(searchDocClass, searchDoc, "setTitle", String.class, "海关总署：出口量创新高");
+        invokeSetter(searchDocClass, searchDoc, "setLink", String.class, "https://example.com/customs");
+
+        Object searchResultExtend = searchResultClass.getDeclaredConstructor().newInstance();
+        invokeSetter(searchResultClass, searchResultExtend, "setQuery", List.class, List.of("中国新能源车出口数据"));
+
+        Object extendEvent = responseClass.getDeclaredConstructor().newInstance();
+        invokeSetter(responseClass, extendEvent, "setQuery", String.class, "新能源车出口趋势");
+        invokeSetter(responseClass, extendEvent, "setSearchResult", searchResultClass, searchResultExtend);
+        invokeSetter(responseClass, extendEvent, "setIsFinal", Boolean.class, Boolean.FALSE);
+        invokeSetter(responseClass, extendEvent, "setSearchFinish", Boolean.class, Boolean.FALSE);
+        invokeSetter(responseClass, extendEvent, "setMessageType", String.class, "extend");
+
+        Object searchResult = searchResultClass.getDeclaredConstructor().newInstance();
+        invokeSetter(searchResultClass, searchResult, "setQuery", List.class, List.of("中国新能源车出口数据"));
+        invokeSetter(searchResultClass, searchResult, "setDocs", List.class, List.of(List.of(searchDoc)));
+
+        Object searchEvent = responseClass.getDeclaredConstructor().newInstance();
+        invokeSetter(responseClass, searchEvent, "setQuery", String.class, "新能源车出口趋势");
+        invokeSetter(responseClass, searchEvent, "setSearchResult", searchResultClass, searchResult);
+        invokeSetter(responseClass, searchEvent, "setIsFinal", Boolean.class, Boolean.FALSE);
+        invokeSetter(responseClass, searchEvent, "setSearchFinish", Boolean.class, Boolean.FALSE);
+        invokeSetter(responseClass, searchEvent, "setMessageType", String.class, "search");
 
         recordEvent.invoke(builder, extendEvent);
         recordEvent.invoke(builder, searchEvent);
@@ -71,6 +71,12 @@ public class DeepSearchBuilderCompatibilityTest {
 
         Assert.assertNotNull(getStructuredOutput.invoke(payload));
         Assert.assertTrue(String.valueOf(getLlmObservation.invoke(payload)).contains("中国新能源车出口数据"));
+    }
+
+    private static void invokeSetter(Class<?> type, Object target, String methodName, Class<?> argType, Object value)
+            throws Exception {
+        Method method = type.getMethod(methodName, argType);
+        method.invoke(target, value);
     }
 
     private static String repeat(String part, int count) {
@@ -90,7 +96,8 @@ public class DeepSearchBuilderCompatibilityTest {
                 "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage$DeepSearchStageBuilder",
                 "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput$DeepSearchToolOutputBuilder",
                 "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult$DeepSearchQueryResultBuilder",
-                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc$DeepSearchDocBuilder"
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc$DeepSearchDocBuilder",
+                "org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchChapter$DeepSearchChapterBuilder"
         ));
 
         private static final List<String> CHILD_FIRST_PREFIXES = List.of(

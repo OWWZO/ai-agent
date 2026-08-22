@@ -28,6 +28,7 @@ export function pickFirstText(...values: unknown[]) {
 
 export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
   // 新旧事件分别使用 input/toolParam；只接受普通对象，避免数组或 null 被误当成参数映射。
+  // 实时 SSE 经 AgentSessionPrinter 多包一层 resultMap，入参常在 nested.input。
   const input = resultMap?.input;
   if (isRecord(input)) {
     return input;
@@ -36,6 +37,18 @@ export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
   const toolParam = resultMap?.toolParam;
   if (isRecord(toolParam)) {
     return toolParam;
+  }
+
+  const nested = isRecord(resultMap?.resultMap)
+    ? (resultMap.resultMap as MESSAGE.ResultMap)
+    : undefined;
+  if (nested && nested !== resultMap) {
+    if (isRecord(nested.input)) {
+      return nested.input;
+    }
+    if (isRecord(nested.toolParam)) {
+      return nested.toolParam;
+    }
   }
 
   return {};

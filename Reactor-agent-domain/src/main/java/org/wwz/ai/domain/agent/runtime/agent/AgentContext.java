@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Agent 运行时上下文：请求身份、工具会话、记忆、账本与取消控制。
@@ -337,6 +338,16 @@ public class AgentContext {
     RunCancellation runCancellation;
 
     /**
+     * 父 run 是否已 finishRun（SUCCESS/FAILED/STOPPED/WAITING_INPUT）。
+     * 后台子 Agent 结束时只有这项为 true 才允许 stream_settle / registry.end。
+     */
+    @Builder.Default
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @JSONField(serialize = false)
+    AtomicBoolean turnClosed = new AtomicBoolean(false);
+
+    /**
      * 运行中用户/协调注入队列（控制面；与 ActiveRun 共享同一实例）。
      */
     @ToString.Exclude
@@ -402,6 +413,18 @@ public class AgentContext {
             planModeState = PlanModeState.builder().build();
         }
         return planModeState;
+    }
+
+    public void markTurnClosed() {
+        if (turnClosed == null) {
+            turnClosed = new AtomicBoolean(true);
+            return;
+        }
+        turnClosed.set(true);
+    }
+
+    public boolean isTurnClosed() {
+        return turnClosed != null && turnClosed.get();
     }
 
     public boolean isRunCancelled() {
