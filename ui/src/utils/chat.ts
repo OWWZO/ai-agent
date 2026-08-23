@@ -103,17 +103,18 @@ function applyContextUsage(
 ) {
   // context_usage 经 BaseAgentResponseHandler default 分支会再包一层 resultMap，
   // 同时兼容扁平结构（历史/测试）与嵌套结构（实时 SSE）。
-  const outer = (eventData.resultMap || {}) as Record<string, unknown>;
-  const nested =
-    outer.resultMap && isRecord(outer.resultMap)
-      ? (outer.resultMap as Record<string, unknown>)
-      : undefined;
-  const map: Record<string, unknown> = nested
-    ? {
-      ...outer,
-      ...nested,
+  const outer = (eventData.resultMap || {}) as unknown as Record<string, unknown>;
+  const map: Record<string, unknown> = { ...outer };
+  let current = outer;
+  // 实时链路可能同时经过 AgentSessionPrinter 和响应 handler，resultMap 会被包两层。
+  // 逐层合并，避免能识别事件类型但取不到实际 token 数值。
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!isRecord(current.resultMap)) {
+      break;
     }
-    : outer;
+    current = current.resultMap;
+    Object.assign(map, current);
+  }
   const num = (k: string) => {
     const v = map[k];
     return typeof v === "number" && Number.isFinite(v) ? v : 0;
@@ -123,7 +124,7 @@ function applyContextUsage(
     tools: num("tools"),
     history: num("history"),
     files: num("files"),
-    max: Math.max(1, num("max") || 128000),
+    max: Math.max(1, num("max") || 100000),
     used: num("used") || num("sys") + num("tools") + num("history") + num("files"),
     promptTokens:
       typeof map.promptTokens === "number" ? map.promptTokens : undefined,

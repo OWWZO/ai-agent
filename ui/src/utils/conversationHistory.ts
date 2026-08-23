@@ -108,6 +108,9 @@ function hydrateRun(
     currentChat.tip = "需要你的帮助";
     currentChat.loading = false;
   }
+  if (run.contextUsage) {
+    currentChat.contextUsage = { ...run.contextUsage };
+  }
 
   return buildConversationTaskData(currentChat, detail.deepThink).currentChat;
 }

@@ -55,6 +55,18 @@ export interface ConversationReplayFrame {
   };
 }
 
+export interface ConversationContextUsage {
+  sys: number;
+  tools: number;
+  history: number;
+  files: number;
+  max: number;
+  used: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  source?: string;
+}
+
 export interface ConversationHistoryRunDetail {
   requestId: string;
   status: string;
@@ -62,6 +74,7 @@ export interface ConversationHistoryRunDetail {
   finalSummaryText?: string;
   startedAt?: string;
   finishedAt?: string;
+  contextUsage?: ConversationContextUsage;
   replayFrames: ConversationReplayFrame[];
 }
 

@@ -2296,4 +2296,43 @@ describe("chat context_usage", () => {
     expect(chat.contextUsage?.source).toBe("measured");
     expect(chat.contextUsage?.promptTokens).toBe(6900);
   });
+
+  it("解析响应 handler 产生的多层 resultMap 包装", () => {
+    const chat = createChat();
+    combineData(
+      {
+        messageOrder: 1,
+        messageType: "task",
+        messageId: "msg-ctx-3",
+        taskId: "task-ctx-1",
+        taskOrder: 3,
+        resultMap: {
+          messageType: "context_usage",
+          resultMap: {
+            messageType: "context_usage",
+            resultMap: {
+              sys: 1600,
+              tools: 2400,
+              history: 9200,
+              files: 300,
+              max: 128000,
+              used: 13500,
+              source: "estimate",
+            },
+          },
+        },
+      } as unknown as MESSAGE.EventData,
+      chat
+    );
+
+    expect(chat.contextUsage).toMatchObject({
+      sys: 1600,
+      tools: 2400,
+      history: 9200,
+      files: 300,
+      max: 128000,
+      used: 13500,
+      source: "estimate",
+    });
+  });
 });

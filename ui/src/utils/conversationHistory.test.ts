@@ -537,4 +537,49 @@ describe("conversationHistory hydrate", () => {
       }),
     ]);
   });
+
+  it("restores the latest context usage from the session detail", () => {
+    const history = hydrateConversationFromReplayFrames({
+      sessionId: "session-context-usage-001",
+      title: "上下文恢复",
+      status: "SUCCESS",
+      outputStyle: "docs",
+      deepThink: false,
+      role: null,
+      runCount: 1,
+      finishedRunCount: 1,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-context-usage-001",
+          status: "SUCCESS",
+          queryText: "查看上下文",
+          contextUsage: {
+            sys: 1200,
+            tools: 2600,
+            history: 9000,
+            files: 0,
+            max: 128000,
+            used: 13100,
+            promptTokens: 13100,
+            completionTokens: 700,
+            source: "measured",
+          },
+          replayFrames: [],
+        },
+      ],
+    });
+
+    expect(history.chatList[0].contextUsage).toEqual({
+      sys: 1200,
+      tools: 2600,
+      history: 9000,
+      files: 0,
+      max: 128000,
+      used: 13100,
+      promptTokens: 13100,
+      completionTokens: 700,
+      source: "measured",
+    });
+  });
 });

@@ -86,7 +86,7 @@ const ContextRing: ReactorType.FC<Props> = ({
         fromServer: true,
       };
     }
-    const max = contextWindow && contextWindow > 0 ? contextWindow : 128_000;
+    const max = contextWindow && contextWindow > 0 ? contextWindow : 100_000;
     const used = estimateTokens(inputChars);
     return {
       sys: 0,
