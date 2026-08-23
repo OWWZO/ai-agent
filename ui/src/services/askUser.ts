@@ -26,6 +26,7 @@ export type AskUserResumeEventDetail = {
   resumeRequestId: string;
   sessionId?: string;
   questionId?: string;
+  answers?: Record<string, string>;
 };
 
 export const askUserApi = {

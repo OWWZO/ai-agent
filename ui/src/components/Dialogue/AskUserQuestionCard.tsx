@@ -162,6 +162,7 @@ const AskUserQuestionCard: FC<AskUserQuestionCardProps> = memo(({ tool }) => {
             nested.sessionId || resultMap.sessionId || toolAny.sessionId || ""
           ),
           questionId,
+          answers: finalAnswers,
         });
         message.success("已提交，正在继续执行");
       } else {

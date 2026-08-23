@@ -1306,10 +1306,14 @@ export function useConversationStream(
   }, [followActiveRun, hasLiveStream, runningFollowKey]);
 
   const resumeHitlRun = useMemoizedFn((
-    detail: { resumeRequestId: string; sessionId?: string },
+    detail: AskUserResumeEventDetail | PlanApprovalResumeEventDetail,
     options: {
       sseUrl: string;
-      markDecided: (chat: CHAT.ChatItem) => CHAT.ChatItem;
+      markDecided: (
+        chat: CHAT.ChatItem,
+        questionId?: string,
+        answers?: Record<string, string>
+      ) => CHAT.ChatItem;
       errorLabel: string;
     }
   ) => {
@@ -1346,6 +1350,8 @@ export function useConversationStream(
     onPrepareStreamingWorkspace?.();
 
     // 续跑开始即把 HITL 卡片标为已决，避免仍被当成 WAITING_INPUT
+    const questionId = "questionId" in detail ? detail.questionId : undefined;
+    const answers = "answers" in detail ? detail.answers : undefined;
     let currentChat: CHAT.ChatItem = options.markDecided({
       ...seedChat,
       requestId: resumeRequestId,
@@ -1355,7 +1361,7 @@ export function useConversationStream(
         ...(seedChat.metrics || {}),
         status: "RUNNING",
       },
-    });
+    }, questionId, answers);
 
     const draftController = createConversationDraftController<CHAT.ChatItem>(
       conversationId,

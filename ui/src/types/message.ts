@@ -207,6 +207,7 @@ declare global {
       canvas_id?: string
       seq?: number
       status?: string
+      answers?: Record<string, string | true>
       toolName?: string
       toolCallId?: string
       toolInvocationId?: string | number

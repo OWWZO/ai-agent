@@ -557,16 +557,28 @@ export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean 
 }
 
 /** 用户已提交答案后，把本地卡片标成 answered，避免 UI 仍停在等待态 */
-export function markAskUserQuestionsAnswered(chat: CHAT.ChatItem): CHAT.ChatItem {
+export function markAskUserQuestionsAnswered(
+  chat: CHAT.ChatItem,
+  questionId?: string,
+  answers?: Record<string, string>
+): CHAT.ChatItem {
   const tasks = (chat.multiAgent?.tasks || []).map((group) =>
     (group || []).map((tool) => {
       if (tool?.messageType !== "ask_user_question") {
         return tool;
       }
       const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nestedMap = (prevMap.resultMap as Record<string, unknown> | undefined) || {};
+      const currentQuestionId = String(
+        nestedMap.questionId || prevMap.questionId || tool.messageId || ""
+      );
+      if (questionId && currentQuestionId && currentQuestionId !== questionId) {
+        return tool;
+      }
       const nested = {
-        ...((prevMap.resultMap as Record<string, unknown> | undefined) || {}),
+        ...nestedMap,
         status: "answered",
+        ...(answers ? { answers } : {}),
       };
       return {
         ...tool,
@@ -576,6 +588,7 @@ export function markAskUserQuestionsAnswered(chat: CHAT.ChatItem): CHAT.ChatItem
           ...prevMap,
           status: "answered",
           isFinal: true,
+          ...(answers ? { answers } : {}),
           resultMap: nested,
         },
       } as CHAT.Task;

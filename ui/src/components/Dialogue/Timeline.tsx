@@ -42,6 +42,7 @@ import PlanApprovalCard from "./PlanApprovalCard";
 import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
 import { AskUserToolCall } from "./tools/AskUserToolCall";
+import { isAnsweredAskUserTask } from "./timelineAskUser";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -124,17 +125,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       );
     }
     case "ask_user_question": {
-      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
-      const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
-      const toolAny = tool as unknown as Record<string, unknown>;
-      const askStatus = String(
-        nested.status || resultMap.status || toolAny.status || "pending"
-      );
-      const answered =
-        askStatus === "answered" ||
-        Boolean(resultMap.isFinal && askStatus !== "pending") ||
-        Boolean(nested.answers || resultMap.answers || toolAny.answers);
-      if (answered) {
+      if (isAnsweredAskUserTask(tool)) {
         return (
           <div className="py-0.5">
             <AskUserToolCall tool={tool} />

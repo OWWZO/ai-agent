@@ -29,7 +29,7 @@ describe("mergePendingAskUserQuestions", () => {
       updatedAt: 1,
       chatList: [emptyChat("r1")],
       dataChatList: [],
-    } as CHAT.ConversationHistory;
+    } as unknown as CHAT.ConversationHistory;
 
     const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
       {
@@ -75,7 +75,7 @@ describe("mergePendingAskUserQuestions", () => {
       updatedAt: 1,
       chatList: [emptyChat("r1")],
       dataChatList: [],
-    } as CHAT.ConversationHistory;
+    } as unknown as CHAT.ConversationHistory;
 
     const { autoResumes } = mergePendingAskUserQuestions(conversation, [
       {
@@ -93,7 +93,132 @@ describe("mergePendingAskUserQuestions", () => {
         resumeRequestId: "resume_abc",
         sessionId: "s1",
         questionId: "uq_2",
+        answers: undefined,
       },
     ]);
+  });
+
+  it("keeps answered selection and changes the run out of waiting state", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [emptyChat("r1")],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_3",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        resumeRequestId: "resume_xyz",
+        answers: { "选哪个？": "A" },
+        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+      },
+    ]);
+
+    const chat = next.chatList[0];
+    expect(chat.metrics?.status).toBe("RUNNING");
+    expect(chat.loading).toBe(true);
+    expect(chat.tip).toBe("正在推进任务…");
+    const card = (chat.multiAgent?.tasks || []).flat().find(
+      (task) => task.messageType === "ask_user_question"
+    );
+    const nested = (card?.resultMap as any)?.resultMap || card?.resultMap;
+    expect(nested?.answers?.["选哪个？"]).toBe("A");
+    expect(autoResumes[0]?.answers?.["选哪个？"]).toBe("A");
+  });
+
+  it("does not resume a question whose continuation already finished", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [emptyChat("r1")],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next, autoResumes } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_4",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        persistenceStatus: "ANSWERED",
+        resumeRequestId: "resume_finished",
+        answers: { "选哪个？": "A" },
+        questions: [{ question: "选哪个？", header: "方向", options: [{ label: "A" }] }],
+      },
+    ]);
+
+    expect(next.chatList[0].metrics?.status).toBe("SUCCESS");
+    expect(next.chatList[0].loading).toBe(false);
+    expect(autoResumes).toHaveLength(0);
+  });
+
+  it("updates an existing history card by toolCallId when questionId is missing", () => {
+    const conversation = {
+      id: "c1",
+      sessionId: "s1",
+      title: "t",
+      productType: "html",
+      deepThink: true,
+      role: null,
+      createdAt: 1,
+      updatedAt: 1,
+      chatList: [
+        {
+          ...emptyChat("r1"),
+          multiAgent: {
+            tasks: [
+              [
+                {
+                  taskId: "r1",
+                  messageType: "ask_user_question",
+                  messageId: "tool-call-1:ask_user_question",
+                  resultMap: {
+                    messageType: "ask_user_question",
+                    toolCallId: "tool-call-1",
+                    status: "pending",
+                    questions: [{ question: "选哪个？", options: [{ label: "A" }] }],
+                  },
+                },
+              ],
+            ],
+          },
+        } as unknown as CHAT.ChatItem,
+      ],
+      dataChatList: [],
+    } as unknown as CHAT.ConversationHistory;
+
+    const { conversation: next } = mergePendingAskUserQuestions(conversation, [
+      {
+        questionId: "uq_5",
+        toolCallId: "tool-call-1",
+        sessionId: "s1",
+        requestId: "r1",
+        status: "answered",
+        persistenceStatus: "ANSWERED",
+        answers: { "选哪个？": "A" },
+        questions: [{ question: "选哪个？", options: [{ label: "A" }] }],
+      },
+    ]);
+
+    const tools = (next.chatList[0].multiAgent?.tasks || []).flat();
+    expect(tools).toHaveLength(1);
+    expect((tools[0].resultMap as any)?.status).toBe("answered");
+    expect((tools[0].resultMap as any)?.answers?.["选哪个？"]).toBe("A");
   });
 });

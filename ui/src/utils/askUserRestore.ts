@@ -4,21 +4,14 @@ import {
   type AskUserResumeEventDetail,
 } from "@/services/askUser";
 import { buildConversationTaskData, combineData } from "@/utils/chat";
-import {
-  applyWaitingUserInputState,
-  WAITING_USER_HELP_HINT,
-} from "@/components/ChatView/streamState";
+import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
 
-function readNestedStatus(tool?: CHAT.Task): string {
-  if (!tool) {
-    return "";
-  }
-  const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<string, unknown>;
-  return String(nested.status || tool.resultMap?.status || "").trim().toLowerCase();
-}
-
-function chatHasQuestion(chat: CHAT.ChatItem, questionId: string): boolean {
-  if (!questionId) {
+function chatHasQuestion(
+  chat: CHAT.ChatItem,
+  questionId: string,
+  toolCallId: string
+): boolean {
+  if (!questionId && !toolCallId) {
     return false;
   }
   const groups = chat.multiAgent?.tasks || chat.tasks || [];
@@ -27,9 +20,18 @@ function chatHasQuestion(chat: CHAT.ChatItem, questionId: string): boolean {
       if (tool?.messageType !== "ask_user_question") {
         continue;
       }
-      const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<string, unknown>;
-      const id = String(nested.questionId || tool.messageId || "");
-      if (id === questionId) {
+      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+      const cardQuestionId = String(
+        nested.questionId || resultMap.questionId || ""
+      );
+      const cardToolCallId = String(
+        nested.toolCallId || resultMap.toolCallId || ""
+      );
+      if (
+        (questionId && cardQuestionId === questionId) ||
+        (toolCallId && cardToolCallId === toolCallId)
+      ) {
         return true;
       }
     }
@@ -51,6 +53,7 @@ function buildAskUserEventData(payload: Record<string, unknown>): MESSAGE.EventD
     toolCallId: payload.toolCallId,
     status,
     questions: payload.questions,
+    answers: payload.answers,
     resumeRequestId: payload.resumeRequestId,
     timeoutMs: payload.timeoutMs,
     createdAtMs: payload.createdAtMs,
@@ -62,7 +65,7 @@ function buildAskUserEventData(payload: Record<string, unknown>): MESSAGE.EventD
     taskOrder: 1,
     messageType: "task",
     messageOrder: 1,
-    messageId: questionId || undefined,
+    messageId: questionId,
     resultMap: {
       messageType: "ask_user_question",
       messageId: questionId,
@@ -96,8 +99,10 @@ export function mergePendingAskUserQuestions(
 
   for (const payload of pending) {
     const questionId = String(payload.questionId || "");
+    const toolCallId = String(payload.toolCallId || "");
     const requestId = String(payload.requestId || "");
     const clientStatus = String(payload.status || "pending").toLowerCase();
+    const persistenceStatus = String(payload.persistenceStatus || "").toUpperCase();
     let index = requestId
       ? chatList.findIndex((chat) => chat.requestId === requestId)
       : -1;
@@ -114,7 +119,7 @@ export function mergePendingAskUserQuestions(
     }
 
     let chat = chatList[index];
-    if (!chatHasQuestion(chat, questionId)) {
+    if (!chatHasQuestion(chat, questionId, toolCallId)) {
       combineData(buildAskUserEventData(payload), chat);
     } else {
       // 已有卡片时同步 pending 状态，避免刷新后仍显示可点但服务端已结束
@@ -124,18 +129,35 @@ export function mergePendingAskUserQuestions(
           if (tool?.messageType !== "ask_user_question") {
             continue;
           }
-          const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<
+          const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+          const nested = (resultMap.resultMap || resultMap) as Record<
             string,
             unknown
           >;
-          if (String(nested.questionId || tool.messageId || "") !== questionId) {
+          const cardQuestionId = String(
+            nested.questionId || resultMap.questionId || ""
+          );
+          const cardToolCallId = String(
+            nested.toolCallId || resultMap.toolCallId || ""
+          );
+          if (
+            !(
+              (questionId && cardQuestionId === questionId) ||
+              (toolCallId && cardToolCallId === toolCallId)
+            )
+          ) {
             continue;
           }
           nested.status = clientStatus;
-          if (tool.resultMap) {
-            tool.resultMap.status = clientStatus;
-            tool.resultMap.isFinal = clientStatus !== "pending";
+          if (payload.answers && typeof payload.answers === "object") {
+            const answers = payload.answers as Record<string, string | true>;
+            nested.answers = answers;
+            resultMap.answers = answers;
           }
+          resultMap.status = clientStatus;
+          resultMap.isFinal = clientStatus !== "pending";
+          tool.finish = clientStatus !== "pending";
+          tool.isFinal = clientStatus !== "pending";
         }
       }
     }
@@ -143,21 +165,29 @@ export function mergePendingAskUserQuestions(
     if (clientStatus === "pending") {
       chat = applyWaitingUserInputState(chat);
     } else if (clientStatus === "answered") {
+      const resumePending =
+        !persistenceStatus ||
+        persistenceStatus === "RESUME_PENDING" ||
+        persistenceStatus === "RESUMING";
       chat = {
         ...chat,
-        loading: false,
-        tip: WAITING_USER_HELP_HINT,
+        loading: resumePending,
+        tip: resumePending ? "正在推进任务…" : "",
         metrics: {
           ...(chat.metrics || {}),
-          status: "WAITING_INPUT",
+          status: resumePending ? "RUNNING" : "SUCCESS",
         },
       };
       const resumeRequestId = String(payload.resumeRequestId || "");
-      if (resumeRequestId) {
+      if (resumeRequestId && resumePending) {
         autoResumes.push({
           resumeRequestId,
           sessionId: String(payload.sessionId || conversation.sessionId || ""),
           questionId,
+          answers:
+            payload.answers && typeof payload.answers === "object"
+              ? (payload.answers as Record<string, string>)
+              : undefined,
         });
       }
     }
