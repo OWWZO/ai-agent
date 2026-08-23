@@ -51,6 +51,7 @@ public class LlmModelConfigRepository implements ILlmModelConfigRepository {
                     .modelId(model.getModelId().trim())
                     .modelName(model.getModelName().trim())
                     .apiId(model.getApiId().trim())
+                    .modelUsage(model.getModelUsage())
                     .baseUrl(api.getBaseUrl().trim())
                     .apiKey(api.getApiKey().trim())
                     .completionsPath(StringUtils.hasText(api.getCompletionsPath())

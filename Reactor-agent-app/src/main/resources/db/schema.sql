@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS ai_client_model (
     id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
     model_id    VARCHAR(64)   NOT NULL COMMENT '全局唯一模型ID',
     api_id      VARCHAR(64)   NOT NULL COMMENT '关联的API配置ID',
-    model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途',
+    model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途；fallback/backup/备用模型表示备用模型',
     model_name  VARCHAR(64)   NOT NULL COMMENT '模型名称',
     model_type  VARCHAR(32)   NOT NULL COMMENT '模型类型：openai、deepseek、claude',
     supports_thinking TINYINT NOT NULL DEFAULT 0 COMMENT '是否支持深度思考',

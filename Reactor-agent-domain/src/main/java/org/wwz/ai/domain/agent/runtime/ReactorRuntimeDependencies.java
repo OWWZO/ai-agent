@@ -208,7 +208,7 @@ public class ReactorRuntimeDependencies {
     }
 
     /**
-     * DB 只保证 base/key/model；采样参数优先叠 yml 同名条目，否则用 llm.default。
+     * DB 提供连接信息和模型上下文窗口；采样参数优先叠 yml 同名条目，否则用 llm.default。
      */
     private LLMSettings enrichSamplingFromYml(LLMSettings db, String modelRef) {
         LLMSettings yml = null;
@@ -234,7 +234,12 @@ public class ReactorRuntimeDependencies {
                 .interfaceUrl(db.getInterfaceUrl())
                 .maxTokens(sample.getMaxTokens() > 0 ? sample.getMaxTokens() : defaults.getMaxTokens())
                 .temperature(sample.getTemperature())
-                .maxInputTokens(sample.getMaxInputTokens() > 0 ? sample.getMaxInputTokens() : defaults.getMaxInputTokens())
+                // context_window 是模型管理台的运行时真相源，不能被 yml/default 覆盖。
+                .maxInputTokens(db.getMaxInputTokens() > 0
+                        ? db.getMaxInputTokens()
+                        : sample.getMaxInputTokens() > 0
+                        ? sample.getMaxInputTokens()
+                        : defaults.getMaxInputTokens())
                 .functionCallType(functionCallType)
                 .reasoningEffort(sample.getReasoningEffort())
                 .apiType(sample.getApiType())

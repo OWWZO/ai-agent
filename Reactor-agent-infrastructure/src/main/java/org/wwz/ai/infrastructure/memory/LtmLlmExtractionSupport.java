@@ -93,6 +93,6 @@ public final class LtmLlmExtractionSupport {
         } catch (Exception ignored) {
             // fall through
         }
-        return "gpt-4o-mini";
+        return "";
     }
 }

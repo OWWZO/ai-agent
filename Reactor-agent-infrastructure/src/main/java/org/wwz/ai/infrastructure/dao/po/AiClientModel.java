@@ -43,7 +43,7 @@ public class AiClientModel {
     private String modelType;
 
     /**
-     * 模型用途
+     * 模型用途；fallback/backup/备用模型表示备用模型
      */
     private String modelUsage;
 

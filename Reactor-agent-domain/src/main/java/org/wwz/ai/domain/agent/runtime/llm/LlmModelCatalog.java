@@ -18,7 +18,7 @@ import java.util.Optional;
  *   <li>短 TTL 缓存压重复查询；管理写后 {@link #invalidateAll()} 立即失效</li>
  *   <li>key / base 每轮现取，不冻进长生命周期 ChatClient</li>
  * </ul>
- * 未命中 DB 时返回 empty，由调用方回落 yml（兼容本地 dev）。
+ * 未命中 DB 时返回 empty，由调用方决定是否允许兼容配置兜底。
  */
 @Component
 public class LlmModelCatalog {
@@ -41,7 +41,7 @@ public class LlmModelCatalog {
     }
 
     /**
-     * 解析模型配置。命中 DB 返回 settings；未命中返回 empty（调用方走 yml）。
+     * 解析模型配置。命中 DB 返回 settings；未命中返回 empty。
      *
      * @param modelRef modelId、上游 modelName，或空/default 表示取第一个可用
      */
@@ -59,6 +59,26 @@ public class LlmModelCatalog {
             return Optional.empty();
         }
         return Optional.of(toSettings(picked));
+    }
+
+    /**
+     * 从 MySQL 模型用途标记中解析备用模型。备用模型应将 model_usage 设为 fallback。
+     */
+    public Optional<String> resolveFallbackModelName(String primaryModel) {
+        List<LlmModelBinding> bindings = loadUsable(System.currentTimeMillis());
+        for (LlmModelBinding binding : bindings) {
+            if (!isFallback(binding.getModelUsage())) {
+                continue;
+            }
+            if (sameModel(binding, primaryModel)) {
+                continue;
+            }
+            String modelRef = StringUtils.defaultIfBlank(binding.getModelId(), binding.getModelName());
+            if (StringUtils.isNotBlank(modelRef)) {
+                return Optional.of(modelRef.trim());
+            }
+        }
+        return Optional.empty();
     }
 
     /** 管理台写模型/API 后调用：清绑定缓存 + ChatModel 实例缓存。 */
@@ -98,6 +118,11 @@ public class LlmModelCatalog {
         }
         String id = modelRef == null ? "" : modelRef.trim();
         if (id.isEmpty() || DEFAULT_MODEL.equalsIgnoreCase(id)) {
+            for (LlmModelBinding binding : bindings) {
+                if (!isFallback(binding.getModelUsage())) {
+                    return binding;
+                }
+            }
             return bindings.get(0);
         }
         for (LlmModelBinding b : bindings) {
@@ -113,6 +138,26 @@ public class LlmModelCatalog {
         return null;
     }
 
+    static boolean isFallback(String modelUsage) {
+        if (modelUsage == null) {
+            return false;
+        }
+        String normalized = modelUsage.trim().toLowerCase(java.util.Locale.ROOT);
+        return "fallback".equals(normalized)
+                || "backup".equals(normalized)
+                || "备用".equals(normalized)
+                || "备用模型".equals(normalized);
+    }
+
+    private static boolean sameModel(LlmModelBinding binding, String modelRef) {
+        if (StringUtils.isBlank(modelRef)) {
+            return false;
+        }
+        String normalized = modelRef.trim();
+        return normalized.equalsIgnoreCase(binding.getModelId())
+                || normalized.equalsIgnoreCase(binding.getModelName());
+    }
+
     public static LLMSettings toSettings(LlmModelBinding binding) {
         String path = StringUtils.trimToNull(binding.getCompletionsPath());
         return LLMSettings.builder()
@@ -122,9 +167,11 @@ public class LlmModelCatalog {
                 .interfaceUrl(path != null ? path : "/chat/completions")
                 .maxTokens(16384)
                 .temperature(0.0)
+                // 未配置时保留 0，让 RuntimeDependencies 使用 yml/default；不能在这里提前写死默认值，
+                // 否则 enrichSamplingFromYml 无法区分“数据库未配置”和“数据库配置为 100000”。
                 .maxInputTokens(binding.getContextWindow() != null && binding.getContextWindow() > 0
                         ? binding.getContextWindow()
-                        : 100000)
+                        : 0)
                 .functionCallType("function_call")
                 .build();
     }

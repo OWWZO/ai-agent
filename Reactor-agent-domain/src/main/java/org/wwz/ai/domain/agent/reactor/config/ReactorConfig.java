@@ -65,21 +65,14 @@ public class ReactorConfig {
         this.reactNextStepPromptMap = parseStringMap(list);
     }
 
-    @Value("${autobots.autoagent.planner.model_name:qwen-vl-max}")
+    @Value("${autobots.autoagent.planner.model_name:}")
     private String plannerModelName;
 
-    @Value("${autobots.autoagent.executor.model_name:qwen-vl-max}")
+    @Value("${autobots.autoagent.executor.model_name:}")
     private String executorModelName;
 
-    @Value("${autobots.autoagent.react.model_name:qwen-vl-max}")
+    @Value("${autobots.autoagent.react.model_name:}")
     private String reactModelName;
-
-    /**
-     * 主模型在瞬态失败（超时/5xx/空流/过载等）且同模型重试耗尽后，切换一次的备援模型名。
-     * 需在 llm.settings 中有对应条目（或能回退到 llm.default）。空则关闭 fallback。
-     */
-    @Value("${autobots.autoagent.llm.fallback_model:}")
-    private String llmFallbackModelName;
 
     @Value("${autobots.autoagent.tool.plan_tool.desc:}")
     private String planToolDesc;

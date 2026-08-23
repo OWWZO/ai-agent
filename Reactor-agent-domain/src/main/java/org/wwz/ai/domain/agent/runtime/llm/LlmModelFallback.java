@@ -1,14 +1,12 @@
 package org.wwz.ai.domain.agent.runtime.llm;
 
-import org.apache.commons.lang3.StringUtils;
-import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.Locale;
 import java.util.concurrent.CancellationException;
 
 /**
- * 主模型耗尽重试后的备援模型策略（对齐 cc-haha fallbackModel）。
+ * 主模型耗尽重试后的备援模型策略。
  * 仅对瞬态/容量类失败触发；取消、鉴权、证书、上下文超限等不切换。
  */
 public final class LlmModelFallback {
@@ -40,24 +38,16 @@ public final class LlmModelFallback {
         if (deps == null) {
             return null;
         }
-        ReactorConfig config;
         try {
-            config = deps.requireReactorConfig();
+            if (deps.getLlmDependencies() == null || deps.getLlmDependencies().getModelCatalog() == null) {
+                return null;
+            }
+            return deps.getLlmDependencies().getModelCatalog()
+                    .resolveFallbackModelName(primaryModel)
+                    .orElse(null);
         } catch (Exception e) {
             return null;
         }
-        if (config == null) {
-            return null;
-        }
-        String fallback = StringUtils.trimToNull(config.getLlmFallbackModelName());
-        if (fallback == null) {
-            return null;
-        }
-        String primary = StringUtils.trimToEmpty(primaryModel);
-        if (fallback.equalsIgnoreCase(primary)) {
-            return null;
-        }
-        return fallback;
     }
 
     public static boolean isEligible(Throwable throwable) {

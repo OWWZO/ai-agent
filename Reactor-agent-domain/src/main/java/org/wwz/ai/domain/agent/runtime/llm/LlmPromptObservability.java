@@ -249,7 +249,7 @@ public final class LlmPromptObservability {
         } catch (Exception ignored) {
             // fall through
         }
-        return 128_000;
+        return 100_000;
     }
 
     public static ObservationBundle current() {

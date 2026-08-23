@@ -79,7 +79,7 @@ public class AgentContext {
     String task;
 
     /**
-     * 本轮模型引用（modelId 或上游 modelName）；空则 AgentBootstrap 用 yml 默认。
+     * 本轮模型引用（modelId 或上游 modelName）；空则 AgentBootstrap 从 MySQL 选择默认模型。
      */
     String model;
 
