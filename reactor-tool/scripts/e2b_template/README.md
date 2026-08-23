@@ -5,6 +5,7 @@
 - 数据分析常用包（pandas / numpy / matplotlib …）
 - **Playwright + Chromium** 及系统依赖
 - **websockets**
+- **yt-dlp[default] + Node.js**，用于 YouTube 视频搜索、详情和字幕
 
 ## 构建
 
@@ -40,8 +41,17 @@ with sync_playwright() as p:
     browser.close()
 ```
 
+检查 YouTube 工具：
+
+```bash
+yt-dlp --version
+node --version
+yt-dlp --flat-playlist --dump-json "ytsearch1:AI agents"
+```
+
 ## 说明
 
 - 改 `template.py` 后需**重新 build**。
 - 沙箱需允许出网才能访问外站；E2B 默认通常有网。
+- 模板内已配置系统级和 `user` 用户级 `--js-runtimes node`，不需要在每次调用时重复传入。
 - Cookie / 登录态不要 bake 进模板，运行时注入。

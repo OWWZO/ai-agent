@@ -1,0 +1,5 @@
+scripts:
+  fetch_public:
+    path: scripts/fetch_public.py
+    runtime: python
+    description: 读取十一类公开互联网来源并输出统一 JSON；只读，不处理登录态。

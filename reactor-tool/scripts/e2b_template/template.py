@@ -1,7 +1,7 @@
 """E2B custom template for Reactor code_execution / code_interpreter.
 
 Base: code-interpreter-v1 (keeps run_code kernel).
-Adds: common data stack + Playwright Chromium for browser automation.
+Adds: common data stack + Playwright Chromium + yt-dlp for public YouTube access.
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ _PIP_PACKAGES = [
     "altair",
     "tabulate",
     "pillow",
+    # YouTube extraction requires yt-dlp's default JS challenge support.
+    "yt-dlp[default]>=2026.07.04",
 ]
 
 template = (
@@ -55,9 +57,19 @@ template = (
             "libxshmfence1",
             "fonts-liberation",
             "fonts-noto-cjk",
+            "nodejs",
         ],
         no_install_recommends=True,
     )
     # Download browser binaries into the image (not at runtime).
     .run_cmd("python -m playwright install chromium", user="root")
+    # yt-dlp needs an explicit JS runtime when Node.js is used in the image.
+    .run_cmd(
+        "mkdir -p /home/user/.config/yt-dlp && "
+        "printf '%s\\n' '--js-runtimes node' > /etc/yt-dlp.conf && "
+        "printf '%s\\n' '--js-runtimes node' > /home/user/.config/yt-dlp/config && "
+        "chown -R user:user /home/user/.config/yt-dlp",
+        user="root",
+    )
+    .run_cmd("yt-dlp --version && node --version", user="root")
 )
