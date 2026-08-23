@@ -96,6 +96,8 @@ public class UserQuestionYieldService {
                     .toolCallId(toolCallId)
                     .toolName(AskUserQuestionTool.NAME)
                     .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
+                    .llmObservation(AskUserQuestionObservationSupport.buildWaitingObservation(
+                            signal.getQuestions(), questionId))
                     .finishedAt(LocalDateTime.now())
                     .build());
         }

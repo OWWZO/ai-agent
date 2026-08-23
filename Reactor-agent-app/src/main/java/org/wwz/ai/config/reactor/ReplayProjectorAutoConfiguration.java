@@ -8,7 +8,10 @@ import org.wwz.ai.domain.agent.ledger.replay.HistoryReplayPrinter;
 import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
+import org.wwz.ai.domain.agent.runtime.askuser.IUserQuestionRepository;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CanvasPublishToolInvocationProjector;
+import org.wwz.ai.domain.agent.ledger.replay.projector.impl.AskUserQuestionToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiPatchToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.GenUiTreeToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolInvocationProjector;
@@ -29,6 +32,12 @@ import java.util.List;
  */
 @Configuration
 public class ReplayProjectorAutoConfiguration {
+
+    @Bean
+    public AskUserQuestionToolInvocationProjector askUserQuestionToolInvocationProjector(
+            IUserQuestionRepository userQuestionRepository) {
+        return new AskUserQuestionToolInvocationProjector(userQuestionRepository);
+    }
 
     @Bean
     public FileToolInvocationProjector fileToolInvocationProjector() {

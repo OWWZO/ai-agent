@@ -115,7 +115,11 @@ public final class AskUserQuestionObservationSupport {
         map.put("requestId", record.getSourceRequestId());
         map.put("toolCallId", record.getToolCallId());
         map.put("status", toClientStatus(record.getStatus()));
+        map.put("persistenceStatus", record.getStatus());
         map.put("questions", record.getQuestions());
+        if (record.getAnswers() != null) {
+            map.put("answers", record.getAnswers());
+        }
         if (record.getExpiresAt() != null) {
             map.put("expiresAt", record.getExpiresAt().toString());
         }
