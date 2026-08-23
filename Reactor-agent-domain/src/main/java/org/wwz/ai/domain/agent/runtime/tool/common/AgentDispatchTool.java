@@ -4,6 +4,8 @@ import com.alibaba.fastjson.JSON;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.response.AgentResponse;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry;
@@ -22,6 +24,9 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -263,14 +268,20 @@ public class AgentDispatchTool implements BaseTool {
                         t.setTotalToolUseCount(result.getTotalToolUseCount());
                         t.setTotalDurationMs(result.getTotalDurationMs());
                     });
+                    persistLedgerSettlement(parent, parentToolUseId,
+                            registry.get(taskId).orElse(task));
                     emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, false, runRegistry);
                     return;
                 }
                 if (result.isCompleted()) {
                     registry.complete(taskId, result);
+                    persistLedgerSettlement(parent, parentToolUseId,
+                            registry.get(taskId).orElse(task));
                     emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, true, runRegistry);
                 } else {
                     registry.fail(taskId, result);
+                    persistLedgerSettlement(parent, parentToolUseId,
+                            registry.get(taskId).orElse(task));
                     emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, result, false, runRegistry);
                 }
             } catch (Exception e) {
@@ -289,6 +300,8 @@ public class AgentDispatchTool implements BaseTool {
                         .prompt(pmt)
                         .errorMsg(err)
                         .build();
+                persistLedgerSettlement(parent, parentToolUseId,
+                        registry.get(taskId).orElse(task));
                 emitBackgroundSettlement(parent, parentToolUseId, desc, pmt, type, failed, false, runRegistry);
             }
         });
@@ -312,6 +325,87 @@ public class AgentDispatchTool implements BaseTool {
             data.put("resume_agent_id", resumeAgentId);
         }
         return ToolResultPayload.fromData(data);
+    }
+
+    /**
+     * 初始 Agent 回执落账后，若后台任务已经快速结束，补写一次最终 observation。
+     * 避免后台线程先于 ToolExecutionPipeline 写入 running 回执，导致终态被覆盖。
+     */
+    public static void settleLedgerIfTerminal(AgentContext parent,
+                                               String parentToolUseId,
+                                               String runningObservation) {
+        if (parent == null || StringUtils.isBlank(parentToolUseId)
+                || StringUtils.isBlank(runningObservation)) {
+            return;
+        }
+        try {
+            Map<String, Object> receipt = JSON.parseObject(runningObservation, Map.class);
+            String taskId = receipt == null ? null : trimToString(receipt.get("task_id"));
+            if (StringUtils.isBlank(taskId)) {
+                return;
+            }
+            parent.requireBackgroundTasks().get(taskId)
+                    .filter(task -> !RuntimeBackgroundTask.STATUS_RUNNING.equals(task.getStatus()))
+                    .ifPresent(task -> persistLedgerSettlement(parent, parentToolUseId, task));
+        } catch (Exception e) {
+            log.debug("background ledger settlement check skipped: {}", e.getMessage());
+        }
+    }
+
+    private static void persistLedgerSettlement(AgentContext parent,
+                                                 String parentToolUseId,
+                                                 RuntimeBackgroundTask task) {
+        if (parent == null || task == null || StringUtils.isBlank(parentToolUseId)
+                || !parent.hasActiveLedgerRun()
+                || parent.getAgentRunState() == null
+                || parent.getExecutionRecorder() == null) {
+            return;
+        }
+        Long toolInvocationId = parent.getAgentRunState().resolveToolInvocationId(parentToolUseId);
+        if (toolInvocationId == null) {
+            return;
+        }
+
+        boolean completed = RuntimeBackgroundTask.STATUS_COMPLETED.equals(task.getStatus());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tool", NAME);
+        data.put("ok", completed);
+        data.put("status", task.getStatus());
+        data.put("agentId", task.getAgentId());
+        data.put("agentType", task.getAgentType());
+        data.put("description", task.getDescription());
+        data.put("content", task.getOutput());
+        data.put("totalToolUseCount", task.getTotalToolUseCount());
+        data.put("totalDurationMs", task.getTotalDurationMs());
+        data.put("run_in_background", true);
+        if (StringUtils.isNotBlank(task.getErrorMsg())) {
+            data.put("errorMsg", task.getErrorMsg());
+        }
+
+        int ledgerStatus = RuntimeBackgroundTask.STATUS_STOPPED.equals(task.getStatus())
+                ? ExecutionLedgerConstants.STATUS_STOPPED
+                : completed ? ExecutionLedgerConstants.STATUS_SUCCESS : ExecutionLedgerConstants.STATUS_FAILED;
+        parent.getExecutionRecorder().finishToolInvocation(ToolInvocationFinishRecord.builder()
+                .toolInvocationId(toolInvocationId)
+                .runId(parent.getAgentRunState().getRunId())
+                .requestId(parent.getRequestId())
+                .sessionId(parent.getSessionId())
+                .toolCallId(parentToolUseId)
+                .toolName(NAME)
+                .status(ledgerStatus)
+                .llmObservation(ToolObservationSerializer.serializeSuccess(data))
+                .errorMsg(task.getErrorMsg())
+                .finishedAt(resolveFinishedAt(task))
+                .build());
+    }
+
+    private static LocalDateTime resolveFinishedAt(RuntimeBackgroundTask task) {
+        if (task != null && task.getEndedAtMs() != null) {
+            return LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(task.getEndedAtMs()),
+                    ZoneId.systemDefault());
+        }
+        return LocalDateTime.now();
     }
 
     private static Map<String, Object> buildObservationData(SubAgentResult result) {

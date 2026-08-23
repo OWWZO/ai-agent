@@ -648,6 +648,12 @@ final class ToolExecutionPipeline {
                 .errorMsg(outcome == null ? null : outcome.getErrorMsg())
                 .finishedAt(LocalDateTime.now())
                 .build());
+        if (AgentDispatchTool.NAME.equals(command.getFunction().getName())) {
+            AgentDispatchTool.settleLedgerIfTerminal(
+                    context,
+                    command.getId(),
+                    outcome == null ? null : outcome.getLlmObservation());
+        }
     }
 
     private void recordToolArtifacts(ToolCall command) {

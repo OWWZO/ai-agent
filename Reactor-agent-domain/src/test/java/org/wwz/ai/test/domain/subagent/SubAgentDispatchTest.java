@@ -2,6 +2,11 @@ package org.wwz.ai.test.domain.subagent;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
+import org.wwz.ai.domain.agent.ledger.model.AgentRunState;
+import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
+import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.enums.AgentType;
 import org.wwz.ai.domain.agent.runtime.printer.Printer;
@@ -14,10 +19,15 @@ import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.AgentDispatchTool;
+import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
+import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * 同步 SubAgent 派发：工具过滤、参数校验、防递归。
@@ -126,6 +136,40 @@ public class SubAgentDispatchTest {
         Assert.assertTrue(String.valueOf(
                 ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) params.get("properties")).get("subagent_type"))
                         .get("description")).contains("Explore"));
+    }
+
+    @Test
+    public void terminalBackgroundTaskUpdatesParentLedgerObservation() {
+        RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
+        RuntimeBackgroundTask task = registry.registerLocalAgent("探索前端", "Explore", "scan ui");
+        registry.complete(task.getId(), SubAgentResult.builder()
+                .status(SubAgentResult.STATUS_COMPLETED)
+                .agentId("agent-1")
+                .agentType("Explore")
+                .content("done")
+                .build());
+
+        AgentExecutionRecorder recorder = mock(AgentExecutionRecorder.class);
+        AgentRunState runState = AgentRunState.builder().runId(42L).build();
+        runState.bindToolInvocationIds(Map.of("parent-tool-1", 99L));
+        AgentContext parent = AgentContext.builder()
+                .requestId("req-ledger")
+                .sessionId("session-ledger")
+                .executionRecorder(recorder)
+                .agentRunState(runState)
+                .backgroundTasks(registry)
+                .build();
+
+        String receipt = com.alibaba.fastjson.JSON.toJSONString(Map.of("task_id", task.getId()));
+        AgentDispatchTool.settleLedgerIfTerminal(parent, "parent-tool-1", receipt);
+
+        ArgumentCaptor<ToolInvocationFinishRecord> captor =
+                ArgumentCaptor.forClass(ToolInvocationFinishRecord.class);
+        verify(recorder).finishToolInvocation(captor.capture());
+        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_SUCCESS),
+                captor.getValue().getStatus());
+        Assert.assertTrue(captor.getValue().getLlmObservation().contains("completed"));
+        Assert.assertTrue(captor.getValue().getLlmObservation().contains("done"));
     }
 
     private static final class StubTool implements BaseTool {
