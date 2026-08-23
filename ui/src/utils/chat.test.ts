@@ -571,7 +571,7 @@ describe("chat deep_search progress", () => {
       reportChildren.every((item) =>
         shouldRenderDeepSearchWorkspace(item.resultMap?.messageType)
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("会话快照重建会恢复左侧预览与右侧详情的阶段分工", () => {

@@ -46,16 +46,27 @@ describe("filePreviewModel", () => {
           messageType: "extend",
         } as CHAT.Task["resultMap"],
       }),
+      buildTask({
+        id: "deep-search-report",
+        messageType: "deep_search",
+        resultMap: {
+          messageType: "report",
+          answer: "最终总结",
+        } as CHAT.Task["resultMap"],
+      }),
       buildTask({ id: "file-task", messageType: "file" }),
     ]);
 
-    expect(filtered.map((item) => item.id)).toEqual(["file-task"]);
+    expect(filtered.map((item) => item.id)).toEqual([
+      "deep-search-report",
+      "file-task",
+    ]);
 
     const selection = resolvePreviewTaskSelection({
       taskList: filtered,
     });
     expect(selection.taskItem?.id).toBe("file-task");
-    expect(selection.realActiveTaskIndex).toBe(0);
+    expect(selection.realActiveTaskIndex).toBe(1);
   });
 
   it("deep_search search 阶段应返回搜索图标标记", () => {

@@ -12,6 +12,7 @@ import {
   shouldRenderDeepSearchPreview,
   shouldRenderDeepSearchWorkspace,
 } from "./deepSearch";
+import { canOpenTaskWorkspacePanel } from "@/components/ChatView/streamState";
 
 type DeepSearchPreviewTask = Pick<CHAT.Task, "messageType" | "resultMap">;
 type DeepSearchPreviewSearchResult = NonNullable<
@@ -83,7 +84,15 @@ describe("deepSearch utils", () => {
     expect(shouldRenderDeepSearchWorkspace("extend")).toBe(false);
     expect(shouldRenderDeepSearchWorkspace("search")).toBe(true);
     expect(shouldRenderDeepSearchWorkspace("chapter_summary")).toBe(true);
-    expect(shouldRenderDeepSearchWorkspace("report")).toBe(false);
+    expect(shouldRenderDeepSearchWorkspace("report")).toBe(true);
+    expect(
+      canOpenTaskWorkspacePanel(
+        createPreviewTask("report", {
+          query: [],
+          docs: [],
+        })
+      )
+    ).toBe(true);
   });
 
   it("为 extend 阶段构建左侧紧凑查询预览模型", () => {

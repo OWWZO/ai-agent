@@ -18,7 +18,7 @@ export interface PreviewRendererFlags {
 }
 
 export function filterPreviewTaskList(taskList?: PanelItemType[]) {
-  // 摘要/最终结果不是独立预览项；深搜只保留允许展示 workspace 的阶段。
+  // 摘要/最终结果不是普通产物 tab；深搜只保留允许展示 workspace 的阶段。
   return (taskList || []).filter(
     (item) =>
       !["task_summary", "result"].includes(item.messageType) &&

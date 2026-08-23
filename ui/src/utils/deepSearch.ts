@@ -119,7 +119,8 @@ export function shouldRenderDeepSearchWorkspace(stage: unknown): boolean {
   const normalizedStage = resolveDeepSearchStage(stage);
   return (
     normalizedStage === "search" ||
-    normalizedStage === "chapter_summary"
+    normalizedStage === "chapter_summary" ||
+    normalizedStage === "report"
   );
 }
 
@@ -233,7 +234,7 @@ export function buildDeepSearchPreviewModel(
     return undefined;
   }
 
-  // extend/search/chapter_summary 生成轻量预览；report 不再渲染工作区报告。
+  // extend/search/chapter_summary 生成左侧预览；report 交给右侧工作区渲染。
   const stage = resolveDeepSearchStage(task.resultMap?.messageType);
   if (stage === "report") {
     return undefined;

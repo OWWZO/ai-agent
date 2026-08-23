@@ -96,6 +96,30 @@ describe("ActionPanel file content rendering", () => {
     }
   });
 
+  it("should resolve the final deep search report to a markdown panel", () => {
+    const task = {
+      messageType: "deep_search",
+      resultMap: {
+        messageType: "report",
+        answer: "最终章节合并总结",
+        searchResult: {
+          query: [],
+          docs: [],
+        },
+      },
+    } as unknown as MESSAGE.Task;
+
+    const panelView = resolvePanelView({
+      taskItem: task as unknown as any,
+      markDownContent: "最终章节合并总结",
+    });
+
+    expect(panelView).toMatchObject({
+      type: "markdown",
+      content: "最终章节合并总结",
+    });
+  });
+
   const buildBinaryFileTask = (
     fileName: string,
     overrides?: Partial<MESSAGE.Task>
