@@ -43,6 +43,20 @@ public class AskUserQuestionObservationSupportTest {
     }
 
     @Test
+    public void clientPayloadPreservesAnswers() {
+        Map<String, Object> payload = AskUserQuestionObservationSupport.toClientPayload(
+                UserQuestionRecord.builder()
+                        .questionId("uq_2")
+                        .status(UserQuestionStatuses.RESUME_PENDING)
+                        .answers(Map.of("选哪个？", "A"))
+                        .build()
+        );
+
+        Assert.assertEquals("answered", payload.get("status"));
+        Assert.assertEquals("A", ((Map<?, ?>) payload.get("answers")).get("选哪个？"));
+    }
+
+    @Test
     public void resolveAskUserToolCallIdPrefersPreferredThenUnpaired() {
         Assert.assertEquals("fc_pref", AskUserQuestionObservationSupport.resolveAskUserToolCallId(
                 List.of(), "fc_pref"));
