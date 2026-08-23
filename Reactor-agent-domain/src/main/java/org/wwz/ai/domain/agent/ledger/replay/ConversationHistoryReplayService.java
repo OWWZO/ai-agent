@@ -10,12 +10,16 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueRunView;
 import org.wwz.ai.domain.agent.ledger.model.DialogueSessionView;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ReplayFactBundle;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
+import org.wwz.ai.domain.agent.runtime.llm.ContextUsagePayload;
+import org.wwz.ai.domain.agent.runtime.llm.LLMSettings;
+import org.wwz.ai.domain.agent.runtime.llm.LlmModelCatalog;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +38,7 @@ public class ConversationHistoryReplayService {
     private final ExecutionLedgerQueryService executionLedgerQueryService;
     private final ReplayProjector replayProjector;
     private final HistoryReplayPrinter historyReplayPrinter;
+    private final LlmModelCatalog llmModelCatalog;
 
     public ConversationHistoryDetail queryConversationHistory(String sessionId) {
         if (StringUtils.isBlank(sessionId) || executionLedgerQueryService == null) {
@@ -72,6 +77,7 @@ public class ConversationHistoryReplayService {
                         .finalSummaryText(run.getFinalSummaryText())
                         .startedAt(run.getStartedAt())
                         .finishedAt(run.getFinishedAt())
+                        .contextUsage(resolveContextUsage(runDetail == null ? List.of() : runDetail.getLlmInvocations()))
                         .replayFrames(historyReplayPrinter == null
                                 ? replayFrames
                                 : historyReplayPrinter.ensureReadableConclusion(run, replayFrames))
@@ -93,6 +99,60 @@ public class ConversationHistoryReplayService {
                 .lastActiveAt(session.getLastActiveAt())
                 .runs(runDetails)
                 .build();
+    }
+
+    private ContextUsagePayload resolveContextUsage(List<LlmInvocationView> invocations) {
+        if (CollectionUtils.isEmpty(invocations)) {
+            return null;
+        }
+        for (int index = invocations.size() - 1; index >= 0; index -= 1) {
+            LlmInvocationView invocation = invocations.get(index);
+            if (invocation == null) {
+                continue;
+            }
+            int sys = nonNegative(invocation.getEstSystemTokens());
+            int tools = nonNegative(invocation.getEstToolTokens());
+            int history = nonNegative(invocation.getEstMessageTokens());
+            int estimated = nonNegative(invocation.getEstTotalTokens());
+            Integer promptTokens = invocation.getPromptTokens();
+            Integer completionTokens = invocation.getCompletionTokens();
+            int used = promptTokens != null && promptTokens > 0
+                    ? promptTokens
+                    : estimated > 0 ? estimated : sys + tools + history;
+            if (used <= 0) {
+                continue;
+            }
+            return ContextUsagePayload.builder()
+                    .sys(sys)
+                    .tools(tools)
+                    .history(history)
+                    .files(0)
+                    .max(resolveContextWindow(invocation.getModelName()))
+                    .used(used)
+                    .promptTokens(promptTokens != null && promptTokens > 0 ? promptTokens : null)
+                    .completionTokens(completionTokens != null && completionTokens > 0 ? completionTokens : null)
+                    .source(promptTokens != null && promptTokens > 0 ? "measured" : "estimate")
+                    .build();
+        }
+        return null;
+    }
+
+    private int nonNegative(Integer value) {
+        return value == null ? 0 : Math.max(0, value);
+    }
+
+    private int resolveContextWindow(String modelName) {
+        if (StringUtils.isNotBlank(modelName) && llmModelCatalog != null) {
+            try {
+                LLMSettings settings = llmModelCatalog.resolve(modelName).orElse(null);
+                if (settings != null && settings.getMaxInputTokens() > 0) {
+                    return settings.getMaxInputTokens();
+                }
+            } catch (Exception ignored) {
+                // 历史回放不能因模型目录暂时不可用而失败。
+            }
+        }
+        return 100_000;
     }
 
     /**

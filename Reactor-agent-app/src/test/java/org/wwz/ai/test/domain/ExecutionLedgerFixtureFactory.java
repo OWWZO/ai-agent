@@ -103,7 +103,8 @@ public final class ExecutionLedgerFixtureFactory {
                                 new DefaultToolInvocationProjector()
                         )
                 ),
-                new HistoryReplayPrinter()
+                new HistoryReplayPrinter(),
+                null
         );
         AgentExecutionRecorder recorder = new AgentExecutionRecorderImpl(
                 writeRepository, toolOutputWriter

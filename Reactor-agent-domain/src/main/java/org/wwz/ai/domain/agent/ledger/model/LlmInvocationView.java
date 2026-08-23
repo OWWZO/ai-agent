@@ -45,6 +45,15 @@ public class LlmInvocationView {
 
     private Integer totalTokens;
 
+    /** 请求开始前的上下文分段估算。 */
+    private Integer estTotalTokens;
+
+    private Integer estSystemTokens;
+
+    private Integer estMessageTokens;
+
+    private Integer estToolTokens;
+
     private String finishReason;
 
     private Integer status;

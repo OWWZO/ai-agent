@@ -8,6 +8,8 @@ import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionRunDetail;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
+import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
@@ -137,6 +139,52 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("req-history-002", detail.getRuns().get(1).getRequestId());
         Assert.assertFalse(detail.getRuns().get(0).getReplayFrames().isEmpty());
         Assert.assertFalse(detail.getRuns().get(1).getReplayFrames().isEmpty());
+    }
+
+    @Test
+    public void shouldRestoreLatestContextUsageFromLlmLedger() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        LocalDateTime now = LocalDateTime.now();
+        Long runId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid("req-context-history-001")
+                .requestId("req-context-history-001")
+                .sessionId("session-context-history-001")
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_REACT)
+                .queryText("恢复上下文")
+                .startedAt(now)
+                .build());
+        Long invocationId = ctx.recorder.createLlmInvocation(LlmInvocationStartRecord.builder()
+                .runId(runId)
+                .requestId("req-context-history-001")
+                .invocationSeq(1)
+                .agentName("react")
+                .callKind("askTool")
+                .streaming(false)
+                .modelName("test-model")
+                .estTotalTokens(12800)
+                .estSystemTokens(1200)
+                .estMessageTokens(9000)
+                .estToolTokens(2600)
+                .startedAt(now)
+                .build());
+        ctx.recorder.finishLlmInvocation(LlmInvocationFinishRecord.builder()
+                .llmInvocationId(invocationId)
+                .requestId("req-context-history-001")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .promptTokens(13100)
+                .completionTokens(700)
+                .totalTokens(13800)
+                .finishedAt(now.plusSeconds(1))
+                .build());
+
+        ConversationHistoryDetail detail = ctx.replayService.queryConversationHistory("session-context-history-001");
+
+        Assert.assertNotNull(detail.getRuns().get(0).getContextUsage());
+        Assert.assertEquals(1200, detail.getRuns().get(0).getContextUsage().getSys());
+        Assert.assertEquals(2600, detail.getRuns().get(0).getContextUsage().getTools());
+        Assert.assertEquals(9000, detail.getRuns().get(0).getContextUsage().getHistory());
+        Assert.assertEquals(13100, detail.getRuns().get(0).getContextUsage().getUsed());
+        Assert.assertEquals("measured", detail.getRuns().get(0).getContextUsage().getSource());
     }
 
     @Test

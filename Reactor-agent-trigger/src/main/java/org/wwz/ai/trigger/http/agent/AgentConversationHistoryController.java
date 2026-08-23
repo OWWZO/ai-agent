@@ -110,6 +110,7 @@ public class AgentConversationHistoryController {
                         .finalSummaryText(run.getFinalSummaryText())
                         .startedAt(run.getStartedAt())
                         .finishedAt(run.getFinishedAt())
+                        .contextUsage(run.getContextUsage())
                         .replayFrames(run.getReplayFrames() == null ? List.of() : run.getReplayFrames())
                         .build())
                 .collect(Collectors.toList());

@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
+import org.wwz.ai.domain.agent.runtime.llm.ContextUsagePayload;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,6 +62,8 @@ public class ConversationHistoryDetailRespVO {
         private LocalDateTime startedAt;
 
         private LocalDateTime finishedAt;
+
+        private ContextUsagePayload contextUsage;
 
         @Builder.Default
         private List<GptProcessResult> replayFrames = new ArrayList<>();

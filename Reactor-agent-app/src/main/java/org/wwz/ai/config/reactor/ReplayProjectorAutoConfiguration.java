@@ -125,11 +125,13 @@ public class ReplayProjectorAutoConfiguration {
     public ConversationHistoryReplayService conversationHistoryReplayService(
             ExecutionLedgerQueryService executionLedgerQueryService,
             ReplayProjector replayProjector,
-            HistoryReplayPrinter historyReplayPrinter) {
+            HistoryReplayPrinter historyReplayPrinter,
+            LlmModelCatalog llmModelCatalog) {
         return new ConversationHistoryReplayService(
                 executionLedgerQueryService,
                 replayProjector,
-                historyReplayPrinter
+                historyReplayPrinter,
+                llmModelCatalog
         );
     }
 }
