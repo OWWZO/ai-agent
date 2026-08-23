@@ -27,7 +27,7 @@ describe("GeneralInput", () => {
     expect(html).not.toMatch(/<button[^>]*>\s*<button/i);
   });
 
-  it("busy 时在发送按钮旁展示 Working shimmer", () => {
+  it("busy 时不展示状态文案", () => {
     const html = renderToStaticMarkup(
       <GeneralInput
         sessionId="session-1"
@@ -40,9 +40,8 @@ describe("GeneralInput", () => {
       />
     );
 
-    expect(html).toContain("Working");
-    expect(html).toContain("thinking-shimmer");
-    expect(html).toContain('aria-label="Working"');
+    expect(html).not.toContain("Working");
+    expect(html).not.toContain("thinking-shimmer");
   });
 
   it("输入工具条不再展示输出格式入口", () => {

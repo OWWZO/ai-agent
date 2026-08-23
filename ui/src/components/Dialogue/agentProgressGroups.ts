@@ -10,7 +10,7 @@ export function resolveAgentPhaseLabel(
     case "queued":
       return "Queued";
     case "working":
-      return "Working";
+      return "";
     case "suspended":
       return "Suspended";
     case "completed":
@@ -18,7 +18,7 @@ export function resolveAgentPhaseLabel(
     case "failed":
       return "Failed";
     default:
-      if (status === "running") return "Working";
+      if (status === "running") return "";
       if (status === "failed") return "Failed";
       if (status === "completed") return "Completed";
       return "Queued";
@@ -28,7 +28,7 @@ export function resolveAgentPhaseLabel(
 export function resolveAgentPhaseTone(
   phaseLabel: string
 ): "running" | "ok" | "error" | "neutral" {
-  if (phaseLabel === "Working" || phaseLabel === "Queued") return "running";
+  if (phaseLabel === "" || phaseLabel === "Queued") return "running";
   if (phaseLabel === "Failed") return "error";
   if (phaseLabel === "Completed") return "ok";
   return "neutral";

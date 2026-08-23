@@ -178,7 +178,7 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
 
         {!hasBody ? (
           <div className="kimi-detail-panel-empty">
-            {sub.status === "running" ? "子智能体执行中…" : "暂无详情"}
+            暂无详情
           </div>
         ) : null}
       </div>

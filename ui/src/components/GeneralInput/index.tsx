@@ -610,18 +610,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                 inputChars={question.length}
                 contextWindow={currentModelMeta?.contextWindow}
               />
-              {busy ? (
-                <div
-                  className="mr-0.5 flex items-center text-[12px] font-medium text-[#86868b]"
-                  role="status"
-                  aria-live="polite"
-                  aria-label="Working"
-                >
-                  <span className="thinking-shimmer text-[12px] font-medium tracking-[0.02em]">
-                    Working
-                  </span>
-                </div>
-              ) : null}
               {busy && onStop ? (
                 <Tooltip>
                   <TooltipTrigger asChild>

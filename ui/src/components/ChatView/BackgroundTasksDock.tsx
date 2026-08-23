@@ -3,7 +3,6 @@ import {
   BotIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  LoaderCircleIcon,
 } from "lucide-react";
 import {
   projectDockTasks,
@@ -151,8 +150,6 @@ const BackgroundTasksDock = memo(function BackgroundTasksDock({
     return null;
   }
 
-  const running = tasks.filter((t) => t.state === "run").length;
-
   const handleOpen = (id: string) => {
     if (!onOpenAgent) return;
     const tool = findAgentTaskByToolCallId(chat, id);
@@ -175,26 +172,19 @@ const BackgroundTasksDock = memo(function BackgroundTasksDock({
         className="kimi-dock-card__head"
       >
         <div className="flex size-8 shrink-0 items-center justify-center rounded-[var(--kimi-radius-sm)] bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]">
-          {running > 0 ? (
-            <LoaderCircleIcon className="size-4 animate-spin text-[var(--color-accent)]" />
-          ) : (
-            <BotIcon className="size-4" />
-          )}
+          <BotIcon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-[13px] font-semibold text-[var(--color-text)]">
-              后台任务
+              子 Agent
             </span>
             <span className="shrink-0 rounded-full bg-[var(--color-surface-sunken)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-faint)]">
               {tasks.length}
-              {running > 0 ? ` · ${running} 运行中` : ""}
             </span>
           </div>
           <div className="mt-0.5 line-clamp-1 text-[11px] text-[var(--color-text-faint)]">
-            {running > 0
-              ? tasks.find((t) => t.state === "run")?.name || "子智能体运行中"
-              : "后台子智能体"}
+            后台子 Agent
           </div>
         </div>
         <ChevronDownIcon
