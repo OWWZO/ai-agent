@@ -5,6 +5,7 @@
 # Date:   2025/7/8
 # =====================
 """耗时日志工具：同步/异步上下文管理器 + 装饰器。"""
+
 import asyncio
 import functools
 import inspect
@@ -18,12 +19,13 @@ from reactor_tool.model.context import RequestIdCtx
 class Timer(object):
     """同步代码块计时，日志带 RequestIdCtx。"""
 
-    def __init__(self, key: str):
+    def __init__(self, key: str, level: str = "debug"):
         self.key = key
+        self.level = level
 
     def __enter__(self):
         self.start_time = time.time()
-        logger.info(f"{RequestIdCtx.request_id} {self.key} start...")
+        logger.log(self.level.upper(), f"{RequestIdCtx.request_id} {self.key} start...")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -33,23 +35,30 @@ class Timer(object):
                 f"{traceback.format_exc()}"
             )
         else:
-            logger.info(f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]")
+            logger.log(
+                self.level.upper(),
+                f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]",
+            )
 
 
 class AsyncTimer(object):
     """异步代码块计时。"""
 
-    def __init__(self, key: str):
+    def __init__(self, key: str, level: str = "debug"):
         self.key = key
+        self.level = level
 
     async def __aenter__(self):
         self.start_time = time.time()
-        logger.info(f"{RequestIdCtx.request_id} {self.key} start...")
+        logger.log(self.level.upper(), f"{RequestIdCtx.request_id} {self.key} start...")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            logger.info(f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]")
+            logger.log(
+                self.level.upper(),
+                f"{RequestIdCtx.request_id} {self.key} cost=[{int((time.time() - self.start_time) * 1000)} ms]",
+            )
             return False
         # 客户端断开 / 外层 cancel scope / 生成器关闭：属正常中断，不要打 ERROR 堆栈
         if exc_type in (asyncio.CancelledError, GeneratorExit):
@@ -58,35 +67,44 @@ class AsyncTimer(object):
                 f"cost=[{int((time.time() - self.start_time) * 1000)} ms] type={exc_type.__name__}"
             )
             return False
-        logger.error(f"{RequestIdCtx.request_id} {self.key} error={traceback.format_exc()}")
+        logger.error(
+            f"{RequestIdCtx.request_id} {self.key} error={traceback.format_exc()}"
+        )
         return False
 
 
-def timer(key: str = ""):
+def timer(key: str = "", level: str = "debug"):
     """装饰器：自动适配同步函数 / 协程 / 异步生成器，统一打耗时日志。"""
 
     def decorator(func):
         if asyncio.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                async with AsyncTimer(f"{key} {func.__name__}"):
+                async with AsyncTimer(f"{key} {func.__name__}", level=level):
                     result = await func(*args, **kwargs)
                 return result
+
             return wrapper
         elif inspect.isasyncgenfunction(func):
+
             @functools.wraps(func)
             async def wrapper(*args, **kwargs):
-                async with AsyncTimer(f"{key} {func.__name__}"):
+                async with AsyncTimer(f"{key} {func.__name__}", level=level):
                     async for element in func(*args, **kwargs):
                         yield element
+
             return wrapper
         else:
+
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
-                with Timer(f"{key} {func.__name__}"):
+                with Timer(f"{key} {func.__name__}", level=level):
                     result = func(*args, **kwargs)
                 return result
+
             return wrapper
+
     return decorator
 
 

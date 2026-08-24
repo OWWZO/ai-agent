@@ -7,9 +7,10 @@
 """FastAPI 中间件与自定义路由。
 
 - UnknownException: 未捕获异常转 500
-- RequestHandlerRoute: POST JSON 请求体日志
+- RequestHandlerRoute: POST 请求元数据日志
 - HTTPProcessTimeMiddleware: 生成 request_id 并写入耗时响应头
 """
+
 import time
 import traceback
 import uuid
@@ -28,31 +29,40 @@ from reactor_tool.util.log_util import AsyncTimer
 class UnknownException(BaseHTTPMiddleware):
     """兜底异常中间件：打印堆栈并返回 500 文本。"""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         try:
             return await call_next(request)
         except Exception as e:
             # 异常统一在 HTTP 边界转成响应，避免内部堆栈直接泄露给调用方；request_id 保留排障关联线索。
-            logger.error(f"{RequestIdCtx.request_id} {request.method} {request.url.path} error={traceback.format_exc()}")
+            logger.error(
+                f"{RequestIdCtx.request_id} {request.method} {request.url.path} error={traceback.format_exc()}"
+            )
             return Response(content=f"Unexpected error: {e}", status_code=500)
 
 
 class RequestHandlerRoute(APIRoute):
-    """自定义路由：非 multipart 的 POST 请求打印 body，便于联调排障。"""
+    """自定义路由：只记录请求元数据，避免把正文写入日志。"""
 
     def get_route_handler(self) -> Callable:
         original_route_handler = super().get_route_handler()
 
         async def custom_route_handler(request: Request) -> Response:
             try:
-                content_type = request.headers.get('content-type', '')
-                # 跳过文件上传，避免把二进制写进日志
-                if request.method == "POST" and not content_type.startswith('multipart/form-data'):
-                    # Starlette 会缓存 request.body()，下游仍可正常读取同一请求体；这里只增加可观测性。
-                    body = (await request.body()).decode("utf-8")
-                    logger.info(f"{RequestIdCtx.request_id} {request.method} {request.url.path} body={body}")
+                content_type = request.headers.get("content-type", "")
+                content_length = request.headers.get("content-length", "unknown")
+                if request.method == "POST" and not content_type.startswith(
+                    "multipart/form-data"
+                ):
+                    logger.debug(
+                        f"{RequestIdCtx.request_id} {request.method} {request.url.path} "
+                        f"content_type={content_type} content_length={content_length}"
+                    )
             except Exception as e:
-                logger.warning(f"{RequestIdCtx.request_id} {request.method} {request.url.path} failed. error={e}")
+                logger.warning(
+                    f"{RequestIdCtx.request_id} {request.method} {request.url.path} failed. error={e}"
+                )
 
             return await original_route_handler(request)
 

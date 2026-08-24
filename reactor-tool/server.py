@@ -6,6 +6,7 @@
 # Date:   2025/7/7
 # =====================
 import os
+import sys
 import warnings
 from optparse import OptionParser
 from pathlib import Path
@@ -16,7 +17,10 @@ from fastapi import FastAPI
 from loguru import logger
 from starlette.middleware.cors import CORSMiddleware
 
-from reactor_tool.util.middleware_util import UnknownException, HTTPProcessTimeMiddleware
+from reactor_tool.util.middleware_util import (
+    UnknownException,
+    HTTPProcessTimeMiddleware,
+)
 
 load_dotenv()
 
@@ -35,27 +39,33 @@ warnings.filterwarnings(
 
 def print_logo():
     from pyfiglet import Figlet
+
     f = Figlet(font="slant")
     print(f.renderText("Reactor Tool"))
 
 
 def log_setting():
-    log_path = os.getenv("LOG_PATH", Path(__file__).resolve().parent / "logs" / "server.log")
+    log_path = os.getenv(
+        "LOG_PATH", Path(__file__).resolve().parent / "logs" / "server.log"
+    )
     log_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {module}.{function} {message}"
-    logger.add(log_path, format=log_format, rotation="200 MB")
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    # 重载/多 worker 时先清理默认 sink，避免同一条日志重复写入控制台和文件。
+    logger.remove()
+    logger.add(sys.stderr, level=log_level)
+    logger.add(log_path, format=log_format, level=log_level, rotation="200 MB")
 
 
 def create_app() -> FastAPI:
     # create_app 是 Uvicorn factory 边界：每个 worker 子进程独立创建 middleware 和
     # router，避免父进程共享请求态或把启动期副作用复制到错误的进程生命周期。
-    _app = FastAPI(
-        on_startup=[log_setting]
-    )
+    _app = FastAPI(on_startup=[log_setting])
 
     register_middleware(_app)
     register_router(_app)
 
     return _app
+
 
 def register_middleware(app: FastAPI):
     app.add_middleware(UnknownException)
@@ -110,7 +120,10 @@ if __name__ == "__main__":
     if options.role:
         os.environ["REACTOR_TOOL_ROLE"] = str(options.role).strip().lower()
 
-    from reactor_tool.service_role import get_service_role, sandbox_requires_single_worker
+    from reactor_tool.service_role import (
+        get_service_role,
+        sandbox_requires_single_worker,
+    )
 
     role = get_service_role()
     print(f"Start params: {options} role={role}")

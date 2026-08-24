@@ -9,6 +9,7 @@
 主入口 ask_llm / ask_llm_sync_iter，支持流式与非流式，自动适配
 DashScope / 官方 OpenAI / 自定义 api_base。
 """
+
 import asyncio
 import json
 import os
@@ -22,7 +23,7 @@ from litellm import acompletion
 from loguru import logger
 
 from reactor_tool.model.context import LLMModelInfoFactory
-from reactor_tool.util.log_util import AsyncTimer, timer
+from reactor_tool.util.log_util import AsyncTimer
 from reactor_tool.util.sensitive_detection import SensitiveWordsReplace
 
 # 走 DashScope OpenAI 兼容端点的模型别名
@@ -42,8 +43,7 @@ _LITELLM_DASHSCOPE_MODELS = {
 
 DASHSCOPE_API_BASE_DEFAULT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 OPENAI_COMPAT_DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) "
-    "Gecko/20100101 Firefox/148.0"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
 
 
@@ -63,10 +63,15 @@ def resolve_openai_compat_env(prefix: str) -> dict[str, str | None]:
     """解析指定前缀的 OpenAI 兼容配置，并兼容回退到全局 OPENAI_*。"""
     normalized_prefix = (prefix or "").strip().upper()
     if not normalized_prefix:
-        return {"api_base": _trimmed_env("OPENAI_BASE_URL", "OPENAI_API_BASE"), "api_key": _trimmed_env("OPENAI_API_KEY")}
+        return {
+            "api_base": _trimmed_env("OPENAI_BASE_URL", "OPENAI_API_BASE"),
+            "api_key": _trimmed_env("OPENAI_API_KEY"),
+        }
 
     return {
-        "api_base": _trimmed_env(f"{normalized_prefix}_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE"),
+        "api_base": _trimmed_env(
+            f"{normalized_prefix}_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE"
+        ),
         "api_key": _trimmed_env(f"{normalized_prefix}_API_KEY", "OPENAI_API_KEY"),
     }
 
@@ -126,12 +131,16 @@ def _is_official_openai_api_base(api_base: str) -> bool:
     return bool(api_base) and "api.openai.com" in api_base.lower()
 
 
-def _build_openai_compat_headers(existing_headers: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def _build_openai_compat_headers(
+    existing_headers: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """为 OpenAI 兼容网关补齐稳定请求头，避免第三方供应商拦截。"""
     headers = dict(existing_headers or {})
     lower_header_keys = {str(k).lower() for k in headers.keys()}
     if "user-agent" not in lower_header_keys:
-        headers["User-Agent"] = os.getenv("OPENAI_COMPAT_USER_AGENT", OPENAI_COMPAT_DEFAULT_USER_AGENT)
+        headers["User-Agent"] = os.getenv(
+            "OPENAI_COMPAT_USER_AGENT", OPENAI_COMPAT_DEFAULT_USER_AGENT
+        )
     return headers
 
 
@@ -178,10 +187,18 @@ def _build_chat_completions_url(api_base: str) -> str:
     return f"{base}/chat/completions"
 
 
-def _payload_from_litellm_params(messages: List[Any], stream: bool, params: dict) -> dict:
+def _payload_from_litellm_params(
+    messages: List[Any], stream: bool, params: dict
+) -> dict:
     payload = {"messages": messages, "stream": stream}
     for k, v in params.items():
-        if k in {"api_base", "api_key", "custom_llm_provider", "timeout", "extra_headers"}:
+        if k in {
+            "api_base",
+            "api_key",
+            "custom_llm_provider",
+            "timeout",
+            "extra_headers",
+        }:
             continue
         payload[k] = v
     return payload
@@ -219,9 +236,9 @@ def _strip_retried_stream_prefix(text: str, pending_prefix: str) -> tuple[str, s
     if not pending_prefix:
         return text, ""
     if pending_prefix.startswith(text):
-        return "", pending_prefix[len(text):]
+        return "", pending_prefix[len(text) :]
     if text.startswith(pending_prefix):
-        return text[len(pending_prefix):], ""
+        return text[len(pending_prefix) :], ""
     return text, ""
 
 
@@ -288,7 +305,8 @@ def extract_stream_chunk_text(chunk: Any, include_reasoning: bool = False) -> st
 
         if include_reasoning:
             message_reasoning = _extract_text_payload(
-                _get_value(message, "reasoning_content") or _get_value(message, "reasoning")
+                _get_value(message, "reasoning_content")
+                or _get_value(message, "reasoning")
             )
             if message_reasoning:
                 return message_reasoning
@@ -329,14 +347,18 @@ async def _raw_openai_like_request(
         headers.update(params.get("extra_headers"))
     headers["Accept"] = "text/event-stream"
 
-    payload = _payload_from_litellm_params(messages=messages, stream=transport_stream, params=params)
+    payload = _payload_from_litellm_params(
+        messages=messages, stream=transport_stream, params=params
+    )
     timeout = _build_http_timeout(params.get("timeout"))
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
             if resp.status_code >= 400:
                 text = (await resp.aread()).decode("utf-8", errors="ignore")
-                raise RuntimeError(f"raw_openai_like status={resp.status_code}, body={text[:500]}")
+                raise RuntimeError(
+                    f"raw_openai_like status={resp.status_code}, body={text[:500]}"
+                )
 
             buffered_text_parts: list[str] = []
             last_obj: dict = {}
@@ -374,15 +396,26 @@ async def _raw_openai_like_request(
                     yield merged_content
                 else:
                     if not saw_chunk:
-                        yield _to_attr_obj({
-                            "choices": [{"message": {"role": "assistant", "content": ""}}],
-                        })
+                        yield _to_attr_obj(
+                            {
+                                "choices": [
+                                    {"message": {"role": "assistant", "content": ""}}
+                                ],
+                            }
+                        )
                         return
                     merged_obj = dict(last_obj) if isinstance(last_obj, dict) else {}
                     choices = merged_obj.get("choices") or [{}]
-                    first_choice = choices[0] if isinstance(choices, list) and choices else {}
-                    first_choice = dict(first_choice) if isinstance(first_choice, dict) else {}
-                    first_choice["message"] = {"role": "assistant", "content": merged_content}
+                    first_choice = (
+                        choices[0] if isinstance(choices, list) and choices else {}
+                    )
+                    first_choice = (
+                        dict(first_choice) if isinstance(first_choice, dict) else {}
+                    )
+                    first_choice["message"] = {
+                        "role": "assistant",
+                        "content": merged_content,
+                    }
                     first_choice.pop("delta", None)
                     merged_obj["choices"] = [first_choice]
                     yield _to_attr_obj(merged_obj)
@@ -405,7 +438,9 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     explicit_api_base = kwargs.get("api_base")
     env_dashscope_api_base = os.getenv("DASHSCOPE_API_BASE")
     env_openai_api_base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
-    explicit_dashscope = bool(explicit_api_base) and _is_dashscope_api_base(str(explicit_api_base))
+    explicit_dashscope = bool(explicit_api_base) and _is_dashscope_api_base(
+        str(explicit_api_base)
+    )
 
     # ===== DashScope =====
     use_dashscope = False
@@ -414,7 +449,11 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
         prefix, rest = model.split("/", 1)
         if prefix == "dashscope" and rest:
             use_dashscope = True
-            api_base_raw = explicit_api_base or env_dashscope_api_base or DASHSCOPE_API_BASE_DEFAULT
+            api_base_raw = (
+                explicit_api_base
+                or env_dashscope_api_base
+                or DASHSCOPE_API_BASE_DEFAULT
+            )
         elif explicit_dashscope:
             use_dashscope = True
             api_base_raw = explicit_api_base
@@ -423,7 +462,9 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     elif model in _LITELLM_DASHSCOPE_MODELS or model.startswith("qwen"):
         use_dashscope = True
         # 只有 Qwen / DashScope 模型才自动复用 DashScope 环境，避免 gpt-* 被错误劫持到 DashScope。
-        api_base_raw = explicit_api_base or env_dashscope_api_base or DASHSCOPE_API_BASE_DEFAULT
+        api_base_raw = (
+            explicit_api_base or env_dashscope_api_base or DASHSCOPE_API_BASE_DEFAULT
+        )
     elif explicit_dashscope:
         use_dashscope = True
         api_base_raw = explicit_api_base
@@ -431,10 +472,18 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     if use_dashscope and api_base_raw:
         kwargs.pop("api_base", None)
         api_base = _normalize_api_base(api_base_raw)
-        api_key = kwargs.pop("api_key", None) or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        final_model = rest if "/" in model and model.split("/", 1)[0] == "dashscope" else model
+        api_key = (
+            kwargs.pop("api_key", None)
+            or os.getenv("DASHSCOPE_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
+        final_model = (
+            rest if "/" in model and model.split("/", 1)[0] == "dashscope" else model
+        )
 
-        if final_model not in _LITELLM_DASHSCOPE_MODELS and not final_model.startswith("qwen"):
+        if final_model not in _LITELLM_DASHSCOPE_MODELS and not final_model.startswith(
+            "qwen"
+        ):
             mapped_model = os.getenv("DASHSCOPE_FALLBACK_MODEL", "qwen3.5-plus")
             logger.warning(
                 f"[ask_llm] DashScope does not support model '{final_model}', fallback to {mapped_model}."
@@ -453,7 +502,11 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     if model.startswith("zhipuai/") or model.startswith("glm-"):
         final_model = model.split("/", 1)[1] if "/" in model else model
 
-        api_base_raw = kwargs.pop("api_base", None) or os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        api_base_raw = (
+            kwargs.pop("api_base", None)
+            or os.getenv("OPENAI_BASE_URL")
+            or os.getenv("OPENAI_API_BASE")
+        )
         if not api_base_raw:
             api_base_raw = "https://open.bigmodel.cn/api/paas/v4"
         api_base_raw = api_base_raw.rstrip("/")
@@ -492,7 +545,6 @@ def _prepare_litellm_params(model: str, **kwargs: Any) -> dict:
     return {"model": model, **kwargs}
 
 
-@timer(key="enter")
 async def ask_llm(
     messages: str | List[Any],
     model: str,
@@ -521,7 +573,9 @@ async def ask_llm(
                 message["content"] = SensitiveWordsReplace.replace(message["content"])
             else:
                 message["content"] = json.loads(
-                    SensitiveWordsReplace.replace(json.dumps(message["content"], ensure_ascii=False))
+                    SensitiveWordsReplace.replace(
+                        json.dumps(message["content"], ensure_ascii=False)
+                    )
                 )
 
     params = _prepare_litellm_params(model, extra_headers=extra_headers, **kwargs)
@@ -530,8 +584,10 @@ async def ask_llm(
         timeout = int(os.getenv("LLM_TIMEOUT", 600000))
     params["timeout"] = timeout
 
-    if params.get("custom_llm_provider") in {"openai", "openai_like"} and params.get("api_base"):
-        logger.info(
+    if params.get("custom_llm_provider") in {"openai", "openai_like"} and params.get(
+        "api_base"
+    ):
+        logger.debug(
             f"[ask_llm] OpenAI-compatible mode: provider={params.get('custom_llm_provider')}, "
             f"model={params.get('model')}, api_base={params.get('api_base')}, "
             f"has_api_key={bool(params.get('api_key'))}, timeout={timeout}"
@@ -553,13 +609,17 @@ async def ask_llm(
     # max_tokens: existing params > env > model registry default
     auto_max_tokens_from_model = False
     if params.get("max_tokens") is None and params.get("max_completion_tokens") is None:
-        env_max_tokens = _safe_int(os.getenv("LLM_MAX_TOKENS") or os.getenv("MAX_TOKENS"))
+        env_max_tokens = _safe_int(
+            os.getenv("LLM_MAX_TOKENS") or os.getenv("MAX_TOKENS")
+        )
         if env_max_tokens is not None and env_max_tokens > 0:
             params["max_tokens"] = env_max_tokens
         else:
             auto_max_tokens_from_model = True
             effective_model = str(params.get("model") or model)
-            params["max_tokens"] = int(LLMModelInfoFactory.get_max_output(effective_model, default=32000))
+            params["max_tokens"] = int(
+                LLMModelInfoFactory.get_max_output(effective_model, default=32000)
+            )
 
     # Header alignment: Java stream uses Accept: text/event-stream.
     merged_headers = {}
@@ -567,7 +627,9 @@ async def ask_llm(
         merged_headers.update(params.get("extra_headers"))
     if isinstance(extra_headers, dict):
         merged_headers.update(extra_headers)
-    if params.get("custom_llm_provider") in {"openai", "openai_like"} or params.get("api_base"):
+    if params.get("custom_llm_provider") in {"openai", "openai_like"} or params.get(
+        "api_base"
+    ):
         merged_headers = _build_openai_compat_headers(merged_headers)
     lower_header_keys = {str(k).lower() for k in merged_headers.keys()}
     if "content-type" not in lower_header_keys:
@@ -577,7 +639,9 @@ async def ask_llm(
     params["extra_headers"] = merged_headers
 
     configured_max_retries = _safe_int(os.getenv("LLM_MAX_RETRIES"))
-    max_retries = max(0, configured_max_retries if configured_max_retries is not None else 2)
+    max_retries = max(
+        0, configured_max_retries if configured_max_retries is not None else 2
+    )
     fallback_model = (
         os.getenv("OPENAI_COMPAT_FALLBACK_MODEL")
         or os.getenv("OPENAI_FALLBACK_MODEL")
@@ -589,18 +653,23 @@ async def ask_llm(
         and not _is_dashscope_api_base(str(params.get("api_base")))
     )
     allow_litellm_fallback_for_openai_compat = (
-        os.getenv("OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK", "false").strip().lower() == "true"
+        os.getenv("OPENAI_COMPAT_ALLOW_LITELLM_FALLBACK", "false").strip().lower()
+        == "true"
     )
     fallback_switched = False
     buffered_chunks: list[str] = []
     for attempt in range(max_retries + 1):
         # buffered_chunks 记录已经发给调用方的前缀；重试流式请求时剥离相同前缀，
         # 避免供应商已经输出的内容在第二次连接中重复出现。
-        retry_prefix = "".join(buffered_chunks) if stream and only_content and attempt > 0 else ""
+        retry_prefix = (
+            "".join(buffered_chunks) if stream and only_content and attempt > 0 else ""
+        )
         try:
             if openai_compat_http_primary:
                 provider = params.get("custom_llm_provider")
-                logger.info(f"[ask_llm] {provider} path: using raw HTTP as primary transport.")
+                logger.debug(
+                    f"[ask_llm] {provider} path: using raw HTTP as primary transport."
+                )
                 try:
                     async with AsyncTimer(key="exec ask_llm"):
                         async for raw_chunk in _raw_openai_like_request(
@@ -610,7 +679,9 @@ async def ask_llm(
                             only_content=only_content,
                         ):
                             if stream and only_content and isinstance(raw_chunk, str):
-                                raw_chunk, retry_prefix = _strip_retried_stream_prefix(raw_chunk, retry_prefix)
+                                raw_chunk, retry_prefix = _strip_retried_stream_prefix(
+                                    raw_chunk, retry_prefix
+                                )
                                 if not raw_chunk:
                                     continue
                                 buffered_chunks.append(raw_chunk)
@@ -638,7 +709,9 @@ async def ask_llm(
                             text = extract_stream_chunk_text(chunk)
                             if text:
                                 if stream:
-                                    text, retry_prefix = _strip_retried_stream_prefix(text, retry_prefix)
+                                    text, retry_prefix = _strip_retried_stream_prefix(
+                                        text, retry_prefix
+                                    )
                                 if not text:
                                     continue
                                 buffered_chunks.append(text)
@@ -646,10 +719,16 @@ async def ask_llm(
                         else:
                             yield chunk
                 else:
-                    yield response.choices[0].message.content if only_content else response
+                    yield (
+                        response.choices[0].message.content
+                        if only_content
+                        else response
+                    )
             return
         except asyncio.CancelledError as e:
-            logger.warning(f"[ask_llm] Request cancelled (attempt {attempt + 1}/{max_retries + 1}): {e}")
+            logger.warning(
+                f"[ask_llm] Request cancelled (attempt {attempt + 1}/{max_retries + 1}): {e}"
+            )
             if stream and only_content and buffered_chunks:
                 try:
                     yield "".join(buffered_chunks)
@@ -675,7 +754,11 @@ async def ask_llm(
                                 **params,
                             )
                         )
-                        yield fallback.choices[0].message.content if only_content else fallback
+                        yield (
+                            fallback.choices[0].message.content
+                            if only_content
+                            else fallback
+                        )
                         return
                 except Exception as ex:
                     logger.warning(f"[ask_llm] Fallback non-stream failed: {ex}")
@@ -697,19 +780,32 @@ async def ask_llm(
                 )
                 params["model"] = fallback_model
                 if auto_max_tokens_from_model:
-                    params["max_tokens"] = int(LLMModelInfoFactory.get_max_output(fallback_model, default=32000))
+                    params["max_tokens"] = int(
+                        LLMModelInfoFactory.get_max_output(
+                            fallback_model, default=32000
+                        )
+                    )
                 fallback_switched = True
                 continue
 
             if attempt == max_retries:
-                if stream and only_content and buffered_chunks and isinstance(e, httpx.HTTPError):
+                if (
+                    stream
+                    and only_content
+                    and buffered_chunks
+                    and isinstance(e, httpx.HTTPError)
+                ):
                     logger.warning(
                         f"[ask_llm] Stream interrupted after partial output; returning buffered content: {e}"
                     )
                     return
-                logger.error(f"[ask_llm] Request failed after {max_retries + 1} attempts: {e}")
+                logger.error(
+                    f"[ask_llm] Request failed after {max_retries + 1} attempts: {e}"
+                )
                 raise e
-            logger.warning(f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+            logger.warning(
+                f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}"
+            )
             try:
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
