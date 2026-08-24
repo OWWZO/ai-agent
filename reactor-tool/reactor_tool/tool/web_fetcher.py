@@ -3,6 +3,7 @@
 
 下载 HTML → trafilatura/BeautifulSoup 抽正文 → 内联截断 + 完整内容供落盘。
 """
+
 import os
 import re
 from dataclasses import dataclass
@@ -20,6 +21,17 @@ DEFAULT_TIMEOUT_SECONDS = 30
 DEFAULT_INLINE_CONTENT_CHARS = 12000  # 返回给模型的内联正文上限
 DEFAULT_USER_AGENT = "ReactorToolWebFetch/1.0"
 TRUNCATED_SUFFIX = "\n\n[内容已截断，完整正文请查看附件文件。]"
+
+
+def _reddit_session_cookie(raw: str) -> str:
+    value = raw.strip()
+    if "=" not in value:
+        return value
+    for part in value.split(";"):
+        name, separator, item = part.strip().partition("=")
+        if separator and name.strip() == "reddit_session":
+            return item.strip()
+    return value
 
 
 @dataclass
@@ -75,11 +87,15 @@ class WebFetcher:
     """抓取单个网页并提取正文。"""
 
     def __init__(self, inline_content_limit: int | None = None):
-        configured_limit = os.getenv("WEB_FETCH_INLINE_CHAR_LIMIT", str(DEFAULT_INLINE_CONTENT_CHARS))
+        configured_limit = os.getenv(
+            "WEB_FETCH_INLINE_CHAR_LIMIT", str(DEFAULT_INLINE_CONTENT_CHARS)
+        )
         self.inline_content_limit = inline_content_limit or self._parse_positive_int(
             configured_limit,
             DEFAULT_INLINE_CONTENT_CHARS,
         )
+        self.proxy = os.getenv("REACTOR_WEB_FETCH_PROXY", "").strip()
+        self.reddit_session = _reddit_session_cookie(os.getenv("REACTOR_REDDIT_SESSION", ""))
 
     async def fetch(self, request: WebFetchRequest) -> WebFetchResult:
         """抓取网页、提取正文，并生成统一返回结果。"""
@@ -111,7 +127,15 @@ class WebFetcher:
         client_timeout = aiohttp.ClientTimeout(total=timeout_seconds or DEFAULT_TIMEOUT_SECONDS)
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         async with aiohttp.ClientSession(timeout=client_timeout, headers=headers) as session:
-            async with session.get(url, allow_redirects=True) as response:
+            request_kwargs: dict[str, Any] = {"allow_redirects": True}
+            if self.proxy:
+                request_kwargs["proxy"] = self.proxy
+            hostname = (urlparse(url).hostname or "").casefold()
+            if self.reddit_session and (
+                hostname == "reddit.com" or hostname.endswith(".reddit.com")
+            ):
+                request_kwargs["cookies"] = {"reddit_session": self.reddit_session}
+            async with session.get(url, **request_kwargs) as response:
                 response.raise_for_status()
                 content_type = (response.headers.get("Content-Type") or "").lower()
                 if not self._is_supported_content_type(content_type):
@@ -166,7 +190,9 @@ class WebFetcher:
             metadata=metadata,
         )
 
-    def _extract_text_content(self, raw_content: str, final_url: str, content_type: str) -> ExtractedContent:
+    def _extract_text_content(
+        self, raw_content: str, final_url: str, content_type: str
+    ) -> ExtractedContent:
         """处理 Markdown 与纯文本响应，避免 raw 文件和 Reader 文本链路被误判为异常。"""
         normalized_content = self._normalize_content(raw_content)
         title = self._build_title_from_url(final_url)

@@ -171,6 +171,7 @@ public class WebFetchTool implements BaseTool {
                 .readTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
                 .writeTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
                 .callTimeoutSeconds(FETCH_TIMEOUT_SECONDS)
+                .proxy(StringUtils.trimToEmpty(requireReactorConfig().getWebFetchProxy()))
                 .followRedirects(false)
                 .build());
 

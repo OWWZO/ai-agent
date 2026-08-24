@@ -58,4 +58,10 @@ public class RemoteHttpRequest {
      * WebFetch 等场景应设为 false，由业务判断跨域 redirect。
      */
     Boolean followRedirects;
+
+    /**
+     * 可选的单请求代理地址，例如 http://127.0.0.1:7890。
+     * 为空时使用 HTTP 适配器的默认网络路径。
+     */
+    String proxy;
 }

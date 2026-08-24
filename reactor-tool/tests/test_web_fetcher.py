@@ -7,6 +7,58 @@ from reactor_tool.tool.web_fetcher import DownloadedPage, WebFetcher
 
 
 class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
+    async def test_should_forward_configured_proxy_to_http_request(self):
+        captured = {}
+
+        class FakeResponse:
+            url = "https://www.reddit.com/post"
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            def raise_for_status(self):
+                return None
+
+            async def text(self, errors="ignore"):
+                return "<html><body><article>正文</article></body></html>"
+
+        class FakeSession:
+            def __init__(self, **kwargs):
+                captured["session"] = kwargs
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            def get(self, url, **kwargs):
+                captured["url"] = url
+                captured["request"] = kwargs
+                return FakeResponse()
+
+        with patch.dict(
+            "os.environ",
+            {
+                "REACTOR_WEB_FETCH_PROXY": "http://127.0.0.1:7890",
+                "REACTOR_REDDIT_SESSION": "reddit-session-secret",
+            },
+        ):
+            with patch("reactor_tool.tool.web_fetcher.aiohttp.ClientSession", FakeSession):
+                page = await WebFetcher()._download_page("https://www.reddit.com/post", 30)
+
+        self.assertEqual("http://127.0.0.1:7890", captured["request"]["proxy"])
+        self.assertEqual(
+            "reddit-session-secret",
+            captured["request"]["cookies"]["reddit_session"],
+        )
+        self.assertEqual("https://www.reddit.com/post", captured["url"])
+        self.assertEqual("text/html; charset=utf-8", page.content_type)
+
     async def test_should_extract_markdown_content_with_trafilatura(self):
         fetcher = WebFetcher()
         request = WebFetchRequest(requestId="req-web-001", url="https://example.com/article")
@@ -17,7 +69,10 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(fetcher, "_download_page", new=AsyncMock(return_value=page)):
-            with patch("reactor_tool.tool.web_fetcher.trafilatura.extract", return_value="# 标题\n\n正文内容"):
+            with patch(
+                "reactor_tool.tool.web_fetcher.trafilatura.extract",
+                return_value="# 标题\n\n正文内容",
+            ):
                 result = await fetcher.fetch(request)
 
         self.assertEqual("测试标题", result.title)
@@ -66,7 +121,10 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch.object(fetcher, "_download_page", new=AsyncMock(return_value=page)):
-            with patch("reactor_tool.tool.web_fetcher.trafilatura.extract", return_value="0123456789ABCDEFGHIJ"):
+            with patch(
+                "reactor_tool.tool.web_fetcher.trafilatura.extract",
+                return_value="0123456789ABCDEFGHIJ",
+            ):
                 result = await fetcher.fetch(request)
 
         self.assertTrue(result.truncated)
@@ -75,7 +133,10 @@ class WebFetcherTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_should_accept_markdown_text_response(self):
         fetcher = WebFetcher()
-        request = WebFetchRequest(requestId="req-web-004", url="https://raw.githubusercontent.com/openai/openai-python/main/README.md")
+        request = WebFetchRequest(
+            requestId="req-web-004",
+            url="https://raw.githubusercontent.com/openai/openai-python/main/README.md",
+        )
         page = DownloadedPage(
             final_url="https://raw.githubusercontent.com/openai/openai-python/main/README.md",
             raw_content="# 项目标题\n\n这是一段 Markdown 正文。",

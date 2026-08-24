@@ -4,6 +4,7 @@ package org.wwz.ai.domain.agent.reactor.config;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -270,6 +271,10 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.web_fetch_url:}")
     private String webFetchUrl;
+
+    @Value("${autobots.autoagent.web_fetch_proxy:}")
+    @Setter
+    private String webFetchProxy;
 
     /**
      * WebSearch 模式：auto | gpt | grok | exa | tavily | brave | disabled。

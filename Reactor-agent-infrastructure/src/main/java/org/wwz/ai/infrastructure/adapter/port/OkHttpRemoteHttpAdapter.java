@@ -13,6 +13,9 @@ import org.wwz.ai.domain.agent.adapter.port.RemoteHttpRequest;
 import org.wwz.ai.domain.agent.adapter.port.RemoteHttpResponse;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -84,14 +87,35 @@ public class OkHttpRemoteHttpAdapter implements RemoteHttpPort {
 
     private OkHttpClient buildClient(RemoteHttpRequest request) {
         boolean followRedirects = request.getFollowRedirects() == null || Boolean.TRUE.equals(request.getFollowRedirects());
-        return sharedClient.newBuilder()
+        OkHttpClient.Builder builder = sharedClient.newBuilder()
                 .connectTimeout(resolveTimeout(request.getConnectTimeoutSeconds(), DEFAULT_CONNECT_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .readTimeout(resolveTimeout(request.getReadTimeoutSeconds(), DEFAULT_READ_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .writeTimeout(resolveTimeout(request.getWriteTimeoutSeconds(), DEFAULT_WRITE_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .callTimeout(resolveTimeout(request.getCallTimeoutSeconds(), request.getReadTimeoutSeconds(), DEFAULT_READ_TIMEOUT_SECONDS), TimeUnit.SECONDS)
                 .followRedirects(followRedirects)
-                .followSslRedirects(followRedirects)
-                .build();
+                .followSslRedirects(followRedirects);
+        if (StringUtils.isNotBlank(request.getProxy())) {
+            builder.proxy(parseProxy(request.getProxy()));
+        }
+        return builder.build();
+    }
+
+    private Proxy parseProxy(String rawProxy) {
+        try {
+            URI uri = URI.create(rawProxy.trim());
+            String scheme = StringUtils.defaultString(uri.getScheme()).toLowerCase();
+            Proxy.Type type = switch (scheme) {
+                case "http", "https" -> Proxy.Type.HTTP;
+                case "socks", "socks5", "socks5h" -> Proxy.Type.SOCKS;
+                default -> throw new IllegalArgumentException("unsupported proxy scheme");
+            };
+            if (StringUtils.isBlank(uri.getHost()) || uri.getPort() <= 0 || uri.getUserInfo() != null) {
+                throw new IllegalArgumentException("proxy must include host and port without credentials");
+            }
+            return new Proxy(type, InetSocketAddress.createUnresolved(uri.getHost(), uri.getPort()));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("invalid request proxy configuration", e);
+        }
     }
 
     private RequestBody buildRequestBody(RemoteHttpRequest request) {
