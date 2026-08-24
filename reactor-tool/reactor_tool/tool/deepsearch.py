@@ -89,7 +89,7 @@ class DeepSearch:
         self.searched_queries: List[str] = []
         self.current_docs: List[Doc] = []
 
-    @timer()
+    @timer("deepsearch", level="info")
     async def run(
         self,
         query: str,
@@ -117,7 +117,6 @@ class DeepSearch:
         ).lower() in ("1", "true", "yes")
 
         try:
-            logger.info(f"{request_id} 开始章节化深度搜索...")
             sub_queries = await asyncio.wait_for(
                 query_decompose(query=query),
                 timeout=_remaining_timeout(),
