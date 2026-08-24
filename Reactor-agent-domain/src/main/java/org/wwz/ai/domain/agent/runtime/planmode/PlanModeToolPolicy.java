@@ -46,7 +46,10 @@ public final class PlanModeToolPolicy {
             "WebSearch",
             "web_fetch",
             "WebFetch",
-            "session_search"
+            "session_search",
+            "twitter",
+            "reddit",
+            "xueqiu"
     );
 
     private static final Set<String> MUTATING = Set.of(

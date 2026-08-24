@@ -62,6 +62,31 @@ cd reactor-tool
 - 不要把 `FILE_SERVER_URL` 配置成本地磁盘目录，否则前端拿到的 `domainUrl/downloadUrl` 会变成不可访问路径，文件组件点击后将无法预览。
 - `xai` provider 当前已打通文生图与无 mask 的图生图；mask 编辑仍建议继续使用 `openai` provider。
 
+## 登录态只读平台
+
+Reactor 内置了三个独立的只读工具，不依赖 Agent Reach。先在 `.env` 中配置环境变量，真实值不要提交到仓库：
+
+```dotenv
+REACTOR_TWITTER_AUTH_TOKEN=
+REACTOR_TWITTER_CT0=
+REACTOR_REDDIT_SESSION=
+REACTOR_XUEQIU_COOKIE=
+```
+
+Twitter 需要本机安装 `twitter-cli`（例如 `uv tool install twitter-cli`）；Reddit 和雪球由 Reactor Python 直接发起 HTTP 请求。三者都不会读取浏览器 Cookie、`rdt-cli` credential 文件或 Agent Reach 配置。
+
+如果 Twitter 初始化时报 `ClientTransaction` 超时，需要为 `REACTOR_TWITTER_PROXY` 配置能访问 `x.com` 的 HTTP 或 SOCKS5 代理；普通 `HTTPS_PROXY` 不一定会被 `twitter-cli` 使用。
+
+Java Agent 默认不暴露这些登录态工具。需要使用时，在 `autobots.autoagent.tool_list` 的 `default` 列表中显式加入 `twitter,reddit,xueqiu`，例如：
+
+```yaml
+autobots:
+  autoagent:
+    tool_list: '{"default":"search,web_fetch,twitter,reddit,xueqiu"}'
+```
+
+只支持读取：搜索/详情/时间线、Reddit 帖子评论，以及雪球行情和社区榜单；不支持发帖、评论、点赞、投票、收藏、交易或账户修改。
+
 ## DeepSearch 说明
 
 - Query 分解与 `extend/search/report` 三阶段 SSE 协议保持不变。

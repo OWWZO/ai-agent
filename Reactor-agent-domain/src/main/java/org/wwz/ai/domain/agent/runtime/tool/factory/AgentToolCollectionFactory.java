@@ -67,6 +67,9 @@ import org.wwz.ai.domain.agent.runtime.tool.common.MemoryTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.SessionSearchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebFetchTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.WebSearchTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.social.RedditTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.social.TwitterTool;
+import org.wwz.ai.domain.agent.runtime.tool.common.social.XueqiuTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ListMcpResourcesTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ReadMcpResourceTool;
 import org.wwz.ai.domain.agent.runtime.tool.common.mcp.ToolSearchTool;
@@ -301,6 +304,18 @@ public class AgentToolCollectionFactory {
             if (agentToolList.contains("web_search") || agentToolList.contains("WebSearch")) {
                 WebSearchTool webSearchTool = new WebSearchTool();
                 addTool(toolCollection, webSearchTool, agentContext, WebSearchTool::setAgentContext);
+            }
+            if (agentToolList.contains("twitter")) {
+                TwitterTool twitterTool = new TwitterTool();
+                addTool(toolCollection, twitterTool, agentContext, TwitterTool::setAgentContext);
+            }
+            if (agentToolList.contains("reddit")) {
+                RedditTool redditTool = new RedditTool();
+                addTool(toolCollection, redditTool, agentContext, RedditTool::setAgentContext);
+            }
+            if (agentToolList.contains("xueqiu")) {
+                XueqiuTool xueqiuTool = new XueqiuTool();
+                addTool(toolCollection, xueqiuTool, agentContext, XueqiuTool::setAgentContext);
             }
             if (agentToolList.contains("code_execution")) {
                 CodeExecutionTool codeExecutionTool = new CodeExecutionTool();

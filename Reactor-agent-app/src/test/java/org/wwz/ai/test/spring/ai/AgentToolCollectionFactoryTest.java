@@ -229,6 +229,29 @@ public class AgentToolCollectionFactoryTest {
     }
 
     @Test
+    public void shouldRegisterAuthenticatedPlatformToolsOnlyWhenConfigured() {
+        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
+        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
+
+        ReactorConfig reactorConfig = buildReactorConfig();
+        reactorConfig.setMultiAgentToolList("{\"default\":\"twitter,reddit,xueqiu\"}");
+        AgentToolCollectionFactory factory = newFactory(
+                reactorConfig,
+                mcpToolExecutor,
+                Mockito.mock(DefaultSkillRegistry.class),
+                SkillRuntimeOptions.builder().enabled(false).build(),
+                disabledWorkspaceService(),
+                disabledWorkspaceOptions()
+        );
+
+        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("html"));
+
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("twitter"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("reddit"));
+        Assert.assertTrue(toolCollection.getToolMap().containsKey("xueqiu"));
+    }
+
+    @Test
     public void shouldRegisterAllDocumentGenerationToolsForReactAndPlanSolve() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
