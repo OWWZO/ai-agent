@@ -9,6 +9,7 @@
 引擎：DDG / Bing / Jina / Sogou / Serper / Exa；
 MixSearch 并发调用并去重，供 DeepSearch 使用。
 """
+
 import asyncio
 import json
 import os
@@ -18,6 +19,7 @@ from typing import List
 from urllib.parse import quote
 import aiohttp
 from bs4 import BeautifulSoup
+
 try:
     from ddgs import DDGS
 except ImportError:
@@ -46,7 +48,9 @@ class SearchBase(ABC):
         self._use_jd_gateway = os.getenv("USE_JD_SEARCH_GATEWAY", "true") == "true"
 
     @abstractmethod
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         """抽象搜索方法：返回 Doc 列表。"""
         raise NotImplementedError
 
@@ -67,18 +71,18 @@ class SearchBase(ABC):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                        "https://r.jina.ai/",
-                        json={"url": source_url},
-                        headers=headers,
-                        timeout=client_timeout,
+                    "https://r.jina.ai/",
+                    json={"url": source_url},
+                    headers=headers,
+                    timeout=client_timeout,
                 ) as response:
                     if response.status != 200:
-                        logger.warning(f"jina reader skipped: url=[{source_url}] status={response.status}")
+                        logger.debug(f"jina reader skipped: status={response.status}")
                         return ""
                     content = (await response.text()).strip()
                     return content
         except Exception as e:
-            logger.warning(f"jina reader error: url=[{source_url}] error={e}")
+            logger.debug(f"jina reader error: {e}")
             return ""
 
     @staticmethod
@@ -92,14 +96,20 @@ class SearchBase(ABC):
                 async with session.get(source_url, timeout=client_timeout) as response:
                     content_type = (response.content_type or "").lower()
                     if content_type not in [
-                        "text/html", "text/plain", "text/xml", "application/json",
-                        "application/xml", "application/octet-stream"
+                        "text/html",
+                        "text/plain",
+                        "text/xml",
+                        "application/json",
+                        "application/xml",
+                        "application/octet-stream",
                     ]:
-                        logger.warning(f"parser content-type[{response.content_type}] not parser: url=[{source_url}]")
+                        logger.debug(
+                            f"parser content-type not supported: {response.content_type}"
+                        )
                         return ""
                     raw_bytes = await response.read()
         except Exception as e:
-            logger.warning(f"parser error: url=[{source_url}] error={e}")
+            logger.debug(f"parser error: {e}")
             return ""
 
         try:
@@ -120,10 +130,14 @@ class SearchBase(ABC):
             # 深度搜索默认改为直连抓取，只有显式开启时才尝试 Jina Reader。
             if use_jina_reader:
                 jina_timeout = int(os.getenv("JINA_READER_TIMEOUT", timeout))
-                jina_content = await SearchBase._fetch_content_with_jina_reader(doc.link, jina_timeout)
+                jina_content = await SearchBase._fetch_content_with_jina_reader(
+                    doc.link, jina_timeout
+                )
                 if jina_content and jina_content.strip():
                     return jina_content.strip()
-            direct_content = await SearchBase._fetch_content_with_direct_http(doc.link, timeout)
+            direct_content = await SearchBase._fetch_content_with_direct_http(
+                doc.link, timeout
+            )
             return direct_content.strip() if direct_content else ""
 
         async with asyncio.TaskGroup() as tg:
@@ -137,13 +151,15 @@ class SearchBase(ABC):
 
     @timer()
     async def search_and_dedup(
-            self, query: str, request_id: str = None, *args, **kwargs
+        self, query: str, request_id: str = None, *args, **kwargs
     ) -> List[Doc]:
         """
         搜索并去重，同时删除没有内容的文档
         """
         try:
-            docs = await self.search(query=query, request_id=request_id, *args, **kwargs)
+            docs = await self.search(
+                query=query, request_id=request_id, *args, **kwargs
+            )
         except aiohttp.InvalidURL as e:
             logger.warning(f"Search skipped (invalid URL): {e}")
             return []
@@ -152,17 +168,22 @@ class SearchBase(ABC):
             return []
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
             # 单个搜索引擎异常时直接降级，避免影响混合搜索整体结果。
-            logger.warning(f"{self.__class__.__name__} skipped due to request error: {e}")
+            logger.warning(
+                f"{self.__class__.__name__} skipped due to request error: {e}"
+            )
             return []
         except Exception as e:
             # 兜底保护，保证某个搜索引擎失败时不会中断整个深度搜索流程。
-            logger.exception(f"{self.__class__.__name__} skipped due to unexpected error: {e}")
+            logger.exception(
+                f"{self.__class__.__name__} skipped due to unexpected error: {e}"
+            )
             return []
-        docs = await self.parser(
-            docs=docs,
-            timeout=self._parser_timeout,
-            use_jina_reader=kwargs.get("use_jina_reader", True),
-        )
+        if kwargs.get("parse_content", True):
+            docs = await self.parser(
+                docs=docs,
+                timeout=self._parser_timeout,
+                use_jina_reader=kwargs.get("use_jina_reader", True),
+            )
 
         seen_docs = set()
         deduped_docs = []
@@ -175,14 +196,15 @@ class SearchBase(ABC):
 
 
 class DDGSearch(SearchBase):
-
     def __init__(self):
         super().__init__()
         self._engine = "ddg"
         self._region = os.getenv("DDG_REGION", "wt-wt")
         self._safesearch = os.getenv("DDG_SAFESEARCH", "moderate")
 
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         if DDGS is None:
             logger.warning("ddgs library not installed, skip ddg search")
             return []
@@ -212,7 +234,6 @@ class DDGSearch(SearchBase):
 
 
 class BingSearch(SearchBase):
-
     def __init__(self):
         super().__init__()
         self._engine = "bing-search"
@@ -235,27 +256,26 @@ class BingSearch(SearchBase):
             return {
                 "request_id": request_id,
                 "model": self._engine,
-
-                "messages": [{
-                    "role": "user",
-                    "content": query
-                }],
+                "messages": [{"role": "user", "content": query}],
                 "count": self._count,
                 "stream": False,
             }
         else:
-            return {
-                "q": query,
-                "textDecorations": True
-            }
+            return {"q": query, "textDecorations": True}
 
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         if not _search_url_ok(self._url):
-            logger.warning(f"Bing search skipped: BING_SEARCH_URL not configured or invalid")
+            logger.warning(
+                f"Bing search skipped: BING_SEARCH_URL not configured or invalid"
+            )
             return []
         body = self.construct_body(query, request_id)
         async with aiohttp.ClientSession() as session:
-            async with session.post(self._url, json=body, headers=self.headers, timeout=self._timeout) as response:
+            async with session.post(
+                self._url, json=body, headers=self.headers, timeout=self._timeout
+            ) as response:
                 result = json.loads(await response.text())
                 return [
                     Doc(
@@ -264,12 +284,12 @@ class BingSearch(SearchBase):
                         title=item.get("name", ""),
                         link=item.get("url", ""),
                         data={"search_engine": self._engine},
-                    ) for item in result.get("webPages", {}).get("value", [])
+                    )
+                    for item in result.get("webPages", {}).get("value", [])
                 ]
 
 
 class JinaSearch(BingSearch):
-
     def __init__(self):
         super().__init__()
         self._engine = "search_pro_jina"
@@ -280,14 +300,20 @@ class JinaSearch(BingSearch):
         """Jina Search 使用路径参数而不是 q 查询参数。"""
         return f"{self._url.rstrip('/')}/{quote(query, safe='')}"
 
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         if not _search_url_ok(self._url):
-            logger.warning(f"Jina search skipped: JINA_SEARCH_URL not configured or invalid")
+            logger.warning(
+                f"Jina search skipped: JINA_SEARCH_URL not configured or invalid"
+            )
             return []
         if self._use_jd_gateway:
             body = self.construct_body(query, request_id)
             async with aiohttp.ClientSession() as session:
-                async with session.post(self._url, json=body, headers=self.headers, timeout=self._timeout) as response:
+                async with session.post(
+                    self._url, json=body, headers=self.headers, timeout=self._timeout
+                ) as response:
                     result = json.loads(await response.text())
                     return [
                         Doc(
@@ -296,18 +322,23 @@ class JinaSearch(BingSearch):
                             title=item.get("title", ""),
                             link=item.get("link", ""),
                             data={"search_engine": self._engine},
-                        ) for item in result.get("search_result", [])
+                        )
+                        for item in result.get("search_result", [])
                     ]
         else:
             headers = {
                 "Accept": "application/json",
-                "Authorization": f"Bearer {self._api_key}"
+                "Authorization": f"Bearer {self._api_key}",
             }
             search_url = self._build_search_url(query)
             async with aiohttp.ClientSession() as session:
-                async with session.get(search_url, headers=headers, timeout=self._timeout) as response:
+                async with session.get(
+                    search_url, headers=headers, timeout=self._timeout
+                ) as response:
                     if response.status != 200:
-                        logger.error(f"Jina search failed: status={response.status}, body={await response.text()}")
+                        logger.error(
+                            f"Jina search failed: status={response.status}, body={await response.text()}"
+                        )
                         return []
                     result = await response.json(content_type=None)
                     return [
@@ -317,12 +348,12 @@ class JinaSearch(BingSearch):
                             title=item.get("title", ""),
                             link=item.get("url", ""),
                             data={"search_engine": self._engine},
-                        ) for item in result.get("data", [])
+                        )
+                        for item in result.get("data", [])
                     ]
 
 
 class SogouSearch(JinaSearch):
-
     def __init__(self):
         super().__init__()
         self._engine = "search_pro_sogou"
@@ -331,14 +362,13 @@ class SogouSearch(JinaSearch):
 
 
 class SerperSearch(JinaSearch):
-
     def __init__(self):
         super().__init__()
         self._engine = "serper"
         self._url = os.getenv("SERPER_SEARCH_URL")
         self._api_key = os.getenv("SERPER_SEARCH_API_KEY")
         self.set_auth()
-    
+
     def set_auth(self):
         self.headers["X-API-KEY"] = self._api_key
 
@@ -347,14 +377,20 @@ class SerperSearch(JinaSearch):
             "q": query,
             "count": self._count,
         }
-    
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         if not _search_url_ok(self._url):
-            logger.warning(f"Serper search skipped: SERPER_SEARCH_URL not configured or invalid")
+            logger.warning(
+                f"Serper search skipped: SERPER_SEARCH_URL not configured or invalid"
+            )
             return []
         body = self.construct_body(query, request_id)
         async with aiohttp.ClientSession() as session:
-            async with session.post(self._url, json=body, headers=self.headers, timeout=self._timeout) as response:
+            async with session.post(
+                self._url, json=body, headers=self.headers, timeout=self._timeout
+            ) as response:
                 result = json.loads(await response.text())
                 return [
                     Doc(
@@ -363,12 +399,12 @@ class SerperSearch(JinaSearch):
                         title=item.get("title", ""),
                         link=item.get("link", ""),
                         data={"search_engine": self._engine},
-                    ) for item in result.get("organic", [])
+                    )
+                    for item in result.get("organic", [])
                 ]
 
 
 class ExaSearch(SearchBase):
-
     def __init__(self):
         super().__init__()
         self._engine = "exa"
@@ -377,43 +413,51 @@ class ExaSearch(SearchBase):
         self.headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "x-api-key": self._api_key
+            "x-api-key": self._api_key,
         }
 
-    async def search(self, query: str, request_id: str = None, *args, **kwargs) -> List[Doc]:
+    async def search(
+        self, query: str, request_id: str = None, *args, **kwargs
+    ) -> List[Doc]:
         if not _search_url_ok(self._url):
-            logger.warning(f"Exa search skipped: EXA_SEARCH_URL not configured or invalid")
+            logger.warning(
+                f"Exa search skipped: EXA_SEARCH_URL not configured or invalid"
+            )
             return []
-        
+
         body = {
             "query": query,
             "numResults": self._count,
             "useAutoprompt": True,
-            "contents": {
-                "text": {
-                    "maxCharacters": 20000
-                }
-            }
+            "contents": {"text": {"maxCharacters": 20000}},
         }
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(self._url, json=body, headers=self.headers, timeout=self._timeout) as response:
+                async with session.post(
+                    self._url, json=body, headers=self.headers, timeout=self._timeout
+                ) as response:
                     if response.status != 200:
                         logger.error(f"Exa search failed: status={response.status}")
                         return []
-                    
+
                     data = await response.json()
                     results = data.get("results", [])
-                    
+
                     return [
                         Doc(
                             doc_type="web_page",
-                            content=item.get("text", "") or item.get("extract", "") or "",
+                            content=item.get("text", "")
+                            or item.get("extract", "")
+                            or "",
                             title=item.get("title", ""),
                             link=item.get("url", ""),
-                            data={"search_engine": self._engine, "score": item.get("score")},
-                        ) for item in results
+                            data={
+                                "search_engine": self._engine,
+                                "score": item.get("score"),
+                            },
+                        )
+                        for item in results
                     ]
         except Exception as e:
             logger.error(f"Exa search error: {e}")
@@ -421,7 +465,6 @@ class ExaSearch(SearchBase):
 
 
 class MixSearch(BingSearch):
-
     def __init__(self):
         super().__init__()
         self._engine = "mix_search"
@@ -433,9 +476,18 @@ class MixSearch(BingSearch):
         self._exa_engine = ExaSearch()
 
     async def search(
-            self, query: str, request_id: str = None,
-            use_ddg: bool = True, use_bing: bool = False, use_jina: bool = False, use_sogou: bool = False,
-            use_serp: bool = False, use_exa: bool = False, *args, **kwargs) -> List[Doc]:
+        self,
+        query: str,
+        request_id: str = None,
+        use_ddg: bool = True,
+        use_bing: bool = False,
+        use_jina: bool = False,
+        use_sogou: bool = False,
+        use_serp: bool = False,
+        use_exa: bool = False,
+        *args,
+        **kwargs,
+    ) -> List[Doc]:
         assert use_ddg or use_bing or use_jina or use_sogou or use_serp or use_exa
         use_jina_reader = kwargs.get("use_jina_reader", True)
         engines = []
@@ -459,6 +511,7 @@ class MixSearch(BingSearch):
                         query=query,
                         request_id=request_id,
                         use_jina_reader=use_jina_reader,
+                        parse_content=False,
                     )
                 )
                 for engine in engines

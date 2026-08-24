@@ -46,7 +46,9 @@ async def query_decompose(query: str, **kwargs):
         if chunk:
             think_content += chunk
 
-    logger.info(f"{RequestIdCtx.request_id} query_decompose think: {think_content}")
+    logger.debug(
+        f"{RequestIdCtx.request_id} query_decompose think completed, chars={len(think_content)}"
+    )
 
     # decompose
     messages = [
@@ -72,9 +74,12 @@ async def query_decompose(query: str, **kwargs):
         if chunk:
             extend_queries += chunk
 
-    logger.info(f"{RequestIdCtx.request_id} query_decompose queries: {extend_queries}")
-
-    return parse_report_structure(extend_queries, fallback_query=query)
+    chapters = parse_report_structure(extend_queries, fallback_query=query)
+    logger.debug(
+        f"{RequestIdCtx.request_id} query_decompose queries completed, "
+        f"chars={len(extend_queries)} chapters={len(chapters)}"
+    )
+    return chapters
 
 
 def parse_report_structure(content: str, fallback_query: str = "") -> list[dict]:
@@ -154,7 +159,7 @@ def parse_search_plan(content: str, fallback_query: str = "") -> dict:
     fallback = (fallback_query or "").strip()
     try:
         raw = (content or "").strip()
-        parsed = json.loads(raw or repair_json(raw, ensure_ascii=False))
+        parsed = json.loads(raw or repair_json(raw))
         if isinstance(parsed, dict):
             queries = parsed.get("search_queries") or parsed.get("queries") or []
             if isinstance(queries, str):

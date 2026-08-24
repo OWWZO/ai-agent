@@ -5,6 +5,7 @@
 # Date:   2025/7/9
 # =====================
 """DeepSearch 检索后推理：判断是否需要继续搜、生成下一轮子查询。"""
+
 import json
 import os
 import time
@@ -18,7 +19,10 @@ from reactor_tool.util.log_util import timer
 
 @timer()
 async def search_reasoning(
-        request_id: str, query: str, content: str, history_query_list: list = [],
+    request_id: str,
+    query: str,
+    content: str,
+    history_query_list: list = [],
 ):
     """基于已检索内容推理：是否足够回答 / 还需搜什么。返回结构化 dict。"""
     if not request_id or not query or not content:
@@ -35,16 +39,16 @@ async def search_reasoning(
     )
     content = ""
     async for chunk in ask_llm(
-            messages=prompt_content,
-            model=model,
-            stream=True,
-            only_content=True,  # 只返回内容
-            api_base=llm_config["api_base"],
-            api_key=llm_config["api_key"],
+        messages=prompt_content,
+        model=model,
+        stream=True,
+        only_content=True,  # 只返回内容
+        api_base=llm_config["api_base"],
+        api_key=llm_config["api_key"],
     ):
         if chunk:
             content += chunk
-    content_clean = json.loads(repair_json(content, ensure_ascii=False))
+    content_clean = json.loads(repair_json(content))
     return _parser(request_id, content_clean)
 
 
