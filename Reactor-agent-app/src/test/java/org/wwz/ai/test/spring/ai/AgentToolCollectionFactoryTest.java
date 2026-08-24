@@ -481,6 +481,7 @@ public class AgentToolCollectionFactoryTest {
                 workspaceRuntimeOptions,
                 subAgentRunner,
                 subAgentRegistry,
+                Mockito.mock(org.wwz.ai.domain.agent.runtime.cancel.ActiveAgentRunRegistry.class),
                 Mockito.mock(org.wwz.ai.domain.agent.runtime.askuser.PendingUserQuestionRegistry.class),
                 Mockito.mock(org.wwz.ai.domain.agent.runtime.planmode.PendingPlanApprovalRegistry.class),
                 Mockito.mock(org.wwz.ai.domain.agent.runtime.planmode.PlanArtifactStore.class)
