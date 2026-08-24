@@ -1,4 +1,5 @@
 """Reactor docgen path constants."""
+
 from __future__ import annotations
 
 import os
@@ -11,10 +12,16 @@ REACTOR_DOCGEN_HOME = Path(
     or (Path.home() / ".reactor-docgen")
 )
 FONTS_DIR = REACTOR_DOCGEN_HOME / "fonts"
-UPLOAD_DIR = Path(os.getenv("REACTOR_DOCGEN_UPLOAD_DIR") or (REACTOR_DOCGEN_HOME / "uploads"))
-KNOWLEDGE_DIR = Path(os.getenv("REACTOR_DOCGEN_KNOWLEDGE_DIR") or (REACTOR_DOCGEN_HOME / "knowledge"))
+UPLOAD_DIR = Path(
+    os.getenv("REACTOR_DOCGEN_UPLOAD_DIR") or (REACTOR_DOCGEN_HOME / "uploads")
+)
+KNOWLEDGE_DIR = Path(
+    os.getenv("REACTOR_DOCGEN_KNOWLEDGE_DIR") or (REACTOR_DOCGEN_HOME / "knowledge")
+)
 TEMPLATE_STYLES_DIR = REACTOR_DOCGEN_HOME / "templates" / "styles"
-OUTPUT_DIR = Path(os.getenv("REACTOR_DOCGEN_OUTPUT_DIR") or (Path.cwd() / "skilloutput" / "docgen"))
+OUTPUT_DIR = Path(
+    os.getenv("REACTOR_DOCGEN_OUTPUT_DIR") or (Path.cwd() / "skilloutput" / "docgen")
+)
 
 for _p in (FONTS_DIR, UPLOAD_DIR, KNOWLEDGE_DIR, TEMPLATE_STYLES_DIR, OUTPUT_DIR):
     try:
@@ -22,6 +29,7 @@ for _p in (FONTS_DIR, UPLOAD_DIR, KNOWLEDGE_DIR, TEMPLATE_STYLES_DIR, OUTPUT_DIR
         _p.mkdir(parents=True, exist_ok=True)
     except OSError:
         pass
+
 
 class _FilesSettings:
     upload_dir = str(UPLOAD_DIR)

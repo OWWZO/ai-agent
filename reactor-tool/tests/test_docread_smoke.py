@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Smoke tests for docread tools."""
+
 from __future__ import annotations
 
 import tempfile
@@ -62,7 +63,9 @@ async def test_csv_excel_word_pdf_html_md_text_smoke():
     txt_path.write_text("hello world\n", encoding="utf-8")
 
     rid = "test-docread-smoke"
-    assert (await run_csv_processor(rid, {"operation": "read", "file_path": str(csv_path)}))["success"]
+    assert (
+        await run_csv_processor(rid, {"operation": "read", "file_path": str(csv_path)})
+    )["success"]
     excel = await run_excel_reader(rid, {"file_path": str(xlsx)})
     assert excel["success"] and excel["data"]["row_count"] == 1
     word = await run_word_reader(rid, {"file_path": str(docx_path)})
@@ -73,9 +76,19 @@ async def test_csv_excel_word_pdf_html_md_text_smoke():
     assert struct["success"] and struct["data"]["page_count"] == 1
     cites = await run_citation_extractor(rid, {"file_path": str(pdf_path)})
     assert cites["success"]
-    assert (await run_html_processor(rid, {"operation": "read", "file_path": str(html_path)}))["success"]
-    assert (await run_markdown_processor(rid, {"operation": "read", "file_path": str(md_path)}))["success"]
-    assert (await run_text_processor(rid, {"operation": "read", "file_path": str(txt_path)}))["success"]
+    assert (
+        await run_html_processor(
+            rid, {"operation": "read", "file_path": str(html_path)}
+        )
+    )["success"]
+    assert (
+        await run_markdown_processor(
+            rid, {"operation": "read", "file_path": str(md_path)}
+        )
+    )["success"]
+    assert (
+        await run_text_processor(rid, {"operation": "read", "file_path": str(txt_path)})
+    )["success"]
 
 
 def test_image_ocr_validates_extension_and_empty():
@@ -99,7 +112,9 @@ def test_image_ocr_validates_extension_and_empty():
         assert "empty" in str(e).lower()
 
 
-def test_docread_finds_persistent_file_store_after_release_switch(monkeypatch, tmp_path):
+def test_docread_finds_persistent_file_store_after_release_switch(
+    monkeypatch, tmp_path
+):
     from reactor_tool.tool.docread.paths import resolve_input_path
 
     persistent_root = tmp_path / "data" / "file_db_dir"
@@ -112,10 +127,13 @@ def test_docread_finds_persistent_file_store_after_release_switch(monkeypatch, t
     (tmp_path / "new-release").mkdir()
     monkeypatch.chdir(tmp_path / "new-release")
 
-    assert resolve_input_path(
-        "logs.csv",
-        request_id="session-release-switch",
-    ) == source.resolve()
+    assert (
+        resolve_input_path(
+            "logs.csv",
+            request_id="session-release-switch",
+        )
+        == source.resolve()
+    )
 
 
 def test_html_processor_accepts_legacy_metadata_operation_name():

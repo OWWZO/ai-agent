@@ -5,6 +5,7 @@
 # Date:   2025/7/7
 # =====================
 """FastAPI 路由聚合：按 REACTOR_TOOL_ROLE 装配 api / sandbox / all。"""
+
 from fastapi import APIRouter
 
 from reactor_tool.service_role import get_service_role

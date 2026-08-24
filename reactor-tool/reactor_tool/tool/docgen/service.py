@@ -1,5 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 """Docgen service: document/excel/slides/checklist/template generators."""
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,9 @@ def _safe_filename(name: str, default_ext: str) -> str:
     return base
 
 
-def resolve_output_path(request_id: str, output_path: str | None, default_ext: str) -> Path:
+def resolve_output_path(
+    request_id: str, output_path: str | None, default_ext: str
+) -> Path:
     rid = (request_id or "default").strip() or "default"
     root = OUTPUT_DIR / rid
     # 所有生成产物按 request_id 隔离，文件名只保留 basename 并做 Windows 保留字符清洗；
@@ -41,7 +44,9 @@ def resolve_output_path(request_id: str, output_path: str | None, default_ext: s
     return path
 
 
-async def _upload_result(request_id: str, output_path: Path, result: dict[str, Any]) -> dict[str, Any]:
+async def _upload_result(
+    request_id: str, output_path: Path, result: dict[str, Any]
+) -> dict[str, Any]:
     # 本地渲染成功与文件服务上传成功是两个独立结果：上传不可用时仍返回 outputPath 和
     # 渲染统计，便于本地开发或离线任务继续消费产物。
     file_info = None
@@ -58,7 +63,14 @@ async def _upload_result(request_id: str, output_path: Path, result: dict[str, A
         "message": result.get("message") or "ok",
     }
     # keep original keys useful to agent
-    for k in ("format", "sheet_names", "file_size_bytes", "rendered_length", "variables_used", "output_format"):
+    for k in (
+        "format",
+        "sheet_names",
+        "file_size_bytes",
+        "rendered_length",
+        "variables_used",
+        "output_format",
+    ):
         if k in result:
             payload[k] = result[k]
     return payload
@@ -69,11 +81,32 @@ def generate_document(params: dict[str, Any], output_path: Path) -> dict[str, An
     from reactor_tool.docgen.model import DocumentSpec, _coerce_date_str
 
     _FRONT_MATTER_KEYS = (
-        "title", "subtitle", "author", "date", "subject", "keywords", "theme", "toc",
-        "cover", "numbered_headings", "justify", "numbered_figures", "section_pages",
-        "header", "footer", "watermark", "page",
+        "title",
+        "subtitle",
+        "author",
+        "date",
+        "subject",
+        "keywords",
+        "theme",
+        "toc",
+        "cover",
+        "numbered_headings",
+        "justify",
+        "numbered_figures",
+        "section_pages",
+        "header",
+        "footer",
+        "watermark",
+        "page",
     )
-    _EXT_FORMATS = {".pdf": "pdf", ".docx": "docx", ".html": "html", ".htm": "html", ".md": "markdown", ".markdown": "markdown"}
+    _EXT_FORMATS = {
+        ".pdf": "pdf",
+        ".docx": "docx",
+        ".html": "html",
+        ".htm": "html",
+        ".md": "markdown",
+        ".markdown": "markdown",
+    }
     _FORMAT_EXTS = {"pdf": ".pdf", "docx": ".docx", "html": ".html", "markdown": ".md"}
 
     fmt = (params.get("format") or "").strip().lower()
@@ -81,7 +114,10 @@ def generate_document(params: dict[str, Any], output_path: Path) -> dict[str, An
         fmt = _EXT_FORMATS.get(output_path.suffix.lower(), "pdf")
     if fmt not in _FORMAT_EXTS:
         raise ValueError(f"Unsupported format: {fmt}")
-    if output_path.suffix.lower() not in _EXT_FORMATS or _EXT_FORMATS.get(output_path.suffix.lower()) != fmt:
+    if (
+        output_path.suffix.lower() not in _EXT_FORMATS
+        or _EXT_FORMATS.get(output_path.suffix.lower()) != fmt
+    ):
         output_path = output_path.with_suffix(_FORMAT_EXTS[fmt])
 
     blocks: list[Any] = []
@@ -127,17 +163,23 @@ def generate_document(params: dict[str, Any], output_path: Path) -> dict[str, An
             "blocks": blocks,
         }
     )
-    logger.info(f"document_generate_start path={output_path} format={fmt} blocks={len(spec.blocks)}")
+    logger.info(
+        f"document_generate_start path={output_path} format={fmt} blocks={len(spec.blocks)}"
+    )
     if fmt == "pdf":
         from reactor_tool.docgen.renderers.pdf import render_pdf
+
         return render_pdf(spec, output_path)
     if fmt == "docx":
         from reactor_tool.docgen.renderers.docx import render_docx
+
         return render_docx(spec, output_path)
     if fmt == "html":
         from reactor_tool.docgen.renderers.html import render_html
+
         return render_html(spec, output_path)
     from reactor_tool.docgen.renderers.html import render_markdown
+
     return render_markdown(spec, output_path)
 
 
@@ -173,10 +215,21 @@ def generate_checklist(params: dict[str, Any], output_path: Path) -> dict[str, A
     from reactor_tool.docgen.model import DocumentSpec
 
     _EXT_FORMATS = {
-        ".pdf": "pdf", ".docx": "docx", ".html": "html", ".htm": "html",
-        ".md": "markdown", ".markdown": "markdown", ".json": "json",
+        ".pdf": "pdf",
+        ".docx": "docx",
+        ".html": "html",
+        ".htm": "html",
+        ".md": "markdown",
+        ".markdown": "markdown",
+        ".json": "json",
     }
-    _FORMAT_EXTS = {"pdf": ".pdf", "docx": ".docx", "html": ".html", "markdown": ".md", "json": ".json"}
+    _FORMAT_EXTS = {
+        "pdf": ".pdf",
+        "docx": ".docx",
+        "html": ".html",
+        "markdown": ".md",
+        "json": ".json",
+    }
     fmt = (params.get("format") or params.get("output_format") or "").strip().lower()
     if not fmt:
         fmt = _EXT_FORMATS.get(output_path.suffix.lower(), "markdown")
@@ -186,14 +239,26 @@ def generate_checklist(params: dict[str, Any], output_path: Path) -> dict[str, A
         output_path = output_path.with_suffix(_FORMAT_EXTS[fmt])
 
     block = build_checklist_block(params)
-    if not block.normalized_groups() or not any(g.items for g in block.normalized_groups()):
-        raise ValueError("Checklist is empty — provide `items`, `groups`, or a valid `source_path`.")
+    if not block.normalized_groups() or not any(
+        g.items for g in block.normalized_groups()
+    ):
+        raise ValueError(
+            "Checklist is empty — provide `items`, `groups`, or a valid `source_path`."
+        )
 
     if fmt == "json":
         payload = checklist_to_dict(block)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        return {"success": True, "output_path": str(output_path), "format": "json", "content_stats": payload["stats"], "warnings": []}
+        output_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return {
+            "success": True,
+            "output_path": str(output_path),
+            "format": "json",
+            "content_stats": payload["stats"],
+            "warnings": [],
+        }
 
     spec = DocumentSpec.model_validate(
         {
@@ -204,19 +269,23 @@ def generate_checklist(params: dict[str, Any], output_path: Path) -> dict[str, A
     )
     if fmt == "pdf":
         from reactor_tool.docgen.renderers.pdf import render_pdf
+
         return render_pdf(spec, output_path)
     if fmt == "docx":
         from reactor_tool.docgen.renderers.docx import render_docx
+
         return render_docx(spec, output_path)
     if fmt == "html":
         from reactor_tool.docgen.renderers.html import render_html
+
         return render_html(spec, output_path)
     from reactor_tool.docgen.renderers.html import render_markdown
+
     return render_markdown(spec, output_path)
 
 
 def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
-    """Port of LeAgent ExcelGeneratorTool.execute_sync (without LibreOffice recalc)."""
+    """Synchronous Excel generation without LibreOffice recalculation."""
     from openpyxl import Workbook
     from openpyxl.chart import AreaChart, BarChart, LineChart, PieChart
     from openpyxl.chart.reference import Reference
@@ -239,7 +308,9 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
     default_sheet = wb.active
     default_font_name = "Arial" if preset == "financial" else "Calibri"
     try:
-        wb.style = default_font_name  # best-effort; openpyxl default font differs by version
+        wb.style = (
+            default_font_name  # best-effort; openpyxl default font differs by version
+        )
     except Exception:
         pass
 
@@ -253,13 +324,29 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
         if wb_props.get("company"):
             wb.properties.company = wb_props["company"]
 
-    stats = {"sheets": 0, "total_rows": 0, "total_cells": 0, "charts": 0, "formulas": 0, "merged_ranges": 0, "validations": 0}
-    chart_classes = {"bar": BarChart, "column": BarChart, "line": LineChart, "pie": PieChart, "area": AreaChart}
+    stats = {
+        "sheets": 0,
+        "total_rows": 0,
+        "total_cells": 0,
+        "charts": 0,
+        "formulas": 0,
+        "merged_ranges": 0,
+        "validations": 0,
+    }
+    chart_classes = {
+        "bar": BarChart,
+        "column": BarChart,
+        "line": LineChart,
+        "pie": PieChart,
+        "area": AreaChart,
+    }
 
     def apply_financial(ws, headers, data):
         blue_font = Font(color="0000FF", name="Arial", size=11)
         black_font = Font(color="000000", name="Arial", size=11)
-        header_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="D9E1F2", end_color="D9E1F2", fill_type="solid"
+        )
         header_font = Font(bold=True, name="Arial", size=11)
         header_align = Alignment(horizontal="center")
         for col_idx in range(1, len(headers) + 1):
@@ -296,7 +383,9 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
         if ":" in range_str:
             min_col, min_row, max_col, max_row = range_boundaries(range_str)
         else:
-            min_col, min_row, max_col, max_row = range_boundaries(f"{range_str}:{range_str}")
+            min_col, min_row, max_col, max_row = range_boundaries(
+                f"{range_str}:{range_str}"
+            )
         font_kwargs: dict[str, Any] = {}
         if style_def.get("bold"):
             font_kwargs["bold"] = True
@@ -310,9 +399,17 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
             font_kwargs["color"] = style_def["font_color"]
         fill = None
         if style_def.get("bg_color"):
-            fill = PatternFill(start_color=style_def["bg_color"], end_color=style_def["bg_color"], fill_type="solid")
+            fill = PatternFill(
+                start_color=style_def["bg_color"],
+                end_color=style_def["bg_color"],
+                fill_type="solid",
+            )
         align = None
-        if style_def.get("align") or style_def.get("vertical") or style_def.get("wrap_text"):
+        if (
+            style_def.get("align")
+            or style_def.get("vertical")
+            or style_def.get("wrap_text")
+        ):
             align = Alignment(
                 horizontal=style_def.get("align"),
                 vertical=style_def.get("vertical"),
@@ -320,10 +417,15 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
             )
         border = None
         if style_def.get("border"):
-            side = Side(style=style_def.get("border_style") or "thin", color=style_def.get("border_color") or "000000")
+            side = Side(
+                style=style_def.get("border_style") or "thin",
+                color=style_def.get("border_color") or "000000",
+            )
             border = Border(left=side, right=side, top=side, bottom=side)
         font = Font(**font_kwargs) if font_kwargs else None
-        for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col):
+        for row in ws.iter_rows(
+            min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col
+        ):
             for cell in row:
                 if font:
                     cell.font = font
@@ -340,16 +442,27 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
         rng = cf_def["range"]
         rule_type = cf_def.get("type") or cf_def.get("rule_type") or "cell_value"
         fill_color = cf_def.get("fill_color") or cf_def.get("color") or "FFFF00"
-        fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+        fill = PatternFill(
+            start_color=fill_color, end_color=fill_color, fill_type="solid"
+        )
         if rule_type in ("color_scale", "colour_scale"):
-            ws.conditional_formatting.add(rng, ColorScaleRule(
-                start_type="min", start_color="F8696B",
-                mid_type="percentile", mid_value=50, mid_color="FFEB84",
-                end_type="max", end_color="63BE7B",
-            ))
+            ws.conditional_formatting.add(
+                rng,
+                ColorScaleRule(
+                    start_type="min",
+                    start_color="F8696B",
+                    mid_type="percentile",
+                    mid_value=50,
+                    mid_color="FFEB84",
+                    end_type="max",
+                    end_color="63BE7B",
+                ),
+            )
             return
         if rule_type == "data_bar":
-            ws.conditional_formatting.add(rng, DataBarRule(start_type="min", end_type="max", color=fill_color))
+            ws.conditional_formatting.add(
+                rng, DataBarRule(start_type="min", end_type="max", color=fill_color)
+            )
             return
         op = cf_def.get("operator") or "greaterThan"
         ws.conditional_formatting.add(
@@ -368,7 +481,9 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
         data = sheet_config.get("data") or []
         if headers:
             header_font = Font(bold=True, name=default_font_name)
-            header_fill = PatternFill(start_color="DAEEF3", end_color="DAEEF3", fill_type="solid")
+            header_fill = PatternFill(
+                start_color="DAEEF3", end_color="DAEEF3", fill_type="solid"
+            )
             header_align = Alignment(horizontal="center")
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col_idx, value=header)
@@ -421,12 +536,26 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
             chart = chart_class()
             if chart_def.get("title"):
                 chart.title = chart_def["title"]
-            min_col, min_row, max_col, max_row = range_boundaries(chart_def["data_range"])
-            data_ref = Reference(ws, min_col=min_col, min_row=min_row, max_col=max_col, max_row=max_row)
+            min_col, min_row, max_col, max_row = range_boundaries(
+                chart_def["data_range"]
+            )
+            data_ref = Reference(
+                ws, min_col=min_col, min_row=min_row, max_col=max_col, max_row=max_row
+            )
             chart.add_data(data_ref, titles_from_data=True)
             if chart_def.get("categories_range"):
-                cmin_col, cmin_row, cmax_col, cmax_row = range_boundaries(chart_def["categories_range"])
-                chart.set_categories(Reference(ws, min_col=cmin_col, min_row=cmin_row, max_col=cmax_col, max_row=cmax_row))
+                cmin_col, cmin_row, cmax_col, cmax_row = range_boundaries(
+                    chart_def["categories_range"]
+                )
+                chart.set_categories(
+                    Reference(
+                        ws,
+                        min_col=cmin_col,
+                        min_row=cmin_row,
+                        max_col=cmax_col,
+                        max_row=cmax_row,
+                    )
+                )
             if chart_type == "column":
                 chart.type = "col"
             if chart_def.get("width"):
@@ -445,14 +574,24 @@ def generate_excel(params: dict[str, Any], output_path: Path) -> dict[str, Any]:
         "output_path": str(output_path),
         "file_size_bytes": output_path.stat().st_size,
         "stats": stats,
-        "sheet_names": [str(s.get("name") or f"Sheet{i+1}")[:31] for i, s in enumerate(sheets_config)],
+        "sheet_names": [
+            str(s.get("name") or f"Sheet{i + 1}")[:31]
+            for i, s in enumerate(sheets_config)
+        ],
     }
 
 
-def fill_template(params: dict[str, Any], output_path: Path | None = None) -> dict[str, Any]:
+def fill_template(
+    params: dict[str, Any], output_path: Path | None = None
+) -> dict[str, Any]:
     from jinja2 import (
-        BaseLoader, ChoiceLoader, Environment, FileSystemLoader,
-        StrictUndefined, Undefined, select_autoescape,
+        BaseLoader,
+        ChoiceLoader,
+        Environment,
+        FileSystemLoader,
+        StrictUndefined,
+        Undefined,
+        select_autoescape,
     )
     from jinja2.exceptions import TemplateError, TemplateSyntaxError, UndefinedError
 
@@ -469,6 +608,7 @@ def fill_template(params: dict[str, Any], output_path: Path | None = None) -> di
         content = data_path.read_text(encoding="utf-8")
         if data_path.suffix in (".yaml", ".yml"):
             import yaml
+
             file_vars = yaml.safe_load(content)
         elif data_path.suffix == ".json":
             file_vars = json.loads(content)
@@ -544,6 +684,7 @@ def fill_template(params: dict[str, Any], output_path: Path | None = None) -> di
         template = env.from_string(template_string)
     elif template_source == "url":
         import requests
+
         template_url = params.get("template_url")
         if not template_url:
             raise ValueError("template_url is required for 'url' source")
@@ -558,7 +699,9 @@ def fill_template(params: dict[str, Any], output_path: Path | None = None) -> di
     except UndefinedError as e:
         raise ValueError(f"Undefined variable in template: {e}") from e
     except TemplateSyntaxError as e:
-        raise ValueError(f"Template syntax error at line {e.lineno}: {e.message}") from e
+        raise ValueError(
+            f"Template syntax error at line {e.lineno}: {e.message}"
+        ) from e
     except TemplateError as e:
         raise RuntimeError(f"Template rendering error: {e}") from e
 
@@ -577,10 +720,16 @@ def fill_template(params: dict[str, Any], output_path: Path | None = None) -> di
     return result
 
 
-async def run_document_generate(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+async def run_document_generate(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
     ext_map = {"pdf": ".pdf", "docx": ".docx", "html": ".html", "markdown": ".md"}
     fmt = (params.get("format") or "").strip().lower() or "pdf"
-    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), ext_map.get(fmt, ".pdf"))
+    path = resolve_output_path(
+        request_id,
+        params.get("output_path") or params.get("fileName"),
+        ext_map.get(fmt, ".pdf"),
+    )
     result = generate_document(params, path)
     # renderer 可能因格式或后缀修正返回新路径，上传必须以 renderer 的最终路径为准。
     # renderers may write a different final path
@@ -588,34 +737,63 @@ async def run_document_generate(request_id: str, params: dict[str, Any]) -> dict
     return await _upload_result(request_id, final, result)
 
 
-async def run_slides_generate(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
-    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), ".pptx")
+async def run_slides_generate(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
+    path = resolve_output_path(
+        request_id, params.get("output_path") or params.get("fileName"), ".pptx"
+    )
     result = generate_slides(params, path)
     final = Path(result.get("output_path") or path)
     return await _upload_result(request_id, final, result)
 
 
-async def run_excel_generator(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
-    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), ".xlsx")
+async def run_excel_generator(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
+    path = resolve_output_path(
+        request_id, params.get("output_path") or params.get("fileName"), ".xlsx"
+    )
     result = generate_excel(params, path)
     final = Path(result.get("output_path") or path)
     return await _upload_result(request_id, final, result)
 
 
-async def run_checklist_generate(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
-    fmt = (params.get("format") or params.get("output_format") or "markdown").strip().lower()
-    ext = {".pdf": "pdf", "pdf": ".pdf", "docx": ".docx", "html": ".html", "markdown": ".md", "json": ".json"}.get(fmt, ".md")
+async def run_checklist_generate(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
+    fmt = (
+        (params.get("format") or params.get("output_format") or "markdown")
+        .strip()
+        .lower()
+    )
+    ext = {
+        ".pdf": "pdf",
+        "pdf": ".pdf",
+        "docx": ".docx",
+        "html": ".html",
+        "markdown": ".md",
+        "json": ".json",
+    }.get(fmt, ".md")
     if not ext.startswith("."):
         ext = f".{ext}"
-    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), ext)
+    path = resolve_output_path(
+        request_id, params.get("output_path") or params.get("fileName"), ext
+    )
     result = generate_checklist(params, path)
     final = Path(result.get("output_path") or path)
     return await _upload_result(request_id, final, result)
 
 
-async def run_template_filler(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+async def run_template_filler(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
     out_name = params.get("output_path") or params.get("fileName")
-    path = resolve_output_path(request_id, out_name, ".txt") if out_name else resolve_output_path(request_id, "template_output.txt", ".txt")
+    path = (
+        resolve_output_path(request_id, out_name, ".txt")
+        if out_name
+        else resolve_output_path(request_id, "template_output.txt", ".txt")
+    )
     result = fill_template(params, path)
     final = Path(result.get("output_path") or path)
     # 文件引用服务于下载/预览，rendered 文本服务于当前 Agent 立即读取；两者都保留。
@@ -632,7 +810,9 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
             base[key] = value
 
 
-async def run_document_template(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+async def run_document_template(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
     """Manage reusable docgen templates (save/list/get/delete/preview/generate)."""
     from reactor_tool.docgen import templates as store
 
@@ -644,7 +824,12 @@ async def run_document_template(request_id: str, params: dict[str, Any]) -> dict
     if action == "list":
         # list/get/preview 是元数据或内存操作，不强制创建文件；只有 generate 进入统一
         # output_path + upload_result 流程。
-        return {"success": True, "message": "ok", "templates": store.list_templates(), "fileInfo": []}
+        return {
+            "success": True,
+            "message": "ok",
+            "templates": store.list_templates(),
+            "fileInfo": [],
+        }
 
     name = params.get("name")
     if not name:
@@ -675,7 +860,13 @@ async def run_document_template(request_id: str, params: dict[str, Any]) -> dict
 
     if action == "delete":
         removed = store.delete_template(str(name))
-        return {"success": True, "message": "ok", "deleted": removed, "name": name, "fileInfo": []}
+        return {
+            "success": True,
+            "message": "ok",
+            "deleted": removed,
+            "name": name,
+            "fileInfo": [],
+        }
 
     template = store.load_template(str(name))
     if template is None:
@@ -691,7 +882,13 @@ async def run_document_template(request_id: str, params: dict[str, Any]) -> dict
 
     payload = store.render_template(template, params.get("values") or {})
     if action == "preview":
-        return {"success": True, "message": "ok", "name": template.name, "rendered": payload, "fileInfo": []}
+        return {
+            "success": True,
+            "message": "ok",
+            "name": template.name,
+            "rendered": payload,
+            "fileInfo": [],
+        }
 
     # generate
     output_path = params.get("output_path") or params.get("fileName")
@@ -727,9 +924,17 @@ async def run_theme_designer(request_id: str, params: dict[str, Any]) -> dict[st
     name = params.get("name")
 
     if action == "list":
-        builtin = [{"name": t.name, "kind": t.kind, "builtin": True} for t in BUILTIN_THEMES.values()]
+        builtin = [
+            {"name": t.name, "kind": t.kind, "builtin": True}
+            for t in BUILTIN_THEMES.values()
+        ]
         custom = [{**item, "builtin": False} for item in theming.list_custom_themes()]
-        return {"success": True, "message": "ok", "themes": builtin + custom, "fileInfo": []}
+        return {
+            "success": True,
+            "message": "ok",
+            "themes": builtin + custom,
+            "fileInfo": [],
+        }
 
     if not name:
         raise ValueError(f"`name` is required for action={action}.")
@@ -750,12 +955,20 @@ async def run_theme_designer(request_id: str, params: dict[str, Any]) -> dict[st
 
     if action == "delete":
         removed = theming.delete_custom_theme(str(name))
-        return {"success": True, "message": "ok", "deleted": removed, "name": name, "fileInfo": []}
+        return {
+            "success": True,
+            "message": "ok",
+            "deleted": removed,
+            "name": name,
+            "fileInfo": [],
+        }
 
     if action == "create":
         primary = params.get("primary")
         if not primary:
-            raise ValueError("`primary` (brand color '#RRGGBB') is required for create.")
+            raise ValueError(
+                "`primary` (brand color '#RRGGBB') is required for create."
+            )
         payload = theming.derive_theme_payload(
             kind=kind,
             primary=str(primary),
@@ -801,11 +1014,15 @@ async def run_theme_designer(request_id: str, params: dict[str, Any]) -> dict[st
     return result
 
 
-async def run_chart_generator(request_id: str, params: dict[str, Any]) -> dict[str, Any]:
+async def run_chart_generator(
+    request_id: str, params: dict[str, Any]
+) -> dict[str, Any]:
     from reactor_tool.tool.docgen.chart_generator import generate_chart
 
     fmt = (params.get("output_format") or "png").strip().lower()
-    path = resolve_output_path(request_id, params.get("output_path") or params.get("fileName"), f".{fmt}")
+    path = resolve_output_path(
+        request_id, params.get("output_path") or params.get("fileName"), f".{fmt}"
+    )
     result = generate_chart(params, path)
     final = Path(result.get("output_path") or path)
     payload = await _upload_result(request_id, final, result)

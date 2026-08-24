@@ -199,10 +199,14 @@ def _resolve_managed_file(file_id: str) -> tuple[bytes, str, str] | None:
             if not path.is_file():
                 continue
             # Prefer real image files over sidecar text (e.g. base64 dumps).
-            if path.suffix.lower() not in _IMAGE_SUFFIXES and path.suffix.lower() not in {
-                "",
-                ".bin",
-            }:
+            if (
+                path.suffix.lower() not in _IMAGE_SUFFIXES
+                and path.suffix.lower()
+                not in {
+                    "",
+                    ".bin",
+                }
+            ):
                 # Still allow extensionless / odd names if PIL can open them later.
                 if path.suffix.lower() in {".txt", ".json", ".md", ".csv"}:
                     continue

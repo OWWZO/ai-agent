@@ -11,6 +11,7 @@ Endpoints:
   /word_reader /pdf_reader /pdf_structure /citation_extractor /image_ocr
   /data_aggregate /data_clean /data_merge /data_transform /data_validate /sql_query
 """
+
 import asyncio
 import contextvars
 import json
@@ -57,6 +58,7 @@ from reactor_tool.util.file_util import upload_file
 from reactor_tool.util.report_file_util import sanitize_report_html_content
 from reactor_tool.util.prompt_util import get_prompt
 from reactor_tool.util.middleware_util import RequestHandlerRoute
+
 load_dotenv()
 
 
@@ -78,7 +80,9 @@ def _normalize_vector(vector: list[float]) -> list[float]:
     return [float(component / norm) for component in vector]
 
 
-def _normalize_vector_batch(vectors: list[list[float]], normalize: bool) -> list[list[float]]:
+def _normalize_vector_batch(
+    vectors: list[list[float]], normalize: bool
+) -> list[list[float]]:
     """Optionally batch L2-normalize vectors."""
     if not normalize:
         return vectors
@@ -97,7 +101,9 @@ async def post_code_interpreter(
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
             if not f_name.startswith("/") and not f_name.startswith("http"):
-                body.file_names[idx] = f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
+                body.file_names[idx] = (
+                    f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
+                )
 
     async def _stream():
         """将 Agent 产出映射为 SSE 事件（CodeOuput / ActionOutput / 文本）。"""
@@ -114,7 +120,6 @@ async def post_code_interpreter(
                 stream=True,
                 permission_profile=body.permission_profile,
             ):
-
                 if isinstance(chunk, CodeOuput):
                     # 过程 Markdown 已由上游 str 事件推送；此处保留 code 快照与 .py 产物
                     yield ServerSentEvent(
@@ -151,7 +156,11 @@ async def post_code_interpreter(
                     if body.stream_mode.mode == "general":
                         yield ServerSentEvent(
                             data=json.dumps(
-                                {"requestId": body.request_id, "data": chunk, "isFinal": False},
+                                {
+                                    "requestId": body.request_id,
+                                    "data": chunk,
+                                    "isFinal": False,
+                                },
                                 ensure_ascii=False,
                             )
                         )
@@ -208,7 +217,6 @@ async def post_code_interpreter(
                 )
             )
             yield ServerSentEvent(data="[DONE]")
-
 
     if body.stream:
         # SSE 分支由生成器负责最终事件；非流式分支则消费完整结果并统一上传 markdown/HTML
@@ -276,7 +284,9 @@ async def post_report(
     if body.file_names:
         for idx, f_name in enumerate(body.file_names):
             if not f_name.startswith("/") and not f_name.startswith("http"):
-                body.file_names[idx] = f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
+                body.file_names[idx] = (
+                    f"{os.getenv('FILE_SERVER_URL')}/preview/{body.request_id}/{f_name}"
+                )
 
     async def _stream():
         content = ""
@@ -329,15 +339,36 @@ async def post_report(
                     acc_content = ""
         if body.stream_mode.mode in ["time", "token"] and acc_content:
             yield ServerSentEvent(
-                data=json.dumps({"requestId": body.request_id, "data": acc_content, "isFinal": False},
-                                ensure_ascii=False))
+                data=json.dumps(
+                    {
+                        "requestId": body.request_id,
+                        "data": acc_content,
+                        "isFinal": False,
+                    },
+                    ensure_ascii=False,
+                )
+            )
         if body.file_type in ["ppt", "html"]:
             content = sanitize_report_html_content(content)
-        file_info = [await upload_file(content=content, file_name=body.file_name, request_id=body.request_id,
-                                 file_type="html" if body.file_type == "ppt" else body.file_type)]
-        yield ServerSentEvent(data=json.dumps(
-            {"requestId": body.request_id, "data": content, "fileInfo": file_info,
-             "isFinal": True}, ensure_ascii=False))
+        file_info = [
+            await upload_file(
+                content=content,
+                file_name=body.file_name,
+                request_id=body.request_id,
+                file_type="html" if body.file_type == "ppt" else body.file_type,
+            )
+        ]
+        yield ServerSentEvent(
+            data=json.dumps(
+                {
+                    "requestId": body.request_id,
+                    "data": content,
+                    "fileInfo": file_info,
+                    "isFinal": True,
+                },
+                ensure_ascii=False,
+            )
+        )
         yield ServerSentEvent(data="[DONE]")
 
     if body.stream:
@@ -357,9 +388,20 @@ async def post_report(
             content += chunk
         if body.file_type in ["ppt", "html"]:
             content = sanitize_report_html_content(content)
-        file_info = [await upload_file(content=content, file_name=body.file_name, request_id=body.request_id,
-                                 file_type="html" if body.file_type == "ppt" else body.file_type)]
-        return {"code": 200, "data": content, "fileInfo": file_info, "requestId": body.request_id}
+        file_info = [
+            await upload_file(
+                content=content,
+                file_name=body.file_name,
+                request_id=body.request_id,
+                file_type="html" if body.file_type == "ppt" else body.file_type,
+            )
+        ]
+        return {
+            "code": 200,
+            "data": content,
+            "fileInfo": file_info,
+            "requestId": body.request_id,
+        }
 
 
 @router.post("/deepsearch")
@@ -370,18 +412,23 @@ async def post_deepsearch(
     from reactor_tool.tool.deepsearch import DeepSearch
 
     deepsearch = DeepSearch(engines=body.search_engines)
+
     async def _stream():
         async for chunk in deepsearch.run(
-                query=body.query,
-                request_id=body.request_id,
-                max_loop=body.max_loop,
-                stream=True,
-                stream_mode=body.stream_mode,
+            query=body.query,
+            request_id=body.request_id,
+            max_loop=body.max_loop,
+            stream=True,
+            stream_mode=body.stream_mode,
         ):
             yield ServerSentEvent(data=chunk)
         yield ServerSentEvent(data="[DONE]")
 
-    return EventSourceResponse(_stream(), ping_message_factory=lambda: ServerSentEvent(data="heartbeat"), ping=15)
+    return EventSourceResponse(
+        _stream(),
+        ping_message_factory=lambda: ServerSentEvent(data="heartbeat"),
+        ping=15,
+    )
 
 
 @router.post("/web_fetch")
@@ -465,14 +512,16 @@ async def post_table_rag(
     use_vector = body.use_vector
     use_elastic = body.use_elastic
 
-    table_rag = TableRAGAgent(request_id=request_id,
-                              query=query,
-                              modelCodeList=modelCodeList,
-                              current_date_info=current_date_info,
-                              schema_info=schema_info,
-                              user_info="",
-                              use_vector=use_vector,
-                              use_elastic=use_elastic,)
+    table_rag = TableRAGAgent(
+        request_id=request_id,
+        query=query,
+        modelCodeList=modelCodeList,
+        current_date_info=current_date_info,
+        schema_info=schema_info,
+        user_info="",
+        use_vector=use_vector,
+        use_elastic=use_elastic,
+    )
 
     # only_recall：只做向量/ES 粗排；否则走完整选表链路
     if recall_type == "only_recall":
@@ -493,9 +542,18 @@ async def cal_engine(body: CalEngineRequest):
         data=body.data,
     )
 
-    async for chunk in ask_llm(messages=prompt, model=os.getenv("CAL_ENGINE_MODEL", "qwen-vl-max"), only_content=True):
+    async for chunk in ask_llm(
+        messages=prompt,
+        model=os.getenv("CAL_ENGINE_MODEL", "qwen-vl-max"),
+        only_content=True,
+    ):
         expression = chunk
-    return {"code": 200, "expression": expression, "request_id": body.request_id, "query": body.query}
+    return {
+        "code": 200,
+        "expression": expression,
+        "request_id": body.request_id,
+        "query": body.query,
+    }
 
 
 @router.post("/auto_analysis")
@@ -505,6 +563,7 @@ async def auto_analysis(body: AutoAnalysisRequest):
 
     if body.stream:
         queue = asyncio.Queue()
+
         async def _stream(queue):
             if not body.modelCodeList:
                 yield ServerSentEvent(data="没有提供数据源，无法进行数据分析")
@@ -520,9 +579,17 @@ async def auto_analysis(body: AutoAnalysisRequest):
 
         def run_task(context, queue, body):
             if body.modelCodeList:
-                context.run(lambda : asyncio.run(AutoAnalysisAgent(queue=queue, max_steps=body.max_steps, stream=body.stream).run(**body.model_dump())))
+                context.run(
+                    lambda: asyncio.run(
+                        AutoAnalysisAgent(
+                            queue=queue, max_steps=body.max_steps, stream=body.stream
+                        ).run(**body.model_dump())
+                    )
+                )
 
-        thread = threading.Thread(target=run_task, args=(contextvars.copy_context(), queue, body), daemon=True)
+        thread = threading.Thread(
+            target=run_task, args=(contextvars.copy_context(), queue, body), daemon=True
+        )
         thread.start()
         return EventSourceResponse(
             _stream(queue),
@@ -534,7 +601,9 @@ async def auto_analysis(body: AutoAnalysisRequest):
         if not body.modelCodeList:
             response["data"] = "没有提供数据源，无法进行数据分析"
         else:
-            response["data"] = await AutoAnalysisAgent(max_steps=body.max_steps).run(**body.model_dump())
+            response["data"] = await AutoAnalysisAgent(max_steps=body.max_steps).run(
+                **body.model_dump()
+            )
         return response
 
 
@@ -545,6 +614,7 @@ async def post_nl2sql(body: NL2SQLRequest):
 
     nl2sql_queue = asyncio.Queue()
     if body.stream:
+
         async def _stream(queue):
             if not body.query:
                 yield ServerSentEvent(data="没有提供用户问题，无法进行nl2sql的执行")
@@ -558,11 +628,15 @@ async def post_nl2sql(body: NL2SQLRequest):
                         data = json.dumps(data, ensure_ascii=False)
                     yield ServerSentEvent(data=data)
 
-        def run_task(context, queue, body:NL2SQLRequest):
+        def run_task(context, queue, body: NL2SQLRequest):
             if body.query:
-                context.run(lambda : asyncio.run(NL2SQLAgent(queue=queue).run(body)))
+                context.run(lambda: asyncio.run(NL2SQLAgent(queue=queue).run(body)))
 
-        thread = threading.Thread(target=run_task, args=(contextvars.copy_context(), nl2sql_queue, body), daemon=True)
+        thread = threading.Thread(
+            target=run_task,
+            args=(contextvars.copy_context(), nl2sql_queue, body),
+            daemon=True,
+        )
         thread.start()
         return EventSourceResponse(
             _stream(nl2sql_queue),
@@ -570,7 +644,12 @@ async def post_nl2sql(body: NL2SQLRequest):
             ping=15,
         )
     else:
-        response = {"code": 200, "data": {}, "request_id": body.request_id, "status": "data"}
+        response = {
+            "code": 200,
+            "data": {},
+            "request_id": body.request_id,
+            "status": "data",
+        }
         if not body.query:
             response["err_msg"] = "没有提供用户问题，无法进行nl2sql的执行"
         else:
@@ -591,7 +670,11 @@ async def post_sop_recall(
     pl_sop = PlanSOP(request_id)
     sop_mode, choosed_sop_string = pl_sop.sop_choose(query=query, sop_list=sop_list)
 
-    return {"code": 200, "data": {"sop_mode": sop_mode, "choosed_sop_string": choosed_sop_string}, "requestId": body.request_id}
+    return {
+        "code": 200,
+        "data": {"sop_mode": sop_mode, "choosed_sop_string": choosed_sop_string},
+        "requestId": body.request_id,
+    }
 
 
 @router.post("/script_runner")
@@ -652,7 +735,9 @@ def _build_answer_preview(answer: str) -> str:
     return f"{preview[:120]}..."
 
 
-def _ensure_mrag_session(session_id: str, question: str, kb_scope: str | list[str]) -> MRagSessionModel:
+def _ensure_mrag_session(
+    session_id: str, question: str, kb_scope: str | list[str]
+) -> MRagSessionModel:
     """确保 MRAG 会话存在；不存在则按首轮问题创建。"""
     session_store = get_mrag_session_store()
     session = session_store.get_session(session_id)
@@ -710,7 +795,8 @@ def _normalize_mrag_chunk(chunk) -> dict | None:
         delta = getattr(choice, "delta", None)
         return _build_mrag_chunk(
             getattr(delta, "content", "") or "",
-            getattr(choice, "finish_reason", None) or getattr(choice, "finishReason", None),
+            getattr(choice, "finish_reason", None)
+            or getattr(choice, "finishReason", None),
         )
 
     model_dump = getattr(chunk, "model_dump", None)
@@ -787,7 +873,9 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                     continue
 
                 raw_chunks.append(payload)
-                delta = ((payload.get("choices") or [{}])[0].get("delta") or {}).get("content", "")
+                delta = ((payload.get("choices") or [{}])[0].get("delta") or {}).get(
+                    "content", ""
+                )
                 if delta:
                     answer_parts.append(delta)
                 yield json.dumps(payload, ensure_ascii=False)
@@ -804,7 +892,9 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                 },
                 ensure_ascii=False,
             )
-            yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
+            yield json.dumps(
+                _build_mrag_chunk(error_message, "stop"), ensure_ascii=False
+            )
         except Exception as e:
             logger.exception("mragQuery failed")
             final_status = "FAILED"
@@ -818,7 +908,9 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                 },
                 ensure_ascii=False,
             )
-            yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
+            yield json.dumps(
+                _build_mrag_chunk(error_message, "stop"), ensure_ascii=False
+            )
         else:
             if not has_payload:
                 final_status = "FAILED"
@@ -832,7 +924,9 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                     },
                     ensure_ascii=False,
                 )
-                yield json.dumps(_build_mrag_chunk(error_message, "stop"), ensure_ascii=False)
+                yield json.dumps(
+                    _build_mrag_chunk(error_message, "stop"), ensure_ascii=False
+                )
         finally:
             if turn and turn_store:
                 # 持久化放在 finally，覆盖成功、超时、异常和无有效输出四种终态；session 摘要
@@ -850,11 +944,17 @@ async def post_mrag_query(body: MultimodalRAGRequest):
                 if session:
                     normalized_scope = _normalize_kb_scope_list(kb_scope)
                     if session.turn_count == 0:
-                        session.title = _build_session_title(body.question) or session.title
+                        session.title = (
+                            _build_session_title(body.question) or session.title
+                        )
                     session.kb_scope = normalized_scope
-                    session.cover_kb_id = normalized_scope[0] if normalized_scope else None
+                    session.cover_kb_id = (
+                        normalized_scope[0] if normalized_scope else None
+                    )
                     session.latest_question = body.question
-                    session.latest_answer_preview = _build_answer_preview(answer_markdown or error_message)
+                    session.latest_answer_preview = _build_answer_preview(
+                        answer_markdown or error_message
+                    )
                     session.turn_count = len(turn_store.list_turns(session_id))
                     session.status = final_status
                     session.modify_time = datetime.now()
@@ -887,7 +987,9 @@ async def post_document_generate(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_document_generate(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_camel_file_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"document_generate failed: {e}")
         return _error_response(400, str(e))
@@ -901,7 +1003,9 @@ async def post_slides_generate(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_slides_generate(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_camel_file_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"slides_generate failed: {e}")
         return _error_response(400, str(e))
@@ -915,7 +1019,9 @@ async def post_excel_generator(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_excel_generator(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_camel_file_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"excel_generator failed: {e}")
         return _error_response(400, str(e))
@@ -929,7 +1035,9 @@ async def post_checklist_generate(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_checklist_generate(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_camel_file_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"checklist_generate failed: {e}")
         return _error_response(400, str(e))
@@ -943,7 +1051,9 @@ async def post_template_filler(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_template_filler(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_camel_file_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_camel_file_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"template_filler failed: {e}")
         return _error_response(400, str(e))
@@ -951,16 +1061,37 @@ async def post_template_filler(body: DocgenRequest):
 
 def _docgen_meta_payload(result: dict) -> dict:
     """Payload for docgen metadata tools (theme/template list etc.)."""
-    out = _camel_file_payload(result) if result.get("fileInfo") or result.get("outputPath") or result.get("output_path") else {
-        "success": bool(result.get("success", True)),
-        "message": result.get("message") or "ok",
-        "fileInfo": [],
-    }
+    out = (
+        _camel_file_payload(result)
+        if result.get("fileInfo")
+        or result.get("outputPath")
+        or result.get("output_path")
+        else {
+            "success": bool(result.get("success", True)),
+            "message": result.get("message") or "ok",
+            "fileInfo": [],
+        }
+    )
     # pass through useful keys for agent observation
     for k in (
-        "templates", "template", "themes", "theme", "payload", "resolved",
-        "lint_warnings", "colors", "usage", "saved", "deleted", "name", "kind",
-        "path", "rendered", "variables", "chart_type", "format",
+        "templates",
+        "template",
+        "themes",
+        "theme",
+        "payload",
+        "resolved",
+        "lint_warnings",
+        "colors",
+        "usage",
+        "saved",
+        "deleted",
+        "name",
+        "kind",
+        "path",
+        "rendered",
+        "variables",
+        "chart_type",
+        "format",
     ):
         if k in result:
             out[k] = result[k]
@@ -974,7 +1105,9 @@ async def post_document_template(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_document_template(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_docgen_meta_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"document_template failed: {e}")
         return _error_response(400, str(e))
@@ -987,7 +1120,9 @@ async def post_theme_designer(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_theme_designer(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_docgen_meta_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"theme_designer failed: {e}")
         return _error_response(400, str(e))
@@ -1000,7 +1135,9 @@ async def post_chart_generator(body: DocgenRequest):
     try:
         request_id, params = _docgen_params(body)
         result = await run_chart_generator(request_id, params)
-        return JSONResponse(content={"requestId": request_id, **_docgen_meta_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_docgen_meta_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"chart_generator failed: {e}")
         return _error_response(400, str(e))
@@ -1020,13 +1157,15 @@ def _docread_payload(result: dict) -> dict:
     for f in file_info:
         if not isinstance(f, dict):
             continue
-        norm_files.append({
-            "fileName": f.get("fileName") or f.get("file_name"),
-            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
-            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
-            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
-            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
-        })
+        norm_files.append(
+            {
+                "fileName": f.get("fileName") or f.get("file_name"),
+                "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+                "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+                "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+                "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+            }
+        )
     out = {
         "success": bool(result.get("success", True)),
         "message": result.get("message") or "ok",
@@ -1052,7 +1191,9 @@ async def _post_docread(tool_name: str, body: DocgenRequest):
                 status_code=400,
                 content={"requestId": request_id, **_docread_payload(result)},
             )
-        return JSONResponse(content={"requestId": request_id, **_docread_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_docread_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"{tool_name} failed: {e}")
         return _error_response(400, str(e))
@@ -1121,13 +1262,15 @@ def _dataprep_payload(result: dict) -> dict:
     for f in file_info:
         if not isinstance(f, dict):
             continue
-        norm_files.append({
-            "fileName": f.get("fileName") or f.get("file_name"),
-            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
-            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
-            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
-            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
-        })
+        norm_files.append(
+            {
+                "fileName": f.get("fileName") or f.get("file_name"),
+                "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+                "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+                "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+                "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+            }
+        )
     return {
         "success": bool(result.get("success", True)),
         "message": result.get("message") or "ok",
@@ -1152,7 +1295,9 @@ async def _post_dataprep(tool_name: str, body: DocgenRequest):
                 status_code=400,
                 content={"requestId": request_id, **_dataprep_payload(result)},
             )
-        return JSONResponse(content={"requestId": request_id, **_dataprep_payload(result)})
+        return JSONResponse(
+            content={"requestId": request_id, **_dataprep_payload(result)}
+        )
     except Exception as e:
         logger.exception(f"{tool_name} failed: {e}")
         return _error_response(400, str(e))
@@ -1196,13 +1341,15 @@ def _camel_file_payload(result: dict) -> dict:
     for f in file_info:
         if not isinstance(f, dict):
             continue
-        norm_files.append({
-            "fileName": f.get("fileName") or f.get("file_name"),
-            "ossUrl": f.get("ossUrl") or f.get("oss_url"),
-            "domainUrl": f.get("domainUrl") or f.get("domain_url"),
-            "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
-            "fileSize": f.get("fileSize") or f.get("file_size") or 0,
-        })
+        norm_files.append(
+            {
+                "fileName": f.get("fileName") or f.get("file_name"),
+                "ossUrl": f.get("ossUrl") or f.get("oss_url"),
+                "domainUrl": f.get("domainUrl") or f.get("domain_url"),
+                "downloadUrl": f.get("downloadUrl") or f.get("download_url"),
+                "fileSize": f.get("fileSize") or f.get("file_size") or 0,
+            }
+        )
     out = {
         "success": bool(result.get("success", True)),
         "message": result.get("message") or "ok",
@@ -1213,7 +1360,14 @@ def _camel_file_payload(result: dict) -> dict:
     }
     if result.get("rendered") is not None:
         out["rendered"] = result.get("rendered")
-    for k in ("format", "sheet_names", "file_size_bytes", "rendered_length", "variables_used", "output_format"):
+    for k in (
+        "format",
+        "sheet_names",
+        "file_size_bytes",
+        "rendered_length",
+        "variables_used",
+        "output_format",
+    ):
         if k in result:
             out[k] = result[k]
     return out

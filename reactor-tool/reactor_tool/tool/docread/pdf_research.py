@@ -11,7 +11,12 @@ from typing import Any
 
 from reactor_tool.tool.docread._compat import get_struct_logger
 
-from reactor_tool.tool.docread._compat import BaseTool, ToolCategory, ToolContext, ToolResult
+from reactor_tool.tool.docread._compat import (
+    BaseTool,
+    ToolCategory,
+    ToolContext,
+    ToolResult,
+)
 from reactor_tool.tool.docread.pdf_research_core import (
     extract_citations,
     extract_page_text,
@@ -212,14 +217,21 @@ class PDFTranslateTool(BaseTool):
             return ToolResult(success=False, error="LLM client not available.")
         target_lang = params.get("target_lang") or "en"
         source = params.get("text") or ""
-        if not source and params.get("file_path") and params.get("page") and params.get("bbox"):
+        if (
+            not source
+            and params.get("file_path")
+            and params.get("page")
+            and params.get("bbox")
+        ):
             # 文本和 PDF 区域是互斥输入；没有直接文本时才读取指定页面矩形区域。
             bbox = params["bbox"]
             if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
                 return ToolResult(success=False, error="bbox must be [x0, y0, x1, y1].")
             try:
                 source = extract_region_text(
-                    params["file_path"], int(params["page"]), tuple(float(v) for v in bbox)
+                    params["file_path"],
+                    int(params["page"]),
+                    tuple(float(v) for v in bbox),
                 )
             except Exception as exc:  # noqa: BLE001
                 return ToolResult(success=False, error=str(exc))
@@ -244,7 +256,9 @@ class PDFTranslateTool(BaseTool):
 def build_summary_prompt(
     text: str, *, section_title: str | None, target_lang: str | None
 ) -> str:
-    scope = f'the section "{section_title}"' if section_title else "this academic content"
+    scope = (
+        f'the section "{section_title}"' if section_title else "this academic content"
+    )
     lang = f"\nWrite the summary in {target_lang}." if target_lang else ""
     return (
         f"Summarize {scope} for a researcher. Produce a concise, structured summary "
@@ -333,10 +347,16 @@ def parse_formula_json(raw: str) -> list[dict[str, Any]]:
 
 
 async def summarize_text(
-    llm: Any, text: str, *, section_title: str | None = None, target_lang: str | None = None
+    llm: Any,
+    text: str,
+    *,
+    section_title: str | None = None,
+    target_lang: str | None = None,
 ) -> str:
     """Summarize via the tool LLM client (returns plain text)."""
-    prompt = build_summary_prompt(text, section_title=section_title, target_lang=target_lang)
+    prompt = build_summary_prompt(
+        text, section_title=section_title, target_lang=target_lang
+    )
     response = await llm.complete(prompt, max_tokens=800)
     return (response or "").strip()
 

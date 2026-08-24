@@ -1,4 +1,5 @@
 """Direct Python execution for calling agents."""
+
 from __future__ import annotations
 
 import os
@@ -9,7 +10,10 @@ from pathlib import Path
 
 from reactor_tool.model.protocal import CodeExecutionRequest
 from reactor_tool.tool.code_interpreter_policy import build_permission_policy
-from reactor_tool.tool.python_sandbox_executor import PythonSandboxExecutionError, PythonSandboxExecutor
+from reactor_tool.tool.python_sandbox_executor import (
+    PythonSandboxExecutionError,
+    PythonSandboxExecutor,
+)
 from reactor_tool.util.file_util import download_all_files_in_path, upload_file_by_path
 
 # reactor-tool 包根：.../reactor-tool/reactor_tool/tool/this.py → parents[2] = reactor-tool
@@ -37,9 +41,21 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
         # 先做静态语法检查，语法错误不启动沙箱，也不产生运行时错误的误导信息。
         ast.parse(source, filename=str(source_file))
     except SyntaxError as exc:
-        return _envelope(request, "error", str(exc), "", "", [], [], str(workspace),
-                         error_type="syntax", source_file=str(source_file),
-                         syntax_diagnostics=[{"line": exc.lineno, "column": exc.offset, "message": exc.msg}])
+        return _envelope(
+            request,
+            "error",
+            str(exc),
+            "",
+            "",
+            [],
+            [],
+            str(workspace),
+            error_type="syntax",
+            source_file=str(source_file),
+            syntax_diagnostics=[
+                {"line": exc.lineno, "column": exc.offset, "message": exc.msg}
+            ],
+        )
     # 裸文件名优先落会话工作区；URL 才下载到 input/。解析结果交给权限策略供 resolve_input_path 使用。
     imported_files = await download_all_files_in_path(
         request.file_names,
@@ -64,7 +80,12 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
             if workspace in candidate.parents and candidate.is_file():
                 logical_source = candidate
         execution_result = executor.execute(source, source_file=str(logical_source))
-        status, error, stdout, stderr = "ok", None, execution_result.stdout, execution_result.stderr
+        status, error, stdout, stderr = (
+            "ok",
+            None,
+            execution_result.stdout,
+            execution_result.stderr,
+        )
     except TimeoutError as exc:
         execution_error = exc
         status, error, stdout, stderr = "timeout", str(exc), "", ""
@@ -80,17 +101,28 @@ async def execute_code(request: CodeExecutionRequest) -> dict:
         executor.close()
     file_info = []
     for produced in produced_files:
-        uploaded = await upload_file_by_path(str(produced.get("file_path") or ""), request.request_id)
+        uploaded = await upload_file_by_path(
+            str(produced.get("file_path") or ""), request.request_id
+        )
         if uploaded:
             file_info.append(uploaded)
-    return _envelope(request, status, error, stdout, stderr, produced_files, file_info, str(workspace),
-                     error_type="runtime" if status == "error" else None,
-                     result=getattr(execution_result or execution_error, "result", None),
-                     duration_ms=getattr(execution_result or execution_error, "duration_ms", 0),
-                     returncode=getattr(execution_result or execution_error, "returncode", 1),
-                     stdout_truncated=getattr(execution_result, "stdout_truncated", False),
-                     stderr_truncated=getattr(execution_result, "stderr_truncated", False),
-                     source_file=str(source_file))
+    return _envelope(
+        request,
+        status,
+        error,
+        stdout,
+        stderr,
+        produced_files,
+        file_info,
+        str(workspace),
+        error_type="runtime" if status == "error" else None,
+        result=getattr(execution_result or execution_error, "result", None),
+        duration_ms=getattr(execution_result or execution_error, "duration_ms", 0),
+        returncode=getattr(execution_result or execution_error, "returncode", 1),
+        stdout_truncated=getattr(execution_result, "stdout_truncated", False),
+        stderr_truncated=getattr(execution_result, "stderr_truncated", False),
+        source_file=str(source_file),
+    )
 
 
 def _workspace_path(request: CodeExecutionRequest) -> Path:
@@ -105,7 +137,9 @@ def _workspace_path(request: CodeExecutionRequest) -> Path:
         # 测试/运维可指定根目录，但仍按安全 sessionId 隔离不同请求。
         return (Path(env_root).expanduser().resolve() / safe_id).resolve()
 
-    skill_root = (os.getenv("SKILL_OUTPUT_ROOT") or os.getenv("REACTOR_SKILL_OUTPUT_ROOT") or "").strip()
+    skill_root = (
+        os.getenv("SKILL_OUTPUT_ROOT") or os.getenv("REACTOR_SKILL_OUTPUT_ROOT") or ""
+    ).strip()
     if skill_root:
         return (Path(skill_root).expanduser().resolve() / safe_id).resolve()
 
@@ -113,7 +147,13 @@ def _workspace_path(request: CodeExecutionRequest) -> Path:
 
 
 def _safe_session_id(request_id: str) -> str:
-    return "".join(char if char.isalnum() or char in "-_" else "_" for char in (request_id or ""))[:120] or "anonymous"
+    return (
+        "".join(
+            char if char.isalnum() or char in "-_" else "_"
+            for char in (request_id or "")
+        )[:120]
+        or "anonymous"
+    )
 
 
 def _reset_code_execution_dirs(workspace: Path) -> None:
@@ -154,8 +194,27 @@ def _stage_inline_files(workspace: Path, files: list[dict]) -> None:
             target.write_text(content, encoding="utf-8")
 
 
-def _envelope(request, status, error, stdout, stderr, produced_files, file_info, workspace, **extra):
+def _envelope(
+    request,
+    status,
+    error,
+    stdout,
+    stderr,
+    produced_files,
+    file_info,
+    workspace,
+    **extra,
+):
     # 统一成功、语法错误、超时和运行时异常的返回形状，前端无需按异常类型拆分解析逻辑。
-    return {"requestId": request.request_id, "status": status, "error": error, "stdout": stdout,
-            "stderr": stderr, "producedFiles": produced_files, "fileInfo": file_info,
-            "workspace": workspace, "sourceLength": len(request.source), **extra}
+    return {
+        "requestId": request.request_id,
+        "status": status,
+        "error": error,
+        "stdout": stdout,
+        "stderr": stderr,
+        "producedFiles": produced_files,
+        "fileInfo": file_info,
+        "workspace": workspace,
+        "sourceLength": len(request.source),
+        **extra,
+    }

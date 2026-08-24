@@ -97,8 +97,11 @@ class ProgressReporter:
             self._processed = processed
         now = time.monotonic()
         # 节流只合并 UI/日志事件，不改变 processed 计数；finish 始终强制发送末事件。
-        if not force and self._last_emit and \
-                (now - self._last_emit) * 1000 < self._throttle_ms:
+        if (
+            not force
+            and self._last_emit
+            and (now - self._last_emit) * 1000 < self._throttle_ms
+        ):
             return
         self._last_emit = now
         event = ProgressEvent(
@@ -115,7 +118,12 @@ class ProgressReporter:
             # Progress callbacks must never break tool execution.
             pass
 
-    def finish(self, *, stage: str = "done", message: str | None = None,
-               total: int | None = None) -> None:
+    def finish(
+        self,
+        *,
+        stage: str = "done",
+        message: str | None = None,
+        total: int | None = None,
+    ) -> None:
         """Emit a final event regardless of throttling."""
         self.report(stage=stage, total=total, message=message, force=True)

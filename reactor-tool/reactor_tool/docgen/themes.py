@@ -25,7 +25,11 @@ logger = structlog.get_logger(__name__)
 def styles_dir() -> Path:
     """Return the configured custom-theme YAML directory."""
     # 环境变量允许部署把主题与代码分离；未配置时落到用户目录，避免写入仓库。
-    home = Path(os.getenv("REACTOR_DOCGEN_HOME") or os.getenv("LEAGENT_HOME") or str(Path.home() / ".reactor-docgen"))
+    home = Path(
+        os.getenv("REACTOR_DOCGEN_HOME")
+        or os.getenv("LEAGENT_HOME")
+        or str(Path.home() / ".reactor-docgen")
+    )
     return home / "templates" / "styles"
 
 
@@ -77,14 +81,14 @@ class ThemeColors(_Model):
 
 
 class ThemeSpacing(_Model):
-    line_spacing: float = 1.4       # body leading multiplier
+    line_spacing: float = 1.4  # body leading multiplier
     paragraph_spacing: float = 7.0  # pt after body paragraphs
 
 
 class DeckStyle(_Model):
     """Presentation-specific styling on top of the shared palette."""
 
-    dark: bool = False              # dark background decks use light text
+    dark: bool = False  # dark background decks use light text
     title_size: float = 40.0
     slide_title_size: float = 28.0
     body_size: float = 16.0

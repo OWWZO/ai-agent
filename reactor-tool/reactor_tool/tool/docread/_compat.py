@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Minimal tools.base compatibility shims for docread tools."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,8 +40,16 @@ class ToolResult:
         return cls(success=True, data=data, duration_ms=duration_ms, metadata=metadata)
 
     @classmethod
-    def fail(cls, error: str, duration_ms: int = 0, *, data: Any = None, **metadata: Any) -> "ToolResult":
-        return cls(success=False, error=error, data=data, duration_ms=duration_ms, metadata=dict(metadata))
+    def fail(
+        cls, error: str, duration_ms: int = 0, *, data: Any = None, **metadata: Any
+    ) -> "ToolResult":
+        return cls(
+            success=False,
+            error=error,
+            data=data,
+            duration_ms=duration_ms,
+            metadata=dict(metadata),
+        )
 
 
 @dataclass

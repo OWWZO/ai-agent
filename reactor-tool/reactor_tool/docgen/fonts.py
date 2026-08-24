@@ -49,12 +49,8 @@ logger = structlog.get_logger(__name__)
 # The gstatic TTF instances below are TrueType and register cleanly.
 # ---------------------------------------------------------------------------
 
-_GSTATIC_REGULAR = (
-    "s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf"
-)
-_GSTATIC_BOLD = (
-    "s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaGzjCnYw.ttf"
-)
+_GSTATIC_REGULAR = "s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf"
+_GSTATIC_BOLD = "s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaGzjCnYw.ttf"
 
 # Monochrome Noto Emoji (variable TTF) — ReportLab-compatible outlines.
 # Pinned to a google/fonts commit so sha256 stays stable.
@@ -170,7 +166,9 @@ class FontManager:
     # Resolution
     # ------------------------------------------------------------------
 
-    def resolve(self, *, allow_download: bool = True, refresh: bool = False) -> ResolvedFonts:
+    def resolve(
+        self, *, allow_download: bool = True, refresh: bool = False
+    ) -> ResolvedFonts:
         """Resolve regular/bold font paths using the guaranteed pipeline."""
         with self._lock:
             # 解析结果按进程缓存；refresh 只用于测试或配置变更，避免每次渲染重复扫描和下载。
@@ -216,7 +214,9 @@ class FontManager:
 
         # 4. 允许联网时下载带 SHA-256 校验的固定字体；关闭开关则直接记录告警。
         if allow_download and _auto_download_enabled():
-            downloaded = self._download_faces(("regular", "bold"), warnings=out.warnings)
+            downloaded = self._download_faces(
+                ("regular", "bold"), warnings=out.warnings
+            )
             if downloaded.get("regular"):
                 out.regular_path = downloaded["regular"]
                 out.bold_path = downloaded.get("bold")
@@ -237,7 +237,9 @@ class FontManager:
         out.source = "none"
         return out
 
-    def resolve_emoji(self, *, allow_download: bool = True) -> tuple[str | None, list[str]]:
+    def resolve_emoji(
+        self, *, allow_download: bool = True
+    ) -> tuple[str | None, list[str]]:
         """Resolve a ReportLab-compatible monochrome emoji font path."""
         warnings: list[str] = []
 
@@ -539,7 +541,10 @@ def _ttc_subfont_sequence(path: str, is_bold: bool) -> list[Any]:
     if "msyh" in p or "microsoft yahei" in p:
         names = [0, "MSYH", "MicrosoftYaHei", "Microsoft YaHei", *names]
     index_probe = list(range(64))
-    if any(x in p for x in ("wqy", "droid", "arphic", "ukai", "uming", "microhei", "zenhei")):
+    if any(
+        x in p
+        for x in ("wqy", "droid", "arphic", "ukai", "uming", "microhei", "zenhei")
+    ):
         return [0, 1, 2, *names, *index_probe]
     return [*names, *index_probe]
 

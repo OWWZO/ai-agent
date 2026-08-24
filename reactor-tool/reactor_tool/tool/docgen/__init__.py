@@ -1,5 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 """Docgen tool package."""
+
 from reactor_tool.tool.docgen.service import (
     run_checklist_generate,
     run_document_generate,

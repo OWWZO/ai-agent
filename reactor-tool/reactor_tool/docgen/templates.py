@@ -42,8 +42,12 @@ _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 
 
 def templates_dir() -> Path:
-    """Doc-template YAML directory (honors ``LEAGENT_HOME``)."""
-    home = Path(os.getenv("REACTOR_DOCGEN_HOME") or os.getenv("LEAGENT_HOME") or str(Path.home() / ".reactor-docgen"))
+    """Return the configured doc-template YAML directory."""
+    home = Path(
+        os.getenv("REACTOR_DOCGEN_HOME")
+        or os.getenv("LEAGENT_HOME")
+        or str(Path.home() / ".reactor-docgen")
+    )
     return home / "templates" / "docgen"
 
 
@@ -210,7 +214,9 @@ def save_template(template: DocTemplate, *, overwrite: bool = True) -> dict[str,
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{key}.yaml"
     if path.exists() and not overwrite:
-        raise ValueError(f"Template '{key}' already exists (pass overwrite to replace).")
+        raise ValueError(
+            f"Template '{key}' already exists (pass overwrite to replace)."
+        )
 
     path.write_text(
         yaml.safe_dump(

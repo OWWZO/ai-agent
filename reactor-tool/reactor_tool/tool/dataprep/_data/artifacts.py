@@ -117,7 +117,9 @@ def parse_artifact_ref(value: Any) -> ArtifactRef | None:
         if "://" in value:
             kind = _kind_from_uri(value)
             return ArtifactRef(uri=value, kind=kind)
-        if value.startswith("/") or value.endswith((".json", ".jsonl", ".csv", ".parquet")):
+        if value.startswith("/") or value.endswith(
+            (".json", ".jsonl", ".csv", ".parquet")
+        ):
             return ArtifactRef(uri=f"file://{value}", kind=_kind_from_uri(value))
     return None
 
