@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 读取后台任务输出（对标 cc-haha TaskOutputTool）。
+ * 读取后台任务输出。
  * 可阻塞等待终态；与 Todo 列表无关。
  */
 @Slf4j

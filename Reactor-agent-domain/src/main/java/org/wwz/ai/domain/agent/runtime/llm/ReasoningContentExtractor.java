@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 从 Spring AI 响应中拆出 reasoning / content 两路（对齐 LeAgent）。
+ * 从 Spring AI 响应中拆出 reasoning / content 两路。
  * <p>
  * 优先读 OpenAI 兼容网关写入的 {@code reasoningContent} metadata；
  * 再兼容本地模型把 CoT 塞进 {@code <think>...</think>} 的 content 形态。

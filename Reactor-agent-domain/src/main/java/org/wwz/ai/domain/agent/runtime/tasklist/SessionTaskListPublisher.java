@@ -6,7 +6,7 @@ import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
 import java.util.Map;
 
 /**
- * 任务列表变更后推送 SSE（对标 cchaha TaskListV2 实时刷新）。
+ * 任务列表变更后推送 SSE。
  */
 public final class SessionTaskListPublisher {
 

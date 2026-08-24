@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * WebFetch（对标 cc-haha）：抓取 URL → HTML 转文本 → 用 prompt 经小模型提炼。
+ * WebFetch：抓取 URL → HTML 转文本 → 用 prompt 经小模型提炼。
  * 不再依赖 reactor-tool /web_fetch 与文件产物。
  */
 @Slf4j

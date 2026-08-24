@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * 单会话上下文记忆服务。
  * <p>
- * 默认主路径：从执行账本 hydrate 为模型可见的 Message 链（prompt-cache 友好，仿 cc-haha append 语义）。
+ * 默认主路径：从执行账本 hydrate 为模型可见的 Message 链（prompt-cache 友好）。
  * {@link #buildHistoryDialogue} 仅兼容/调试，不再作为 LLM 主输入。
  */
 public interface SessionContextMemoryService {

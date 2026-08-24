@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSON;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * 对齐 LeAgent {@code ResultProcessor.serialize_for_llm}：
+ * 工具结果序列化：
  * 把工具结果压成主智能体 transcript 里的 observation 字符串。
  *
  * <ul>
@@ -18,10 +18,10 @@ import org.apache.commons.lang3.StringUtils;
  */
 public final class ToolObservationSerializer {
 
-    /** 与 LeAgent {@code _LLM_TOOL_STRING_CAP} 一致。 */
+    /** LLM 工具字符串长度上限。 */
     public static final int DEFAULT_LLM_TOOL_STRING_CAP = 96_000;
 
-    /** 与 LeAgent {@code _TRUNCATION_NOTICE} 语义对齐（措辞略短）。 */
+    /** 截断提示。 */
     public static final String TRUNCATION_NOTICE =
             "\n...[output truncated for context cap; narrow the query or use a smaller path]...";
 

@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * slides_generate — PPTX (LeAgent aligned).
+ * slides_generate — PPTX.
  */
 public class SlidesGenerateTool extends AbstractDocGenTool {
 

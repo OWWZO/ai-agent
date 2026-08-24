@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 会话级 Todo 任务列表（对标 cc-haha utils/tasks）。
+ * 会话级 Todo 任务列表。
  * 可选挂载 {@link TasklistPersistencePort} 实现跨 run 持久化。
  */
 public class SessionTaskListStore {

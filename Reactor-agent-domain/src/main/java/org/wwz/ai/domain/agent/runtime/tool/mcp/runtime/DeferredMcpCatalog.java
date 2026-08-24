@@ -72,7 +72,7 @@ public class DeferredMcpCatalog {
     }
 
     /**
-     * 对齐 cc-haha：仅暴露 deferred 工具名，不带 schema。
+     * 仅暴露 deferred 工具名，不带 schema。
      * 无 deferred 时返回空串，避免污染 system。
      */
     public String formatAvailableDeferredToolsBlock() {

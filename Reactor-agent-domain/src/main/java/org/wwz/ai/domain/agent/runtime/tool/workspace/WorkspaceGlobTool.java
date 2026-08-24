@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 工作区 glob 匹配（对齐 cchaha Glob）。
+ * 工作区 glob 匹配。
  */
 public class WorkspaceGlobTool extends AbstractWorkspacePathTool {
 

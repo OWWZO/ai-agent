@@ -125,7 +125,7 @@ export function shouldShowToolArgStream(tool?: CHAT.Task | MESSAGE.Task): boolea
   ) {
     return false;
   }
-  // running：若有累计入参且还没有工具输出，继续展示完整 args（LeAgent 观感）
+  // running：若有累计入参且还没有工具输出，继续展示完整 args
   if (status === "running" || status === "") {
     const args =
       (typeof resultMap.argumentsRaw === "string" && resultMap.argumentsRaw) ||

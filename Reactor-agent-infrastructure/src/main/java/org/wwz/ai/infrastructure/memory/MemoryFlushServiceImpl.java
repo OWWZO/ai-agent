@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Hermes 对齐：压缩前独立 fork，全量（截断后的）窗口消息 + 仅 memory 工具。
+ * 压缩前独立 fork，全量（截断后的）窗口消息 + 仅 memory 工具。
  */
 @Slf4j
 @Service

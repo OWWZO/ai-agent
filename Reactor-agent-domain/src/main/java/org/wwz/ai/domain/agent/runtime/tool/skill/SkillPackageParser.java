@@ -12,7 +12,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * 技能 zip 解析（对齐 agentic-rag SkillPackageParser）。
+ * 技能 zip 解析。
  * <p>
  * 支持 {@code SKILL.md} 在根，或 {@code name/SKILL.md} 一层目录；
  * 名字：frontmatter name > 外层目录名；不拿 zip 文件名兜底。

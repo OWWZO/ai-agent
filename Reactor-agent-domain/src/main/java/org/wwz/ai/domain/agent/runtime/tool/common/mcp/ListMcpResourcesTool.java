@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 列出 MCP resources（对齐 cc-haha ListMcpResourcesTool）。
+ * 列出 MCP resources。
  */
 @Slf4j
 @Data

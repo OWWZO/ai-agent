@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 更新 Todo 任务（对标 cc-haha TaskUpdateTool）。
+ * 更新 Todo 任务。
  */
 @Slf4j
 @Data

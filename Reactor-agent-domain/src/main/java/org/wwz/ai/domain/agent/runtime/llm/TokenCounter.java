@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Token 粗估器（对齐 cc-haha roughTokenCountEstimation：默认 ~4 chars/token）。
+ * Token 粗估器（默认按约 4 chars/token 估算）。
  * <p>
  * 说明：{@link #countText(String)} 仍返回<strong>字符数</strong>（兼容 history 预算等旧调用）。
  * 真正 token 粗估请用 {@link #estimateTokens(String)} / {@link #estimatePrompt}。
@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class TokenCounter {
 
-    /** cc-haha BYTES_PER_TOKEN 默认 4 */
+    /** 每 token 默认按 4 字节估算。 */
     public static final int CHARS_PER_TOKEN = 4;
     private static final int BASE_MESSAGE_TOKENS = 4;
     private static final int FORMAT_TOKENS = 2;

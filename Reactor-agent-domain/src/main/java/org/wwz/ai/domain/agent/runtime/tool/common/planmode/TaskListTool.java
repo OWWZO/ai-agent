@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 列出全部 Todo 任务（对标 cc-haha TaskListTool）。
+ * 列出全部 Todo 任务。
  */
 @Slf4j
 @Data

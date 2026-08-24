@@ -27,7 +27,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Hermes 风格 LTM fork：同 runtime、全量消息前缀、仅 memory 工具。
+ * LTM fork：同 runtime、全量消息前缀、仅 memory 工具。
  * 用于压前 flush 与 background review，对齐 prefix-cache 友好重放。
  */
 public final class LtmAgentForkSupport {

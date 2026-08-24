@@ -174,7 +174,7 @@ public class AgentToolCollectionFactory {
         toolCollection.setAgentContext(agentContext);
         toolCollection.setMcpToolExecutor(runtimeDependencies.getOptionalMcpToolExecutor());
 
-        // Hermes 风格长期记忆工具（有界策展）；依赖 LTM 装配时可用
+        // 长期记忆工具（有界策展）；依赖 LTM 装配时可用
         if (runtimeDependencies.getOptionalCuratedMemoryStore() != null
                 || runtimeDependencies.getOptionalLtmManager() != null) {
             MemoryTool memoryTool = new MemoryTool();
@@ -334,7 +334,7 @@ public class AgentToolCollectionFactory {
             addTool(toolCollection, agentDispatchTool, agentContext, AgentDispatchTool::setAgentContext);
         }
 
-        // Task / Plan Mode 工具（对标 cc-haha Task* + Enter/ExitPlanMode）
+        // Task / Plan Mode 工具
         if (!"dataAgent".equals(request.getOutputStyle())) {
             registerPlanModeTools(toolCollection, agentContext);
         }

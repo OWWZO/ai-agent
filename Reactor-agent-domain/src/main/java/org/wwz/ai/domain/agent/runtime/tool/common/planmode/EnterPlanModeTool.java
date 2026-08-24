@@ -14,7 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 进入 Plan Mode（对标 cc-haha EnterPlanModeTool）。
+ * 进入 Plan Mode。
  * 仅主 Agent 使用；子 Agent 工具池剔除。
  */
 @Slf4j

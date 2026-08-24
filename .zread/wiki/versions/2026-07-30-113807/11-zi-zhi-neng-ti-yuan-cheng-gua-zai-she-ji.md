@@ -4,7 +4,7 @@
 
 **远程挂载**在本系统中不是 A2A 跨进程 RPC，而是：**子 Agent 画像（system prompt、工具白/黑名单、步数上限）以装配配置形式外置到 DB，启动与运行时通过 Registry 热加载，对主 Agent 呈现为可调度的 `subagent_type`**。内置类型提供安全基线；可配置类型提供业务扩展，二者合并后通过 `AgentDispatchTool` 暴露给 LLM。
 
-对标路径清晰：注释与实现均对齐 cc-haha 的 `AgentDefinition` / `runAgent` 同步路径 + `finalizeAgentTool`——主 Agent 阻塞等待子 Agent 跑完，**只把结论文本回主上下文**，中间工具轨迹不污染主对话记忆。
+路径清晰：注释与实现均采用子 Agent 定义、同步执行与终结工具路径——主 Agent 阻塞等待子 Agent 跑完，**只把结论文本回主上下文**，中间工具轨迹不污染主对话记忆。
 
 Sources: [SubAgentDefinition.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/subagent/SubAgentDefinition.java#L10-L45)、[AgentDispatchTool.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/tool/common/AgentDispatchTool.java#L22-L25)、[SubAgentRunner.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/subagent/SubAgentRunner.java#L18-L21)
 
@@ -244,7 +244,7 @@ Sources: [SubAgentToolFilter.java](Reactor-agent-domain/src/main/java/org/wwz/ai
 - `parentToolUseId`
 - `subAgentId` / `subAgentType` / `subAgentDescription`
 
-并**吞掉** `tool_thought`，避免子思考刷爆主时间线（对齐 cc-haha 折叠）。`BaseAgentResponseHandler` 将 `parentToolUseId` 等字段拷入 resultMap，供前端按父 tool_use 分组渲染。
+并**吞掉** `tool_thought`，避免子思考刷爆主时间线。`BaseAgentResponseHandler` 将 `parentToolUseId` 等字段拷入 resultMap，供前端按父 tool_use 分组渲染。
 
 前端工具：
 

@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 停止后台运行任务（对标 cc-haha TaskStopTool）。
+ * 停止后台运行任务。
  * 操作 RuntimeBackgroundTaskRegistry，不是 Todo 列表。
  * 仅主 Agent 应挂载；子 Agent 工具池会剔除本工具。
  */

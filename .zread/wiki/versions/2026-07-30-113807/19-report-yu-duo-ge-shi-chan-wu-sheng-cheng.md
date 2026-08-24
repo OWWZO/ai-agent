@@ -2,11 +2,11 @@
 
 # Report 与多格式产物生成
 
-Report 与多格式产物生成模块是 Reactor-agent 的核心能力之一，它通过统一的 `report_tool` 和一整套 LeAgent 对齐的 DocGen 工具，为用户提供从 Markdown/HTML 基础报告到 PPTX 幻灯片、PDF 文档、DOCX 文档、Excel 表格及自定义模板的全链路、多格式产物生成能力。核心设计目标是让 Agent 在 ReAct/Plan-Execute 循环中能无缝生成结构化、高质量、可下载的交付物（如代码审计报告、研究分析报告、PPT 演示材料），并通过文件注册机制与 SSE 流式渲染实时展示。
+Report 与多格式产物生成模块是 Reactor-agent 的核心能力之一，它通过统一的 `report_tool` 和一整套 DocGen 工具，为用户提供从 Markdown/HTML 基础报告到 PPTX 幻灯片、PDF 文档、DOCX 文档、Excel 表格及自定义模板的全链路、多格式产物生成能力。核心设计目标是让 Agent 在 ReAct/Plan-Execute 循环中能无缝生成结构化、高质量、可下载的交付物（如代码审计报告、研究分析报告、PPT 演示材料），并通过文件注册机制与 SSE 流式渲染实时展示。
 
 ## 工具架构与执行流转
 
-整个 Report 体系由两层构成：Java 侧的 `ReportTool` 与一组抽象 DocGen 工具，以及 Python 侧的 `reactor_tool/tool/report.py`（专为 report_tool 提供流式 Markdown/HTML/PPT 渲染）与 `reactor_tool/tool/docgen/service.py`（LeAgent 通用文档/幻灯片/表格/检查表生成引擎）。
+整个 Report 体系由两层构成：Java 侧的 `ReportTool` 与一组抽象 DocGen 工具，以及 Python 侧的 `reactor_tool/tool/report.py`（专为 report_tool 提供流式 Markdown/HTML/PPT 渲染）与 `reactor_tool/tool/docgen/service.py`（通用文档/幻灯片/表格/检查表生成引擎）。
 
 **Mermaid 执行流转图**：
 
@@ -41,7 +41,7 @@ public class ReportTool implements BaseTool {
 - **输入**：task（必填）、fileDescription、fileName、fileType（可选，默认 markdown）
 - **输出**：通过 CodeInterpreter 流式返回 HTML/Markdown 片段，最终注册为文件
 
-### 2. DocGen 工具集（LeAgent 对齐）
+### 2. DocGen 工具集
 
 ```java
 // Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/tool/common/docgen/...

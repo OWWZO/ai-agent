@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 主 Agent → 运行中子 Agent 的指导消息（对标 cc-haha SendMessage 最小版）。
+ * 主 Agent → 运行中子 Agent 的指导消息。
  * 仅后台/仍在跑的子 Agent 可投递；同步阻塞派发期间主 Agent 无法调用本工具。
  */
 @Slf4j

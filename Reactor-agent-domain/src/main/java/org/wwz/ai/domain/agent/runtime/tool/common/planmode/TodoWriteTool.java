@@ -16,9 +16,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 整表写入 Todo 列表（对标 cc-haha TodoWriteTool / V1）。
+ * 整表写入 Todo 列表。
  * 与 TaskCreate/Update/List（V2 细粒度）并存：适合一次同步整份清单。
- * 全部 completed 时清空列表（与 cchaha 一致）。
+ * 全部 completed 时清空列表。
  */
 @Slf4j
 @Data

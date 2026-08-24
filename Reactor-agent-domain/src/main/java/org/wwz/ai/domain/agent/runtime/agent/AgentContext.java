@@ -171,7 +171,7 @@ public class AgentContext {
     String workspaceRoot;
 
     /**
-     * 本轮会话 workspace_read 状态（对齐 cchaha readFileState：path + range + mtime）。
+     * 本轮会话 workspace_read 状态（path + range + mtime）。
      */
     @Builder.Default
     @ToString.Exclude
@@ -235,14 +235,14 @@ public class AgentContext {
     String ltmMemoryContext;
 
     /**
-     * 对齐 Hermes skip_memory：为 true 时禁止 memory tool 写用户画像（子代理等）。
+     * 为 true 时禁止 memory tool 写用户画像（子代理等）。
      */
     @Builder.Default
     Boolean skipMemory = Boolean.FALSE;
 
     /**
      * LTM fork（flush/review）专用：允许 memory tool 写入，但禁止再 sync/再调度 review/prefetch 副作用。
-     * 类似于 Hermes review fork 的 skip 外部 provider 污染，同时仍可写 builtin memory。
+     * 跳过外部 provider 污染，同时仍可写 builtin memory。
      */
     @Builder.Default
     Boolean ltmSideEffectsDisabled = Boolean.FALSE;

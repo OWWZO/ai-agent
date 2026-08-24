@@ -3,7 +3,7 @@ package org.wwz.ai.domain.agent.runtime.tool.mcp.runtime;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * MCP 工具命名策略（对齐 cc-haha：mcp__{server}__{tool}）。
+ * MCP 工具命名策略（mcp__{server}__{tool}）。
  * 模型侧使用 FQ 名；tools/call 仍使用服务端原始工具名。
  */
 public final class McpToolNamePolicy {

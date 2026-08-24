@@ -72,7 +72,7 @@ export function resolveTaskToolArg(tool: CHAT.Task): string {
     (resultMap as { argsStreaming?: boolean } | undefined)?.argsStreaming ===
       true ||
     (nested as { argsStreaming?: boolean } | undefined)?.argsStreaming === true;
-  // 参数流/running 早期优先 raw args（LeAgent：argumentsRaw 在 running 时仍展示）
+  // 参数流/running 早期优先 raw args（argumentsRaw 在 running 时仍展示）
   const preferRawArgs =
     argsStreamingFlag ||
     status === "streaming" ||

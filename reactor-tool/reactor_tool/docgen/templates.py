@@ -1,7 +1,7 @@
 """Reusable document / deck templates for the docgen subsystem.
 
-A *doc template* is a named, parameterized skeleton stored as YAML under
-``LEAGENT_HOME/templates/docgen/``. It captures everything a polished
+A *doc template* is a named, parameterized skeleton stored as YAML under the
+configured template directory. It captures everything a polished
 deliverable needs — markdown body (documents) or slide list (decks) with
 Jinja2 ``{{ variable }}`` placeholders, a theme, declared variables, and
 default generation options — so agents can turn a one-off document into a

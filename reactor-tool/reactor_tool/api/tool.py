@@ -881,7 +881,7 @@ def _docgen_params(body: DocgenRequest) -> dict:
 
 @router.post("/document_generate")
 async def post_document_generate(body: DocgenRequest):
-    """LeAgent-aligned document_generate (PDF/DOCX/HTML/Markdown)."""
+    """Generate a document (PDF/DOCX/HTML/Markdown)."""
     from reactor_tool.tool.docgen.service import run_document_generate
 
     try:
@@ -895,7 +895,7 @@ async def post_document_generate(body: DocgenRequest):
 
 @router.post("/slides_generate")
 async def post_slides_generate(body: DocgenRequest):
-    """LeAgent-aligned slides_generate (PPTX)."""
+    """Generate slides (PPTX)."""
     from reactor_tool.tool.docgen.service import run_slides_generate
 
     try:
@@ -909,7 +909,7 @@ async def post_slides_generate(body: DocgenRequest):
 
 @router.post("/excel_generator")
 async def post_excel_generator(body: DocgenRequest):
-    """LeAgent-aligned excel_generator."""
+    """Generate an Excel workbook."""
     from reactor_tool.tool.docgen.service import run_excel_generator
 
     try:
@@ -923,7 +923,7 @@ async def post_excel_generator(body: DocgenRequest):
 
 @router.post("/checklist_generate")
 async def post_checklist_generate(body: DocgenRequest):
-    """LeAgent-aligned checklist_generate."""
+    """Generate a checklist."""
     from reactor_tool.tool.docgen.service import run_checklist_generate
 
     try:
@@ -937,7 +937,7 @@ async def post_checklist_generate(body: DocgenRequest):
 
 @router.post("/template_filler")
 async def post_template_filler(body: DocgenRequest):
-    """LeAgent-aligned template_filler (Jinja2)."""
+    """Fill a document template (Jinja2)."""
     from reactor_tool.tool.docgen.service import run_template_filler
 
     try:

@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 技能管理：zip 预览/上传、粘贴新建、URL 导入（对齐 agentic-rag skill 管理）。
+ * 技能管理：zip 预览/上传、粘贴新建、URL 导入。
  */
 @Slf4j
 @RestController

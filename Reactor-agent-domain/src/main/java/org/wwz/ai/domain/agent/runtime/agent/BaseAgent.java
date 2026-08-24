@@ -342,7 +342,7 @@ public abstract class BaseAgent {
                 context == null ? null : context.getQuery(),
                 context == null ? null : context.getToolCollection());
         systemTemplate = intentPolicy.appendTo(systemTemplate);
-        // Hermes-style tool guidance (WHEN/SKIP) + curated snapshot; skip_memory 不注入
+        // Tool guidance (WHEN/SKIP) + curated snapshot; skip_memory 不注入
         if (context != null && !Boolean.TRUE.equals(context.getSkipMemory())) {
             var tools = context.getToolCollection();
             boolean memoryToolPresent = tools != null && tools.getTool(MemoryTool.TOOL_NAME) != null;
@@ -362,7 +362,7 @@ public abstract class BaseAgent {
                 }
             }
         }
-        // 对齐 cc-haha：deferred MCP 仅列名进 system，schema 仍走 ToolSearch
+        // deferred MCP 仅列名进 system，schema 仍走 ToolSearch
         String deferredSig = "";
         if (context != null && context.getDeferredMcpCatalog() != null) {
             DeferredMcpCatalog catalog = context.getDeferredMcpCatalog();
@@ -576,7 +576,7 @@ public abstract class BaseAgent {
 
     /**
      * 统一生成最终 observation。
-     * 先做长度裁剪（LeAgent 风格截断提示），再追加当前 toolCall 关联的产物摘要，
+     * 先做长度裁剪，再追加当前 toolCall 关联的产物摘要，
      * 确保账本与主智能体看到的内容完全一致；artifact 摘要不参与 maxObserve 裁剪。
      */
     protected String buildFinalLlmObservation(String rawObservation, String toolCallId) {

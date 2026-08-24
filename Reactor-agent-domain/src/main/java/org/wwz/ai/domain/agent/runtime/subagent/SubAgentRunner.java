@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 子 Agent 执行引擎（对标 cc-haha runAgent + finalizeAgentTool + resume）。
+ * 子 Agent 执行引擎。
  * 阻塞跑完嵌套 ReactImplAgent（LLM 侧流式），只把结论文本回传主 Agent。
  * 结束后将 Memory 投影到 working_memory scope=sub:{agentId}，支持再次唤醒。
  */
@@ -128,7 +128,7 @@ public class SubAgentRunner {
         } else {
             agentId = SubAgentContextFactory.newAgentId();
         }
-        // Plan Mode：强制 Explore 画像（对标 cchaha 只读子代理）
+            // Plan Mode：强制 Explore 画像
         String effectiveType = subagentType;
         if (parentContext != null
                 && parentContext.getPlanModeState() != null

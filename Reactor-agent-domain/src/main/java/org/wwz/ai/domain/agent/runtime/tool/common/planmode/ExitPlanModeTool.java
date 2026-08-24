@@ -16,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 退出 Plan Mode 并提交计划供用户批准（对标 cc-haha ExitPlanModeV2Tool）。
+ * 退出 Plan Mode 并提交计划供用户批准。
  * <p>
  * Continuation 版：校验并落盘计划后抛出 {@link PlanApprovalRequiredException}，
  * 由上层持久化断点并结束 Run A；不再在工具线程上 Future.get 阻塞等待。

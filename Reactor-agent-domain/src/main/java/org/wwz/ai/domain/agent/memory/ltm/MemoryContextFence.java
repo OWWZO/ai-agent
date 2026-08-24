@@ -3,7 +3,7 @@ package org.wwz.ai.domain.agent.memory.ltm;
 import java.util.regex.Pattern;
 
 /**
- * Prefetch 围栏与清洗（对齐 Hermes memory-context）。
+ * Prefetch 围栏与清洗。
  */
 public final class MemoryContextFence {
 

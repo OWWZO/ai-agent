@@ -1,7 +1,7 @@
 ﻿"""Agent-facing PDF research tools (structure, citations, summary, translation).
 
-These wrap :mod:`leagent.tools.doc.pdf_research_core` so the agent can reason
-about a paper the same way the Research Paper Mode UI does. The factory
+These tools let the agent reason about a paper in the same way the Research
+Paper Mode UI does. The factory
 auto-generates ``Tool.<name>`` workflow nodes for each.
 """
 

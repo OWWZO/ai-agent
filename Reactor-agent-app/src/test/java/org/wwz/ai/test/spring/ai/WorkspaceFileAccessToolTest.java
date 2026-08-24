@@ -19,7 +19,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * 会话工作区文件工具测试（cchaha cwd 模式）。
+ * 会话工作区文件工具测试。
  */
 public class WorkspaceFileAccessToolTest {
 

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 会话 Todo 任务项（对标 cc-haha utils/tasks.Task）。
+ * 会话 Todo 任务项。
  * 与后台运行任务（TaskStop）是不同概念。
  */
 @Data

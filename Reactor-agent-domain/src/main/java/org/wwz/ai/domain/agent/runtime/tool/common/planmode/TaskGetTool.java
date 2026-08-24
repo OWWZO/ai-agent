@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 按 ID 获取 Todo 任务详情（对标 cc-haha TaskGetTool）。
+ * 按 ID 获取 Todo 任务详情。
  */
 @Slf4j
 @Data

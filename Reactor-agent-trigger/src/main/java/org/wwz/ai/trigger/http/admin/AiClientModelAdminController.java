@@ -47,7 +47,7 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     private ObjectProvider<LlmChatModelResolver> llmChatModelResolverProvider;
 
     /**
-     * 真发一次极小请求测连接与延迟（对齐 agentic-rag POST /admin/model/{id}/test）。
+     * 真发一次极小请求测连接与延迟。
      * 失败不抛给网关：结果在 data.ok 里，便于前端展示。
      */
     @PostMapping("/test/{modelId}")

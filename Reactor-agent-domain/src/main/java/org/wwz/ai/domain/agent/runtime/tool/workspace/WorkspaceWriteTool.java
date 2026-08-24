@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 写入工作区文本文件（对齐 cchaha Write）。
+ * 写入工作区文本文件。
  * 本地写入成功后，仅向文件服务登记本地路径并拿预览 URL（不重复上传 content）。
  */
 public class WorkspaceWriteTool extends AbstractWorkspacePathTool {

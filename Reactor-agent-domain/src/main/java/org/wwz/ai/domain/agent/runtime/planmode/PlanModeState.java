@@ -36,7 +36,7 @@ public class PlanModeState {
     /** 最近一次 ExitPlanMode 的 plan 内容（用于批准时回显） */
     private String pendingPlanContent;
 
-    /** 自上次 plan_mode 附件注入以来的 step 数（对标 cchaha turns throttle） */
+    /** 自上次 plan_mode 附件注入以来的 step 数。 */
     @Builder.Default
     private int stepsSincePlanAttachment = 0;
 

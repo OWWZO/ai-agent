@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 
 /**
- * 对齐 cchaha readFileState：记录某次 workspace_read 的 range / mtime / 内容指纹。
+ * 记录某次 workspace_read 的 range / mtime / 内容指纹。
  * 跨轮只持久化元数据（不含全文）。
  */
 @Value

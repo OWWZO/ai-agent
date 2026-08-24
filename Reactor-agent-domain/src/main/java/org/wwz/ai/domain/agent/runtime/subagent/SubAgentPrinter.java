@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 子 Agent 输出包装（对标 cc-haha agent_progress 挂到父 Agent tool_use 下）。
+ * 子 Agent 输出包装（挂到父 Agent tool_use 下）。
  * 所有 SSE 事件自动打上 parentToolUseId / subAgentId，供前端嵌套展示。
  */
 public class SubAgentPrinter implements Printer {

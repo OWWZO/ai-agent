@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 列出工作区目录（对齐 cchaha 用工具浏览而非裸 ls 的思路）。
+ * 列出工作区目录。
  */
 public class WorkspaceListTool extends AbstractWorkspacePathTool {
 

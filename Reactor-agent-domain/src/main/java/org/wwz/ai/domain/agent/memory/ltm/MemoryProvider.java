@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 可插拔长期记忆后端（对齐 Hermes MemoryProvider SPI）。
+ * 可插拔长期记忆后端。
  */
 public interface MemoryProvider {
 

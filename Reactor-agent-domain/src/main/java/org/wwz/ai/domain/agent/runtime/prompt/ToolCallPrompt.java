@@ -1,9 +1,9 @@
 package org.wwz.ai.domain.agent.runtime.prompt;
 
 /**
- * 工具调用代理 system 提示（对齐 LeAgent {@code default_agent.md} + {@code response_style.md}）。
+ * 工具调用代理 system 提示。
  * <p>
- * 终答模型：无 tool_call 的 assistant 文本 = 面向用户的最终回复（cchaha / LeAgent COMPLETED 同款）。
+ * 终答模型：无 tool_call 的 assistant 文本 = 面向用户的最终回复。
  * {@link #USER_FACING_REPLY_CONTRACT} 强制合并，配置覆盖默认模板时也不会丢。
  */
 public class ToolCallPrompt {
@@ -66,7 +66,7 @@ public class ToolCallPrompt {
             """.formatted(USER_FACING_REPLY_CONTRACT_MARKER);
 
     /**
-     * 默认 system：LeAgent default_agent 结构，工具名映射到 Reactor。
+     * 默认 system：工具调用结构，工具名映射到 Reactor。
      */
     public static final String SYSTEM_PROMPT = """
             # 角色

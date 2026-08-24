@@ -1,4 +1,4 @@
-"""Reactor docgen path constants (LeAgent LEAGENT_HOME equivalent)."""
+"""Reactor docgen path constants."""
 from __future__ import annotations
 
 import os

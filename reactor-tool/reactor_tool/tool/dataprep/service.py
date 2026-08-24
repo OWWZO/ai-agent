@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Dataprep service: LeAgent-aligned tabular data tools.
-
+"""Dataprep service: tabular data tools.
 中文说明：service 负责请求上下文、路径/artifact 归一化、统一异常协议和 spill 上传，
 具体数据处理仍委托给各个 SyncTool。
 """
+
 from __future__ import annotations
 
 import json

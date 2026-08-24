@@ -153,7 +153,7 @@ public class CanvasPublishTool implements BaseTool {
                 }
             }
 
-            // LeAgent-aligned: keep scripts (allowJs=true); inject host shell for bare pages.
+            // 保留脚本（allowJs=true）；为裸页面注入宿主 shell。
             html = HtmlPreviewSanitizer.buildPreviewHtml(html, true);
 
             int htmlBytes = html.getBytes(StandardCharsets.UTF_8).length;

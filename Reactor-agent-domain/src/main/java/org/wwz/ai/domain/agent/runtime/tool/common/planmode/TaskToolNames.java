@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.planmode;
 
 /**
- * Task / Plan Mode 工具名常量（对标 cc-haha constants）。
+ * Task / Plan Mode 工具名常量。
  * Task* = Todo V2；TodoWrite = V1 整表写入（兼容）。
  */
 public final class TaskToolNames {

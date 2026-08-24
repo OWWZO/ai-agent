@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 创建 Todo 任务（对标 cc-haha TaskCreateTool）。
+ * 创建 Todo 任务。
  * 与 TaskStop 的后台运行任务无关。
  */
 @Slf4j

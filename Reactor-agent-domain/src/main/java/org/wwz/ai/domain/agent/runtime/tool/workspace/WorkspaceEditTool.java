@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 局部替换编辑工作区文件（对齐 cchaha Edit）。
+ * 局部替换编辑工作区文件。
  * 要求先 workspace_read；old_string 默认必须唯一，除非 replace_all=true。
  * 本地编辑成功后仅登记预览 URL，不重复上传 content。
  */

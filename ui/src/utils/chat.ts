@@ -280,7 +280,7 @@ function handleTaskMessageByType(
       break;
     case "tool_call":
     case "tool_call_delta":
-      // tool_call_delta：参数生成增量（LeAgent 对齐）；tool_call：running/success/failed
+      // tool_call_delta：参数生成增量；tool_call：running/success/failed
       handleToolCallMessage(eventData, currentChat, taskIndex, toolIndex);
       break;
     case "ask_user_question":

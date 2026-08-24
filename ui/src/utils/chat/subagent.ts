@@ -137,7 +137,7 @@ export function isRunInBackgroundAgent(
   return false;
 }
 
-/** 子 Agent 工具事件上的父 Agent tool_use id（cc-haha parent grouping） */
+/** 子 Agent 工具事件上的父 Agent tool_use id */
 export function resolveParentToolUseId(
   task?: Partial<CHAT.Task> | Partial<MESSAGE.Task> | Record<string, unknown>
 ) {

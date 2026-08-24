@@ -4,7 +4,7 @@ One named theme drives typography, palette, spacing, and per-format font
 choices for every renderer (PDF / DOCX / PPTX / HTML). Consolidates the old
 ``tools/gen/style_registry.py`` presets and the ``pptx_generator`` palettes.
 
-Custom themes: YAML files in ``~/.leagent/templates/styles/`` deep-merge over
+Custom themes: YAML files in the configured template styles directory deep-merge over
 the ``professional`` base (document) or ``executive_light`` base (deck).
 """
 
@@ -23,7 +23,7 @@ logger = structlog.get_logger(__name__)
 
 
 def styles_dir() -> Path:
-    """Custom-theme YAML directory (honors ``LEAGENT_HOME``)."""
+    """Return the configured custom-theme YAML directory."""
     # 环境变量允许部署把主题与代码分离；未配置时落到用户目录，避免写入仓库。
     home = Path(os.getenv("REACTOR_DOCGEN_HOME") or os.getenv("LEAGENT_HOME") or str(Path.home() / ".reactor-docgen"))
     return home / "templates" / "styles"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Docread service: run LeAgent-ported document tools and normalize payloads."""
+"""Docread service: run document tools and normalize payloads."""
 from __future__ import annotations
 
 import json

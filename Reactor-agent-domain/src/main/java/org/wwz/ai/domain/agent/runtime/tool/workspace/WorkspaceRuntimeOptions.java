@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 会话工作区运行时配置（cchaha cwd 模式）。
+ * 会话工作区运行时配置。
  */
 @Data
 @Builder

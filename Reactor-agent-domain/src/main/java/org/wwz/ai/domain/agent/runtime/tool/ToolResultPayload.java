@@ -32,7 +32,7 @@ public class ToolResultPayload {
     private String llmObservation;
 
     /**
-     * 对齐 LeAgent {@code ToolResult.data} 的结构化载荷。
+     * 工具结果的结构化载荷。
      * 成功时由 serialize_for_llm 序列化为 observation；失败时可作为 detail。
      */
     private Object llmData;
@@ -71,7 +71,7 @@ public class ToolResultPayload {
     }
 
     /**
-     * 对齐 LeAgent {@code ToolResult.ok(data)}：只带 data，observation 由中央 serialize 生成。
+     * 成功结果只带 data，observation 由中央 serialize 生成。
      */
     public static ToolResultPayload fromData(Object data) {
         return ToolResultPayload.builder()
@@ -149,7 +149,7 @@ public class ToolResultPayload {
     }
 
     /**
-     * 对齐 LeAgent {@code ToolResult.fail(error, data=detail)}。
+     * 失败结果包含 error 和 detail。
      * 未提供 detail 时也保留最小结构化错误信息，避免失败工具退化为裸文本。
      */
     public static ToolResultPayload failureFrom(String error, Object detail) {

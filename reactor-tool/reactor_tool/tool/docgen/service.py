@@ -1,5 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-"""Docgen service: LeAgent-aligned document/excel/slides/checklist/template generators."""
+"""Docgen service: document/excel/slides/checklist/template generators."""
 from __future__ import annotations
 
 import json

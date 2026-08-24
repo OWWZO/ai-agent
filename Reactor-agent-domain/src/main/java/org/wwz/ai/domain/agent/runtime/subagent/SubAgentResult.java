@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 /**
- * 子 Agent 终结结果（对标 cc-haha finalizeAgentTool / AgentToolResult）。
+ * 子 Agent 终结结果。
  */
 @Data
 @Builder

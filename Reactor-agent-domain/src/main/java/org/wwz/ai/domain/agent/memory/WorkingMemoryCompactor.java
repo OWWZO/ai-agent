@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 工作记忆压缩纯算法（对齐 cc-haha 分层）：
+ * 工作记忆压缩纯算法：
  * microcompact → session-memory compact → full compact 辅助 → drop-oldest。
  * 切片永不拆开 tool_use/tool_result。
  */
@@ -41,7 +41,7 @@ public final class WorkingMemoryCompactor {
     }
 
     /**
-     * Microcompact：清掉较早的 TOOL 结果正文（保留最近 N 条完整/截断），对齐 cc-haha time-based MC 的 content clear。
+     * Microcompact：清掉较早的 TOOL 结果正文（保留最近 N 条完整/截断）。
      */
     public List<Message> microcompact(List<Message> messages, CompactionBudget budget) {
         if (messages == null || messages.isEmpty() || budget == null || !budget.isMicroEnabled()) {
@@ -235,7 +235,7 @@ public final class WorkingMemoryCompactor {
 
     /**
      * 计算应保留的 recent tail 起始下标（含）。
-     * 对齐 cc-haha calculateMessagesToKeepIndex：满足 minTokens + minTextMsgs，不超过 maxTokens。
+     * 计算应保留的消息起始位置：满足 minTokens + minTextMsgs，不超过 maxTokens。
      */
     public int findKeepStartIndex(List<Message> messages, CompactionBudget budget) {
         if (messages == null || messages.isEmpty()) {
@@ -312,7 +312,7 @@ public final class WorkingMemoryCompactor {
 
     /**
      * 压缩请求本身 prompt-too-long 时：从待摘要前缀按 tool-safe 边界丢掉最旧一段，再重试摘要。
-     * 对齐 cc-haha truncateHeadForPTLRetry；返回 null 表示已无法再裁。
+     * 返回 null 表示已无法再裁。
      */
     public List<Message> truncateHeadForCompactRetry(List<Message> messages) {
         if (messages == null || messages.size() <= 1) {

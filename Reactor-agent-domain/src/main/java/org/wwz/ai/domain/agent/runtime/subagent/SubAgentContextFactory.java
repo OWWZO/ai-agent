@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 
 /**
- * 创建隔离的子 Agent 上下文（对标 cc-haha createSubagentContext）。
+ * 创建隔离的子 Agent 上下文。
  * 不继承主对话记忆；共享 runtime 依赖、账本、产物登记；
  * printer 包装为 SubAgentPrinter，事件挂到父 Agent tool_use 下。
  */
@@ -76,7 +76,7 @@ public final class SubAgentContextFactory {
                 .workingMemoryMessages(null)
                 // 共享父取消令牌，否则 /stop 杀不到嵌套子 Agent
                 .runCancellation(parent.getRunCancellation())
-                // 子代理不继承主会话 LTM 写入权；对齐 Hermes skip_memory=True
+                // 子代理不继承主会话 LTM 写入权。
                 .skipMemory(Boolean.TRUE)
                 .ltmOwner(null)
                 .ltmMemoryContext(null)

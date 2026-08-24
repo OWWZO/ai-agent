@@ -216,7 +216,7 @@ declare global {
       summary?: string
       /** tool_call 流式阶段的当前累计参数文本，可能尚未形成合法 JSON */
       argumentsText?: string
-      /** 对齐 LeAgent：累计原始入参（与 argumentsText 同义，优先用于展示） */
+       /** 累计原始入参（与 argumentsText 同义，优先用于展示） */
       argumentsRaw?: string
       /** 流式 tool_call 卡片稳定键（后端 streamKey，messageId 同源） */
       streamToolKey?: string
@@ -226,7 +226,7 @@ declare global {
       errorMsg?: string
       input?: Record<string, unknown>
       toolParam?: Record<string, unknown>
-      /** 子 Agent 工具事件挂到父 Agent tool_use 下（cc-haha 嵌套） */
+       /** 子 Agent 工具事件挂到父 Agent tool_use 下 */
       parentToolUseId?: string
       subAgentId?: string
       subAgentType?: string

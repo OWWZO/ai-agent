@@ -2,9 +2,8 @@
 
 中文说明：进度回调是旁路观测能力，任何回调异常都不能影响工具主结果。
 
-:class:`ProgressReporter` wraps the optional ``on_progress`` callback
-that :class:`~leagent.tools.executor.ToolExecutor` passes into
-:meth:`BaseTool.run`. Tools call :meth:`report` after each chunk; the
+:class:`ProgressReporter` wraps the optional ``on_progress`` callback passed
+into :meth:`BaseTool.run`. Tools call :meth:`report` after each chunk; the
 reporter coalesces events so we don't flood workflow UI / logs with one
 message per row.
 """

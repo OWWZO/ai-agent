@@ -38,7 +38,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 主 Agent 派发子 Agent 的工具入口（对标 cc-haha AgentTool）。
+ * 主 Agent 派发子 Agent 的工具入口。
  * 默认同步阻塞；run_in_background=true 时注册后台任务并立即返回 task_id。
  */
 @Slf4j

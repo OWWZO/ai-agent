@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Plan Mode 对标 cchaha：状态机 + 工具门禁 + 批准挂起。
+ * Plan Mode：状态机 + 工具门禁 + 批准挂起。
  * 不依赖 AgentContext（避开 domain 单测 logback 冲突）。
  */
 public class PlanModeCchahaParityTest {

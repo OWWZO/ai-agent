@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 子 Agent 注册表：内置类型 + 可配置（DB）类型。
- * 对标 cc-haha builtInAgents，并支持运行时 replaceConfigured。
+ * 内置 Agent 注册表，并支持运行时 replaceConfigured。
  */
 @Component
 public class SubAgentRegistry {

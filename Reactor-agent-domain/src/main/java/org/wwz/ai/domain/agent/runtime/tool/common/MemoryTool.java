@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Hermes 风格 memory tool：add/replace/remove（可选 batch operations）。
+ * Memory tool：add/replace/remove（可选 batch operations）。
  */
 @Data
 public class MemoryTool implements BaseTool {

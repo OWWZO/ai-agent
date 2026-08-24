@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 读取工作区文本文件（对齐 cchaha Read，含跨轮未变更去重 stub）。
+ * 读取工作区文本文件（含跨轮未变更去重 stub）。
  */
 public class WorkspaceReadTool extends AbstractWorkspacePathTool {
 

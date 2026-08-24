@@ -133,7 +133,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     }
 
     /**
-     * 对标 cchaha /plan：进入 plan 后才有硬只读；PlanSolve 链路默认每请求自动进入。
+     * 进入 plan 后才有硬只读；PlanSolve 链路默认每请求自动进入。
      */
     private void enterPlanModeForPlanSolve(AgentContext agentContext) {
         if (agentContext == null) {

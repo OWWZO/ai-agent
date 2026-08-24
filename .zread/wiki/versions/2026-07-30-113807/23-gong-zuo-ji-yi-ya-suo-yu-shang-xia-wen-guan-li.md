@@ -6,7 +6,7 @@
 
 ## 核心架构与压缩流水线
 
-工作记忆压缩采用分层策略对齐 cc-haha 模式，仅在超阈值时触发，避免不必要的 LLM 调用。整个过程由 `SessionContextCompactionServiceImpl` 驱动，核心组件包括 `WorkingMemoryCompactor`、`CompactionBudget`、`SessionWorkingMemoryService` 和 `WorkingMemoryProjector`。
+工作记忆压缩采用分层策略，仅在超阈值时触发，避免不必要的 LLM 调用。整个过程由 `SessionContextCompactionServiceImpl` 驱动，核心组件包括 `WorkingMemoryCompactor`、`CompactionBudget`、`SessionWorkingMemoryService` 和 `WorkingMemoryProjector`。
 
 Mermaid 流程图如下：
 

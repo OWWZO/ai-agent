@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LeAgent-aligned document generation tools (HTTP → reactor-tool /v1/tool/*).
+ * Document generation tools (HTTP → reactor-tool /v1/tool/*).
  */
 @Slf4j
 @Data
@@ -95,7 +95,7 @@ public abstract class AbstractDocGenTool implements BaseTool {
             List<File> files = registerFiles(json.getJSONArray("fileInfo"), artifactSource);
             emitFileMessage(files, artifactSource);
 
-            // 对齐 LeAgent：成功 data 走 serialize_for_llm（JSON），不在此拼中文 prose。
+            // 成功 data 走 serialize_for_llm（JSON），不在此拼中文 prose。
             return ToolResultPayload.fromData(buildLlmData(json, files));
         } catch (Exception e) {
             log.error("{} {} error, input={}", agentContext == null ? "-" : agentContext.getRequestId(), getName(), input, e);
@@ -160,7 +160,7 @@ public abstract class AbstractDocGenTool implements BaseTool {
     }
 
     /**
-     * 构造成功 data（LeAgent ToolResult.data 语义）。文件完整 URL 由 artifact 摘要补充，
+     * 构造成功 data。文件完整 URL 由 artifact 摘要补充，
      * data 内只保留短引用，避免 observation 塞长链。
      */
     private Map<String, Object> buildLlmData(JSONObject json, List<File> files) {

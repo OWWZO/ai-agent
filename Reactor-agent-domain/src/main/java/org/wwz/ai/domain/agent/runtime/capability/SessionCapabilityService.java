@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 会话级 skill / MCP 能力清单与差集开关（对齐 agentic-rag SessionCapabilityService 的减法语义）。
+ * 会话级 skill / MCP 能力清单与差集开关。
  */
 @Service
 @RequiredArgsConstructor

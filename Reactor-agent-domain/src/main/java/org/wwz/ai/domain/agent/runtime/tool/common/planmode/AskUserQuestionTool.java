@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 向用户提问（对标 cc-haha AskUserQuestionTool）。
+ * 向用户提问。
  * <p>
  * Continuation 版：校验参数后抛出 {@link UserInputRequiredException}，由上层持久化断点并结束 Run A；
  * 不再在工具线程上 Future.get 阻塞等待。

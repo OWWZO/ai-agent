@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Smoke tests for LeAgent-ported docread tools."""
+"""Smoke tests for docread tools."""
 from __future__ import annotations
 
 import tempfile

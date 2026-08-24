@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 对齐 LeAgent serialize_for_llm 的单元契约。
+ * 工具结果序列化契约的单元测试。
  */
 public class ToolObservationSerializerTest {
 

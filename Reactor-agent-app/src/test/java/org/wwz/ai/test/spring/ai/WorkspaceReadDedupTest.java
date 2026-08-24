@@ -17,7 +17,7 @@ import java.util.Base64;
 import java.util.Map;
 
 /**
- * 对齐 cchaha：同 range + mtime 未变时 read 返回 unchanged stub；
+ * 同 range + mtime 未变时 read 返回 unchanged stub；
  * 外部修改后 edit 要求重读。
  */
 public class WorkspaceReadDedupTest {

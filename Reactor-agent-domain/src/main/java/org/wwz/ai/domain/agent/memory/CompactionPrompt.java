@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 压缩摘要提示词（移植自 cc-haha compact/prompt.ts，去掉 ant-only 分支）。
+ * 压缩摘要提示词。
  * <p>
  * 压缩 LLM 的输出必须经 {@link #formatCompactSummary(String)} 清洗后再
  * {@link #wrapSummaryForReinject(String, boolean)} 注入主对话；否则主 Agent 会把

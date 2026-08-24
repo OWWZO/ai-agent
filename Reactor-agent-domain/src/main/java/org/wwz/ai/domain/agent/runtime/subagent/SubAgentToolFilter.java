@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 子 Agent 工具池三层过滤（对标 cc-haha filterToolsForAgent / resolveAgentTools）。
+ * 子 Agent 工具池三层过滤。
  * 1) 全局禁止 Agent 自身（防递归）
  * 2) 定义 disallowedTools
  * 3) 定义 allowedTools 白名单
@@ -47,7 +47,7 @@ public final class SubAgentToolFilter {
     }
 
     /**
-     * @param parentInPlanMode 父会话处于 plan mode 时，额外剥离写工具（对标 cchaha 只读子代理）
+     * @param parentInPlanMode 父会话处于 plan mode 时，额外剥离写工具
      */
     public static ToolCollection filter(ToolCollection parentTools,
                                         SubAgentDefinition definition,
@@ -61,7 +61,7 @@ public final class SubAgentToolFilter {
 
         Set<String> disallowed = new HashSet<>();
         disallowed.add(AgentDispatchTool.NAME);
-        // 对标 cc-haha ALL_AGENT_DISALLOWED：子 Agent 禁止 TaskStop / Enter/Exit PlanMode
+        // 子 Agent 禁止 TaskStop / Enter/Exit PlanMode
         disallowed.add(TaskToolNames.TASK_STOP);
         disallowed.add(TaskToolNames.TASK_OUTPUT);
         disallowed.add(TaskToolNames.SEND_MESSAGE);

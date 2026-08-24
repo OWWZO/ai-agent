@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * 会话计划落盘（对标 cc-haha plans/{slug}.md）。
+ * 会话计划落盘。
  * 路径：{workspaceRoot}/.reactor/plan.md
  */
 @Slf4j

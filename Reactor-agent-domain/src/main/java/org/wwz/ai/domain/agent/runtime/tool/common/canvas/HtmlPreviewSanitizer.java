@@ -121,7 +121,7 @@ public final class HtmlPreviewSanitizer {
     }
 
     /**
-     * Build preview HTML aligned with LeAgent:
+     * Build preview HTML:
      * store-raw semantics when allowJs=true; strip scripts when false;
      * inject host shell for bare/utility pages.
      */

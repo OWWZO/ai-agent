@@ -11,7 +11,7 @@ import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import java.util.concurrent.Future;
 
 /**
- * 后台运行任务（对标 cc-haha AppState.tasks / TaskStop / TaskOutput 对象）。
+ * 后台运行任务。
  * 与 SessionTaskItem（Todo 列表）分离。
  */
 @Data

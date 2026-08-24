@@ -18,7 +18,7 @@ import org.wwz.ai.types.enums.ResponseCode;
 import java.util.Map;
 
 /**
- * 会话能力开关：技能 / MCP（差集语义，对齐 agentic-rag capabilities）。
+ * 会话能力开关：技能 / MCP（差集语义）。
  */
 @Slf4j
 @RestController

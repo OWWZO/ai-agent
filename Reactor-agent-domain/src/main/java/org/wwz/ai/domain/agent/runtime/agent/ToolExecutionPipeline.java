@@ -545,7 +545,7 @@ final class ToolExecutionPipeline {
             payload.put("toolInvocationId", String.valueOf(toolInvocationId));
         }
 
-        // 保留原始入参字符串，供前端在 running 阶段继续展示（对齐 LeAgent argumentsRaw）。
+        // 保留原始入参字符串，供前端在 running 阶段继续展示。
         String rawArguments = command.getFunction().getArguments();
         if (StringUtils.isNotBlank(rawArguments)) {
             payload.put("argumentsText", rawArguments);

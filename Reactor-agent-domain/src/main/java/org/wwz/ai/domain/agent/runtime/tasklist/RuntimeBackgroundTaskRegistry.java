@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
 /**
- * 后台运行任务注册表（对标 cc-haha AppState.tasks）。
+ * 后台运行任务注册表。
  * 可选挂载 {@link TasklistPersistencePort} 实现跨 run 持久化。
  */
 public class RuntimeBackgroundTaskRegistry {

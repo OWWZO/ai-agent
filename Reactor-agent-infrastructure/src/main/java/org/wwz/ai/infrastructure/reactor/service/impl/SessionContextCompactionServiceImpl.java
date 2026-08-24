@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 工作记忆压缩流水线（对齐 cc-haha query.ts）：
+ * 工作记忆压缩流水线：
  * <pre>
  *   microcompact → (若仍超阈)
  *     session-memory compact（已有 notes + recent tail）
@@ -244,7 +244,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
             if (deps == null) {
                 return working;
             }
-            // ① 独立 flush 小回合（对齐 Hermes）；优先运行时绑定
+            // ① 独立 flush 小回合；优先运行时绑定
             MemoryFlushService flushService = LtmServices.memoryFlush();
             if (flushService == null) {
                 flushService = deps.getOptionalMemoryFlushService();
@@ -357,7 +357,7 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
 
         Message system = Message.systemMessage(CompactionPrompt.getCompactPrompt(), null);
 
-        // 对齐 cc-haha：压缩请求自身 413/超上下文时截掉待摘要最旧 tool-safe 前缀再重试，
+        // 压缩请求自身 413/超上下文时截掉待摘要最旧 tool-safe 前缀再重试，
         // 仍失败则抛出，由上层 drop-oldest 兜底，避免用户卡死。
         Exception lastError = null;
         for (int attempt = 0; attempt <= MAX_COMPACT_PTL_RETRIES; attempt++) {
@@ -634,4 +634,3 @@ public class SessionContextCompactionServiceImpl implements SessionContextCompac
         }
     }
 }
-

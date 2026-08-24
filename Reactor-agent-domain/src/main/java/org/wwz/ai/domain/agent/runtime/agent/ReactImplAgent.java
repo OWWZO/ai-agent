@@ -134,7 +134,7 @@ public class ReactImplAgent extends ReActAgent {
      */
     @Override
     public String act() {
-        // 无 tool_calls：本轮 assistant text 即面向用户的终答（cchaha 同款结束信号）
+        // 无 tool_calls：本轮 assistant text 即面向用户的终答
         if (toolCalls == null || toolCalls.isEmpty()) {
             setState(AgentState.FINISHED);
             Message last = getMemory().getLastMessage();

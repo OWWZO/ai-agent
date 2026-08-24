@@ -7,7 +7,7 @@ the LLM context window. Data tools accept one interchangeably with an
 inline ``data`` list, and emit one when the output would otherwise
 exceed configured size thresholds.
 
-Supported URI schemes (resolved in :mod:`leagent.tools._data.records`):
+Supported URI schemes (resolved in the records module):
 
 * ``file://<abs_path>`` / bare absolute path — local disk (json, jsonl,
   csv, parquet inferred from extension)

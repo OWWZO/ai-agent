@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 工作区文本搜索（对齐 cchaha Grep）。
+ * 工作区文本搜索。
  */
 public class WorkspaceGrepTool extends AbstractWorkspacePathTool {
 

@@ -1,4 +1,4 @@
-"""LeAgent-style direct Python execution for calling agents."""
+"""Direct Python execution for calling agents."""
 from __future__ import annotations
 
 import os

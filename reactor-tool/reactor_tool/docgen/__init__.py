@@ -1,4 +1,4 @@
-﻿"""LeAgent document generation subsystem.
+﻿"""Document generation subsystem.
 
 One document model, one font pipeline, one theme system, N renderers:
 
@@ -23,8 +23,7 @@ One document model, one font pipeline, one theme system, N renderers:
 - :mod:`reactor_tool.docgen.charts` — chart blocks rendered to PNG via matplotlib.
 - :mod:`reactor_tool.docgen.renderers` — PDF / DOCX / PPTX / HTML / Markdown renderers.
 
-Agent-facing tools (``document_generate`` / ``slides_generate``) live in
-``leagent.tools.gen`` and drive this package.
+Agent-facing tools (``document_generate`` / ``slides_generate``) drive this package.
 """
 
 # 统一中间表示连接解析、主题、字体和多格式渲染；工具入口不应绕过本包直接拼接文件。

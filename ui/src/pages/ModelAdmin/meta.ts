@@ -1,4 +1,4 @@
-/** 模型接入页展示元数据（对齐 agentic-rag models/meta） */
+/** 模型接入页展示元数据 */
 
 export type ProviderPreset = {
   id: string;

@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * 把「请求里的 model 引用」解析成可出站的 {@link LLMSettings}。
  * <p>
- * 对齐 agentic-rag 的 ModelCatalog 语义：
+ * 模型目录语义：
  * <ul>
  *   <li>真相源是 DB（管理台 CRUD），不是 yml</li>
  *   <li>短 TTL 缓存压重复查询；管理写后 {@link #invalidateAll()} 立即失效</li>

@@ -9,8 +9,8 @@ PowerPoint. Supported inputs (priority order):
 3. ``path`` — local filesystem path
 4. ``url`` — remote ``http(s)://`` download
 
-Managed ``file_id`` values resolve via a sync scan of
-``LEAGENT_HOME/working/uploads`` (and knowledge storage) so renderers stay
+Managed ``file_id`` values resolve via a sync scan of the configured working
+uploads directory (and knowledge storage) so renderers stay
 synchronous. Includes optional downsampling to keep file sizes manageable.
 """
 

@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 /**
- * 情节按需检索（对齐 Hermes session_search）：查 Execution Ledger 真相源。
+ * 情节按需检索：查 Execution Ledger 真相源。
  * <p>
  * 不搜 working memory：working memory 是可压缩热窗口投影，会丢细节、可与 ledger 重复，
  * 且跨会话不稳定；情节「无限原文」以 ledger 为准。

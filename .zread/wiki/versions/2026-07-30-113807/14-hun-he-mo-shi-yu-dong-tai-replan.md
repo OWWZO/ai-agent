@@ -52,7 +52,7 @@ Sources: [Step2PlanExecuteNode.java](Reactor-agent-domain/src/main/java/org/wwz/
 
 ### 入口自动进入 Plan Mode
 
-PlanSolve 在 Step1 完成 SOP 召回与工具装载后，**每个请求默认 auto-enter plan mode**（对标 cchaha `/plan`）：写入 `PlanModeState`、解析计划文件路径，并通过 SSE 推送 `plan_mode_entered`（`autoEntered=true`，`reason=PLAN_SOLVE_ENTRY`）。未批准前，系统语义是「硬只读 + 仅可写计划文件」。
+PlanSolve 在 Step1 完成 SOP 召回与工具装载后，**每个请求默认 auto-enter plan mode**：写入 `PlanModeState`、解析计划文件路径，并通过 SSE 推送 `plan_mode_entered`（`autoEntered=true`，`reason=PLAN_SOLVE_ENTRY`）。未批准前，系统语义是「硬只读 + 仅可写计划文件」。
 
 Sources: [Step1SopRecallAndPrepareNode.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/service/execute/planexecute/step/Step1SopRecallAndPrepareNode.java#L111-L154)
 Sources: [PlanModeState.java](Reactor-agent-domain/src/main/java/org/wwz/ai/domain/agent/runtime/planmode/PlanModeState.java#L16-L67)

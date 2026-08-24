@@ -7,7 +7,7 @@ import org.wwz.ai.domain.agent.runtime.dto.Message;
 import org.wwz.ai.domain.agent.runtime.prompt.PlanSolvePrompt;
 
 /**
- * Plan Mode 提示注入（对标 cc-haha plan_mode / sparse / plan_mode_exit attachments）。
+ * Plan Mode 提示注入。
  */
 public final class PlanModePromptInjector {
 
@@ -15,13 +15,13 @@ public final class PlanModePromptInjector {
     public static final String PLAN_MODE_SPARSE_MARKER = "PLAN_MODE_SPARSE_V2";
     public static final String PLAN_MODE_EXIT_MARKER = "PLAN_MODE_EXIT_V1";
 
-    /** 每 N 步注入一次 sparse/full 提醒（对标 cchaha TURNS_BETWEEN_ATTACHMENTS≈5） */
+    /** 每 N 步注入一次 sparse/full 提醒。 */
     public static final int STEPS_BETWEEN_ATTACHMENTS = 5;
     /** 每 N 次附件用一次完整指引，其余 sparse */
     public static final int FULL_EVERY_N_ATTACHMENTS = 5;
 
     /**
-     * 对标 cchaha getPlanModeV2Instructions：进入 plan 后硬只读，覆盖其它指令。
+     * 进入 plan 后硬只读，覆盖其它指令。
      */
     public static final String PLAN_MODE_INSTRUCTIONS = """
             Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received. (%s)

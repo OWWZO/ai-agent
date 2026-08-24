@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 情节按需检索：默认按 visitor 跨会话搜 Execution Ledger（对齐 Hermes 更强跨会话召回）。
+ * 情节按需检索：默认按 visitor 跨会话搜 Execution Ledger。
  * 不搜 working memory（热窗口投影，非无限原文真相源）。
  */
 @Data

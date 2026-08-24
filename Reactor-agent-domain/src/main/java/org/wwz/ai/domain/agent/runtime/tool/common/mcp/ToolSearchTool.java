@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 搜索并激活延迟加载的 MCP 工具（对齐 cc-haha ToolSearchTool）。
+ * 搜索并激活延迟加载的 MCP 工具。
  * <p>
  * query 支持关键词或 {@code select:toolA,toolB}；命中后写入当前 ToolCollection，
  * 下一轮 askTool 即可携带完整 schema。

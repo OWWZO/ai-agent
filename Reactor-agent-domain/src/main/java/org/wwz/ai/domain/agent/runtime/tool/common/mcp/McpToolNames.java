@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.runtime.tool.common.mcp;
 
 /**
- * MCP 元工具名称（对齐 cc-haha）。
+ * MCP 元工具名称。
  */
 public final class McpToolNames {
 

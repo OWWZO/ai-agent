@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 /**
- * Hermes 风格长期记忆写入规范的唯一文本源。
+ * 长期记忆写入规范的唯一文本源。
  *
  * <p>同一组规则会被主 Agent 提示词、{@code memory} 工具 schema、后台复盘 fork、
  * 压缩前 flush fork 和紧凑提醒共同复用，避免不同入口对“什么值得记忆”产生漂移。
@@ -28,7 +28,7 @@ public final class LtmPromptGuidance {
             "Priority: user preferences & corrections > environment facts > procedures. "
                     + "The best memory stops the user repeating themselves / re-steering you.";
 
-    /** Hard SKIP list (Hermes + Reactor session_search). */
+    /** Hard SKIP list. */
     public static final String SKIP =
             "SKIP: trivial/obvious info; easily re-discovered facts; raw data dumps; task progress; "
                     + "session outcomes; completed-work logs; temporary TODO; PR/issue numbers; commit SHAs; "
@@ -95,7 +95,7 @@ public final class LtmPromptGuidance {
     // -------------------------------------------------------------------------
 
     /**
-     * Port of Hermes {@code _MEMORY_REVIEW_PROMPT}, plus Reactor targets / shared SKIP+STYLE.
+     * Memory review prompt with Reactor targets and shared SKIP/STYLE rules.
      */
     public static final String REVIEW_DIRECTIVE =
             "Review the conversation above and consider saving to memory if appropriate.\n\n"

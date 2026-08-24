@@ -39,7 +39,7 @@ function basename(path: string): string {
 }
 
 /**
- * SendUserMessage / Brief 可见消息卡片（对标 cc-haha BriefTool 主输出通道）。
+ * SendUserMessage / Brief 可见消息卡片。
  */
 const UserBriefCard: FC<UserBriefCardProps> = memo(({ tool }) => {
   const resultMap = asRecord(tool.resultMap);

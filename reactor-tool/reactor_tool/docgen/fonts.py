@@ -4,7 +4,7 @@ Resolution order (see ``FontManager.resolve``):
 
 1. ``LEAGENT_CJK_FONT`` / ``LEAGENT_CJK_FONT_BOLD`` env overrides
 2. Managed fonts previously downloaded to ``LEAGENT_HOME/fonts/``
-3. System font scan (``leagent.utils.cjk_font_discovery``)
+3. System font scan
 4. Auto-download of pinned Noto Sans SC faces (sha256-verified) into the
    managed dir — disable with ``LEAGENT_FONT_AUTO_DOWNLOAD=0`` for offline
    deployments

@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * workspace_edit 对齐 cchaha Edit 的基本语义。
+ * workspace_edit 的基本语义。
  */
 public class WorkspaceEditToolTest {
 

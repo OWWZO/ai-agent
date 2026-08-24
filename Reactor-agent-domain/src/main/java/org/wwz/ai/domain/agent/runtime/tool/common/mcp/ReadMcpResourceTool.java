@@ -13,7 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 读取 MCP resource（对齐 cc-haha ReadMcpResourceTool）。
+ * 读取 MCP resource。
  */
 @Slf4j
 @Data

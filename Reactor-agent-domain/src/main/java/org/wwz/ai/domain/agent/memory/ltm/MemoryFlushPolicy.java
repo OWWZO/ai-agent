@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 压缩前 Memory Flush 策略（对齐 Hermes flush_min_turns）。
+ * 压缩前 Memory Flush 策略。
  */
 public final class MemoryFlushPolicy {
 

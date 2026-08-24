@@ -1,7 +1,7 @@
 package org.wwz.ai.domain.agent.memory.ltm;
 
 /**
- * 内置策展作用域，对齐 Hermes MEMORY.md / USER.md。
+ * 内置策展作用域。
  */
 public enum CuratedMemoryScope {
     /** 代理环境与约定事实 */

@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * 轻量本地深度记忆 Provider（对齐 Hermes Holographic 角色：可离线事实库 + 关键词召回）。
+ * 轻量本地深度记忆 Provider（可离线事实库 + 关键词召回）。
  * 非完整 HRR 实现；后续可替换为 SQLite/HRR 增强版。
  */
 public class HolographicMemoryProvider implements MemoryProvider {

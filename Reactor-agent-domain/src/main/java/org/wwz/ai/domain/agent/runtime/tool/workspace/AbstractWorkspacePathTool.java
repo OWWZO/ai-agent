@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 工作区路径类工具公共支持（对齐 cchaha File/Glob/Grep 的 cwd 约束）。
+ * 工作区路径类工具公共支持（统一 cwd 约束）。
  */
 public abstract class AbstractWorkspacePathTool implements BaseTool {
 
@@ -66,14 +66,14 @@ public abstract class AbstractWorkspacePathTool implements BaseTool {
     }
 
     /**
-     * 工具描述尾部追加 cwd，对齐 cchaha env 注入思路。
+     * 工具描述尾部追加 cwd。
      */
     /** 成功：结构化 llmData，由中央 serialize_for_llm 输出 JSON。 */
     protected ToolResultPayload okResult(Map<String, Object> fields) {
         return ToolResultPayload.okData(getName(), fields);
     }
 
-    /** 失败：LeAgent 风格 Error 前缀（消息脱敏，不暴露宿主绝对路径）。 */
+    /** 失败：使用 Error 前缀（消息脱敏，不暴露宿主绝对路径）。 */
     protected ToolResultPayload failResult(String message) {
         String safe = WorkspaceService.redactHostPaths(message);
         Map<String, Object> detail = new java.util.LinkedHashMap<>();

@@ -480,7 +480,7 @@ class EmbeddingProxyResponse(BaseModel):
 
 
 class DocgenRequest(BaseModel):
-    """统一文档生成请求：requestId + 透传 LeAgent 兼容 params。"""
+    """统一文档生成请求：requestId + 透传兼容 params。"""
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 

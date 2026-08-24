@@ -58,7 +58,7 @@ export function resolveToolCallArgumentsText(resultMap?: MESSAGE.ResultMap) {
   if (!resultMap) {
     return "";
   }
-  // LeAgent 对齐：argumentsRaw 优先；兼容历史 argumentsText
+  // argumentsRaw 优先；兼容历史 argumentsText
   if (typeof resultMap.argumentsRaw === "string" && resultMap.argumentsRaw) {
     return resultMap.argumentsRaw;
   }

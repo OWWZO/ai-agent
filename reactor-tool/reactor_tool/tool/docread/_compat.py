@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Minimal LeAgent tools.base compatibility shims for docread ports."""
+"""Minimal tools.base compatibility shims for docread tools."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

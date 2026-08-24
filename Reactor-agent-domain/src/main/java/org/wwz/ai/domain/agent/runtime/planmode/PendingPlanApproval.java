@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 挂起的 Plan 批准请求（对标 cc-haha ExitPlanMode 等人批）。
+ * 挂起的 Plan 批准请求。
  * 工具线程 await future；Web 通过独立 HTTP 提交 approve/reject 完成 future。
  */
 @Data

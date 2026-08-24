@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Hermes 对齐：同 runtime 全量 messages 重放 + 仅 memory 工具的后台 fork。
+ * 同 runtime 全量 messages 重放 + 仅 memory 工具的后台 fork。
  */
 @Slf4j
 @Service

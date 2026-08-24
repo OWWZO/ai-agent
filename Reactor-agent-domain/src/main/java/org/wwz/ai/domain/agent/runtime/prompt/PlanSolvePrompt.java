@@ -2,7 +2,7 @@ package org.wwz.ai.domain.agent.runtime.prompt;
 
 /**
  * PlanSolve 主代理编排约定。
- * PlanSolve 请求启动时已自动进入 Plan Mode（对标 cchaha /plan），未批准前禁止实现。
+ * PlanSolve 请求启动时已自动进入 Plan Mode，未批准前禁止实现。
  */
 public final class PlanSolvePrompt {
 
@@ -11,7 +11,7 @@ public final class PlanSolvePrompt {
     public static final String ORCHESTRATION = """
             # Plan-Execute 主代理职责 (%s)
             - 你是本会话的**主代理**（PlanSolve）：先规划、等人批、再实现与最终回复。
-            - **本请求已自动进入 Plan Mode**（等同 cchaha 用户开启 plan）。在用户批准前：
+            - **本请求已自动进入 Plan Mode**。在用户批准前：
               - MUST NOT 修改业务代码/配置/数据（仅可写 `.reactor/plan.md`）
               - MUST NOT 用执行类工具落地实现；Agent 仅 Explore 只读
               - 写好计划后调用 ExitPlanMode，等待用户批准
