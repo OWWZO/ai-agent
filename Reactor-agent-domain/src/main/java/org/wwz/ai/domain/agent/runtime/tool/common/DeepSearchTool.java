@@ -166,12 +166,16 @@ public class DeepSearchTool implements ContextIsolatableTool {
         try {
             ReactorConfig reactorConfig = requireReactorConfig(ctx);
             String url = reactorConfig.getDeepSearchUrl() + "/v1/tool/deepsearch";
-            log.info("{} deep_search request {}", ctx.getRequestId(), JSONObject.toJSONString(searchRequest));
+            log.info("{} deep_search request queryLength={} reportFileName={}",
+                    ctx.getRequestId(),
+                    StringUtils.length(searchRequest.getQuery()),
+                    searchRequest.getReport_file_name());
 
             String[] interval = reactorConfig.getMessageInterval().getOrDefault("search", "5,20").split(",");
             int firstInterval = Integer.parseInt(interval[0]);
             int sendInterval = Integer.parseInt(interval[1]);
-            AtomicInteger index = new AtomicInteger(1);
+            AtomicInteger eventIndex = new AtomicInteger(0);
+            AtomicInteger reportIndex = new AtomicInteger(1);
             AtomicReference<String> resultRef = new AtomicReference<>("搜索结果为空");
             AtomicReference<String> messageIdRef = new AtomicReference<>("");
             String toolCallId = artifactSource == null ? null : artifactSource.getToolCallId();
@@ -214,12 +218,14 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         if (data.startsWith("heartbeat")) {
                             return;
                         }
-                        int currentIndex = index.get();
-                        if (currentIndex == 1 || currentIndex % 100 == 0) {
-                            log.info("{} deep_search recv data: {}", ctx.getRequestId(), data);
-                        }
+                        int eventNumber = eventIndex.incrementAndGet();
                         DeepSearchrResponse searchResponse = JSONObject.parseObject(data, DeepSearchrResponse.class);
                         searchResponse.setToolCallId(toolCallId);
+                        if (eventNumber == 1 || eventNumber % 100 == 0) {
+                            log.info("{} deep_search recv event={} type={} final={} answerLength={}",
+                                    ctx.getRequestId(), eventNumber, searchResponse.getMessageType(),
+                                    searchResponse.getIsFinal(), StringUtils.length(searchResponse.getAnswer()));
+                        }
                         // 使用标准 SSE 客户端逐条消费事件，避免 extend 被上游缓冲后延迟透传。
                         if (searchResponse.getIsFinal()) {
                             if (StringUtils.isBlank(searchResponse.getAnswer())) {
@@ -277,17 +283,18 @@ public class DeepSearchTool implements ContextIsolatableTool {
                             searchResponse.setSearchFinish(true);
                             ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                         } else if ("report".equals(searchResponse.getMessageType())) {
-                            if (currentIndex == 1 && messageIdRef.get().isEmpty()) {
+                            int currentReportIndex = reportIndex.get();
+                            if (currentReportIndex == 1 && messageIdRef.get().isEmpty()) {
                                 messageIdRef.set(StringUtil.getUUID());
                             }
                             stringBuilderIncr.append(searchResponse.getAnswer());
                             stringBuilderAll.append(searchResponse.getAnswer());
-                            if (currentIndex == firstInterval || currentIndex % sendInterval == 0) {
+                            if (currentReportIndex == firstInterval || currentReportIndex % sendInterval == 0) {
                                 searchResponse.setAnswer(stringBuilderIncr.toString());
                                 ctx.getPrinter().send(messageIdRef.get(), "deep_search", searchResponse, digitalEmployee, false);
                                 stringBuilderIncr.setLength(0);
                             }
-                            index.incrementAndGet();
+                            reportIndex.incrementAndGet();
                         }
                     } catch (Exception e) {
                         log.error("{} deep_search request error", ctx.getRequestId(), e);
@@ -328,8 +335,8 @@ public class DeepSearchTool implements ContextIsolatableTool {
                         }
                         return;
                     }
-                    log.error("{} deep_search on failure, statusCode={}, body={}",
-                            ctx.getRequestId(), statusCode, responseBody, throwable);
+                    log.error("{} deep_search on failure, statusCode={}, bodyLength={}",
+                            ctx.getRequestId(), statusCode, StringUtils.length(responseBody), throwable);
                     if (!future.isDone()) {
                         future.completeExceptionally(throwable instanceof Exception
                                 ? (Exception) throwable
