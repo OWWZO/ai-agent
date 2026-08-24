@@ -81,7 +81,11 @@ def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) 
         if text.startswith("minio://") or text.startswith("memory://"):
             return text
         try:
-            return str(resolve_input_path(text, request_id=request_id, workspace_root=workspace_root))
+            return str(
+                resolve_input_path(
+                    text, request_id=request_id, workspace_root=workspace_root
+                )
+            )
         except FileNotFoundError:
             return text
     if isinstance(value, dict) and isinstance(value.get("uri"), str):
@@ -89,9 +93,17 @@ def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) 
         if uri.startswith("file://"):
             raw = uri[len("file://") :]
             try:
-                resolved = str(resolve_input_path(raw, request_id=request_id, workspace_root=workspace_root))
+                resolved = str(
+                    resolve_input_path(
+                        raw, request_id=request_id, workspace_root=workspace_root
+                    )
+                )
                 out = dict(value)
-                out["uri"] = f"file://{resolved}" if not resolved.startswith("file://") else resolved
+                out["uri"] = (
+                    f"file://{resolved}"
+                    if not resolved.startswith("file://")
+                    else resolved
+                )
                 # bare absolute path is also accepted by records loader
                 out["uri"] = resolved
                 return out
@@ -99,7 +111,11 @@ def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) 
                 return value
         if not uri.startswith("minio://") and not uri.startswith("memory://"):
             try:
-                resolved = str(resolve_input_path(uri, request_id=request_id, workspace_root=workspace_root))
+                resolved = str(
+                    resolve_input_path(
+                        uri, request_id=request_id, workspace_root=workspace_root
+                    )
+                )
                 out = dict(value)
                 out["uri"] = resolved
                 return out
@@ -108,30 +124,42 @@ def _resolve_path_like(value: Any, request_id: str, workspace_root: str | None) 
     return value
 
 
-def _prepare_params(params: dict[str, Any], request_id: str) -> tuple[dict[str, Any], ToolContext]:
+def _prepare_params(
+    params: dict[str, Any], request_id: str
+) -> tuple[dict[str, Any], ToolContext]:
     """剥离运行时内部参数，并统一处理各工具约定的单文件、列表和表映射路径。"""
     # 先剥离 Java/HTTP 运行时字段，再把所有支持的输入位置归一化为本地路径或远端 URI。
     workspace_root = _workspace(params)
     clean = _strip_internal(params)
     # common single-table path
     if "source_path" in clean:
-        clean["source_path"] = _resolve_path_like(clean.get("source_path"), request_id, workspace_root)
+        clean["source_path"] = _resolve_path_like(
+            clean.get("source_path"), request_id, workspace_root
+        )
     if "artifact" in clean:
-        clean["artifact"] = _resolve_path_like(clean.get("artifact"), request_id, workspace_root)
+        clean["artifact"] = _resolve_path_like(
+            clean.get("artifact"), request_id, workspace_root
+        )
     # merge
     for key in ("left_artifact", "right_artifact"):
         if key in clean:
             clean[key] = _resolve_path_like(clean.get(key), request_id, workspace_root)
     if isinstance(clean.get("datasets"), list):
         clean["datasets"] = [
-            _resolve_path_like(item, request_id, workspace_root) if isinstance(item, (str, dict)) else item
+            _resolve_path_like(item, request_id, workspace_root)
+            if isinstance(item, (str, dict))
+            else item
             for item in clean["datasets"]
         ]
     # sql tables map
     if isinstance(clean.get("tables"), dict):
         tables = {}
         for name, val in clean["tables"].items():
-            tables[name] = _resolve_path_like(val, request_id, workspace_root) if isinstance(val, (str, dict)) else val
+            tables[name] = (
+                _resolve_path_like(val, request_id, workspace_root)
+                if isinstance(val, (str, dict))
+                else val
+            )
         clean["tables"] = tables
     return clean, _ctx(request_id, workspace_root)
 
@@ -167,7 +195,9 @@ def _run_tool(tool: Any, params: dict[str, Any], request_id: str) -> dict[str, A
         result = tool.execute_sync(clean, context)
         return _ok(result if isinstance(result, dict) else {"result": result})
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"dataprep tool={getattr(tool, 'name', type(tool).__name__)} failed: {exc}")
+        logger.warning(
+            f"dataprep tool={getattr(tool, 'name', type(tool).__name__)} failed: {exc}"
+        )
         return _fail(str(exc))
 
 
