@@ -119,6 +119,7 @@ vi.mock("lucide-react", () => ({
   FolderOpen: () => <span>folder</span>,
   PanelLeftClose: () => <span>left</span>,
   PanelRightClose: () => <span>right</span>,
+  PanelRightOpen: () => <span>right-open</span>,
 }));
 
 vi.mock("./useConversationStream", () => ({

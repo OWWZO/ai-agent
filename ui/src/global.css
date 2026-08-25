@@ -73,6 +73,7 @@
   --color-text-faint: #9aa3af;
   --color-line: #e7eaee;
   --color-line-strong: #d4d9e0;
+  --color-hover: #f1f3f5;
   --color-accent: #1783ff;
   --color-accent-hover: #0f6fe0;
   --color-accent-soft: #e8f3ff;
@@ -248,6 +249,7 @@
   --color-text-faint: #6b7280;
   --color-line: #2d333b;
   --color-line-strong: #3d444d;
+  --color-hover: #20252c;
   --color-accent: #58a6ff;
   --color-accent-hover: #79b8ff;
   --color-accent-soft: rgba(88, 166, 255, 0.14);
@@ -907,6 +909,16 @@ ol {
   will-change: opacity;
 }
 
+.reactor-spinner {
+  border: 1.5px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-top-color: currentColor;
+  animation: reactorSpinner 700ms linear infinite;
+}
+
+@keyframes reactorSpinner {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes ai-stream-caret {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
@@ -1047,6 +1059,7 @@ ol {
   }
 
   .ai-stream-cursor,
+  .reactor-spinner,
   .thinking-shimmer,
   .animate-marquee,
   .animate-blink,
@@ -1203,6 +1216,34 @@ ol {
 
 .reactor-input-flat [data-slot="prompt-input-textarea"]::placeholder {
   color: color-mix(in oklab, var(--chat-text-muted) 50%, transparent) !important;
+}
+
+.reactor-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-line-strong);
+}
+
+.reactor-status-dot.is-running {
+  background: var(--color-accent);
+  animation: reactorStatusPulse 1.5s var(--ease-out) infinite;
+}
+
+@keyframes reactorStatusPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 34%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reactor-status-dot.is-running {
+    animation: none;
+  }
 }
 
 /* Framer Motion Performance Optimizations */
@@ -1410,7 +1451,9 @@ ol {
   border: 1px solid var(--color-line);
   border-radius: var(--kimi-radius-md);
   overflow: hidden;
-  transition: border-color var(--duration-base) var(--ease-out);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out);
 }
 
 .kimi-tool-row.is-error {
@@ -1783,6 +1826,223 @@ ol {
   overflow: hidden;
 }
 
+/* Mobile chat adaptation: the workspace becomes a thumb-reachable bottom sheet. */
+.reactor-workspace-scrim {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .reactor-single-chat-shell,
+  .reactor-data-chat-shell {
+    padding: 8px 12px 0;
+  }
+
+  .reactor-single-chat-shell [data-composer-dock],
+  .reactor-data-chat-shell [data-composer-dock],
+  .reactor-chat-panel-left [data-composer-dock] {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    margin-inline: -12px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-line);
+    background: var(--color-surface-sunken);
+  }
+
+  .reactor-chat-workspace-layout[data-workspace-open="true"]
+    .reactor-chat-panel-left [data-composer-dock] {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 70;
+    margin-inline: 0;
+  }
+
+  .reactor-single-chat-shell [data-composer-dock] > div,
+  .reactor-data-chat-shell [data-composer-dock] > div,
+  .reactor-chat-panel-left [data-composer-dock] > div {
+    max-width: none;
+  }
+
+  .reactor-single-chat-shell .reactor-chat-header,
+  .reactor-data-chat-shell .reactor-chat-header,
+  .reactor-chat-panel-left .reactor-chat-header {
+    padding-inline: 0;
+  }
+
+  .reactor-single-chat-shell .chat-fade-bottom,
+  .reactor-data-chat-shell .chat-fade-bottom,
+  .reactor-chat-panel-left .chat-fade-bottom {
+    padding-inline: 0;
+  }
+
+  .reactor-single-chat-shell [data-slot="prompt-input-textarea"],
+  .reactor-data-chat-shell [data-slot="prompt-input-textarea"],
+  .reactor-chat-panel-left [data-slot="prompt-input-textarea"] {
+    min-height: 52px !important;
+    font-size: 16px !important;
+  }
+
+  .reactor-chat-workspace-layout {
+    gap: 0;
+    padding: 0;
+  }
+
+  .reactor-chat-panel-left {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: 1 1 auto;
+    border-radius: 0 !important;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .reactor-chat-panel-left .chat-fade-bottom {
+    padding-top: 12px;
+  }
+
+  .reactor-workspace-resizer {
+    display: none;
+  }
+
+  .reactor-workspace-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgb(15 23 42 / 0.34);
+    cursor: default;
+    touch-action: none;
+  }
+
+  .reactor-workspace-panel {
+    position: fixed;
+    inset-inline: 0;
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    z-index: 61;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: min(82dvh, 720px);
+    min-height: min(300px, calc(100dvh - 152px - env(safe-area-inset-bottom)));
+    max-height: calc(100dvh - 152px - env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: 18px 18px 0 0 !important;
+    border-bottom: 0;
+    box-shadow: 0 -12px 36px rgb(15 23 42 / 0.16);
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity var(--duration-panel) var(--ease-out),
+      transform var(--duration-panel) var(--ease-drawer),
+      visibility var(--duration-panel) var(--ease-out);
+  }
+
+  .reactor-workspace-panel::before {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    z-index: 2;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-line-strong);
+    content: "";
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+
+  .reactor-workspace-panel[data-workspace-collapsed="true"] {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(100%);
+  }
+
+  .reactor-chat-workspace-layout[data-chat-read-only="true"]
+    .reactor-workspace-panel {
+    bottom: 0;
+    max-height: calc(100dvh - 48px);
+  }
+
+  .reactor-workspace-toolbar {
+    padding-top: 14px;
+  }
+
+  .reactor-workspace-tabs {
+    scrollbar-width: none;
+  }
+
+  .reactor-workspace-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .reactor-action-icon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .reactor-workspace-panel .kimi-detail-panel-head button,
+  .reactor-workspace-panel .kimi-thinking-panel-head button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .kimi-task-row,
+  .kimi-tool-group-head,
+  .kimi-tool-row-head {
+    min-height: 44px;
+  }
+
+  .kimi-tool-group-head,
+  .kimi-tool-row-head {
+    padding-inline: 12px;
+  }
+
+  .kimi-tool-row-head {
+    font-size: 13px;
+  }
+
+  .kimi-tool-row-body-pad {
+    max-height: 42dvh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kimi-tool-output.is-scroll {
+    max-height: 34dvh;
+  }
+
+  .kimi-detail-panel-head,
+  .kimi-thinking-panel-head {
+    padding-inline: 12px;
+  }
+
+  .reactor-chat-panel-left [data-slot="prompt-input-submit"],
+  .reactor-single-chat-shell [data-slot="prompt-input-submit"],
+  .reactor-data-chat-shell [data-slot="prompt-input-submit"],
+  .reactor-chat-panel-left button[aria-label="停止"],
+  .reactor-single-chat-shell button[aria-label="停止"],
+  .reactor-data-chat-shell button[aria-label="停止"] {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reactor-workspace-panel {
+    transition: none;
+  }
+}
+
 .kw-dot {
   width: 7px;
   height: 7px;
@@ -1829,6 +2089,7 @@ ol {
   .kimi-detail-panel,
   .kimi-thinking-panel {
     transition: none !important;
+    animation: none !important;
   }
 }
 
@@ -1893,6 +2154,7 @@ ol {
   flex-direction: column;
   min-height: 0;
   background: var(--color-bg);
+  animation: detailPanelEnter var(--duration-message) var(--ease-out) both;
 }
 
 .kimi-thinking-panel-head {
@@ -1924,6 +2186,18 @@ ol {
   flex-direction: column;
   min-height: 0;
   background: var(--color-bg);
+  animation: detailPanelEnter var(--duration-message) var(--ease-out) both;
+}
+
+@keyframes detailPanelEnter {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .kimi-detail-panel-head {
@@ -2605,11 +2879,6 @@ ol {
   padding-bottom: 4px;
 }
 
-/* Thinking pulse animation */
-.thinking-pulse {
-  animation: thinkingPulse 1.5s ease-in-out infinite;
-}
-
 /* Stable shimmer for process / thinking text — shared by 深度思考 & 步骤执行 */
 .thinking-shimmer {
   display: inline-block;
@@ -2653,6 +2922,11 @@ ol {
   }
 }
 
+/* Thinking pulse animation */
+.thinking-pulse {
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+}
+
 @keyframes thinkingPulse {
   0%, 100% {
     opacity: 0.6;
@@ -2680,13 +2954,13 @@ ol {
 
 /* Tab switch animation */
 .tab-content-enter {
-  animation: tabContentEnter 0.3s ease forwards;
+  animation: tabContentEnter var(--duration-message) var(--ease-out) both;
 }
 
 @keyframes tabContentEnter {
   from {
     opacity: 0;
-    transform: translateX(10px);
+    transform: translateX(4px);
   }
   to {
     opacity: 1;

@@ -40,7 +40,12 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { FolderOpen, PanelLeftClose, PanelRightClose } from "lucide-react";
+import {
+  FolderOpen,
+  PanelLeftClose,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import { parseDataChatEvent } from "@/utils/sseParsers";
 import type { DataConversationRuntime } from "./chatView.types";
 import {
@@ -437,6 +442,19 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     toggleWorkspaceRightPanel();
   });
 
+  const closeMobileWorkspace = useMemoizedFn(() => {
+    setThinkingDetail(null);
+    setToolDiffTask(null);
+    setAgentDetail(null);
+    agentPanelClosedRef.current = true;
+    setWorkspaceOpenRequested(false);
+    changeActionStatus(false);
+    setIsRightCollapsed(true);
+    if (isFocusMode) {
+      exitFocusMode();
+    }
+  });
+
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     // DataAgent 不复用普通 Agent 的运行账本：先基于当前会话创建带 loading
     // 占位的草稿控制器，再把 SSE THINK/CHART_DATA/READY/ERROR 事件逐个合并回末项。
@@ -604,6 +622,31 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     [conversation.chatList]
   );
 
+  const hasWorkspaceContent = Boolean(
+    showAction ||
+      workspaceOpenRequested ||
+      thinkingDetail ||
+      toolDiffTask ||
+      agentDetail ||
+      activeTask ||
+      workspaceStreamTask ||
+      taskList.length ||
+      sessionFileTasks.length
+  );
+
+  const renderMobileWorkspaceTrigger = () =>
+    hasWorkspaceContent ? (
+      <button
+        type="button"
+        onClick={toggleRightPanel}
+        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)] lg:hidden"
+        title="打开工作区"
+        aria-label="打开工作区"
+      >
+        <PanelRightOpen className="h-4 w-4" />
+      </button>
+    ) : null;
+
   const activeChat = conversation.chatList?.[conversation.chatList.length - 1];
   const liveAgentDetail = useMemo(() => {
     if (!agentDetail) {
@@ -667,7 +710,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     [activeChat, taskList, hitlDockSlot]
   );
 
-  // 顶栏只展示运行状态（含模型重试 / 等待用户），不再显示会话标题
+  // 顶栏优先展示运行状态；空闲时回到会话标题，让工作区始终有明确上下文。
   const headerStatus = useMemo(() => {
     if (waitingUserInput) {
       return activeChat?.tip?.trim() || "需要你的帮助";
@@ -678,6 +721,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     const tip = activeChat?.tip?.trim();
     return tip || "正在推进任务…";
   }, [activeChat?.loading, activeChat?.tip, loading, waitingUserInput]);
+
+  const headerTitle = useMemo(() => {
+    const title = conversation.chatTitle?.trim() || conversation.title?.trim();
+    if (title && title !== "新对话") {
+      return title;
+    }
+    return currentProduct?.name || "新任务";
+  }, [conversation.chatTitle, conversation.title, currentProduct?.name]);
 
   /** 底部 Dock：companions 常驻；pending HITL 替换 Composer */
   const renderComposerStack = (inputKey: string) => (
@@ -746,26 +797,35 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   );
 
   const renderHeaderStatus = (opts?: { showDeepThink?: boolean; badge?: string }) => (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span
+        className={classNames(
+          "reactor-status-dot shrink-0",
+          headerStatus && "is-running"
+        )}
+        aria-hidden="true"
+      />
       {headerStatus ? (
         <div
-          className="thinking-shimmer truncate text-[16px] font-semibold tracking-tight text-[var(--chat-text-soft)]"
+          className="thinking-shimmer truncate text-[14px] font-semibold tracking-tight text-[var(--chat-text-soft)]"
           role="status"
           aria-live="polite"
         >
           {headerStatus}
         </div>
       ) : (
-        <div className="h-[24px]" aria-hidden="true" />
+        <div className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-[var(--chat-text)]">
+          {headerTitle}
+        </div>
       )}
       {opts?.showDeepThink && conversation.deepThink ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+        <div className="flex shrink-0 items-center gap-1.5 rounded-[6px] bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
           <i className="font_family icon-shendusikao text-[11px]"></i>
           <span>深度研究</span>
         </div>
       ) : null}
       {opts?.badge ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--chat-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--chat-text-soft)]">
+        <div className="flex shrink-0 items-center gap-1.5 rounded-[6px] bg-[var(--chat-surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--chat-text-soft)]">
           <i className="font_family icon-shendusikao text-[11px]"></i>
           <span>{opts.badge}</span>
         </div>
@@ -833,22 +893,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction && !workspaceOpenRequested && thinkingDetail == null) {
       return (
-        <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
+        <div className="reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-surface-sunken)] px-4 pt-4 md:px-6">
           <div
             className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
             id="chat-view"
           >
-            <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
+            <div className="reactor-chat-header mb-3 flex min-h-[36px] items-center justify-between px-1">
               {renderHeaderStatus({ showDeepThink: true })}
-              <button
-                type="button"
-                onClick={() => onOpenTaskFiles?.()}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                title="查看当前会话的文件"
-                aria-label="查看当前会话的文件"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {renderMobileWorkspaceTrigger()}
+                <button
+                  type="button"
+                  onClick={() => onOpenTaskFiles?.()}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                  title="查看当前会话的文件"
+                  aria-label="查看当前会话的文件"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <Conversation
@@ -862,7 +925,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             </Conversation>
 
             {!readOnly ? (
-              <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
+              <div
+                className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"
+                data-composer-dock="true"
+              >
                 <div className="mx-auto w-full max-w-[860px]">
                   {renderComposerStack(`input-${conversation.sessionId}-single`)}
                 </div>
@@ -878,14 +944,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <div
         ref={containerRef}
         className={classNames(
-          "flex h-full w-full gap-0.5 bg-stone-50 p-2",
+          "reactor-chat-workspace-layout flex h-full w-full gap-1.5 bg-[var(--color-surface-sunken)] p-1.5 md:p-2",
           isDragging && "cursor-col-resize select-none"
         )}
+        data-workspace-open={isRightCollapsed ? "false" : "true"}
+        data-chat-read-only={readOnly ? "true" : "false"}
       >
         {/* Left Panel - Chat Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
+            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--color-line)] bg-[var(--color-bg)]",
             isDragging
               ? "transition-none"
               : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
@@ -900,7 +968,6 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 maxWidth: isFocusMode ? "28%" : undefined,
               }
               : {}),
-            boxShadow: "var(--chat-soft-shadow)",
           }}
         >
           {isLeftCollapsed && !isFocusMode ? (
@@ -917,22 +984,27 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           ) : (
             // 展开状态（含沉浸窄列）
             <>
-              {/* Header：运行状态（替换会话标题） */}
-              <div className={classNames(
-                "flex items-center justify-between py-4",
-                isFocusMode ? "px-3" : "px-5"
-              )}>
+              {/* Header：运行时显示状态，空闲时显示会话标题 */}
+              <div
+                className={classNames(
+                  "reactor-chat-header flex items-center justify-between border-b border-[var(--color-line)] py-3.5",
+                  isFocusMode ? "px-3" : "px-5"
+                )}
+              >
                 {renderHeaderStatus({ showDeepThink: !isFocusMode })}
                 {!isFocusMode ? (
-                  <button
-                    type="button"
-                    onClick={() => onOpenTaskFiles?.()}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                    title="查看当前会话的文件"
-                    aria-label="查看当前会话的文件"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {renderMobileWorkspaceTrigger()}
+                    <button
+                      type="button"
+                      onClick={() => onOpenTaskFiles?.()}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                      title="查看当前会话的文件"
+                      aria-label="查看当前会话的文件"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
@@ -952,10 +1024,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 </Conversation>
 
                 {!readOnly ? (
-                  <div className={classNames(
-                    "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
-                    isFocusMode ? "px-2" : "px-4"
-                  )}>
+                  <div
+                    className={classNames(
+                      "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
+                      isFocusMode ? "px-2" : "px-4"
+                    )}
+                    data-composer-dock="true"
+                  >
                     {renderComposerStack(`input-${conversation.sessionId}-left`)}
                   </div>
                 ) : null}
@@ -975,7 +1050,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onPointerUp={handleDragEnd}
             onPointerCancel={handleDragEnd}
             className={classNames(
-              "group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
+              "reactor-workspace-resizer group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
               "hover:bg-[var(--chat-accent)]/10",
               isDragging && "bg-[var(--chat-accent)]/15"
             )}
@@ -994,17 +1069,26 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           </div>
         )}
 
+        {!isRightCollapsed ? (
+          <button
+            type="button"
+            className="reactor-workspace-scrim lg:hidden"
+            aria-label="关闭工作区"
+            onClick={closeMobileWorkspace}
+          />
+        ) : null}
+
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "flex min-h-0 flex-col overflow-hidden rounded-[24px] bg-white",
+            "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--color-line)] bg-[var(--color-bg)]",
             isDragging
               ? "transition-none"
               : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
             isRightCollapsed && "w-14 min-w-14",
             !isRightCollapsed && "flex-1"
           )}
-          style={{ boxShadow: "var(--chat-soft-shadow)" }}
+          data-workspace-collapsed={isRightCollapsed ? "true" : "false"}
         >
           {isRightCollapsed ? (
             // 折叠状态
@@ -1090,12 +1174,12 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderDataAgent = () => {
     return (
-      <div className="flex h-full w-full justify-center overflow-hidden bg-stone-50 px-4 pt-4 md:px-6">
+      <div className="reactor-data-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-surface-sunken)] px-4 pt-4 md:px-6">
         <div
           className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
           id="chat-view"
         >
-          <div className="mb-3 flex min-h-[36px] items-center justify-between px-1">
+          <div className="reactor-chat-header mb-3 flex min-h-[36px] items-center justify-between px-1">
             {renderHeaderStatus({ badge: "数据分析" })}
           </div>
 
@@ -1110,7 +1194,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           </Conversation>
 
           {!readOnly ? (
-            <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4">
+            <div
+              className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"
+              data-composer-dock="true"
+            >
               <div className="mx-auto w-full max-w-[860px]">
                 <GeneralInput
                   key={`input-${conversation.sessionId}-data`}

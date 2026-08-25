@@ -40,7 +40,7 @@ import {
 import { isTextCopyableFileLike } from "@/utils/taskArtifacts";
 
 const iconBtnClass =
-  "flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-black/[0.05] hover:text-[#1d1d1f]";
+  "reactor-action-icon flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]";
 
 type ActionViewRef = PlanViewAction & {
   setFilePreview: (file?: CHAT.TFile) => void;
@@ -276,7 +276,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   return (
     <motion.div
       className={classNames(
-        "flex h-full w-full flex-col overflow-hidden rounded-[20px] bg-[#f3f3f5]",
+        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-sunken)]",
         className
       )}
       initial={{ opacity: 0 }}
@@ -287,21 +287,21 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
       }}
     >
       {/* 顶栏：「动态」+ 已打开文件 pill；点工具回动态，点文件进文件预览 */}
-      <div className="flex shrink-0 flex-col gap-1 px-3 pt-2.5 pb-1.5">
+      <div className="reactor-workspace-toolbar flex shrink-0 flex-col gap-1 border-b border-[var(--color-line)] px-3 pt-2.5 pb-1.5">
         <div className="flex items-center gap-2">
           {files.length > 0 ? (
             <div
               ref={tabsRef}
-              className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-color:#c7c7cc_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c7c7cc]"
+              className="reactor-workspace-tabs flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-color:#c7c7cc_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c7c7cc]"
             >
               <button
                 type="button"
                 onClick={() => setPanelMode("follow")}
                 className={classNames(
-                  "inline-flex h-8 shrink-0 items-center rounded-full px-2.5 text-[12.5px] font-medium transition-colors",
+                  "inline-flex h-8 shrink-0 items-center rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors",
                   panelMode === "follow"
-                    ? "bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.04]"
-                    : "bg-transparent text-[#86868b] hover:bg-white/70 hover:text-[#1d1d1f]"
+                    ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)] ring-1 ring-[var(--color-line)]"
+                    : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                 )}
               >
                 动态
@@ -320,10 +320,10 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                       setPanelMode("file");
                     }}
                     className={classNames(
-                      "inline-flex h-8 max-w-[200px] shrink-0 items-center gap-1.5 rounded-full px-2.5 text-left transition-colors",
+                      "inline-flex h-8 max-w-[200px] shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-left transition-colors",
                       active
-                        ? "bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.04]"
-                        : "bg-transparent text-[#86868b] hover:bg-white/70 hover:text-[#1d1d1f]"
+                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)] ring-1 ring-[var(--color-line)]"
+                        : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                     )}
                     title={file.name}
                   >
@@ -343,7 +343,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
               })}
             </div>
           ) : (
-            <div className="min-w-0 flex-1 truncate px-1 text-[13px] font-medium text-[#86868b]">
+            <div className="min-w-0 flex-1 truncate px-1 text-[13px] font-medium text-[var(--color-text-muted)]">
               动态
             </div>
           )}
@@ -355,7 +355,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                 onClick={onToggleFocusMode}
                 className={classNames(
                   iconBtnClass,
-                  isFocusMode && "bg-white text-[#1d1d1f] shadow-sm"
+                  isFocusMode && "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
                 )}
                 title={isFocusMode ? "退出沉浸模式" : "进入沉浸模式"}
               >
@@ -388,20 +388,20 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
         </div>
       </div>
 
-      {/* 白卡片：工具条 + 预览 */}
-      <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-black/[0.04] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+      {/* 工作区内容：工具条 + 预览 */}
+      <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-xs)]">
         {showFileBrowser && selectedFile ? (
           <>
-            <div className="flex shrink-0 items-center gap-2.5 border-b border-[#f0f0f2] px-3 py-2.5">
+            <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--color-line)] px-3 py-2.5">
               {canSourceMode ? (
-                <div className="inline-flex shrink-0 rounded-full bg-[#f3f3f5] p-0.5">
+                <div className="inline-flex shrink-0 rounded-full bg-[var(--color-surface-sunken)] p-0.5">
                   <button
                     type="button"
                     className={classNames(
                       "h-7 rounded-full px-3 text-[12.5px] font-medium transition-colors",
                       viewMode === "preview"
-                        ? "bg-white text-[#1d1d1f] shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.04)]"
-                        : "text-[#86868b]"
+                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
+                        : "text-[var(--color-text-muted)]"
                     )}
                     onClick={() => setViewMode("preview")}
                   >
@@ -412,8 +412,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                     className={classNames(
                       "h-7 rounded-full px-3 text-[12.5px] font-medium transition-colors",
                       viewMode === "source"
-                        ? "bg-white text-[#1d1d1f] shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.04)]"
-                        : "text-[#86868b]"
+                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)]"
+                        : "text-[var(--color-text-muted)]"
                     )}
                     onClick={() => setViewMode("source")}
                   >
@@ -440,10 +440,10 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                   </span>
                 )}
                 <div className="min-w-0">
-                  <div className="truncate text-[13.5px] font-semibold tracking-[-0.01em] leading-tight text-[#1d1d1f]">
+                  <div className="truncate text-[13.5px] font-semibold tracking-[-0.01em] leading-tight text-[var(--color-text)]">
                     {metaTitle}
                   </div>
-                  <div className="mt-px truncate text-[12px] leading-snug text-[#86868b]">
+                  <div className="mt-px truncate text-[12px] leading-snug text-[var(--color-text-muted)]">
                     {metaSub}
                   </div>
                 </div>
@@ -490,7 +490,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
             </div>
 
             <div
-              className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white"
+              className="tab-content-enter flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-surface-raised)]"
               key={`${workspaceFileKey(selectedFile)}-${refreshToken}-${viewMode}`}
             >
               <div

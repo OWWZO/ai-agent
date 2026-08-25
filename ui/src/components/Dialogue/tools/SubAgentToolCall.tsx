@@ -63,9 +63,9 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
     formatDurationLabel(durationMs);
   const chip =
     nested.length > 0
-      ? `${nested.length} tools`
+      ? `${nested.length} 个工具`
       : sub.totalToolUseCount != null
-        ? `${sub.totalToolUseCount} tools`
+        ? `${sub.totalToolUseCount} 个工具`
         : "";
 
   const canExpand = Boolean(
@@ -115,7 +115,7 @@ export const SubAgentToolCall = memo(function SubAgentToolCall({
           className="kimi-agent-open-btn"
           onClick={openDetail}
         >
-          Open
+          查看
         </button>
       }
     >

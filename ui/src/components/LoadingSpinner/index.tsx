@@ -23,18 +23,9 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   return (
     <div className={classNames("flex items-center gap-2", className)}>
       <div className={classNames("relative shrink-0", sizeMap[size])}>
-        {/* 外圈旋转 */}
         <div
-          className="absolute inset-0 rounded-full animate-spin"
-          style={{
-            background: `conic-gradient(from 0deg, transparent 0%, #4040ff 50%, transparent 100%)`,
-            animationDuration: "1.2s",
-          }}
-        />
-        {/* 内圈背景 */}
-        <div
-          className="absolute inset-[2px] rounded-full"
-          style={{ backgroundColor: color }}
+          className="reactor-spinner absolute inset-0 rounded-full"
+          style={{ color: color === "white" ? "var(--color-accent)" : color }}
         />
       </div>
       {children}

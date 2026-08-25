@@ -8,11 +8,11 @@ type AggregateStatus = "running" | "error" | "done";
 function statusLabel(status: AggregateStatus): string {
   switch (status) {
     case "running":
-      return "running";
+      return "执行中";
     case "error":
-      return "error";
+      return "失败";
     default:
-      return "done";
+      return "已完成";
   }
 }
 
@@ -63,7 +63,7 @@ export function ToolGroup({
         <StatusDot status={aggregateStatus} />
         <ListIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
         <span className="kimi-tool-group-title">
-          {count} tool{count === 1 ? "" : "s"}
+          {count} 个工具
         </span>
         <span className="kimi-tool-group-meta">
           · {statusLabel(aggregateStatus)}

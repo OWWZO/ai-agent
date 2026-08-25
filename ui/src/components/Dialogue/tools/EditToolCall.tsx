@@ -124,7 +124,7 @@ export const EditToolCall = memo(function EditToolCall({
         </div>
         <ToolArgStreamPreview
           text={arg}
-          label="Arguments"
+          label="参数"
           streaming={argStreaming}
           prominent
         />
@@ -157,8 +157,8 @@ export const EditToolCall = memo(function EditToolCall({
           status === "error"
             ? "工具执行失败"
             : status === "running"
-              ? "Waiting for output…"
-              : "No output"
+              ? "等待输出…"
+              : "暂无输出"
         }
       />
     </ToolRow>

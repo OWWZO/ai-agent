@@ -43,6 +43,7 @@ import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
 import { AskUserToolCall } from "./tools/AskUserToolCall";
 import { isAnsweredAskUserTask } from "./timelineAskUser";
+import { StatusDot } from "./tools/StatusDot";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
@@ -61,16 +62,16 @@ type ToolItemProps = {
 };
 
 const taskRowClass =
-  "mt-2 flex w-full max-w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--chat-border)]/40 bg-white px-2.5 py-2 transition-colors duration-200 hover:border-[var(--chat-border)] hover:bg-[#fafafa]";
+  "kimi-task-row mt-1 flex w-full max-w-full cursor-pointer items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5 transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface-sunken)]";
 
 const taskIconClass =
-  "flex size-7 shrink-0 items-center justify-center text-[var(--chat-text-muted)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
+  "flex size-6 shrink-0 items-center justify-center text-[var(--color-text-muted)] [&_svg]:drop-shadow-none [&_svg]:[filter:none]";
 
 const taskTitleClass =
-  "shrink-0 text-[14px] font-medium text-[var(--chat-text)]";
+  "shrink-0 text-[13px] font-medium text-[var(--color-text)]";
 
 const taskMetaClass =
-  "truncate text-[13px] text-[var(--chat-text-soft)]";
+  "truncate text-[12px] text-[var(--color-text-muted)]";
 
 export const ToolItem: FC<ToolItemProps> = memo(({
   tool,
@@ -277,7 +278,7 @@ export const ToolItem: FC<ToolItemProps> = memo(({
           className={
             canOpenPanel
               ? taskRowClass
-              : "mt-2 flex w-full max-w-full cursor-default items-center gap-3 rounded-xl border border-[var(--chat-border)]/40 bg-white px-2.5 py-2"
+              : "mt-1 flex w-full max-w-full cursor-default items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5"
           }
           onClick={
             canOpenPanel ? () => changeActiveChat(tool, chat) : undefined
@@ -357,15 +358,14 @@ const SubAgentTimelineCard: FC<{
   }, [subAgentRunning]);
 
   return (
-    <div className="mt-2">
+    <div className="mt-1">
       <div
         className={[
           canOpenPanel
             ? taskRowClass
-            : "flex w-full max-w-full cursor-default items-center gap-3 rounded-xl border bg-white px-2.5 py-2",
-          "border-[var(--chat-border)]/50 bg-white",
-          subAgentRunning ? "border-[var(--chat-border)]" : "",
-          subAgentFailed ? "border-[#d1d1d6]" : "",
+            : "flex w-full max-w-full cursor-default items-center gap-2.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5",
+          subAgentRunning ? "border-[var(--color-line-strong)]" : "",
+          subAgentFailed ? "border-[var(--color-danger-bd)]" : "",
         ].join(" ")}
         onClick={
           canOpenPanel ? () => changeActiveChat(tool, chat) : undefined
@@ -397,13 +397,7 @@ const SubAgentTimelineCard: FC<{
           ].join(" ")}
         >
           {subAgentRunning ? (
-            <span
-              className="absolute -inset-0.5 rounded-[10px] border border-transparent border-t-[var(--chat-accent)] opacity-80 motion-safe:animate-spin"
-              aria-hidden
-            />
-          ) : null}
-          {subAgentRunning ? (
-            <LoaderCircleIcon className="relative z-[1] size-4 animate-spin" />
+            <StatusDot status="running" />
           ) : (
             <BotIcon className="relative z-[1] size-4" />
           )}
@@ -421,14 +415,14 @@ const SubAgentTimelineCard: FC<{
           <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[12px] text-[var(--chat-text-soft)]">
             {subAgentRunning ? (
               <span className="truncate">
-                同步执行中{nestedCount > 0 ? ` · ${nestedCount} tools` : "…"}
+                同步执行中{nestedCount > 0 ? ` · ${nestedCount} 个工具` : "…"}
               </span>
             ) : (
               <>
                 {nestedCount > 0 ? (
-                  <span className="shrink-0">{nestedCount} tools</span>
+                  <span className="shrink-0">{nestedCount} 个工具</span>
                 ) : subAgent.totalToolUseCount != null ? (
-                  <span className="shrink-0">{subAgent.totalToolUseCount} tools</span>
+                  <span className="shrink-0">{subAgent.totalToolUseCount} 个工具</span>
                 ) : null}
                 {duration ? <span className="shrink-0">{duration}</span> : null}
                 {subAgent.agentId ? (

@@ -183,7 +183,7 @@ export const GenericToolCall = memo(function GenericToolCall({
         </div>
         <ToolArgStreamPreview
           text={arg}
-          label="Arguments"
+          label="参数"
           streaming={argStreaming}
           prominent
         />
@@ -212,7 +212,7 @@ export const GenericToolCall = memo(function GenericToolCall({
       {summaryFull ? (
         <div className="kimi-tool-row-summary">
           <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
-            Parameters
+            参数
           </div>
           {summaryFull}
         </div>
@@ -224,8 +224,8 @@ export const GenericToolCall = memo(function GenericToolCall({
           status === "error"
             ? "工具执行失败"
             : status === "running"
-              ? "Waiting for output…"
-              : "No output"
+              ? "等待输出…"
+              : "暂无输出"
         }
       />
     </ToolRow>

@@ -1,8 +1,8 @@
 import { FC } from "react";
+import { BotIcon } from "lucide-react";
 import DataChat from "@/components/DataChat";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
-import { AnimatedOrb } from "@/components/chat/AnimatedOrb";
 import ThinkingMessage from "./ThinkingMessage";
 
 type Props = {
@@ -37,8 +37,8 @@ const DataDialogue: FC<Props> = (props) => {
 
       {chat.chartData ? (
         <div className="mt-6 flex w-full max-w-[90%] items-end gap-2 md:max-w-[80%]">
-          <div className="shrink-0 self-end" aria-hidden="true">
-            <AnimatedOrb size={32} />
+          <div className="flex size-8 shrink-0 items-center justify-center self-end text-[var(--color-text-muted)]" aria-hidden="true">
+            <BotIcon className="size-5" />
           </div>
           <Message from="assistant" className="min-w-0 flex-1">
             <MessageContent>
