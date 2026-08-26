@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import classNames from "classnames";
 import {
-  ArrowLeft,
   Blocks,
   FileArchive,
+  Link2,
   Loader2,
   Plus,
+  Pencil,
   Puzzle,
   RefreshCcw,
   Trash2,
   Upload,
 } from "lucide-react";
-import { Modal, Switch, Tabs } from "antd";
+import { Modal, Switch } from "antd";
 
-import WorkspaceToolSwitcher from "@/components/WorkspaceToolSwitcher";
+import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,7 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ROUTES } from "@/router/routes";
 import { mcpAdminApi, type McpRecord } from "@/services/mcpAdmin";
 import {
   skillAdminApi,
@@ -51,7 +49,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
   const [pasteContent, setPasteContent] = useState("");
   const [importUrl, setImportUrl] = useState("");
   const [zipFile, setZipFile] = useState<File | null>(null);
-  const [zipPreview, setZipPreview] = useState<SkillPackagePreview | null>(null);
+  const [zipPreview, setZipPreview] = useState<SkillPackagePreview | null>(
+    null,
+  );
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -108,7 +108,7 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
     try {
       await skillAdminApi.upload(zipFile, !!zipPreview.nameTaken);
       showMessage()?.success(
-        zipPreview.nameTaken ? "已替换同名技能" : "技能包已安装"
+        zipPreview.nameTaken ? "已替换同名技能" : "技能包已安装",
       );
       setUploadOpen(false);
       setZipFile(null);
@@ -216,221 +216,260 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--chat-bg,#f8fafc)]">
-      <div className="border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6">
-        <div
-          className={classNames(
-            "flex flex-wrap items-start justify-between gap-3",
-            embedded ? "" : "mx-auto max-w-[1400px]"
-          )}
-        >
-          <div className="flex items-start gap-3">
-            {!embedded ? (
-              <Link
-                to={ROUTES.HOME}
-                className="mt-1 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                返回
-              </Link>
-            ) : null}
-            <div>
-              <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-900">
-                <Blocks className="h-5 w-5 text-sky-600" />
-                能力库
-              </div>
-              <div className="mt-[3px] text-[13px] text-slate-500">
-                管理技能（zip / 粘贴 / URL）与 MCP 连接器；会话里用「能力」勾选启用。
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!embedded ? <WorkspaceToolSwitcher /> : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void refresh()}
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCcw className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className="workspace-admin-shell">
+      <WorkspaceAdminHeader
+        title="能力库"
+        description="管理可被会话启用的技能包与 MCP 连接器，资源安装后即可加入能力选择。"
+        icon={Blocks}
+        embedded={embedded}
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            className="workspace-admin-secondary"
+            onClick={() => void refresh()}
+            disabled={loading}
+            aria-label="刷新能力库"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">刷新</span>
+          </Button>
+        }
+      />
 
-      <div
-        className={classNames(
-          "min-h-0 flex-1 overflow-y-auto p-4 sm:p-6",
-          embedded ? "" : "mx-auto max-w-[1400px] w-full"
-        )}
-      >
-        <Tabs
-          activeKey={tab}
-          onChange={setTab}
-          items={[
-            {
-              key: "skills",
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  <Puzzle className="h-3.5 w-3.5" />
-                  技能 ({skills.length})
-                </span>
-              ),
-              children: (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" onClick={() => setUploadOpen(true)}>
-                      <Upload className="mr-1 h-4 w-4" />
-                      上传 zip
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setPasteOpen(true)}
-                    >
-                      <Plus className="mr-1 h-4 w-4" />
-                      粘贴新建
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setUrlOpen(true)}
-                    >
-                      在线导入 URL
-                    </Button>
+      <div className="workspace-admin-body">
+        <div className="workspace-admin-body-inner">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div
+              className="workspace-admin-tabs"
+              role="tablist"
+              aria-label="能力类型"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "skills"}
+                data-active={tab === "skills"}
+                className="workspace-admin-tab"
+                onClick={() => setTab("skills")}
+              >
+                <Puzzle className="h-3.5 w-3.5" />
+                技能{" "}
+                <span className="font-mono text-[11px]">{skills.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "mcp"}
+                data-active={tab === "mcp"}
+                className="workspace-admin-tab"
+                onClick={() => setTab("mcp")}
+              >
+                <Blocks className="h-3.5 w-3.5" />
+                MCP <span className="font-mono text-[11px]">{mcps.length}</span>
+              </button>
+            </div>
+            <span className="workspace-admin-section-meta">
+              {tab === "skills" ? "技能注册表" : "MCP 连接注册表"}
+            </span>
+          </div>
+
+          {tab === "skills" ? (
+            <section className="workspace-admin-section">
+              <div className="workspace-admin-section-head flex-wrap">
+                <div>
+                  <div className="workspace-admin-section-title">技能包</div>
+                  <div className="workspace-admin-section-meta">
+                    支持 zip、SKILL.md 粘贴和远程 URL 三种安装方式。
+                  </div>
+                </div>
+                <div className="workspace-admin-toolbar">
+                  <Button
+                    type="button"
+                    className="workspace-admin-primary"
+                    onClick={() => setUploadOpen(true)}
+                  >
+                    <Upload className="h-4 w-4" />
+                    上传 zip
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="workspace-admin-secondary"
+                    onClick={() => setPasteOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    粘贴新建
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setUrlOpen(true)}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    在线导入
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      void skillAdminApi.reload().then(() => {
+                        showMessage()?.success("已重载技能注册表");
+                        return refresh();
+                      })
+                    }
+                  >
+                    重载注册表
+                  </Button>
+                </div>
+              </div>
+              <div className="workspace-admin-resource-grid p-3">
+                {skills.map((s) => (
+                  <div key={s.name} className="workspace-admin-resource-row">
+                    <div className="workspace-admin-resource-main">
+                      <span
+                        className="workspace-admin-resource-icon"
+                        aria-hidden="true"
+                      >
+                        <Puzzle />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="workspace-admin-resource-title">
+                          {s.name}
+                        </div>
+                        <div className="workspace-admin-resource-description">
+                          {s.description || "无说明"}
+                        </div>
+                      </div>
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
-                      onClick={() =>
-                        void skillAdminApi.reload().then(() => {
-                          showMessage()?.success("已重载技能注册表");
-                          return refresh();
-                        })
-                      }
+                      size="icon-sm"
+                      className="workspace-admin-danger"
+                      onClick={() => onDeleteSkill(s.name)}
+                      aria-label={`删除技能 ${s.name}`}
+                      title="删除技能"
                     >
-                      重载注册表
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {skills.map((s) => (
-                      <div
-                        key={s.name}
-                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-semibold text-slate-900">
-                              {s.name}
-                            </div>
-                            <div className="mt-1 line-clamp-2 text-[12px] text-slate-500">
-                              {s.description || "无说明"}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-slate-400 hover:text-red-600"
-                            onClick={() => onDeleteSkill(s.name)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    {!loading && skills.length === 0 ? (
-                      <div className="col-span-full rounded-xl border border-dashed border-slate-200 p-10 text-center text-sm text-slate-400">
-                        暂无技能。上传 zip（含 SKILL.md）或粘贴正文创建。
-                      </div>
-                    ) : null}
+                ))}
+                {!loading && skills.length === 0 ? (
+                  <div className="workspace-admin-dashed-empty">
+                    暂无技能。上传 zip（含 SKILL.md）或粘贴正文创建。
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : (
+            <section className="workspace-admin-section">
+              <div className="workspace-admin-section-head flex-wrap">
+                <div>
+                  <div className="workspace-admin-section-title">
+                    MCP 连接器
+                  </div>
+                  <div className="workspace-admin-section-meta">
+                    连接外部工具服务，保存后热加载到运行时注册表。
                   </div>
                 </div>
-              ),
-            },
-            {
-              key: "mcp",
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  <Blocks className="h-3.5 w-3.5" />
-                  MCP ({mcps.length})
-                </span>
-              ),
-              children: (
-                <div className="space-y-4">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setMcpForm({
-                        mcpId: "",
-                        mcpName: "",
-                        transportType: "streamable_http",
-                        transportConfig:
-                          '{"baseUri":"http://127.0.0.1:8080/mcp"}',
-                        requestTimeout: 5,
-                        status: 1,
-                      });
-                      setMcpOpen(true);
-                    }}
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    添加 MCP
-                  </Button>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {mcps.map((m) => (
-                      <div
-                        key={m.mcpId}
-                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                <Button
+                  type="button"
+                  className="workspace-admin-primary"
+                  onClick={() => {
+                    setMcpForm({
+                      mcpId: "",
+                      mcpName: "",
+                      transportType: "streamable_http",
+                      transportConfig:
+                        '{"baseUri":"http://127.0.0.1:8080/mcp"}',
+                      requestTimeout: 5,
+                      status: 1,
+                    });
+                    setMcpOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  添加 MCP
+                </Button>
+              </div>
+              <div className="workspace-admin-resource-grid p-3">
+                {mcps.map((m) => (
+                  <div key={m.mcpId} className="workspace-admin-resource-row">
+                    <div className="workspace-admin-resource-main">
+                      <span
+                        className="workspace-admin-resource-icon"
+                        aria-hidden="true"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {m.mcpName}
-                            </div>
-                            <div className="mt-0.5 font-mono text-[11.5px] text-slate-400">
-                              {m.mcpId} · {m.transportType}
-                              {(m.status ?? 1) === 1 ? " · 启用" : " · 禁用"}
-                            </div>
-                            <div className="mt-2 line-clamp-2 font-mono text-[11px] text-slate-500">
-                              {m.transportConfig}
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setMcpForm({ ...m });
-                                setMcpOpen(true);
-                              }}
-                            >
-                              编辑
-                            </Button>
-                            <button
-                              type="button"
-                              className="text-slate-400 hover:text-red-600"
-                              onClick={() => onDeleteMcp(m.mcpId)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                        <Blocks />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="workspace-admin-resource-title">
+                          {m.mcpName}
+                        </div>
+                        <div className="workspace-admin-resource-description">
+                          <span className="workspace-admin-code">
+                            {m.mcpId}
+                          </span>
+                          <span className="mx-1">·</span>
+                          {m.transportType}
+                        </div>
+                        <div className="workspace-admin-resource-detail">
+                          {m.transportConfig}
+                        </div>
+                        <div
+                          className="workspace-admin-status mt-2"
+                          data-disabled={(m.status ?? 1) !== 1}
+                        >
+                          <span
+                            className="workspace-admin-status-dot"
+                            aria-hidden="true"
+                          />
+                          {(m.status ?? 1) === 1 ? "已启用" : "已停用"}
                         </div>
                       </div>
-                    ))}
-                    {!loading && mcps.length === 0 ? (
-                      <div className="col-span-full rounded-xl border border-dashed border-slate-200 p-10 text-center text-sm text-slate-400">
-                        暂无 MCP。添加 streamable_http / sse / stdio 连接器。
-                      </div>
-                    ) : null}
+                    </div>
+                    <div className="workspace-admin-resource-actions">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => {
+                          setMcpForm({ ...m });
+                          setMcpOpen(true);
+                        }}
+                        aria-label={`编辑 MCP ${m.mcpId}`}
+                        title="编辑 MCP"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="workspace-admin-danger"
+                        onClick={() => onDeleteMcp(m.mcpId)}
+                        aria-label={`删除 MCP ${m.mcpId}`}
+                        title="删除 MCP"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ),
-            },
-          ]}
-        />
+                ))}
+                {!loading && mcps.length === 0 ? (
+                  <div className="workspace-admin-dashed-empty">
+                    暂无 MCP。添加 streamable_http、sse 或 stdio 连接器。
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
 
       {/* zip upload */}
@@ -497,11 +536,16 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
             ) : null}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setUploadOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUploadOpen(false)}
+            >
               取消
             </Button>
             <Button
               type="button"
+              className="workspace-admin-primary"
               disabled={!zipPreview || saving}
               onClick={() => void onUploadZip()}
             >
@@ -541,15 +585,26 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 className="mt-1 min-h-[200px] font-mono text-[12px]"
                 value={pasteContent}
                 onChange={(e) => setPasteContent(e.target.value)}
-                placeholder={"---\nname: demo\ndescription: …\n---\n\n# 手册正文"}
+                placeholder={
+                  "---\nname: demo\ndescription: …\n---\n\n# 手册正文"
+                }
               />
             </label>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPasteOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPasteOpen(false)}
+            >
               取消
             </Button>
-            <Button type="button" disabled={saving} onClick={() => void onPasteCreate()}>
+            <Button
+              type="button"
+              className="workspace-admin-primary"
+              disabled={saving}
+              onClick={() => void onPasteCreate()}
+            >
               创建
             </Button>
           </DialogFooter>
@@ -571,10 +626,19 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
             placeholder="https://…/skill.zip 或 …/SKILL.md"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setUrlOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUrlOpen(false)}
+            >
               取消
             </Button>
-            <Button type="button" disabled={saving} onClick={() => void onImportUrl()}>
+            <Button
+              type="button"
+              className="workspace-admin-primary"
+              disabled={saving}
+              onClick={() => void onImportUrl()}
+            >
               导入
             </Button>
           </DialogFooter>
@@ -586,7 +650,9 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {mcps.some((m) => m.mcpId === mcpForm.mcpId) ? "编辑 MCP" : "添加 MCP"}
+              {mcps.some((m) => m.mcpId === mcpForm.mcpId)
+                ? "编辑 MCP"
+                : "添加 MCP"}
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -597,7 +663,10 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 value={mcpForm.mcpId}
                 disabled={mcps.some((m) => m.mcpId === mcpForm.mcpId && !!m.id)}
                 onChange={(e) =>
-                  setMcpForm((f) => ({ ...f, mcpId: e.target.value }))
+                  setMcpForm((f) => ({
+                    ...f,
+                    mcpId: e.target.value
+                  }))
                 }
               />
             </label>
@@ -607,7 +676,10 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 className="mt-1"
                 value={mcpForm.mcpName}
                 onChange={(e) =>
-                  setMcpForm((f) => ({ ...f, mcpName: e.target.value }))
+                  setMcpForm((f) => ({
+                    ...f,
+                    mcpName: e.target.value
+                  }))
                 }
               />
             </label>
@@ -617,7 +689,10 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
                 className="mt-1 flex h-9 w-full rounded-md border border-slate-200 px-3 text-[13px]"
                 value={mcpForm.transportType}
                 onChange={(e) =>
-                  setMcpForm((f) => ({ ...f, transportType: e.target.value }))
+                  setMcpForm((f) => ({
+                    ...f,
+                    transportType: e.target.value
+                  }))
                 }
               >
                 <option value="streamable_http">streamable_http</option>
@@ -643,16 +718,28 @@ const CapabilityLibrary: ReactorType.FC<Props> = ({ embedded }) => {
               <Switch
                 checked={(mcpForm.status ?? 1) === 1}
                 onChange={(c) =>
-                  setMcpForm((f) => ({ ...f, status: c ? 1 : 0 }))
+                  setMcpForm((f) => ({
+                    ...f,
+                    status: c ? 1 : 0
+                  }))
                 }
               />
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMcpOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMcpOpen(false)}
+            >
               取消
             </Button>
-            <Button type="button" disabled={saving} onClick={() => void onSaveMcp()}>
+            <Button
+              type="button"
+              className="workspace-admin-primary"
+              disabled={saving}
+              onClick={() => void onSaveMcp()}
+            >
               保存
             </Button>
           </DialogFooter>

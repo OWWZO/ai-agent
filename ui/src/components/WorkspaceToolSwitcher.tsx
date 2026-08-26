@@ -60,9 +60,11 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
   return (
     <div
       className={classNames(
-        "inline-flex flex-wrap items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-100/85 p-1.5",
-        className
+        "workspace-tool-switcher inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1",
+        className,
       )}
+      role="navigation"
+      aria-label="工作台模块"
     >
       {workspaceToolItems.map((item) => {
         const active = isActiveWorkspaceTool(location.pathname, item.to);
@@ -73,29 +75,16 @@ const WorkspaceToolSwitcher: ReactorType.FC = ({ className }) => {
             to={item.to}
             target="_blank"
             rel="noreferrer"
+            aria-current={active ? "page" : undefined}
             className={classNames(
-              "group flex min-w-[180px] flex-1 items-center gap-3 rounded-[16px] px-3.5 py-2.5 transition sm:flex-none",
+              "group inline-flex min-h-[30px] shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-[background-color,border-color,color] duration-[160ms] ease-[var(--ease-out)]",
               active
-                ? "bg-white text-slate-900 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)]"
-                : "text-slate-500 hover:bg-white/80 hover:text-slate-900"
+                ? "border-[var(--color-accent-bd)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                : "text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]",
             )}
           >
-            <span
-              className={classNames(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition",
-                active
-                  ? "border-sky-100 bg-sky-50 text-sky-600"
-                  : "border-slate-200 bg-white/85 text-slate-400 group-hover:text-slate-700"
-              )}
-            >
-              <item.icon className="h-4.5 w-4.5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{item.label}</span>
-              <span className="block truncate text-[12px] text-slate-400">
-                {item.description}
-              </span>
-            </span>
+            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="max-w-[132px] truncate">{item.label}</span>
           </Link>
         );
       })}

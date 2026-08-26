@@ -38,19 +38,11 @@ public class FileTool implements BaseTool {
 
     @Override
     public String getDescription() {
-        String desc = "这是一个文件工具，可以上传或下载文件";
-        ReactorConfig reactorConfig = requireReactorConfig();
-        return reactorConfig.getFileToolDesc().isEmpty() ? desc : reactorConfig.getFileToolDesc();
+        return "这是一个文件工具，可以上传或下载文件";
     }
 
     @Override
     public Map<String, Object> toParams() {
-
-        ReactorConfig reactorConfig = requireReactorConfig();
-        if (!reactorConfig.getFileToolParams().isEmpty()) {
-            return reactorConfig.getFileToolParams();
-        }
-
         Map<String, Object> command = new HashMap<>();
         command.put("type", "string");
         command.put("description", "文件操作类型：upload、get");

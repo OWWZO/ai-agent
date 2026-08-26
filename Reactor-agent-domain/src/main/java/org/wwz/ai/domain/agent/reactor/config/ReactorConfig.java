@@ -24,36 +24,6 @@ import java.util.Map;
 @Configuration
 public class ReactorConfig {
 
-    private Map<String, String> plannerSystemPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.planner.system_prompt:{}}")
-    public void setPlannerSystemPromptMap(String list) {
-        this.plannerSystemPromptMap = parseStringMap(list);
-    }
-
-    private Map<String, String> plannerNextStepPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.planner.next_step_prompt:{}}")
-    public void setPlannerNextStepPromptMap(String list) {
-        this.plannerNextStepPromptMap = parseStringMap(list);
-    }
-
-    private Map<String, String> executorSystemPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.executor.system_prompt:{}}")
-    public void setExecutorSystemPromptMap(String list) {
-        this.executorSystemPromptMap = parseStringMap(list);
-    }
-
-    private Map<String, String> executorNextStepPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.executor.next_step_prompt:{}}")
-    public void setExecutorNextStepPromptMap(String list) {
-        this.executorNextStepPromptMap = parseStringMap(list);
-    }
-
-    private Map<String, String> executorSopPromptMap = new HashMap<>();
-    @Value("${autobots.autoagent.executor.sop_prompt:{}}")
-    public void setExecutorSopPromptMap(String list) {
-        this.executorSopPromptMap = parseStringMap(list);
-    }
-
     private Map<String, String> reactSystemPromptMap = new HashMap<>();
     @Value("${autobots.autoagent.react.system_prompt:{}}")
     public void setReactSystemPromptMap(String list) {
@@ -75,17 +45,11 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.react.model_name:}")
     private String reactModelName;
 
-    @Value("${autobots.autoagent.tool.plan_tool.desc:}")
-    private String planToolDesc;
-
     @Value("${autobots.autoagent.tool.code_agent.desc:}")
     private String codeAgentDesc;
 
     @Value("${autobots.autoagent.tool.report_tool.desc:}")
     private String reportToolDesc;
-
-    @Value("${autobots.autoagent.tool.file_tool.desc:}")
-    private String fileToolDesc;
 
     @Value("${autobots.autoagent.tool.deep_search_tool.desc:}")
     private String deepSearchToolDesc;
@@ -103,15 +67,6 @@ public class ReactorConfig {
     private String dataAnalysisToolDesc;
 
     /**
-     * planTool 配置
-     */
-    private Map<String, Object> planToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.plan_tool.params:{}}")
-    public void setPlanToolParams(String jsonStr) {
-        this.planToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
      * codeAgent 配置
      */
     private Map<String, Object> codeAgentParams = new HashMap<>();
@@ -127,15 +82,6 @@ public class ReactorConfig {
     @Value("${autobots.autoagent.tool.report_tool.params:{}}")
     public void setReportToolParams(String jsonStr) {
         this.reportToolParams = parseObjectMap(jsonStr);
-    }
-
-    /**
-     * fileTool 配置
-     */
-    private Map<String, Object> fileToolParams = new HashMap<>();
-    @Value("${autobots.autoagent.tool.file_tool.params:{}}")
-    public void setFileToolParams(String jsonStr) {
-        this.fileToolParams = parseObjectMap(jsonStr);
     }
 
     /**
@@ -191,12 +137,6 @@ public class ReactorConfig {
 
     @Value("${autobots.autoagent.tool.deep_search.message.truncate_len:500}")
     private Integer deepSearchToolMessageTruncateLen;
-
-    @Value("${autobots.autoagent.planner.pre_prompt:分析问题并制定计划：}")
-    private String planPrePrompt;
-
-    @Value("${autobots.autoagent.task.pre_prompt:参考对话历史回答，}")
-    private String taskPrePrompt;
 
     @Value("${autobots.autoagent.tool.clear_tool_message:1}")
     private String clearToolMessage;

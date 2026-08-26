@@ -276,7 +276,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
   return (
     <motion.div
       className={classNames(
-        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-sunken)]",
+        "reactor-workspace-content flex h-full w-full flex-col overflow-hidden bg-[var(--color-bg)]",
         className
       )}
       initial={{ opacity: 0 }}
@@ -300,7 +300,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                 className={classNames(
                   "inline-flex h-8 shrink-0 items-center rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors",
                   panelMode === "follow"
-                    ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)] ring-1 ring-[var(--color-line)]"
+                    ? "bg-[var(--color-hover)] text-[var(--color-text)]"
                     : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                 )}
               >
@@ -322,7 +322,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
                     className={classNames(
                       "inline-flex h-8 max-w-[200px] shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-left transition-colors",
                       active
-                        ? "bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[var(--shadow-xs)] ring-1 ring-[var(--color-line)]"
+                        ? "bg-[var(--color-hover)] text-[var(--color-text)]"
                         : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                     )}
                     title={file.name}
@@ -389,7 +389,7 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
       </div>
 
       {/* 工作区内容：工具条 + 预览 */}
-      <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-[var(--color-line)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-xs)]">
+      <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-surface-raised)]">
         {showFileBrowser && selectedFile ? (
           <>
             <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--color-line)] px-3 py-2.5">

@@ -105,6 +105,11 @@ vi.mock("ahooks", () => ({useMemoizedFn: (fn: unknown) => fn,}));
 
 vi.mock("antd", () => ({Modal: {useModal: () => [{ info: vi.fn() }, null],},}));
 
+const workspaceLayoutState = vi.hoisted(() => ({
+  rightCollapsed: false,
+  showAction: false,
+}));
+
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ className, children }: any) => (
     <div className={className}>{children}</div>
@@ -132,7 +137,7 @@ vi.mock("./useConversationStream", () => ({
     activeRunState: undefined,
     setActiveRunState: vi.fn(),
     plan: undefined,
-    showAction: false,
+    showAction: workspaceLayoutState.showAction,
     changeActionStatus: vi.fn(),
     loading: false,
     streamingThoughtMap: {},
@@ -149,7 +154,7 @@ vi.mock("./useWorkspacePanels", () => ({
     leftPanelWidth: 50,
     isDragging: false,
     isLeftCollapsed: false,
-    isRightCollapsed: false,
+    isRightCollapsed: workspaceLayoutState.rightCollapsed,
     isFocusMode: false,
     containerRef: { current: null },
     handleDragStart: vi.fn(),
@@ -399,6 +404,56 @@ describe("ChatView layout", () => {
     );
     expect(html).toContain('data-general-input="true"');
     expect(html).not.toContain("sticky bottom-0");
+  });
+
+  it("collapsed right workspace lets the chat panel fill the remaining layout", () => {
+    workspaceLayoutState.rightCollapsed = true;
+    workspaceLayoutState.showAction = true;
+
+    try {
+      const product: CHAT.Product = {
+        type: "chat",
+        name: "聊天模式",
+        placeholder: "请输入问题",
+        img: "icon-chat",
+        color: "text-[#4040FF]",
+      };
+
+      const conversation = {
+        id: "conversation-collapsed-workspace",
+        sessionId: "session-collapsed-workspace",
+        title: "折叠工作区会话",
+        productType: "chat",
+        deepThink: false,
+        role: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        chatTitle: "",
+        chatList: [],
+        dataChatList: [],
+      } as unknown as CHAT.ConversationHistory;
+
+      const html = renderToStaticMarkup(
+        <ChatView
+          inputInfo={{
+            message: "",
+            deepThink: false,
+          }}
+          product={product}
+          conversation={conversation}
+          chatRoles={[]}
+          onConversationChange={vi.fn()}
+          onRoleSelect={vi.fn()}
+        />
+      );
+
+      expect(html).toContain('data-workspace-open="false"');
+      expect(html).toMatch(/class="reactor-chat-panel-left[^"]*flex-1/);
+      expect(html).not.toContain('style="width:50%"');
+    } finally {
+      workspaceLayoutState.rightCollapsed = false;
+      workspaceLayoutState.showAction = false;
+    }
   });
 
   it("read-only chat view hides the input while keeping the transcript shell", () => {

@@ -437,7 +437,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [toolDiffTask]);
 
   const toggleRightPanel = useMemoizedFn(() => {
-    setWorkspaceOpenRequested(true);
+    const nextOpen = isRightCollapsed;
+    setWorkspaceOpenRequested(nextOpen);
     changeActionStatus(isRightCollapsed);
     toggleWorkspaceRightPanel();
   });
@@ -893,7 +894,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 如果没有工作空间内容，显示单面板
     if (!showAction && !workspaceOpenRequested && thinkingDetail == null) {
       return (
-        <div className="reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-surface-sunken)] px-4 pt-4 md:px-6">
+        <div className="reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-bg)] px-4 pt-4 md:px-6">
           <div
             className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
             id="chat-view"
@@ -926,7 +927,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
             {!readOnly ? (
               <div
-                className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"
+                 className="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"
                 data-composer-dock="true"
               >
                 <div className="mx-auto w-full max-w-[860px]">
@@ -944,7 +945,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       <div
         ref={containerRef}
         className={classNames(
-          "reactor-chat-workspace-layout flex h-full w-full gap-1.5 bg-[var(--color-surface-sunken)] p-1.5 md:p-2",
+          "reactor-chat-workspace-layout flex h-full w-full gap-1.5 bg-[var(--color-bg)] p-1.5 md:p-2",
           isDragging && "cursor-col-resize select-none"
         )}
         data-workspace-open={isRightCollapsed ? "false" : "true"}
@@ -953,17 +954,20 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {/* Left Panel - Chat Area */}
         <div
           className={classNames(
-            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--color-line)] bg-[var(--color-bg)]",
+            "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
             isDragging
               ? "transition-none"
               : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
-            (!isLeftCollapsed || isFocusMode) && "shrink-0"
+            (!isLeftCollapsed || isFocusMode) && !isRightCollapsed && "shrink-0",
+            isRightCollapsed && !isLeftCollapsed && !isFocusMode && "flex-1"
           )}
           style={{
             ...((!isLeftCollapsed || isFocusMode)
               ? {
-                width: `${leftPanelWidth}%`,
+                width: isRightCollapsed && !isFocusMode
+                  ? undefined
+                  : `${leftPanelWidth}%`,
                 minWidth: isFocusMode ? 280 : undefined,
                 maxWidth: isFocusMode ? "28%" : undefined,
               }
@@ -1026,7 +1030,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 {!readOnly ? (
                   <div
                     className={classNames(
-                      "shrink-0 bg-gradient-to-t from-white via-white/95 to-transparent pb-4 pt-3",
+                       "shrink-0 bg-[var(--color-bg)] pb-4 pt-3",
                       isFocusMode ? "px-2" : "px-4"
                     )}
                     data-composer-dock="true"
@@ -1057,13 +1061,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             title="拖拽调整左右区域宽度"
           >
             {/* 宽命中区保障可拖动，内部细线保持界面克制。 */}
-            <div className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-[#e5e5ea] transition-colors group-hover:bg-[#b9b9c0]" />
+            <div className="absolute inset-y-3 left-1/2 w-px -translate-x-1/2 bg-[var(--color-line)] transition-colors group-hover:bg-[var(--color-line-strong)]" />
             <div
               className={classNames(
                 "relative h-14 w-1 rounded-full transition-colors duration-150",
                 isDragging
                   ? "bg-[var(--chat-accent)]"
-                  : "bg-[#d2d2d7] group-hover:bg-[#86868b]"
+                  : "bg-[var(--color-line-strong)] group-hover:bg-[var(--color-text-faint)]"
               )}
             />
           </div>
@@ -1081,7 +1085,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         {/* Right Panel - Action/Workspace Area */}
         <div
           className={classNames(
-            "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--color-line)] bg-[var(--color-bg)]",
+            "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
             isDragging
               ? "transition-none"
               : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
@@ -1195,7 +1199,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
           {!readOnly ? (
             <div
-              className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"
+               className="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"
               data-composer-dock="true"
             >
               <div className="mx-auto w-full max-w-[860px]">

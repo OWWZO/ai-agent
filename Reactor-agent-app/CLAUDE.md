@@ -106,11 +106,9 @@ spring:
 autobots:
   autoagent:
     planner:
-      system_prompt: "..."
       max_steps: 40
       model_name: gpt-5.2
     executor:
-      system_prompt: "..."
       max_steps: 40
     react:
       system_prompt: "..."

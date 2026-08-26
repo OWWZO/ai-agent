@@ -12,9 +12,12 @@ DashScope / 官方 OpenAI / 自定义 api_base。
 
 import asyncio
 import json
+import math
 import os
 import queue
 import threading
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from types import SimpleNamespace
 from typing import Any, List, Optional
 
@@ -45,6 +48,9 @@ DASHSCOPE_API_BASE_DEFAULT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 OPENAI_COMPAT_DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
+_DEFAULT_RETRY_DELAY_SECONDS = 0.5
+_RATE_LIMIT_RETRY_BASE_DELAY_SECONDS = 4.0
+_RETRY_MAX_DELAY_SECONDS = 20.0
 
 
 def _trimmed_env(*keys: str) -> str | None:
@@ -178,6 +184,89 @@ def _safe_int(value: Any) -> Optional[int]:
         return int(text)
     except Exception:
         return None
+
+
+def _extract_http_status_code(error: BaseException) -> Optional[int]:
+    """兼容 httpx / LiteLLM 异常上的状态码字段。"""
+    response = getattr(error, "response", None)
+    for source in (error, response):
+        if source is None:
+            continue
+        for attr in ("status_code", "status", "http_status"):
+            value = getattr(source, attr, None)
+            if isinstance(value, int):
+                return value
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
+    return None
+
+
+def _is_rate_limit_error(error: BaseException) -> bool:
+    """识别 429，即使兼容网关没有把状态码结构化暴露出来。"""
+    if _extract_http_status_code(error) == 429:
+        return True
+    text = str(error or "").lower()
+    return "too many requests" in text or "rate limit" in text
+
+
+def _get_header(headers: Any, name: str) -> Optional[str]:
+    if headers is None:
+        return None
+    try:
+        value = headers.get(name)
+        if value is not None:
+            return str(value)
+    except Exception:
+        pass
+    try:
+        for key, value in headers.items():
+            if str(key).lower() == name.lower():
+                return str(value)
+    except Exception:
+        pass
+    return None
+
+
+def _retry_after_seconds(error: BaseException) -> Optional[float]:
+    """解析 429 的 Retry-After 秒数或 HTTP 日期。"""
+    if not _is_rate_limit_error(error):
+        return None
+
+    response = getattr(error, "response", None)
+    for headers in (
+        getattr(error, "headers", None),
+        getattr(response, "headers", None),
+    ):
+        raw_value = _get_header(headers, "Retry-After")
+        if raw_value is None:
+            continue
+
+        delay = _safe_float(raw_value)
+        if delay is not None and math.isfinite(delay) and delay >= 0:
+            return delay
+
+        try:
+            retry_at = parsedate_to_datetime(raw_value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return None
+
+
+def _retry_delay_seconds(error: BaseException, attempt: int) -> float:
+    """429 优先尊重 Retry-After，否则按限流专用基数做指数退避。"""
+    retry_after = _retry_after_seconds(error)
+    if retry_after is not None:
+        return retry_after
+
+    base_delay = (
+        _RATE_LIMIT_RETRY_BASE_DELAY_SECONDS
+        if _is_rate_limit_error(error)
+        else _DEFAULT_RETRY_DELAY_SECONDS
+    )
+    return min(_RETRY_MAX_DELAY_SECONDS, base_delay * (2**attempt))
 
 
 def _build_chat_completions_url(api_base: str) -> str:
@@ -356,8 +445,10 @@ async def _raw_openai_like_request(
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
             if resp.status_code >= 400:
                 text = (await resp.aread()).decode("utf-8", errors="ignore")
-                raise RuntimeError(
-                    f"raw_openai_like status={resp.status_code}, body={text[:500]}"
+                raise httpx.HTTPStatusError(
+                    f"raw_openai_like status={resp.status_code}, body={text[:500]}",
+                    request=resp.request,
+                    response=resp,
                 )
 
             buffered_text_parts: list[str] = []
@@ -688,6 +779,9 @@ async def ask_llm(
                             yield raw_chunk
                     return
                 except Exception as raw_err:
+                    if _is_rate_limit_error(raw_err):
+                        # 429 必须回到统一重试分支，避免同一轮立刻再打一条请求。
+                        raise
                     if allow_litellm_fallback_for_openai_compat:
                         logger.warning(
                             f"[ask_llm] raw HTTP primary failed, fallback to LiteLLM is enabled. "
@@ -803,11 +897,13 @@ async def ask_llm(
                     f"[ask_llm] Request failed after {max_retries + 1} attempts: {e}"
                 )
                 raise e
+            retry_delay = _retry_delay_seconds(e, attempt)
             logger.warning(
-                f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}"
+                f"[ask_llm] Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}; "
+                f"retry in {retry_delay:.2f}s"
             )
             try:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(retry_delay)
             except asyncio.CancelledError:
                 raise
 

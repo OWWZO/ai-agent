@@ -143,7 +143,7 @@ const menuItemClassName = (active: boolean) =>
 
 const toolBtnClassName = (active?: boolean, disabled?: boolean) =>
   cn(
-    "inline-flex h-8 max-w-full items-center gap-1 rounded-full px-2 text-[13px] font-medium tracking-[-0.01em] transition-colors",
+    "reactor-composer-tool inline-flex h-8 max-w-full items-center gap-1 rounded-md px-2 text-[13px] font-medium tracking-[-0.01em] transition-colors",
     "text-[#6b6b70] hover:bg-black/[0.04] hover:text-[#1d1d1f]",
     active && "text-[#1d1d1f]",
     disabled && "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-[#6b6b70]"
@@ -389,17 +389,14 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       <div className="w-full" ref={inputShellRef}>
         <PromptInput
           accept={ATTACHMENT_ACCEPT}
-          className={cn(
-            "reactor-input-flat w-full transition-[border-color,box-shadow] duration-200",
-            size === "big" ? "rounded-[28px]" : "rounded-[26px]"
-          )}
+          className="reactor-input-flat w-full"
           convertBlobUrlsOnSubmit={false}
           multiple
           onAttachmentsAdded={handleAttachmentsAdded}
           onSubmit={handleSubmit}
         >
           <PromptInputBody>
-            <PromptInputAttachments className="px-3.5 pt-2.5">
+            <PromptInputAttachments className="reactor-composer-attachments px-1.5 pt-2.5 pb-0">
               {(file) => (
                 <UploadAttachmentChip
                   key={file.id}
@@ -422,8 +419,10 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
             <PromptInputTextarea
               className={cn(
-                "px-4 text-[15px] leading-[1.55] text-[#1d1d1f] placeholder:text-[#aeaeb2] placeholder:opacity-100",
-                size === "big" ? "min-h-[76px] pt-3.5" : "min-h-[52px] pt-2.5"
+                "reactor-composer-textarea px-4 text-[15px] leading-[1.5] text-[#1d1d1f] placeholder:text-[#9aa3af] placeholder:opacity-100",
+                size === "big"
+                  ? "reactor-composer-textarea-big min-h-[76px] pt-3.5"
+                  : "reactor-composer-textarea-medium min-h-[54px] pt-3"
               )}
               disabled={disabled}
               maxLength={MAX_QUERY_CHARS}
@@ -452,14 +451,14 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             ) : null}
           </PromptInputBody>
 
-          <PromptInputFooter className="items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
-            <PromptInputTools className="min-w-0 flex-1 flex-wrap items-center gap-0.5">
+          <PromptInputFooter className="reactor-composer-footer items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
+            <PromptInputTools className="reactor-composer-tools reactor-composer-tools-left min-w-0 flex-1 flex-wrap items-center gap-0.5">
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger
                   size="icon-sm"
                   variant="ghost"
                   disabled={disabled}
-                  className="h-8 w-8 rounded-full border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
+                  className="reactor-composer-icon-button h-8 w-8 rounded-md border-0 bg-transparent text-[#6b6b70] shadow-none ring-0 hover:bg-black/[0.04] hover:text-[#1d1d1f] focus-visible:ring-0"
                 >
                   <PlusIcon className="size-4" />
                 </PromptInputActionMenuTrigger>
@@ -604,7 +603,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
               ) : null}
             </PromptInputTools>
 
-            <PromptInputTools className="ml-auto shrink-0 items-center gap-1.5 self-end">
+            <PromptInputTools className="reactor-composer-tools reactor-composer-tools-right ml-auto shrink-0 items-center gap-1.5 self-end">
               <ContextRing
                 usage={contextUsage}
                 inputChars={question.length}
@@ -615,7 +614,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="relative flex size-8 items-center justify-center rounded-full border-0 bg-[#1d1d1f] p-0 text-white shadow-none transition-opacity hover:opacity-90"
+                      className="reactor-composer-stop group relative flex size-8 items-center justify-center rounded-full border border-[var(--color-danger-bd)] bg-[var(--color-danger-soft)] p-0 text-[var(--color-danger)] shadow-[var(--shadow-xs)] transition-[background-color,border-color,color,transform] duration-150 hover:border-[var(--color-danger)] hover:bg-[var(--color-danger)] hover:text-white active:scale-[0.92]"
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -623,7 +622,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       }}
                       aria-label="停止"
                     >
-                      <span className="block size-2.5 rounded-[2px] bg-white" />
+                      <span className="block size-2.5 rounded-[2px] bg-current" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className={AI_CHAT_FLOATING_CLASS} side="top">
@@ -637,8 +636,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     <PromptInputSubmit
                       className={cn(
                         "reactor-send-btn relative flex size-8 items-center justify-center rounded-full border-0 p-0 shadow-none transition-opacity",
-                        "bg-[#1d1d1f] text-white hover:opacity-90",
-                        "disabled:cursor-not-allowed disabled:bg-[#e8e8ed] disabled:text-[#aeaeb2] disabled:opacity-100"
+                        "bg-[var(--color-accent)] text-[var(--color-text-on-accent)] hover:bg-[var(--color-accent-hover)]",
+                        "disabled:cursor-not-allowed disabled:bg-[var(--color-accent)] disabled:text-[var(--color-text-on-accent)] disabled:opacity-45"
                       )}
                       disabled={!canSubmit}
                       variant="ghost"

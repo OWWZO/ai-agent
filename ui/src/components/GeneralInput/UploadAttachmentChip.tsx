@@ -77,8 +77,8 @@ export default function UploadAttachmentChip(props: {
   };
 
   return (
-    <div className="group flex min-w-0 max-w-full items-center gap-2 rounded-2xl bg-[var(--chat-surface-muted)]/78 px-2.5 py-2 text-[13px] shadow-[var(--shadow-xs)]">
-      <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/90">
+    <div className="reactor-composer-attachment-chip group flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-1.5 py-1 text-[12px] shadow-none transition-colors hover:border-[var(--color-line-strong)]">
+      <div className="flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-surface-sunken)]">
         {isImage ? (
           <img
             alt={props.attachment.filename || "attachment"}
@@ -86,23 +86,23 @@ export default function UploadAttachmentChip(props: {
             src={props.attachment.url}
           />
         ) : (
-          <FileIcon className="size-4 text-[var(--chat-text-soft)]" />
+          <FileIcon className="size-3.5 text-[var(--color-text-muted)]" />
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-[var(--chat-text)]">
+        <div className="truncate text-[12px] font-medium text-[var(--color-text)]">
           {props.attachment.filename || "未命名文件"}
         </div>
         <div
           className={cn(
-            "flex items-center gap-1 text-[11px] leading-4",
-            isError ? "text-[#d14343]" : "text-[var(--chat-text-soft)]"
+            "flex items-center gap-1 text-[10px] leading-3.5",
+            isError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]"
           )}
         >
           {isUploading ? (
-            <LoaderCircleIcon className="size-3 animate-spin" />
+            <LoaderCircleIcon className="size-2.5 animate-spin" />
           ) : null}
-          {isSuccess ? <CheckIcon className="size-3 text-[#0a74da]" /> : null}
+          {isSuccess ? <CheckIcon className="size-3 text-[var(--color-accent)]" /> : null}
           {isError ? <AlertCircleIcon className="size-3" /> : null}
           <span className="truncate">
             {resolveUploadStatusLabel(props.uploadState)}
@@ -112,18 +112,18 @@ export default function UploadAttachmentChip(props: {
       {isError ? (
         <button
           type="button"
-          className="flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-white hover:text-[var(--chat-text)]"
+          className="flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]"
           onClick={retryAttachment}
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon className="size-3" />
         </button>
       ) : null}
       <button
         type="button"
-        className="flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-white hover:text-[var(--chat-text)]"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]"
         onClick={removeAttachment}
       >
-        <XIcon className="size-3.5" />
+        <XIcon className="size-3" />
       </button>
     </div>
   );
