@@ -263,6 +263,7 @@ declare global {
     interface SearchResult {
       docs: Doc[][]
       query: string[]
+      chapters?: DeepSearchChapterState[]
     }
 
     interface DeepSearchChapterState {

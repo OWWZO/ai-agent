@@ -5,6 +5,7 @@ import org.wwz.ai.domain.agent.ledger.model.ArtifactView;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.reactor.model.multi.EventResult;
 import org.wwz.ai.domain.agent.ledger.model.replay.ProjectedReplayEvent;
+import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchChapter;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
@@ -77,6 +78,7 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
         Map<String, Object> searchResult = new LinkedHashMap<>();
         searchResult.put("query", stage.getQueries() == null ? List.of() : stage.getQueries());
         searchResult.put("docs", List.of());
+        searchResult.put("chapters", buildChapterMetadata(output));
         resultMap.put("searchResult", searchResult);
         return resultMap;
     }
@@ -113,8 +115,31 @@ public class DeepSearchToolInvocationProjector extends AbstractToolInvocationPro
         Map<String, Object> searchResult = new LinkedHashMap<>();
         searchResult.put("query", queries);
         searchResult.put("docs", docs);
+        searchResult.put("chapters", buildChapterMetadata(output));
         resultMap.put("searchResult", searchResult);
         return resultMap;
+    }
+
+    private List<Map<String, Object>> buildChapterMetadata(DeepSearchToolOutput output) {
+        if (output == null || output.getChapters() == null) {
+            return List.of();
+        }
+        List<Map<String, Object>> chapters = new ArrayList<>();
+        for (DeepSearchChapter chapter : output.getChapters()) {
+            if (chapter == null) {
+                continue;
+            }
+            Map<String, Object> chapterMap = new LinkedHashMap<>();
+            chapterMap.put("chapterId", chapter.getChapterId());
+            chapterMap.put("chapterTitle", chapter.getTitle());
+            chapterMap.put("chapterContent", chapter.getContent());
+            chapterMap.put("chapterOrder", chapter.getOrder());
+            chapterMap.put("queries", chapter.getQueries() == null
+                    ? List.of()
+                    : new ArrayList<>(chapter.getQueries()));
+            chapters.add(chapterMap);
+        }
+        return chapters;
     }
 
     private Map<String, Object> buildChapterSummaryResult(DeepSearchToolOutput output, DeepSearchStage stage) {

@@ -1457,6 +1457,9 @@ function updateSearchResult(target: MESSAGE.ResultMap, source?: MESSAGE.SearchRe
   if (source?.docs?.length) {
     target.searchResult!.docs = source.docs;
   }
+  if (source?.chapters?.length) {
+    target.searchResult!.chapters = source.chapters;
+  }
 }
 
 /**

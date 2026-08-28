@@ -6,7 +6,7 @@
 # =====================
 """深度搜索（DeepSearch）主流程。
 
-链路：查询拆解升格为章节 → 分章并发检索 → 分章总结 → 轻量反思补搜 → 合并终稿。
+链路：查询拆解并生成章节搜索词 → 分章并发检索 → 分章总结 → 轻量反思补搜 → 合并终稿。
 依赖 search_component 子模块与 MixSearch 混合检索引擎。
 """
 
@@ -22,7 +22,7 @@ from reactor_tool.util.log_util import logger
 from reactor_tool.model.document import Doc
 from reactor_tool.util.log_util import timer
 from reactor_tool.tool.search_component.query_process import (
-    plan_chapter_search,
+    normalize_search_queries,
     query_decompose,
 )
 from reactor_tool.tool.search_component.chapter import (
@@ -52,7 +52,7 @@ class ChapterState:
 
 
 class DeepSearch:
-    """深度搜索工具：章节升格 + 并发分章研究 + 轻量反思 + 合并回答。"""
+    """深度搜索工具：章节拆解 + 并发分章研究 + 轻量反思 + 合并回答。"""
 
     def __init__(self, engines: List[str] = []):
         """初始化搜索引擎开关；未传 engines 时读 USE_SEARCH_ENGINE 环境变量。"""
@@ -130,6 +130,7 @@ class DeepSearch:
                     title=str(item.get("title") or "").strip(),
                     content=str(item.get("content") or item.get("title") or "").strip(),
                     order=idx,
+                    queries=normalize_search_queries(item.get("search_queries")),
                 )
                 for idx, item in enumerate(sub_queries, start=1)
                 if str(item.get("title") or "").strip()
@@ -147,6 +148,7 @@ class DeepSearch:
                                 "chapterTitle": c.title,
                                 "chapterContent": c.content,
                                 "chapterOrder": c.order,
+                                "queries": list(c.queries),
                             }
                             for c in chapters
                         ],
@@ -292,6 +294,18 @@ class DeepSearch:
                 "searchResult": {
                     "query": queries,
                     "docs": docs,
+                    "chapters": [
+                        {
+                            "chapterId": chapter.chapter_id,
+                            "chapterTitle": chapter.title,
+                            "chapterContent": chapter.content,
+                            "chapterOrder": chapter.order,
+                            "queries": list(
+                                chapter.queries or [chapter.content or chapter.title]
+                            ),
+                        }
+                        for chapter in chapters
+                    ],
                 },
                 "isFinal": False,
                 "messageType": "search",
@@ -423,20 +437,8 @@ class DeepSearch:
             )
 
         try:
-            search_plan = await asyncio.wait_for(
-                plan_chapter_search(
-                    query=query,
-                    chapter_title=chapter.title,
-                    chapter_content=chapter.content,
-                ),
-                timeout=remaining_timeout(),
-            )
-            initial_queries = search_plan.get("search_queries") or [
-                chapter.content or query
-            ]
-            chapter.queries.extend(
-                item for item in initial_queries if item and item not in chapter.queries
-            )
+            if not chapter.queries:
+                chapter.queries.append(chapter.content or query)
             docs, _ = await asyncio.wait_for(
                 self._search_queries_and_dedup(
                     queries=chapter.queries,

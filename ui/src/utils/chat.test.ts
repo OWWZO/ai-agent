@@ -230,6 +230,54 @@ function createDeepSearchEvent(stage: DeepSearchStage): MESSAGE.EventData {
   } as unknown as MESSAGE.EventData;
 }
 
+function createGroupedDeepSearchEvent(): MESSAGE.EventData {
+  return {
+    messageType: "task",
+    messageId: "msg-grouped-1",
+    taskId: "task-grouped-1",
+    taskOrder: 1,
+    messageOrder: 1,
+    resultMap: {
+      requestId: "req-grouped-1",
+      messageId: "msg-grouped-1",
+      messageType: "deep_search",
+      messageTime: "1714041600000",
+      finish: false,
+      isFinal: false,
+      resultMap: {
+        messageType: "search",
+        requestId: "req-grouped-1",
+        isFinal: false,
+        searchFinish: true,
+        searchResult: {
+          query: ["章节一关键词A", "章节一关键词B", "章节二关键词"],
+          docs: [
+            [createDoc("https://example.com/a", "结果A", "内容A")],
+            [],
+            [createDoc("https://example.com/b", "结果B", "内容B")],
+          ],
+          chapters: [
+            {
+              chapterId: "C1",
+              chapterTitle: "章节一",
+              chapterContent: "研究章节一",
+              chapterOrder: 1,
+              queries: ["章节一关键词A", "章节一关键词B"],
+            },
+            {
+              chapterId: "C2",
+              chapterTitle: "章节二",
+              chapterContent: "研究章节二",
+              chapterOrder: 2,
+              queries: ["章节二关键词"],
+            },
+          ],
+        },
+      },
+    },
+  } as unknown as MESSAGE.EventData;
+}
+
 function createHtmlEvent(options?: {
   isFinal?: boolean;
   data?: string;
@@ -780,6 +828,75 @@ describe("chat deep_search progress", () => {
     expect(taskList.map((task) => task.resultMap?.searchResult?.query?.[0])).toEqual([
       "子问题一",
       "子问题二",
+    ]);
+  });
+
+  it("章节包含多个查询关键词时仍只生成一张章节搜索卡", () => {
+    const currentChat = createChatItem({
+      messageTime: "1714041600000",
+      taskId: "task-1",
+      messageType: "deep_search",
+      requestId: "req-1",
+      messageId: "msg-1",
+      resultMap: {
+        messageType: "search",
+        searchResult: {
+          query: ["章节一关键词A", "章节一关键词B", "章节二关键词"],
+          docs: [
+            [createDoc("https://example.com/a", "结果A", "内容A")],
+            [],
+            [createDoc("https://example.com/b", "结果B", "内容B")],
+          ],
+          chapters: [
+            {
+              chapterId: "C1",
+              chapterTitle: "章节一",
+              chapterContent: "研究章节一",
+              chapterOrder: 1,
+              queries: ["章节一关键词A", "章节一关键词B"],
+            },
+            {
+              chapterId: "C2",
+              chapterTitle: "章节二",
+              chapterContent: "研究章节二",
+              chapterOrder: 2,
+              queries: ["章节二关键词"],
+            },
+          ],
+        },
+      },
+    } as MESSAGE.Task);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(2);
+    expect(taskList.map((task) => buildAction(task).name)).toEqual([
+      "章节一关键词A / 章节一关键词B",
+      "章节二关键词",
+    ]);
+  });
+
+  it("实时 search 事件携带章节分组时不会按关键词拆卡", () => {
+    const currentChat = {
+      sessionId: "session-grouped-1",
+      requestId: "req-grouped-1",
+      query: "原始问题",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(createGroupedDeepSearchEvent(), currentChat);
+
+    const { taskList } = handleTaskData(currentChat, false, currentChat.multiAgent);
+
+    expect(taskList).toHaveLength(2);
+    expect(taskList.map((task) => task.resultMap.chapterTitle)).toEqual([
+      "章节一",
+      "章节二",
     ]);
   });
 

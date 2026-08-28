@@ -37,6 +37,19 @@ public class DeepSearchrResponse {
     public static class SearchResult {
         private List<String> query;
         private List<List<SearchDoc>> docs;
+        private List<SearchChapter> chapters;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SearchChapter {
+        private String chapterId;
+        private String chapterTitle;
+        private String chapterContent;
+        private Integer chapterOrder;
+        private List<String> queries;
     }
 
     @Data

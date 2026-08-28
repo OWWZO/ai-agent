@@ -22,37 +22,36 @@ sys.modules["reactor_tool.util.llm_util"] = llm_util_stub
 
 from reactor_tool.tool.search_component.query_process import (
     parse_report_structure,
-    parse_search_plan,
 )
 
 
-def test_parse_report_structure_returns_title_and_content():
+def test_parse_report_structure_returns_chapter_and_search_queries():
     chapters = parse_report_structure(
-        '[{"title":"技术路线","content":"分析电池和电控"}]'
+        '[{"title":"技术路线","content":"分析电池和电控",'
+        '"search_queries":["电池技术","电控技术","电池技术"]}]'
     )
 
-    assert chapters == [{"title": "技术路线", "content": "分析电池和电控"}]
+    assert chapters == [
+        {
+            "title": "技术路线",
+            "content": "分析电池和电控",
+            "search_queries": ["电池技术", "电控技术"],
+        }
+    ]
 
 
 def test_parse_report_structure_supports_legacy_query_list():
     chapters = parse_report_structure("- 技术路线\n- 市场格局")
 
     assert chapters == [
-        {"title": "技术路线", "content": "技术路线"},
-        {"title": "市场格局", "content": "市场格局"},
+        {
+            "title": "技术路线",
+            "content": "技术路线",
+            "search_queries": ["技术路线"],
+        },
+        {
+            "title": "市场格局",
+            "content": "市场格局",
+            "search_queries": ["市场格局"],
+        },
     ]
-
-
-def test_parse_search_plan_deduplicates_queries():
-    plan = parse_search_plan(
-        '{"search_queries":["关键词 A","关键词 A","关键词 B"],"reasoning":"覆盖章节"}'
-    )
-
-    assert plan["search_queries"] == ["关键词 A", "关键词 B"]
-
-
-def test_parse_search_plan_falls_back_to_chapter_title():
-    assert parse_search_plan("invalid", "章节标题") == {
-        "search_queries": ["章节标题"],
-        "reasoning": "",
-    }

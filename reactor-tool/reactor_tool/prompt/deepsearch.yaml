@@ -66,101 +66,26 @@ answer_prompt: |
   用户问题：{query}
   输出：
 
-query_decompose_think_prompt: |
-  你是一个任务分析专家，结合用户的任务和基于此任务搜索到的内容思考,并且一定需要进行进一步搜索。
-
-  <INSTRUCTIONS>
-  1. 如果提供了检索内容，请总结检索内容，用一段不超过100字的话描述。
-  2. 如果没有提供或者检索内容为空，请思考当前检索内容缺乏了哪些方面的内容，尽可能用一句话表示，不要提及检索内容为空或者类似的表达。
-  3. 明确认为检索内容不能回答用户任务，不需要重复检索内容。
-  4. 明确认为检索内容不能回答用户任务，请指出当前检索内容缺乏了哪些方面的内容，尽可能用一句话表示。
-  5. 无论如何，以\"需要进行进一步检索\"结尾。
-  6. 思考过程中关注技术细节，实现技巧或未涉及的数据趋势。
-  </INSTRUCTIONS>
-
-  <EXAMPLES>
-  - Example when the documents are empty:
-  为了解决此问题，我需要搜索xxx，包括xxx，xxx，xxx等方面的信息。注意，无论用户输入什么任务，第一轮输出的开头必须以【为了解决此问题，我需要搜索xx】为开头
-
-  - Example output with knowledge gap:
-  检索内容涵盖了xxx，xxx等信息，缺乏具体xxx，xxx，xxx的分析。因此，需要进一步检索。注意：此处回复时无需以【为了解决此问题】为开头！！
-  </EXAMPLES>
-
-  Reflect carefully on the user's input to summarize the documents(if provided) and identify knowledge gaps. Then, produce your output with one paragraph.
-
-  <TASK>
-  用户任务为：{task}
-  <TASK>
-
-  <DOCUMENTS>
-  当前检索的内容为：{retrieval_str}
-  </DOCUMENTS>
-
-  现在请根据用户任务和相关文档，仔细思考并描述当前不足的信息，并得出需要进一步检索的结论。用一段话描述。
-
-query_decompose_prompt: |
-  Your goal is to generate sophisticated and diverse web search queries according to the user's thinking result. These queries are intended for an advanced automated web research tool capable of analyzing complex results, following links, and synthesizing information.
-
-  Instructions:
-  - Always prefer a single search query, only add another query if the original question requests multiple aspects or elements and one query is not enough.
-  - Each query should focus on one specific aspect of the original question.
-  - Don't produce more than {max_queries} queries.
-  - Queries should be diverse, if the topic is broad, generate more than 1 query.
-  - Don't generate multiple similar queries, 1 is enough.
-  - Query should ensure that the most current information is gathered. The current date is {current_date}.
-  - Reply in Chinese.
-
-  Format:
-  - each line is a query in markdown list format
-  - Don't more than {max_queries} lines.
-
-  Example:
-
-  Input: 苹果公司的介绍，包括市场份额，人群分析等方面
-  Output:
-  - 苹果公司介绍
-  - 苹果公司市场份额
-  - 苹果公司人群分析
-
-  Input: What is the weather in Beijing today
-  Output:
-  - Beijing weather today
-
 chapter_structure_prompt: |
-  你是专业的研究报告结构规划专家。请根据用户问题和思考结果生成报告章节结构。
+  你是专业的研究报告结构规划和信息检索规划专家。请根据用户问题一次性生成报告章节结构，并为每个章节生成搜索关键词。
 
   要求：
   - title 是章节展示标题，不是搜索关键词。
   - content 是章节需要研究的具体任务，必须比 title 更具体。
+  - search_queries 是可以直接提交给搜索引擎的关键词，必须服务于当前章节研究任务。
+  - 搜索关键词必要时加入实体、时间范围、技术方向或其他限定条件。
+  - 每个章节最多生成 {max_search_queries} 个搜索关键词，关键词之间不能重复。
   - 每个章节只覆盖一个明确方面，章节之间不要重复。
   - 不要生成超过 {max_queries} 个章节。
   - 只输出 JSON 数组，不要输出 Markdown、解释或代码围栏。
 
   输出格式：
   [
-    {{"title": "章节标题", "content": "章节研究任务"}}
+    {{"title": "章节标题", "content": "章节研究任务", "search_queries": ["实际搜索关键词"]}}
   ]
 
+  用户问题：{query}
   当前日期：{current_date}
-  思考结果：{thinking_result}
-
-chapter_search_plan_prompt: |
-  你是专业的信息检索规划专家，请为一个报告章节生成可以直接提交给搜索引擎的搜索关键词。
-
-  用户总问题：{query}
-  当前日期：{current_date}
-  当前章节标题：{chapter_title}
-  当前章节研究任务：{chapter_content}
-
-  要求：
-  - 搜索关键词必须服务于当前章节研究任务，而不是简单重复章节标题。
-  - 必要时加入实体、时间范围、技术方向或其他限定条件。
-  - 首次搜索最多生成 {max_queries} 个关键词，优先生成一个覆盖面足够的关键词。
-  - 关键词之间不能重复，且不要覆盖其他章节的主题。
-  - 只输出 JSON，不要输出解释文本或 Markdown 代码围栏。
-
-  输出格式：
-  {{"search_queries": ["实际搜索关键词"], "reasoning": "简短说明"}}
 
 # 推理评估配置
 reasoning_prompt: |

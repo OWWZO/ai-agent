@@ -46,14 +46,18 @@ class DeepSearchLlmConfigTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual("default-key", config["api_key"])
 
-    async def test_query_decompose_should_forward_deepsearch_gateway_to_both_llm_calls(
+    async def test_query_decompose_should_use_one_llm_call_and_parse_search_queries(
         self,
     ):
         captured_kwargs = []
         responses = iter(
             [
-                ["先做推理"],
-                ["- 子问题一\n- 子问题二"],
+                [
+                    '[{"title":"子问题一","content":"研究第一个方面",'
+                    '"search_queries":["关键词一","关键词二"]},'
+                    '{"title":"子问题二","content":"研究第二个方面",'
+                    '"search_queries":["关键词三"]}]'
+                ],
             ]
         )
 
@@ -80,12 +84,24 @@ class DeepSearchLlmConfigTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [
-                {"title": "子问题一", "content": "子问题一"},
-                {"title": "子问题二", "content": "子问题二"},
+                {
+                    "title": "子问题一",
+                    "content": "研究第一个方面",
+                    "search_queries": ["关键词一", "关键词二"],
+                },
+                {
+                    "title": "子问题二",
+                    "content": "研究第二个方面",
+                    "search_queries": ["关键词三"],
+                },
             ],
             queries,
         )
-        self.assertEqual(2, len(captured_kwargs))
+        self.assertEqual(1, len(captured_kwargs))
+        self.assertIn("search_queries", captured_kwargs[0]["messages"][0]["content"])
+        self.assertNotIn(
+            "thinking_result", captured_kwargs[0]["messages"][0]["content"]
+        )
         self.assertTrue(
             all(
                 item["api_base"] == "https://deepsearch.example.com/v1/chat/completions"
