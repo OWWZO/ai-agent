@@ -1,5 +1,6 @@
 import {
   memo,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -128,6 +129,29 @@ const toConversationRole = (
   };
 };
 
+const getRecentSessionSummaryKey = (
+  conversation?: CHAT.ConversationHistory
+) => {
+  if (!conversation) {
+    return "";
+  }
+  const summary = toRecentSessionItem(conversation);
+  if (!summary) {
+    return "";
+  }
+  return [
+    summary.sessionId,
+    summary.title,
+    summary.status,
+    summary.latestQueryText,
+    summary.runCount,
+    summary.finishedRunCount,
+    summary.failedRunCount,
+  ]
+    .map((value) => String(value ?? ""))
+    .join("\u001f");
+};
+
 const hasConversationContent = (
   conversation: CHAT.ConversationHistory | undefined
 ) => {
@@ -177,6 +201,8 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [localRecentConversations, setLocalRecentConversations] = useState<
     CHAT.ConversationHistory[]
   >([]);
+  const localRecentConversationsRef = useRef<CHAT.ConversationHistory[]>([]);
+  const localRecentSummaryRef = useRef<Map<string, string>>(new Map());
   const [activeView, setActiveView] = useState<SidebarView>("chat");
   const [sidebarPanel, setSidebarPanel] = useState<"sessions" | "task-files">(
     "sessions"
@@ -446,9 +472,20 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         return;
       }
 
-      setLocalRecentConversations((prev) =>
-        mergeLocalRecentConversations(prev, conversation)
+      const source = localRecentConversationsRef.current;
+      const next = mergeLocalRecentConversations(source, conversation);
+      localRecentConversationsRef.current = next;
+
+      const nextSummaryKey = getRecentSessionSummaryKey(
+        next.find((item) => item.sessionId === conversation.sessionId)
       );
+      if (localRecentSummaryRef.current.get(conversation.sessionId) === nextSummaryKey) {
+        // Keep the latest full snapshot in the ref for session switching, but
+        // do not enqueue a React update for every streaming timestamp/token.
+        return;
+      }
+      localRecentSummaryRef.current.set(conversation.sessionId, nextSummaryKey);
+      setLocalRecentConversations(next);
     },
     []
   );
@@ -463,11 +500,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       // 最近列表，避免切换会话期间的流式事件覆盖当前输入。
       // 后台流式更新只刷新本地缓存；仅当前展示的会话才写入主视图，避免其它会话活跃时界面被切走。
       upsertLocalRecentSession(nextState);
-      setCurrentConversation((prev) =>
-        shouldApplyConversationToView(prev.id, conversationId)
-          ? nextState
-          : prev
-      );
+      startTransition(() => {
+        setCurrentConversation((prev) =>
+          shouldApplyConversationToView(prev.id, conversationId)
+            ? nextState
+            : prev
+        );
+      });
     },
     [upsertLocalRecentSession]
   );
@@ -522,7 +561,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     (session: ConversationSessionItem) => {
       // 先切换壳状态，再异步加载详情；本地草稿优先，避免已在内存中的流式会话
       // 被历史接口返回的旧快照覆盖。
-      const localConversation = localRecentConversations.find(
+      const localConversation = localRecentConversationsRef.current.find(
         (item) => item.sessionId === session.sessionId
       );
       if (localConversation) {
@@ -551,7 +590,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
           console.error("加载历史会话详情失败", error);
         });
     },
-    [localRecentConversations, resetInput]
+    [resetInput]
   );
 
   useEffect(() => {
@@ -854,6 +893,100 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     syncFeaturedAdminRecord,
   ]);
 
+  const handleSidebarNewChat = useCallback(() => {
+    setSidebarPanel("sessions");
+    setSelectedTaskFileKey("");
+    setWorkspaceImmersive(false);
+    closeMobileSidebar();
+    createNewChat();
+  }, [closeMobileSidebar, createNewChat]);
+
+  const handleSidebarSelectSession = useCallback(
+    (session: ConversationSessionItem) => {
+      setSidebarPanel("sessions");
+      setSelectedTaskFileKey("");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      handleSelectRecentSession(session);
+    },
+    [closeMobileSidebar, handleSelectRecentSession]
+  );
+
+  const handleSidebarChangeView = useCallback(
+    (view: SidebarView) => {
+      if (view === "featured") {
+        setFeaturedEntryId("");
+      }
+      setSidebarPanel("sessions");
+      setWorkspaceImmersive(false);
+      closeMobileSidebar();
+      setActiveView(view);
+    },
+    [closeMobileSidebar]
+  );
+
+  const handleSidebarOpenTaskFiles = useCallback(() => {
+    setActiveView("chat");
+    setWorkspaceImmersive(false);
+    setSidebarPanel("task-files");
+  }, []);
+
+  const handleSidebarCloseTaskFiles = useCallback(() => {
+    setSidebarPanel("sessions");
+  }, []);
+
+  const handleSidebarSelectTaskFile = useCallback(
+    (file: WorkspaceFileItem) => {
+      setSelectedTaskFileKey(workspaceFileKey(file));
+      chatViewApiRef.current?.openFile(file);
+      closeMobileSidebar();
+    },
+    [closeMobileSidebar]
+  );
+
+  const handleSidebarRefreshTaskFiles = useCallback(() => {
+    setWorkspaceTaskList((prev) => [...prev]);
+  }, []);
+
+  const sidebarSharedProps = useMemo(
+    () => ({
+      activeView,
+      recentSessions: displayedRecentSessions,
+      recentSessionsLoading,
+      selectedSessionId: currentConversation.sessionId,
+      visitorUsername: visitorBootstrap?.username,
+      sidebarPanel,
+      taskList: workspaceTaskList,
+      selectedTaskFileKey,
+      onNewChat: handleSidebarNewChat,
+      onSelectSession: handleSidebarSelectSession,
+      onChangeView: handleSidebarChangeView,
+      onManageFeaturedConversation: handleOpenFeaturedAdmin,
+      onOpenTaskFiles: handleSidebarOpenTaskFiles,
+      onCloseTaskFiles: handleSidebarCloseTaskFiles,
+      onSelectTaskFile: handleSidebarSelectTaskFile,
+      onRefreshTaskFiles: handleSidebarRefreshTaskFiles,
+    }),
+    [
+      activeView,
+      currentConversation.sessionId,
+      displayedRecentSessions,
+      handleOpenFeaturedAdmin,
+      handleSidebarChangeView,
+      handleSidebarCloseTaskFiles,
+      handleSidebarNewChat,
+      handleSidebarOpenTaskFiles,
+      handleSidebarRefreshTaskFiles,
+      handleSidebarSelectSession,
+      handleSidebarSelectTaskFile,
+      recentSessionsLoading,
+      selectedTaskFileKey,
+      sidebarPanel,
+      visitorBootstrap?.username,
+      workspaceTaskList,
+    ]
+  );
+
   if (visitorWorkspaceStage === "bootstrapping") {
     return <VisitorBootstrapScreen />;
   }
@@ -870,57 +1003,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       />
     );
   }
-
-  const sidebarSharedProps = {
-    activeView,
-    recentSessions: displayedRecentSessions,
-    recentSessionsLoading,
-    selectedSessionId: currentConversation.sessionId,
-    visitorUsername: visitorBootstrap?.username,
-    sidebarPanel,
-    taskList: workspaceTaskList,
-    selectedTaskFileKey,
-    onNewChat: () => {
-      setSidebarPanel("sessions");
-      setSelectedTaskFileKey("");
-      setWorkspaceImmersive(false);
-      closeMobileSidebar();
-      createNewChat();
-    },
-    onSelectSession: (session: ConversationSessionItem) => {
-      setSidebarPanel("sessions");
-      setSelectedTaskFileKey("");
-      setWorkspaceImmersive(false);
-      closeMobileSidebar();
-      handleSelectRecentSession(session);
-    },
-    onChangeView: (view: SidebarView) => {
-      if (view === "featured") {
-        setFeaturedEntryId("");
-      }
-      setSidebarPanel("sessions");
-      setWorkspaceImmersive(false);
-      closeMobileSidebar();
-      setActiveView(view);
-    },
-    onManageFeaturedConversation: handleOpenFeaturedAdmin,
-    onOpenTaskFiles: () => {
-      if (activeView !== "chat") {
-        setActiveView("chat");
-      }
-      setWorkspaceImmersive(false);
-      setSidebarPanel("task-files");
-    },
-    onCloseTaskFiles: () => setSidebarPanel("sessions"),
-    onSelectTaskFile: (file: WorkspaceFileItem) => {
-      setSelectedTaskFileKey(workspaceFileKey(file));
-      chatViewApiRef.current?.openFile(file);
-      closeMobileSidebar();
-    },
-    onRefreshTaskFiles: () => {
-      setWorkspaceTaskList((prev) => [...prev]);
-    },
-  } as const;
 
   return (
     <div className="h-full w-full bg-[var(--page-gradient)] text-foreground">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
 import { getStableTaskIdentity } from "@/utils/chat";
@@ -58,8 +58,14 @@ import { useWorkspacePanels } from "./useWorkspacePanels";
 import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
 import { resolveTaskToolCallId } from "@/utils/chat/toolCalls";
 import { subAgentLiveRevision } from "@/utils/chat/subAgentChat";
-import { collectSessionFileTasks } from "@/components/ActionView/workspaceFiles";
+import {
+  collectChatFileTasks,
+  collectSessionFileTasks,
+  flattenTasksWithFiles,
+} from "@/components/ActionView/workspaceFiles";
 import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
+import { getTaskFiles } from "@/utils/taskArtifacts";
+import type { PanelItemType } from "@/components/ActionPanel";
 
 type ChatViewApi = {
   openFile: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
@@ -77,7 +83,9 @@ type Props = {
   ) => void;
   onRoleSelect: (role: CHAT.FixRole) => void;
   onInputConsumed?: () => void;
-  onTaskListChange?: (taskList: CHAT.Task[]) => void;
+  onTaskListChange?: (
+    taskList: ReturnType<typeof collectSessionFileTasks>
+  ) => void;
   onRegisterApi?: (api: ChatViewApi | null) => void;
   onOpenTaskFiles?: () => void;
   /** 沉浸模式变化：Home 用来收起/展开左侧会话栏 */
@@ -87,6 +95,48 @@ type Props = {
 const getTaskStableKey = (task?: CHAT.Task) => {
   return getStableTaskIdentity(task);
 };
+
+const getFileSnapshot = (file: CHAT.TFile) =>
+  [
+    file.name,
+    file.url,
+    file.previewUrl,
+    file.downloadUrl,
+    file.type,
+    file.size,
+    file.missing,
+    file.missingReason,
+    file.resourceKey,
+    file.mimeType,
+  ]
+    .map((value) => String(value ?? ""))
+    .join("\u001f");
+
+type SessionFileTaskSnapshotSource = {
+  id?: string;
+  messageId?: string;
+  requestId?: string;
+  messageType?: string;
+  messageTime?: string;
+};
+
+const getSessionFileTaskSnapshot = (task: SessionFileTaskSnapshotSource) =>
+  [
+    task.id,
+    task.messageId,
+    task.requestId,
+    task.messageType,
+    task.messageTime,
+    getTaskFiles(task).map(getFileSnapshot).join("\u001e"),
+  ]
+    .map((value) => String(value ?? ""))
+    .join("\u001f");
+
+const sameStringList = (previous: string[], next: string[]) =>
+  previous.length === next.length &&
+  previous.every((value, index) => value === next[index]);
+
+type SessionFileTasks = ReturnType<typeof collectSessionFileTasks>;
 
 const ChatView: ReactorType.FC<Props> = (props) => {
   const {
@@ -119,11 +169,11 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
     leftPanelWidth,
-    isDragging,
     isLeftCollapsed,
     isRightCollapsed,
     isFocusMode,
     containerRef,
+    leftPanelRef,
     handleDragStart,
     handleDragMove,
     handleDragEnd,
@@ -133,6 +183,21 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     toggleFocusMode,
     exitFocusMode,
   } = useWorkspacePanels();
+  // Streaming snapshots arrive more often than a user can read. Keep the live
+  // header/workspace state responsive while allowing the transcript to render
+  // at a lower priority during heavy updates and panel resizing.
+  const conversationListSnapshot = useMemo(
+    () => ({
+      id: conversation.id,
+      chatList: conversation.chatList
+    }),
+    [conversation.chatList, conversation.id]
+  );
+  const deferredConversationList = useDeferredValue(conversationListSnapshot);
+  const deferredChatList =
+    deferredConversationList.id === conversation.id
+      ? deferredConversationList.chatList
+      : conversation.chatList;
 
   // 工作区的打开、任务选择和文件预览与对话流是两套生命周期。这里保留
   // conversation 的最新快照，同时允许 ActionView 尚未挂载时暂存一次文件预览。
@@ -229,7 +294,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       const nextTool = fromChat || refreshTask(prev.tool);
       if (!nextTool) return prev;
       if (nextTool === prev.tool && latestChat === prev.chat) return prev;
-      return { tool: nextTool, chat: latestChat || prev.chat };
+      return {
+        tool: nextTool,
+        chat: latestChat || prev.chat
+      };
     });
   }, [taskList, workspaceStreamTask, conversation.chatList]);
 
@@ -324,7 +392,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const openAgentPanel = useMemoizedFn(
     (task: CHAT.Task, chat: CHAT.ChatItem) => {
-      setAgentDetail({ tool: task, chat });
+      setAgentDetail({
+        tool: task,
+        chat
+      });
       setThinkingDetail(null);
       setToolDiffTask(null);
       setPendingPreviewFile(undefined);
@@ -369,7 +440,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeExclusiveDetail]);
 
-  const changeTask = (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+  const changeTask = useMemoizedFn((task: CHAT.Task, chat?: CHAT.ChatItem) => {
     // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
     if (!canOpenTaskWorkspacePanel(task)) {
       return;
@@ -388,7 +459,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       status: chat?.metrics?.status,
       finishedAt: chat?.finishedAt,
     });
-  };
+  });
 
   const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
     // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
@@ -415,13 +486,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return () => onRegisterApi?.(null);
   }, [changeFile, onRegisterApi]);
 
-  const changePlan = () => {
+  const changePlan = useMemoizedFn(() => {
     setThinkingDetail(null);
     setToolDiffTask(null);
     setAgentDetail(null);
     openRightWorkspace();
     actionViewRef.current?.openPlanView();
-  };
+  });
 
   const toolDiffView = useMemo(() => {
     if (!toolDiffTask) return null;
@@ -430,7 +501,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return {
       title: toolLabel(name),
       path: extractEditPath(arg),
-      diffCode: buildEditDiffCode({ name, arg }),
+      diffCode: buildEditDiffCode({
+        name,
+        arg
+      }),
       output: resolveTaskToolOutput(toolDiffTask),
       status: resolveTaskToolStatus(toolDiffTask),
     };
@@ -454,6 +528,16 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     if (isFocusMode) {
       exitFocusMode();
     }
+  });
+
+  const closeActionView = useMemoizedFn(() => {
+    if (isFocusMode) {
+      exitFocusMode();
+      return;
+    }
+    setWorkspaceOpenRequested(false);
+    changeActionStatus(false);
+    setIsRightCollapsed(true);
   });
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
@@ -607,10 +691,57 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [conversation.productType, product?.type]);
 
   // 会话级文件任务：跨多轮累计，避免新请求清空侧栏文件列表
-  const sessionFileTasks = useMemo(
-    () => collectSessionFileTasks(conversation.chatList, taskList),
-    [conversation.chatList, taskList]
-  );
+  const sessionFileTasksCacheRef = useRef<{
+    conversationId: string;
+    tasks: SessionFileTasks;
+    snapshots: string[];
+    chatTasks: WeakMap<object, PanelItemType[]>;
+    liveTaskList?: PanelItemType[];
+    liveTasks: PanelItemType[];
+  }>({
+    conversationId: "",
+    tasks: [],
+    snapshots: [],
+    chatTasks: new WeakMap(),
+    liveTasks: [],
+  });
+  const sessionFileTasks = useMemo(() => {
+    const cache = sessionFileTasksCacheRef.current;
+    if (cache.conversationId !== conversation.id) {
+      cache.conversationId = conversation.id;
+      cache.chatTasks = new WeakMap();
+      cache.liveTaskList = undefined;
+      cache.liveTasks = [];
+      cache.tasks = [];
+      cache.snapshots = [];
+    }
+
+    const next: SessionFileTasks = [];
+    for (const chat of conversation.chatList) {
+      let chatTasks = cache.chatTasks.get(chat);
+      if (!chatTasks) {
+        chatTasks = collectChatFileTasks(chat);
+        cache.chatTasks.set(chat, chatTasks);
+      }
+      next.push(...chatTasks);
+    }
+    if (cache.liveTaskList !== taskList) {
+      cache.liveTaskList = taskList;
+      cache.liveTasks = flattenTasksWithFiles(taskList);
+    }
+    next.push(...cache.liveTasks);
+
+    const nextSnapshots = next.map(getSessionFileTaskSnapshot);
+    if (
+      cache.conversationId === conversation.id &&
+      sameStringList(cache.snapshots, nextSnapshots)
+    ) {
+      return cache.tasks;
+    }
+    cache.tasks = next;
+    cache.snapshots = nextSnapshots;
+    return next;
+  }, [conversation.chatList, conversation.id, taskList]);
 
   useEffect(() => {
     // 侧栏「会话文件」消费会话级任务，而非仅当前轮 taskList
@@ -618,10 +749,32 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   }, [sessionFileTasks, onTaskListChange]);
 
   // 会话级产物表：终答 Markdown 相对引用（report.md）跨轮可解析
-  const sessionArtifactFiles = useMemo(
-    () => collectSessionArtifactFiles(conversation.chatList),
-    [conversation.chatList]
-  );
+  const sessionArtifactFilesCacheRef = useRef<{
+    conversationId: string;
+    files: CHAT.TFile[];
+    snapshots: string[];
+  }>({
+    conversationId: "",
+    files: [],
+    snapshots: [],
+  });
+  const sessionArtifactFiles = useMemo(() => {
+    const next = collectSessionArtifactFiles(deferredChatList);
+    const nextSnapshots = next.map(getFileSnapshot);
+    const cache = sessionArtifactFilesCacheRef.current;
+    if (
+      cache.conversationId === conversation.id &&
+      sameStringList(cache.snapshots, nextSnapshots)
+    ) {
+      return cache.files;
+    }
+    sessionArtifactFilesCacheRef.current = {
+      conversationId: conversation.id,
+      files: next,
+      snapshots: nextSnapshots,
+    };
+    return next;
+  }, [conversation.id, deferredChatList]);
 
   const hasWorkspaceContent = Boolean(
     showAction ||
@@ -664,7 +817,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       "";
     const liveTool =
       findAgentTaskByToolCallId(liveChat, toolId) || agentDetail.tool;
-    return { tool: liveTool, chat: liveChat };
+    return {
+      tool: liveTool,
+      chat: liveChat
+    };
   }, [agentDetail, conversation.chatList]);
   // children 在 handleTaskData 里原地 push，chatList/tool 引用经常不变；
   // 每轮渲染读当前 children，才能把子 Agent 轨迹推进右侧面板。
@@ -836,43 +992,43 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const renderChatDialogues = () => {
     const lastRequestId =
-      conversation.chatList[conversation.chatList.length - 1]?.requestId;
+      deferredChatList[deferredChatList.length - 1]?.requestId;
     return (
-    <>
-      {conversation.chatList.map((chat) => (
-        <Dialogue
-          key={chat.requestId}
-          chat={chat}
-          streamingThought={streamingThoughtMap[chat.requestId]}
-          deepThink={conversation.deepThink}
-          sessionArtifactFiles={sessionArtifactFiles}
-          changeTask={changeTask}
-          changeFile={changeFile}
-          changePlan={changePlan}
-          onUndo={
-            !readOnly &&
-            !loading &&
-            chat.requestId === lastRequestId
-              ? handleUndoLastTurn
-              : undefined
-          }
-          thinkingPanelOpen={thinkingDetail != null}
-          onOpenThinking={openThinkingPanel}
-          onSyncThinking={syncThinkingPanel}
-          onOpenToolDiff={openToolDiffPanel}
-          onOpenAgent={openAgentPanel}
-        />
-      ))}
-      {streamLoading ? (
-        <div
-          className="mt-3 flex items-center gap-2 pl-1 text-[var(--color-text-muted)]"
-          role="status"
-          aria-live="polite"
-        >
-          <MoonSpinner label="正在等待回复…" />
-        </div>
-      ) : null}
-    </>
+      <>
+        {deferredChatList.map((chat) => (
+          <Dialogue
+            key={chat.requestId}
+            chat={chat}
+            streamingThought={streamingThoughtMap[chat.requestId]}
+            deepThink={conversation.deepThink}
+            sessionArtifactFiles={sessionArtifactFiles}
+            changeTask={changeTask}
+            changeFile={changeFile}
+            changePlan={changePlan}
+            onUndo={
+              !readOnly &&
+              !loading &&
+              chat.requestId === lastRequestId
+                ? handleUndoLastTurn
+                : undefined
+            }
+            thinkingPanelOpen={thinkingDetail != null}
+            onOpenThinking={openThinkingPanel}
+            onSyncThinking={syncThinkingPanel}
+            onOpenToolDiff={openToolDiffPanel}
+            onOpenAgent={openAgentPanel}
+          />
+        ))}
+        {streamLoading ? (
+          <div
+            className="mt-3 flex items-center gap-2 pl-1 text-[var(--color-text-muted)]"
+            role="status"
+            aria-live="polite"
+          >
+            <MoonSpinner label="正在等待回复…" />
+          </div>
+        ) : null}
+      </>
     );
   };
 
@@ -891,160 +1047,159 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const renderMultAgent = () => {
-    // 如果没有工作空间内容，显示单面板
-    if (!showAction && !workspaceOpenRequested && thinkingDetail == null) {
-      return (
-        <div className="reactor-single-chat-shell flex h-full w-full justify-center overflow-hidden bg-[var(--color-bg)] px-4 pt-4 md:px-6">
-          <div
-            className="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
-            id="chat-view"
-          >
-            <div className="reactor-chat-header mb-3 flex min-h-[36px] items-center justify-between px-1">
-              {renderHeaderStatus({ showDeepThink: true })}
-              <div className="flex shrink-0 items-center gap-1">
-                {renderMobileWorkspaceTrigger()}
-                <button
-                  type="button"
-                  onClick={() => onOpenTaskFiles?.()}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                  title="查看当前会话的文件"
-                  aria-label="查看当前会话的文件"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+    // Keep the conversation shell mounted while the workspace slot appears.
+    // Only the right slot is added or resized when runtime work becomes visible.
+    const hasWorkspaceLayout = hasWorkspaceContent;
 
-            <Conversation
-              key={conversation.id}
-              className="chat-fade-bottom min-h-0 flex-1 overflow-hidden"
-            >
-              <ConversationContent className="mx-auto w-full max-w-[860px] px-1 pb-6">
-                {renderChatDialogues()}
-              </ConversationContent>
-              <ConversationScrollButton />
-            </Conversation>
-
-            {!readOnly ? (
-              <div
-                 className="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"
-                data-composer-dock="true"
-              >
-                <div className="mx-auto w-full max-w-[860px]">
-                  {renderComposerStack(`input-${conversation.sessionId}-single`)}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      );
-    }
-
-    // 双面板布局；沉浸模式：对话区窄列保留，工作区主导（侧栏由 Home 收起）
     return (
       <div
         ref={containerRef}
         className={classNames(
-          "reactor-chat-workspace-layout flex h-full w-full gap-1.5 bg-[var(--color-bg)] p-1.5 md:p-2",
-          isDragging && "cursor-col-resize select-none"
+          "reactor-chat-workspace-layout flex h-full w-full bg-[var(--color-bg)]",
+          hasWorkspaceLayout
+            ? "gap-1.5 p-1.5 md:p-2"
+            : "reactor-single-chat-shell justify-center overflow-hidden px-4 pt-4 md:px-6"
         )}
-        data-workspace-open={isRightCollapsed ? "false" : "true"}
+        data-workspace-open={
+          hasWorkspaceLayout && !isRightCollapsed ? "true" : "false"
+        }
+        data-workspace-empty={hasWorkspaceLayout ? "false" : "true"}
         data-chat-read-only={readOnly ? "true" : "false"}
       >
         {/* Left Panel - Chat Area */}
         <div
+          ref={leftPanelRef}
           className={classNames(
             "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
-            isDragging
-              ? "transition-none"
-              : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
+            !hasWorkspaceLayout && "mx-auto h-full w-full max-w-[980px]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
             (!isLeftCollapsed || isFocusMode) && !isRightCollapsed && "shrink-0",
             isRightCollapsed && !isLeftCollapsed && !isFocusMode && "flex-1"
           )}
-          style={{
-            ...((!isLeftCollapsed || isFocusMode)
+          style={
+            hasWorkspaceLayout
               ? {
-                width: isRightCollapsed && !isFocusMode
-                  ? undefined
-                  : `${leftPanelWidth}%`,
-                minWidth: isFocusMode ? 280 : undefined,
-                maxWidth: isFocusMode ? "28%" : undefined,
+                ...((!isLeftCollapsed || isFocusMode)
+                  ? {
+                    width: isRightCollapsed && !isFocusMode
+                      ? undefined
+                      : `var(--workspace-left-width, ${leftPanelWidth}%)`,
+                    minWidth: isFocusMode ? 280 : undefined,
+                    maxWidth: isFocusMode ? "28%" : undefined,
+                  }
+                  : {})
               }
-              : {}),
-          }}
+              : undefined
+          }
         >
-          {isLeftCollapsed && !isFocusMode ? (
-            // 折叠状态
-            <div className="flex h-full flex-col items-center py-4">
-              <button
-                onClick={toggleLeftPanel}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                title="展开聊天区"
-              >
-                <PanelRightClose className="h-5 w-5" />
-              </button>
-            </div>
-          ) : (
-            // 展开状态（含沉浸窄列）
-            <>
-              {/* Header：运行时显示状态，空闲时显示会话标题 */}
-              <div
-                className={classNames(
-                  "reactor-chat-header flex items-center justify-between border-b border-[var(--color-line)] py-3.5",
-                  isFocusMode ? "px-3" : "px-5"
-                )}
-              >
-                {renderHeaderStatus({ showDeepThink: !isFocusMode })}
-                {!isFocusMode ? (
-                  <div className="flex shrink-0 items-center gap-1">
-                    {renderMobileWorkspaceTrigger()}
-                    <button
-                      type="button"
-                      onClick={() => onOpenTaskFiles?.()}
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                      title="查看当前会话的文件"
-                      aria-label="查看当前会话的文件"
-                    >
-                      <FolderOpen className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : null}
+          <div
+            className={
+              hasWorkspaceLayout
+                ? "flex h-full min-h-0 w-full flex-col overflow-hidden"
+                : "flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden"
+            }
+            id="chat-view"
+          >
+            {isLeftCollapsed && !isFocusMode ? (
+              // 折叠状态
+              <div className="flex h-full flex-col items-center py-4">
+                <button
+                  onClick={toggleLeftPanel}
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                  title="展开聊天区"
+                >
+                  <PanelRightClose className="h-5 w-5" />
+                </button>
               </div>
-
-              {/* Messages */}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Conversation
-                  key={conversation.id}
+            ) : (
+              <>
+                <div
                   className={classNames(
-                    "chat-fade-bottom min-h-0 flex-1 overflow-hidden pt-5",
-                    isFocusMode ? "px-3" : "px-5"
+                    "reactor-chat-header flex items-center justify-between",
+                    hasWorkspaceLayout
+                      ? "border-b border-[var(--color-line)] py-3.5"
+                      : "mb-3 min-h-[36px]",
+                    hasWorkspaceLayout
+                      ? isFocusMode
+                        ? "px-3"
+                        : "px-5"
+                      : "px-1"
                   )}
                 >
-                  <ConversationContent>
-                    {renderChatDialogues()}
-                  </ConversationContent>
-                  <ConversationScrollButton />
-                </Conversation>
+                  {renderHeaderStatus({showDeepThink: hasWorkspaceLayout ? !isFocusMode : true,})}
+                  {(!hasWorkspaceLayout || !isFocusMode) ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {renderMobileWorkspaceTrigger()}
+                      <button
+                        type="button"
+                        onClick={() => onOpenTaskFiles?.()}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                        title="查看当前会话的文件"
+                        aria-label="查看当前会话的文件"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
 
-                {!readOnly ? (
-                  <div
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <Conversation
+                    key={conversation.id}
                     className={classNames(
-                       "shrink-0 bg-[var(--color-bg)] pb-4 pt-3",
-                      isFocusMode ? "px-2" : "px-4"
+                      "chat-fade-bottom min-h-0 flex-1 overflow-hidden",
+                      hasWorkspaceLayout && "pt-5",
+                      hasWorkspaceLayout
+                        ? isFocusMode
+                          ? "px-3"
+                          : "px-5"
+                        : ""
                     )}
-                    data-composer-dock="true"
                   >
-                    {renderComposerStack(`input-${conversation.sessionId}-left`)}
-                  </div>
-                ) : null}
-              </div>
-            </>
-          )}
+                    <ConversationContent
+                      className={
+                        hasWorkspaceLayout
+                          ? undefined
+                          : "mx-auto w-full max-w-[860px] px-1 pb-6"
+                      }
+                    >
+                      {renderChatDialogues()}
+                    </ConversationContent>
+                    <ConversationScrollButton />
+                  </Conversation>
+
+                  {!readOnly ? (
+                    <div
+                      className={classNames(
+                        "shrink-0 bg-[var(--color-bg)]",
+                        hasWorkspaceLayout
+                          ? "pb-4 pt-3"
+                          : "pb-5 pt-4",
+                        hasWorkspaceLayout
+                          ? isFocusMode
+                            ? "px-2"
+                            : "px-4"
+                          : ""
+                      )}
+                      data-composer-dock="true"
+                    >
+                      <div
+                        className={classNames(
+                          "mx-auto w-full",
+                          !hasWorkspaceLayout && "max-w-[860px]"
+                        )}
+                      >
+                        {renderComposerStack(`input-${conversation.sessionId}-main`)}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Drag Handle — 沉浸模式锁定比例，不可拖 */}
-        {!isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
+        {!hasWorkspaceLayout ? null : !isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
           <div
             aria-label="调整对话区和工作区宽度"
             role="separator"
@@ -1055,8 +1210,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onPointerCancel={handleDragEnd}
             className={classNames(
               "reactor-workspace-resizer group relative flex w-4 shrink-0 touch-none cursor-col-resize items-center justify-center rounded-full transition-colors",
-              "hover:bg-[var(--chat-accent)]/10",
-              isDragging && "bg-[var(--chat-accent)]/15"
+              "hover:bg-[var(--chat-accent)]/10"
             )}
             title="拖拽调整左右区域宽度"
           >
@@ -1065,15 +1219,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             <div
               className={classNames(
                 "relative h-14 w-1 rounded-full transition-colors duration-150",
-                isDragging
-                  ? "bg-[var(--chat-accent)]"
-                  : "bg-[var(--color-line-strong)] group-hover:bg-[var(--color-text-faint)]"
+                "bg-[var(--color-line-strong)] group-hover:bg-[var(--color-text-faint)]"
               )}
             />
           </div>
         )}
 
-        {!isRightCollapsed ? (
+        {hasWorkspaceLayout && !isRightCollapsed ? (
           <button
             type="button"
             className="reactor-workspace-scrim lg:hidden"
@@ -1082,94 +1234,84 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           />
         ) : null}
 
-        {/* Right Panel - Action/Workspace Area */}
-        <div
-          className={classNames(
-            "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
-            isDragging
-              ? "transition-none"
-              : "transition-[width,min-width,max-width,opacity] duration-[280ms] ease-[cubic-bezier(0.77,0,0.175,1)]",
-            isRightCollapsed && "w-14 min-w-14",
-            !isRightCollapsed && "flex-1"
-          )}
-          data-workspace-collapsed={isRightCollapsed ? "true" : "false"}
-        >
-          {isRightCollapsed ? (
+        {hasWorkspaceLayout ? (
+          <div
+            className={classNames(
+              "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
+              isRightCollapsed && "w-14 min-w-14",
+              !isRightCollapsed && "flex-1"
+            )}
+            data-workspace-collapsed={isRightCollapsed ? "true" : "false"}
+          >
+            {isRightCollapsed ? (
             // 折叠状态
-            <div className="flex h-full flex-col items-center py-4">
-              <button
-                onClick={toggleRightPanel}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                title="展开智能体工作区"
-              >
-                <PanelLeftClose className="h-5 w-5" />
-              </button>
-            </div>
-          ) : thinkingDetail != null ? (
-            <ThinkingPanel
-              text={thinkingDetail}
-              onClose={() => {
-                closeThinkingPanel();
-                if (!showAction && !workspaceOpenRequested) {
-                  setIsRightCollapsed(true);
-                }
-              }}
-            />
-          ) : toolDiffView ? (
-            <ToolDiffPanel
-              title={toolDiffView.title}
-              path={toolDiffView.path}
-              diffCode={toolDiffView.diffCode}
-              output={toolDiffView.output}
-              status={toolDiffView.status}
-              onClose={() => {
-                closeToolDiffPanel();
-                if (!showAction && !workspaceOpenRequested) {
-                  setIsRightCollapsed(true);
-                }
-              }}
-            />
-          ) : liveAgentDetail ? (
-            <AgentDetailPanel
-              tool={liveAgentDetail.tool}
-              chat={liveAgentDetail.chat}
-              liveRevision={agentLiveRevision}
-              changeActiveChat={changeTask}
-              changePlan={changePlan}
-              onOpenToolDiff={openToolDiffPanel}
-              onOpenAgent={openAgentPanel}
-              onClose={() => {
-                closeAgentPanel();
-                if (!showAction && !workspaceOpenRequested) {
-                  setIsRightCollapsed(true);
-                }
-              }}
-            />
-          ) : (
-            <ActionView
-              activeTask={activeTask}
-              streamTask={workspaceStreamTask}
-              pendingPreviewFile={pendingPreviewFile}
-              onPendingPreviewFileConsumed={clearPendingPreviewFile}
-              workspaceCaption={workspaceCaption}
-              taskList={sessionFileTasks}
-              plan={plan}
-              runState={activeRunState}
-              isFocusMode={isFocusMode}
-              onToggleFocusMode={toggleFocusMode}
-              ref={actionViewRef}
-              onClose={() => {
-                if (isFocusMode) {
-                  exitFocusMode();
-                } else {
-                  setWorkspaceOpenRequested(false);
-                  changeActionStatus(false);
-                  setIsRightCollapsed(true);
-                }
-              }}
-            />
-          )}
-        </div>
+              <div className="flex h-full flex-col items-center py-4">
+                <button
+                  onClick={toggleRightPanel}
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
+                  title="展开智能体工作区"
+                >
+                  <PanelLeftClose className="h-5 w-5" />
+                </button>
+              </div>
+            ) : thinkingDetail != null ? (
+              <ThinkingPanel
+                text={thinkingDetail}
+                onClose={() => {
+                  closeThinkingPanel();
+                  if (!showAction && !workspaceOpenRequested) {
+                    setIsRightCollapsed(true);
+                  }
+                }}
+              />
+            ) : toolDiffView ? (
+              <ToolDiffPanel
+                title={toolDiffView.title}
+                path={toolDiffView.path}
+                diffCode={toolDiffView.diffCode}
+                output={toolDiffView.output}
+                status={toolDiffView.status}
+                onClose={() => {
+                  closeToolDiffPanel();
+                  if (!showAction && !workspaceOpenRequested) {
+                    setIsRightCollapsed(true);
+                  }
+                }}
+              />
+            ) : liveAgentDetail ? (
+              <AgentDetailPanel
+                tool={liveAgentDetail.tool}
+                chat={liveAgentDetail.chat}
+                liveRevision={agentLiveRevision}
+                changeActiveChat={changeTask}
+                changePlan={changePlan}
+                onOpenToolDiff={openToolDiffPanel}
+                onOpenAgent={openAgentPanel}
+                onClose={() => {
+                  closeAgentPanel();
+                  if (!showAction && !workspaceOpenRequested) {
+                    setIsRightCollapsed(true);
+                  }
+                }}
+              />
+            ) : (
+              <ActionView
+                activeTask={activeTask}
+                streamTask={workspaceStreamTask}
+                pendingPreviewFile={pendingPreviewFile}
+                onPendingPreviewFileConsumed={clearPendingPreviewFile}
+                workspaceCaption={workspaceCaption}
+                taskList={sessionFileTasks}
+                plan={plan}
+                runState={activeRunState}
+                isFocusMode={isFocusMode}
+                onToggleFocusMode={toggleFocusMode}
+                ref={actionViewRef}
+                onClose={closeActionView}
+              />
+            )}
+          </div>
+        ) : null}
 
         {contextHolder}
       </div>
@@ -1199,7 +1341,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
           {!readOnly ? (
             <div
-               className="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"
+              className="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"
               data-composer-dock="true"
             >
               <div className="mx-auto w-full max-w-[860px]">

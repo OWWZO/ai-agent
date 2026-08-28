@@ -3,6 +3,11 @@ import { FC, memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import {
+  WORKSPACE_RESIZE_END_EVENT,
+  WORKSPACE_RESIZE_START_EVENT,
+  isWorkspaceResizeEventFor,
+} from "@/utils/workspaceResize";
 
 type Props = {
   src?: string;
@@ -136,6 +141,10 @@ const GenUiModel3D: FC<Props> = memo(
         }
       );
 
+      let frameId: number | null = null;
+      let resizeFrameId: number | null = null;
+      let visible = true;
+      let resizing = false;
       const resize = () => {
         // 使用宿主容器尺寸而非 window 尺寸，兼容侧边栏展开和响应式布局变化。
         const rect = host.getBoundingClientRect();
@@ -145,22 +154,75 @@ const GenUiModel3D: FC<Props> = memo(
         camera.updateProjectionMatrix();
         renderer.setSize(width, h, false);
       };
-      resize();
-      const resizeObserver = new ResizeObserver(resize);
-      resizeObserver.observe(host);
+      const scheduleResize = () => {
+        if (resizing) return;
+        if (resizeFrameId !== null) return;
+        resizeFrameId = requestAnimationFrame(() => {
+          resizeFrameId = null;
+          if (!disposed && !resizing) resize();
+        });
+      };
 
-      const tick = () => {
-        if (disposed) return;
-        requestAnimationFrame(tick);
+      function tick() {
+        frameId = null;
+        if (disposed || !visible || resizing) return;
         controls.update();
         renderer.render(scene, camera);
+        frameId = requestAnimationFrame(tick);
+      }
+
+      const onResizeStart = (event: Event) => {
+        if (!isWorkspaceResizeEventFor(event, host)) return;
+        resizing = true;
+        if (frameId !== null) {
+          cancelAnimationFrame(frameId);
+          frameId = null;
+        }
+        if (resizeFrameId !== null) {
+          cancelAnimationFrame(resizeFrameId);
+          resizeFrameId = null;
+        }
       };
+      const onResizeEnd = (event: Event) => {
+        if (!isWorkspaceResizeEventFor(event, host)) return;
+        resizing = false;
+        scheduleResize();
+        if (visible && frameId === null) {
+          tick();
+        }
+      };
+      document.addEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+      document.addEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
+
+      resize();
+      const resizeObserver = new ResizeObserver(scheduleResize);
+      resizeObserver.observe(host);
+      const intersectionObserver =
+        typeof IntersectionObserver === "undefined"
+          ? null
+          : new IntersectionObserver(([entry]) => {
+            const nextVisible = Boolean(entry?.isIntersecting);
+            if (visible === nextVisible) return;
+            visible = nextVisible;
+            if (visible && frameId === null) {
+              tick();
+            } else if (!visible && frameId !== null) {
+              cancelAnimationFrame(frameId);
+              frameId = null;
+            }
+          });
+      intersectionObserver?.observe(host);
       tick();
 
       return () => {
         // React effect 重跑或卸载时阻止异步回调继续写状态，并释放 WebGL 资源。
         disposed = true;
+        document.removeEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+        document.removeEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
         resizeObserver.disconnect();
+        intersectionObserver?.disconnect();
+        if (frameId !== null) cancelAnimationFrame(frameId);
+        if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
         controls.dispose();
         if (modelRoot) {
           modelRoot.traverse((child) => {

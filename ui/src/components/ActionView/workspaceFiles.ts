@@ -77,7 +77,35 @@ export function buildUserUploadFileTask(
       command: "用户上传",
       fileInfo,
     },
-  } as PanelItemType;
+  } as unknown as PanelItemType;
+}
+
+/**
+ * 收集单轮会话的文件任务，供流式更新时按 chat 对象复用历史结果。
+ */
+export function collectChatFileTasks(chat?: CHAT.ChatItem | null): PanelItemType[] {
+  if (!chat) {
+    return [];
+  }
+
+  const collected: PanelItemType[] = [];
+  const uploadTask = buildUserUploadFileTask(
+    chat.files,
+    chat.startedAt || chat.requestId
+  );
+  if (uploadTask) {
+    collected.push(uploadTask);
+  }
+  for (const group of chat.tasks || []) {
+    collected.push(...flattenTasksWithFiles(group));
+  }
+  for (const group of chat.multiAgent?.tasks || []) {
+    collected.push(...flattenTasksWithFiles(group));
+  }
+  if (chat.conclusion) {
+    collected.push(...flattenTasksWithFiles([chat.conclusion]));
+  }
+  return collected;
 }
 
 /**
@@ -90,22 +118,7 @@ export function collectSessionFileTasks(
 ): PanelItemType[] {
   const collected: PanelItemType[] = [];
   for (const chat of chatList || []) {
-    const uploadTask = buildUserUploadFileTask(
-      chat.files,
-      chat.startedAt || chat.requestId
-    );
-    if (uploadTask) {
-      collected.push(uploadTask);
-    }
-    for (const group of chat.tasks || []) {
-      collected.push(...flattenTasksWithFiles(group));
-    }
-    for (const group of chat.multiAgent?.tasks || []) {
-      collected.push(...flattenTasksWithFiles(group));
-    }
-    if (chat.conclusion) {
-      collected.push(...flattenTasksWithFiles([chat.conclusion]));
-    }
+    collected.push(...collectChatFileTasks(chat));
   }
   collected.push(...flattenTasksWithFiles(liveTaskList));
   return collected;

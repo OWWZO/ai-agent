@@ -35,59 +35,79 @@ export const useStreamAnimation = (
 
   const [displayText, setDisplayText] = useState(text);
   const [charIndex, setCharIndex] = useState(0);
+  const displayTextRef = useRef(text);
+  const targetTextRef = useRef(text);
   const textRef = useRef<HTMLDivElement>(null);
   const lastScrollRef = useRef(0);
+  const lastFrameTimeRef = useRef(0);
   const rafRef = useRef<number | undefined>(undefined);
 
   // 平滑的透明度动画
   const opacity = useMotionValue(0);
-  const smoothOpacity = useSpring(opacity, { stiffness: 100, damping: 20 });
+  const smoothOpacity = useSpring(opacity, {
+    stiffness: 100,
+    damping: 20,
+  });
 
   // 字符高度动画（用于弹跳效果）
   const y = useMotionValue(0);
-  const smoothY = useSpring(y, { stiffness: 300, damping: 20 });
+  const smoothY = useSpring(y, {
+    stiffness: 300,
+    damping: 20,
+  });
 
   useEffect(() => {
-    // 流式期间只追赶新增文本，非流式或关闭动画时直接同步完整文本；每次 effect
-    // 重跑都取消上一轮 RAF，避免旧文本继续写入新一轮 displayText。
+    targetTextRef.current = text;
+
+    // 流式期间只追赶新增文本，非流式或关闭动画时直接同步完整文本。
     if (!enabled) {
+      displayTextRef.current = text;
       setDisplayText(text);
+      setCharIndex(text.length);
       return;
     }
 
     if (!isStreaming) {
+      displayTextRef.current = text;
       setDisplayText(text);
       setCharIndex(text.length);
       opacity.set(1);
       return;
     }
 
-    // 流式显示逻辑
-    const targetLength = text.length;
-    const currentLength = displayText.length;
+    // 目标可能因重连或切换消息而回退，先对齐共同前缀，避免显示旧内容。
+    const currentText = displayTextRef.current;
+    if (!text.startsWith(currentText)) {
+      const commonLength = commonPrefixLength(currentText, text);
+      displayTextRef.current = text.slice(0, commonLength);
+      setDisplayText(displayTextRef.current);
+      setCharIndex(commonLength);
+    }
 
-    if (targetLength > currentLength) {
-      const charsToAdd = targetLength - currentLength;
+    const addChars = (timestamp: number) => {
+      rafRef.current = undefined;
+      const current = displayTextRef.current;
+      const target = targetTextRef.current;
+      if (current === target) return;
 
-      let i = 0;
-      const addChars = () => {
-        if (i < charsToAdd) {
-          const chunkSize = Math.min(3, charsToAdd - i);
-          setDisplayText((prev) => text.slice(0, prev.length + chunkSize));
-          setCharIndex((prev) => prev + chunkSize);
-          i += chunkSize;
+      const elapsed = timestamp - lastFrameTimeRef.current;
+      const chunkSize = Math.max(1, Math.min(12, Math.floor((speed * Math.max(elapsed, 16)) / 1000)));
+      const next = target.slice(0, current.length + chunkSize);
+      displayTextRef.current = next;
+      setDisplayText(next);
+      setCharIndex(next.length);
 
-          // 触发弹跳动画
-          if (bounce) {
-            y.set(-2);
-            setTimeout(() => y.set(0), 100);
-          }
+      if (bounce) {
+        y.set(-2);
+        window.setTimeout(() => y.set(0), 100);
+      }
 
-          // 使用 RAF 进行下一帧更新
-          rafRef.current = requestAnimationFrame(addChars);
-        }
-      };
+      lastFrameTimeRef.current = timestamp;
+      rafRef.current = requestAnimationFrame(addChars);
+    };
 
+    if (displayTextRef.current.length < targetTextRef.current.length && rafRef.current === undefined) {
+      lastFrameTimeRef.current = performance.now();
       rafRef.current = requestAnimationFrame(addChars);
     }
 
@@ -98,11 +118,12 @@ export const useStreamAnimation = (
 
     return () => {
       // React 卸载或文本变化时取消未完成帧，防止异步回调在已失效组件上更新状态。
-      if (rafRef.current) {
+      if (rafRef.current !== undefined) {
         cancelAnimationFrame(rafRef.current);
+        rafRef.current = undefined;
       }
     };
-  }, [text, isStreaming, enabled, speed, bounce, fadeIn, opacity, y, displayText.length]);
+  }, [text, isStreaming, enabled, speed, bounce, fadeIn, opacity, y]);
 
   // 平滑滚动
   useEffect(() => {
@@ -182,7 +203,10 @@ export const useSmoothNumber = (
  */
 export const usePulseAnimation = (isActive: boolean, intensity: number = 1) => {
   const scale = useMotionValue(1);
-  const smoothScale = useSpring(scale, { stiffness: 200, damping: 15 });
+  const smoothScale = useSpring(scale, {
+    stiffness: 200,
+    damping: 15,
+  });
 
   useEffect(() => {
     if (!isActive) {
@@ -238,7 +262,10 @@ export const useStaggerAnimation = (itemCount: number, baseDelay: number = 0.05)
  */
 export const useBreathingAnimation = (isActive: boolean) => {
   const opacity = useMotionValue(0.5);
-  const smoothOpacity = useSpring(opacity, { stiffness: 50, damping: 20 });
+  const smoothOpacity = useSpring(opacity, {
+    stiffness: 50,
+    damping: 20,
+  });
 
   useEffect(() => {
     if (!isActive) {
@@ -263,3 +290,12 @@ export const useBreathingAnimation = (isActive: boolean) => {
 };
 
 export default useStreamAnimation;
+
+function commonPrefixLength(a: string, b: string): number {
+  const length = Math.min(a.length, b.length);
+  let index = 0;
+  while (index < length && a.charCodeAt(index) === b.charCodeAt(index)) {
+    index += 1;
+  }
+  return index;
+}

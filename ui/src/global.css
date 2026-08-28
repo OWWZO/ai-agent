@@ -1832,6 +1832,53 @@ ol {
   overflow: hidden;
 }
 
+/* Keep split-pane layout and paint work local to each side of the workspace. */
+@media (min-width: 1024px) {
+  .reactor-chat-workspace-layout {
+    contain: layout style;
+    isolation: isolate;
+  }
+
+  .reactor-chat-panel-left,
+  .reactor-workspace-panel {
+    contain: layout paint;
+  }
+
+  .reactor-chat-panel-left .chat-fade-bottom,
+  .reactor-workspace-panel .reactor-workspace-content {
+    contain: layout paint;
+  }
+
+  .reactor-chat-panel-left .chat-dialogue {
+    content-visibility: auto;
+    contain-intrinsic-size: 320px;
+  }
+}
+
+.reactor-chat-workspace-layout[data-workspace-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.reactor-chat-workspace-layout[data-workspace-resizing="true"]
+  .reactor-chat-panel-left,
+.reactor-chat-workspace-layout[data-workspace-resizing="true"]
+  .reactor-workspace-panel {
+  transition: none !important;
+}
+
+.reactor-chat-workspace-layout[data-workspace-resizing="true"]
+  .reactor-workspace-resizer {
+  background: color-mix(in srgb, var(--chat-accent) 15%, transparent);
+  transition: none;
+}
+
+.reactor-chat-workspace-layout[data-workspace-resizing="true"]
+  .reactor-workspace-resizer > div:last-child {
+  background: var(--chat-accent);
+  transition: none;
+}
+
 /* Mobile chat adaptation: the workspace becomes a thumb-reachable bottom sheet. */
 .reactor-workspace-scrim {
   display: none;
@@ -2693,6 +2740,11 @@ ol {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.kimi-appr-label {
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-normal) var(--font-ui);
+}
 .kimi-appr-plan {
   max-height: 50vh;
   overflow-y: auto;
@@ -2777,6 +2829,32 @@ ol {
   opacity: 0.75;
   margin-left: 4px;
   font: var(--text-xs) var(--font-mono);
+}
+
+@media (max-width: 640px) {
+  .kimi-appr .kimi-ui-card__head {
+    padding: 10px 12px;
+  }
+
+  .kimi-appr-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kimi-appr-actions {
+    flex-direction: column;
+  }
+
+  .kimi-appr-btn {
+    width: 100%;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .kimi-appr-plan textarea {
+    min-height: 220px;
+  }
 }
 
 /* AskUser answered result (ToolRow body) */

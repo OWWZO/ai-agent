@@ -1,5 +1,5 @@
 import { copyText, downloadFile, showMessage } from "@/utils";
-import React, { useMemo, useState } from "react";
+import React, { memo, useMemo, useState } from "react";
 import ActionViewFrame from "./ActionViewFrame";
 import {
   FileRenderer,
@@ -73,7 +73,7 @@ const FileList: React.FC<{
   embedded?: boolean;
   /** 强制按源码视图打开（用于工作区「源码」分段） */
   forceSource?: boolean;
-}> = (props) => {
+}> = memo((props) => {
   const {
     taskList,
     clearActiveFile,
@@ -431,7 +431,7 @@ const FileList: React.FC<{
       </div>
     </ActionViewFrame>
   );
-};
+});
 
 function resolvePreviewExtension(nameExt: string, rawType: string) {
   if (nameExt && nameExt.length <= 8 && !nameExt.includes("/")) {
@@ -445,5 +445,7 @@ function resolvePreviewExtension(nameExt: string, rawType: string) {
   }
   return rawType.replace(/^\./, "");
 }
+
+FileList.displayName = "FileList";
 
 export default FileList;

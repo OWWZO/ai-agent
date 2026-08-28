@@ -83,9 +83,13 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-    if (!atBottom) return;
-    el.scrollTop = el.scrollHeight;
+    const frame = requestAnimationFrame(() => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+      if (atBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [
     nested.length,
     revision,

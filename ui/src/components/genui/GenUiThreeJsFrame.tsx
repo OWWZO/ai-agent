@@ -1,5 +1,10 @@
 import { FC, memo, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import {
+  WORKSPACE_RESIZE_END_EVENT,
+  WORKSPACE_RESIZE_START_EVENT,
+  isWorkspaceResizeEventFor,
+} from "@/utils/workspaceResize";
 
 type GeometryKind =
   | "box"
@@ -314,6 +319,9 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
 
     let visible = true;
     let disposed = false;
+    let frameId: number | null = null;
+    let resizeFrameId: number | null = null;
+    let resizing = false;
     const clock = new THREE.Clock();
 
     const resize = () => {
@@ -326,24 +334,18 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
       const dist = camera.position.length();
       scene.fog = new THREE.Fog(options.background, dist + 1.5, dist + 14);
     };
+    const scheduleResize = () => {
+      if (resizing) return;
+      if (resizeFrameId !== null) return;
+      resizeFrameId = requestAnimationFrame(() => {
+        resizeFrameId = null;
+        if (!disposed && !resizing) resize();
+      });
+    };
 
-    resize();
-    const resizeObserver = new ResizeObserver(resize);
-    resizeObserver.observe(host);
-    const intersectionObserver =
-      typeof IntersectionObserver === "undefined"
-        ? null
-        : new IntersectionObserver(([entry]) => {
-          visible = Boolean(entry?.isIntersecting);
-        });
-    intersectionObserver?.observe(host);
-
-    const tick = () => {
-      if (disposed) return;
-      // requestAnimationFrame 只在组件仍存活且画布可见时渲染；不可见时保留循环调度，
-      // 但跳过 GPU 绘制，重新进入视口后可从同一个 Clock 继续动画。
-      requestAnimationFrame(tick);
-      if (!visible) return;
+    function tick() {
+      frameId = null;
+      if (disposed || !visible || resizing) return;
       const t = clock.getElapsedTime();
       if (options.autoRotate) {
         group.rotation.x = t * 0.18 * options.rotateSpeed;
@@ -363,15 +365,62 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
         orbiter.rotation.y += 0.024;
       });
       renderer.render(scene, camera);
+      frameId = requestAnimationFrame(tick);
+    }
+
+    const onResizeStart = (event: Event) => {
+      if (!isWorkspaceResizeEventFor(event, host)) return;
+      resizing = true;
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      if (resizeFrameId !== null) {
+        cancelAnimationFrame(resizeFrameId);
+        resizeFrameId = null;
+      }
     };
+    const onResizeEnd = (event: Event) => {
+      if (!isWorkspaceResizeEventFor(event, host)) return;
+      resizing = false;
+      scheduleResize();
+      if (visible && frameId === null) {
+        tick();
+      }
+    };
+    document.addEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+    document.addEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
+
+    resize();
+    const resizeObserver = new ResizeObserver(scheduleResize);
+    resizeObserver.observe(host);
+    const intersectionObserver =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+          const nextVisible = Boolean(entry?.isIntersecting);
+          if (visible === nextVisible) return;
+          visible = nextVisible;
+          if (visible && frameId === null) {
+            tick();
+          } else if (!visible && frameId !== null) {
+            cancelAnimationFrame(frameId);
+            frameId = null;
+          }
+        });
+    intersectionObserver?.observe(host);
     tick();
 
     return () => {
       disposed = true;
       // 清理顺序先阻止下一帧，再断开观察器、移除 canvas、释放场景资源和 renderer，
       // 覆盖 React effect 重跑与组件卸载两种生命周期。
+      document.removeEventListener(WORKSPACE_RESIZE_START_EVENT, onResizeStart);
+      document.removeEventListener(WORKSPACE_RESIZE_END_EVENT, onResizeEnd);
       resizeObserver.disconnect();
       intersectionObserver?.disconnect();
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
       if (renderer.domElement.parentNode === host) {
         host.removeChild(renderer.domElement);
       }

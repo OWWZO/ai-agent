@@ -404,8 +404,13 @@ const useStreamingText = (text: string, isStreaming: boolean) => {
 const useNearBottomAutoScroll = (enabled: boolean, trigger: string) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollRef = useRef(0);
+  const scrollFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (scrollFrameRef.current !== null) {
+      cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
     if (!enabled || !containerRef.current) return;
 
     const now = Date.now();
@@ -413,16 +418,26 @@ const useNearBottomAutoScroll = (enabled: boolean, trigger: string) => {
     lastScrollRef.current = now;
 
     const container = containerRef.current;
-    const parent = container.parentElement?.parentElement;
-    if (!parent) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const parent = container.parentElement?.parentElement;
+      if (!parent) return;
 
-    const scrollThreshold = 80;
-    const isNearBottom =
-      parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
+      const scrollThreshold = 80;
+      const isNearBottom =
+        parent.scrollHeight - parent.scrollTop - parent.clientHeight < scrollThreshold;
 
-    if (isNearBottom) {
-      parent.scrollTop = parent.scrollHeight;
-    }
+      if (isNearBottom) {
+        parent.scrollTop = parent.scrollHeight;
+      }
+    });
+
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
   }, [enabled, trigger]);
 
   return containerRef;

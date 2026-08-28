@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import ActionPanel, { PanelItemType } from "../ActionPanel";
 import { useMemoizedFn } from "ahooks";
@@ -72,7 +72,7 @@ const FilePreview: React.FC<{
     errorMsg?: string;
     finishedAt?: string;
   };
-}> = ({ taskItem: defaultTaskItem, className, taskList: taskListProp, runState }) => {
+}> = memo(({ taskItem: defaultTaskItem, className, taskList: taskListProp, runState }) => {
   const taskList = useMemo(() => {
     return filterPreviewTaskList(taskListProp);
   }, [taskListProp]);
@@ -231,6 +231,8 @@ const FilePreview: React.FC<{
       </AnimatePresence>
     </div>
   );
-};
+});
+
+FilePreview.displayName = "FilePreview";
 
 export default FilePreview;

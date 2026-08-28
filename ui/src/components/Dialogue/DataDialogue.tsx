@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, memo } from "react";
 import { BotIcon } from "lucide-react";
 import DataChat from "@/components/DataChat";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
@@ -9,7 +9,7 @@ type Props = {
   chat: CHAT.DataChatItem;
 };
 
-const DataDialogue: FC<Props> = (props) => {
+const DataDialogue: FC<Props> = memo((props) => {
   const { chat } = props;
 
   return (
@@ -67,6 +67,8 @@ const DataDialogue: FC<Props> = (props) => {
 
     </div>
   );
-};
+});
+
+DataDialogue.displayName = "DataDialogue";
 
 export default DataDialogue;

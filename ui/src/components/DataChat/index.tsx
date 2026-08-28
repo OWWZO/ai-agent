@@ -2,7 +2,7 @@ import Chart from "./Chart";
 import SimpleTable from "./SimpleTable";
 import Card from "./Card";
 import classNames from "classnames";
-import { useState, useMemo } from "react";
+import { memo, useState, useMemo } from "react";
 import {
   buildChartConfig,
   resolveChartType,
@@ -141,10 +141,13 @@ const TypeBar: ReactorType.FC<{
 
 const DataChat: ReactorType.FC<{
   data?: DataChatSourceConfig;
-}> = (props) => {
+}> = memo((props) => {
   const { data } = props;
   // 非对象数据降级为空配置，避免流式中间态把图表组件打崩。
-  const chartCfg = typeof data === "object" && data ? data : {};
+  const chartCfg = useMemo(
+    () => (typeof data === "object" && data ? data : {}),
+    [data]
+  );
   const [currentType, setCurrentType] = useState<string>(
     resolveChartType(chartCfg)
   );
@@ -173,6 +176,8 @@ const DataChat: ReactorType.FC<{
       </div>
     </div>
   );
-};
+});
+
+DataChat.displayName = "DataChat";
 
 export default DataChat;

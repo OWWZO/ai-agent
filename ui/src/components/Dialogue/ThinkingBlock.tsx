@@ -30,6 +30,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   className,
 }: ThinkingBlockProps) {
   const bodyRef = useRef<HTMLPreElement | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const paragraphs = useMemo(() => splitParagraphs(text), [text]);
   const isFoldable = foldable && paragraphs.length > 1;
   const open = streaming || !isFoldable;
@@ -38,15 +39,34 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   useEffect(() => {
     const el = bodyRef.current;
     if (!el || !streaming) return;
-    el.scrollTop = el.scrollHeight;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
   }, [streaming]);
 
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-    if (!atBottom) return;
-    el.scrollTop = el.scrollHeight;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      if (atBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
   }, [text]);
 
   const handleOpen: MouseEventHandler = (event) => {

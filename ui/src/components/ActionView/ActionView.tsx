@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  memo,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -54,6 +55,7 @@ const useActionView = () => {
 
 type ActionViewProps = {
   title?: React.ReactNode;
+  className?: string;
   taskList?: PanelItemType[];
   activeTask?: CHAT.Task;
   streamTask?: CHAT.Task;
@@ -73,7 +75,7 @@ type ActionViewProps = {
   ref?: React.Ref<ActionViewRef>;
 };
 
-const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) => {
+const ActionViewInner = forwardRef<ActionViewRef, ActionViewProps>((props, ref) => {
   const {
     className,
     onClose,
@@ -525,6 +527,8 @@ const ActionViewComp: ReactorType.FC<ActionViewProps> = forwardRef((props, ref) 
     </motion.div>
   );
 });
+
+const ActionViewComp = memo(ActionViewInner);
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error

@@ -1,6 +1,11 @@
 import { FC, memo, useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
+import {
+  WORKSPACE_RESIZE_END_EVENT,
+  WORKSPACE_RESIZING_SELECTOR,
+  isWorkspaceResizeEventFor,
+} from "@/utils/workspaceResize";
 
 type SeriesItem = { name?: string; values?: number[] };
 
@@ -30,6 +35,7 @@ const GenUiChart: FC<Props> = memo(
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
     const instance = useRef<echarts.EChartsType | null>(null);
+    const resizeFrameRef = useRef<number | null>(null);
 
     const option: EChartsOption = useMemo(() => {
       // option 只依赖可序列化 props；饼图和坐标图分别使用 ECharts 的数据模型。
@@ -144,23 +150,54 @@ const GenUiChart: FC<Props> = memo(
 
     useEffect(() => {
       if (!ref.current) return;
-      // 实例在 DOM 容器上复用，option 更新只替换配置；ResizeObserver 覆盖非 window 尺寸变化。
+      // 实例在 DOM 容器上复用，option 更新只替换配置。
       if (!instance.current) {
         instance.current = echarts.init(ref.current);
       }
       instance.current.setOption(option, true);
-      const onResize = () => instance.current?.resize();
-      window.addEventListener("resize", onResize);
-      const ro =
-        typeof ResizeObserver !== "undefined" && ref.current
-          ? new ResizeObserver(onResize)
-          : null;
-      if (ref.current && ro) ro.observe(ref.current);
-      return () => {
-        window.removeEventListener("resize", onResize);
-        ro?.disconnect();
-      };
     }, [option]);
+
+    useEffect(() => {
+      const node = ref.current;
+      if (!node) return;
+
+      const scheduleResize = () => {
+        if (ref.current?.closest(WORKSPACE_RESIZING_SELECTOR)) return;
+        if (resizeFrameRef.current !== null) return;
+        resizeFrameRef.current = requestAnimationFrame(() => {
+          resizeFrameRef.current = null;
+          instance.current?.resize();
+        });
+      };
+      window.addEventListener("resize", scheduleResize);
+      const handleWorkspaceResizeEnd = (event: Event) => {
+        if (isWorkspaceResizeEventFor(event, node)) {
+          scheduleResize();
+        }
+      };
+      document.addEventListener(
+        WORKSPACE_RESIZE_END_EVENT,
+        handleWorkspaceResizeEnd
+      );
+      const ro =
+        typeof ResizeObserver !== "undefined"
+          ? new ResizeObserver(scheduleResize)
+          : null;
+      ro?.observe(node);
+
+      return () => {
+        window.removeEventListener("resize", scheduleResize);
+        document.removeEventListener(
+          WORKSPACE_RESIZE_END_EVENT,
+          handleWorkspaceResizeEnd
+        );
+        ro?.disconnect();
+        if (resizeFrameRef.current !== null) {
+          cancelAnimationFrame(resizeFrameRef.current);
+          resizeFrameRef.current = null;
+        }
+      };
+    }, []);
 
     useEffect(() => {
       return () => {
