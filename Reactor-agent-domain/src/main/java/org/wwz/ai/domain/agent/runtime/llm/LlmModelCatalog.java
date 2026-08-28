@@ -5,8 +5,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.adapter.repository.ILlmModelConfigRepository;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -24,6 +26,8 @@ import java.util.Optional;
 public class LlmModelCatalog {
 
     public static final String DEFAULT_MODEL = "default";
+    /** 备用配置重复使用 modelId 时使用的内部行引用，不暴露给用户配置。 */
+    public static final String BINDING_REF_PREFIX = "__db_binding__:";
 
     private final ILlmModelConfigRepository repository;
     private final LlmChatModelResolver chatModelResolver;
@@ -65,20 +69,32 @@ public class LlmModelCatalog {
      * 从 MySQL 模型用途标记中解析备用模型。备用模型应将 model_usage 设为 fallback。
      */
     public Optional<String> resolveFallbackModelName(String primaryModel) {
+        return resolveFallbackModelNames(primaryModel).stream().findFirst();
+    }
+
+    /**
+     * 按模型目录顺序解析全部备用模型，主模型本身不会重复加入候选列表。
+     */
+    public List<String> resolveFallbackModelNames(String primaryModel) {
         List<LlmModelBinding> bindings = loadUsable(System.currentTimeMillis());
+        if (bindings.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> fallbackModels = new ArrayList<>();
+        LlmModelBinding primary = pick(bindings, primaryModel);
         for (LlmModelBinding binding : bindings) {
             if (!isFallback(binding.getModelUsage())) {
                 continue;
             }
-            if (sameModel(binding, primaryModel)) {
+            if (sameBinding(binding, primary)) {
                 continue;
             }
-            String modelRef = StringUtils.defaultIfBlank(binding.getModelId(), binding.getModelName());
+            String modelRef = toFallbackReference(binding, bindings);
             if (StringUtils.isNotBlank(modelRef)) {
-                return Optional.of(modelRef.trim());
+                fallbackModels.add(modelRef.trim());
             }
         }
-        return Optional.empty();
+        return fallbackModels;
     }
 
     /** 管理台写模型/API 后调用：清绑定缓存 + ChatModel 实例缓存。 */
@@ -125,17 +141,47 @@ public class LlmModelCatalog {
             }
             return bindings.get(0);
         }
+
+        if (id.startsWith(BINDING_REF_PREFIX)) {
+            Long bindingId = parseBindingId(id);
+            if (bindingId == null) {
+                return null;
+            }
+            for (LlmModelBinding binding : bindings) {
+                if (Objects.equals(bindingId, binding.getId())) {
+                    return binding;
+                }
+            }
+            return null;
+        }
+
+        LlmModelBinding fallbackById = null;
         for (LlmModelBinding b : bindings) {
             if (id.equals(b.getModelId())) {
-                return b;
+                if (!isFallback(b.getModelUsage())) {
+                    return b;
+                }
+                if (fallbackById == null) {
+                    fallbackById = b;
+                }
             }
         }
+        if (fallbackById != null) {
+            return fallbackById;
+        }
+
+        LlmModelBinding fallbackByName = null;
         for (LlmModelBinding b : bindings) {
             if (id.equals(b.getModelName())) {
-                return b;
+                if (!isFallback(b.getModelUsage())) {
+                    return b;
+                }
+                if (fallbackByName == null) {
+                    fallbackByName = b;
+                }
             }
         }
-        return null;
+        return fallbackByName;
     }
 
     static boolean isFallback(String modelUsage) {
@@ -149,13 +195,31 @@ public class LlmModelCatalog {
                 || "备用模型".equals(normalized);
     }
 
-    private static boolean sameModel(LlmModelBinding binding, String modelRef) {
+    private static String toFallbackReference(LlmModelBinding binding, List<LlmModelBinding> bindings) {
+        String modelRef = StringUtils.defaultIfBlank(binding.getModelId(), binding.getModelName());
         if (StringUtils.isBlank(modelRef)) {
+            return null;
+        }
+        if (pick(bindings, modelRef) == binding || binding.getId() == null) {
+            return modelRef;
+        }
+        return BINDING_REF_PREFIX + binding.getId();
+    }
+
+    private static boolean sameBinding(LlmModelBinding left, LlmModelBinding right) {
+        if (left == null || right == null) {
             return false;
         }
-        String normalized = modelRef.trim();
-        return normalized.equalsIgnoreCase(binding.getModelId())
-                || normalized.equalsIgnoreCase(binding.getModelName());
+        return left == right
+                || (left.getId() != null && Objects.equals(left.getId(), right.getId()));
+    }
+
+    private static Long parseBindingId(String modelRef) {
+        try {
+            return Long.valueOf(modelRef.substring(BINDING_REF_PREFIX.length()));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     public static LLMSettings toSettings(LlmModelBinding binding) {

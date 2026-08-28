@@ -41,8 +41,11 @@ import {
   productList,
 } from "@/utils/constants";
 import UploadAttachmentChip from "./UploadAttachmentChip";
-import { llmModelAdminApi, type LlmModelRecord } from "@/services/llmModelAdmin";
-import CapabilityPicker from "./CapabilityPicker";
+import {
+  isFallbackModelUsage,
+  llmModelAdminApi,
+  type LlmModelRecord,
+} from "@/services/llmModelAdmin";
 import ContextRing, { type ContextUsageView } from "./ContextRing";
 import MarkdownBar from "./MarkdownBar";
 import ModelPicker from "./ModelPicker";
@@ -213,9 +216,20 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     void llmModelAdminApi
       .listEnabledModels()
       .then((list) => {
-        const enabled = Array.isArray(list)
-          ? list.filter((m) => (m.status ?? 1) === 1)
-          : [];
+        const enabledByModelId = new Map<string, LlmModelRecord>();
+        if (Array.isArray(list)) {
+          for (const model of list) {
+            if (
+              (model.status ?? 1) !== 1 ||
+              isFallbackModelUsage(model.modelUsage) ||
+              enabledByModelId.has(model.modelId)
+            ) {
+              continue;
+            }
+            enabledByModelId.set(model.modelId, model);
+          }
+        }
+        const enabled = Array.from(enabledByModelId.values());
         setModels(enabled);
         setSelectedModel((prev) => {
           if (prev && enabled.some((m) => m.modelId === prev || m.modelName === prev)) {
@@ -562,12 +576,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                   >
                     <Type className="size-3.5 shrink-0 opacity-80" />
                   </button>
-
-                  <CapabilityPicker
-                    sessionId={sessionId}
-                    disabled={disabled}
-                    triggerClassName={toolBtnClassName}
-                  />
 
                   <ThinkingToggle
                     supported={supportsThinking}

@@ -23,7 +23,7 @@ public class AiClientModel {
     private Long id;
 
     /**
-     * 全局唯一模型ID
+     * 模型引用标识；允许多条配置共用
      */
     private String modelId;
 

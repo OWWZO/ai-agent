@@ -27,7 +27,7 @@ public class AiClientModelRequestDTO implements Serializable {
     private Long id;
 
     /**
-     * 全局唯一模型ID
+     * 模型引用标识；允许多条配置共用，更新时使用 id 区分具体配置行
      */
     private String modelId;
 

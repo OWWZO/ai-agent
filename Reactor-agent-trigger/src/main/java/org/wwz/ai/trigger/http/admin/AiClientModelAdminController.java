@@ -52,6 +52,15 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
      */
     @PostMapping("/test/{modelId}")
     public Response<Map<String, Object>> testConnection(@PathVariable("modelId") String modelId) {
+        return testConnectionByReference(modelId);
+    }
+
+    @PostMapping("/test-by-id/{id}")
+    public Response<Map<String, Object>> testConnectionById(@PathVariable("id") Long id) {
+        return testConnectionByReference(LlmModelCatalog.BINDING_REF_PREFIX + id);
+    }
+
+    private Response<Map<String, Object>> testConnectionByReference(String modelReference) {
         Map<String, Object> body = new LinkedHashMap<>();
         LlmModelCatalog catalog = llmModelCatalogProvider.getIfAvailable();
         LlmChatModelResolver resolver = llmChatModelResolverProvider.getIfAvailable();
@@ -66,8 +75,8 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                     .build();
         }
         try {
-            LLMSettings settings = catalog.resolve(modelId)
-                    .orElseThrow(() -> new IllegalStateException("找不到可用模型：" + modelId + "（需启用且配齐 API Key）"));
+            LLMSettings settings = catalog.resolve(modelReference)
+                    .orElseThrow(() -> new IllegalStateException("找不到可用模型配置：" + modelReference + "（需启用且配齐 API Key）"));
             OpenAiChatModel chatModel = resolver.resolve(settings);
             long start = System.currentTimeMillis();
             chatModel.call(new Prompt(List.of(new UserMessage("ping"))));
@@ -76,7 +85,7 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
             body.put("ms", ms);
             body.put("message", "连接成功");
         } catch (Exception e) {
-            log.warn("模型连接测试失败 modelId={}", modelId, e);
+            log.warn("模型连接测试失败 modelReference={}", modelReference, e);
             body.put("ok", false);
             body.put("ms", 0);
             body.put("message", "连接失败: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
@@ -171,6 +180,18 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
                         .build();
             }
 
+            if (request.getId() != null) {
+                return updateAiClientModelById(request);
+            }
+
+            if (aiClientModelDao.queryAllByModelId(request.getModelId()).size() != 1) {
+                return Response.<Boolean>builder()
+                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                        .info("模型ID存在多条配置，请使用记录ID更新")
+                        .data(false)
+                        .build();
+            }
+
             // DTO转PO
             AiClientModel aiClientModel = convertToAiClientModel(request);
             aiClientModel.setUpdateTime(LocalDateTime.now());
@@ -226,6 +247,14 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
     public Response<Boolean> deleteAiClientModelByModelId(@PathVariable("modelId") String modelId) {
         try {
             log.info("根据模型ID删除AI客户端模型配置请求：{}", modelId);
+
+            if (aiClientModelDao.queryAllByModelId(modelId).size() != 1) {
+                return Response.<Boolean>builder()
+                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                        .info("模型ID存在多条配置，请使用记录ID删除")
+                        .data(false)
+                        .build();
+            }
 
             int result = aiClientModelDao.deleteByModelId(modelId);
             if (result > 0) {
@@ -416,8 +445,7 @@ public class AiClientModelAdminController implements IAiClientModelAdminService 
 
             // 根据不同条件查询
             if (StringUtils.hasText(request.getModelId())) {
-                AiClientModel model = aiClientModelDao.queryByModelId(request.getModelId());
-                aiClientModels = model != null ? List.of(model) : List.of();
+                aiClientModels = aiClientModelDao.queryAllByModelId(request.getModelId());
             } else if (StringUtils.hasText(request.getApiId())) {
                 aiClientModels = aiClientModelDao.queryByApiId(request.getApiId());
             } else if (StringUtils.hasText(request.getModelType())) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import classNames from "classnames";
 import { Check, Cpu, Info, Loader2, Plus, Trash2, Zap } from "lucide-react";
-import { Modal, Switch } from "antd";
+import { Checkbox, Modal, Switch } from "antd";
 
 import WorkspaceAdminHeader from "@/components/WorkspaceAdminHeader";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  isFallbackModelUsage,
   llmModelAdminApi,
   type LlmApiRecord,
   type LlmModelRecord,
@@ -31,15 +32,16 @@ import { showMessage } from "@/utils";
 import { matchProviderId, PROVIDER_PRESETS, type ProviderPreset } from "./meta";
 
 type EditorState = {
+  id?: number;
   modelId: string;
   modelName: string;
-  displayName: string;
   baseUrl: string;
   apiKey: string;
   completionsPath: string;
   embeddingsPath: string;
   modelType: string;
   modelUsage: string;
+  isFallback: boolean;
   supportsThinking: number;
   contextWindow: number | null;
   status: number;
@@ -53,13 +55,13 @@ type TestResult = { ok: boolean; ms: number; message?: string };
 const EMPTY_EDITOR = (preset?: ProviderPreset): EditorState => ({
   modelId: "",
   modelName: "",
-  displayName: "",
   baseUrl: preset?.baseUrl ?? "https://www.micuapi.ai/v1",
   apiKey: "",
   completionsPath: preset?.completionsPath ?? "/chat/completions",
   embeddingsPath: "/embeddings",
   modelType: "openai",
   modelUsage: "default",
+  isFallback: false,
   supportsThinking: 0,
   contextWindow: null,
   status: 1,
@@ -72,18 +74,24 @@ function maskKey(key?: string) {
   return `${key.slice(0, 6)}••••${key.slice(-4)}`;
 }
 
+function modelKey(model: LlmModelRecord) {
+  return String(model.id);
+}
+
 function toEditor(model: LlmModelRecord, api?: LlmApiRecord): EditorState {
+  const modelUsage = model.modelUsage || "default";
   return {
+    id: model.id,
     modelId: model.modelId,
     modelName: model.modelName,
-    displayName: model.modelUsage || model.modelName,
     baseUrl: api?.baseUrl || "",
     apiKey: maskKey(api?.apiKey),
     existingApiKey: api?.apiKey,
     completionsPath: api?.completionsPath || "/chat/completions",
     embeddingsPath: api?.embeddingsPath || "/embeddings",
     modelType: model.modelType || "openai",
-    modelUsage: model.modelUsage || "default",
+    modelUsage,
+    isFallback: isFallbackModelUsage(modelUsage),
     supportsThinking: model.supportsThinking ?? 0,
     contextWindow: model.contextWindow ?? null,
     status: model.status ?? 1,
@@ -143,12 +151,12 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   }, [apis]);
 
   const selected = useMemo(
-    () => models.find((m) => m.modelId === selectedId) ?? null,
+    () => models.find((m) => modelKey(m) === selectedId) ?? null,
     [models, selectedId],
   );
 
   const refresh = useCallback(
-    async (keepId?: string) => {
+    async (keepId?: string, preferredModelId?: string) => {
       setLoading(true);
       try {
         const [modelList, apiList] = await Promise.all([
@@ -160,15 +168,24 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         setModels(nextModels);
         setApis(nextApis);
 
-        const prefer =
-          keepId && nextModels.some((m) => m.modelId === keepId)
-            ? keepId
-            : selectedId && nextModels.some((m) => m.modelId === selectedId)
-              ? selectedId
-              : nextModels[0]?.modelId || "";
+        const preferred = preferredModelId
+          ? nextModels.find((m) => m.modelId === preferredModelId)
+          : undefined;
+        let prefer = "";
+        if (keepId && nextModels.some((m) => modelKey(m) === keepId)) {
+          prefer = keepId;
+        } else if (preferred) {
+          prefer = modelKey(preferred);
+        } else if (
+          selectedId && nextModels.some((m) => modelKey(m) === selectedId)
+        ) {
+          prefer = selectedId;
+        } else if (nextModels[0]) {
+          prefer = modelKey(nextModels[0]);
+        }
         setSelectedId(prefer);
         if (prefer) {
-          const hit = nextModels.find((m) => m.modelId === prefer);
+          const hit = nextModels.find((m) => modelKey(m) === prefer);
           const api = hit
             ? nextApis.find((a) => a.apiId === hit.apiId)
             : undefined;
@@ -196,7 +213,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   const select = (modelId: string) => {
     setSelectedId(modelId);
     setTestResult(null);
-    const hit = models.find((m) => m.modelId === modelId);
+    const hit = models.find((m) => modelKey(m) === modelId);
     setEditor(hit ? toEditor(hit, apiMap.get(hit.apiId)) : null);
   };
 
@@ -232,6 +249,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   };
 
   const toPayload = (state: EditorState): LlmModelUpsertPayload => ({
+    id: state.id,
     modelId: state.modelId.trim(),
     modelName: state.modelName.trim(),
     baseUrl: state.baseUrl.trim(),
@@ -239,7 +257,11 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
     completionsPath: state.completionsPath.trim() || "/chat/completions",
     embeddingsPath: state.embeddingsPath.trim() || "/embeddings",
     modelType: state.modelType.trim() || "openai",
-    modelUsage: state.displayName.trim() || state.modelUsage || "default",
+    modelUsage: state.isFallback
+      ? "fallback"
+      : isFallbackModelUsage(state.modelUsage)
+        ? "default"
+        : state.modelUsage.trim() || "default",
     supportsThinking: state.supportsThinking ?? 0,
     contextWindow: state.contextWindow,
     status: state.status,
@@ -263,7 +285,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
         existingApiKey: editor.existingApiKey,
       });
       showMessage()?.success("模型已保存，下一轮对话生效");
-      await refresh(editor.modelId);
+      await refresh(editor.id == null ? undefined : String(editor.id));
     } catch (error) {
       showMessage()?.error(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -286,7 +308,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
       showMessage()?.success("已新增模型，可直接在对话中选用");
       setAddOpen(false);
       setAddForm(EMPTY_EDITOR());
-      await refresh(result.modelId);
+      await refresh(undefined, result.modelId);
     } catch (error) {
       showMessage()?.error(error instanceof Error ? error.message : "新增失败");
     } finally {
@@ -294,20 +316,19 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
     }
   };
 
-  const onDelete = (modelId: string) => {
+  const onDelete = (model: LlmModelRecord) => {
     Modal.confirm({
       title: "删除模型",
-      content: `确认删除「${modelId}」？若无其它模型共用其 API，将一并删除凭据配置。`,
+      content: `确认删除「${model.modelId}」配置 #${model.id}？若无其它模型共用其 API，将一并删除凭据配置。`,
       okText: "删除",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const hit = models.find((m) => m.modelId === modelId);
-          const apiId = hit?.apiId;
-          await llmModelAdminApi.deleteModel(modelId);
+          const apiId = model.apiId;
+          await llmModelAdminApi.deleteModel(model.id);
           if (apiId) {
             const stillUsed = models.some(
-              (m) => m.apiId === apiId && m.modelId !== modelId,
+              (m) => m.apiId === apiId && m.id !== model.id,
             );
             if (!stillUsed) {
               await llmModelAdminApi.deleteApi(apiId).catch(() => undefined);
@@ -325,11 +346,11 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
   };
 
   const onTest = async () => {
-    if (!selectedId) return;
+    if (editor?.id == null) return;
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await llmModelAdminApi.testConnection(selectedId);
+      const result = await llmModelAdminApi.testConnectionById(editor.id);
       setTestResult(result);
       if (!result.ok) {
         showMessage()?.warning(result.message || "连接失败");
@@ -393,11 +414,12 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                   </div>
                 ) : null}
                 {models.map((m) => {
-                  const active = m.modelId === selectedId;
+                  const active = modelKey(m) === selectedId;
                   const enabled = (m.status ?? 1) === 1;
+                  const isFallback = isFallbackModelUsage(m.modelUsage);
                   return (
                     <div
-                      key={m.modelId}
+                      key={modelKey(m)}
                       data-active={active}
                       className="workspace-admin-model-item"
                     >
@@ -408,7 +430,7 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                           "workspace-admin-list-item",
                           active && "font-medium",
                         )}
-                        onClick={() => select(m.modelId)}
+                        onClick={() => select(modelKey(m))}
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span
@@ -420,20 +442,22 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                             )}
                           />
                           <span className="workspace-admin-list-item-title">
-                            {m.modelUsage && m.modelUsage !== "default"
-                              ? m.modelUsage
-                              : m.modelName}
+                            {isFallback
+                              ? m.modelName
+                              : m.modelUsage && m.modelUsage !== "default"
+                                ? m.modelUsage
+                                : m.modelName}
                           </span>
                           <Badge
                             variant="secondary"
                             className="ml-auto text-[10.5px]"
                           >
-                            Chat
+                            {isFallback ? "备用" : "Chat"}
                           </Badge>
                         </div>
                         <div className="workspace-admin-list-item-meta pl-3.5">
                           <span className="workspace-admin-list-item-code">
-                            {m.modelName || "未设置模型标识"}
+                             #{m.id} · {m.modelName || "未设置模型标识"}
                           </span>
                         </div>
                       </button>
@@ -442,8 +466,8 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                         variant="ghost"
                         size="icon-sm"
                         className="workspace-admin-model-delete workspace-admin-danger"
-                        onClick={() => onDelete(m.modelId)}
-                        aria-label={`删除模型 ${m.modelId}`}
+                        onClick={() => onDelete(m)}
+                        aria-label={`删除模型 ${m.modelId} 配置 ${m.id}`}
                         title="删除模型"
                       >
                         <Trash2 className="size-3.5" strokeWidth={2} />
@@ -493,16 +517,6 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
 
                   <CardContent className="p-5">
                     <div className="grid grid-cols-1 gap-4 gap-x-[18px] sm:grid-cols-2">
-                      <Field label="展示名称">
-                        <Input
-                          value={editor.displayName}
-                          className="text-[13px]"
-                          placeholder="便于分辨的名字"
-                          onChange={(e) =>
-                            patchEditor({ displayName: e.target.value })
-                          }
-                        />
-                      </Field>
                       <Field label="服务商">
                         <select
                           className="workspace-admin-select"
@@ -623,6 +637,16 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                           支持深度思考
                         </span>
                       </div>
+                      <div className="flex items-center gap-2 pt-5">
+                        <Checkbox
+                          checked={editor.isFallback}
+                          onChange={(event) =>
+                            patchEditor({ isFallback: event.target.checked })
+                          }
+                        >
+                          备用模型
+                        </Checkbox>
+                      </div>
                       <Field label="上下文窗口（token）">
                         <Input
                           type="number"
@@ -735,7 +759,6 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                     ...f,
                     modelName,
                     modelId: f.modelId || modelName,
-                    displayName: f.displayName || modelName,
                   }));
                 }}
               />
@@ -767,18 +790,22 @@ const ModelAdmin: ReactorType.FC<ModelAdminProps> = ({ embedded }) => {
                 }
               />
             </Field>
-            <Field label="展示名称">
-              <Input
-                value={addForm.displayName}
-                placeholder="选完模型可改成便于分辨的名字"
-                onChange={(e) =>
+            <div className="pt-1">
+              <Checkbox
+                checked={addForm.isFallback}
+                onChange={(event) =>
                   setAddForm((f) => ({
                     ...f,
-                    displayName: e.target.value,
+                    isFallback: event.target.checked,
                   }))
                 }
-              />
-            </Field>
+              >
+                备用模型
+              </Checkbox>
+              <div className="workspace-admin-field-hint mt-1 pl-6">
+                主模型失败后按配置顺序尝试
+              </div>
+            </div>
             <Field label="Completions 路径">
               <Input
                 value={addForm.completionsPath}

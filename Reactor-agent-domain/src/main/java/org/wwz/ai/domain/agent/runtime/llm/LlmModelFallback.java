@@ -3,7 +3,12 @@ package org.wwz.ai.domain.agent.runtime.llm;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 
 import java.util.Locale;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 
 /**
  * 主模型耗尽重试后的备援模型策略。
@@ -35,19 +40,108 @@ public final class LlmModelFallback {
     }
 
     public static String resolveFallbackModelName(ReactorRuntimeDependencies deps, String primaryModel) {
+        return resolveFallbackModelNames(deps, primaryModel).stream().findFirst().orElse(null);
+    }
+
+    public static List<String> resolveFallbackModelNames(ReactorRuntimeDependencies deps, String primaryModel) {
         if (deps == null) {
-            return null;
+            return List.of();
         }
         try {
             if (deps.getLlmDependencies() == null || deps.getLlmDependencies().getModelCatalog() == null) {
-                return null;
+                return List.of();
             }
-            return deps.getLlmDependencies().getModelCatalog()
-                    .resolveFallbackModelName(primaryModel)
-                    .orElse(null);
+            return deps.getLlmDependencies().getModelCatalog().resolveFallbackModelNames(primaryModel);
         } catch (Exception e) {
-            return null;
+            return List.of();
         }
+    }
+
+    @FunctionalInterface
+    interface AttemptListener {
+        void onAttempt(String fromModel, String toModel, Throwable cause);
+    }
+
+    /**
+     * 顺序执行备用模型候选。候选模型失败后，仅瞬态/容量类错误继续切换，候选耗尽时返回最后一次错误。
+     */
+    static <T> CompletableFuture<T> executeFallbackChain(
+            String failedModel,
+            Throwable failure,
+            List<String> fallbackModels,
+            Function<String, CompletableFuture<T>> fallbackCall,
+            AttemptListener listener) {
+        if (fallbackModels == null || fallbackModels.isEmpty()) {
+            return CompletableFuture.failedFuture(failure);
+        }
+        return executeFallbackChain(
+                failedModel,
+                failure,
+                fallbackModels,
+                0,
+                fallbackCall,
+                listener
+        );
+    }
+
+    private static <T> CompletableFuture<T> executeFallbackChain(
+            String failedModel,
+            Throwable failure,
+            List<String> fallbackModels,
+            int index,
+            Function<String, CompletableFuture<T>> fallbackCall,
+            AttemptListener listener) {
+        if (index >= fallbackModels.size()) {
+            return CompletableFuture.failedFuture(failure);
+        }
+
+        String fallbackModel = fallbackModels.get(index);
+        if (listener != null) {
+            listener.onAttempt(failedModel, fallbackModel, failure);
+        }
+
+        try {
+            CompletableFuture<T> result = fallbackCall.apply(fallbackModel);
+            return result.handle((value, error) -> {
+                if (error == null) {
+                    return CompletableFuture.completedFuture(value);
+                }
+                Throwable root = unwrap(error);
+                if (!isEligible(root)) {
+                    return CompletableFuture.<T>failedFuture(root);
+                }
+                return executeFallbackChain(
+                        fallbackModel,
+                        root,
+                        fallbackModels,
+                        index + 1,
+                        fallbackCall,
+                        listener
+                );
+            }).thenCompose(next -> next);
+        } catch (Exception error) {
+            Throwable root = unwrap(error);
+            if (!isEligible(root)) {
+                return CompletableFuture.failedFuture(root);
+            }
+            return executeFallbackChain(
+                    fallbackModel,
+                    root,
+                    fallbackModels,
+                    index + 1,
+                    fallbackCall,
+                    listener
+            );
+        }
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     public static boolean isEligible(Throwable throwable) {

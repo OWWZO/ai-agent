@@ -68,7 +68,7 @@ const ModelPicker: ReactorType.FC<Props> = ({
               m.modelId === value || m.modelName === value;
             return (
               <button
-                key={m.modelId}
+                key={m.id}
                 type="button"
                 className={cn(
                   "flex w-full items-center gap-2 rounded-[12px] px-2 py-2 text-left transition-colors",

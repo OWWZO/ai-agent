@@ -35,6 +35,15 @@ public class LlmModelCatalogTest {
             .apiKey("sk-test")
             .build();
 
+    private static final LlmModelBinding CLAUDE = LlmModelBinding.builder()
+            .modelId("m-claude")
+            .modelName("claude-3-7-sonnet")
+            .apiId("api-2")
+            .modelUsage("backup")
+            .baseUrl("https://example.com/v1")
+            .apiKey("sk-test")
+            .build();
+
     @Test
     public void pickByModelId() {
         LlmModelBinding picked = LlmModelCatalog.pick(List.of(GROK, GPT), "m-gpt");
@@ -74,6 +83,18 @@ public class LlmModelCatalogTest {
                 0L);
 
         Assert.assertEquals("m-gpt", catalog.resolveFallbackModelName("grok-4.5").orElse(null));
+    }
+
+    @Test
+    public void fallbackModelsKeepDatabaseOrderAndExcludePrimary() {
+        ILlmModelConfigRepository repository = Mockito.mock(ILlmModelConfigRepository.class);
+        Mockito.when(repository.listUsable()).thenReturn(List.of(GROK, GPT, CLAUDE));
+        LlmModelCatalog catalog = new LlmModelCatalog(repository, null, 0L);
+
+        Assert.assertEquals(
+                List.of("m-gpt", "m-claude"),
+                catalog.resolveFallbackModelNames("grok-4.5")
+        );
     }
 
     @Test

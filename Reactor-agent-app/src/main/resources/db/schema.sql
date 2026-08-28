@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS ai_agent_session_capability (
 
 CREATE TABLE IF NOT EXISTS ai_client_model (
     id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
-    model_id    VARCHAR(64)   NOT NULL COMMENT '全局唯一模型ID',
+    model_id    VARCHAR(64)   NOT NULL COMMENT '模型引用标识，允许多条配置共用',
     api_id      VARCHAR(64)   NOT NULL COMMENT '关联的API配置ID',
     model_usage VARCHAR(128)  NOT NULL DEFAULT '缺省的' COMMENT '模型用途；fallback/backup/备用模型表示备用模型',
     model_name  VARCHAR(64)   NOT NULL COMMENT '模型名称',
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS ai_client_model (
     create_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_model_id (model_id),
+    KEY idx_model_id (model_id),
     KEY idx_api_config_id (api_id),
     KEY idx_status (status)
 ) COMMENT='聊天模型配置表';

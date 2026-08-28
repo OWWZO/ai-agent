@@ -30,7 +30,7 @@ public interface IAiClientModelAdminService {
     Response<Boolean> updateAiClientModelById(AiClientModelRequestDTO request);
 
     /**
-     * 根据模型ID更新AI客户端模型配置
+     * 根据模型ID更新AI客户端模型配置；重复模型ID时必须携带记录ID
      * @param request AI客户端模型配置请求对象
      * @return 操作结果
      */
@@ -44,8 +44,8 @@ public interface IAiClientModelAdminService {
     Response<Boolean> deleteAiClientModelById(Long id);
 
     /**
-     * 根据模型ID删除AI客户端模型配置
-     * @param modelId 模型ID
+     * 根据模型ID删除AI客户端模型配置；重复模型ID时应使用按ID删除接口
+     * @param modelId 模型引用标识
      * @return 操作结果
      */
     Response<Boolean> deleteAiClientModelByModelId(String modelId);
@@ -58,8 +58,8 @@ public interface IAiClientModelAdminService {
     Response<AiClientModelResponseDTO> queryAiClientModelById(Long id);
 
     /**
-     * 根据模型ID查询AI客户端模型配置
-     * @param modelId 模型ID
+     * 根据模型ID查询一条AI客户端模型配置；重复模型ID时返回主模型配置
+     * @param modelId 模型引用标识
      * @return AI客户端模型配置对象
      */
     Response<AiClientModelResponseDTO> queryAiClientModelByModelId(String modelId);
@@ -85,7 +85,7 @@ public interface IAiClientModelAdminService {
     Response<List<AiClientModelResponseDTO>> queryEnabledAiClientModels();
 
     /**
-     * 根据条件查询AI客户端模型配置列表
+     * 根据条件查询AI客户端模型配置列表；按模型ID筛选时返回全部匹配配置
      * @param request 查询条件
      * @return AI客户端模型配置列表
      */

@@ -45,6 +45,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -65,6 +66,8 @@ public class LLM {
 
     /** 模型标识。 */
     private final String model;
+    /** 用户请求使用的模型引用；与解析后的上游模型名区分。 */
+    private final String modelReference;
     /** LLM ERP 标识。 */
     private final String llmErp;
     /** 最大输出 token。 */
@@ -104,6 +107,7 @@ public class LLM {
                 boolean allowModelFallback) {
         this.llmErp = llmErp;
         this.allowModelFallback = allowModelFallback;
+        this.modelReference = modelName;
         this.runtimeDependencies = requireRuntimeDependencies(runtimeDependencies);
         ReactorLlmDependencies llmDependencies = this.runtimeDependencies.requireLlmDependencies();
         this.chatModelResolver = llmDependencies.getChatModelResolver();
@@ -191,7 +195,7 @@ public class LLM {
     ) {
         CompletableFuture<String> primary = askOnCurrentModel(
                 context, messages, systemMsgs, stream, pushToClient, temperature, callKind);
-        return withFallbackModel(context, "ask", primary, () -> new LLM(resolveFallbackModelName(), llmErp, runtimeDependencies, false)
+        return withFallbackModel(context, "ask", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
                 .askOnCurrentModel(context, messages, systemMsgs, stream, pushToClient, temperature, callKind));
     }
 
@@ -344,7 +348,7 @@ public class LLM {
     ) {
         CompletableFuture<ToolCallResponse> primary = askToolOnCurrentModel(
                 context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout);
-        return withFallbackModel(context, "askTool", primary, () -> new LLM(resolveFallbackModelName(), llmErp, runtimeDependencies, false)
+        return withFallbackModel(context, "askTool", primary, fallbackName -> new LLM(fallbackName, llmErp, runtimeDependencies, false)
                 .askToolOnCurrentModel(context, messages, systemMsgs, tools, toolChoice, temperature, stream, pushToClient, timeout));
     }
 
@@ -692,14 +696,14 @@ public class LLM {
         return STRUCT_PARSE.equals(functionCallType);
     }
 
-    private String resolveFallbackModelName() {
-        return LlmModelFallback.resolveFallbackModelName(runtimeDependencies, model);
+    private List<String> resolveFallbackModelNames() {
+        return LlmModelFallback.resolveFallbackModelNames(runtimeDependencies, modelReference);
     }
 
     private <T> CompletableFuture<T> withFallbackModel(AgentContext context,
                                                        String op,
                                                        CompletableFuture<T> primary,
-                                                       java.util.function.Supplier<CompletableFuture<T>> fallbackCall) {
+                                                       Function<String, CompletableFuture<T>> fallbackCall) {
         if (!allowModelFallback || primary == null) {
             return primary;
         }
@@ -711,29 +715,32 @@ public class LLM {
             if (!LlmModelFallback.isEligible(root)) {
                 return CompletableFuture.<T>failedFuture(root);
             }
-            String fallbackName = resolveFallbackModelName();
-            if (StringUtils.isBlank(fallbackName)) {
+            List<String> fallbackNames = resolveFallbackModelNames();
+            if (fallbackNames.isEmpty()) {
                 return CompletableFuture.<T>failedFuture(root);
             }
-            String requestId = context == null ? "-" : context.getRequestId();
-            log.warn("{} {} primary model={} failed after retries ({}), switching to fallback model={}",
-                    requestId, op, model, root.getMessage(), fallbackName);
-            notifyFallback(context, fallbackName, root);
-            try {
-                return fallbackCall.get();
-            } catch (Exception e) {
-                return CompletableFuture.<T>failedFuture(e);
-            }
+            return LlmModelFallback.executeFallbackChain(
+                    model,
+                    root,
+                    fallbackNames,
+                    fallbackCall,
+                    (fromModel, toModel, cause) -> {
+                        String requestId = context == null ? "-" : context.getRequestId();
+                        log.warn("{} {} model={} failed after retries ({}), switching to fallback model={}",
+                                requestId, op, fromModel, cause.getMessage(), toModel);
+                        notifyFallback(context, fromModel, toModel, cause);
+                    }
+            );
         }).thenCompose(f -> f);
     }
 
-    private void notifyFallback(AgentContext context, String fallbackName, Throwable cause) {
+    private void notifyFallback(AgentContext context, String fromModel, String fallbackName, Throwable cause) {
         if (context == null || context.getPrinter() == null) {
             return;
         }
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("fromModel", model);
+            payload.put("fromModel", fromModel);
             payload.put("toModel", fallbackName);
             payload.put("reason", cause == null ? null : cause.getMessage());
             context.getPrinter().send("llm_fallback", payload);

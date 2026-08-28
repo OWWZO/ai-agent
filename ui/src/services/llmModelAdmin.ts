@@ -16,7 +16,7 @@ export interface LlmApiRecord {
 }
 
 export interface LlmModelRecord {
-  id?: number;
+  id: number;
   modelId: string;
   apiId: string;
   modelName: string;
@@ -30,7 +30,9 @@ export interface LlmModelRecord {
 }
 
 export interface LlmModelUpsertPayload {
-  /** 业务主键，可与上游模型名相同 */
+  /** 配置行主键；更新时使用，新增时为空 */
+  id?: number;
+  /** 模型引用标识，可与上游模型名相同且允许重复 */
   modelId: string;
   /** 上游模型名（发给厂商的 model） */
   modelName: string;
@@ -43,8 +45,20 @@ export interface LlmModelUpsertPayload {
   supportsThinking?: number;
   contextWindow?: number | null;
   status?: number;
-  /** 复用已有 apiId；空则用 api-{modelId} */
+  /** 复用已有 apiId；空则用 api-{modelId}，冲突时自动生成新 ID */
   apiId?: string;
+}
+
+type LlmModelWritePayload = Omit<LlmModelUpsertPayload, "baseUrl" | "apiKey">;
+
+export function isFallbackModelUsage(value?: string) {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "fallback" ||
+    normalized === "backup" ||
+    normalized === "备用" ||
+    normalized === "备用模型"
+  );
 }
 
 const API_BASE = "/api/v1/admin/ai-client-api";
@@ -85,24 +99,30 @@ export const llmModelAdminApi = {
       `${API_BASE}/delete-by-api-id/${encodeURIComponent(apiId)}`
     ) as unknown as Promise<boolean>,
 
-  createModel: (payload: LlmModelRecord) =>
+  createModel: (payload: LlmModelWritePayload) =>
     api.post<boolean>(
       `${MODEL_BASE}/create`,
       payload
     ) as unknown as Promise<boolean>,
 
-  updateModel: (payload: LlmModelRecord) =>
+  updateModel: (payload: LlmModelWritePayload) =>
     api.put<boolean>(
-      `${MODEL_BASE}/update-by-model-id`,
+      `${MODEL_BASE}/update-by-id`,
       payload
     ) as unknown as Promise<boolean>,
 
-  deleteModel: (modelId: string) =>
+  deleteModel: (id: number) =>
     api.delete<boolean>(
-      `${MODEL_BASE}/delete-by-model-id/${encodeURIComponent(modelId)}`
+      `${MODEL_BASE}/delete-by-id/${id}`
     ) as unknown as Promise<boolean>,
 
-  /** 真发一次极小请求测连接（对齐参考项目 POST …/test） */
+  /** 真发一次极小请求测选中的具体模型配置 */
+  testConnectionById: (id: number) =>
+    api.post<{ ok: boolean; ms: number; message?: string }>(
+      `${MODEL_BASE}/test-by-id/${id}`
+    ) as unknown as Promise<{ ok: boolean; ms: number; message?: string }>,
+
+  /** 兼容按模型引用测试的接口 */
   testConnection: (modelId: string) =>
     api.post<{ ok: boolean; ms: number; message?: string }>(
       `${MODEL_BASE}/test/${encodeURIComponent(modelId)}`
@@ -116,7 +136,17 @@ export const llmModelAdminApi = {
     payload: LlmModelUpsertPayload,
     options?: { isNew?: boolean; existingApiKey?: string }
   ) => {
-    const apiId = (payload.apiId || `api-${payload.modelId}`).trim();
+    const requestedApiId = (payload.apiId || `api-${payload.modelId}`)
+      .trim()
+      .slice(0, 64);
+    let apiId = requestedApiId;
+    if (options?.isNew && !payload.apiId) {
+      const existingApis = await llmModelAdminApi.listApis();
+      if (existingApis.some((api) => api.apiId === apiId)) {
+        const suffix = `-${Date.now().toString(36)}`;
+        apiId = `${apiId.slice(0, Math.max(1, 64 - suffix.length))}${suffix}`;
+      }
+    }
     const keepKey =
       !payload.apiKey ||
       payload.apiKey.includes("•") ||
@@ -138,7 +168,8 @@ export const llmModelAdminApi = {
       status: 1,
     };
 
-    const modelBody: LlmModelRecord = {
+    const modelBody: LlmModelWritePayload = {
+      id: payload.id,
       modelId: payload.modelId.trim(),
       apiId,
       modelName: payload.modelName.trim(),
@@ -153,6 +184,9 @@ export const llmModelAdminApi = {
       await llmModelAdminApi.createApi(apiBody);
       await llmModelAdminApi.createModel(modelBody);
     } else {
+      if (payload.id == null) {
+        throw new Error("模型配置缺少记录 ID");
+      }
       try {
         await llmModelAdminApi.updateApi(apiBody);
       } catch {
@@ -164,6 +198,9 @@ export const llmModelAdminApi = {
         await llmModelAdminApi.createModel(modelBody);
       }
     }
-    return { apiId, modelId: modelBody.modelId };
+    return {
+      apiId,
+      modelId: modelBody.modelId,
+    };
   },
 };

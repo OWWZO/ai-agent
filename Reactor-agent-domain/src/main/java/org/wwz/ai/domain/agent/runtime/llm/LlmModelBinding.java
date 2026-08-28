@@ -6,12 +6,13 @@ import lombok.Value;
 /**
  * 一次出站调用所需的模型绑定（来自 DB 管理台，不含 yml）。
  * <p>
- * [modelId] 是业务主键（前端/角色配置引用）；[modelName] 是上游模型名。
+ * [id] 是配置行唯一标识；[modelId] 是前端/角色配置使用的模型引用，可重复；[modelName] 是上游模型名。
  */
 @Value
 @Builder
 public class LlmModelBinding {
 
+    Long id;
     String modelId;
     String modelName;
     String apiId;

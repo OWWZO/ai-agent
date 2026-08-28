@@ -55,11 +55,18 @@ public interface IAiClientModelDao {
     AiClientModel queryById(Long id);
 
     /**
-     * 根据模型ID查询聊天模型配置
-     * @param modelId 模型ID
+     * 根据模型ID查询一条聊天模型配置。重复模型ID时优先返回主模型配置。
+     * @param modelId 模型引用标识
      * @return 聊天模型配置对象
      */
     AiClientModel queryByModelId(String modelId);
+
+    /**
+     * 根据模型ID查询全部聊天模型配置
+     * @param modelId 模型引用标识
+     * @return 聊天模型配置列表
+     */
+    List<AiClientModel> queryAllByModelId(String modelId);
 
     /**
      * 根据API配置ID查询聊天模型配置

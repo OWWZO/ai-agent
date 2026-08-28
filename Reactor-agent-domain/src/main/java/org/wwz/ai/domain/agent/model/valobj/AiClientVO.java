@@ -34,7 +34,7 @@ public class AiClientVO {
     private String description;
 
     /**
-     * 全局唯一模型ID
+     * 模型引用标识
      */
     private String modelId;
 

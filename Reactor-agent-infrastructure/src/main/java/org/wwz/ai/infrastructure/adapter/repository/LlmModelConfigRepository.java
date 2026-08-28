@@ -48,6 +48,7 @@ public class LlmModelConfigRepository implements ILlmModelConfigRepository {
                 continue;
             }
             result.add(LlmModelBinding.builder()
+                    .id(model.getId())
                     .modelId(model.getModelId().trim())
                     .modelName(model.getModelName().trim())
                     .apiId(model.getApiId().trim())
