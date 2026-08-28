@@ -78,6 +78,54 @@ describe("hitlDockModel", () => {
     expect(findLatestPendingPlanApproval(chat)).toBeUndefined();
   });
 
+  it("treats the restored decided state as non-interactive", () => {
+    const chat = {
+      multiAgent: {
+        tasks: [[approvalTask("decided")]],
+      },
+      tasks: [],
+    } as unknown as CHAT.ChatItem;
+
+    expect(resolveHitlDockSlot(chat)).toBe("composer");
+    expect(findLatestPendingPlanApproval(chat)).toBeUndefined();
+  });
+
+  it("prefers a decided chat fact over a stale pending task projection", () => {
+    const chat = {
+      multiAgent: {
+        tasks: [[approvalTask("decided")]],
+      },
+      tasks: [],
+    } as unknown as CHAT.ChatItem;
+
+    expect(
+      resolveHitlDockSlot(chat, [approvalTask("pending")])
+    ).toBe("composer");
+  });
+
+  it("does not treat finish-without-status approval as pending", () => {
+    const settled = {
+      ...approvalTask(""),
+      finish: true,
+      isFinal: true,
+      resultMap: {
+        messageType: "plan_approval",
+        approvalId: "appr-1",
+        planContent: "# Plan\n\n1. do x",
+        isFinal: true,
+      },
+    } as unknown as CHAT.Task;
+    const chat = {
+      multiAgent: {
+        tasks: [[settled]],
+      },
+      tasks: [],
+    } as unknown as CHAT.ChatItem;
+
+    expect(resolveHitlDockSlot(chat)).toBe("composer");
+    expect(findLatestPendingPlanApproval(chat)).toBeUndefined();
+  });
+
   it("reads from taskList when multiAgent empty", () => {
     const taskList = [approvalTask("pending", "appr-2")];
     expect(resolveHitlDockSlot(undefined, taskList)).toBe("approval");

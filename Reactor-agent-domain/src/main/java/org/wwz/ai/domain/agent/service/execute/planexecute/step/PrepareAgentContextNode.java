@@ -107,7 +107,7 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
 
         materializeSessionFiles(agentContext, request.getSessionFiles());
         hydrateWorkspaceReadState(agentContext);
-        restoreResumePlanMode(agentContext, request);
+        boolean resumedApprovedPlan = restoreResumePlanMode(agentContext, request);
         LtmRuntimeBootstrap.bootstrap(agentContext, request);
 
         // Execution Ledger 保存本轮事实；SOP、工作区读取状态和工作记忆分别服务当前执行或下一轮上下文。
@@ -126,7 +126,11 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
         }
         handleSopRecall(agentContext, request);
         // 这条状态约束在工具层执行，节点只负责建立初始状态和把计划文件提示发给前端。
-        enterPlanModeForPlanSolve(agentContext);
+        boolean continuation = StringUtils.isNotBlank(request.getResumeQuestionId())
+                || StringUtils.isNotBlank(request.getResumeApprovalId());
+        if (!resumedApprovedPlan && !continuation) {
+            enterPlanModeForPlanSolve(agentContext);
+        }
 
         dynamicContext.setAgentContext(agentContext);
         return router(request, dynamicContext);
@@ -198,25 +202,25 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
     @jakarta.annotation.Resource
     private org.wwz.ai.domain.agent.runtime.planmode.IPlanApprovalRepository planApprovalRepository;
 
-    private void restoreResumePlanMode(AgentContext agentContext, AgentRequest request) {
+    private boolean restoreResumePlanMode(AgentContext agentContext, AgentRequest request) {
         if (agentContext == null || request == null || StringUtils.isBlank(request.getResumeContextJson())) {
-            return;
+            return false;
         }
         org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext
                 .fromJson(request.getResumeContextJson())
                 .applyPlanModeTo(agentContext);
-        applyPlanApprovalDecision(agentContext, request);
+        return applyPlanApprovalDecision(agentContext, request);
     }
 
-    private void applyPlanApprovalDecision(AgentContext agentContext, AgentRequest request) {
+    private boolean applyPlanApprovalDecision(AgentContext agentContext, AgentRequest request) {
         if (agentContext == null || request == null
                 || StringUtils.isBlank(request.getResumeApprovalId())
                 || planApprovalRepository == null) {
-            return;
+            return false;
         }
         var record = planApprovalRepository.findByApprovalId(request.getResumeApprovalId()).orElse(null);
         if (record == null || record.getDecision() == null) {
-            return;
+            return false;
         }
         var state = agentContext.requirePlanModeState();
         var decision = record.getDecision();
@@ -231,8 +235,10 @@ public class PrepareAgentContextNode extends AbstractExecuteSupport {
             }
             state.setPlan(finalPlan, planFilePath);
             state.exitPlanMode();
+            return true;
         } else {
             state.clearPendingApproval();
+            return false;
         }
     }
 

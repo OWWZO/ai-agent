@@ -60,11 +60,12 @@ function flattenTimelineTasks(chat: CHAT.ChatItem): CHAT.Task[] {
     for (const container of group || []) {
       const children = (container as CHAT.Task).children;
       if (Array.isArray(children) && children.length > 0) {
-        out.push(...children);
+        out.push(...children.filter((task) => task.messageType !== "plan_mode_entered"));
       } else if (
         container &&
         (container as CHAT.Task).messageType &&
-        (container as CHAT.Task).messageType !== "task"
+        (container as CHAT.Task).messageType !== "task" &&
+        (container as CHAT.Task).messageType !== "plan_mode_entered"
       ) {
         out.push(container as CHAT.Task);
       }
@@ -78,7 +79,9 @@ function flattenFactTasks(chat: CHAT.ChatItem): CHAT.Task[] {
   const out: CHAT.Task[] = [];
   for (const group of groups) {
     for (const task of group || []) {
-      out.push(task as CHAT.Task);
+      if (task.messageType !== "plan_mode_entered") {
+        out.push(task as CHAT.Task);
+      }
     }
   }
   return out;

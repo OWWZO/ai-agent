@@ -6,10 +6,40 @@ import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalDecision;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalObservationSupport;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalRecord;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanApprovalStatuses;
+import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 
+import java.util.List;
 import java.util.Map;
 
 public class PlanApprovalObservationSupportTest {
+
+    @Test
+    public void waitingObservationContainsApprovalPayload() {
+        String observation = PlanApprovalObservationSupport.buildWaitingObservation(
+                "## Plan\n1. collect data", "pa_waiting");
+
+        Assert.assertNotNull(observation);
+        Assert.assertFalse(observation.isBlank());
+        Assert.assertTrue(observation.contains("pa_waiting"));
+        Assert.assertTrue(observation.contains("waiting_user_input"));
+    }
+
+    @Test
+    public void missingToolCallIdIsRepairedForExitPlanMode() {
+        ToolCall exitPlanMode = ToolCall.builder()
+                .id("")
+                .function(ToolCall.Function.builder().name("ExitPlanMode").arguments("{}").build())
+                .build();
+        Message assistant = Message.fromToolCalls("submit plan", List.of(exitPlanMode));
+
+        String toolCallId = PlanApprovalObservationSupport.resolveExitPlanToolCallId(
+                List.of(assistant), null);
+
+        Assert.assertNotNull(toolCallId);
+        Assert.assertFalse(toolCallId.isBlank());
+        Assert.assertEquals(toolCallId, exitPlanMode.getId());
+    }
 
     @Test
     public void approvedObservationContainsPlan() {
@@ -38,5 +68,6 @@ public class PlanApprovalObservationSupportTest {
         Assert.assertEquals("plan_approval", payload.get("messageType"));
         Assert.assertEquals("pa_2", payload.get("approvalId"));
         Assert.assertEquals("pending", payload.get("status"));
+        Assert.assertEquals(PlanApprovalStatuses.PENDING, payload.get("persistenceStatus"));
     }
 }

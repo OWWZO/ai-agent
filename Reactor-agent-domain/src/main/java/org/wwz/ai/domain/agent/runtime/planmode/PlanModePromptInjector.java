@@ -32,13 +32,13 @@ public final class PlanModePromptInjector {
 
             ## Hard constraints
             - NO business code/config/data edits. NO report/image/script side effects.
-             - Read-only tools OK: workspace_read/list/glob/grep, deep_search, WebFetch, skill_tool (read), Agent(Explore only).
-            - In plan mode, Agent subagents are forced to Explore (read-only). Do not expect general-purpose writes.
+             - Read-only tools OK: workspace_read/list/glob/grep, deep_search, WebFetch, skill_tool (read), and read-only Agent subagents.
+             - In plan mode, all Agent subagents are filtered to read-only tools. Do not expect them to write business files.
             - Clarify with AskUserQuestion when needed. NEVER use AskUserQuestion to ask "is the plan OK?" — that is ExitPlanMode's job.
             - When the plan is ready, call ExitPlanMode (optionally pass plan text). The system will WAIT for user approval; you cannot self-approve.
 
             ## Workflow
-            1. Understand the request (read-only explore; use Agent Explore if helpful)
+             1. Understand the request (read-only exploration; use an Agent subtask if helpful)
             2. Design approach and note critical files
             3. AskUserQuestion only for real requirement ambiguities
             4. Write the final plan to `.reactor/plan.md`

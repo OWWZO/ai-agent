@@ -172,7 +172,9 @@ public class PlanApprovalResumeApplicationService {
         String observation = PlanApprovalObservationSupport.buildDecisionObservation(record);
         messages.removeIf(message -> message != null
                 && message.getRole() == org.wwz.ai.domain.agent.runtime.enums.RoleType.TOOL
-                && toolCallId.equals(message.getToolCallId()));
+                && (toolCallId.equals(message.getToolCallId())
+                || (StringUtils.isBlank(message.getToolCallId())
+                && StringUtils.defaultString(message.getContent()).contains("waiting_user_input"))));
         messages.add(Message.toolMessage(observation, toolCallId, null));
         return messages;
     }

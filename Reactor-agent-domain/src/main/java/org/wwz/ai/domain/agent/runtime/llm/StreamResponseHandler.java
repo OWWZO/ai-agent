@@ -530,7 +530,7 @@ public class StreamResponseHandler {
                 return null;
             }
             return ToolCall.builder()
-                    .id(id)
+                    .id(StringUtils.defaultIfBlank(id, StringUtil.getUUID()))
                     .type(StringUtils.defaultIfBlank(type, "function"))
                     .function(ToolCall.Function.builder()
                             .name(name)

@@ -104,11 +104,18 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
         result.setEventSeq(eventSequence.incrementAndGet());
         offerReplayBuffer(result);
         forwardIfLive(result);
-        if (result.isFinished()) {
+        // 根 result 的 finished 只表示业务终态（前端收口 loading），不在此关传输层。
+        // 关流留给：1) GptQuery / HITL resume 在 finishRun、markAnswered 之后的显式 complete；
+        // 2) 后台空闲时的 stream_settle。避免 SSE 在 ledger/approval 落库前被掐断。
+        if (result.isFinished() && isStreamSettle(agentResponse)) {
             log.info("{} task total cost time:{}ms",
                     request.getRequestId(), System.currentTimeMillis() - startTime);
             complete();
         }
+    }
+
+    private static boolean isStreamSettle(AgentResponse agentResponse) {
+        return agentResponse != null && "stream_settle".equals(agentResponse.getMessageType());
     }
 
     @Override

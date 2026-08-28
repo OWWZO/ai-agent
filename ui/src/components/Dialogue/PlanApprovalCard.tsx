@@ -31,41 +31,86 @@ function pickPlanFields(tool: CHAT.Task) {
     nested.planContent || resultMap.planContent || toolAny.planContent || ""
   );
   const planPath = String(
-    nested.planPath || resultMap.planPath || toolAny.planPath || nested.path || resultMap.path || ""
+    nested.planFilePath ||
+      nested.planPath ||
+      nested.path ||
+      resultMap.planFilePath ||
+      resultMap.planPath ||
+      resultMap.path ||
+      toolAny.planFilePath ||
+      toolAny.planPath ||
+      ""
   );
-  const status = String(nested.status || resultMap.status || toolAny.status || "pending");
-  return { resultMap, approvalId, planContent, planPath, status };
+  const status = String(
+    nested.status || resultMap.status || toolAny.status || "pending"
+  ).toLowerCase();
+  const editedPlanContent = String(
+    nested.editedPlanContent || resultMap.editedPlanContent || ""
+  );
+  const approved =
+    typeof nested.approved === "boolean"
+      ? nested.approved
+      : typeof resultMap.approved === "boolean"
+        ? resultMap.approved
+        : undefined;
+  return {
+    resultMap,
+    approvalId,
+    planContent,
+    planPath,
+    status,
+    editedPlanContent,
+    approved,
+  };
 }
 
 const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
-  const { resultMap, approvalId, planContent, planPath, status } = pickPlanFields(tool);
+  const {
+    resultMap,
+    approvalId,
+    planContent,
+    planPath,
+    status,
+    editedPlanContent,
+    approved,
+  } = pickPlanFields(tool);
   const alreadyDone =
     status === "approved" ||
     status === "rejected" ||
     status === "decided" ||
+    status === "cancelled" ||
+    status === "timeout" ||
     Boolean(resultMap.isFinal && status !== "pending");
 
   const [minimized, setMinimized] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [editedPlan, setEditedPlan] = useState(planContent);
+  const [editedPlan, setEditedPlan] = useState(
+    editedPlanContent || planContent
+  );
   const [submitting, setSubmitting] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(
     status === "approved" || status === "rejected"
       ? (status as "approved" | "rejected")
-      : null
+      : status === "decided"
+        ? approved === false
+          ? "rejected"
+          : "approved"
+        : null
   );
 
   useEffect(() => {
-    setEditedPlan(planContent);
-  }, [planContent, approvalId]);
+    setEditedPlan(editedPlanContent || planContent);
+  }, [editedPlanContent, planContent, approvalId]);
 
   useEffect(() => {
     if (status === "approved" || status === "rejected") {
       setDecision(status);
+    } else if (status === "decided" && typeof approved === "boolean") {
+      setDecision(approved ? "approved" : "rejected");
     }
-  }, [status]);
+  }, [approved, status]);
 
   const submitted = alreadyDone || decision !== null;
   const busy = submitting;
@@ -95,6 +140,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
           res?.sessionId || nested.sessionId || resultMap.sessionId || ""
         ),
         approvalId,
+        approved: kind === "approved",
       });
       message.success(
         kind === "approved" ? "计划已批准，正在继续执行" : "已拒绝，正在继续修订"
@@ -170,7 +216,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
           <span className="kimi-appr-ic">!</span>
           <span className="kimi-appr-title">计划审批</span>
         </div>
-        <div className="kimi-ui-card__body">等待计划批准（approvalId 缺失）</div>
+        <div className="kimi-ui-card__body">计划标识缺失，暂时无法提交审批</div>
       </div>
     );
   }
@@ -180,7 +226,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
       ? "计划已批准"
       : decision === "rejected"
         ? "计划已拒绝"
-        : "计划审批";
+        : "按这份计划开始执行？";
 
   return (
     <div className={cn("kimi-ui-card kimi-appr", minimized && "is-minimized")}>
@@ -192,7 +238,9 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
         ) : null}
         {submitted ? (
           <span className="kimi-appr-badge">
-            {decision === "rejected" || status === "rejected"
+            {decision === "rejected" ||
+            status === "rejected" ||
+            approved === false
               ? "只读 · 已拒绝"
               : "只读 · 已批准"}
           </span>
@@ -227,7 +275,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
                   onChange={(event) => setEditedPlan(event.target.value)}
                   disabled={busy}
                   rows={12}
-                  placeholder="计划 Markdown 正文（可编辑后批准）"
+                  placeholder="计划 Markdown 正文（可编辑后执行）"
                 />
               )}
             </div>
@@ -268,7 +316,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
                   {pendingAction === "approvePlan" ? (
                     <LoaderCircleIcon className="size-3.5 animate-spin" />
                   ) : null}
-                  批准计划
+                  执行计划
                   <span className="kimi-appr-kbd">1</span>
                 </button>
                 <button
@@ -277,7 +325,7 @@ const PlanApprovalCard: FC<PlanApprovalCardProps> = memo(({ tool }) => {
                   disabled={busy}
                   onClick={() => setFeedbackOpen(true)}
                 >
-                  修订
+                  修改计划
                   <span className="kimi-appr-kbd">2</span>
                 </button>
                 <button

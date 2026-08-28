@@ -8,6 +8,11 @@ import { GENERIC_TASK_PRODUCT } from "@/utils/constants";
 import { buildConversationTaskData, buildTaskFromEventData, combineData } from "./chat";
 import { artifactRefsToFileInfo } from "./taskArtifacts";
 
+type ConversationHistoryTitleDetail = Pick<
+  ConversationHistoryDetail,
+  "title" | "sessionId"
+> & Partial<Pick<ConversationHistoryDetail, "runs">>;
+
 /**
  * 会话详情为空时，首页应保持当前空白/初始态，不自动切到其他会话。
  */
@@ -15,15 +20,27 @@ export function isHistoryDetailEmpty(detail?: ConversationHistoryDetail | null) 
   return !detail || !Array.isArray(detail.runs) || detail.runs.length === 0;
 }
 
-export function toConversationHistoryTitle(detail?: Pick<ConversationHistoryDetail, "title" | "sessionId"> | null) {
+export function toConversationHistoryTitle(detail?: ConversationHistoryTitleDetail | null) {
   if (!detail) {
     return "新对话";
   }
   const normalizedTitle = String(detail.title || "").trim();
-  if (normalizedTitle) {
+  if (normalizedTitle && normalizedTitle !== "新对话") {
     return normalizedTitle;
   }
-  return detail.sessionId ? `会话 ${detail.sessionId}` : "新对话";
+
+  // 兼容旧的 Plan continuation：session head 可能被空 query 覆盖，但首个 run 仍保留原问题。
+  const firstQuery = detail.runs?.find(
+    (run) => String(run?.queryText || "").trim()
+  )?.queryText;
+  const normalizedQuery = String(firstQuery || "").trim();
+  if (normalizedQuery) {
+    return normalizedQuery.length <= 30
+      ? normalizedQuery
+      : normalizedQuery.slice(0, 30);
+  }
+
+  return normalizedTitle || (detail.sessionId ? `会话 ${detail.sessionId}` : "新对话");
 }
 
 /**

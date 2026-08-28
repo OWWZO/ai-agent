@@ -33,6 +33,7 @@ export type PlanApprovalResumeEventDetail = {
   resumeRequestId: string;
   sessionId?: string;
   approvalId?: string;
+  approved?: boolean;
 };
 
 export const planApprovalApi = {

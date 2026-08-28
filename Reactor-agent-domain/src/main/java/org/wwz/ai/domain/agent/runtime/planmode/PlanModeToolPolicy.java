@@ -101,7 +101,7 @@ public final class PlanModeToolPolicy {
                     + " 请只使用本地工作区只读工具，退出 plan mode 并获用户批准后再进行外部检索。";
         }
         if (ALWAYS_ALLOWED.contains(name)) {
-            // Agent 在 plan 期允许，但应优先 Explore；不在此硬拦
+            // Agent 在 plan 期允许，子代理工具池会额外剥离写工具
             return null;
         }
         if ("workspace_write".equals(name) || "workspace_edit".equals(name)) {

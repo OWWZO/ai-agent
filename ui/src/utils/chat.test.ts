@@ -134,6 +134,56 @@ describe("流式工具参数", () => {
   });
 });
 
+describe("Plan mode 进入事件", () => {
+  it("不进入实时任务或历史时间线投影", () => {
+    const event = {
+      messageType: "task",
+      messageId: "mode-entry",
+      taskId: "task-mode-entry",
+      taskOrder: 1,
+      messageOrder: 1,
+      resultMap: {
+        messageType: "plan_mode_entered",
+        messageId: "mode-entry",
+        messageTime: "1714041600999",
+        finish: true,
+        isFinal: true,
+      },
+    } as unknown as MESSAGE.EventData;
+    const currentChat = {
+      sessionId: "session-mode-entry",
+      requestId: "req-mode-entry",
+      query: "规划任务",
+      files: [],
+      forceStop: false,
+      loading: true,
+      tasks: [],
+      timeline: [],
+      multiAgent: { tasks: [] },
+    } as CHAT.ChatItem;
+
+    combineData(event, currentChat);
+    expect(currentChat.multiAgent.tasks).toEqual([]);
+
+    const historicalChat = {
+      ...currentChat,
+      multiAgent: { tasks: [[event.resultMap as unknown as MESSAGE.Task]] },
+    } as CHAT.ChatItem;
+    const rendered = handleTaskData(
+      historicalChat,
+      false,
+      historicalChat.multiAgent
+    );
+
+    expect(rendered.taskList).toEqual([]);
+    expect(
+      rendered.currentChat.tasks.flatMap((group) =>
+        (group || []).flatMap((container) => container.children || [])
+      )
+    ).toEqual([]);
+  });
+});
+
 function createDoc(link: string, title: string, content: string): MESSAGE.Doc {
   return {
     link,

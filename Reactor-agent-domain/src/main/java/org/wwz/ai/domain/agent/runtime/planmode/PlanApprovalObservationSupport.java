@@ -7,6 +7,7 @@ import org.wwz.ai.domain.agent.runtime.enums.RoleType;
 import org.wwz.ai.domain.agent.runtime.tool.ToolObservationSerializer;
 import org.wwz.ai.domain.agent.runtime.tool.ToolResultPayload;
 import org.wwz.ai.domain.agent.runtime.tool.common.planmode.TaskToolNames;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -62,8 +63,13 @@ public final class PlanApprovalObservationSupport {
                 if (!TaskToolNames.EXIT_PLAN_MODE.equals(toolCall.getFunction().getName())) {
                     continue;
                 }
-                if (StringUtils.isBlank(toolCall.getId()) || answeredIds.contains(toolCall.getId())) {
+                if (StringUtils.isNotBlank(toolCall.getId()) && answeredIds.contains(toolCall.getId())) {
                     continue;
+                }
+                if (StringUtils.isBlank(toolCall.getId())) {
+                    // 兼容少数 OpenAI-compatible 网关丢失 tool_call_id 的响应；先修复
+                    // assistant tool call，再用同一 ID 写入 waiting/decision observation。
+                    toolCall.setId(StringUtil.getUUID());
                 }
                 return toolCall.getId();
             }
@@ -138,6 +144,7 @@ public final class PlanApprovalObservationSupport {
         map.put("planContent", record.getPlanContent());
         map.put("planFilePath", record.getPlanFilePath());
         map.put("status", toClientStatus(record.getStatus()));
+        map.put("persistenceStatus", record.getStatus());
         if (record.getExpiresAt() != null) {
             map.put("expiresAt", record.getExpiresAt().toString());
         }

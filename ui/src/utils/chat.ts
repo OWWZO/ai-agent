@@ -286,8 +286,10 @@ function handleTaskMessageByType(
     case "ask_user_question":
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
       break;
-    case "plan_approval":
     case "plan_mode_entered":
+      // Plan mode 进入事件仅供运行时控制，不在界面渲染。
+      break;
+    case "plan_approval":
     case "session_tasks":
     case "user_brief":
       handleNonStreamingMessage(eventData, currentChat, taskIndex);
@@ -1749,7 +1751,6 @@ export const handleTaskData = (
     "tool_result",
     "ask_user_question",
     "plan_approval",
-    "plan_mode_entered",
     "session_tasks",
     "user_brief",
     "browser",
@@ -1805,6 +1806,9 @@ export const handleTaskData = (
     }> = [];
 
     taskGroup?.forEach((task, taskIndex) => {
+      if (task?.messageType === "plan_mode_entered") {
+        return;
+      }
       const time = task.messageTime;
       const id = time?.concat(String(taskIndex));
       const processedInfo = processTaskForRender(task, id);
@@ -1952,7 +1956,6 @@ export const buildAction = (task: CHAT.Task) => {
     TOOL_RESULT: "tool_result",
     ASK_USER_QUESTION: "ask_user_question",
     PLAN_APPROVAL: "plan_approval",
-    PLAN_MODE_ENTERED: "plan_mode_entered",
     SESSION_TASKS: "session_tasks",
     CODE: "code",
     HTML: "html",
@@ -1992,13 +1995,6 @@ export const buildAction = (task: CHAT.Task) => {
         action: "等待批准计划",
         tool: "ExitPlanMode",
         name: "计划批准",
-      };
-
-    case MESSAGE_TYPES.PLAN_MODE_ENTERED:
-      return {
-        action: "已进入 Plan Mode",
-        tool: "EnterPlanMode",
-        name: "计划模式",
       };
 
     case MESSAGE_TYPES.SESSION_TASKS:
@@ -2203,7 +2199,6 @@ export enum IconType {
   TOOL_RESULT = 'tool_result',
   ASK_USER_QUESTION = 'ask_user_question',
   PLAN_APPROVAL = 'plan_approval',
-  PLAN_MODE_ENTERED = 'plan_mode_entered',
   SESSION_TASKS = 'session_tasks',
   BROWSER = 'browser',
   FILE = 'file',
@@ -2223,7 +2218,6 @@ const ICON_MAP: Record<IconType, string> = {
   [IconType.TOOL_RESULT]: 'icon-tiaoshi',
   [IconType.ASK_USER_QUESTION]: 'icon-juli',
   [IconType.PLAN_APPROVAL]: 'icon-renwu',
-  [IconType.PLAN_MODE_ENTERED]: 'icon-renwu',
   [IconType.SESSION_TASKS]: 'icon-renwu',
   [IconType.BROWSER]: 'icon-sousuo',
   [IconType.FILE]: 'icon-bianji',

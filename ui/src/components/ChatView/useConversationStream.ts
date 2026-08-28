@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useMemoizedFn } from "ahooks";
-import { message } from "antd";
+import { message as antdMessage } from "antd";
 import { isOutputProductType, toRequestOutputStyle } from "@/utils/constants";
 import { getUniqId } from "@/utils";
 import { buildAgentStreamRequest } from "@/utils/agentRequest";
@@ -1312,7 +1312,8 @@ export function useConversationStream(
       markDecided: (
         chat: CHAT.ChatItem,
         questionId?: string,
-        answers?: Record<string, string>
+        answers?: Record<string, string>,
+        approved?: boolean
       ) => CHAT.ChatItem;
       errorLabel: string;
     }
@@ -1351,7 +1352,9 @@ export function useConversationStream(
 
     // 续跑开始即把 HITL 卡片标为已决，避免仍被当成 WAITING_INPUT
     const questionId = "questionId" in detail ? detail.questionId : undefined;
+    const approvalId = "approvalId" in detail ? detail.approvalId : undefined;
     const answers = "answers" in detail ? detail.answers : undefined;
+    const approved = "approved" in detail ? detail.approved : undefined;
     let currentChat: CHAT.ChatItem = options.markDecided({
       ...seedChat,
       requestId: resumeRequestId,
@@ -1361,7 +1364,7 @@ export function useConversationStream(
         ...(seedChat.metrics || {}),
         status: "RUNNING",
       },
-    }, questionId, answers);
+    }, questionId || approvalId, answers, approved);
 
     const draftController = createConversationDraftController<CHAT.ChatItem>(
       conversationId,
@@ -1381,7 +1384,12 @@ export function useConversationStream(
       conversationRef.current.id === conversationId &&
       activeRequestIdRef.current === resumeRequestId;
 
+    let resumeSettled = false;
     const settleResumeSuccess = () => {
+      if (resumeSettled) {
+        return;
+      }
+      resumeSettled = true;
       // 必须先读 isActiveStream，再 unbind（unbind 会清空 activeRequestIdRef）
       const streamStillActive = isActiveStream();
       clearActiveRun(resumeRequestId);
@@ -1429,7 +1437,7 @@ export function useConversationStream(
         if (isActiveStream() && shouldRefreshWorkspaceTask(eventData)) {
           scheduleWorkspaceStreamTask(currentChat, Boolean(finished));
         }
-        if (!finished) {
+        if (!finished && !resumeSettled) {
           const presence = resolveRunPresence({
             loading: true,
             chat: currentChat,
@@ -1441,6 +1449,7 @@ export function useConversationStream(
       }
 
       // 与主链路一致：任意 finished 帧都应收口，不能只认 packageType=result
+      // 业务 finished 后仍可能短暂保持 SSE（后端 markAnswered 后再关流），勿重复 settle。
       if (finished) {
         settleResumeSuccess();
       }
@@ -1465,8 +1474,15 @@ export function useConversationStream(
         handleMessage,
         handleError: (error) => {
           console.error(`${options.errorLabel} resume SSE error`, error);
-          // 已有结论时按成功收口，避免“答完了还在推进”
-          if (currentChat.conclusion || currentChat.multiAgent?.tasks?.length) {
+          if (resumeSettled) {
+            return;
+          }
+          // 已有结论 / 已本地 decided 时按成功收口，避免“答完了还在推进”或回审批 UI
+          if (
+            currentChat.conclusion ||
+            String(currentChat.metrics?.status || "").toUpperCase() === "SUCCESS" ||
+            currentChat.multiAgent?.tasks?.length
+          ) {
             settleResumeSuccess();
             draftController.commit(draftController.replaceLastItem({ ...currentChat }));
             return;
@@ -1489,7 +1505,10 @@ export function useConversationStream(
           draftController.commit(draftController.replaceLastItem({ ...currentChat }));
         },
         handleClose: () => {
-          if (currentChat.loading) {
+          if (resumeSettled) {
+            return;
+          }
+          if (currentChat.loading || currentChat.conclusion) {
             settleResumeSuccess();
             const taskData = handleTaskData(
               currentChat,
@@ -1615,7 +1634,7 @@ export function useConversationStream(
       });
     }
     if (blockedByOtherRun) {
-      message.warning(CONCURRENT_RUN_HINT);
+      antdMessage.warning(CONCURRENT_RUN_HINT);
       return;
     }
 

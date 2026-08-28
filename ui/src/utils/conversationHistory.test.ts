@@ -335,6 +335,39 @@ describe("conversationHistory hydrate", () => {
     expect(toConversationHistoryTitle(detail)).toBe("新对话");
   });
 
+  it("recovers a title from the first non-empty run query", () => {
+    const detail: ConversationHistoryDetail = {
+      sessionId: "session-plan-resume-001",
+      title: "新对话",
+      status: "SUCCESS",
+      outputStyle: "docs",
+      deepThink: true,
+      role: null,
+      runCount: 2,
+      finishedRunCount: 2,
+      failedRunCount: 0,
+      runs: [
+        {
+          requestId: "req-plan-001",
+          status: "WAITING_INPUT",
+          queryText: "请先制定一份项目调研计划",
+          replayFrames: [],
+        },
+        {
+          requestId: "resume-plan-001",
+          status: "SUCCESS",
+          queryText: "",
+          replayFrames: [],
+        },
+      ],
+    };
+
+    expect(toConversationHistoryTitle(detail)).toBe("请先制定一份项目调研计划");
+    expect(hydrateConversationFromReplayFrames(detail).chatTitle).toBe(
+      "请先制定一份项目调研计划"
+    );
+  });
+
   it("treats missing outputStyle history as generic task conversation", () => {
     const history = hydrateConversationFromReplayFrames({
       sessionId: "session-generic-001",

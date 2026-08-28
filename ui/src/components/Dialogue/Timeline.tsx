@@ -159,12 +159,15 @@ export const ToolItem: FC<ToolItemProps> = memo(({
         return (
           <div className="kimi-ui-card kimi-appr">
             <div className="kimi-ui-card__head">
-              <span className="kimi-qcard-title">计划审批</span>
+              <span className="kimi-appr-ic">!</span>
+              <span className="kimi-appr-title">按这份计划开始执行？</span>
               <span className="kimi-appr-badge" style={{ marginLeft: "auto" }}>
-                待确认
+                需要确认
               </span>
             </div>
-            <div className="kimi-ui-card__body">请在底部输入区确认计划</div>
+            <div className="kimi-ui-card__body">
+              请在底部计划卡片中确认后开始执行
+            </div>
           </div>
         );
       }

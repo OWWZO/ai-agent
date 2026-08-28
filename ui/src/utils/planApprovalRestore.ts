@@ -4,10 +4,7 @@ import {
   type PlanApprovalResumeEventDetail,
 } from "@/services/planApproval";
 import { buildConversationTaskData, combineData } from "@/utils/chat";
-import {
-  applyWaitingUserInputState,
-  WAITING_USER_HELP_HINT,
-} from "@/components/ChatView/streamState";
+import { applyWaitingUserInputState } from "@/components/ChatView/streamState";
 
 function chatHasApproval(chat: CHAT.ChatItem, approvalId: string): boolean {
   if (!approvalId) {
@@ -19,8 +16,16 @@ function chatHasApproval(chat: CHAT.ChatItem, approvalId: string): boolean {
       if (tool?.messageType !== "plan_approval") {
         continue;
       }
-      const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<string, unknown>;
-      const id = String(nested.approvalId || tool.messageId || "");
+      const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
+      const toolAny = tool as unknown as Record<string, unknown>;
+      const id = String(
+        nested.approvalId ||
+          resultMap.approvalId ||
+          toolAny.approvalId ||
+          tool.messageId ||
+          ""
+      );
       if (id === approvalId) {
         return true;
       }
@@ -40,6 +45,10 @@ function buildPlanApprovalEventData(payload: Record<string, unknown>): MESSAGE.E
     requestId: payload.requestId,
     toolCallId: payload.toolCallId,
     status,
+    persistenceStatus: payload.persistenceStatus,
+    approved: payload.approved,
+    feedback: payload.feedback,
+    editedPlanContent: payload.editedPlanContent,
     planContent: payload.planContent,
     planFilePath: payload.planFilePath,
     resumeRequestId: payload.resumeRequestId,
@@ -52,7 +61,7 @@ function buildPlanApprovalEventData(payload: Record<string, unknown>): MESSAGE.E
     taskOrder: 1,
     messageType: "task",
     messageOrder: 1,
-    messageId: approvalId || undefined,
+    messageId: approvalId,
     resultMap: {
       messageType: "plan_approval",
       messageId: approvalId,
@@ -68,7 +77,10 @@ export function mergePendingPlanApprovals(
   pending: Record<string, unknown>[]
 ): { conversation: CHAT.ConversationHistory; autoResumes: PlanApprovalResumeEventDetail[] } {
   if (!conversation?.chatList?.length || !pending?.length) {
-    return { conversation, autoResumes: [] };
+    return {
+      conversation,
+      autoResumes: [],
+    };
   }
 
   const chatList = conversation.chatList.map((chat) => ({
@@ -84,6 +96,7 @@ export function mergePendingPlanApprovals(
     const approvalId = String(payload.approvalId || "");
     const requestId = String(payload.requestId || "");
     const clientStatus = String(payload.status || "pending").toLowerCase();
+    const persistenceStatus = String(payload.persistenceStatus || "").toUpperCase();
     let index = requestId
       ? chatList.findIndex((chat) => chat.requestId === requestId)
       : -1;
@@ -109,18 +122,47 @@ export function mergePendingPlanApprovals(
           if (tool?.messageType !== "plan_approval") {
             continue;
           }
-          const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<
+          const resultMap = tool.resultMap as unknown as Record<string, unknown>;
+          const nested = (resultMap.resultMap || resultMap) as Record<
             string,
             unknown
           >;
-          if (String(nested.approvalId || tool.messageId || "") !== approvalId) {
+          const toolAny = tool as unknown as Record<string, unknown>;
+          const cardApprovalId = String(
+            nested.approvalId ||
+              resultMap.approvalId ||
+              toolAny.approvalId ||
+              tool.messageId ||
+              ""
+          );
+          if (cardApprovalId !== approvalId) {
             continue;
           }
           nested.status = clientStatus;
-          if (tool.resultMap) {
-            tool.resultMap.status = clientStatus;
-            tool.resultMap.isFinal = clientStatus !== "pending";
+          nested.persistenceStatus = persistenceStatus || undefined;
+          if (typeof payload.approved === "boolean") {
+            nested.approved = payload.approved;
           }
+          if (typeof payload.editedPlanContent === "string") {
+            nested.editedPlanContent = payload.editedPlanContent;
+            if (payload.editedPlanContent.trim()) {
+              nested.planContent = payload.editedPlanContent;
+            }
+          }
+          resultMap.status = clientStatus;
+          resultMap.persistenceStatus = persistenceStatus || undefined;
+          if (typeof payload.approved === "boolean") {
+            resultMap.approved = payload.approved;
+          }
+          if (typeof payload.editedPlanContent === "string") {
+            resultMap.editedPlanContent = payload.editedPlanContent;
+            if (payload.editedPlanContent.trim()) {
+              resultMap.planContent = payload.editedPlanContent;
+            }
+          }
+          resultMap.isFinal = clientStatus !== "pending";
+          tool.finish = clientStatus !== "pending";
+          tool.isFinal = clientStatus !== "pending";
         }
       }
     }
@@ -128,23 +170,40 @@ export function mergePendingPlanApprovals(
     if (clientStatus === "pending") {
       chat = applyWaitingUserInputState(chat);
     } else if (clientStatus === "decided") {
+      const resumePending =
+        !persistenceStatus ||
+        persistenceStatus === "RESUME_PENDING" ||
+        persistenceStatus === "RESUMING";
       chat = {
         ...chat,
-        loading: false,
-        tip: WAITING_USER_HELP_HINT,
+        loading: resumePending,
+        tip: resumePending ? "正在推进任务…" : "",
         metrics: {
           ...(chat.metrics || {}),
-          status: "WAITING_INPUT",
+          status: resumePending ? "RUNNING" : "SUCCESS",
         },
       };
       const resumeRequestId = String(payload.resumeRequestId || "");
-      if (resumeRequestId) {
+      if (resumeRequestId && resumePending) {
         autoResumes.push({
           resumeRequestId,
           sessionId: String(payload.sessionId || conversation.sessionId || ""),
           approvalId,
+          ...(typeof payload.approved === "boolean"
+            ? { approved: payload.approved }
+            : {}),
         });
       }
+    } else if (clientStatus === "cancelled" || clientStatus === "timeout") {
+      chat = {
+        ...chat,
+        loading: false,
+        tip: "",
+        metrics: {
+          ...(chat.metrics || {}),
+          status: "FAILED",
+        },
+      };
     }
 
     const derived = buildConversationTaskData(chat, conversation.deepThink);

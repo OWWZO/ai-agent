@@ -29,10 +29,6 @@ describe("planComposerModel", () => {
   it("prefers latest plan_approval with body for composer", () => {
     const taskList = [
       {
-        messageType: "plan_mode_entered",
-        resultMap: { planFilePath: ".reactor/plan.md" },
-      },
-      {
         messageType: "plan_approval",
         resultMap: {
           approvalId: "a2",
@@ -43,7 +39,8 @@ describe("planComposerModel", () => {
     ] as unknown as CHAT.Task[];
 
     const latest = findLatestPlanApproval(undefined, taskList);
-    expect(latest?.resultMap?.planContent || (latest?.resultMap as any)?.approvalId).toBeTruthy();
+    const latestMap = latest?.resultMap as unknown as Record<string, unknown> | undefined;
+    expect(latestMap?.planContent || latestMap?.approvalId).toBeTruthy();
 
     const model = buildComposerPlanModel({ taskList });
     expect(model?.source).toBe("plan_approval");
@@ -65,16 +62,39 @@ describe("planComposerModel", () => {
     expect(model?.planContent).toContain("探索代码");
   });
 
-  it("shows planning placeholder after plan_mode_entered", () => {
+  it("does not turn a decided approval back into an approval composer", () => {
     const model = buildComposerPlanModel({
       taskList: [
         {
-          messageType: "plan_mode_entered",
-          resultMap: { planFilePath: "D:/ws/.reactor/plan.md", autoEntered: true },
+          messageType: "plan_approval",
+          resultMap: {
+            approvalId: "a-done",
+            planContent: "已批准的计划",
+            status: "decided",
+          },
         },
       ] as unknown as CHAT.Task[],
     });
-    expect(model?.source).toBe("plan_mode");
-    expect(model?.planContent).toContain("规划中");
+
+    expect(model).toBeNull();
+  });
+
+  it("treats finish-without-status as decided, not pending composer", () => {
+    const model = buildComposerPlanModel({
+      taskList: [
+        {
+          messageType: "plan_approval",
+          finish: true,
+          isFinal: true,
+          resultMap: {
+            approvalId: "a-fin",
+            planContent: "收尾计划",
+            isFinal: true,
+          },
+        },
+      ] as unknown as CHAT.Task[],
+    });
+
+    expect(model).toBeNull();
   });
 });

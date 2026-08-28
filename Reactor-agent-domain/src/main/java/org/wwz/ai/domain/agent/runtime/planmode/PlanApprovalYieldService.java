@@ -43,6 +43,8 @@ public class PlanApprovalYieldService {
         }
         String approvalId = "pa_" + UUID.randomUUID().toString().replace("-", "");
         Long runId = agentContext.getAgentRunState() == null ? null : agentContext.getAgentRunState().getRunId();
+        String waitingObservation = PlanApprovalObservationSupport.buildWaitingObservation(
+                signal.getPlanContent(), approvalId);
         String toolCallId = PlanApprovalObservationSupport.resolveExitPlanToolCallId(
                 executor == null || executor.getMemory() == null ? null : executor.getMemory().getMessages(),
                 signal.getToolCallId());
@@ -51,7 +53,7 @@ public class PlanApprovalYieldService {
                 && executor.getMemory() != null
                 && !PlanApprovalObservationSupport.hasToolResult(executor.getMemory().getMessages(), toolCallId)) {
             executor.getMemory().addMessage(org.wwz.ai.domain.agent.runtime.dto.Message.toolMessage(
-                    PlanApprovalObservationSupport.buildWaitingObservation(signal.getPlanContent(), approvalId),
+                    waitingObservation,
                     toolCallId,
                     null));
         }
@@ -96,6 +98,7 @@ public class PlanApprovalYieldService {
                     .toolCallId(toolCallId)
                     .toolName(TaskToolNames.EXIT_PLAN_MODE)
                     .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
+                    .llmObservation(waitingObservation)
                     .finishedAt(LocalDateTime.now())
                     .build());
         }

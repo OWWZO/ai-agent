@@ -3,6 +3,7 @@ package org.wwz.ai.test.domain.planmode;
 import org.junit.Assert;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
+import org.wwz.ai.domain.agent.runtime.prompt.PlanSolvePrompt;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
 import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionTaskItem;
@@ -72,6 +73,15 @@ public class PlanModeToolsTest {
         state.enterPlanMode();
         state.enterPlanMode();
         Assert.assertTrue(state.isPlanMode());
+    }
+
+    @Test
+    public void approvedPlanUsesExecutionGuidance() {
+        String prompt = PlanSolvePrompt.ensureApprovedExecution("base prompt");
+
+        Assert.assertTrue(prompt.contains(PlanSolvePrompt.EXECUTION_MARKER));
+        Assert.assertTrue(prompt.contains("Plan mode is no longer active"));
+        Assert.assertTrue(prompt.contains("Execute the approved plan"));
     }
 
     @Test

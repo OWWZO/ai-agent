@@ -9,6 +9,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Component;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
+import org.wwz.ai.domain.agent.runtime.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -88,7 +89,7 @@ public class LlmChatResponseMapper {
                 continue;
             }
             toolCalls.add(ToolCall.builder()
-                    .id(toolCall.id())
+                    .id(StringUtils.defaultIfBlank(toolCall.id(), StringUtil.getUUID()))
                     .type(toolCall.type())
                     .function(ToolCall.Function.builder()
                             .name(toolCall.name())

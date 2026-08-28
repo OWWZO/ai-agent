@@ -24,13 +24,18 @@ type PlanComposerBarProps = {
 };
 
 /**
- * 依附在输入框上方的计划条（Plan Mode / ExitPlanMode / PlanSolve stages）。
+ * 依附在输入框上方的计划条（ExitPlanMode / PlanSolve stages）。
  * plan_approval 源对齐 Kimi ApprovalCard plan_review 视觉。
  */
 const PlanComposerBar: FC<PlanComposerBarProps> = memo(
   ({ chat, taskList, structuredPlan, loading }) => {
     const model = useMemo(
-      () => buildComposerPlanModel({ chat, taskList, structuredPlan }),
+      () =>
+        buildComposerPlanModel({
+          chat,
+          taskList,
+          structuredPlan,
+        }),
       [chat, taskList, structuredPlan]
     );
 
@@ -65,7 +70,12 @@ const PlanComposerBarInner: FC<{
   }, [model.approvalId, model.planContent, model.source, model.status]);
 
   const status = localStatus || model.status || "pending";
-  const isDecided = status === "approved" || status === "rejected";
+  const isDecided =
+    status === "approved" ||
+    status === "rejected" ||
+    status === "decided" ||
+    status === "cancelled" ||
+    status === "timeout";
   const canApprove =
     model.source === "plan_approval" &&
     Boolean(model.approvalId) &&
@@ -78,14 +88,12 @@ const PlanComposerBarInner: FC<{
     !isDecided;
   const isApprovalSkin = model.source === "plan_approval";
 
-  const title =
-    status === "approved"
-      ? "计划已批准"
-      : status === "rejected"
-        ? "计划已拒绝"
-        : isApprovalSkin
-          ? "计划审批"
-          : model.title;
+  let title = isApprovalSkin ? "按这份计划开始执行？" : model.title;
+  if (status === "approved" || (status === "decided" && model.approved !== false)) {
+    title = "计划已批准";
+  } else if (status === "rejected" || (status === "decided" && model.approved === false)) {
+    title = "计划已拒绝";
+  }
 
   const approve = async () => {
     if (!model.approvalId || submitting || !canApprove) return;
@@ -109,6 +117,7 @@ const PlanComposerBarInner: FC<{
           resumeRequestId,
           sessionId: String(res?.sessionId || ""),
           approvalId: model.approvalId,
+          approved: true,
         });
         message.success("计划已批准，正在继续执行");
       } else {
@@ -143,6 +152,7 @@ const PlanComposerBarInner: FC<{
           resumeRequestId,
           sessionId: String(res?.sessionId || ""),
           approvalId: model.approvalId,
+          approved: false,
         });
         message.success("已拒绝，正在继续修订");
       } else {
@@ -172,7 +182,9 @@ const PlanComposerBarInner: FC<{
           ) : null}
           {isDecided ? (
             <span className="kimi-appr-badge">
-              {status === "rejected" ? "只读 · 已拒绝" : "只读 · 已批准"}
+              {status === "rejected" || model.approved === false
+                ? "只读 · 已拒绝"
+                : "只读 · 已批准"}
             </span>
           ) : null}
           <button
@@ -192,15 +204,23 @@ const PlanComposerBarInner: FC<{
         {!minimized ? (
           <>
             <div className="kimi-ui-card__body">
+              {model.planFilePath ? (
+                <div className="kimi-appr-path" title={model.planFilePath}>
+                  {model.planFilePath}
+                </div>
+              ) : null}
               <div className="kimi-appr-plan">
                 {showActions ? (
-                  <textarea
-                    value={editedPlan}
-                    onChange={(event) => setEditedPlan(event.target.value)}
-                    disabled={submitting}
-                    rows={8}
-                    placeholder="计划 Markdown 正文"
-                  />
+                  <>
+                    <div className="kimi-appr-label">计划内容</div>
+                    <textarea
+                      value={editedPlan}
+                      onChange={(event) => setEditedPlan(event.target.value)}
+                      disabled={submitting}
+                      rows={10}
+                      placeholder="计划 Markdown 正文"
+                    />
+                  </>
                 ) : (
                   <MarkdownRenderer
                     markDownContent={editedPlan || model.planContent || "(空计划)"}
@@ -244,7 +264,7 @@ const PlanComposerBarInner: FC<{
                     {pendingAction === "approvePlan" ? (
                       <LoaderCircleIcon className="size-3.5 animate-spin" />
                     ) : null}
-                    批准计划
+                    执行计划
                     <span className="kimi-appr-kbd">1</span>
                   </button>
                   <button
@@ -253,7 +273,7 @@ const PlanComposerBarInner: FC<{
                     disabled={submitting}
                     onClick={() => setFeedbackOpen(true)}
                   >
-                    修订
+                    修改计划
                     <span className="kimi-appr-kbd">2</span>
                   </button>
                   <button
@@ -277,7 +297,7 @@ const PlanComposerBarInner: FC<{
     );
   }
 
-  // structured_plan / plan_mode：轻量折叠条，不伪装审批卡
+  // structured_plan：轻量折叠条，不伪装审批卡
   return (
     <div className="kimi-ui-card mb-2">
       <button

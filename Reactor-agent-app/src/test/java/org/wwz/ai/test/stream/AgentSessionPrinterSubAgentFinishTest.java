@@ -112,6 +112,19 @@ public class AgentSessionPrinterSubAgentFinishTest {
                 .build();
         projection.send(root);
 
+        // 根 result 的 finished 只收口业务态，不在投影层自动关流；
+        // 由 GptQuery / HITL resume 在 finishRun、markAnswered 后显式 complete。
+        Assert.assertFalse(downstream.completed.get());
+        Assert.assertEquals(2, downstream.payloads.size());
+
+        AgentResponse settle = AgentResponse.builder()
+                .requestId(request.getRequestId())
+                .messageId("m3")
+                .messageType("stream_settle")
+                .finish(true)
+                .resultMap(rootMap)
+                .build();
+        projection.send(settle);
         Assert.assertTrue(downstream.completed.get());
     }
 

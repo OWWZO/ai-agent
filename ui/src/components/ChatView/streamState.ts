@@ -39,7 +39,6 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
   // 子 Agent 心跳，不进工作区/时间线注意力
   "subagent_progress",
   "plan_approval",
-  "plan_mode_entered",
   "session_tasks",
   "user_brief",
   "ui_patch",
@@ -348,13 +347,18 @@ function collectTimelineTools(chat?: CHAT.ChatItem): CHAT.Task[] {
   if (!chat) {
     return [];
   }
+  const isUiTask = (task: CHAT.Task) => task.messageType !== "plan_mode_entered";
   const fromRendered = (chat.tasks || []).flatMap((group) =>
-    (group || []).flatMap((container) => container.children || [])
+    (group || [])
+      .flatMap((container) => container.children || [])
+      .filter(isUiTask)
   );
   if (fromRendered.length) {
     return fromRendered;
   }
-  return (chat.multiAgent?.tasks || []).flatMap((group) => group || []) as CHAT.Task[];
+  return (chat.multiAgent?.tasks || [])
+    .flatMap((group) => group || [])
+    .filter(isUiTask) as CHAT.Task[];
 }
 
 function resolveWorkspaceTitle(task?: CHAT.Task) {
@@ -515,12 +519,15 @@ export function resolveWorkspaceCaption(task?: CHAT.Task, loading?: boolean) {
 /** AskUserQuestion 挂起：顶栏 / tip 文案 */
 export const WAITING_USER_HELP_HINT = "需要你的帮助";
 
-function readAskUserStatus(tool?: CHAT.Task): string {
+function readAskUserStatus(
+  tool?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+): string {
   if (!tool) {
     return "";
   }
-  const nested = (tool.resultMap?.resultMap || tool.resultMap || {}) as Record<string, unknown>;
-  return String(nested.status || tool.resultMap?.status || "").trim().toLowerCase();
+  const resultMap = (tool.resultMap || {}) as unknown as Record<string, unknown>;
+  const nested = (resultMap.resultMap || resultMap) as Record<string, unknown>;
+  return String(nested.status || resultMap.status || "").trim().toLowerCase();
 }
 
 /** 会话是否仍有未决 HITL（AskUserQuestion / PlanApproval） */
@@ -538,18 +545,36 @@ export function hasPendingAskUserQuestion(chat?: CHAT.ChatItem | null): boolean 
   const groups = chat.multiAgent?.tasks || chat.tasks || [];
   for (const group of groups) {
     for (const tool of group || []) {
-      if (tool?.messageType === "ask_user_question") {
-        const status = readAskUserStatus(tool);
-        if (!status || status === "pending") {
-          return true;
-        }
+      if (
+        tool?.messageType !== "ask_user_question" &&
+        tool?.messageType !== "plan_approval"
+      ) {
         continue;
       }
-      if (tool?.messageType === "plan_approval") {
-        const status = readAskUserStatus(tool);
-        if (!status || status === "pending") {
-          return true;
-        }
+      const status = readAskUserStatus(tool);
+      if (status === "pending") {
+        return true;
+      }
+      if (status) {
+        continue;
+      }
+      // 缺 status：已 finish/isFinal 视为已决，避免续跑收尾后误判回 WAITING
+      const resultMap = (tool.resultMap || {}) as unknown as Record<
+        string,
+        unknown
+      >;
+      const nested = (resultMap.resultMap || resultMap) as Record<
+        string,
+        unknown
+      >;
+      const settled = Boolean(
+        tool.finish ||
+          tool.isFinal ||
+          resultMap.isFinal === true ||
+          nested.isFinal === true
+      );
+      if (!settled) {
+        return true;
       }
     }
   }
@@ -598,22 +623,35 @@ export function markAskUserQuestionsAnswered(
     ...chat,
     multiAgent: {
       ...(chat.multiAgent || { tasks: [] }),
-      tasks,
+      tasks: tasks as unknown as MESSAGE.Task[][],
     },
   };
 }
 
 /** 用户已提交计划审批后，把本地卡片标成 decided */
-export function markPlanApprovalsDecided(chat: CHAT.ChatItem): CHAT.ChatItem {
+export function markPlanApprovalsDecided(
+  chat: CHAT.ChatItem,
+  approvalId?: string,
+  _answers?: Record<string, string>,
+  approved?: boolean
+): CHAT.ChatItem {
   const tasks = (chat.multiAgent?.tasks || []).map((group) =>
     (group || []).map((tool) => {
       if (tool?.messageType !== "plan_approval") {
         return tool;
       }
       const prevMap = (tool.resultMap || {}) as Record<string, unknown>;
+      const nestedMap = (prevMap.resultMap || {}) as Record<string, unknown>;
+      const currentApprovalId = String(
+        nestedMap.approvalId || prevMap.approvalId || tool.messageId || ""
+      );
+      if (approvalId && currentApprovalId !== approvalId) {
+        return tool;
+      }
       const nested = {
-        ...((prevMap.resultMap as Record<string, unknown> | undefined) || {}),
+        ...nestedMap,
         status: "decided",
+        ...(typeof approved === "boolean" ? { approved } : {}),
       };
       return {
         ...tool,
@@ -623,6 +661,7 @@ export function markPlanApprovalsDecided(chat: CHAT.ChatItem): CHAT.ChatItem {
           ...prevMap,
           status: "decided",
           isFinal: true,
+          ...(typeof approved === "boolean" ? { approved } : {}),
           resultMap: nested,
         },
       } as CHAT.Task;
@@ -632,7 +671,7 @@ export function markPlanApprovalsDecided(chat: CHAT.ChatItem): CHAT.ChatItem {
     ...chat,
     multiAgent: {
       ...(chat.multiAgent || { tasks: [] }),
-      tasks,
+      tasks: tasks as unknown as MESSAGE.Task[][],
     },
   };
 }
