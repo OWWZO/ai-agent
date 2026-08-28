@@ -7,6 +7,7 @@ import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.DialogueRunStartRecord;
+import org.wwz.ai.domain.agent.ledger.model.DialogueSessionUpsertRecord;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
@@ -162,6 +163,102 @@ public class AgentExecutionLedgerRepositoryTest {
         Assert.assertEquals("req-ledger-001", artifacts.get(0).getRequestId());
         Assert.assertEquals(Long.valueOf(toolInvocationId), artifacts.get(0).getToolInvocationId());
         Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", toolInvocationId).isPresent());
+    }
+
+    @Test
+    public void shouldPreserveSessionHeadForEmptyContinuationRun() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String sessionId = "session-plan-resume-001";
+        LocalDateTime now = LocalDateTime.now();
+
+        Long sourceRunId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid("req-plan-source-001")
+                .requestId("req-plan-source-001")
+                .sessionId(sessionId)
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE)
+                .queryText("请先制定一份项目调研计划")
+                .startedAt(now)
+                .build());
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(sourceRunId)
+                .requestId("req-plan-source-001")
+                .status(ExecutionLedgerConstants.STATUS_WAITING_INPUT)
+                .finishedAt(now.plusSeconds(1))
+                .build());
+
+        Long resumeRunId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid("resume-plan-001")
+                .requestId("resume-plan-001")
+                .sessionId(sessionId)
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE)
+                .queryText("")
+                .startedAt(now.plusSeconds(2))
+                .build());
+
+        Assert.assertEquals("请先制定一份项目调研计划",
+                ctx.sessionDao.queryBySessionId(sessionId).getTitle());
+        Assert.assertEquals("请先制定一份项目调研计划",
+                ctx.sessionDao.queryBySessionId(sessionId).getLatestQueryText());
+
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(resumeRunId)
+                .requestId("resume-plan-001")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("计划执行完成")
+                .finishedAt(now.plusSeconds(3))
+                .build());
+
+        Assert.assertEquals("请先制定一份项目调研计划",
+                ctx.sessionDao.queryBySessionId(sessionId).getTitle());
+        Assert.assertEquals("请先制定一份项目调研计划",
+                ctx.sessionDao.queryBySessionId(sessionId).getLatestQueryText());
+    }
+
+    @Test
+    public void shouldRecoverLegacyDefaultSessionTitleFromRunQuery() {
+        ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
+        String sessionId = "session-legacy-title-001";
+        LocalDateTime now = LocalDateTime.now();
+        Long runId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
+                .runUid("req-legacy-title-001")
+                .requestId("req-legacy-title-001")
+                .sessionId(sessionId)
+                .entryAgent(ExecutionLedgerConstants.ENTRY_AGENT_PLAN_SOLVE)
+                .queryText("恢复被旧续跑逻辑覆盖的标题")
+                .startedAt(now)
+                .build());
+        ctx.recorder.finishRun(DialogueRunFinishRecord.builder()
+                .runId(runId)
+                .requestId("req-legacy-title-001")
+                .status(ExecutionLedgerConstants.STATUS_SUCCESS)
+                .finalSummaryText("完成")
+                .finishedAt(now.plusSeconds(1))
+                .build());
+
+        var session = ctx.sessionDao.queryBySessionId(sessionId);
+        ctx.sessionDao.upsertSession(DialogueSessionUpsertRecord.builder()
+                .sessionId(sessionId)
+                .visitorId(session.getVisitorId())
+                .title("新对话")
+                .status(session.getStatus())
+                .latestRequestId(session.getLatestRequestId())
+                .latestQueryText("")
+                .latestSummaryText(session.getLatestSummaryText())
+                .runCount(session.getRunCount())
+                .finishedRunCount(session.getFinishedRunCount())
+                .failedRunCount(session.getFailedRunCount())
+                .startedAt(session.getStartedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .build());
+
+        Assert.assertEquals("恢复被旧续跑逻辑覆盖的标题",
+                ctx.queryService.querySession(sessionId).getTitle());
+        Assert.assertEquals("恢复被旧续跑逻辑覆盖的标题",
+                ctx.queryService.querySession(sessionId).getLatestQueryText());
+        Assert.assertEquals("恢复被旧续跑逻辑覆盖的标题",
+                ctx.queryService.queryRecentSessions(20).get(0).getTitle());
+        Assert.assertEquals("恢复被旧续跑逻辑覆盖的标题",
+                ctx.queryService.queryRecentSessions(20).get(0).getLatestQueryText());
     }
 
     @Test

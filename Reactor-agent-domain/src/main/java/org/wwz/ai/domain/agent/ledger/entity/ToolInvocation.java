@@ -36,7 +36,7 @@ public class ToolInvocation {
     /** 子 Agent 运行时 id（可选，展示用） */
     private String subAgentId;
 
-    /** 子 Agent 类型（Explore / general-purpose 等） */
+    /** 子 Agent 类型 */
     private String subAgentType;
 
     /** 子 Agent 任务短描述 */

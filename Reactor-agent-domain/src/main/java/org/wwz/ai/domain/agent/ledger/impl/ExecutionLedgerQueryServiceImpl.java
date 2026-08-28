@@ -87,12 +87,12 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isBlank(sessionId)) {
             return null;
         }
-        return executionLedgerReadRepository.querySession(sessionId);
+        return restoreSessionTitle(executionLedgerReadRepository.querySession(sessionId));
     }
 
     @Override
     public List<DialogueSessionView> queryRecentSessions(int limit) {
-        return executionLedgerReadRepository.queryRecentSessions(normalizeLimit(limit));
+        return restoreSessionTitles(executionLedgerReadRepository.queryRecentSessions(normalizeLimit(limit)));
     }
 
     @Override
@@ -100,7 +100,7 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isAnyBlank(visitorId, sessionId)) {
             return null;
         }
-        return executionLedgerReadRepository.querySession(visitorId, sessionId);
+        return restoreSessionTitle(executionLedgerReadRepository.querySession(visitorId, sessionId));
     }
 
     @Override
@@ -108,7 +108,62 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (StringUtils.isBlank(visitorId)) {
             return List.of();
         }
-        return executionLedgerReadRepository.queryRecentSessions(visitorId, normalizeLimit(limit));
+        return restoreSessionTitles(
+                executionLedgerReadRepository.queryRecentSessions(visitorId, normalizeLimit(limit))
+        );
+    }
+
+    /**
+     * 兼容旧的 continuation run：旧逻辑可能用空 query 把 session 标题覆盖成“新对话”。
+     * 查询时从同一 execution ledger 的首个非空 run query 恢复展示标题，不写回第二套事实。
+     */
+    private DialogueSessionView restoreSessionTitle(DialogueSessionView session) {
+        if (session == null || isMeaningfulSessionTitle(session.getTitle())) {
+            return session;
+        }
+        String firstQuery = resolveFirstNonBlankQuery(session.getSessionId());
+        if (StringUtils.isNotBlank(firstQuery)) {
+            session.setTitle(abbreviateSessionTitle(firstQuery));
+            if (StringUtils.isBlank(session.getLatestQueryText())) {
+                session.setLatestQueryText(firstQuery);
+            }
+        }
+        return session;
+    }
+
+    private List<DialogueSessionView> restoreSessionTitles(List<DialogueSessionView> sessions) {
+        if (CollectionUtils.isEmpty(sessions)) {
+            return sessions == null ? List.of() : sessions;
+        }
+        for (DialogueSessionView session : sessions) {
+            restoreSessionTitle(session);
+        }
+        return sessions;
+    }
+
+    private String resolveFirstNonBlankQuery(String sessionId) {
+        if (StringUtils.isBlank(sessionId)) {
+            return null;
+        }
+        List<DialogueRunView> runs = executionLedgerReadRepository.queryRunsBySessionId(sessionId);
+        if (CollectionUtils.isEmpty(runs)) {
+            return null;
+        }
+        for (DialogueRunView run : runs) {
+            if (run != null && StringUtils.isNotBlank(run.getQueryText())) {
+                return run.getQueryText();
+            }
+        }
+        return null;
+    }
+
+    private boolean isMeaningfulSessionTitle(String title) {
+        return StringUtils.isNotBlank(title) && !"新对话".equals(title.trim());
+    }
+
+    private String abbreviateSessionTitle(String queryText) {
+        String normalized = StringUtils.trimToEmpty(queryText);
+        return normalized.length() <= 30 ? normalized : normalized.substring(0, 30);
     }
 
     private List<DialogueRunView> attachArtifactSummaries(List<DialogueRunView> runViews) {

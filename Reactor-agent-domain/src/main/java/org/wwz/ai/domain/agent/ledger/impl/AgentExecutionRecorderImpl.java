@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.IExecutionLedgerWriteRepository;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
 import org.wwz.ai.domain.agent.ledger.entity.DialogueRun;
+import org.wwz.ai.domain.agent.ledger.entity.DialogueSession;
 import org.wwz.ai.domain.agent.ledger.entity.LlmInvocation;
 import org.wwz.ai.domain.agent.ledger.entity.ToolInvocation;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
@@ -43,6 +44,8 @@ import java.util.concurrent.atomic.LongAdder;
 @RequiredArgsConstructor
 public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
 
+    private static final String DEFAULT_SESSION_TITLE = "新对话";
+
     private final IExecutionLedgerWriteRepository executionLedgerWriteRepository;
     private final ToolOutputWriter toolOutputWriter;
 
@@ -75,13 +78,14 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
         try {
             // run 是整条执行账本的根事实，必须先落库，后续 LLM、tool 和 artifact 才能挂载到 runId。
             executionLedgerWriteRepository.insertRun(entity);
+            SessionHeadValues sessionHead = resolveSessionHead(record.getSessionId(), record.getQueryText());
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(record.getSessionId())
                     .visitorId(record.getVisitorId())
-                    .title(resolveSessionTitle(record.getQueryText()))
+                    .title(sessionHead.title())
                     .status(ExecutionLedgerConstants.STATUS_RUNNING)
                     .latestRequestId(record.getRequestId())
-                    .latestQueryText(record.getQueryText())
+                    .latestQueryText(sessionHead.latestQueryText())
                     .latestSummaryText(null)
                     .runCount(increaseSessionRunCount(record.getSessionId()))
                     .finishedRunCount(queryFinishedRunCount(record.getSessionId()))
@@ -129,13 +133,14 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
                     .durationMs(calculateDuration(existing.getStartedAt(), finishedAt))
                     .build();
             executionLedgerWriteRepository.updateRunFinish(updateEntity);
+            SessionHeadValues sessionHead = resolveSessionHead(existing.getSessionId(), existing.getQueryText());
             upsertSessionHead(DialogueSessionUpsertRecord.builder()
                     .sessionId(existing.getSessionId())
                     .visitorId(existing.getVisitorId())
-                    .title(resolveSessionTitle(existing.getQueryText()))
+                    .title(sessionHead.title())
                     .status(record.getStatus())
                     .latestRequestId(existing.getRequestId())
-                    .latestQueryText(existing.getQueryText())
+                    .latestQueryText(sessionHead.latestQueryText())
                     .latestSummaryText(record.getFinalSummaryText())
                     .runCount(queryRunCount(existing.getSessionId()))
                     .finishedRunCount(queryFinishedRunCount(existing.getSessionId()))
@@ -463,9 +468,57 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     private String resolveSessionTitle(String queryText) {
         String normalized = StringUtils.trimToEmpty(queryText);
         if (normalized.isEmpty()) {
-            return "新对话";
+            return DEFAULT_SESSION_TITLE;
         }
         return normalized.length() <= 30 ? normalized : normalized.substring(0, 30);
+    }
+
+    /**
+     * continuation run 的 query 按协议为空，不能覆盖首轮会话标题和问题预览。
+     * 同时兼容已经被旧逻辑覆盖成“新对话”的历史 session：从首个非空 run query 恢复展示值。
+     */
+    private SessionHeadValues resolveSessionHead(String sessionId, String queryText) {
+        if (StringUtils.isNotBlank(queryText)) {
+            return new SessionHeadValues(
+                    resolveSessionTitle(queryText),
+                    queryText
+            );
+        }
+
+        DialogueSession existing = StringUtils.isBlank(sessionId)
+                ? null
+                : executionLedgerWriteRepository.querySessionBySessionId(sessionId);
+        String previousQuery = existing == null ? null : existing.getLatestQueryText();
+        if (StringUtils.isBlank(previousQuery) && StringUtils.isNotBlank(sessionId)) {
+            previousQuery = resolveFirstNonBlankQuery(sessionId);
+        }
+
+        String existingTitle = existing == null ? null : existing.getTitle();
+        String title = isMeaningfulSessionTitle(existingTitle)
+                ? existingTitle
+                : resolveSessionTitle(previousQuery);
+        String latestQueryText = StringUtils.defaultIfBlank(previousQuery, "");
+        return new SessionHeadValues(title, latestQueryText);
+    }
+
+    private String resolveFirstNonBlankQuery(String sessionId) {
+        List<DialogueRunView> runs = executionLedgerWriteRepository.queryRunsBySessionId(sessionId);
+        if (CollectionUtils.isEmpty(runs)) {
+            return null;
+        }
+        for (DialogueRunView run : runs) {
+            if (run != null && StringUtils.isNotBlank(run.getQueryText())) {
+                return run.getQueryText();
+            }
+        }
+        return null;
+    }
+
+    private boolean isMeaningfulSessionTitle(String title) {
+        return StringUtils.isNotBlank(title) && !DEFAULT_SESSION_TITLE.equals(title.trim());
+    }
+
+    private record SessionHeadValues(String title, String latestQueryText) {
     }
 
     private int increaseSessionRunCount(String sessionId) {
