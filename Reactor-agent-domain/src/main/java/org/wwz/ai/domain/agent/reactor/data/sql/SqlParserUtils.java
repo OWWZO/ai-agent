@@ -128,12 +128,31 @@ public class SqlParserUtils {
 
 
     private static boolean isSelectNode(SqlNode node) {
-        if (node.getKind() == SqlKind.ORDER_BY) {
-            SqlOrderBy orderBy = (SqlOrderBy) node;
-            return orderBy.query instanceof SqlSelect;
-        } else {
-            return node.getKind() == SqlKind.SELECT || node.getKind() == SqlKind.UNION;
+        SqlNode queryNode = unwrapQueryNode(node);
+        return queryNode != null
+                && (queryNode.getKind() == SqlKind.SELECT || queryNode.getKind() == SqlKind.UNION);
+    }
+
+    private static SqlNode unwrapQueryNode(SqlNode node) {
+        if (node instanceof SqlOrderBy) {
+            return unwrapQueryNode(((SqlOrderBy) node).query);
         }
+        if (node instanceof SqlWith) {
+            return unwrapQueryNode(((SqlWith) node).body);
+        }
+        return node;
+    }
+
+    private static SqlSelect findSelectNode(SqlNode node) {
+        SqlNode queryNode = unwrapQueryNode(node);
+        if (queryNode instanceof SqlSelect) {
+            return (SqlSelect) queryNode;
+        }
+        if (queryNode != null && SqlKind.UNION.equals(queryNode.getKind())) {
+            SqlBasicCall unionNode = (SqlBasicCall) queryNode;
+            return findSelectNode(unionNode.getOperandList().get(unionNode.operandCount() - 1));
+        }
+        return null;
     }
 
     private static FromTable singleFromTable(SqlNode from) {
@@ -270,8 +289,8 @@ public class SqlParserUtils {
         if(SqlKind.AS.equals(from.getKind())){
             SqlBasicCall basicCall = (SqlBasicCall) from;
             SqlNode tableNode = basicCall.getOperandList().get(0);
-            if (isSelectNode(tableNode)) {
-                SqlSelect selectNode = (SqlSelect) tableNode;
+            SqlSelect selectNode = findSelectNode(tableNode);
+            if (selectNode != null) {
                 parseList.add(parseSelectFromTable(selectNode.getFrom()));
             }else{
                 return singleFromTable(from);
@@ -317,6 +336,58 @@ public class SqlParserUtils {
         });
         Collections.reverse(parseList);
         return parseList.get(0);
+    }
+
+    private static FromTable parseQueryFromTable(SqlNode queryNode) {
+        return parseQueryFromTable(queryNode, new HashMap<>());
+    }
+
+    private static FromTable parseQueryFromTable(SqlNode queryNode, Map<String, SqlNode> cteQueries) {
+        // CTE 的 FROM 可能只指向 CTE 名称，沿引用链回溯到物理模型表，供问数模型匹配使用。
+        if (queryNode instanceof SqlOrderBy) {
+            return parseQueryFromTable(((SqlOrderBy) queryNode).query, cteQueries);
+        }
+        if (queryNode instanceof SqlWith) {
+            Map<String, SqlNode> nestedCteQueries = new HashMap<>(cteQueries);
+            SqlWith with = (SqlWith) queryNode;
+            for (SqlNode withItemNode : with.withList) {
+                SqlWithItem withItem = (SqlWithItem) withItemNode;
+                nestedCteQueries.put(identifierKey(withItem.name), withItem.query);
+            }
+            return parseQueryFromTable(with.body, nestedCteQueries);
+        }
+        if (queryNode instanceof SqlSelect) {
+            SqlSelect select = (SqlSelect) queryNode;
+            SqlNode from = select.getFrom();
+            if (from instanceof SqlIdentifier) {
+                SqlNode cteQuery = cteQueries.get(identifierKey((SqlIdentifier) from));
+                if (cteQuery != null) {
+                    return parseQueryFromTable(cteQuery, cteQueries);
+                }
+            }
+            if (from instanceof SqlBasicCall && SqlKind.AS.equals(from.getKind())) {
+                SqlNode source = ((SqlBasicCall) from).getOperandList().get(0);
+                if (source instanceof SqlIdentifier) {
+                    SqlNode cteQuery = cteQueries.get(identifierKey((SqlIdentifier) source));
+                    if (cteQuery != null) {
+                        return parseQueryFromTable(cteQuery, cteQueries);
+                    }
+                }
+            }
+            return from == null ? null : parseSelectFromTable(from);
+        }
+        if (queryNode != null && SqlKind.UNION.equals(queryNode.getKind())) {
+            SqlBasicCall unionNode = (SqlBasicCall) queryNode;
+            return parseQueryFromTable(
+                    unionNode.getOperandList().get(unionNode.operandCount() - 1),
+                    cteQueries
+            );
+        }
+        return null;
+    }
+
+    private static String identifierKey(SqlIdentifier identifier) {
+        return StringUtils.lowerCase(identifier.names.get(identifier.names.size() - 1));
     }
 
     private static List<DataOrderBy> parseSelectOrderBy(SqlNodeList nodeList, String dialect) {
@@ -422,7 +493,7 @@ public class SqlParserUtils {
         }
         if (SqlKind.ORDER_BY.equals(sqlNode.getKind())) {
             SqlOrderBy orderBy = (SqlOrderBy) sqlNode;
-            selectNode = (SqlSelect) orderBy.query;
+            selectNode = findSelectNode(orderBy.query);
             List<DataOrderBy> orderByList = parseSelectOrderBy(orderBy.orderList, dialect);
             sqlModel.setOrderByList(orderByList);
             if (orderBy.fetch != null) {
@@ -431,7 +502,10 @@ public class SqlParserUtils {
         }
         if (SqlKind.UNION.equals(sqlNode.getKind())) {
             SqlBasicCall unionNode = (SqlBasicCall) sqlNode;
-            selectNode = (SqlSelect) unionNode.getOperandList().get(unionNode.operandCount() - 1);
+            selectNode = findSelectNode(unionNode.getOperandList().get(unionNode.operandCount() - 1));
+        }
+        if (selectNode == null) {
+            selectNode = findSelectNode(sqlNode);
         }
         if (selectNode == null) {
             throw new RuntimeException("解析sql失败");
@@ -446,8 +520,8 @@ public class SqlParserUtils {
         resetOrderByColumnKind(sqlModel.getOrderByList(), modelColumns);
 
         sqlModel.setColumnList(modelColumns);
-        if (selectNode.getFrom() != null) {
-            FromTable fromTable = parseSelectFromTable(selectNode.getFrom());
+        FromTable fromTable = parseQueryFromTable(sqlNode);
+        if (fromTable != null) {
             sqlModel.setFromTable(fromTable);
         }
         if (selectNode.getWhere() != null) {
