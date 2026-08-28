@@ -34,7 +34,7 @@ public class SubAgentParentToolUseIdTest {
 
         AgentContext child = SubAgentContextFactory.create(
                 parent, "scan controllers", "explore", new ToolCollection(),
-                "agent-1", SubAgentRegistry.TYPE_EXPLORE, "agent-call-1");
+                "agent-1", SubAgentRegistry.TYPE_GENERAL_PURPOSE, "agent-call-1");
 
         Assert.assertEquals("agent-call-1", child.getParentToolUseId());
         Assert.assertTrue(child.getPrinter() instanceof SubAgentPrinter);
@@ -63,7 +63,7 @@ public class SubAgentParentToolUseIdTest {
 
         AgentContext child = SubAgentContextFactory.create(
                 parent, "scan controllers", "explore", new ToolCollection(),
-                "agent-1", SubAgentRegistry.TYPE_EXPLORE, null);
+                "agent-1", SubAgentRegistry.TYPE_GENERAL_PURPOSE, null);
 
         Assert.assertNull(child.getParentToolUseId());
         Assert.assertSame(parentPrinter, child.getPrinter());
@@ -77,7 +77,7 @@ public class SubAgentParentToolUseIdTest {
         try {
             AgentContext child = SubAgentContextFactory.create(
                     parent, "scan controllers", "explore", new ToolCollection(),
-                    "agent-1", SubAgentRegistry.TYPE_EXPLORE, null);
+                    "agent-1", SubAgentRegistry.TYPE_GENERAL_PURPOSE, null);
             Assert.assertEquals("agent-call-sync", child.getParentToolUseId());
             Assert.assertTrue(child.getPrinter() instanceof SubAgentPrinter);
         } finally {
@@ -96,7 +96,7 @@ public class SubAgentParentToolUseIdTest {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("description", "后台探索");
         input.put("prompt", "scan the repo");
-        input.put("subagent_type", SubAgentRegistry.TYPE_EXPLORE);
+        input.put("subagent_type", SubAgentRegistry.TYPE_GENERAL_PURPOSE);
         input.put("run_in_background", true);
 
         ToolResultPayload payload;

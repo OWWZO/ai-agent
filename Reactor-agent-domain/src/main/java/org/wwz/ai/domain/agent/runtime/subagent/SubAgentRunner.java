@@ -10,14 +10,16 @@ import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
 import org.wwz.ai.domain.agent.runtime.agent.ReactImplAgent;
 import org.wwz.ai.domain.agent.runtime.cancel.RunCancellation;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.enums.RoleType;
+import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTask;
+import org.wwz.ai.domain.agent.runtime.tasklist.RuntimeBackgroundTaskRegistry;
 import org.wwz.ai.domain.agent.runtime.tasklist.SessionAgentMailboxHub;
 import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
 import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -128,16 +130,7 @@ public class SubAgentRunner {
         } else {
             agentId = SubAgentContextFactory.newAgentId();
         }
-            // Plan Mode：强制 Explore 画像
         String effectiveType = subagentType;
-        if (parentContext != null
-                && parentContext.getPlanModeState() != null
-                && parentContext.getPlanModeState().isPlanMode()) {
-            if (StringUtils.isBlank(effectiveType)
-                    || SubAgentRegistry.TYPE_GENERAL_PURPOSE.equals(effectiveType)) {
-                effectiveType = SubAgentRegistry.TYPE_EXPLORE;
-            }
-        }
         SubAgentDefinition definition = registry.resolveOrDefault(effectiveType);
 
         if (parentContext == null) {
@@ -210,27 +203,39 @@ public class SubAgentRunner {
 
         // resume：每次运行需要唯一 requestId，否则 working_memory persist 幂等跳过
         if (resume) {
-            String resumeRequestId = buildResumeRequestId(parentContext.getRequestId(), agentId);
+            if (isSubAgentStillRunning(parentContext, sessionKey, agentId)) {
+                return failed(agentId, definition, description, prompt, start,
+                        "子 Agent 仍在运行，请用 TaskOutput 等待后再 resume",
+                        null, false);
+            }
+            // 与首跑统一短 requestId；父 requestId 仅用于日志
+            String resumeRequestId = SubAgentContextFactory.newChildRequestId(agentId);
             childContext.setRequestId(resumeRequestId);
             List<Message> prior = sessionWorkingMemoryService.loadReadyMessages(
                     parentContext.getSessionId(), memoryScope, resumeRequestId);
             if (prior == null || prior.isEmpty()) {
                 return failed(agentId, definition, description, prompt, start,
-                        "无法唤醒子 Agent：未找到 agentId=" + agentId + " 的工作记忆（可能已过期或从未成功结束）");
+                        "无法唤醒子 Agent：未找到 agentId=" + agentId + " 的工作记忆（可能已过期或从未成功结束）",
+                        null, false);
             }
             childContext.setWorkingMemoryMessages(new ArrayList<>(prior));
-            log.info("{} resume subagent type={} id={} priorMsgs={}",
-                    parentContext.getRequestId(), definition.getAgentType(), agentId, prior.size());
+            log.info("{} resume subagent type={} id={} priorMsgs={} childRequestId={} parentRequestId={}",
+                    parentContext.getRequestId(), definition.getAgentType(), agentId, prior.size(),
+                    resumeRequestId, parentContext.getRequestId());
         } else {
             childContext.setWorkingMemoryMessages(null);
+            log.info("{} spawn subagent type={} id={} childRequestId={} parentRequestId={}",
+                    parentContext.getRequestId(), definition.getAgentType(), agentId,
+                    childContext.getRequestId(), parentContext.getRequestId());
         }
 
         // 默认每子 Agent 独占工具实例（ToolIsolation）；仅无法 fork 时才共享锁
         ContextScopedTool.bindAll(childTools, childContext);
 
         SessionAgentMailboxHub.markActive(sessionKey, agentId, true);
+        ReactImplAgent agent = null;
         try {
-            ReactImplAgent agent = new ReactImplAgent(childContext);
+            agent = new ReactImplAgent(childContext);
             agent.setName("subagent:" + definition.getAgentType());
             agent.setDescription(StringUtils.defaultIfBlank(description, definition.getAgentType()));
             if (StringUtils.isNotBlank(definition.getSystemPrompt())) {
@@ -254,10 +259,34 @@ public class SubAgentRunner {
             try {
                 String runResult = agent.run(prompt);
                 finished.set(true);
-                String content = finalizeContent(agent, runResult);
-                emitSubAgentFinalReply(childContext, content);
+                boolean thinkFailed = isThinkFailed(agent, runResult);
                 int toolUseCount = countToolUses(agent);
-                persistSubWorkingMemory(childContext, agent, definition);
+                // 成功/think 失败都落库，便于主 Agent resume
+                boolean memoryPersisted = persistSubWorkingMemory(childContext, agent, definition);
+                String content;
+                if (thinkFailed) {
+                    String reason = StringUtils.defaultIfBlank(
+                            agent.getThinkFailureReason(), extractThinkFailedReason(runResult));
+                    content = buildResumeHintContent(
+                            "Terminated: LLM think failed: " + reason, agentId, memoryPersisted);
+                    emitSubAgentFinalReply(childContext, content);
+                    return SubAgentResult.builder()
+                            .status(SubAgentResult.STATUS_FAILED)
+                            .agentId(agentId)
+                            .agentType(definition.getAgentType())
+                            .description(description)
+                            .prompt(prompt)
+                            .content(content)
+                            .totalToolUseCount(toolUseCount)
+                            .totalDurationMs(System.currentTimeMillis() - start)
+                            .errorMsg("LLM think failed: " + reason
+                                    + "；请用 resume_agent_id=" + agentId + " 续跑"
+                                    + (memoryPersisted ? "" : "（注意：工作记忆未落库，resume 可能失败）"))
+                            .memoryPersisted(memoryPersisted)
+                            .build();
+                }
+                content = finalizeContent(agent, runResult);
+                emitSubAgentFinalReply(childContext, content);
 
                 return SubAgentResult.builder()
                         .status(SubAgentResult.STATUS_COMPLETED)
@@ -268,6 +297,7 @@ public class SubAgentRunner {
                         .content(content)
                         .totalToolUseCount(toolUseCount)
                         .totalDurationMs(System.currentTimeMillis() - start)
+                        .memoryPersisted(memoryPersisted)
                         .build();
             } finally {
                 finished.set(true);
@@ -276,53 +306,133 @@ public class SubAgentRunner {
         } catch (Exception e) {
             log.error("{} streaming subagent failed type={} id={}",
                     parentContext.getRequestId(), definition.getAgentType(), agentId, e);
-            return failed(agentId, definition, description, prompt, start,
-                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            boolean memoryPersisted = persistSubWorkingMemory(childContext, agent, definition);
+            String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            String content = buildResumeHintContent(
+                    "Terminated: subagent failed: " + err, agentId, memoryPersisted);
+            return failed(agentId, definition, description, prompt, start, err, content, memoryPersisted);
         } finally {
             SessionAgentMailboxHub.markActive(sessionKey, agentId, false);
         }
     }
 
-    private void persistSubWorkingMemory(AgentContext childContext,
-                                         ReactImplAgent agent,
-                                         SubAgentDefinition definition) {
+    /**
+     * @return true 若成功写入至少一条投影
+     */
+    private boolean persistSubWorkingMemory(AgentContext childContext,
+                                            ReactImplAgent agent,
+                                            SubAgentDefinition definition) {
         if (sessionWorkingMemoryService == null || childContext == null || agent == null) {
-            return;
+            log.warn("{} skip persist sub WM: service/agent missing scope={}",
+                    childContext == null ? "-" : childContext.getRequestId(),
+                    childContext == null ? "-" : childContext.resolveMemoryScope());
+            return false;
         }
         try {
             List<Message> delta = agent.exportWorkingMemoryDelta();
-            if (delta == null || delta.isEmpty()) {
-                return;
+            List<Message> toPersist = delta;
+            boolean fullSnapshot = false;
+            if (toPersist == null || toPersist.isEmpty()) {
+                // mid-run compact 后 delta 可能为空：全量兜底，避免 resume 空记忆
+                List<Message> all = agent.getMemory() == null ? null : agent.getMemory().getMessages();
+                if (all == null || all.isEmpty()) {
+                    log.info("{} skip persist sub WM empty memory scope={} agentId={}",
+                            childContext.getRequestId(), childContext.resolveMemoryScope(),
+                            childContext.getSubAgentId());
+                    return false;
+                }
+                toPersist = new ArrayList<>(all);
+                fullSnapshot = true;
             }
             Long runId = childContext.getAgentRunState() == null
                     ? null
                     : childContext.getAgentRunState().getRunId();
             String entry = "sub_" + StringUtils.defaultIfBlank(
                     definition == null ? null : definition.getAgentType(), "agent");
-            sessionWorkingMemoryService.persistTurn(
-                    childContext.getSessionId(),
-                    childContext.resolveMemoryScope(),
-                    childContext.getRequestId(),
-                    runId,
-                    entry,
-                    delta);
-            log.info("{} persisted sub working memory scope={} msgs={}",
-                    childContext.getRequestId(), childContext.resolveMemoryScope(), delta.size());
+            String scope = childContext.resolveMemoryScope();
+            if (fullSnapshot) {
+                String snapRequestId = SubAgentContextFactory.newChildRequestId(childContext.getSubAgentId());
+                sessionWorkingMemoryService.replaceReadyProjection(
+                        childContext.getSessionId(),
+                        scope,
+                        snapRequestId,
+                        toPersist);
+                log.info("{} persisted sub working memory scope={} msgs={} fullSnapshot=true "
+                                + "requestId={} persistOk=true",
+                        childContext.getRequestId(), scope, toPersist.size(), snapRequestId);
+            } else {
+                sessionWorkingMemoryService.persistTurn(
+                        childContext.getSessionId(),
+                        scope,
+                        childContext.getRequestId(),
+                        runId,
+                        entry,
+                        toPersist);
+                log.info("{} persisted sub working memory scope={} msgs={} fullSnapshot=false "
+                                + "requestId={} persistOk=true",
+                        childContext.getRequestId(), scope, toPersist.size(), childContext.getRequestId());
+            }
+            return true;
         } catch (Exception e) {
-            log.warn("{} persist sub working memory failed: {}",
+            log.warn("{} persist sub working memory failed persistOk=false: {}",
                     childContext.getRequestId(), e.getMessage());
+            return false;
         }
     }
 
-    private static String buildResumeRequestId(String parentRequestId, String agentId) {
-        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-        String base = StringUtils.defaultString(parentRequestId) + ":sub:" + agentId + ":r" + suffix;
-        if (base.length() <= 64) {
-            return base;
+    private static boolean isSubAgentStillRunning(AgentContext parent,
+                                                 String sessionKey,
+                                                 String agentId) {
+        if (StringUtils.isBlank(agentId)) {
+            return false;
         }
-        // request_id 列宽 64：过长时用短形态
-        String shortId = "sr:" + agentId + ":" + suffix;
-        return shortId.length() <= 64 ? shortId : shortId.substring(0, 64);
+        if (SessionAgentMailboxHub.isActive(sessionKey, agentId)) {
+            return true;
+        }
+        RuntimeBackgroundTaskRegistry registry = parent == null ? null : parent.getBackgroundTasks();
+        if (registry == null) {
+            return false;
+        }
+        for (RuntimeBackgroundTask task : registry.listRunning()) {
+            if (task != null && agentId.equals(StringUtils.trimToEmpty(task.getAgentId()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isThinkFailed(ReactImplAgent agent, String runResult) {
+        if (agent != null && agent.getState() == AgentState.ERROR) {
+            return true;
+        }
+        return StringUtils.isNotBlank(runResult) && runResult.startsWith("Terminated: LLM think failed");
+    }
+
+    private static String extractThinkFailedReason(String runResult) {
+        if (StringUtils.isBlank(runResult)) {
+            return "unknown";
+        }
+        String prefix = "Terminated: LLM think failed:";
+        if (runResult.startsWith(prefix)) {
+            return runResult.substring(prefix.length()).trim();
+        }
+        return runResult.trim();
+    }
+
+    private static String buildResumeHintContent(String head, String agentId, boolean memoryPersisted) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.isNotBlank(head)) {
+            sb.append(head.trim());
+        }
+        sb.append("\n\n请使用 Agent 工具并传入 resume_agent_id=\"")
+                .append(StringUtils.defaultString(agentId))
+                .append("\" 唤醒该子 Agent 继续任务");
+        if (memoryPersisted) {
+            sb.append("（工作记忆已尽量保留）。");
+        } else {
+            sb.append("（注意：本轮工作记忆未成功落库，resume 可能失败）。");
+        }
+        return sb.toString();
     }
 
     private static void emitSubAgentFinalReply(AgentContext childContext, String content) {
@@ -376,12 +486,10 @@ public class SubAgentRunner {
     }
 
     private static String finalizeContent(ReactImplAgent agent, String runResult) {
-        if (StringUtils.isNotBlank(runResult)
-                && !runResult.startsWith("Terminated:")
-                && !"No steps executed".equals(runResult)) {
+        if (StringUtils.isNotBlank(runResult) && !isNonUserFacingRunResult(runResult)) {
             return runResult.trim();
         }
-        if (agent.getMemory() == null || agent.getMemory().getMessages() == null) {
+        if (agent == null || agent.getMemory() == null || agent.getMemory().getMessages() == null) {
             return StringUtils.defaultString(runResult);
         }
         List<Message> messages = agent.getMemory().getMessages();
@@ -398,6 +506,16 @@ public class SubAgentRunner {
             }
         }
         return StringUtils.defaultIfBlank(runResult, "");
+    }
+
+    private static boolean isNonUserFacingRunResult(String runResult) {
+        if (StringUtils.isBlank(runResult)) {
+            return true;
+        }
+        String text = runResult.trim();
+        return text.startsWith("Terminated:")
+                || "No steps executed".equals(text)
+                || "Thinking complete - no action needed".equals(text);
     }
 
     private static int countToolUses(ReactImplAgent agent) {
@@ -419,16 +537,28 @@ public class SubAgentRunner {
                                          String prompt,
                                          long start,
                                          String errorMsg) {
+        return failed(agentId, definition, description, prompt, start, errorMsg, "", null);
+    }
+
+    private static SubAgentResult failed(String agentId,
+                                         SubAgentDefinition definition,
+                                         String description,
+                                         String prompt,
+                                         long start,
+                                         String errorMsg,
+                                         String content,
+                                         Boolean memoryPersisted) {
         return SubAgentResult.builder()
                 .status(SubAgentResult.STATUS_FAILED)
                 .agentId(agentId)
                 .agentType(definition == null ? null : definition.getAgentType())
                 .description(description)
                 .prompt(prompt)
-                .content("")
+                .content(StringUtils.defaultString(content))
                 .totalToolUseCount(0)
                 .totalDurationMs(System.currentTimeMillis() - start)
                 .errorMsg(errorMsg)
+                .memoryPersisted(memoryPersisted)
                 .build();
     }
 }

@@ -200,7 +200,9 @@ public abstract class BaseAgent {
         List<String> results = new ArrayList<>();
         try {
             // 每次循环只推进一个逻辑步骤；step() 可以触发多次 LLM/tool 调用，但不能绕过这里的边界检查。
-            while (currentStep < maxSteps && state != AgentState.FINISHED) {
+            while (currentStep < maxSteps
+                    && state != AgentState.FINISHED
+                    && state != AgentState.ERROR) {
                 if (context != null && context.isRunCancelled()) {
                     state = AgentState.FINISHED;
                     results.add("Terminated: User stopped");
@@ -223,7 +225,7 @@ public abstract class BaseAgent {
                 results.add(step());
             }
 
-            if (currentStep >= maxSteps && state != AgentState.FINISHED) {
+            if (currentStep >= maxSteps && state != AgentState.FINISHED && state != AgentState.ERROR) {
                 // 达到步数上限时以可识别的终止结果结束本轮，避免调用方误以为仍可继续执行。
                 currentStep = 0;
                 state = AgentState.IDLE;

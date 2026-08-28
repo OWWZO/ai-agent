@@ -281,7 +281,7 @@ public class AgentContext {
     /** 子 Agent 运行时 id（展示/账本） */
     String subAgentId;
 
-    /** 子 Agent 类型（Explore / general-purpose 等） */
+    /** 子 Agent 类型 */
     String subAgentType;
 
     /** 子 Agent 任务短描述 */

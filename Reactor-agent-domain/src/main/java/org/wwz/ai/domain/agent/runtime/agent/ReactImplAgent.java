@@ -8,7 +8,6 @@ import org.wwz.ai.domain.agent.runtime.dto.tool.ToolCall;
 import org.wwz.ai.domain.agent.runtime.dto.tool.ToolChoice;
 import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.llm.LLM;
-import org.wwz.ai.domain.agent.runtime.llm.LlmRequestRetry;
 import org.wwz.ai.domain.agent.runtime.llm.LlmUserFacingError;
 import org.wwz.ai.domain.agent.runtime.prompt.ToolCallPrompt;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
@@ -77,19 +76,16 @@ public class ReactImplAgent extends ReActAgent {
         try {
             context.setStreamMessageType("tool_thought");
 
-            LLM.ToolCallResponse response = LlmRequestRetry.call(
-                    "react-think:" + context.getRequestId(),
-                    () -> awaitFuture(
-                            getLlm().askTool(
-                                    context,
-                                    getMemory().getMessages(),
-                                    Message.systemMessage(getSystemPrompt(), null),
-                                    availableTools,
-                                    ToolChoice.AUTO,
-                                    null,
-                                    context.getIsStream(),
-                                    300
-                            )
+            LLM.ToolCallResponse response = awaitFuture(
+                    getLlm().askTool(
+                            context,
+                            getMemory().getMessages(),
+                            Message.systemMessage(getSystemPrompt(), null),
+                            availableTools,
+                            ToolChoice.AUTO,
+                            null,
+                            context.getIsStream(),
+                            300
                     )
             );
 
@@ -112,10 +108,12 @@ public class ReactImplAgent extends ReActAgent {
 
         } catch (Exception e) {
             log.error("{} react think error", context.getRequestId(), e);
-            getMemory().addMessage(Message.assistantMessage(
-                    LlmUserFacingError.toUserMessage(e), null));
-            setState(AgentState.FINISHED); // 标记智能体完成（终止后续流程）
-            return false; // 思考失败
+            String userMsg = LlmUserFacingError.toUserMessage(e);
+            setThinkFailureReason(userMsg);
+            getMemory().addMessage(Message.assistantMessage(userMsg, null));
+            // ERROR（非 FINISHED）：上层返回 Terminated: LLM think failed，禁止假成功
+            setState(AgentState.ERROR);
+            return false;
         }
 
         return true; // 思考成功

@@ -88,7 +88,7 @@ public class SubAgentDefinitionRepositoryTest {
         Assert.assertEquals(1, count);
         Assert.assertTrue(registry.find("research-writer").isPresent());
         Assert.assertEquals(12, registry.require("research-writer").getMaxSteps().intValue());
-        Assert.assertTrue(registry.find(SubAgentRegistry.TYPE_EXPLORE).isPresent());
+        Assert.assertFalse(registry.find("Explore").isPresent());
     }
 
     private static final class InMemoryDao implements ISubAgentDefinitionDao {

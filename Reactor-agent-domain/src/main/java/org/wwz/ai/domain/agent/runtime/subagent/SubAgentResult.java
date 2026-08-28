@@ -23,6 +23,8 @@ public class SubAgentResult {
     private int totalToolUseCount;
     private long totalDurationMs;
     private String errorMsg;
+    /** 本轮结束时工作记忆是否成功写入；resume 前主 Agent 应检查此标记 */
+    private Boolean memoryPersisted;
 
     public boolean isCompleted() {
         return STATUS_COMPLETED.equals(status);

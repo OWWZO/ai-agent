@@ -18,14 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class SubAgentRegistry {
 
-    public static final String TYPE_EXPLORE = "Explore";
     public static final String TYPE_GENERAL_PURPOSE = "general-purpose";
 
     private final Map<String, SubAgentDefinition> builtins = new LinkedHashMap<>();
     private final Map<String, SubAgentDefinition> configured = new ConcurrentHashMap<>();
 
     public SubAgentRegistry() {
-        registerBuiltin(buildExplore());
         registerBuiltin(buildGeneralPurpose());
     }
 
@@ -130,43 +128,6 @@ public class SubAgentRegistry {
                         ? Set.of()
                         : definition.getDisallowedTools())
                 .maxSteps(definition.getMaxSteps())
-                .build();
-    }
-
-    private static SubAgentDefinition buildExplore() {
-        return SubAgentDefinition.builder()
-                .agentType(TYPE_EXPLORE)
-                .whenToUse("快速只读探索代码库/工作区：按模式找文件、搜索关键词、回答结构问题。不修改任何文件。")
-                .systemPrompt("""
-                        你是只读探索子代理。严格禁止修改文件或改变系统状态。
-                        你的职责仅限于：搜索、读取、分析现有内容，并输出精简报告。
-                        规则：
-                        - 只使用只读工具（读文件、列表、glob、grep、搜索、抓取网页）。
-                        - 不要创建/编辑/删除文件，不要运行会改状态的命令。
-                        - 尽可能并行调用只读工具以加快速度。
-                        - 完成后用简洁报告回复：关键路径、发现结论、不确定点。不要寒暄。
-                        """)
-                .allowedTools(Set.of(
-                        "workspace_read",
-                        "workspace_list",
-                        "workspace_glob",
-                        "workspace_grep",
-                        "deep_search",
-                        "web_fetch",
-                        "WebFetch",
-                        "skill_tool"
-                ))
-                .disallowedTools(Set.of(
-                        "workspace_write",
-                        "workspace_edit",
-                        "file_tool",
-                        "code_interpreter",
-                        "report_tool",
-                        "image_generation",
-                        "data_analysis",
-                        "multimodalagent_tool"
-                ))
-                .maxSteps(200)
                 .build();
     }
 

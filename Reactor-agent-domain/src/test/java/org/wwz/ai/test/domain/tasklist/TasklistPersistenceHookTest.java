@@ -59,7 +59,7 @@ public class TasklistPersistenceHookTest {
     public void backgroundRegistryPersistsAndHydrates() {
         InMemoryPort port = new InMemoryPort();
         RuntimeBackgroundTaskRegistry reg = new RuntimeBackgroundTaskRegistry("sess-bg", port);
-        RuntimeBackgroundTask task = reg.registerLocalAgent("explore", "Explore", "prompt");
+        RuntimeBackgroundTask task = reg.registerLocalAgent("inspect", "general-purpose", "prompt");
         Assert.assertTrue(port.bgUpserts.get() >= 1);
 
         reg.complete(task.getId(), SubAgentResult.builder()

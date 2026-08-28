@@ -30,7 +30,7 @@ public class BackgroundStreamSettleTest {
         SessionBackgroundTaskHub.evict(sessionId);
         try {
             SessionBackgroundTaskHub.getOrCreate(sessionId, null)
-                    .registerLocalAgent("后台探查", "Explore", "scan");
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
 
             CapturingStream stream = new CapturingStream();
             AgentRequest request = new AgentRequest();
@@ -83,7 +83,7 @@ public class BackgroundStreamSettleTest {
         try {
             Assert.assertFalse(SessionBackgroundTaskHub.hasRunning(sessionId));
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
-                    .registerLocalAgent("t", "Explore", "p");
+                    .registerLocalAgent("t", "general-purpose", "p");
             Assert.assertTrue(SessionBackgroundTaskHub.hasRunning(sessionId));
             SessionBackgroundTaskHub.getOrCreate(sessionId, null).complete(task.getId(), null);
             Assert.assertFalse(SessionBackgroundTaskHub.hasRunning(sessionId));
@@ -98,7 +98,7 @@ public class BackgroundStreamSettleTest {
         SessionBackgroundTaskHub.evict(requestId);
         try {
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(requestId, null)
-                    .registerLocalAgent("后台探查", "Explore", "scan");
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
 
             Assert.assertTrue(SessionBackgroundTaskHub.hasRunning(null, requestId));
             SessionBackgroundTaskHub.getOrCreate(requestId, null).complete(task.getId(), null);
@@ -120,7 +120,7 @@ public class BackgroundStreamSettleTest {
             Assert.assertFalse(AgentDispatchTool.shouldSettleParentStream(parent));
 
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
-                    .registerLocalAgent("后台探查", "Explore", "scan");
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
             SessionBackgroundTaskHub.getOrCreate(sessionId, null).complete(task.getId(), null);
             Assert.assertFalse("父 run 未 finish 时不得 settle",
                     AgentDispatchTool.shouldSettleParentStream(parent));
@@ -139,7 +139,7 @@ public class BackgroundStreamSettleTest {
                     .sessionId(sessionId)
                     .build();
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
-                    .registerLocalAgent("后台探查", "Explore", "scan");
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
             parent.markTurnClosed();
             Assert.assertFalse(AgentDispatchTool.shouldSettleParentStream(parent));
 
@@ -156,7 +156,7 @@ public class BackgroundStreamSettleTest {
         SessionBackgroundTaskHub.evict(sessionId);
         try {
             RuntimeBackgroundTask task = SessionBackgroundTaskHub.getOrCreate(sessionId, null)
-                    .registerLocalAgent("后台探查", "Explore", "scan");
+                    .registerLocalAgent("后台探查", "general-purpose", "scan");
 
             CapturingStream downstream = new CapturingStream();
             AgentRequest request = new AgentRequest();

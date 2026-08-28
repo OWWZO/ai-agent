@@ -56,7 +56,7 @@ public class SkipMemoryGuardTest {
                 .build();
         ToolCollection tools = new ToolCollection();
         AgentContext child = SubAgentContextFactory.create(
-                parent, "do research", "explore", tools, "agent1", "Explore");
+                parent, "do research", "inspect", tools, "agent1", "general-purpose");
         Assert.assertTrue(LtmMemoryGuard.isSkipMemory(child));
         Assert.assertNull(child.getLtmOwner());
         Assert.assertNull(child.getLtmMemoryContext());
@@ -71,7 +71,7 @@ public class SkipMemoryGuardTest {
         parent.addTool(searchTool);
 
         SubAgentDefinition def = SubAgentDefinition.builder()
-                .agentType("Explore")
+                .agentType("general-purpose")
                 .allowedTools(Set.of("*"))
                 .build();
         // allowsAllTools if *
@@ -93,7 +93,7 @@ public class SkipMemoryGuardTest {
 
     private static SubAgentDefinition defWithAllowAll() {
         return SubAgentDefinition.builder()
-                .agentType("Explore")
+                .agentType("general-purpose")
                 .allowedTools(null)
                 .build();
     }

@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.wwz.ai.domain.agent.runtime.dto.Message;
+import org.wwz.ai.domain.agent.runtime.enums.AgentState;
 import org.wwz.ai.domain.agent.runtime.tool.BaseTool;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
 
@@ -32,6 +33,11 @@ import java.util.regex.Pattern;
 @Slf4j
 @EqualsAndHashCode(callSuper = true)
 public abstract class ReActAgent extends BaseAgent {
+
+    /**
+     * think() 失败时的可读原因（供 step/子 Agent 组装 Terminated 文案）。
+     */
+    private String thinkFailureReason;
 
     /**
      * 数字员工命名只需要识别工具用途，不需要携带整段实现细节。
@@ -76,6 +82,11 @@ public abstract class ReActAgent extends BaseAgent {
         // 1. 执行思考阶段，判断是否需要行动
         boolean shouldAct = think();
         if (!shouldAct) {
+            // think 异常会置 ERROR；不得伪装成「思考完成无需行动」
+            if (getState() == AgentState.ERROR) {
+                String reason = StringUtils.defaultIfBlank(thinkFailureReason, "unknown");
+                return "Terminated: LLM think failed: " + reason;
+            }
             return "Thinking complete - no action needed";
         }
         // 2. 执行行动阶段并返回结果

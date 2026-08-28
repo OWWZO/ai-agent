@@ -14,7 +14,7 @@ import java.util.Set;
 @Builder
 public class SubAgentDefinition {
 
-    /** 类型名，如 Explore / general-purpose */
+    /** 类型名，如 general-purpose */
     private String agentType;
 
     /** 何时使用该类型（注入主 Agent 的工具描述） */

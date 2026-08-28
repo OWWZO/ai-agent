@@ -88,6 +88,7 @@ public class AgentDispatchTool implements BaseTool {
                 .append("用 TaskOutput 取结果、TaskStop 取消、SendMessage 中途指导。")
                 .append("新任务：子 Agent 从零上下文开始，请在 prompt 中写全背景与交付要求。")
                 .append("续跑：传入上次结果中的 resume_agent_id（即 agentId），可带着上次工作记忆继续任务。")
+                .append("若子 Agent 返回 Terminated: LLM think failed，请用同一 resume_agent_id 再派发续跑。")
                 .append("可用 subagent_type：");
         List<String> lines = new ArrayList<>();
         if (subAgentRegistry != null) {
@@ -96,7 +97,7 @@ public class AgentDispatchTool implements BaseTool {
             }
         }
         if (lines.isEmpty()) {
-            sb.append("general-purpose, Explore");
+            sb.append(SubAgentRegistry.TYPE_GENERAL_PURPOSE);
         } else {
             sb.append(String.join("; ", lines));
         }
@@ -119,7 +120,7 @@ public class AgentDispatchTool implements BaseTool {
         subagentType.put("type", "string");
         String typeHint = "子 Agent 类型；省略则 general-purpose。可用: "
                 + (subAgentRegistry == null || subAgentRegistry.listTypeNames().isEmpty()
-                ? "Explore, general-purpose"
+                ? SubAgentRegistry.TYPE_GENERAL_PURPOSE
                 : String.join(", ", subAgentRegistry.listTypeNames()));
         subagentType.put("description", typeHint);
 
@@ -163,16 +164,6 @@ public class AgentDispatchTool implements BaseTool {
             String subagentType = trimToString(params.get("subagent_type"));
             String resumeAgentId = trimToString(params.get("resume_agent_id"));
             boolean background = coerceBoolean(params.get("run_in_background"));
-
-            // Plan Mode：空白或 general-purpose 强制 Explore（只读）
-            if (agentContext != null
-                    && agentContext.getPlanModeState() != null
-                    && agentContext.getPlanModeState().isPlanMode()) {
-                if (StringUtils.isBlank(subagentType)
-                        || SubAgentRegistry.TYPE_GENERAL_PURPOSE.equals(subagentType)) {
-                    subagentType = SubAgentRegistry.TYPE_EXPLORE;
-                }
-            }
 
             if (StringUtils.isBlank(prompt)) {
                 return ToolResultPayload.failureFrom("Agent 执行失败：prompt 不能为空", null);
@@ -419,8 +410,15 @@ public class AgentDispatchTool implements BaseTool {
         body.put("content", result.getContent());
         body.put("totalToolUseCount", result.getTotalToolUseCount());
         body.put("totalDurationMs", result.getTotalDurationMs());
+        if (result.getMemoryPersisted() != null) {
+            body.put("memoryPersisted", result.getMemoryPersisted());
+        }
         if (StringUtils.isNotBlank(result.getErrorMsg())) {
             body.put("errorMsg", result.getErrorMsg());
+        }
+        // 失败时显式给出续跑句柄，便于主 Agent 再调 Agent(resume_agent_id=...)
+        if (!result.isCompleted() && StringUtils.isNotBlank(result.getAgentId())) {
+            body.put("resume_agent_id", result.getAgentId());
         }
         return body;
     }

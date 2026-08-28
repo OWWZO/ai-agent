@@ -20,13 +20,13 @@ public class BackgroundAgentTaskTest {
     @Test
     public void registryCompleteAndAwait() {
         RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
-        RuntimeBackgroundTask task = registry.registerLocalAgent("explore", "Explore", "find controllers");
+        RuntimeBackgroundTask task = registry.registerLocalAgent("inspect", "general-purpose", "find controllers");
         Assert.assertEquals(RuntimeBackgroundTask.STATUS_RUNNING, task.getStatus());
 
         SubAgentResult result = SubAgentResult.builder()
                 .status(SubAgentResult.STATUS_COMPLETED)
                 .agentId("ag1")
-                .agentType("Explore")
+                .agentType("general-purpose")
                 .content("found 3 controllers")
                 .totalToolUseCount(2)
                 .totalDurationMs(100L)
@@ -54,7 +54,7 @@ public class BackgroundAgentTaskTest {
     @Test
     public void awaitTerminalUnblocksOnComplete() throws Exception {
         RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
-        RuntimeBackgroundTask task = registry.registerLocalAgent("wait", "Explore", "p");
+        RuntimeBackgroundTask task = registry.registerLocalAgent("wait", "general-purpose", "p");
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             Future<?> f = pool.submit(() -> {
@@ -81,7 +81,7 @@ public class BackgroundAgentTaskTest {
     @Test
     public void failDoesNotOverwriteStopped() {
         RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
-        RuntimeBackgroundTask task = registry.registerLocalAgent("x", "Explore", "p");
+        RuntimeBackgroundTask task = registry.registerLocalAgent("x", "general-purpose", "p");
         registry.stop(task.getId());
         registry.fail(task.getId(), "should ignore");
         Assert.assertEquals(RuntimeBackgroundTask.STATUS_STOPPED, task.getStatus());

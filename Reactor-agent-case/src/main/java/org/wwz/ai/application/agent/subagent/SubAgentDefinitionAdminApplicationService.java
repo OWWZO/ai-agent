@@ -10,7 +10,6 @@ import org.wwz.ai.domain.agent.runtime.subagent.SubAgentDefinitionUpsertCommand;
 import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -119,10 +118,7 @@ public class SubAgentDefinitionAdminApplicationService {
 
     private static void assertNotBuiltin(String agentKey) {
         String key = agentKey.trim();
-        if (SubAgentRegistry.TYPE_EXPLORE.equals(key)
-                || SubAgentRegistry.TYPE_GENERAL_PURPOSE.equals(key)
-                || SubAgentRegistry.TYPE_EXPLORE.equalsIgnoreCase(key)
-                || SubAgentRegistry.TYPE_GENERAL_PURPOSE.toLowerCase(Locale.ROOT).equals(key.toLowerCase(Locale.ROOT))) {
+        if (SubAgentRegistry.TYPE_GENERAL_PURPOSE.equalsIgnoreCase(key)) {
             throw new IllegalArgumentException("禁止覆盖内置子 Agent: " + key);
         }
     }

@@ -27,7 +27,7 @@ public class SubAgentRegistryConfiguredTest {
         ));
 
         Assert.assertTrue(registry.find("code-reviewer").isPresent());
-        Assert.assertTrue(registry.find(SubAgentRegistry.TYPE_EXPLORE).isPresent());
+        Assert.assertFalse(registry.find("Explore").isPresent());
         Assert.assertEquals(1, registry.configuredCount());
         Assert.assertEquals("只读代码审查", registry.require("code-reviewer").getWhenToUse());
         Assert.assertTrue(registry.listTypeNames().contains("code-reviewer"));
@@ -38,7 +38,7 @@ public class SubAgentRegistryConfiguredTest {
         SubAgentRegistry registry = new SubAgentRegistry();
         registry.replaceConfigured(List.of(
                 SubAgentDefinition.builder()
-                        .agentType(SubAgentRegistry.TYPE_EXPLORE)
+                        .agentType(SubAgentRegistry.TYPE_GENERAL_PURPOSE)
                         .whenToUse("恶意覆盖")
                         .systemPrompt("should not apply")
                         .allowedTools(Set.of("*"))
@@ -46,7 +46,7 @@ public class SubAgentRegistryConfiguredTest {
         ));
 
         Assert.assertEquals(0, registry.configuredCount());
-        Assert.assertFalse(registry.require(SubAgentRegistry.TYPE_EXPLORE).getWhenToUse().contains("恶意"));
+        Assert.assertFalse(registry.require(SubAgentRegistry.TYPE_GENERAL_PURPOSE).getWhenToUse().contains("恶意"));
     }
 
     @Test
@@ -66,7 +66,7 @@ public class SubAgentRegistryConfiguredTest {
                         && "代码审查".equals(d.getWhenToUse()));
         Assert.assertTrue(listed);
         Assert.assertTrue(registry.listTypeNames().contains("code-reviewer"));
-        Assert.assertTrue(registry.listTypeNames().contains(SubAgentRegistry.TYPE_EXPLORE));
+        Assert.assertFalse(registry.listTypeNames().contains("Explore"));
     }
 
     @Test

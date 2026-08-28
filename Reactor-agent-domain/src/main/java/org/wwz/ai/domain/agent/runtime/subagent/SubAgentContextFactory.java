@@ -38,7 +38,8 @@ public final class SubAgentContextFactory {
         if (parent == null) {
             throw new IllegalArgumentException("parent AgentContext 不能为空");
         }
-        String childRequestId = parent.getRequestId() + ":sub:" + agentId;
+        // 短 requestId：避免 parentRequestId + ":sub:" + agentId 撑破 working_memory.request_id 列宽
+        String childRequestId = newChildRequestId(agentId);
         // 显式 parentToolUseId 优先；否则回退当前线程绑定的 Agent 工具 toolCallId。
         // 二者皆空时子工具无法嵌套到父卡片（前端只显示 totalToolUseCount）。
         String parentToolUseId = StringUtils.isNotBlank(explicitParentToolUseId)
@@ -119,5 +120,16 @@ public final class SubAgentContextFactory {
 
     public static String newAgentId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    /**
+     * 子 Agent 运行 requestId（首跑/续跑/快照共用）。
+     * 形态 {@code sub:{agentId}:{8hex}}，长度远低于 64/128 列宽；父 requestId 只写日志不嵌入。
+     */
+    public static String newChildRequestId(String agentId) {
+        String aid = StringUtils.defaultIfBlank(agentId, "unknown").trim();
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String id = "sub:" + aid + ":" + suffix;
+        return id.length() <= 64 ? id : id.substring(0, 64);
     }
 }

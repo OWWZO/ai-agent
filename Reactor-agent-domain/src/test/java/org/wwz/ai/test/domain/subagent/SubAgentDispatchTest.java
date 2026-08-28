@@ -35,20 +35,18 @@ import static org.mockito.Mockito.verify;
 public class SubAgentDispatchTest {
 
     @Test
-    public void shouldRegisterExploreAndGeneralPurpose() {
+    public void shouldRegisterGeneralPurposeOnly() {
         SubAgentRegistry registry = new SubAgentRegistry();
-        Assert.assertTrue(registry.find(SubAgentRegistry.TYPE_EXPLORE).isPresent());
+        Assert.assertFalse(registry.find("Explore").isPresent());
         Assert.assertTrue(registry.find(SubAgentRegistry.TYPE_GENERAL_PURPOSE).isPresent());
         Assert.assertEquals(SubAgentRegistry.TYPE_GENERAL_PURPOSE,
                 registry.resolveOrDefault(null).getAgentType());
-        Assert.assertEquals(Integer.valueOf(200),
-                registry.require(SubAgentRegistry.TYPE_EXPLORE).getMaxSteps());
         Assert.assertEquals(Integer.valueOf(200),
                 registry.require(SubAgentRegistry.TYPE_GENERAL_PURPOSE).getMaxSteps());
     }
 
     @Test
-    public void shouldFilterOutAgentAndWriteToolsForExplore() {
+    public void shouldFilterOutAgentAndWriteToolsForReadOnlyDefinition() {
         ToolCollection parent = new ToolCollection();
         parent.addTool(new StubTool("workspace_read"));
         parent.addTool(new StubTool("workspace_write"));
@@ -56,8 +54,12 @@ public class SubAgentDispatchTest {
         parent.addTool(new StubTool("file_tool"));
         parent.addTool(new StubTool(AgentDispatchTool.NAME));
 
-        SubAgentDefinition explore = new SubAgentRegistry().require(SubAgentRegistry.TYPE_EXPLORE);
-        ToolCollection child = SubAgentToolFilter.filter(parent, explore);
+        SubAgentDefinition readOnly = SubAgentDefinition.builder()
+                .agentType("read-only")
+                .allowedTools(java.util.Set.of("workspace_read", "deep_search"))
+                .disallowedTools(java.util.Set.of("workspace_write", "file_tool"))
+                .build();
+        ToolCollection child = SubAgentToolFilter.filter(parent, readOnly);
 
         Assert.assertTrue(child.getToolMap().containsKey("workspace_read"));
         Assert.assertTrue(child.getToolMap().containsKey("deep_search"));
@@ -116,9 +118,9 @@ public class SubAgentDispatchTest {
                         .printer(new NoopPrinter())
                         .toolCollection(null)
                         .build(),
-                "explore files",
+                "inspect files",
                 "find all controllers",
-                SubAgentRegistry.TYPE_EXPLORE
+                SubAgentRegistry.TYPE_GENERAL_PURPOSE
         );
 
         Assert.assertEquals(SubAgentResult.STATUS_FAILED, result.getStatus());
@@ -132,20 +134,21 @@ public class SubAgentDispatchTest {
         Assert.assertEquals("object", params.get("type"));
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("description"));
         Assert.assertTrue(((java.util.List<?>) params.get("required")).contains("prompt"));
-        Assert.assertTrue(tool.getDescription().contains("Explore"));
+        Assert.assertTrue(tool.getDescription().contains(SubAgentRegistry.TYPE_GENERAL_PURPOSE));
         Assert.assertTrue(String.valueOf(
                 ((java.util.Map<?, ?>) ((java.util.Map<?, ?>) params.get("properties")).get("subagent_type"))
-                        .get("description")).contains("Explore"));
+                        .get("description")).contains(SubAgentRegistry.TYPE_GENERAL_PURPOSE));
     }
 
     @Test
     public void terminalBackgroundTaskUpdatesParentLedgerObservation() {
         RuntimeBackgroundTaskRegistry registry = new RuntimeBackgroundTaskRegistry();
-        RuntimeBackgroundTask task = registry.registerLocalAgent("探索前端", "Explore", "scan ui");
+        RuntimeBackgroundTask task = registry.registerLocalAgent(
+                "探索前端", SubAgentRegistry.TYPE_GENERAL_PURPOSE, "scan ui");
         registry.complete(task.getId(), SubAgentResult.builder()
                 .status(SubAgentResult.STATUS_COMPLETED)
                 .agentId("agent-1")
-                .agentType("Explore")
+                .agentType(SubAgentRegistry.TYPE_GENERAL_PURPOSE)
                 .content("done")
                 .build());
 
