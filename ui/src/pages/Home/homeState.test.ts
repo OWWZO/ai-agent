@@ -16,7 +16,7 @@ describe("homeState", () => {
     expect(shouldApplyConversationToView(undefined, "conv-a")).toBe(false);
   });
 
-  it("切到 dataAgent 时应清空角色并关闭 deepThink", () => {
+  it("切到 dataAgent 时关闭 deepThink", () => {
     expect(
       deriveConversationMetaFromInput(
         {
@@ -24,19 +24,12 @@ describe("homeState", () => {
           deepThink: true,
         },
         {
-          productType: "html",
-          currentRole: {
-            agentId: "agent-1",
-            agentName: "默认角色",
-            available: true,
-            defaultRole: true,
-          },
+          productType: "task",
         }
       )
     ).toMatchObject({
       productType: "dataAgent",
       deepThink: false,
-      role: null,
     });
   });
 
@@ -48,13 +41,11 @@ describe("homeState", () => {
         },
         {
           productType: "task",
-          currentRole: null,
         }
       )
     ).toMatchObject({
       productType: "task",
       deepThink: true,
-      role: null,
     });
   });
 

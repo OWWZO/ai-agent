@@ -31,7 +31,6 @@ class _FakeOpenAIClient:
 
 
 class VLMClientConfigTest(unittest.TestCase):
-
     def _patch_openai_client(self):
         captured = {}
 
@@ -63,13 +62,19 @@ class VLMClientConfigTest(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory):
+            with patch(
+                "reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory
+            ):
                 client = VLLMClient()
 
         self.assertEqual("gpt-5.2", client.model_name)
         self.assertEqual("https://www.openclaudecode.cn/v1", client.model_base_url)
         self.assertEqual("test-vlm-key", captured["client"].init_kwargs["api_key"])
-        self.assertEqual("https://www.openclaudecode.cn/v1", captured["client"].init_kwargs["base_url"])
+        self.assertEqual(
+            "https://www.openclaudecode.cn/v1",
+            captured["client"].init_kwargs["base_url"],
+        )
+        self.assertFalse(captured["client"].init_kwargs["http_client"]._trust_env)
 
     def test_should_use_vlm_env_model_when_generating_caption(self):
         image_path = self._create_test_image()
@@ -84,7 +89,9 @@ class VLMClientConfigTest(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory):
+            with patch(
+                "reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory
+            ):
                 result = generate_caption(image_path)
 
         self.assertEqual("fake-vlm-response", result)
@@ -92,8 +99,15 @@ class VLMClientConfigTest(unittest.TestCase):
         self.assertEqual("gpt-5.2", request["model"])
         self.assertEqual(500, request["max_tokens"])
         self.assertFalse(request["stream"])
-        self.assertEqual("描述图片的内容，不要超过100个字", request["messages"][0]["content"][0]["text"])
-        self.assertTrue(request["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(
+            "描述图片的内容，不要超过100个字",
+            request["messages"][0]["content"][0]["text"],
+        )
+        self.assertTrue(
+            request["messages"][0]["content"][1]["image_url"]["url"].startswith(
+                "data:image/png;base64,"
+            )
+        )
 
     def test_should_use_vlm_ocr_when_ocr_type_is_vlm_ocr(self):
         image_path = self._create_test_image()
@@ -109,7 +123,9 @@ class VLMClientConfigTest(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory):
+            with patch(
+                "reactor_tool.tool.mrag.generation.vlm.OpenAI", side_effect=factory
+            ):
                 ocr_model = get_ocr_model()
                 result = ocr_model.ocr(image_path)
 
@@ -118,11 +134,12 @@ class VLMClientConfigTest(unittest.TestCase):
         request = captured["client"].requests[0]
         self.assertEqual("gpt-5.2", request["model"])
         self.assertEqual(1024, request["max_tokens"])
-        self.assertEqual("提取图片中的文字", request["messages"][0]["content"][0]["text"])
+        self.assertEqual(
+            "提取图片中的文字", request["messages"][0]["content"][0]["text"]
+        )
 
 
 class VLMEnvSmokeTest(unittest.TestCase):
-
     @unittest.skipUnless(
         os.getenv("RUN_MRAG_VLM_SMOKE_TEST") == "1",
         "默认跳过真实 VLM 联调测试，设置 RUN_MRAG_VLM_SMOKE_TEST=1 后执行。",

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao">
+
+    <resultMap id="ToolOutputImageGenerationMap" type="org.wwz.ai.infrastructure.dao.po.ToolOutputImageGenerationPO">
+        <id column="id" property="id"/>
+        <result column="tool_invocation_id" property="toolInvocationId"/>
+        <result column="run_id" property="runId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="request_source" property="requestSource"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="status" property="status"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="prompt" property="prompt"/>
+        <result column="mode" property="mode"/>
+        <result column="summary" property="summary"/>
+        <result column="size" property="size"/>
+        <result column="batch_count" property="batchCount"/>
+        <result column="source_image_count" property="sourceImageCount"/>
+        <result column="mask_image_count" property="maskImageCount"/>
+        <result column="used_fallback" property="usedFallback"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="map">
+        INSERT INTO ai_agent_tool_output_image_generation (
+            tool_invocation_id, run_id, request_id, request_source, session_id, tool_call_id, status, error_msg,
+            prompt, mode, summary, size, batch_count, source_image_count, mask_image_count, used_fallback, created_at, updated_at
+        )
+        SELECT
+            #{row.toolInvocationId}, #{row.runId}, #{row.requestId}, #{row.requestSource}, #{row.sessionId}, #{row.toolCallId}, #{row.status}, #{row.errorMsg},
+            #{row.prompt}, #{row.mode}, #{row.summary}, #{row.size}, #{row.batchCount}, #{row.sourceImageCount}, #{row.maskImageCount}, #{row.usedFallback}, NOW(), NOW()
+        FROM DUAL
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ai_agent_tool_output_image_generation
+            WHERE (#{row.toolInvocationId} IS NOT NULL AND tool_invocation_id = #{row.toolInvocationId})
+               OR (request_id = #{row.requestId} AND tool_call_id = #{row.toolCallId})
+        )
+    </insert>
+
+    <select id="queryByToolInvocationId" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, request_source, session_id, tool_call_id, status, error_msg,
+               prompt, mode, summary, size, batch_count, source_image_count, mask_image_count, used_fallback, created_at, updated_at
+        FROM ai_agent_tool_output_image_generation
+        WHERE tool_invocation_id = #{toolInvocationId}
+        LIMIT 1
+    </select>
+
+    <select id="queryByRequestToolCall" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, request_source, session_id, tool_call_id, status, error_msg,
+               prompt, mode, summary, size, batch_count, source_image_count, mask_image_count, used_fallback, created_at, updated_at
+        FROM ai_agent_tool_output_image_generation
+        WHERE request_id = #{requestId}
+          AND tool_call_id = #{toolCallId}
+        LIMIT 1
+    </select>
+
+    <select id="countByRequestSource" resultType="int">
+        SELECT COUNT(1)
+        FROM ai_agent_tool_output_image_generation
+        WHERE request_source = #{requestSource}
+    </select>
+
+    <select id="queryPageByRequestSource" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, request_source, session_id, tool_call_id, status, error_msg,
+               prompt, mode, summary, size, batch_count, source_image_count, mask_image_count, used_fallback, created_at, updated_at
+        FROM ai_agent_tool_output_image_generation
+        WHERE request_source = #{requestSource}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+</mapper>

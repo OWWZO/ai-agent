@@ -299,32 +299,6 @@ public class AgentToolCollectionFactoryTest {
     }
 
     @Test
-    public void shouldKeepDataAgentToolingStableWithoutMultiModalAgent() {
-        McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
-        Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
-
-        AgentToolCollectionFactory factory = newFactory(
-                buildReactorConfig(),
-                mcpToolExecutor,
-                Mockito.mock(DefaultSkillRegistry.class),
-                SkillRuntimeOptions.builder()
-                        .enabled(false)
-                        .reactEnabled(false)
-                        .planSolveEnabled(false)
-                        .build(),
-                disabledWorkspaceService(),
-                disabledWorkspaceOptions()
-        );
-
-        ToolCollection toolCollection = factory.buildForReact(buildAgentContext(), buildAgentRequest("dataAgent"));
-
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("report_tool"));
-        Assert.assertTrue(toolCollection.getToolMap().containsKey("data_analysis"));
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("multimodalagent_tool"));
-        Assert.assertFalse(toolCollection.getToolMap().containsKey("Agent"));
-    }
-
-    @Test
     public void shouldBuildChildToolCollectionWithIsolatedTaskScopedState() {
         McpToolExecutor mcpToolExecutor = Mockito.mock(McpToolExecutor.class);
         Mockito.when(mcpToolExecutor.discoverConfiguredTools()).thenReturn(List.of());
@@ -580,12 +554,11 @@ public class AgentToolCollectionFactoryTest {
                 .build();
     }
 
-    private AgentRequest buildAgentRequest(String outputStyle) {
+    private AgentRequest buildAgentRequest(String... ignored) {
         return AgentRequest.builder()
                 .requestId("req-001")
                 .sessionId("session-001")
                 .query("测试 skill 工具装配")
-                .outputStyle(outputStyle)
                 .build();
     }
 

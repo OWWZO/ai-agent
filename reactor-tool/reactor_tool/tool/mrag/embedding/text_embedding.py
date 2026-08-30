@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """OpenAI 兼容文本 Embedding 实现（TEXT_EMBEDDING_* 环境变量）。"""
+
 import os
 from typing import List
 
 import dotenv
 from loguru import logger
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 
 from .embedding import TextEmbedding
 from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry
@@ -28,6 +29,7 @@ class OpenAITextEmbedding(TextEmbedding):
             client = OpenAI(
                 base_url=os.getenv("TEXT_EMBEDDING_BASE_URL"),
                 api_key=os.getenv("TEXT_EMBEDDING_API_KEY"),
+                http_client=DefaultHttpxClient(trust_env=False),
             )
 
             batch_size = 10
@@ -35,7 +37,7 @@ class OpenAITextEmbedding(TextEmbedding):
             model_name = os.getenv("TEXT_EMBEDDING_MODEL_NAME")
             timeout = int(os.getenv("API_TIMEOUT", 300))
             for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
+                batch_texts = texts[i : i + batch_size]
                 response = call_with_retry(
                     lambda batch=batch_texts: client.embeddings.create(
                         model=model_name,
@@ -54,6 +56,7 @@ class OpenAITextEmbedding(TextEmbedding):
 
         except Exception as e:
             import traceback
+
             logger.error(f"文本编码失败: {e}\n{traceback.format_exc()}")
             raise Exception(f"文本编码失败: {e}") from e
 

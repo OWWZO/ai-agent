@@ -104,14 +104,11 @@ export function FeaturedConversationDetailView(
             inputInfo={{
               message: "",
               deepThink: conversation?.deepThink ?? false,
-              outputStyle: conversation?.productType,
             }}
             product={undefined}
             conversation={conversation!}
-            chatRoles={[]}
             readOnly
             onConversationChange={() => {}}
-            onRoleSelect={() => {}}
           />
         </div>
       )}

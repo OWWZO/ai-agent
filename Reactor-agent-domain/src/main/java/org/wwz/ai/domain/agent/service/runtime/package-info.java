@@ -1,5 +1,5 @@
 /**
- * 运行时注册表历史目录。
- * 当前只允许保留 AiClient runtime registry 契约，实现 flow / execute / armory 的共享运行时查找，不得继续扩张。
+ * 运行时服务历史目录。
+ * 当前主路径由 runtime、ledger 和 MCP 专用服务承载，不再通过旧客户端注册表动态查找。
  */
 package org.wwz.ai.domain.agent.service.runtime;

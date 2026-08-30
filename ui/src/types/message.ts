@@ -55,7 +55,6 @@ declare global {
       traceId: string
       nextMessageKey: string
       isStream: string
-      outputStyle: string
       callbackUrl: string
     }
 

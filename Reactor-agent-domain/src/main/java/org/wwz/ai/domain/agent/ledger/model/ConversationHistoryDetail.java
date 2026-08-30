@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.runtime.llm.ContextUsagePayload;
 
@@ -27,11 +26,7 @@ public class ConversationHistoryDetail {
 
     private Integer status;
 
-    private String outputStyle;
-
     private Boolean deepThink;
-
-    private ConversationRoleVO role;
 
     private Integer runCount;
 

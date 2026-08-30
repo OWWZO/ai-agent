@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useMemoizedFn } from "ahooks";
 import { message as antdMessage } from "antd";
-import { isOutputProductType, toRequestOutputStyle } from "@/utils/constants";
 import { getUniqId } from "@/utils";
 import { buildAgentStreamRequest } from "@/utils/agentRequest";
 import {
@@ -265,7 +264,6 @@ function createRunningChat(
   inputInfo: CHAT.TInputInfo,
   sessionId: string,
   requestId: string,
-  outputStyle?: string,
   deepThink?: boolean
 ): CHAT.ChatItem {
   return {
@@ -274,7 +272,7 @@ function createRunningChat(
     responseType: "txt",
     sessionId,
     requestId,
-    agentType: outputStyle === "chat" ? 0 : deepThink ? 1 : 2,
+    agentType: deepThink ? 3 : 5,
     loading: true,
     forceStop: false,
     tasks: [],
@@ -631,10 +629,7 @@ export function useConversationStream(
     const requestId = seedChat.requestId;
     const sessionId = cached?.sessionId || baseConversation.sessionId;
     const productType = cached?.productType ?? baseConversation.productType;
-    const isChatMode = productType === "chat";
-    const normalizedDeepThink = isChatMode
-      ? false
-      : Boolean(cached?.deepThink ?? baseConversation.deepThink);
+    const normalizedDeepThink = Boolean(cached?.deepThink ?? baseConversation.deepThink);
 
     followReconnectContextsRef.current.set(requestId, {
       conversationId,
@@ -957,7 +952,7 @@ export function useConversationStream(
       }
       // 收到任意有效帧说明观察流已经恢复，下一次断开从最短退避重新开始。
       followReconnectAttemptsRef.current.set(requestId, 0);
-      const { finished, resultMap, packageType, status } = data;
+      const { finished, resultMap, packageType } = data;
       const streamStillActive = isActiveStream();
 
       if (packageType === "follow_idle") {
@@ -988,7 +983,7 @@ export function useConversationStream(
       }
 
       if (packageType === "heartbeat") {
-        if (!isChatMode && streamStillActive && currentChat.loading) {
+        if (streamStillActive && currentChat.loading) {
           const presence = resolveRunPresence({
             loading: true,
             chat: currentChat,
@@ -1019,25 +1014,6 @@ export function useConversationStream(
         !resultMap?.eventData;
       if (isTerminalGuardError) {
         const errorText = data.errorMsg || "当前请求处理失败，请稍后重试";
-        if (isChatMode) {
-          currentChat = {
-            ...currentChat,
-            loading: false,
-            response: errorText,
-            metrics: {
-              ...(currentChat.metrics || {}),
-              status: "FAILED",
-            },
-          };
-          clearActiveRun(requestId);
-          followReconnectContextsRef.current.delete(requestId);
-          unbindLiveStream(conversationId, abortController);
-          if (streamStillActive) {
-            setLoading(false);
-          }
-          syncRunningConversation();
-          return;
-        }
         currentChat = applyGuardError(currentChat, errorText);
         clearActiveRun(requestId);
         followReconnectContextsRef.current.delete(requestId);
@@ -1046,52 +1022,6 @@ export function useConversationStream(
           setLoading(false);
         }
         draftController.commit(draftController.replaceLastItem({ ...currentChat }));
-        return;
-      }
-
-      if (["roleUnavailable", "roleSwitchRejected", "noAvailableChatRole"].includes(status)) {
-        currentChat = {
-          ...currentChat,
-          response: data.errorMsg || "当前角色暂不可用",
-          loading: false,
-          metrics: {
-            ...(currentChat.metrics || {}),
-            status: "FAILED",
-          },
-        };
-        clearActiveRun(requestId);
-        unbindLiveStream(conversationId, abortController);
-        if (streamStillActive) {
-          setLoading(false);
-        }
-        syncRunningConversation();
-        return;
-      }
-
-      if (isChatMode) {
-        const eventData = normalizeEventData(resultMap?.eventData);
-        const inner = eventData?.resultMap;
-        const innerType = inner?.messageType;
-        // 快速聊天也要消费 context_usage，否则 ContextRing 对话中不更新。
-        if (innerType === "context_usage" && eventData) {
-          currentChat = combineData(eventData, currentChat);
-          syncRunningConversation();
-          return;
-        }
-        if (innerType === "agent_stream") {
-          const text = inner?.result || "";
-          if (text) {
-            currentChat.response = `${currentChat.response || ""}${text}`;
-          }
-        } else if (innerType === "result" && !currentChat.response) {
-          currentChat.response = inner?.result || "";
-        }
-        if (innerType) {
-          syncRunningConversation();
-        }
-        if (innerType && (inner?.finish || finished)) {
-          markFollowEnded("SUCCESS");
-        }
         return;
       }
 
@@ -1410,7 +1340,51 @@ export function useConversationStream(
       }
     };
 
+    const parkResumeStream = (delay?: number) => {
+      if (resumeSettled) {
+        return;
+      }
+      const live = liveStreamsRef.current.get(conversationId);
+      if (live && live.controller !== abortController) {
+        return;
+      }
+      const streamStillActive = isActiveStream();
+      unbindLiveStream(conversationId, abortController);
+      currentChat = {
+        ...currentChat,
+        loading: true,
+        tip: CONNECTION_LOST_HINT,
+        metrics: {
+          ...(currentChat.metrics || {}),
+          status: "RUNNING",
+        },
+      };
+      followReconnectContextsRef.current.set(resumeRequestId, {
+        conversationId,
+        sessionId,
+        requestId: resumeRequestId,
+        productType: baseConversation.productType,
+        deepThink: Boolean(baseConversation.deepThink),
+        seedChat: { ...currentChat },
+      });
+      if (streamStillActive) {
+        setLoading(true);
+      }
+      draftController.commit(draftController.replaceLastItem({ ...currentChat }));
+      scheduleFollowReconnect(conversationId, resumeRequestId, delay);
+    };
+
     const handleMessage = (data: MESSAGE.Answer) => {
+      const eventSeq = Number(data.eventSeq || 0);
+      const lastEventSeq = lastEventSeqRef.current.get(resumeRequestId) || 0;
+      if (eventSeq > 0 && eventSeq <= lastEventSeq) {
+        return;
+      }
+      if (eventSeq > 0) {
+        lastEventSeqRef.current.set(resumeRequestId, eventSeq);
+        updateActiveRunSeq(resumeRequestId, eventSeq);
+      }
+      followReconnectAttemptsRef.current.set(resumeRequestId, 0);
       const { finished, resultMap, packageType } = data;
       if (packageType === "heartbeat" || packageType === "follow_idle" || packageType === "follow_pending") {
         if (packageType === "heartbeat" && currentChat.loading && isActiveStream()) {
@@ -1421,10 +1395,35 @@ export function useConversationStream(
             plan: currentChat.plan || currentChat.multiAgent?.plan,
           });
           if (presence.hint && currentChat.tip !== presence.hint) {
-            currentChat = { ...currentChat, tip: presence.hint };
+            currentChat = {
+              ...currentChat,
+              tip: presence.hint,
+            };
             draftController.commit(draftController.replaceLastItem({ ...currentChat }));
           }
         }
+        return;
+      }
+
+      const isTerminalGuardError =
+        Boolean(finished) &&
+        packageType === "result" &&
+        Boolean(data.errorMsg) &&
+        !resultMap?.eventData;
+      if (isTerminalGuardError) {
+        const streamStillActive = isActiveStream();
+        clearActiveRun(resumeRequestId);
+        followReconnectContextsRef.current.delete(resumeRequestId);
+        clearFollowReconnectTimer(resumeRequestId);
+        unbindLiveStream(conversationId, abortController);
+        currentChat = applyGuardError(
+          currentChat,
+          data.errorMsg || "当前请求处理失败，请稍后重试"
+        );
+        if (streamStillActive) {
+          setLoading(false);
+        }
+        draftController.commit(draftController.replaceLastItem({ ...currentChat }));
         return;
       }
 
@@ -1444,14 +1443,35 @@ export function useConversationStream(
             deepThink: Boolean(baseConversation.deepThink),
             plan: currentChat.plan || currentChat.multiAgent?.plan,
           });
-          currentChat = { ...currentChat, tip: presence.hint };
+          currentChat = {
+            ...currentChat,
+            tip: presence.hint,
+          };
         }
       }
 
       // 与主链路一致：任意 finished 帧都应收口，不能只认 packageType=result
       // 业务 finished 后仍可能短暂保持 SSE（后端 markAnswered 后再关流），勿重复 settle。
       if (finished) {
-        settleResumeSuccess();
+        if (
+          eventData?.messageType === "ask_user_question" ||
+          eventData?.messageType === "plan_approval" ||
+          eventData?.resultMap?.messageType === "ask_user_question" ||
+          eventData?.resultMap?.messageType === "plan_approval" ||
+          hasPendingAskUserQuestion(currentChat)
+        ) {
+          currentChat = applyWaitingUserInputState(currentChat);
+          clearActiveRun(resumeRequestId);
+          followReconnectContextsRef.current.delete(resumeRequestId);
+          clearFollowReconnectTimer(resumeRequestId);
+          const streamStillActive = isActiveStream();
+          unbindLiveStream(conversationId, abortController);
+          if (streamStillActive) {
+            setLoading(false);
+          }
+        } else {
+          settleResumeSuccess();
+        }
       }
 
       const taskData = handleTaskData(
@@ -1470,6 +1490,7 @@ export function useConversationStream(
         body: { resumeRequestId },
         signal: abortController.signal,
         retryOnError: false,
+        handleEventId: (eventId) => updateActiveRunEvent(resumeRequestId, eventId),
         parser: parseAgentAnswer,
         handleMessage,
         handleError: (error) => {
@@ -1477,55 +1498,15 @@ export function useConversationStream(
           if (resumeSettled) {
             return;
           }
-          // 已有结论 / 已本地 decided 时按成功收口，避免“答完了还在推进”或回审批 UI
-          if (
-            currentChat.conclusion ||
-            String(currentChat.metrics?.status || "").toUpperCase() === "SUCCESS" ||
-            currentChat.multiAgent?.tasks?.length
-          ) {
-            settleResumeSuccess();
-            draftController.commit(draftController.replaceLastItem({ ...currentChat }));
-            return;
-          }
-          const streamStillActive = isActiveStream();
-          unbindLiveStream(conversationId, abortController);
-          clearActiveRun(resumeRequestId);
-          currentChat = {
-            ...currentChat,
-            loading: false,
-            tip: "续跑连接中断，可刷新后重试",
-            metrics: {
-              ...(currentChat.metrics || {}),
-              status: "FAILED",
-            },
-          };
-          if (streamStillActive) {
-            setLoading(false);
-          }
-          draftController.commit(draftController.replaceLastItem({ ...currentChat }));
+          // 恢复请求断开不代表 continuation 已结束；沿用主流的 follow 观察同一个 run。
+          parkResumeStream();
         },
         handleClose: () => {
           if (resumeSettled) {
             return;
           }
-          if (currentChat.loading || currentChat.conclusion) {
-            settleResumeSuccess();
-            const taskData = handleTaskData(
-              currentChat,
-              Boolean(baseConversation.deepThink),
-              currentChat.multiAgent
-            );
-            if (conversationRef.current.id === conversationId) {
-              setTaskList(taskData.taskList);
-            }
-            draftController.commit(draftController.replaceLastItem({ ...currentChat }));
-            return;
-          }
-          const streamStillActive = isActiveStream();
-          unbindLiveStream(conversationId, abortController);
-          if (streamStillActive) {
-            setLoading(false);
-          }
+          // clean EOF 也可能发生在终态帧到达前，不能凭 loading/conclusion 猜成功。
+          parkResumeStream(300);
         },
       },
       options.sseUrl
@@ -1594,16 +1575,8 @@ export function useConversationStream(
   const sendMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
     const baseConversation = conversationRef.current;
     const conversationId = baseConversation.id;
-    const { message, deepThink, outputStyle } = inputInfo;
-    const currentOutputStyle =
-      outputStyle ||
-      (baseConversation.productType === "chat" ||
-      baseConversation.productType === "dataAgent" ||
-      isOutputProductType(baseConversation.productType)
-        ? baseConversation.productType
-        : undefined);
-    const isChatMode = currentOutputStyle === "chat";
-    const normalizedDeepThink = isChatMode ? false : Boolean(deepThink);
+    const { message, deepThink } = inputInfo;
+    const normalizedDeepThink = Boolean(deepThink);
 
     // 开 SSE 之前拦截：任意其它会话仍在跑（活流 / follow 上下文 / 快照 loading）则直接拒绝。
     // 本会话内允许覆盖重发；跨会话禁止，避免双 SSE 互挤。
@@ -1656,11 +1629,10 @@ export function useConversationStream(
       inputInfo,
       baseConversation.sessionId,
       requestId,
-      currentOutputStyle,
       normalizedDeepThink
     );
 
-    if (!isChatMode) {
+    if (normalizedDeepThink) {
       currentChat = {
         ...currentChat,
         tip: resolveRunPresence({
@@ -1675,12 +1647,12 @@ export function useConversationStream(
       conversationId,
       sessionId: baseConversation.sessionId,
       requestId,
-      productType: currentOutputStyle || baseConversation.productType,
+      productType: baseConversation.productType,
       deepThink: normalizedDeepThink,
       seedChat: { ...currentChat },
     });
 
-    if (!isChatMode && normalizedDeepThink) {
+    if (normalizedDeepThink) {
       setStreamingThoughtMap((previous) => ({
         ...previous,
         [requestId]: "",
@@ -1689,7 +1661,7 @@ export function useConversationStream(
 
     const initialConversation = createDraftConversation(baseConversation, {
       chatTitle: message || "",
-      productType: currentOutputStyle || baseConversation.productType,
+      productType: baseConversation.productType,
       deepThink: normalizedDeepThink,
       chatList: [...baseConversation.chatList, { ...currentChat }],
     });
@@ -1704,12 +1676,6 @@ export function useConversationStream(
     setLoading(true);
     onPrepareStreamingWorkspace?.();
 
-    const syncRunningConversation = () => {
-      draftController.commit(
-        draftController.replaceLastItem({ ...currentChat })
-      );
-    };
-
     /**
      * 流式任务会先把原始事件累积在 multiAgent.tasks，再由 handleTaskData 派生出左侧时间线需要的 chat.tasks。
      * 这里在节流刷新任务视图时，把派生后的 chat 一并回写到会话快照，避免左侧对话区一直停留在旧数据。
@@ -1723,10 +1689,8 @@ export function useConversationStream(
       requestId,
       message,
       deepThink: normalizedDeepThink,
-      outputStyle: currentOutputStyle,
+      outputStyle: inputInfo.outputStyle === "dataAgent" ? "dataAgent" : undefined,
       files: inputInfo.files,
-      aiAgentId: inputInfo.aiAgentId,
-      fallbackRoleAgentId: baseConversation.role?.agentId,
       model: inputInfo.model,
       thinking: inputInfo.thinking,
       thinkingEffort: inputInfo.thinkingEffort,
@@ -1842,20 +1806,6 @@ export function useConversationStream(
           setLoading(false);
         }
 
-        if (isChatMode) {
-          currentChat = {
-            ...currentChat,
-            loading: false,
-            response: errorText,
-            metrics: {
-              ...(currentChat.metrics || {}),
-              status: "FAILED",
-            },
-          };
-          syncRunningConversation();
-          return;
-        }
-
         currentChat = applyGuardError(currentChat, errorText);
         const taskData = handleTaskData(
           currentChat,
@@ -1868,25 +1818,6 @@ export function useConversationStream(
         draftController.commit(
           draftController.replaceLastItem({ ...currentChat })
         );
-        return;
-      }
-
-      if (["roleUnavailable", "roleSwitchRejected", "noAvailableChatRole"].includes(status)) {
-        clearActiveRun(requestId);
-        unbindLiveStream(conversationId, abortController);
-        currentChat = {
-          ...currentChat,
-          response: data.errorMsg || "当前角色暂不可用",
-          loading: false,
-          metrics: {
-            ...(currentChat.metrics || {}),
-            status: "FAILED",
-          },
-        };
-        if (streamStillActive) {
-          setLoading(false);
-        }
-        syncRunningConversation();
         return;
       }
 
@@ -1920,7 +1851,7 @@ export function useConversationStream(
       }
 
       if (packageType === "heartbeat") {
-        if (!isChatMode && streamStillActive && currentChat.loading) {
+        if (streamStillActive && currentChat.loading) {
           const presence = resolveRunPresence({
             loading: true,
             chat: currentChat,
@@ -1940,45 +1871,6 @@ export function useConversationStream(
             pendingConversation = draftController.replaceLastItem({ ...currentChat });
             scheduleNonChatFlush(false);
           }
-        }
-        return;
-      }
-
-      if (isChatMode) {
-        const eventData = normalizeEventData(resultMap?.eventData);
-        const inner = eventData?.resultMap;
-        const innerType = inner?.messageType;
-        // 快速聊天也要消费 context_usage，否则 ContextRing 对话中不更新。
-        if (innerType === "context_usage" && eventData) {
-          currentChat = combineData(eventData, currentChat);
-          syncRunningConversation();
-          return;
-        }
-        if (innerType === "agent_stream") {
-          const text = inner?.result || "";
-          if (text) {
-            currentChat.response = `${currentChat.response || ""}${text}`;
-          }
-        } else if (innerType === "result" && !currentChat.response) {
-          currentChat.response = inner?.result || "";
-        }
-
-        if (innerType) {
-          syncRunningConversation();
-        }
-
-        if (innerType && (inner?.finish || finished)) {
-          clearActiveRun(requestId);
-          unbindLiveStream(conversationId, abortController);
-          currentChat.loading = false;
-          currentChat.metrics = {
-            ...(currentChat.metrics || {}),
-            status: "SUCCESS",
-          };
-          if (streamStillActive) {
-            setLoading(false);
-          }
-          syncRunningConversation();
         }
         return;
       }
@@ -2087,7 +1979,7 @@ export function useConversationStream(
           conversationId,
           sessionId: baseConversation.sessionId,
           requestId,
-          productType: currentOutputStyle || baseConversation.productType,
+          productType: baseConversation.productType,
           deepThink: normalizedDeepThink,
           seedChat: { ...currentChat },
         });
@@ -2106,7 +1998,7 @@ export function useConversationStream(
           conversationId,
           sessionId: baseConversation.sessionId,
           requestId,
-          productType: currentOutputStyle || baseConversation.productType,
+          productType: baseConversation.productType,
           deepThink: normalizedDeepThink,
           seedChat: { ...currentChat },
         });
@@ -2125,7 +2017,7 @@ export function useConversationStream(
           conversationId,
           sessionId: baseConversation.sessionId,
           requestId,
-          productType: currentOutputStyle || baseConversation.productType,
+          productType: baseConversation.productType,
           deepThink: normalizedDeepThink,
           seedChat: { ...currentChat },
         });
@@ -2180,8 +2072,28 @@ export function useConversationStream(
       });
     };
 
+    let streamOpened = false;
+    const failBeforeStreamOpened = () => {
+      const streamStillActive = isActiveStream();
+      clearActiveRun(requestId);
+      followReconnectContextsRef.current.delete(requestId);
+      clearFollowReconnectTimer(requestId);
+      unbindLiveStream(conversationId, abortController);
+      currentChat = applyGuardError(currentChat, "请求未能建立，请稍后重试");
+      if (streamStillActive) {
+        setLoading(false);
+      }
+      pendingConversation = draftController.replaceLastItem({ ...currentChat });
+      scheduleNonChatFlush(true);
+    };
+
     const handleError = (error: unknown) => {
       console.error("SSE stream error", error);
+      // HTTP 绑定/网关错误发生在 SSE 建立前，后端尚未创建 session/run，不能进入 follow。
+      if (!streamOpened) {
+        failBeforeStreamOpened();
+        return;
+      }
       // 主结论已收口 loading=false，但后台子 Agent 仍可能在跑；不能因 loading 关掉 follow。
       if (!shouldKeepObserving()) {
         return;
@@ -2215,7 +2127,7 @@ export function useConversationStream(
         conversationId,
         sessionId: baseConversation.sessionId,
         requestId,
-        productType: currentOutputStyle || baseConversation.productType,
+        productType: baseConversation.productType,
         deepThink: normalizedDeepThink,
         seedChat: { ...currentChat },
       });
@@ -2256,7 +2168,7 @@ export function useConversationStream(
         conversationId,
         sessionId: baseConversation.sessionId,
         requestId,
-        productType: currentOutputStyle || baseConversation.productType,
+        productType: baseConversation.productType,
         deepThink: normalizedDeepThink,
         seedChat: { ...currentChat },
       });
@@ -2269,6 +2181,9 @@ export function useConversationStream(
       body: params,
       signal: abortController.signal,
       retryOnError: false,
+      handleOpen: () => {
+        streamOpened = true;
+      },
       handleEventId: (eventId) => updateActiveRunEvent(requestId, eventId),
       parser: parseAgentAnswer,
       handleMessage,
@@ -2285,9 +2200,7 @@ export function useConversationStream(
 
     sendMessage({
       message: last.query,
-      outputStyle: toRequestOutputStyle(conversation.productType),
-      deepThink: conversation.deepThink,
-      aiAgentId: conversation.role?.agentId,
+       deepThink: conversation.deepThink,
     });
   });
 

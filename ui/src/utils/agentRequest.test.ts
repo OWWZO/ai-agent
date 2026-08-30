@@ -35,13 +35,12 @@ describe("agentRequest", () => {
     ]);
   });
 
-  it("非聊天模式会携带 sessionFiles 且不会透传 aiAgentId", () => {
+  it("会携带 sessionFiles 且不会透传旧角色字段", () => {
     const request = buildAgentStreamRequest({
       sessionId: "session-1",
       requestId: "req-1",
       message: "基于这张图改成赛博朋克风",
       deepThink: false,
-      outputStyle: "html",
       files: [
         {
           name: "source-image.png",
@@ -52,8 +51,6 @@ describe("agentRequest", () => {
           size: 1024,
         },
       ],
-      aiAgentId: "role-1",
-      fallbackRoleAgentId: "role-2",
     });
 
     expect(request).toMatchObject({
@@ -61,7 +58,6 @@ describe("agentRequest", () => {
       requestId: "req-1",
       query: "基于这张图改成赛博朋克风",
       deepThink: 0,
-      outputStyle: "html",
       sessionFiles: [
         {
           fileName: "source-image.png",

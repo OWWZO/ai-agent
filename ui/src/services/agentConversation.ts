@@ -37,13 +37,6 @@ export interface ConversationSessionItem {
   lastActiveAt: string;
 }
 
-export interface ConversationRole {
-  agentId: string;
-  agentName: string;
-  available: boolean;
-  defaultRole: boolean;
-}
-
 export interface ConversationReplayFrame {
   reqId: string;
   status: string;
@@ -82,9 +75,7 @@ export interface ConversationHistoryDetail {
   sessionId: string;
   title: string;
   status: string;
-  outputStyle?: string;
   deepThink: boolean;
-  role: ConversationRole | null;
   runCount: number;
   finishedRunCount: number;
   failedRunCount: number;

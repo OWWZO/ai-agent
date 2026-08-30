@@ -26,8 +26,6 @@ public class AgentHandlerAutoConfiguration {
                 map.put(AgentType.PLAN_SOLVE, handler);
             } else if (handler instanceof ReactAgentResponseHandler) {
                 map.put(AgentType.REACT, handler);
-                map.put(AgentType.WORKFLOW, handler);
-                map.put(AgentType.COMPREHENSIVE, handler);
             }
         }
         return map;

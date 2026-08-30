@@ -22,12 +22,16 @@ from types import SimpleNamespace
 from typing import Any, List, Optional
 
 import httpx
+import litellm
 from litellm import acompletion
 from loguru import logger
 
 from reactor_tool.model.context import LLMModelInfoFactory
 from reactor_tool.util.log_util import AsyncTimer
 from reactor_tool.util.sensitive_detection import SensitiveWordsReplace
+
+# LiteLLM 的异步 transport 可能读取 HTTP(S)_PROXY；LLM 请求统一直连，其他工具仍自行管理代理。
+litellm.disable_aiohttp_trust_env = True
 
 # 走 DashScope OpenAI 兼容端点的模型别名
 _LITELLM_DASHSCOPE_MODELS = {
@@ -314,7 +318,7 @@ def _build_http_timeout(timeout: Any) -> httpx.Timeout:
     return httpx.Timeout(
         timeout=total_seconds,
         connect=min(total_seconds, _timeout_from_env("LLM_CONNECT_TIMEOUT", 30)),
-        read=min(total_seconds, _timeout_from_env("LLM_READ_TIMEOUT", 300)),
+        read=min(total_seconds, _timeout_from_env("LLM_READ_TIMEOUT", 600)),
         write=min(total_seconds, _timeout_from_env("LLM_WRITE_TIMEOUT", 60)),
         pool=min(total_seconds, _timeout_from_env("LLM_POOL_TIMEOUT", 30)),
     )
@@ -441,7 +445,7 @@ async def _raw_openai_like_request(
     )
     timeout = _build_http_timeout(params.get("timeout"))
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
             if resp.status_code >= 400:
                 text = (await resp.aread()).decode("utf-8", errors="ignore")

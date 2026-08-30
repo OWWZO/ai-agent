@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao">
+
+    <resultMap id="ToolOutputDeepSearchMap" type="org.wwz.ai.infrastructure.dao.po.ToolOutputDeepSearchPO">
+        <id column="id" property="id"/>
+        <result column="tool_invocation_id" property="toolInvocationId"/>
+        <result column="run_id" property="runId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="tool_call_id" property="toolCallId"/>
+        <result column="status" property="status"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="query" property="query"/>
+        <result column="answer_summary" property="answerSummary"/>
+        <result column="stages_json" property="stagesJson"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="map">
+        INSERT INTO ai_agent_tool_output_deep_search (
+            tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
+            query, answer_summary, stages_json, created_at, updated_at
+        )
+        SELECT
+            #{row.toolInvocationId}, #{row.runId}, #{row.requestId}, #{row.sessionId}, #{row.toolCallId}, #{row.status}, #{row.errorMsg},
+            #{row.query}, #{row.answerSummary}, #{row.stagesJson}, NOW(), NOW()
+        FROM DUAL
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ai_agent_tool_output_deep_search
+            WHERE (#{row.toolInvocationId} IS NOT NULL AND tool_invocation_id = #{row.toolInvocationId})
+               OR (request_id = #{row.requestId} AND tool_call_id = #{row.toolCallId})
+        )
+    </insert>
+
+    <select id="queryByToolInvocationId" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
+               query, answer_summary, stages_json, created_at, updated_at
+        FROM ai_agent_tool_output_deep_search
+        WHERE tool_invocation_id = #{toolInvocationId}
+        LIMIT 1
+    </select>
+
+    <select id="queryByRequestToolCall" resultType="map">
+        SELECT id, tool_invocation_id, run_id, request_id, session_id, tool_call_id, status, error_msg,
+               query, answer_summary, stages_json, created_at, updated_at
+        FROM ai_agent_tool_output_deep_search
+        WHERE request_id = #{requestId}
+          AND tool_call_id = #{toolCallId}
+        LIMIT 1
+    </select>
+
+</mapper>

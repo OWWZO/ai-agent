@@ -19,25 +19,21 @@ import org.wwz.ai.domain.agent.runtime.askuser.UserQuestionResumeContext;
 @AllArgsConstructor
 public class PlanApprovalResumeContext {
 
-    private String aiAgentId;
     private String entryAgent;
     private Integer agentType;
     private String model;
     private Boolean thinking;
     private String thinkingEffort;
-    private String outputStyle;
     private UserQuestionResumeContext.PlanModeSnapshot planMode;
 
     public static PlanApprovalResumeContext from(AgentContext context, AgentRequest request, String entryAgent) {
         UserQuestionResumeContext shared = UserQuestionResumeContext.from(context, request, entryAgent);
         return PlanApprovalResumeContext.builder()
-                .aiAgentId(shared.getAiAgentId())
                 .entryAgent(shared.getEntryAgent())
                 .agentType(shared.getAgentType())
                 .model(shared.getModel())
                 .thinking(shared.getThinking())
                 .thinkingEffort(shared.getThinkingEffort())
-                .outputStyle(shared.getOutputStyle())
                 .planMode(shared.getPlanMode())
                 .build();
     }

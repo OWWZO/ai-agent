@@ -347,12 +347,6 @@ public class ReactorConfig {
         this.sensitivePatterns = parseStringMap(jsonStr);
     }
 
-    private Map<String, String> outputStylePrompts = new HashMap<>();
-    @Value("${autobots.autoagent.output_style_prompts:{}}")
-    public void setOutputStylePrompts(String jsonStr) {
-        this.outputStylePrompts = parseStringMap(jsonStr);
-    }
-
     private Map<String, String> messageInterval = new HashMap<>();
     @Value("${autobots.autoagent.message_interval:{}}")
     public void setMessageInterval(String jsonStr) {

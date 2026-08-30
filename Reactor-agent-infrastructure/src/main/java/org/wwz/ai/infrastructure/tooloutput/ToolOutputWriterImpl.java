@@ -11,14 +11,10 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiTreeToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ScriptRunnerToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
@@ -29,12 +25,8 @@ import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiPatchDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiTreeDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputFileToolDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputPlanningDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputReportToolDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputScriptRunnerDao;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,9 +35,8 @@ import java.util.Map;
 /**
  * Execution Ledger 工具输出投影写入实现。
  *
- * <p>每种 rich tool 写入自己的专属输出表，通用 tool invocation 只保留执行事实和
- * 关联标识；本类负责把领域结构化输出转换为 DAO 行并按工具名分派。它是账本投影的
- * 基础设施适配器，不负责改变工具执行状态，也不将输出 JSON 回写到通用 invocation。</p>
+ * <p>支持持久化的 rich tool 写入自己的专属输出表，通用 tool invocation 只保留执行
+ * 事实和关联标识；本类负责把领域结构化输出转换为 DAO 行并按工具名分派。</p>
  *
  * <p>{@link #write(ToolOutputPersistCommand)} 采用旁路失败语义，适合请求收尾；
  * {@link #writeOrThrow(ToolOutputPersistCommand)} 保留失败，适合调用方必须感知投影
@@ -57,14 +48,10 @@ import java.util.Map;
 public class ToolOutputWriterImpl implements ToolOutputWriter {
 
     private final IToolOutputDeepSearchDao deepSearchDao;
-    private final IToolOutputFileToolDao fileToolDao;
     private final IToolOutputCodeInterpreterDao codeInterpreterDao;
-    private final IToolOutputReportToolDao reportToolDao;
     private final IToolOutputDataAnalysisDao dataAnalysisDao;
     private final IToolOutputMultimodalAgentDao multimodalAgentDao;
     private final IToolOutputImageGenerationDao imageGenerationDao;
-    private final IToolOutputScriptRunnerDao scriptRunnerDao;
-    private final IToolOutputPlanningDao planningDao;
     private final IToolOutputCanvasPublishDao canvasPublishDao;
     private final IToolOutputEmitUiTreeDao emitUiTreeDao;
     private final IToolOutputEmitUiPatchDao emitUiPatchDao;
@@ -92,23 +79,19 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
             return;
         }
         String toolName = resolveToolName(command);
-        if (!ToolOutputNames.isRichTool(toolName)
+        if (!ToolOutputNames.isPersistedTool(toolName)
                 || StringUtils.isBlank(command.getRequestId())
                 || StringUtils.isBlank(command.getToolCallId())) {
             return;
         }
         try {
-            // 每种 rich tool 使用独立输出表，但共享同一组账本关联字段；这里集中完成类型校验、行构建和 DAO 分发。
+             // 每种可持久化 rich tool 使用独立输出表，但共享同一组账本关联字段。
             switch (toolName) {
                 case ToolOutputNames.DEEP_SEARCH -> handleInsertResult(command, deepSearchDao.insert(buildDeepSearchRow(command, cast(command, DeepSearchToolOutput.class))), strict);
-                case ToolOutputNames.FILE_TOOL -> handleInsertResult(command, fileToolDao.insert(buildFileToolRow(command, cast(command, FileToolOutput.class))), strict);
                 case ToolOutputNames.CODE_INTERPRETER -> handleInsertResult(command, codeInterpreterDao.insert(buildCodeInterpreterRow(command, cast(command, CodeInterpreterToolOutput.class))), strict);
-                case ToolOutputNames.REPORT_TOOL -> handleInsertResult(command, reportToolDao.insert(buildReportToolRow(command, cast(command, ReportToolOutput.class))), strict);
                 case ToolOutputNames.DATA_ANALYSIS -> handleInsertResult(command, dataAnalysisDao.insert(buildDataAnalysisRow(command, cast(command, DataAnalysisToolOutput.class))), strict);
                 case ToolOutputNames.MULTIMODAL_AGENT -> handleInsertResult(command, multimodalAgentDao.insert(buildMultimodalRow(command, cast(command, MultimodalAgentToolOutput.class))), strict);
                 case ToolOutputNames.IMAGE_GENERATION -> handleInsertResult(command, imageGenerationDao.insert(buildImageGenerationRow(command, cast(command, ImageGenerationToolOutput.class))), strict);
-                case ToolOutputNames.SCRIPT_RUNNER -> handleInsertResult(command, scriptRunnerDao.insert(buildScriptRunnerRow(command, cast(command, ScriptRunnerToolOutput.class))), strict);
-                case ToolOutputNames.PLANNING -> handleInsertResult(command, planningDao.insert(buildPlanningRow(command, cast(command, PlanningToolOutput.class))), strict);
                 case ToolOutputNames.CANVAS_PUBLISH -> handleInsertResult(command, canvasPublishDao.insert(buildCanvasPublishRow(command, cast(command, CanvasPublishToolOutput.class))), strict);
                 case ToolOutputNames.EMIT_UI_TREE -> handleInsertResult(command, emitUiTreeDao.insert(buildEmitUiTreeRow(command, cast(command, GenUiTreeToolOutput.class))), strict);
                 case ToolOutputNames.EMIT_UI_PATCH -> handleInsertResult(command, emitUiPatchDao.insert(buildEmitUiPatchRow(command, cast(command, GenUiPatchToolOutput.class))), strict);
@@ -132,29 +115,12 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         return row;
     }
 
-    private Map<String, Object> buildFileToolRow(ToolOutputPersistCommand command, FileToolOutput output) {
-        Map<String, Object> row = baseRow(command);
-        row.put("command", output.getCommand());
-        row.put("primaryFileName", output.getPrimaryFileName());
-        row.put("previewUrl", output.getPreviewUrl());
-        row.put("downloadUrl", output.getDownloadUrl());
-        return row;
-    }
-
     private Map<String, Object> buildCodeInterpreterRow(ToolOutputPersistCommand command, CodeInterpreterToolOutput output) {
         Map<String, Object> row = baseRow(command);
         row.put("codeOutput", output.getCodeOutput());
         row.put("content", output.getContent());
         row.put("code", output.getCode());
         row.put("explain", output.getExplain());
-        return row;
-    }
-
-    private Map<String, Object> buildReportToolRow(ToolOutputPersistCommand command, ReportToolOutput output) {
-        Map<String, Object> row = baseRow(command);
-        row.put("fileType", output.getFileType());
-        row.put("summary", output.getSummary());
-        row.put("content", output.getContent());
         return row;
     }
 
@@ -186,19 +152,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         return row;
     }
 
-    private Map<String, Object> buildScriptRunnerRow(ToolOutputPersistCommand command, ScriptRunnerToolOutput output) {
-        Map<String, Object> row = baseRow(command);
-        row.put("skillName", output.getSkillName());
-        row.put("scriptName", output.getScriptName());
-        row.put("runtime", output.getRuntime());
-        row.put("success", output.getSuccess());
-        row.put("exitCode", output.getExitCode());
-        row.put("stdout", output.getStdout());
-        row.put("stderr", output.getStderr());
-        row.put("summary", output.getSummary());
-        return row;
-    }
-
     private Map<String, Object> buildCanvasPublishRow(ToolOutputPersistCommand command, CanvasPublishToolOutput output) {
         Map<String, Object> row = baseRow(command);
         row.put("title", output.getTitle());
@@ -224,18 +177,6 @@ public class ToolOutputWriterImpl implements ToolOutputWriter {
         row.put("canvasId", output.getCanvasId());
         row.put("seq", output.getSeq());
         row.put("patchesJson", toJson(output.getPatches()));
-        return row;
-    }
-
-    private Map<String, Object> buildPlanningRow(ToolOutputPersistCommand command, PlanningToolOutput output) {
-        Map<String, Object> row = baseRow(command);
-        row.put("command", output.getCommand());
-        row.put("beforePlanJson", toJson(output.getBeforePlan()));
-        row.put("afterPlanJson", toJson(output.getAfterPlan()));
-        row.put("currentStep", output.getCurrentStep());
-        row.put("currentStepIndex", output.getCurrentStepIndex());
-        row.put("autoAdvanced", output.getAutoAdvanced());
-        row.put("autoFinished", output.getAutoFinished());
         return row;
     }
 

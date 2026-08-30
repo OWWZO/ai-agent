@@ -6,7 +6,6 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.domain.agent.reactor.config.ReactorConfig;
 import org.wwz.ai.domain.agent.runtime.ReactorRuntimeDependencies;
 import org.wwz.ai.config.AgentExecutorConfiguration;
@@ -14,8 +13,6 @@ import org.wwz.ai.config.executor.BoundedVirtualThreadExecutor;
 import org.wwz.ai.config.executor.CountingRejectedExecutionHandler;
 import org.wwz.ai.types.agent.config.AgentExecutorNames;
 import org.wwz.ai.types.agent.config.AgentExecutorProperties;
-import org.wwz.ai.types.job.config.TaskJobAutoConfig;
-import org.wwz.ai.types.job.service.ITaskJobService;
 import org.wwz.ai.test.domain.support.ReactorRuntimeTestSupport;
 
 import java.util.concurrent.Executor;
@@ -143,25 +140,4 @@ public class AgentExecutorConfigurationTest {
         Assert.assertNotNull(runtimeDependencies.requireTaskExecutor());
     }
 
-    @Test
-    public void shouldWireTaskJobServiceToNamedTaskSchedulerWhenHeartbeatSchedulerAlsoExists() {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
-        context.register(AgentExecutorConfiguration.class, TaskJobAutoConfig.class);
-
-        try {
-            context.refresh();
-
-            ITaskJobService taskJobService = context.getBean(ITaskJobService.class);
-            TaskScheduler heartbeatScheduler = context.getBean(AgentExecutorNames.HEARTBEAT_SCHEDULER, TaskScheduler.class);
-            TaskScheduler taskJobScheduler = context.getBean("xfgWrenchTaskScheduler", TaskScheduler.class);
-            TaskScheduler injectedScheduler = (TaskScheduler) ReflectionTestUtils.getField(taskJobService, "taskScheduler");
-
-            Assert.assertNotNull(taskJobService);
-            Assert.assertNotNull(injectedScheduler);
-            Assert.assertSame(taskJobScheduler, injectedScheduler);
-            Assert.assertNotSame(heartbeatScheduler, injectedScheduler);
-        } finally {
-            context.close();
-        }
-    }
 }

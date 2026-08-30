@@ -18,13 +18,8 @@ org.wwz.ai.Application
 
 ### 启动方式
 ```bash
-mvn spring-boot:run
-```
-
-或
-
-```bash
-java -jar target/ai-agent-station-study-app.jar
+mvn -pl Reactor-agent-app -am package '-Dmaven.test.skip=true'
+java -jar Reactor-agent-app/target/Reactor-agent-app.jar
 ```
 
 ---

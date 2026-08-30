@@ -37,6 +37,20 @@ describe("querySSE", () => {
     expect(config.handleError).not.toHaveBeenCalled();
   });
 
+  it("HTTP SSE 响应建立后通知调用方", () => {
+    const handleOpen = vi.fn();
+    const config = createConfig({ handleOpen });
+
+    querySSE(config);
+
+    const options = fetchEventSourceMock.mock.calls[0][1] as {
+      onopen: () => void;
+    };
+    options.onopen();
+
+    expect(handleOpen).toHaveBeenCalledTimes(1);
+  });
+
   it("收到带 id 的事件时保存事件游标", () => {
     const handleEventId = vi.fn();
     const config = createConfig({ handleEventId });

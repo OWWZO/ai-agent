@@ -31,7 +31,7 @@ import {
   resolveHitlDockSlot,
 } from "./hitlDockModel";
 import { hasPendingAskUserQuestion } from "./streamState";
-import { getProductByType, toRequestOutputStyle } from "@/utils/constants";
+import { getProductByType } from "@/utils/constants";
 import { useMemoizedFn } from "ahooks";
 import classNames from "classnames";
 import { Modal } from "antd";
@@ -75,13 +75,11 @@ type Props = {
   inputInfo: CHAT.TInputInfo;
   product?: CHAT.Product;
   conversation: CHAT.ConversationHistory;
-  chatRoles: CHAT.FixRole[];
   readOnly?: boolean;
   onConversationChange: (
     conversationId: string,
     nextConversation: CHAT.ConversationHistory
   ) => void;
-  onRoleSelect: (role: CHAT.FixRole) => void;
   onInputConsumed?: () => void;
   onTaskListChange?: (
     taskList: ReturnType<typeof collectSessionFileTasks>
@@ -143,10 +141,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     inputInfo: inputInfoProp,
     product,
     conversation,
-    chatRoles,
     readOnly = false,
     onConversationChange,
-    onRoleSelect,
     onInputConsumed,
     onTaskListChange,
     onRegisterApi,
@@ -917,34 +913,22 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             key={inputKey}
             sessionId={conversation.sessionId}
             contextUsage={activeChat?.contextUsage ?? null}
-            placeholder={
-              conversation.role?.available === false
-                ? "当前角色已失效，请新建对话后重新选择角色"
-                : loading
-                  ? "任务进行中，可发送指导…"
-                  : "希望 Reactor 为你做哪些任务呢？"
-            }
+            placeholder={loading ? "任务进行中，可发送指导…" : "希望 Reactor 为你做哪些任务呢？"}
             showBtn={false}
             size="medium"
             busy={loading}
-            disabled={!loading && conversation.role?.available === false}
+            disabled={false}
             onStop={loading ? () => void stopActiveRun() : undefined}
             onInject={loading ? (text) => void injectActiveRun(text) : undefined}
             draftMessage={composerDraft}
             onDraftConsumed={clearComposerDraft}
             product={currentProduct}
             deepThink={conversation.deepThink}
-            displayOutput={currentProduct}
-            chatRole={conversation.role}
-            chatRoles={chatRoles}
-            showRoleSelector={false}
-            onRoleSelect={onRoleSelect}
             send={(info) =>
               sendMessage({
                 ...info,
-                outputStyle: toRequestOutputStyle(conversation.productType),
                 deepThink: conversation.deepThink,
-                aiAgentId: conversation.role?.agentId,
+                outputStyle: conversation.productType === "dataAgent" ? "dataAgent" : undefined,
               })
             }
           />
@@ -1359,11 +1343,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   disabled={loading}
                   product={currentProduct}
                   deepThink={false}
-                  displayOutput={currentProduct}
                   send={(info) =>
-                    sendDataMessage({
-                      ...info,
-                      outputStyle: "dataAgent",
+                     sendDataMessage({
+                       ...info,
+                       outputStyle: "dataAgent",
                       deepThink: false,
                     })
                   }
@@ -1381,11 +1364,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const sendGenUiMessage = useMemoizedFn((message: string) => {
     sendMessage({
-      message,
-      deepThink: conversation.deepThink,
-      outputStyle: toRequestOutputStyle(conversation.productType),
-      aiAgentId: conversation.role?.agentId,
-    });
+       message,
+       deepThink: conversation.deepThink,
+      });
   });
 
   return (

@@ -74,11 +74,6 @@ public class McpRegistry {
     private final Map<String, List<ToolCallback>> toolCallbackCache = new ConcurrentHashMap<>();
 
     /**
-     * 客户端与 MCP 绑定关系缓存：key 为 clientId。
-     */
-    private final Map<String, List<String>> clientMcpIdCache = new ConcurrentHashMap<>();
-
-    /**
      * 全局启用 MCP 的快照。
      */
     private volatile List<String> globalEnabledMcpIds = Collections.emptyList();
@@ -104,26 +99,6 @@ public class McpRegistry {
         globalEnabledMcpIds = List.copyOf(mcpMap.keySet());
 
         log.info("MCP 全局预热完成，启用数量：{}", globalEnabledMcpIds.size());
-    }
-
-    /**
-     * 预热指定客户端关联的 MCP 及其绑定关系。
-     */
-    public synchronized void preloadClientMcps(List<String> clientIds) {
-        if (clientIds == null || clientIds.isEmpty()) {
-            return;
-        }
-
-        Map<String, List<String>> clientMcpIdMap = repository.queryEnabledClientMcpIdMap(clientIds);
-        for (String clientId : clientIds) {
-            List<String> mcpIds = clientMcpIdMap.getOrDefault(clientId, Collections.emptyList());
-            clientMcpIdCache.put(clientId, List.copyOf(mcpIds));
-        }
-
-        List<AiClientToolMcpVO> clientMcpList = repository.AiClientToolMcpVOByClientIds(clientIds);
-        preloadMcps(clientMcpList);
-
-        log.info("MCP 客户端绑定预热完成，clientIds={}", clientIds);
     }
 
     /**
@@ -548,19 +523,9 @@ public class McpRegistry {
             resourceCache.remove(staleMcpId);
             resourceCapabilityCache.remove(staleMcpId);
             toolCallbackCache.remove(staleMcpId);
-            removeClientBinding(staleMcpId);
             closeQuietly(staleRuntime, null);
             log.info("MCP 已从缓存移除: mcpId={}", staleMcpId);
         }
-    }
-
-    /**
-     * 从客户端绑定缓存中移除失效的 MCP。
-     */
-    private void removeClientBinding(String mcpId) {
-        clientMcpIdCache.replaceAll((clientId, mcpIds) -> mcpIds.stream()
-                .filter(id -> !StringUtils.equals(id, mcpId))
-                .toList());
     }
 
     /**

@@ -171,7 +171,7 @@ public class AgentContext {
     String workspaceRoot;
 
     /**
-     * 本轮会话 workspace_read 状态（path + range + mtime）。
+     * 当前 Agent 的 workspace_read 状态（path + range + mtime）。
      */
     @Builder.Default
     @ToString.Exclude
@@ -601,7 +601,7 @@ public class AgentContext {
      */
     public AgentContext forkForParallelTask(String parallelTask) {
         // 并行子任务共享 printer、runtime、registry 和 ledger run 身份，以便事实
-        // 仍归属于同一运行；任务文件、workspace 读状态和 ThreadLocal 则复制/隔离，
+        // 仍归属于同一运行；任务文件、workspace 读状态和 ThreadLocal 则隔离，
         // 防止子任务互相覆盖当前任务视图或工具来源。
         return AgentContext.builder()
                 .requestId(requestId)
@@ -614,7 +614,7 @@ public class AgentContext {
                 .productFiles(copyFiles(productFiles))
                 .workspaceRoot(workspaceRoot)
                 .subAgentToolCollection(subAgentToolCollection)
-                .workspaceReadStateByPath(copyWorkspaceReadState())
+                .workspaceReadStateByPath(new ConcurrentHashMap<>())
                 .isStream(isStream)
                 .streamMessageType(streamMessageType)
                 .sopPrompt(sopPrompt)
@@ -647,14 +647,6 @@ public class AgentContext {
             agentRunState = AgentRunState.builder().build();
         }
         return agentRunState;
-    }
-
-    private Map<String, WorkspaceFileReadState> copyWorkspaceReadState() {
-        Map<String, WorkspaceFileReadState> copy = new ConcurrentHashMap<>();
-        if (workspaceReadStateByPath != null) {
-            copy.putAll(workspaceReadStateByPath);
-        }
-        return copy;
     }
 
     private List<File> copyFiles(List<File> sourceFiles) {

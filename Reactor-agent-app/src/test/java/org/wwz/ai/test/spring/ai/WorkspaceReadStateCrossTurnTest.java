@@ -10,6 +10,9 @@ import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadStateStore;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceRuntimeOptions;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceService;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentContextFactory;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -79,5 +82,46 @@ public class WorkspaceReadStateCrossTurnTest {
         )));
         Assert.assertTrue(editResult.contains("已编辑") || editResult.contains("替换次数"));
         Assert.assertTrue(Files.readString(targetFile, StandardCharsets.UTF_8).contains("hello next turn"));
+    }
+
+    @Test
+    public void shouldNotHydrateMainReadStateIntoSubAgent() throws Exception {
+        AgentContext parent = AgentContext.builder()
+                .requestId("req-parent")
+                .sessionId("session-x")
+                .workspaceRoot(workspaceRoot.toString())
+                .build();
+        WorkspaceReadTool parentRead = new WorkspaceReadTool(workspaceService, options);
+        parentRead.setAgentContext(parent);
+        String first = String.valueOf(parentRead.execute(Map.of("path", "demo.txt")));
+        Assert.assertTrue(first.contains("hello cross turn"));
+        store.persist(parent);
+
+        AgentContext child = SubAgentContextFactory.create(
+                parent,
+                "inspect demo.txt",
+                "inspect file",
+                new ToolCollection(),
+                "child-read-2",
+                SubAgentRegistry.TYPE_GENERAL_PURPOSE);
+        store.hydrate(child);
+
+        Assert.assertFalse(child.hasWorkspaceFileBeenRead(targetFile.toAbsolutePath().normalize().toString()));
+        WorkspaceReadTool childRead = new WorkspaceReadTool(workspaceService, options);
+        childRead.setAgentContext(child);
+        String childResult = String.valueOf(childRead.execute(Map.of("path", "demo.txt")));
+        Assert.assertFalse(childResult.contains("File unchanged since last read"));
+        Assert.assertTrue(childResult.contains("hello cross turn"));
+
+        childRead.execute(Map.of("path", "demo.txt", "start_line", 1, "line_count", 1));
+        store.persist(child);
+        AgentContext mainReload = AgentContext.builder()
+                .requestId("req-main-reload")
+                .sessionId("session-x")
+                .workspaceRoot(workspaceRoot.toString())
+                .build();
+        store.hydrate(mainReload);
+        Assert.assertEquals(2000, mainReload.getWorkspaceFileReadState(
+                targetFile.toAbsolutePath().normalize().toString()).getLineCount());
     }
 }

@@ -10,6 +10,7 @@ from reactor_tool.util.llm_util import (
     _build_openai_compat_headers,
     _build_http_timeout,
     _prepare_litellm_params,
+    _raw_openai_like_request,
     ask_llm,
 )
 
@@ -127,9 +128,59 @@ class LlmUtilAsyncHeaderTest(unittest.IsolatedAsyncioTestCase):
         timeout = _build_http_timeout(600000)
 
         self.assertEqual(30, timeout.connect)
-        self.assertEqual(300, timeout.read)
+        self.assertEqual(600, timeout.read)
         self.assertEqual(60, timeout.write)
         self.assertEqual(30, timeout.pool)
+
+    async def test_raw_request_should_ignore_environment_proxy(self):
+        client_options = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            async def aiter_lines(self):
+                yield 'data: {"choices":[{"delta":{"content":"ok"}}]}'
+                yield "data: [DONE]"
+
+        class FakeStream:
+            async def __aenter__(self):
+                return FakeResponse()
+
+            async def __aexit__(self, *_args):
+                return False
+
+        class FakeAsyncClient:
+            def __init__(self, **kwargs):
+                client_options.update(kwargs)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            def stream(self, *_args, **_kwargs):
+                return FakeStream()
+
+        with patch(
+            "reactor_tool.util.llm_util.httpx.AsyncClient",
+            new=FakeAsyncClient,
+        ):
+            chunks = [
+                chunk
+                async for chunk in _raw_openai_like_request(
+                    messages=[{"role": "user", "content": "hello"}],
+                    params={
+                        "api_base": "https://gateway.example/v1",
+                        "api_key": "test-key",
+                    },
+                    stream=True,
+                    only_content=True,
+                )
+            ]
+
+        self.assertFalse(client_options["trust_env"])
+        self.assertEqual(["ok"], chunks)
 
     async def test_should_retry_interrupted_stream_without_duplicate_prefix(self):
         attempts = 0

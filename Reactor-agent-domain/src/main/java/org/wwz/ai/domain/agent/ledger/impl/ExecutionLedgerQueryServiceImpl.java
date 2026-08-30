@@ -319,12 +319,12 @@ public class ExecutionLedgerQueryServiceImpl implements ExecutionLedgerQueryServ
         if (views == null || toolOutputReader == null) {
             return views == null ? List.of() : views;
         }
-        // 只为 rich tool 且已有主键的记录回读专用输出表；普通工具仍保持轻量的 invocation 视图。
-        // 结构化输出按 tool invocation 延迟读取，避免普通历史列表预加载无关大字段。
+        // 只为仍持久化的 rich tool 且已有主键的记录回读专用输出表；普通工具及已退役
+        // 的 file/planning/report/script 输出保持轻量 invocation 视图。
         for (ToolInvocationView view : views) {
             if (view == null
                     || view.getId() == null
-                    || !ToolOutputNames.isRichTool(view.getToolName())) {
+                    || !ToolOutputNames.isPersistedTool(view.getToolName())) {
                 continue;
             }
             toolOutputReader.readByInvocationId(view.getToolName(), view.getId())

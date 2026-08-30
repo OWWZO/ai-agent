@@ -188,7 +188,7 @@ const DialogueComponent: FC<Props> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat, localGenUiTick, localScopeKey, localVersion]);
   const showStandaloneResponse =
-    chat.agentType === 0 && !!chat.response && !chat.conclusion;
+    isReactType && !!chat.response && !chat.conclusion;
   const showProcessTimeline =
     !showStandaloneResponse &&
     (!!thoughtText || !!displayedPlan || timelineChat.tasks.length > 0);

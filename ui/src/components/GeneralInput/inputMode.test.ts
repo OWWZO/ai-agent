@@ -9,9 +9,7 @@ describe("inputMode", () => {
         question: "帮我调研竞品",
         visibleMode: "research",
         isDataAgent: false,
-        currentProductType: "html",
         uploadedFiles: [],
-        chatRole: null,
       })
     ).toMatchObject({
       deepThink: true,
@@ -21,9 +19,7 @@ describe("inputMode", () => {
         question: "帮我调研竞品",
         visibleMode: "research",
         isDataAgent: false,
-        currentProductType: "html",
         uploadedFiles: [],
-        chatRole: null,
       })
     ).not.toHaveProperty("outputStyle");
   });
@@ -34,9 +30,7 @@ describe("inputMode", () => {
         question: "先帮我分析这个问题",
         visibleMode: "think",
         isDataAgent: false,
-        currentProductType: "task",
         uploadedFiles: [],
-        chatRole: null,
       })
     ).toMatchObject({
       deepThink: false,
@@ -46,9 +40,7 @@ describe("inputMode", () => {
         question: "先帮我分析这个问题",
         visibleMode: "think",
         isDataAgent: false,
-        currentProductType: "task",
         uploadedFiles: [],
-        chatRole: null,
       })
     ).not.toHaveProperty("outputStyle");
   });

@@ -46,7 +46,6 @@ public class MultiAgentServiceImplTest {
                 .requestId("req-1")
                 .query("基于上传图片改成赛博朋克风")
                 .deepThink(0)
-                .outputStyle("html")
                 .user("reactor")
                 .sessionFiles(sessionFiles)
                 .build();
@@ -54,10 +53,23 @@ public class MultiAgentServiceImplTest {
         AgentRequest agentRequest = factory.build(request);
 
         Assert.assertNotNull(agentRequest);
-        Assert.assertEquals("trace-session-1:req-1", agentRequest.getRequestId());
+         Assert.assertEquals("req-1", agentRequest.getRequestId());
         Assert.assertEquals(AgentType.REACT.getValue(), agentRequest.getAgentType());
         Assert.assertEquals(sessionFiles, agentRequest.getSessionFiles());
         Assert.assertEquals("react-base-prompt", agentRequest.getBasePrompt());
+    }
+
+    @Test
+    public void shouldSelectPlanSolveForDeepThinkRequest() {
+        GptQueryAgentRequestFactory factory = new GptQueryAgentRequestFactory(buildReactorConfig());
+        AgentRequest agentRequest = factory.build(GptQueryReq.builder()
+                .requestId("req-plan-solve-1")
+                .sessionId("session-plan-solve-1")
+                .query("请先制定执行计划")
+                .deepThink(1)
+                .build());
+
+        Assert.assertEquals(AgentType.PLAN_SOLVE.getValue(), agentRequest.getAgentType());
     }
 
     @Test
@@ -84,7 +96,7 @@ public class MultiAgentServiceImplTest {
 
         projecting.send(AgentResponse.builder()
                 .requestId("req-finished-1")
-                .messageType("result")
+                 .messageType("stream_settle")
                 .finish(true)
                 .resultMap(Map.of("agentType", 5))
                 .build());

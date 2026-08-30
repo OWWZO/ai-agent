@@ -53,21 +53,14 @@ const generalSuggestedQuestions: SuggestedQuestion[] = [
 ];
 
 export const suggestedQuestionsByProductType: Record<string, SuggestedQuestion[]> = {
-  chat: generalSuggestedQuestions,
+  task: generalSuggestedQuestions,
   dataAgent: [
     {label: "2024年各月销量变化趋势如何？",},
     {label: "采购成本最高的前十名商品是什么？",},
     {label: "对销售数据进行综合分析",},
     {label: "分析产品的销售表现",},
   ],
-  task: generalSuggestedQuestions,
-  html: generalSuggestedQuestions,
-  docs: generalSuggestedQuestions,
-  ppt: generalSuggestedQuestions,
-  table: generalSuggestedQuestions,
 };
-
-export const OUTPUT_PRODUCT_TYPES = ["html", "docs", "ppt", "table"] as const;
 
 export const GENERIC_TASK_PRODUCT: CHAT.Product = {
   name: "通用任务",
@@ -79,67 +72,21 @@ export const GENERIC_TASK_PRODUCT: CHAT.Product = {
 
 export const productList = [
   {
-    name: "聊天模式",
-    img: "icon-aichat",
-    type: "chat",
-    placeholder: "Reactor 会以聊天模式回答你的问题",
-    color: "text-[#4040FF]",
-  },
-  {
     name: "数据分析",
     img: "icon-xinjianduihua",
     type: "dataAgent",
     placeholder: "Reactor 会完成你的数据分析任务",
     color: "text-[#4040FF]",
   },
-  {
-    name: "网页模式",
-    img: "icon-diannao",
-    type: "html",
-    placeholder: "Reactor 会完成你的任务并以 HTML 网页方式输出报告",
-    color: "text-[#29CC29]",
-  },
-  {
-    name: "文档模式",
-    img: "icon-wendang",
-    type: "docs",
-    placeholder: "Reactor 会完成你的任务并以 markdown 格式输出文档",
-    color: "text-[#4040FF]",
-  },
-  {
-    name: "PPT模式",
-    img: "icon-ppt",
-    type: "ppt",
-    placeholder: "Reactor 会完成你的任务并以 PPT 方式输出结论",
-    color: "text-[#FF860D]",
-  },
-  {
-    name: "表格模式",
-    img: "icon-biaoge",
-    type: "table",
-    placeholder: "Reactor 会完成你的任务并以表格格式输出结论",
-    color: "text-[#FF3333]",
-  },
 ];
 
-export const defaultProduct = productList[0];
-
-export const isOutputProductType = (type?: string) =>
-  Boolean(type && OUTPUT_PRODUCT_TYPES.includes(type as (typeof OUTPUT_PRODUCT_TYPES)[number]));
+export const defaultProduct = GENERIC_TASK_PRODUCT;
 
 export const getProductByType = (type?: string): CHAT.Product => {
-  if (type === GENERIC_TASK_PRODUCT.type) {
+  if (!type || type === GENERIC_TASK_PRODUCT.type || type === "chat") {
     return GENERIC_TASK_PRODUCT;
   }
   return productList.find((item) => item.type === type) ?? defaultProduct;
-};
-
-/** 输出格式（html/docs/ppt/table）已下线，仅 chat / dataAgent 仍作为协议模式字段 */
-export const toRequestOutputStyle = (type?: string) => {
-  if (type === "chat" || type === "dataAgent") {
-    return type;
-  }
-  return undefined;
 };
 
 export const RESULT_TYPES = ["task_summary", "result"];

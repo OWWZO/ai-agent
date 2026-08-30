@@ -18,12 +18,8 @@ import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolI
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DataAnalysisToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ImageGenerationToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.MultiModalToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ReportToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ScriptRunnerToolInvocationProjector;
 
 import java.util.List;
 
@@ -40,16 +36,6 @@ public class ReplayProjectorAutoConfiguration {
     }
 
     @Bean
-    public FileToolInvocationProjector fileToolInvocationProjector() {
-        return new FileToolInvocationProjector();
-    }
-
-    @Bean
-    public PlanningToolInvocationProjector planningToolInvocationProjector() {
-        return new PlanningToolInvocationProjector();
-    }
-
-    @Bean
     public DeepSearchToolInvocationProjector deepSearchToolInvocationProjector() {
         return new DeepSearchToolInvocationProjector();
     }
@@ -57,11 +43,6 @@ public class ReplayProjectorAutoConfiguration {
     @Bean
     public CodeInterpreterToolInvocationProjector codeInterpreterToolInvocationProjector() {
         return new CodeInterpreterToolInvocationProjector();
-    }
-
-    @Bean
-    public ReportToolInvocationProjector reportToolInvocationProjector() {
-        return new ReportToolInvocationProjector();
     }
 
     @Bean
@@ -92,11 +73,6 @@ public class ReplayProjectorAutoConfiguration {
     @Bean
     public ImageGenerationToolInvocationProjector imageGenerationToolInvocationProjector() {
         return new ImageGenerationToolInvocationProjector();
-    }
-
-    @Bean
-    public ScriptRunnerToolInvocationProjector scriptRunnerToolInvocationProjector() {
-        return new ScriptRunnerToolInvocationProjector();
     }
 
     @Bean

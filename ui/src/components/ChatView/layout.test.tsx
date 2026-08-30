@@ -47,27 +47,6 @@ vi.mock("@/components/ActionView", () => ({
 }));
 
 vi.mock("@/utils/constants", () => {
-  const chatProduct = {
-    type: "chat",
-    name: "聊天模式",
-    placeholder: "请输入问题",
-    img: "icon-chat",
-    color: "text-[#4040FF]",
-  };
-  const htmlProduct = {
-    type: "html",
-    name: "网页模式",
-    placeholder: "请输入问题",
-    img: "icon-html",
-    color: "text-[#29CC29]",
-  };
-  const docsProduct = {
-    type: "docs",
-    name: "文档模式",
-    placeholder: "请输入问题",
-    img: "icon-docs",
-    color: "text-[#4040FF]",
-  };
   const dataAgentProduct = {
     type: "dataAgent",
     name: "数据分析",
@@ -84,20 +63,11 @@ vi.mock("@/utils/constants", () => {
   };
 
   return {
-    defaultProduct: chatProduct,
-    productList: [chatProduct, dataAgentProduct, htmlProduct, docsProduct],
+    defaultProduct: taskProduct,
+    productList: [taskProduct, dataAgentProduct],
     getProductByType: (type?: string) => {
-      if (type === "task") {
-        return taskProduct;
-      }
-      return [chatProduct, dataAgentProduct, htmlProduct, docsProduct].find(
-        (item) => item.type === type
-      ) ?? chatProduct;
+      return type === "dataAgent" ? dataAgentProduct : taskProduct;
     },
-    toRequestOutputStyle: (type?: string) =>
-      type === "chat" || type === "dataAgent" || type === "html" || type === "docs"
-        ? type
-        : undefined,
   };
 });
 
@@ -187,7 +157,6 @@ describe("ChatView layout", () => {
       title: "数据分析会话",
       productType: "dataAgent",
       deepThink: false,
-      role: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       chatTitle: "",
@@ -204,9 +173,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-        chatRoles={[]}
-        onConversationChange={vi.fn()}
-        onRoleSelect={vi.fn()}
+         onConversationChange={vi.fn()}
       />
     );
 
@@ -227,8 +194,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-      type: "html",
-      name: "网页模式",
+       type: "task",
+       name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-html",
       color: "text-[#29CC29]",
@@ -238,9 +205,8 @@ describe("ChatView layout", () => {
       id: "conversation-2",
       sessionId: "session-2",
       title: "深度思考会话",
-      productType: "html",
+       productType: "task",
       deepThink: false,
-      role: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       chatTitle: "",
@@ -268,19 +234,15 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-        chatRoles={[]}
-        onConversationChange={vi.fn()}
-        onRoleSelect={vi.fn()}
+         onConversationChange={vi.fn()}
       />
     );
 
     const lastCall = generalInputMock.mock.calls[generalInputMock.mock.calls.length - 1]?.[0];
     expect(lastCall).toMatchObject({
-      product,
+      product: expect.objectContaining({ type: "task" }),
       deepThink: false,
-      displayOutput: product,
-      showRoleSelector: false,
-      showBtn: false,
+       showBtn: false,
     });
   });
 
@@ -288,8 +250,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-      type: "docs",
-      name: "文档模式",
+       type: "task",
+       name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-docs",
       color: "text-[#4040FF]",
@@ -299,9 +261,8 @@ describe("ChatView layout", () => {
       id: "conversation-3",
       sessionId: "session-3",
       title: "深度研究会话",
-      productType: "docs",
+       productType: "task",
       deepThink: true,
-      role: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       chatTitle: "",
@@ -329,19 +290,15 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-        chatRoles={[]}
-        onConversationChange={vi.fn()}
-        onRoleSelect={vi.fn()}
+         onConversationChange={vi.fn()}
       />
     );
 
     const lastCall = generalInputMock.mock.calls[generalInputMock.mock.calls.length - 1]?.[0];
     expect(lastCall).toMatchObject({
-      product,
+      product: expect.objectContaining({ type: "task" }),
       deepThink: true,
-      displayOutput: product,
-      showRoleSelector: false,
-      showBtn: false,
+       showBtn: false,
     });
   });
 
@@ -349,8 +306,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-      type: "chat",
-      name: "聊天模式",
+       type: "task",
+       name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
       color: "text-[#4040FF]",
@@ -360,9 +317,8 @@ describe("ChatView layout", () => {
       id: "conversation-1",
       sessionId: "session-1",
       title: "测试会话",
-      productType: "chat",
+       productType: "task",
       deepThink: false,
-      role: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       chatTitle: "",
@@ -390,9 +346,7 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-        chatRoles={[]}
-        onConversationChange={vi.fn()}
-        onRoleSelect={vi.fn()}
+         onConversationChange={vi.fn()}
       />
     );
 
@@ -400,7 +354,7 @@ describe("ChatView layout", () => {
       'class="flex h-full min-h-0 w-full max-w-[980px] flex-col overflow-hidden" id="chat-view"'
     );
     expect(html).toContain(
-      'class="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50/95 to-transparent pb-5 pt-4"'
+      'class="shrink-0 bg-[var(--color-bg)] pb-5 pt-4"'
     );
     expect(html).toContain('data-general-input="true"');
     expect(html).not.toContain("sticky bottom-0");
@@ -412,8 +366,8 @@ describe("ChatView layout", () => {
 
     try {
       const product: CHAT.Product = {
-        type: "chat",
-        name: "聊天模式",
+         type: "task",
+         name: "通用任务",
         placeholder: "请输入问题",
         img: "icon-chat",
         color: "text-[#4040FF]",
@@ -423,9 +377,8 @@ describe("ChatView layout", () => {
         id: "conversation-collapsed-workspace",
         sessionId: "session-collapsed-workspace",
         title: "折叠工作区会话",
-        productType: "chat",
+         productType: "task",
         deepThink: false,
-        role: null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         chatTitle: "",
@@ -441,9 +394,7 @@ describe("ChatView layout", () => {
           }}
           product={product}
           conversation={conversation}
-          chatRoles={[]}
-          onConversationChange={vi.fn()}
-          onRoleSelect={vi.fn()}
+           onConversationChange={vi.fn()}
         />
       );
 
@@ -460,8 +411,8 @@ describe("ChatView layout", () => {
     generalInputMock.mockClear();
 
     const product: CHAT.Product = {
-      type: "chat",
-      name: "聊天模式",
+       type: "task",
+       name: "通用任务",
       placeholder: "请输入问题",
       img: "icon-chat",
       color: "text-[#4040FF]",
@@ -471,9 +422,8 @@ describe("ChatView layout", () => {
       id: "conversation-readonly-1",
       sessionId: "session-readonly-1",
       title: "只读会话",
-      productType: "chat",
+       productType: "task",
       deepThink: false,
-      role: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       chatTitle: "",
@@ -501,10 +451,8 @@ describe("ChatView layout", () => {
         }}
         product={product}
         conversation={conversation}
-        chatRoles={[]}
-        readOnly
-        onConversationChange={vi.fn()}
-        onRoleSelect={vi.fn()}
+         readOnly
+         onConversationChange={vi.fn()}
       />
     );
 

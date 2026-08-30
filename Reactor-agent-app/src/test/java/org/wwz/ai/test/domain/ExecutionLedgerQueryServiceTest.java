@@ -36,7 +36,7 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals("req-query-001", detail.getRun().getRequestId());
         Assert.assertEquals(1, detail.getToolInvocations().size());
         Assert.assertEquals(1, detail.getArtifacts().size());
-        Assert.assertTrue(detail.getToolInvocations().get(0).getStructuredOutput() instanceof FileToolOutput);
+        Assert.assertNull(detail.getToolInvocations().get(0).getStructuredOutput());
         Assert.assertEquals("report-1.md", detail.getArtifacts().get(0).getFileName());
         Assert.assertEquals("req-query-001", detail.getArtifacts().get(0).getRequestId());
 
@@ -44,7 +44,7 @@ public class ExecutionLedgerQueryServiceTest {
         Assert.assertEquals(2, recentTools.size());
         Assert.assertEquals("req-query-002", recentTools.get(0).getRequestId());
         Assert.assertEquals(Integer.valueOf(1), recentTools.get(0).getArtifactCount());
-        Assert.assertTrue(recentTools.get(0).getStructuredOutput() instanceof FileToolOutput);
+        Assert.assertNull(recentTools.get(0).getStructuredOutput());
 
         var recentRuns = ctx.queryService.queryRecentSessionRuns("session-query-001", 10);
         Assert.assertEquals(2, recentRuns.size());
@@ -68,7 +68,7 @@ public class ExecutionLedgerQueryServiceTest {
     }
 
     @Test
-    public void shouldKeepFailedRichToolExplainableWithMinimalStructuredOutput() {
+    public void shouldKeepFailedRetiredToolExplainableWithObservation() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         LocalDateTime now = LocalDateTime.now();
         Long runId = ctx.recorder.createRun(DialogueRunStartRecord.builder()
@@ -115,13 +115,10 @@ public class ExecutionLedgerQueryServiceTest {
 
         ExecutionRunDetail detail = ctx.queryService.queryRunDetail("req-query-failed-001");
         ToolInvocationView toolInvocation = detail.getToolInvocations().get(0);
-        FileToolOutput structuredOutput = (FileToolOutput) toolInvocation.getStructuredOutput();
-
         Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), toolInvocation.getStatus());
         Assert.assertEquals("timeout", toolInvocation.getErrorMsg());
         Assert.assertEquals("上游报告文件生成超时", toolInvocation.getLlmObservation());
-        Assert.assertNotNull(structuredOutput);
-        Assert.assertTrue(structuredOutput.getFileRefs().isEmpty());
+        Assert.assertNull(toolInvocation.getStructuredOutput());
     }
 
     @Test

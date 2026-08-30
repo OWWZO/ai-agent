@@ -5,6 +5,7 @@
 - 内层：get_data / data_trans / insight_analysis / save_insight / final_answer 由代码编排
 - 降级：tool_calls → ```python → <code> → 纯代码 AST → 结论型文本包 final_answer
 """
+
 from __future__ import annotations
 
 import ast
@@ -14,7 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Generator, List, Optional
 
-import httpx
+from openai import DefaultHttpxClient
 from loguru import logger
 from smolagents import Tool
 from smolagents.local_python_executor import LocalPythonExecutor
@@ -153,7 +154,10 @@ def extract_code_from_message(
     stripped = text.strip()
     try:
         ast.parse(stripped)
-        if any(tok in stripped for tok in ("get_data", "save_insight", "final_answer", "import ", "print(")):
+        if any(
+            tok in stripped
+            for tok in ("get_data", "save_insight", "final_answer", "import ", "print(")
+        ):
             return stripped, "raw_ast"
     except SyntaxError:
         pass
@@ -214,10 +218,12 @@ def chat_completion_with_tools(
         "stream": False,
     }
     timeout_s = _timeout_to_seconds(timeout)
-    with httpx.Client(timeout=timeout_s) as client:
+    with DefaultHttpxClient(timeout=timeout_s, trust_env=False) as client:
         resp = client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
-            raise RuntimeError(f"analysis FC LLM error status={resp.status_code}, body={resp.text[:500]}")
+            raise RuntimeError(
+                f"analysis FC LLM error status={resp.status_code}, body={resp.text[:500]}"
+            )
         return resp.json()
 
 
@@ -235,7 +241,12 @@ class AnalysisFCCodeAgent:
     ):
         self.instructions = instructions or ""
         self.max_steps = max_steps or 10
-        self.model_id = model_id or os.getenv("ANALYSIS_MODEL") or os.getenv("DEFAULT_MODEL") or "gpt-4.1"
+        self.model_id = (
+            model_id
+            or os.getenv("ANALYSIS_MODEL")
+            or os.getenv("DEFAULT_MODEL")
+            or "gpt-4.1"
+        )
         self.api_base = api_base or os.getenv("OPENAI_BASE_URL") or ""
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or ""
         self.runner = AnalysisPythonInterpreterTool(inner_tools=inner_tools)

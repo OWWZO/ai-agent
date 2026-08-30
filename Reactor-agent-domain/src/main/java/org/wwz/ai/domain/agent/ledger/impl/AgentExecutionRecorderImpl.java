@@ -294,7 +294,7 @@ public class AgentExecutionRecorderImpl implements AgentExecutionRecorder {
     private void persistStructuredOutput(ToolInvocationFinishRecord record) {
         if (toolOutputWriter == null
                 || record == null
-                || !ToolOutputNames.isRichTool(record.getToolName())
+                || !ToolOutputNames.isPersistedTool(record.getToolName())
                 || record.getStructuredOutput() == null) {
             return;
         }

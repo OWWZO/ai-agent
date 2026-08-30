@@ -26,11 +26,7 @@ public class ConversationHistoryDetailRespVO {
 
     private String status;
 
-    private String outputStyle;
-
     private Boolean deepThink;
-
-    private ConversationRoleRespVO role;
 
     private Integer runCount;
 

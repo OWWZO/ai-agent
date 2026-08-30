@@ -4,6 +4,10 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.wwz.ai.domain.agent.runtime.agent.AgentContext;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentContextFactory;
+import org.wwz.ai.domain.agent.runtime.subagent.SubAgentRegistry;
+import org.wwz.ai.domain.agent.runtime.tool.ContextScopedTool;
+import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceEditTool;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspacePathGuard;
 import org.wwz.ai.domain.agent.runtime.tool.workspace.WorkspaceReadTool;
@@ -68,6 +72,35 @@ public class WorkspaceReadDedupTest {
         String second = String.valueOf(readTool.execute(Map.of("path", "demo.txt", "start_line", 1, "line_count", 20)));
         Assert.assertFalse(second.contains("File unchanged since last read"));
         Assert.assertTrue(second.contains("beta") || second.contains("alpha"));
+    }
+
+    @Test
+    public void shouldNotReuseParentReadStateInSubAgent() {
+        readTool.execute(Map.of("path", "demo.txt", "start_line", 1, "line_count", 20));
+
+        ToolCollection childTools = new ToolCollection();
+        childTools.addTool(readTool);
+        AgentContext child = SubAgentContextFactory.create(
+                agentContext,
+                "inspect demo.txt",
+                "inspect file",
+                childTools,
+                "child-read-1",
+                SubAgentRegistry.TYPE_GENERAL_PURPOSE);
+        ContextScopedTool.bindAll(childTools, child);
+
+        String childResult = String.valueOf(childTools.execute(
+                "workspace_read", Map.of("path", "demo.txt", "start_line", 1, "line_count", 20)));
+        Assert.assertFalse(childResult.contains("File unchanged since last read"));
+        Assert.assertTrue(childResult.contains("1 | alpha"));
+    }
+
+    @Test
+    public void shouldNotReuseParentReadStateInParallelFork() {
+        readTool.execute(Map.of("path", "demo.txt", "start_line", 1, "line_count", 20));
+
+        AgentContext child = agentContext.forkForParallelTask("inspect file");
+        Assert.assertFalse(child.hasWorkspaceFileBeenRead(targetFile.toAbsolutePath().normalize().toString()));
     }
 
     @Test

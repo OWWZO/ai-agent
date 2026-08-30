@@ -4,7 +4,7 @@ import { normalizeFileUrlForBrowser } from "@/utils/fileUrl";
  * Agent SSE 请求体适配器。
  *
  * <p>该模块把页面输入和附件引用转换为 Reactor 后端契约，集中处理 deepThink 数值
- * 标识、角色回退和浏览器可访问 URL，避免组件层重复维护协议字段。</p>
+ * 标识和浏览器可访问 URL，避免组件层重复维护协议字段。</p>
  */
 export type AgentSessionFile = {
   fileName: string
@@ -22,10 +22,8 @@ type BuildAgentStreamRequestInput = {
   requestId: string
   message: string
   deepThink: boolean
-  outputStyle?: string
+  outputStyle?: "dataAgent"
   files?: CHAT.TFile[]
-  aiAgentId?: string
-  fallbackRoleAgentId?: string
   /** modelId 或上游 modelName */
   model?: string
   thinking?: boolean
@@ -70,14 +68,11 @@ export const buildAgentStreamRequest = ({
   deepThink,
   outputStyle,
   files,
-  aiAgentId,
-  fallbackRoleAgentId,
   model,
   thinking,
   thinkingEffort,
 }: BuildAgentStreamRequestInput) => {
   const sessionFiles = mapSessionFiles(files)
-  const resolvedAgentId = aiAgentId || fallbackRoleAgentId
   const modelRef = model?.trim()
   const effort = thinkingEffort?.trim()
 
@@ -86,11 +81,8 @@ export const buildAgentStreamRequest = ({
     requestId,
     query: message,
     deepThink: deepThink ? 1 : 0,
-    outputStyle,
+    ...(outputStyle === "dataAgent" ? { outputStyle } : {}),
     ...(sessionFiles.length ? { sessionFiles } : {}),
-    ...(outputStyle === "chat" && resolvedAgentId
-      ? { aiAgentId: resolvedAgentId }
-      : {}),
     ...(modelRef ? { model: modelRef } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
     ...(thinking && effort ? { thinkingEffort: effort } : {}),

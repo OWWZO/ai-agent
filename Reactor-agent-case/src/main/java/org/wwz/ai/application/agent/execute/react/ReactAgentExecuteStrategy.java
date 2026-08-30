@@ -57,7 +57,6 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
     public void execute(AgentRequest request, AgentSessionStream stream) throws Exception {
         // 先 hydrate 跨轮工作记忆，再进入 Agent 内核；记忆加载失败不应改变 case 的执行边界。
         enrichWorkingMemory(request);
-        applyOutputStyle(request);
         doExecute(request, stream);
     }
 
@@ -119,22 +118,6 @@ public class ReactAgentExecuteStrategy implements IExecuteStrategy {
                         request.getRequestId());
             }
         }
-    }
-
-    /**
-     * 输出格式（html/docs/ppt/table）已下线，不再向 query 追加格式提示词。
-     * chat / dataAgent 仅作模式标记，不走 output_style_prompts。
-     */
-    private void applyOutputStyle(AgentRequest request) {
-        if (request == null || StringUtils.isBlank(request.getOutputStyle())) {
-            return;
-        }
-        String style = request.getOutputStyle().trim();
-        if ("chat".equals(style) || "dataAgent".equals(style) || "task".equals(style)) {
-            return;
-        }
-        // 兼容旧客户端若仍传 html/docs/ppt/table：忽略，不改写 query
-        log.debug("ignore deprecated outputStyle={}", style);
     }
 
     private void enrichWorkingMemory(AgentRequest request) {

@@ -3,7 +3,7 @@ package org.wwz.ai.domain.agent.ledger.model.tooloutput;
 import java.util.Set;
 
 /**
- * rich tool 输出名常量。
+ * rich tool 输出名常量及当前持久化边界。
  * 统一收口路由和识别逻辑，避免各处散落硬编码字符串。
  */
 public final class ToolOutputNames {
@@ -22,28 +22,22 @@ public final class ToolOutputNames {
     public static final String SCRIPT_RUNNER = "script_runner_tool";
     public static final String PLANNING = "planning";
 
-    public static final Set<String> RICH_TOOL_NAMES = Set.of(
+    /** 当前仍落到专用数据库输出表的 rich tool。 */
+    public static final Set<String> PERSISTED_TOOL_NAMES = Set.of(
             DEEP_SEARCH,
-            FILE_TOOL,
             CODE_INTERPRETER,
-            REPORT_TOOL,
-            CANVAS_PUBLISH,
-            EMIT_UI_TREE,
-            EMIT_UI_PATCH,
             DATA_ANALYSIS,
             MULTIMODAL_AGENT,
             IMAGE_GENERATION,
-            SCRIPT_RUNNER,
-            PLANNING
+            CANVAS_PUBLISH,
+            EMIT_UI_TREE,
+            EMIT_UI_PATCH
     );
 
     private ToolOutputNames() {
     }
 
-    /**
-     * 判断是否为需要独立输出表的 rich tool。
-     */
-    public static boolean isRichTool(String toolName) {
-        return RICH_TOOL_NAMES.contains(toolName);
+    public static boolean isPersistedTool(String toolName) {
+        return PERSISTED_TOOL_NAMES.contains(toolName);
     }
 }

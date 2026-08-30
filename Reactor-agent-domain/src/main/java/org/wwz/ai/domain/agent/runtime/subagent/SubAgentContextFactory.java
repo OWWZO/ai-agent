@@ -8,6 +8,7 @@ import org.wwz.ai.domain.agent.runtime.tool.ToolCollection;
 
 import java.util.ArrayList;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 创建隔离的子 Agent 上下文。
@@ -66,6 +67,8 @@ public final class SubAgentContextFactory {
                 .backgroundTasks(parent.requireBackgroundTasks())
                 .planModeState(parent.requirePlanModeState())
                 .workspaceRoot(parent.getWorkspaceRoot())
+                // 子 Agent 必须自己读取文件，不能复用主 Agent 的 unchanged 判定。
+                .workspaceReadStateByPath(new ConcurrentHashMap<>())
                 .dateInfo(parent.getDateInfo())
                 // 子 Agent 统一走流式 LLM（askTool stream=true），兼容仅支持 stream 的网关；
                 // 过程文仍由 SubAgentPrinter 折叠，不刷主时间线。

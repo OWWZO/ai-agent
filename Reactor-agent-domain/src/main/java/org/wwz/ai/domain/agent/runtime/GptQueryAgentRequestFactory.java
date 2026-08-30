@@ -52,16 +52,13 @@ public class GptQueryAgentRequestFactory {
         request.setVisitorId(VisitorRequestContext.currentVisitorId());
         request.setErp(req.getUser());
         request.setQuery(req.getQuery());
+        request.setOutputStyle("dataAgent".equals(req.getOutputStyle()) ? "dataAgent" : null);
         request.setSessionFiles(req.getSessionFiles());
-        request.setAiAgentId(req.getAiAgentId());
         request.setModel(StringUtils.trimToNull(req.getModel()));
         request.setThinking(req.getThinking());
         request.setThinkingEffort(StringUtils.trimToNull(req.getThinkingEffort()));
 
-        if ("chat".equalsIgnoreCase(req.getOutputStyle())) {
-            request.setAgentType(AgentType.WORKFLOW.getValue());
-            request.setSopPrompt("");
-        } else if (req.getDeepThink() != null && req.getDeepThink() != 0) {
+        if (req.getDeepThink() != null && req.getDeepThink() != 0) {
             request.setAgentType(AgentType.PLAN_SOLVE.getValue());
             request.setSopPrompt(reactorConfig.getReactorSopPrompt());
             request.setBasePrompt("");
@@ -72,7 +69,6 @@ public class GptQueryAgentRequestFactory {
         }
 
         request.setIsStream(true);
-        request.setOutputStyle(req.getOutputStyle());
         return request;
     }
 }

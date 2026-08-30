@@ -8,7 +8,6 @@ import {
   PlusIcon,
   SearchIcon,
   Type,
-  ZapIcon,
 } from "lucide-react";
 
 import { AI_CHAT_FLOATING_CLASS } from "@/components/ai-elements/ai-chat-surface";
@@ -33,7 +32,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import ChatRoleSelector from "@/components/ChatRoleSelector";
 import { cn } from "@/lib/utils";
 import {
   GENERIC_TASK_PRODUCT,
@@ -72,20 +70,14 @@ type Props = {
   size: string;
   product?: CHAT.Product;
   deepThink?: boolean;
-  /** @deprecated 输出格式已下线，保留 prop 兼容旧调用 */
-  displayOutput?: CHAT.Product;
-  chatRole?: CHAT.ConversationRole | null;
-  chatRoles?: CHAT.FixRole[];
-  showRoleSelector?: boolean;
   send: (p: CHAT.TInputInfo) => void;
   onSelectionChange?: (selection: { product: CHAT.Product; deepThink: boolean }) => void;
-  onRoleSelect?: (role: CHAT.FixRole) => void;
   /** 外部回填（Undo 上一轮 user query） */
   draftMessage?: string | null;
   onDraftConsumed?: () => void;
 };
 
-type InputModeKey = "quick" | "think" | "research";
+type InputModeKey = "think" | "research";
 
 const DATA_AGENT_PRODUCT =
   (productList.find((item) => item.type === "dataAgent") as CHAT.Product | undefined) ?? defaultProduct;
@@ -94,29 +86,23 @@ const MODE_OPTIONS: Array<{
   key: InputModeKey;
   label: string;
   description: string;
-  icon: typeof ZapIcon;
+  icon: typeof BrainCircuitIcon;
 }> = [
   {
-    key: "quick",
-    label: "快速",
-    description: "即时问答",
-    icon: ZapIcon,
-  },
-  {
     key: "think",
-    label: "深度思考",
-    description: "多步分析",
+    label: "ReAct",
+    description: "边思考边执行工具",
     icon: BrainCircuitIcon,
   },
   {
     key: "research",
-    label: "深度研究",
-    description: "长链路研究",
+    label: "PlanExecute",
+    description: "先规划，再执行任务",
     icon: SearchIcon,
   },
 ];
 
-const VISIBLE_MODE_OPTIONS = MODE_OPTIONS.filter((item) => item.key !== "quick");
+const VISIBLE_MODE_OPTIONS = MODE_OPTIONS;
 
 /** 输入框附件 accept：图片 + 常见文档/代码/表格 */
 export const ATTACHMENT_ACCEPT =
@@ -125,10 +111,7 @@ export const ATTACHMENT_ACCEPT =
 /** 单条 query 最大字符数（前端硬限制） */
 export const MAX_QUERY_CHARS = 8000;
 
-const getModeKey = (productType?: string, deepThink = false): InputModeKey => {
-  if (productType === "chat") {
-    return "quick";
-  }
+const getModeKey = (_productType?: string, deepThink = false): InputModeKey => {
   return deepThink ? "research" : "think";
 };
 
@@ -165,12 +148,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     size,
     product,
     deepThink = false,
-    chatRole,
-    chatRoles = [],
-    showRoleSelector = false,
     send,
     onSelectionChange,
-    onRoleSelect,
     draftMessage = null,
     onDraftConsumed,
   } = props;
@@ -198,18 +177,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
   const currentMode = getModeKey(product?.type, deepThink);
   const isDataAgent = product?.type === "dataAgent";
-
-  // 记住离开数据分析前的推理模式
-  const lastStandardModeRef = useRef<InputModeKey>(
-    currentMode === "quick" ? "think" : currentMode
-  );
-
-  useEffect(() => {
-    if (product?.type === "dataAgent") {
-      return;
-    }
-    lastStandardModeRef.current = currentMode === "quick" ? "think" : currentMode;
-  }, [currentMode, product?.type]);
 
   useEffect(() => {
     // 启用模型列表：供输入框热切换；失败不阻断对话（空列表=用后端默认）
@@ -243,9 +210,9 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
       });
   }, []);
 
-  const visibleMode = isDataAgent ? lastStandardModeRef.current : currentMode;
+  const visibleMode = currentMode;
   const currentModeOption =
-    MODE_OPTIONS.find((item) => item.key === visibleMode) ?? MODE_OPTIONS[1];
+    MODE_OPTIONS.find((item) => item.key === visibleMode) ?? MODE_OPTIONS[0];
   const CurrentModeIcon = currentModeOption.icon;
 
   const hasUploadingAttachment = attachmentOrder.some((id) => {
@@ -272,7 +239,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
     !hasUploadingAttachment &&
     !hasFailedAttachment;
   const canSubmit = canSend || canInject;
-  const showDataAgentToggle = showBtn && (isDataAgent || visibleMode !== "quick");
+  const showDataAgentToggle = showBtn;
 
   const currentModelMeta = models.find(
     (m) => m.modelId === selectedModel || m.modelName === selectedModel
@@ -321,11 +288,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   };
 
   const handleModeSelect = (modeKey: InputModeKey) => {
-    if (modeKey === "quick") {
-      setModeMenuOpen(false);
-      return;
-    }
-    // 输出格式已下线：标准任务统一走通用 task
+    // 普通模式统一走 ReAct，研究模式统一走 PlanSolve。
     handleSelectionChange(GENERIC_TASK_PRODUCT, modeKey === "research");
     setModeMenuOpen(false);
   };
@@ -352,9 +315,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
         question: trimmed,
         visibleMode,
         isDataAgent,
-        currentProductType: product?.type,
         uploadedFiles,
-        chatRole: chatRole || null,
         model: selectedModel || undefined,
         thinking: supportsThinking ? thinking : undefined,
         thinkingEffort: supportsThinking && thinking ? thinkingEffort : undefined,
@@ -483,15 +444,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
 
               {showBtn ? (
                 <>
-                  {showRoleSelector ? (
-                    <ChatRoleSelector
-                      roles={chatRoles}
-                      selectedRole={chatRole}
-                      disabled={disabled}
-                      onSelect={(role) => onRoleSelect?.(role)}
-                    />
-                  ) : null}
-
                   <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -553,10 +505,7 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                       className={toolBtnClassName(isDataAgent, disabled)}
                       onClick={() => {
                         if (isDataAgent) {
-                          handleSelectionChange(
-                            GENERIC_TASK_PRODUCT,
-                            lastStandardModeRef.current === "research"
-                          );
+                          handleSelectionChange(GENERIC_TASK_PRODUCT, false);
                           return;
                         }
                         handleSelectionChange(DATA_AGENT_PRODUCT, false);
@@ -601,13 +550,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
                     triggerClassName={toolBtnClassName}
                   />
                 </>
-              ) : showRoleSelector ? (
-                <ChatRoleSelector
-                  roles={chatRoles}
-                  selectedRole={chatRole}
-                  disabled={disabled}
-                  onSelect={(role) => onRoleSelect?.(role)}
-                />
               ) : null}
             </PromptInputTools>
 

@@ -4,7 +4,7 @@
 -- Conversation / history / memory / replay main path = Execution Ledger only:
 --   ai_agent_dialogue_session, ai_agent_dialogue_run,
 --   ai_agent_llm_invocation, ai_agent_tool_invocation,
---   ai_agent_artifact, ai_agent_tool_output_*,
+--   ai_agent_artifact and the remaining persisted ai_agent_tool_output_* tables,
 --   ai_agent_visitor_identity, ai_agent_featured_conversation
 --
 -- Agent assembly config (not execution facts):
@@ -33,94 +33,6 @@ CREATE TABLE IF NOT EXISTS admin_user (
     KEY idx_status (status)
 ) COMMENT='管理员用户表';
 
-CREATE TABLE IF NOT EXISTS ai_agent (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    agent_id    VARCHAR(64)  NOT NULL COMMENT '智能体ID',
-    agent_name  VARCHAR(50)  NOT NULL COMMENT '智能体名称',
-    description VARCHAR(255) NULL COMMENT '描述',
-    channel     VARCHAR(32)  NULL COMMENT '渠道类型(agent，chat_stream)',
-    strategy    VARCHAR(64)  NULL COMMENT '执行策略(auto、flow)',
-    status      TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_agent_id (agent_id)
-) COMMENT='AI智能体配置表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_draw_config (
-    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    config_id   VARCHAR(64)   NOT NULL COMMENT '配置ID（唯一标识）',
-    config_name VARCHAR(100)  NOT NULL COMMENT '配置名称',
-    description VARCHAR(500)  NULL COMMENT '配置描述',
-    agent_id    VARCHAR(64)   NULL COMMENT '关联的智能体ID（来自ai_agent表）',
-    config_data LONGTEXT      NOT NULL COMMENT '完整的拖拉拽配置JSON数据（包含nodes和edges）',
-    version     INT           NULL DEFAULT 1 COMMENT '配置版本号',
-    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_by   VARCHAR(64)   NULL COMMENT '创建人',
-    update_by   VARCHAR(64)   NULL COMMENT '更新人',
-    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_config_id (config_id),
-    KEY idx_agent_id (agent_id),
-    KEY idx_config_name (config_name),
-    KEY idx_status (status)
-) COMMENT='AI智能体拖拉拽配置主表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_flow_config (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    agent_id    VARCHAR(64)  NOT NULL COMMENT '智能体ID',
-    client_id   VARCHAR(64)  NOT NULL COMMENT '客户端ID',
-    client_name VARCHAR(64)  NULL COMMENT '客户端名称',
-    client_type VARCHAR(64)  NULL COMMENT '客户端类型',
-    sequence    INT          NOT NULL COMMENT '序列号(执行顺序)',
-    step_prompt TEXT         NULL COMMENT '步骤提示词',
-    status      INT          NULL DEFAULT 1 COMMENT '状态；0无效，1有效',
-    create_time DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_agent_client_seq (agent_id, client_id, sequence)
-) COMMENT='智能体-客户端关联表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_task_schedule (
-    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    agent_id        BIGINT       NOT NULL COMMENT '智能体ID',
-    task_name       VARCHAR(64)  NULL COMMENT '任务名称',
-    description     VARCHAR(255) NULL COMMENT '任务描述',
-    cron_expression VARCHAR(50)  NOT NULL COMMENT '时间表达式(如: 0/3 * * * * *)',
-    task_param      TEXT         NULL COMMENT '任务入参配置(JSON格式)',
-    status          TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:无效,1:有效)',
-    create_time     DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time     DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_agent_id (agent_id)
-) COMMENT='智能体任务调度配置表';
-
-CREATE TABLE IF NOT EXISTS ai_client (
-    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    client_id   VARCHAR(64)   NOT NULL COMMENT '客户端ID',
-    client_name VARCHAR(50)   NOT NULL COMMENT '客户端名称',
-    description VARCHAR(1024) NULL COMMENT '描述',
-    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY client_id (client_id)
-) COMMENT='AI客户端配置表';
-
-CREATE TABLE IF NOT EXISTS ai_client_advisor (
-    id           BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    advisor_id   VARCHAR(64)   NOT NULL COMMENT '顾问ID',
-    advisor_name VARCHAR(50)   NOT NULL COMMENT '顾问名称',
-    advisor_type VARCHAR(50)   NOT NULL COMMENT '顾问类型(PromptChatMemory/RagAnswer/SimpleLoggerAdvisor等)',
-    order_num    INT           NULL DEFAULT 0 COMMENT '顺序号',
-    ext_param    VARCHAR(2048) NULL COMMENT '扩展参数配置，json 记录',
-    status       TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time  DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time  DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_advisor_id (advisor_id)
-) COMMENT='顾问配置表';
-
 CREATE TABLE IF NOT EXISTS ai_client_api (
     id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '自增主键ID',
     api_id           VARCHAR(64)   NOT NULL COMMENT '全局唯一配置ID',
@@ -135,21 +47,6 @@ CREATE TABLE IF NOT EXISTS ai_client_api (
     UNIQUE KEY uk_api_id (api_id),
     KEY idx_status (status)
 ) COMMENT='OpenAI API配置表';
-
-CREATE TABLE IF NOT EXISTS ai_client_config (
-    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    source_type VARCHAR(32)   NOT NULL COMMENT '源类型（model、client）',
-    source_id   VARCHAR(64)   NOT NULL COMMENT '源ID（如 chatModelId、chatClientId 等）',
-    target_type VARCHAR(32)   NOT NULL COMMENT '目标类型(tool_mcp,advisor,prompt,model）',
-    target_id   VARCHAR(64)   NOT NULL COMMENT '目标ID（如 openAiApiId、chatModelId、systemPromptId、advisorId 等）',
-    ext_param   VARCHAR(1024) NULL COMMENT '扩展参数（JSON格式）',
-    status      TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_source_id (source_id),
-    KEY idx_target_id (target_id)
-) COMMENT='AI客户端统一关联配置表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_session_capability (
     id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -180,31 +77,6 @@ CREATE TABLE IF NOT EXISTS ai_client_model (
     KEY idx_api_config_id (api_id),
     KEY idx_status (status)
 ) COMMENT='聊天模型配置表';
-
-CREATE TABLE IF NOT EXISTS ai_client_rag_order (
-    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    rag_id        VARCHAR(50)  NOT NULL COMMENT '知识库ID',
-    rag_name      VARCHAR(50)  NOT NULL COMMENT '知识库名称',
-    knowledge_tag VARCHAR(50)  NOT NULL COMMENT '知识标签',
-    status        TINYINT(1)   NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time   DATETIME     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time   DATETIME     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_rag_id (rag_id)
-) COMMENT='知识库配置表';
-
-CREATE TABLE IF NOT EXISTS ai_client_system_prompt (
-    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    prompt_id      VARCHAR(64)   NOT NULL COMMENT '提示词ID',
-    prompt_name    VARCHAR(128)  NOT NULL COMMENT '提示词名称',
-    prompt_content TEXT          NOT NULL COMMENT '提示词内容',
-    description    VARCHAR(1024) NULL COMMENT '描述',
-    status         TINYINT(1)    NULL DEFAULT 1 COMMENT '状态(0:禁用,1:启用)',
-    create_time    DATETIME      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time    DATETIME      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_prompt_id (prompt_id)
-) COMMENT='系统提示词配置表';
 
 CREATE TABLE IF NOT EXISTS ai_client_tool_mcp (
     id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -516,30 +388,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_deep_search (
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='deep_search 输出表';
 
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_file_tool (
-    id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id   BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id               BIGINT         NULL COMMENT '所属 run ID',
-    request_id           VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id           VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id         VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status               TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg            TEXT           NULL COMMENT '错误信息',
-    command              VARCHAR(32)    NULL COMMENT '工具命令',
-    primary_file_name    VARCHAR(256)   NULL COMMENT '主文件名',
-    content_storage_mode VARCHAR(32)    NULL COMMENT '内容存储模式',
-    created_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at           DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    content              MEDIUMTEXT     NULL COMMENT '正文内容',
-    preview_url          VARCHAR(1024)  NULL COMMENT '预览地址',
-    download_url         VARCHAR(1024)  NULL COMMENT '下载地址',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='file_tool 输出表';
-
 CREATE TABLE IF NOT EXISTS ai_agent_tool_output_code_interpreter (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
@@ -561,27 +409,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_code_interpreter (
     KEY idx_run_created (run_id, created_at DESC),
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='code_interpreter 输出表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_report_tool (
-    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id             BIGINT         NULL COMMENT '所属 run ID',
-    request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id         VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status             TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg          TEXT           NULL COMMENT '错误信息',
-    file_type          VARCHAR(32)    NULL COMMENT '文件类型',
-    summary            TEXT           NULL COMMENT '摘要',
-    content            MEDIUMTEXT     NULL COMMENT '报告正文',
-    created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='report_tool 输出表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_tool_output_data_analysis (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -652,33 +479,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_image_generation (
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='image_generation_tool 输出表';
 
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_script_runner (
-    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id             BIGINT         NULL COMMENT '所属 run ID',
-    request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id         VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status             TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg          TEXT           NULL COMMENT '错误信息',
-    skill_name         VARCHAR(128)   NULL COMMENT '技能名',
-    script_name        VARCHAR(128)   NULL COMMENT '脚本名',
-    runtime            VARCHAR(32)    NULL COMMENT '运行时',
-    success            TINYINT(1)     NULL COMMENT '脚本是否成功',
-    exit_code          INT            NULL COMMENT '退出码',
-    stdout             MEDIUMTEXT     NULL COMMENT '标准输出',
-    stderr             MEDIUMTEXT     NULL COMMENT '标准错误',
-    summary            TEXT           NULL COMMENT '摘要',
-    created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='script_runner_tool 输出表';
-
-
 CREATE TABLE IF NOT EXISTS ai_agent_tool_output_canvas_publish (
     id                   BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     tool_invocation_id   BIGINT         NULL COMMENT '所属 tool invocation ID',
@@ -745,31 +545,6 @@ CREATE TABLE IF NOT EXISTS ai_agent_tool_output_emit_ui_patch (
     KEY idx_run_created (run_id, created_at DESC),
     KEY idx_status_created (status, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='emit_ui_patch 输出表';
-
-CREATE TABLE IF NOT EXISTS ai_agent_tool_output_planning (
-    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tool_invocation_id BIGINT         NULL COMMENT '所属 tool invocation ID',
-    run_id             BIGINT         NULL COMMENT '所属 run ID',
-    request_id         VARCHAR(64)    NOT NULL COMMENT '请求ID',
-    session_id         VARCHAR(64)    NULL COMMENT '会话ID',
-    tool_call_id       VARCHAR(128)   NOT NULL COMMENT 'toolCallId',
-    status             TINYINT        NOT NULL COMMENT '终态状态',
-    error_msg          TEXT           NULL COMMENT '错误信息',
-    command            VARCHAR(32)    NOT NULL COMMENT 'planning 命令',
-    before_plan_json   JSON           NULL COMMENT '执行前计划快照',
-    after_plan_json    JSON           NULL COMMENT '执行后计划快照',
-    current_step       TEXT           NULL COMMENT '当前可执行步骤',
-    current_step_index INT            NULL COMMENT '当前可执行步骤索引',
-    auto_advanced      TINYINT(1)     NULL COMMENT '是否自动推进',
-    auto_finished      TINYINT(1)     NULL COMMENT '是否自动结束',
-    created_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tool_invocation (tool_invocation_id),
-    UNIQUE KEY uk_request_tool_call (request_id, tool_call_id),
-    KEY idx_run_created (run_id, created_at DESC),
-    KEY idx_status_created (status, created_at DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='planning 输出表';
 
 CREATE TABLE IF NOT EXISTS ai_agent_artifact (
     id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键ID',

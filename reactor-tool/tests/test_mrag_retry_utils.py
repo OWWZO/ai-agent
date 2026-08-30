@@ -10,7 +10,6 @@ from reactor_tool.tool.mrag.utils.retry_utils import (
 
 
 class MragRetryUtilsTest(unittest.TestCase):
-
     def test_should_detect_upstream_request_failed_as_transient(self):
         self.assertTrue(is_transient_error(RuntimeError("Upstream request failed")))
         self.assertTrue(is_transient_error(TimeoutError("request timed out")))
@@ -19,10 +18,18 @@ class MragRetryUtilsTest(unittest.TestCase):
     def test_should_retry_tls_handshake_interrupt_but_not_cert_errors(self):
         import ssl
 
-        self.assertTrue(is_transient_error(ssl.SSLError("TLS/SSL connection has been closed (EOF)")))
-        self.assertTrue(is_transient_error(RuntimeError("SSL handshake failed: unexpected eof")))
+        self.assertTrue(
+            is_transient_error(ssl.SSLError("TLS/SSL connection has been closed (EOF)"))
+        )
+        self.assertTrue(
+            is_transient_error(RuntimeError("SSL handshake failed: unexpected eof"))
+        )
         self.assertFalse(
-            is_transient_error(ssl.SSLCertVerificationError("certificate verify failed: self signed certificate"))
+            is_transient_error(
+                ssl.SSLCertVerificationError(
+                    "certificate verify failed: self signed certificate"
+                )
+            )
         )
 
     def test_call_with_retry_should_retry_transient_errors(self):
@@ -34,7 +41,11 @@ class MragRetryUtilsTest(unittest.TestCase):
                 raise RuntimeError("Upstream request failed")
             return "ok"
 
-        with patch.dict(os.environ, {"MRAG_LLM_MAX_RETRIES": "2", "MRAG_LLM_RETRY_BASE_DELAY": "0"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"MRAG_LLM_MAX_RETRIES": "2", "MRAG_LLM_RETRY_BASE_DELAY": "0"},
+            clear=False,
+        ):
             result = call_with_retry(_flaky, label="test-call")
 
         self.assertEqual("ok", result)
@@ -47,7 +58,11 @@ class MragRetryUtilsTest(unittest.TestCase):
             attempts["count"] += 1
             raise ValueError("bad request")
 
-        with patch.dict(os.environ, {"MRAG_LLM_MAX_RETRIES": "3", "MRAG_LLM_RETRY_BASE_DELAY": "0"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"MRAG_LLM_MAX_RETRIES": "3", "MRAG_LLM_RETRY_BASE_DELAY": "0"},
+            clear=False,
+        ):
             with self.assertRaises(ValueError):
                 call_with_retry(_permanent, label="test-call")
 
@@ -67,7 +82,11 @@ class MragRetryUtilsTest(unittest.TestCase):
 
             return _gen()
 
-        with patch.dict(os.environ, {"MRAG_LLM_MAX_RETRIES": "2", "MRAG_LLM_RETRY_BASE_DELAY": "0"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"MRAG_LLM_MAX_RETRIES": "2", "MRAG_LLM_RETRY_BASE_DELAY": "0"},
+            clear=False,
+        ):
             chunks = list(stream_with_retry(_open_stream, label="test-stream"))
 
         self.assertEqual(["a", "b"], chunks)
@@ -85,7 +104,11 @@ class MragRetryUtilsTest(unittest.TestCase):
 
             return _gen()
 
-        with patch.dict(os.environ, {"MRAG_LLM_MAX_RETRIES": "3", "MRAG_LLM_RETRY_BASE_DELAY": "0"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"MRAG_LLM_MAX_RETRIES": "3", "MRAG_LLM_RETRY_BASE_DELAY": "0"},
+            clear=False,
+        ):
             with self.assertRaises(RuntimeError):
                 list(stream_with_retry(_open_stream, label="test-stream"))
 
@@ -93,7 +116,6 @@ class MragRetryUtilsTest(unittest.TestCase):
 
 
 class LLMClientRetryTest(unittest.TestCase):
-
     def test_llm_completions_should_retry_transient_errors(self):
         from reactor_tool.tool.mrag.generation.llm import LLMClient
 
@@ -109,7 +131,11 @@ class LLMClientRetryTest(unittest.TestCase):
                     (),
                     {
                         "choices": [
-                            type("Choice", (), {"message": type("Msg", (), {"content": "ok"})()})()
+                            type(
+                                "Choice",
+                                (),
+                                {"message": type("Msg", (), {"content": "ok"})()},
+                            )()
                         ]
                     },
                 )()
@@ -129,12 +155,18 @@ class LLMClientRetryTest(unittest.TestCase):
             },
             clear=False,
         ):
-            with patch("reactor_tool.tool.mrag.generation.llm.OpenAI", return_value=_FakeClient()):
+            with patch(
+                "reactor_tool.tool.mrag.generation.llm.OpenAI",
+                return_value=_FakeClient(),
+            ) as openai_factory:
                 client = LLMClient()
-                result = client.completions([{"role": "user", "content": "hi"}], stream=False)
+                result = client.completions(
+                    [{"role": "user", "content": "hi"}], stream=False
+                )
 
         self.assertEqual("ok", result)
         self.assertEqual(2, attempts["count"])
+        self.assertFalse(openai_factory.call_args.kwargs["http_client"]._trust_env)
 
 
 if __name__ == "__main__":

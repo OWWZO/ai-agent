@@ -59,9 +59,8 @@ export function hydrateConversationFromReplayFrames(
     id: `conversation-${detail.sessionId}`,
     sessionId: detail.sessionId,
     title,
-    productType: detail.outputStyle || GENERIC_TASK_PRODUCT.type,
+    productType: GENERIC_TASK_PRODUCT.type,
     deepThink: Boolean(detail.deepThink),
-    role: detail.role || null,
     createdAt,
     updatedAt,
     chatTitle: title,
@@ -83,7 +82,7 @@ function hydrateRun(
     query: run.queryText || "",
     files: [],
     responseType: "txt",
-    agentType: resolveConversationAgentType(detail.outputStyle, detail.deepThink),
+    agentType: resolveConversationAgentType(detail.deepThink),
     loading: isRunning,
     forceStop: runStatus === "STOPPED",
     tasks: [],
@@ -158,11 +157,8 @@ function toTimestamp(value?: string | null, fallback = Date.now()) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function resolveConversationAgentType(outputStyle?: string, deepThink?: boolean) {
-  if (outputStyle === "chat") {
-    return 1;
-  }
-  return deepThink ? 2 : 1;
+function resolveConversationAgentType(deepThink?: boolean) {
+  return deepThink ? 3 : 5;
 }
 
 function normalizeRunStatus(status?: string | null) {

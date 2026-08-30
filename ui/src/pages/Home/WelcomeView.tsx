@@ -25,9 +25,6 @@ const HERO_TYPEWRITER_TEXTS = [
 export default function WelcomeView(props: {
   currentConversation: CHAT.ConversationHistory;
   product: CHAT.Product;
-  displayOutput?: CHAT.Product;
-  currentConversationRole: CHAT.ConversationRole | null;
-  fixRoles: CHAT.FixRole[];
   visitorUsername?: string;
   videoModalOpen?: string;
   featuredCards: FeaturedConversationCardModel[];
@@ -35,7 +32,6 @@ export default function WelcomeView(props: {
     product: CHAT.Product;
     deepThink: boolean;
   }) => void;
-  onRoleSelect: (role: CHAT.FixRole) => void;
   onSend: (inputInfo: CHAT.TInputInfo) => void;
   onSendQuestion: (query: SuggestedQuestion) => void;
   onOpenVideo: (url: string) => void;
@@ -148,13 +144,8 @@ export default function WelcomeView(props: {
                 disabled={false}
                 product={props.product}
                 deepThink={props.currentConversation.deepThink}
-                displayOutput={props.displayOutput}
-                chatRole={props.currentConversationRole}
-                chatRoles={props.fixRoles}
-                showRoleSelector={props.product.type === "chat"}
                 send={props.onSend}
                 onSelectionChange={props.onSelectionChange}
-                onRoleSelect={props.onRoleSelect}
               />
             </div>
           </motion.div>

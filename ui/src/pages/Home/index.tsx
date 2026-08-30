@@ -1,6 +1,5 @@
 import {
   memo,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -21,8 +20,6 @@ import FeaturedConversations from "@/pages/FeaturedConversations";
 import {
   GENERIC_TASK_PRODUCT,
   getProductByType,
-  isOutputProductType,
-  toRequestOutputStyle,
   type SuggestedQuestion,
 } from "@/utils/constants";
 import {
@@ -115,20 +112,6 @@ const EMPTY_FEATURED_FORM: FeaturedConversationFormState = {
   operator: "ui-featured-manager",
 };
 
-const toConversationRole = (
-  role?: CHAT.FixRole | CHAT.ConversationRole | null
-): CHAT.ConversationRole | null => {
-  if (!role) {
-    return null;
-  }
-  return {
-    agentId: role.agentId,
-    agentName: role.agentName,
-    available: "available" in role ? role.available !== false : true,
-    defaultRole: Boolean(role.defaultRole),
-  };
-};
-
 const getRecentSessionSummaryKey = (
   conversation?: CHAT.ConversationHistory
 ) => {
@@ -173,7 +156,6 @@ const createConversation = (
     title: partial.title || "新对话",
     productType: partial.productType || GENERIC_TASK_PRODUCT.type,
     deepThink: Boolean(partial.deepThink),
-    role: partial.role || null,
     createdAt: partial.createdAt ?? now,
     updatedAt: partial.updatedAt ?? now,
     chatTitle: partial.chatTitle || "",
@@ -192,7 +174,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const initialRef = useRef<InitialState>(createInitialState());
   const initializedVisitorIdRef = useRef<string | null>(null);
   const conversationBootstrapResolvedRef = useRef(false);
-  const [fixRoles, setFixRoles] = useState<CHAT.FixRole[]>([]);
   const {
     recentSessions,
     recentSessionsLoading,
@@ -220,7 +201,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   const [featuredEntryId, setFeaturedEntryId] = useState("");
   const [inputInfo, setInputInfo] = useState<CHAT.TInputInfo>(EMPTY_INPUT);
   const [product, setProduct] = useState(() => getProductByType(initialRef.current.productType));
-  const [displayOutput, setDisplayOutput] = useState<CHAT.Product>();
   const [videoModalOpen, setVideoModalOpen] = useState<string>();
   const [featuredCards, setFeaturedCards] = useState<FeaturedConversationCard[]>(
     []
@@ -274,22 +254,10 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     };
   }, [mobileSidebarOpen]);
 
-  const defaultFixRole = useMemo(
-    () => fixRoles.find((item) => item.defaultRole) ?? fixRoles[0],
-    [fixRoles]
-  );
-
   const [currentConversation, setCurrentConversation] =
     useState<CHAT.ConversationHistory>(() =>
       createConversation({productType: initialRef.current.productType,})
     );
-
-  const currentConversationRole = useMemo(() => {
-    if (currentConversation.productType !== "chat") {
-      return null;
-    }
-    return currentConversation.role || toConversationRole(defaultFixRole);
-  }, [currentConversation.productType, currentConversation.role, defaultFixRole]);
 
   const displayedRecentSessions = useMemo(
     () =>
@@ -436,29 +404,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
   ]);
 
   useEffect(() => {
-    if (
-      currentConversation.productType !== "chat" ||
-      currentConversation.role ||
-      !defaultFixRole
-    ) {
-      return;
-    }
-
-    setCurrentConversation((prev) => ({
-      ...prev,
-      role: toConversationRole(defaultFixRole),
-      updatedAt: Date.now(),
-    }));
-  }, [
-    currentConversation.productType,
-    currentConversation.role,
-    defaultFixRole,
-  ]);
-
-  useEffect(() => {
-    // 输出格式已下线：历史 html/docs/ppt/table 会话归一为通用任务
-    const raw = getProductByType(currentConversation.productType);
-    const matched = isOutputProductType(raw.type) ? GENERIC_TASK_PRODUCT : raw;
+    const matched = getProductByType(currentConversation.productType);
     setProduct((prev) => (prev.type === matched.type ? prev : matched));
   }, [currentConversation.productType]);
 
@@ -500,13 +446,13 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       // 最近列表，避免切换会话期间的流式事件覆盖当前输入。
       // 后台流式更新只刷新本地缓存；仅当前展示的会话才写入主视图，避免其它会话活跃时界面被切走。
       upsertLocalRecentSession(nextState);
-      startTransition(() => {
-        setCurrentConversation((prev) =>
-          shouldApplyConversationToView(prev.id, conversationId)
-            ? nextState
-            : prev
-        );
-      });
+      // inputInfo 会在同一轮立即清空；这里必须同步提交首个 chatList，避免 ChatView
+      // 在过渡更新落地前被 Home 判断为空而卸载并 abort SSE。
+      setCurrentConversation((prev) =>
+        shouldApplyConversationToView(prev.id, conversationId)
+          ? nextState
+          : prev
+      );
     },
     [upsertLocalRecentSession]
   );
@@ -516,30 +462,19 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       // 创建新会话同时清空输入、任务文件和视图壳状态；override 只用于恢复
       // 已存在的 session 元数据，默认路径始终生成新的 sessionId。
       const nextSessionId = override?.sessionId || createSessionId();
-      const defaultStructuredProduct = getProductByType(initialRef.current.productType);
-      const nextProductType =
-        override?.productType ||
-        (product.type === "chat" ? defaultStructuredProduct.type : product.type);
+      const nextProductType = override?.productType || product.type;
       setActiveView("chat");
       const nextConversation = createConversation({
         sessionId: nextSessionId,
         productType: nextProductType,
-        deepThink:
-          nextProductType === "chat" || nextProductType === "dataAgent"
-            ? false
-            : override?.deepThink ?? false,
-        role:
-          override?.role ||
-          (nextProductType === "chat"
-            ? toConversationRole(defaultFixRole)
-            : null),
+        deepThink: nextProductType === "dataAgent" ? false : override?.deepThink ?? false,
         ...override,
       });
       setCurrentConversation(nextConversation);
       upsertLocalRecentSession(nextConversation);
       resetInput();
     },
-    [defaultFixRole, product.type, resetInput, upsertLocalRecentSession]
+    [product.type, resetInput, upsertLocalRecentSession]
   );
 
   const updateCurrentConversationMeta = useCallback(
@@ -622,7 +557,6 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
     (info: CHAT.TInputInfo) => {
       const nextMeta = deriveConversationMetaFromInput(info, {
         productType: product.type,
-        currentRole: currentConversationRole,
       });
 
       updateCurrentConversationMeta(nextMeta);
@@ -631,12 +565,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
         ...info,
         outputStyle: info.outputStyle,
         deepThink: nextMeta.deepThink,
-        aiAgentId: nextMeta.productType === "chat"
-          ? currentConversationRole?.agentId
-          : undefined,
       });
     },
-    [currentConversationRole, product.type, updateCurrentConversationMeta]
+    [product.type, updateCurrentConversationMeta]
   );
 
   const handleInputSelectionChange = useCallback(
@@ -647,63 +578,21 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
       product: CHAT.Product;
       deepThink: boolean;
     }) => {
-      // 输出格式已下线，结构化类型强制回落通用任务
-      const resolved = isOutputProductType(nextProduct.type)
-        ? GENERIC_TASK_PRODUCT
-        : nextProduct;
+      const resolved = nextProduct;
       setProduct(resolved);
 
       updateCurrentConversationMeta({
         productType: resolved.type,
-        deepThink:
-          resolved.type === "chat" || resolved.type === "dataAgent"
-            ? false
-            : nextDeepThink,
-        role:
-          resolved.type === "chat"
-            ? currentConversation.role || toConversationRole(defaultFixRole)
-            : null,
+        deepThink: resolved.type === "dataAgent" ? false : nextDeepThink,
       });
     },
-    [currentConversation.role, defaultFixRole, updateCurrentConversationMeta]
-  );
-
-  const handleRoleSelect = useCallback(
-    (role: CHAT.FixRole) => {
-      void role;
-      const defaultStructuredProduct = getProductByType(initialRef.current.productType);
-
-      if (
-        currentConversation.productType === "chat" &&
-        hasConversationContent(currentConversation)
-      ) {
-        createNewChat({
-          productType: defaultStructuredProduct.type,
-          deepThink: false,
-          role: null,
-        });
-        return;
-      }
-
-      const nextProduct = isOutputProductType(defaultStructuredProduct.type)
-        ? GENERIC_TASK_PRODUCT
-        : defaultStructuredProduct;
-      updateCurrentConversationMeta({
-        productType: nextProduct.type,
-        deepThink: false,
-        role: null,
-      });
-      setProduct(nextProduct);
-      setActiveView("chat");
-    },
-    [createNewChat, currentConversation, updateCurrentConversationMeta]
+    [updateCurrentConversationMeta]
   );
 
   const toSendMessage = useCallback(
     (query: SuggestedQuestion) => {
       changeInputInfo({
         message: query.label,
-        outputStyle: toRequestOutputStyle(product.type),
         deepThink: Boolean(query.deepThink),
       });
     },
@@ -1098,9 +987,7 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                       inputInfo={inputInfo}
                       product={product}
                       conversation={currentConversation}
-                      chatRoles={fixRoles}
                       onConversationChange={updateConversation}
-                      onRoleSelect={handleRoleSelect}
                       onInputConsumed={onInputConsumed}
                       onTaskListChange={setWorkspaceTaskList}
                       onRegisterApi={(api) => {
@@ -1128,13 +1015,9 @@ const Home: ReactorType.FC<HomeProps> = memo(() => {
                     <WelcomeView
                       currentConversation={currentConversation}
                       product={product}
-                      displayOutput={displayOutput}
-                      currentConversationRole={currentConversationRole}
-                      fixRoles={fixRoles}
                       visitorUsername={visitorBootstrap?.username}
                       videoModalOpen={videoModalOpen}
                       onSelectionChange={handleInputSelectionChange}
-                      onRoleSelect={handleRoleSelect}
                       onSend={changeInputInfo}
                       onSendQuestion={toSendMessage}
                       onOpenVideo={setVideoModalOpen}

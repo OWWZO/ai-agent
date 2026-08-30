@@ -71,9 +71,7 @@ describe("FeaturedConversationDetailView", () => {
               sessionId: "session-detail-001",
               title: "原会话",
               status: "SUCCESS",
-              outputStyle: "chat",
               deepThink: false,
-              role: null,
               runCount: 1,
               finishedRunCount: 1,
               failedRunCount: 0,
@@ -107,7 +105,7 @@ describe("FeaturedConversationDetailView", () => {
       readOnly: true,
       conversation: expect.objectContaining({
         sessionId: "session-detail-001",
-        productType: "chat",
+        productType: "task",
       }),
     });
   });

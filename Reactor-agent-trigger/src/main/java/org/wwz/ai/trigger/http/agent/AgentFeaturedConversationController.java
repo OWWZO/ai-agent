@@ -13,9 +13,7 @@ import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationCardView;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPageResult;
 import org.wwz.ai.domain.agent.ledger.model.FeaturedConversationPublicDetail;
 import org.wwz.ai.domain.agent.ledger.model.ExecutionLedgerConstants;
-import org.wwz.ai.domain.agent.model.valobj.ConversationRoleVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
-import org.wwz.ai.trigger.http.agent.vo.ConversationRoleRespVO;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationCardRespVO;
 import org.wwz.ai.trigger.http.agent.vo.FeaturedConversationDetailRespVO;
 import org.wwz.ai.trigger.http.agent.vo.PageRespVO;
@@ -149,27 +147,13 @@ public class AgentFeaturedConversationController {
                 .sessionId(detail.getSessionId())
                 .title(detail.getTitle())
                 .status(resolveStatusLabel(detail.getStatus()))
-                .outputStyle(detail.getOutputStyle())
                 .deepThink(detail.getDeepThink())
-                .role(toRoleRespVO(detail.getRole()))
                 .runCount(detail.getRunCount())
                 .finishedRunCount(detail.getFinishedRunCount())
                 .failedRunCount(detail.getFailedRunCount())
                 .startedAt(detail.getStartedAt())
                 .lastActiveAt(detail.getLastActiveAt())
                 .runs(runs)
-                .build();
-    }
-
-    private ConversationRoleRespVO toRoleRespVO(ConversationRoleVO role) {
-        if (role == null) {
-            return null;
-        }
-        return ConversationRoleRespVO.builder()
-                .agentId(role.getAgentId())
-                .agentName(role.getAgentName())
-                .available(role.isAvailable())
-                .defaultRole(role.isDefaultRole())
                 .build();
     }
 

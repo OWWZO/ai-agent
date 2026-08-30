@@ -19,13 +19,11 @@ import org.wwz.ai.domain.agent.runtime.planmode.PlanModeState;
 @AllArgsConstructor
 public class UserQuestionResumeContext {
 
-    private String aiAgentId;
     private String entryAgent;
     private Integer agentType;
     private String model;
     private Boolean thinking;
     private String thinkingEffort;
-    private String outputStyle;
     private PlanModeSnapshot planMode;
 
     @Data
@@ -63,7 +61,6 @@ public class UserQuestionResumeContext {
                     .build();
         }
         return UserQuestionResumeContext.builder()
-                .aiAgentId(request == null ? null : request.getAiAgentId())
                 .entryAgent(entryAgent)
                 .agentType(request == null ? (context == null ? null : context.getAgentType()) : request.getAgentType())
                 .model(request == null ? (context == null ? null : context.getModel()) : request.getModel())
@@ -71,7 +68,6 @@ public class UserQuestionResumeContext {
                 .thinkingEffort(request == null
                         ? (context == null ? null : context.getThinkingEffort())
                         : request.getThinkingEffort())
-                .outputStyle(request == null ? null : request.getOutputStyle())
                 .planMode(snapshot)
                 .build();
     }

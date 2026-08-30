@@ -20,7 +20,6 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
 import org.wwz.ai.domain.agent.ledger.AgentExecutionRecorder;
 import org.wwz.ai.domain.agent.ledger.ExecutionLedgerQueryService;
 import org.wwz.ai.domain.agent.ledger.impl.AgentExecutionRecorderImpl;
@@ -33,12 +32,8 @@ import org.wwz.ai.domain.agent.ledger.replay.projector.impl.CodeInterpreterToolI
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DataAnalysisToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ImageGenerationToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.MultiModalToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ReportToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.ScriptRunnerToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputReader;
 import org.wwz.ai.domain.agent.ledger.tooloutput.ToolOutputWriter;
 import org.wwz.ai.infrastructure.adapter.repository.ExecutionLedgerReadRepository;
@@ -90,14 +85,10 @@ public final class ExecutionLedgerFixtureFactory {
                         new ToolInvocationProjectorRegistry(
                                 List.of(
                                         new CodeInterpreterToolInvocationProjector(),
-                                        new ReportToolInvocationProjector(),
                                         new DataAnalysisToolInvocationProjector(),
-                                        new FileToolInvocationProjector(),
-                                        new PlanningToolInvocationProjector(),
                                         new DeepSearchToolInvocationProjector(),
                                         new MultiModalToolInvocationProjector(),
                                         new ImageGenerationToolInvocationProjector(),
-                                        new ScriptRunnerToolInvocationProjector(),
                                         new DefaultToolInvocationProjector()
                                 ),
                                 new DefaultToolInvocationProjector()
@@ -276,7 +267,10 @@ public final class ExecutionLedgerFixtureFactory {
                 return;
             }
             String toolName = resolveToolName(command);
-            if (isBlank(toolName) || isBlank(command.getRequestId()) || isBlank(command.getToolCallId())) {
+            if (isBlank(toolName)
+                    || isRetiredToolOutput(toolName)
+                    || isBlank(command.getRequestId())
+                    || isBlank(command.getToolCallId())) {
                 return;
             }
             String directKey = buildDirectKey(command.getRequestId(), command.getToolCallId());
@@ -322,6 +316,13 @@ public final class ExecutionLedgerFixtureFactory {
                 return command.getToolName();
             }
             return command.getStructuredOutput() == null ? null : command.getStructuredOutput().getToolName();
+        }
+
+        private boolean isRetiredToolOutput(String toolName) {
+            return "file_tool".equals(toolName)
+                    || "planning".equals(toolName)
+                    || "report_tool".equals(toolName)
+                    || "script_runner_tool".equals(toolName);
         }
     }
 
@@ -943,10 +944,15 @@ public final class ExecutionLedgerFixtureFactory {
                 .streaming(invocation.getStreaming())
                 .modelName(invocation.getModelName())
                 .responseText(invocation.getResponseText())
+                .reasoningContent(invocation.getReasoningContent())
                 .toolCallCount(invocation.getToolCallCount())
                 .promptTokens(invocation.getPromptTokens())
                 .completionTokens(invocation.getCompletionTokens())
                 .totalTokens(invocation.getTotalTokens())
+                .estTotalTokens(invocation.getEstTotalTokens())
+                .estSystemTokens(invocation.getEstSystemTokens())
+                .estMessageTokens(invocation.getEstMessageTokens())
+                .estToolTokens(invocation.getEstToolTokens())
                 .finishReason(invocation.getFinishReason())
                 .status(invocation.getStatus())
                 .errorMsg(invocation.getErrorMsg())

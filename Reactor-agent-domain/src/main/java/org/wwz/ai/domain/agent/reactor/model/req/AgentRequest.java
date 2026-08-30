@@ -31,6 +31,8 @@ public class AgentRequest {
     private String erp;
     private String query;
     private Integer agentType;
+    /** 独立问数链路标记；主 Agent 只由 agentType 区分 ReAct/PlanSolve。 */
+    private String outputStyle;
     private String basePrompt;
     private String sopPrompt;
     /**
@@ -47,8 +49,6 @@ public class AgentRequest {
      * 恢复出的会话级稳定文件
      */
     private List<FileInformation> sessionFiles;
-    private String outputStyle; // 交付物产出格式：html(网页模式）， docs(文档模式）， table(表格模式）
-    private String aiAgentId;
     /**
      * 本轮模型引用：modelId 或上游 modelName；空则从 MySQL 启用模型中选择默认项。
      * 由 LlmModelCatalog 解析 DB 配置，支持前端热切换。

@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """MRAG 文本 LLM 客户端：OpenAI 兼容协议，支持流式与重试。"""
+
 import os
 
 import dotenv
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 from reactor_tool.tool.mrag.utils.retry_utils import call_with_retry, stream_with_retry
 from reactor_tool.util.log_util import logger
+
 dotenv.load_dotenv()
 
 OPENAI_COMPAT_DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) "
-    "Gecko/20100101 Firefox/148.0"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
 
 
@@ -48,7 +49,9 @@ def _normalize_openai_compatible_base_url(base_url: str | None) -> str | None:
 def _build_openai_compatible_headers() -> dict[str, str]:
     """补齐第三方 OpenAI 兼容网关要求的默认请求头。"""
     return {
-        "User-Agent": os.getenv("OPENAI_COMPAT_USER_AGENT", OPENAI_COMPAT_DEFAULT_USER_AGENT)
+        "User-Agent": os.getenv(
+            "OPENAI_COMPAT_USER_AGENT", OPENAI_COMPAT_DEFAULT_USER_AGENT
+        )
     }
 
 
@@ -63,10 +66,13 @@ class LLMClient:
         self.api_key = os.getenv("LLM_API_KEY")
         self.model_name = os.getenv("LLM_MODEL_NAME")
         # 兼容把 base url 误填成 /v1/chat/completions 的配置，避免切换到 OpenAI 兼容网关时拼接出错。
-        self.model_base_url = _normalize_openai_compatible_base_url(os.getenv("LLM_MODEL_BASE_URL"))
+        self.model_base_url = _normalize_openai_compatible_base_url(
+            os.getenv("LLM_MODEL_BASE_URL")
+        )
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.model_base_url,
+            http_client=DefaultHttpxClient(trust_env=False),
             default_headers=_build_openai_compatible_headers(),
         )
         logger.info("init LLM client, {base_url}".format(base_url=self.model_base_url))
@@ -81,9 +87,7 @@ class LLMClient:
         if model_name.startswith("qwen") or model_name.startswith("dashscope/"):
             return {
                 "enable_thinking": False,
-                "chat_template_kwargs": {
-                    "enable_thinking": False
-                }
+                "chat_template_kwargs": {"enable_thinking": False},
             }
         return None
 
@@ -118,9 +122,11 @@ class LLMClient:
         return self.completions(messages)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     os.environ.setdefault("LLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     os.environ.setdefault("LLM_MODEL_NAME", "gpt-5.2")
-    os.environ.setdefault("LLM_MODEL_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    os.environ.setdefault(
+        "LLM_MODEL_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    )
     llm = LLMClient()
     print(llm.completions([{"role": "user", "content": "你好"}]))

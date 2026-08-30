@@ -23,7 +23,6 @@ public class AgentQueryServiceVisitorPropagationTest {
                 .requestId("req-visitor-001")
                 .query("帮我生成总结")
                 .deepThink(0)
-                .outputStyle("html")
                 .user("reactor")
                 .build();
 

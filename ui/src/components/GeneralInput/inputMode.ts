@@ -1,17 +1,14 @@
-type InputModeKey = "quick" | "think" | "research";
+type InputModeKey = "think" | "research";
 
 /**
  * 组装发送载荷。
- * 输出格式（html/docs/ppt/table）已下线：标准任务不再透传 outputStyle，
- * 仅 chat / dataAgent 保留协议字段。
+ * 标准 Agent 只透传 deepThink；dataAgent 仍由独立问数入口处理。
  */
 export function buildSubmitPayload(params: {
   question: string;
   visibleMode: InputModeKey;
   isDataAgent: boolean;
-  currentProductType?: string;
   uploadedFiles: CHAT.TFile[];
-  chatRole: CHAT.ConversationRole | null;
   model?: string;
   thinking?: boolean;
   thinkingEffort?: string | null;
@@ -28,19 +25,6 @@ export function buildSubmitPayload(params: {
       outputStyle: "dataAgent" as const,
       deepThink: false,
       files: params.uploadedFiles.length > 0 ? params.uploadedFiles : undefined,
-      model,
-      thinking,
-      thinkingEffort,
-    };
-  }
-
-  if (params.visibleMode === "quick") {
-    return {
-      message: params.question.trim(),
-      outputStyle: "chat" as const,
-      deepThink: false,
-      files: params.uploadedFiles.length > 0 ? params.uploadedFiles : undefined,
-      aiAgentId: params.chatRole?.agentId,
       model,
       thinking,
       thinkingEffort,

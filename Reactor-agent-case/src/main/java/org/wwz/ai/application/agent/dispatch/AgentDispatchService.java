@@ -32,9 +32,7 @@ public class AgentDispatchService implements IAgentDispatchService {
 
         // agentType 只负责选择应用策略，具体执行和输出协议分别交给 strategy 与 stream，避免调度器承载业务逻辑。
         if (request.getAgentType() != null) {
-            if (AgentType.WORKFLOW.getValue().equals(request.getAgentType())) {
-                strategy = "flowAgentExecuteStrategy";
-            } else if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
+            if (AgentType.PLAN_SOLVE.getValue().equals(request.getAgentType())) {
                 strategy = "planSolveAgentExecuteStrategy";
             } else if (AgentType.REACT.getValue().equals(request.getAgentType())) {
                 strategy = "reactAgentExecuteStrategy";
@@ -42,7 +40,7 @@ public class AgentDispatchService implements IAgentDispatchService {
         }
 
         if (strategy == null || strategy.isEmpty()) {
-            // 未识别类型沿用 ReAct 作为兼容默认策略，保证旧客户端不因缺少 agentType 直接失效。
+            // 未识别类型统一使用 ReAct，系统只保留 ReAct 与 PlanSolve 两种执行模式。
             strategy = "reactAgentExecuteStrategy";
         }
 

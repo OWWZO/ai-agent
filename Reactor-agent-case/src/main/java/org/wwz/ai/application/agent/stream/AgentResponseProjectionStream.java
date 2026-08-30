@@ -291,18 +291,10 @@ public class AgentResponseProjectionStream implements AgentSessionStream {
 
     private static GptProcessResult buildDefaultResult(AgentRequest request, String errMsg) {
         GptProcessResult result = new GptProcessResult();
-        boolean routerRequest = AgentType.ROUTER.getValue().equals(request.getAgentType());
-        if (routerRequest) {
-            result.setStatus("success");
-            result.setFinished(true);
-            result.setResponse(errMsg);
-            result.setTraceId(request.getRequestId());
-        } else {
-            result.setResultMap(new HashMap<>());
-            result.setStatus("failed");
-            result.setFinished(true);
-            result.setErrorMsg(errMsg);
-        }
+        result.setResultMap(new HashMap<>());
+        result.setStatus("failed");
+        result.setFinished(true);
+        result.setErrorMsg(errMsg);
         return result;
     }
 }

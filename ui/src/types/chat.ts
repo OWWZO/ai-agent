@@ -82,7 +82,6 @@ declare global {
       message: string;
       outputStyle?: string;
       deepThink: boolean;
-      aiAgentId?: string;
       /** 本轮模型 modelId 或上游 modelName；空=后端默认 */
       model?: string;
       /** 深度思考（本轮） */
@@ -174,7 +173,6 @@ declare global {
       title: string;
       productType: string;
       deepThink: boolean;
-      role?: ConversationRole | null;
       createdAt: number;
       updatedAt: number;
       chatTitle: string;
@@ -188,19 +186,6 @@ declare global {
       schemaList: { columnComment: string; columnName: string; dataType: string; columnId: string }[];
     };
 
-    export type ConversationRole = {
-      agentId: string;
-      agentName: string;
-      available: boolean;
-      defaultRole: boolean;
-    };
-
-    export type FixRole = {
-      agentId: string;
-      agentName: string;
-      description?: string;
-      defaultRole: boolean;
-    };
 
     export type ConversationSessionItem = import("@/services/agentConversation").ConversationSessionItem;
     export type ConversationHistoryDetail = import("@/services/agentConversation").ConversationHistoryDetail;

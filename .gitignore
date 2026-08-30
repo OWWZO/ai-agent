@@ -78,6 +78,14 @@ Thumbs.db
 /Reactor-agent-app/src/main/resources/
 /Reactor-agent-app/src/main/resources/application-dev.yml
 /Reactor-agent-app/src/main/resources/application-test.yml
+# Active tool-output mapper XMLs are application resources, not local secrets.
+!/Reactor-agent-app/src/main/resources/
+/Reactor-agent-app/src/main/resources/*
+!/Reactor-agent-app/src/main/resources/mybatis/
+/Reactor-agent-app/src/main/resources/mybatis/*
+!/Reactor-agent-app/src/main/resources/mybatis/mapper/
+/Reactor-agent-app/src/main/resources/mybatis/mapper/*
+!/Reactor-agent-app/src/main/resources/mybatis/mapper/tool_output_*.xml
 /mcp-server-csdn/mcp-server-csdn/src/main/resources/application.yml
 /mcp-server-csdn/data/log/
 /reactor-tool/cookies.json

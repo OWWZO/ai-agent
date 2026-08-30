@@ -17,8 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 跨轮轻量 readState 持久化（session workspace 旁的 JSON，不进 MySQL、不存全文）。
- * 只服务：别重复读 / 允许直接 edit。
+ * 跨轮轻量 readState 持久化（主 Agent 的 session workspace 旁的 JSON，不进 MySQL、不存全文）。
+ * 只服务主 Agent 的：别重复读 / 允许直接 edit。
  */
 @Slf4j
 @Component
@@ -27,7 +27,7 @@ public class WorkspaceReadStateStore {
     private static final String RELATIVE_STORE_PATH = ".reactor/read-state.json";
 
     public void hydrate(AgentContext agentContext) {
-        if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot())) {
+        if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot()) || isSubAgent(agentContext)) {
             return;
         }
         Path storeFile = storeFile(agentContext.getWorkspaceRoot());
@@ -72,7 +72,7 @@ public class WorkspaceReadStateStore {
     }
 
     public void persist(AgentContext agentContext) {
-        if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot())) {
+        if (agentContext == null || StringUtils.isBlank(agentContext.getWorkspaceRoot()) || isSubAgent(agentContext)) {
             return;
         }
         Map<String, WorkspaceFileReadState> states = agentContext.snapshotWorkspaceReadState();
@@ -126,6 +126,10 @@ public class WorkspaceReadStateStore {
 
     private Path storeFile(String workspaceRoot) {
         return Path.of(workspaceRoot).toAbsolutePath().normalize().resolve(RELATIVE_STORE_PATH);
+    }
+
+    private boolean isSubAgent(AgentContext agentContext) {
+        return StringUtils.isNotBlank(agentContext.getSubAgentId());
     }
 
     /**

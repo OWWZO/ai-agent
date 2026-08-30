@@ -14,10 +14,8 @@ import org.wwz.ai.domain.agent.ledger.model.LlmInvocationStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputPersistCommand;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -162,7 +160,7 @@ public class AgentExecutionLedgerRepositoryTest {
         Assert.assertEquals(1, artifacts.size());
         Assert.assertEquals("req-ledger-001", artifacts.get(0).getRequestId());
         Assert.assertEquals(Long.valueOf(toolInvocationId), artifacts.get(0).getToolInvocationId());
-        Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", toolInvocationId).isPresent());
+        Assert.assertTrue(ctx.toolOutputReader.readByInvocationId("file_tool", toolInvocationId).isEmpty());
     }
 
     @Test
@@ -308,7 +306,7 @@ public class AgentExecutionLedgerRepositoryTest {
     }
 
     @Test
-    public void shouldPersistDirectToolOutputWithoutLedgerRun() {
+    public void shouldSkipDirectRetiredToolOutputWithoutLedgerRun() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         ctx.toolOutputWriter.write(ToolOutputPersistCommand.builder()
                 .requestId("req-direct-ledger-001")
@@ -317,18 +315,12 @@ public class AgentExecutionLedgerRepositoryTest {
                 .toolName("report_tool")
                 .status(ExecutionLedgerConstants.STATUS_FAILED)
                 .errorMsg("direct timeout")
-                .structuredOutput(ReportToolOutput.builder()
-                        .summary("direct timeout")
-                        .content("")
-                        .build())
+                .structuredOutput(null)
                 .build());
 
         Assert.assertNull(ctx.runDao.queryByRequestId("req-direct-ledger-001"));
-        ToolOutputView direct = ctx.toolOutputReader.readDirect("req-direct-ledger-001", "tool-call-direct-ledger-001")
-                .orElseThrow();
-        Assert.assertEquals("report_tool", direct.getToolName());
-        Assert.assertEquals(ExecutionLedgerConstants.REQUEST_SOURCE_AGENT, direct.getRequestSource());
-        Assert.assertEquals(Integer.valueOf(ExecutionLedgerConstants.STATUS_FAILED), direct.getStatus());
-        Assert.assertEquals("direct timeout", direct.getErrorMsg());
+        Assert.assertTrue(ctx.toolOutputReader
+                .readDirect("req-direct-ledger-001", "tool-call-direct-ledger-001")
+                .isEmpty());
     }
 }

@@ -1,7 +1,10 @@
 package org.wwz.ai.test.domain;
 
 import org.junit.Assert;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.wwz.ai.api.response.Response;
 import org.wwz.ai.domain.agent.ledger.model.ArtifactRecordCommand;
@@ -12,12 +15,13 @@ import org.wwz.ai.domain.agent.ledger.model.ToolInvocationBatchStartRecord;
 import org.wwz.ai.domain.agent.ledger.model.ToolInvocationFinishRecord;
 import org.wwz.ai.domain.agent.reactor.model.response.GptProcessResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolStructuredOutput;
 import org.wwz.ai.trigger.http.agent.AgentConversationHistoryController;
 import org.wwz.ai.trigger.http.agent.vo.ConversationHistoryDetailRespVO;
 import org.wwz.ai.trigger.http.agent.vo.ConversationSessionRespVO;
+import org.wwz.ai.application.agent.visitor.ConversationSessionOwnershipApplicationService;
+import org.wwz.ai.types.agent.visitor.VisitorRequestContext;
 import org.wwz.ai.types.enums.ResponseCode;
 
 import java.time.LocalDateTime;
@@ -28,6 +32,16 @@ import java.util.Map;
  * 会话历史接口回归测试。
  */
 public class ConversationHistoryControllerTest {
+
+    @Before
+    public void bindVisitor() {
+        VisitorRequestContext.bind("visitor-test");
+    }
+
+    @After
+    public void clearVisitor() {
+        VisitorRequestContext.clear();
+    }
 
     @Test
     public void shouldReturnSessionDetailWithStatsAndReplayFrames() {
@@ -42,6 +56,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<ConversationHistoryDetailRespVO> response = controller.detail("session-history-001");
 
@@ -53,8 +69,6 @@ public class ConversationHistoryControllerTest {
         Assert.assertEquals(Integer.valueOf(2), detail.getRunCount());
         Assert.assertEquals(Integer.valueOf(1), detail.getFinishedRunCount());
         Assert.assertEquals(Integer.valueOf(1), detail.getFailedRunCount());
-        Assert.assertNotNull(detail.getRole());
-        Assert.assertEquals("默认助手", detail.getRole().getAgentName());
         Assert.assertEquals(2, detail.getRuns().size());
         Assert.assertFalse(detail.getRuns().get(0).getReplayFrames().isEmpty());
 
@@ -78,6 +92,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<List<ConversationSessionRespVO>> response = controller.list(20);
 
@@ -92,7 +108,7 @@ public class ConversationHistoryControllerTest {
     }
 
     @Test
-    public void shouldRestoreStructuredReactSessionModeFromHistoryDetail() {
+    public void shouldRestoreReactSessionModeFromHistoryDetail() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         String fileName = "react-history-report.html";
         seedRun(
@@ -105,28 +121,25 @@ public class ConversationHistoryControllerTest {
                 LocalDateTime.of(2026, 5, 2, 11, 0, 0),
                 ExecutionLedgerConstants.STATUS_SUCCESS,
                 "summary:req-react-structured-001",
-                ReportToolOutput.builder()
-                        .fileType("html")
-                        .content("<html><body>网页报告</body></html>")
-                        .fileRefs(List.of(buildFileRef(fileName)))
-                        .build(),
+                null,
                 fileName
         );
 
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<ConversationHistoryDetailRespVO> response = controller.detail("session-react-structured-001");
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        Assert.assertEquals("html", response.getData().getOutputStyle());
         Assert.assertEquals(Boolean.FALSE, response.getData().getDeepThink());
     }
 
     @Test
-    public void shouldRestorePlanSolveHistoryAsDeepResearchMode() {
+    public void shouldRestorePlanSolveHistoryMode() {
         ExecutionLedgerFixtureFactory.LedgerTestContext ctx = ExecutionLedgerFixtureFactory.newLedgerTestContext();
         String fileName = "plan-solve-history-report.html";
         seedRun(
@@ -139,23 +152,20 @@ public class ConversationHistoryControllerTest {
                 LocalDateTime.of(2026, 5, 2, 11, 30, 0),
                 ExecutionLedgerConstants.STATUS_SUCCESS,
                 "summary:req-plan-solve-001",
-                ReportToolOutput.builder()
-                        .fileType("html")
-                        .content("<html><body>深度研究报告</body></html>")
-                        .fileRefs(List.of(buildFileRef(fileName)))
-                        .build(),
+                null,
                 fileName
         );
 
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<ConversationHistoryDetailRespVO> response = controller.detail("session-plan-solve-001");
 
         Assert.assertEquals(ResponseCode.SUCCESS.getCode(), response.getCode());
         Assert.assertNotNull(response.getData());
-        Assert.assertEquals("html", response.getData().getOutputStyle());
         Assert.assertEquals(Boolean.TRUE, response.getData().getDeepThink());
     }
 
@@ -179,6 +189,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<List<ConversationSessionRespVO>> response = controller.list(null);
 
@@ -200,6 +212,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<ConversationHistoryDetailRespVO> response = controller.detail("session-history-stop-001");
 
@@ -223,6 +237,8 @@ public class ConversationHistoryControllerTest {
         AgentConversationHistoryController controller = new AgentConversationHistoryController();
         ReflectionTestUtils.setField(controller, "executionLedgerQueryService", ctx.queryService);
         ReflectionTestUtils.setField(controller, "conversationHistoryReplayService", ctx.replayService);
+        ReflectionTestUtils.setField(controller, "conversationSessionOwnershipApplicationService",
+                Mockito.mock(ConversationSessionOwnershipApplicationService.class));
 
         Response<ConversationHistoryDetailRespVO> response = controller.detail("session-missing-001");
 
@@ -287,6 +303,7 @@ public class ConversationHistoryControllerTest {
                 .runUid(requestId)
                 .requestId(requestId)
                 .sessionId(sessionId)
+                .visitorId("visitor-test")
                 .entryAgent(entryAgent)
                 .queryText(queryText)
                 .startedAt(startedAt)

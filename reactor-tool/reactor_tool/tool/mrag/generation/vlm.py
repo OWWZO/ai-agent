@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """视觉语言模型客户端：图片理解、caption、多模态问答。"""
+
 import base64
 import os
 import tempfile
 import uuid
 from pathlib import Path
 
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 
 from .llm import _build_openai_compatible_headers, _normalize_openai_compatible_base_url
 from reactor_tool.tool.mrag.utils import download_utils
@@ -21,10 +22,13 @@ class VLLMClient:
         self.api_key = api_key or os.getenv("VLM_API_KEY")
         self.model_name = model_name or os.getenv("VLM_MODEL_NAME")
         # 兼容把 base url 写成具体接口路径的场景，切换到 Java 同款供应商配置时自动归一化。
-        self.model_base_url = _normalize_openai_compatible_base_url(base_url or os.getenv("VLM_MODEL_BASE_URL"))
+        self.model_base_url = _normalize_openai_compatible_base_url(
+            base_url or os.getenv("VLM_MODEL_BASE_URL")
+        )
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.model_base_url,
+            http_client=DefaultHttpxClient(trust_env=False),
             default_headers=_build_openai_compatible_headers(),
         )
         logger.info(f"VLM Client {self.model_base_url}")
@@ -36,17 +40,9 @@ class VLLMClient:
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image_url
-                        }
-                    }
-                ]
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
             }
         ]
 
@@ -64,18 +60,18 @@ class VLLMClient:
 
         def _encode_image() -> str:
             with open(image_path, "rb") as image_file:
-                return base64.b64encode(image_file.read()).decode('utf-8')
+                return base64.b64encode(image_file.read()).decode("utf-8")
 
         def _get_image_mime_type() -> str:
             suffix = Path(image_path).suffix.lower()
             mime_types = {
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.png': 'image/png',
-                '.gif': 'image/gif',
-                '.webp': 'image/webp'
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
             }
-            return mime_types.get(suffix, 'image/jpeg')
+            return mime_types.get(suffix, "image/jpeg")
 
         base64_image = "data:" + _get_image_mime_type() + ";base64," + _encode_image()
 
@@ -86,17 +82,9 @@ class VLLMClient:
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": base64_image
-                        }
-                    }
-                ]
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": base64_image}},
+                ],
             }
         ]
 
@@ -107,7 +95,9 @@ class VLLMClient:
             return {"enable_thinking": False}
         return None
 
-    def completions(self, messages, temperature=0, stream=False, max_tokens: int = None):
+    def completions(
+        self, messages, temperature=0, stream=False, max_tokens: int = None
+    ):
         # logger.info(f"VLM completions {messages[:1]}")
         request_kwargs = {
             "model": self.model_name,
@@ -138,26 +128,25 @@ class VLLMClient:
         return self.completions(messages)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     messages = [
         {
             "role": "user",
             "content": [
-                {
-                    "type": "text",
-                    "text": "提取图片中所有内容。\n    输出:\n "
-                },
+                {"type": "text", "text": "提取图片中所有内容。\n    输出:\n "},
                 {
                     "type": "image_url",
                     "image_url": {
                         "url": "https://autobots.jd.com/autobots/interface/oss/downloadFile?ossName=joyspace-img/fd93bdf1aaf7ac2abea6315950176f2b.png"
-                    }
-                }
-            ]
+                    },
+                },
+            ],
         }
     ]
     os.environ.setdefault("VLM_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     os.environ.setdefault("VLM_MODEL_NAME", "gpt-5.2")
-    os.environ.setdefault("VLM_MODEL_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    os.environ.setdefault(
+        "VLM_MODEL_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    )
     llm = VLLMClient()
     print(llm.completions(messages))

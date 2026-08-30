@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.wwz.ai.domain.agent.ledger.entity.ArtifactRecord;
-import org.wwz.ai.domain.agent.runtime.dto.Plan;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CanvasPublishToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.CodeInterpreterToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DataAnalysisToolOutput;
@@ -15,14 +14,10 @@ import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchDoc;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchQueryResult;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchStage;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.DeepSearchToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.FileToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiPatchToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.GenUiTreeToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ImageGenerationToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.MultimodalAgentToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.PlanningToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ReportToolOutput;
-import org.wwz.ai.domain.agent.ledger.model.tooloutput.ScriptRunnerToolOutput;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolFileRef;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputNames;
 import org.wwz.ai.domain.agent.ledger.model.tooloutput.ToolOutputView;
@@ -35,12 +30,8 @@ import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDataAnalysisDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputDeepSearchDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiPatchDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputEmitUiTreeDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputFileToolDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputImageGenerationDao;
 import org.wwz.ai.infrastructure.dao.reactor.IToolOutputMultimodalAgentDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputPlanningDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputReportToolDao;
-import org.wwz.ai.infrastructure.dao.reactor.IToolOutputScriptRunnerDao;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -52,8 +43,9 @@ import java.util.Optional;
 /**
  * Execution Ledger 工具输出投影读取实现。
  *
- * <p>该类只读取各 rich tool 的专属输出表，并将数据库行恢复为领域结构化输出，
- * 不创建新的执行事实，也不把输出表当作第二套账本。已具备 {@code toolInvocationId}
+ * <p>该类只读取仍保留的 rich tool 专属输出表，并将数据库行恢复为领域结构化输出；
+ * 已退役的 file/planning/report/script 输出不再读取。该类不创建新的执行事实，也不把输出表当作第二套账本。
+ * 已具备 {@code toolInvocationId}
  * 时按工具和调用主键精准读取；历史记录缺少主键时才使用 request/toolCall 兼容查询，
  * 多表命中则返回空结果而不猜测关联关系。</p>
  *
@@ -66,14 +58,10 @@ import java.util.Optional;
 public class ToolOutputReaderImpl implements ToolOutputReader {
 
     private final IToolOutputDeepSearchDao deepSearchDao;
-    private final IToolOutputFileToolDao fileToolDao;
     private final IToolOutputCodeInterpreterDao codeInterpreterDao;
-    private final IToolOutputReportToolDao reportToolDao;
     private final IToolOutputDataAnalysisDao dataAnalysisDao;
     private final IToolOutputMultimodalAgentDao multimodalAgentDao;
     private final IToolOutputImageGenerationDao imageGenerationDao;
-    private final IToolOutputScriptRunnerDao scriptRunnerDao;
-    private final IToolOutputPlanningDao planningDao;
     private final IToolOutputCanvasPublishDao canvasPublishDao;
     private final IToolOutputEmitUiTreeDao emitUiTreeDao;
     private final IToolOutputEmitUiPatchDao emitUiPatchDao;
@@ -88,14 +76,10 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         // 已有 invocation 主键时直接命中对应输出表，避免跨表扫描；未知工具按“没有结构化输出”处理。
         return switch (toolName) {
             case ToolOutputNames.DEEP_SEARCH -> Optional.ofNullable(toDeepSearchOutput(deepSearchDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.FILE_TOOL -> Optional.ofNullable(toFileToolOutput(fileToolDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.CODE_INTERPRETER -> Optional.ofNullable(toCodeInterpreterOutput(codeInterpreterDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.REPORT_TOOL -> Optional.ofNullable(toReportToolOutput(reportToolDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.DATA_ANALYSIS -> Optional.ofNullable(toDataAnalysisOutput(dataAnalysisDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.MULTIMODAL_AGENT -> Optional.ofNullable(toMultimodalOutput(multimodalAgentDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.IMAGE_GENERATION -> Optional.ofNullable(toImageGenerationOutput(imageGenerationDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.SCRIPT_RUNNER -> Optional.ofNullable(toScriptRunnerOutput(scriptRunnerDao.queryByToolInvocationId(toolInvocationId)));
-            case ToolOutputNames.PLANNING -> Optional.ofNullable(toPlanningOutput(planningDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.CANVAS_PUBLISH -> Optional.ofNullable(toCanvasPublishOutput(canvasPublishDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.EMIT_UI_TREE -> Optional.ofNullable(toEmitUiTreeOutput(emitUiTreeDao.queryByToolInvocationId(toolInvocationId)));
             case ToolOutputNames.EMIT_UI_PATCH -> Optional.ofNullable(toEmitUiPatchOutput(emitUiPatchDao.queryByToolInvocationId(toolInvocationId)));
@@ -109,17 +93,13 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         if (StringUtils.isBlank(requestId) || StringUtils.isBlank(toolCallId)) {
             return Optional.empty();
         }
-        // 旧回放或缺少 invocationId 时只能跨 rich-tool 表查找；多表命中说明关联字段不唯一，不能猜测正确结果。
+        // 旧回放或缺少 invocationId 时只能跨保留的 rich-tool 表查找；多表命中说明关联字段不唯一，不能猜测正确结果。
         List<ToolOutputView> matches = new ArrayList<>();
         addIfPresent(matches, ToolOutputNames.DEEP_SEARCH, deepSearchDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.FILE_TOOL, fileToolDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.CODE_INTERPRETER, codeInterpreterDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.REPORT_TOOL, reportToolDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.DATA_ANALYSIS, dataAnalysisDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.MULTIMODAL_AGENT, multimodalAgentDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.IMAGE_GENERATION, imageGenerationDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.SCRIPT_RUNNER, scriptRunnerDao.queryByRequestToolCall(requestId, toolCallId));
-        addIfPresent(matches, ToolOutputNames.PLANNING, planningDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.CANVAS_PUBLISH, canvasPublishDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.EMIT_UI_TREE, emitUiTreeDao.queryByRequestToolCall(requestId, toolCallId));
         addIfPresent(matches, ToolOutputNames.EMIT_UI_PATCH, emitUiPatchDao.queryByRequestToolCall(requestId, toolCallId));
@@ -135,14 +115,10 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
         // DAO 行先恢复为领域结构化输出，再包装为带账本元数据的视图，保持回放层不依赖数据库列名。
         ToolStructuredOutput output = switch (toolName) {
             case ToolOutputNames.DEEP_SEARCH -> toDeepSearchOutput(row);
-            case ToolOutputNames.FILE_TOOL -> toFileToolOutput(row);
             case ToolOutputNames.CODE_INTERPRETER -> toCodeInterpreterOutput(row);
-            case ToolOutputNames.REPORT_TOOL -> toReportToolOutput(row);
             case ToolOutputNames.DATA_ANALYSIS -> toDataAnalysisOutput(row);
             case ToolOutputNames.MULTIMODAL_AGENT -> toMultimodalOutput(row);
             case ToolOutputNames.IMAGE_GENERATION -> toImageGenerationOutput(row);
-            case ToolOutputNames.SCRIPT_RUNNER -> toScriptRunnerOutput(row);
-            case ToolOutputNames.PLANNING -> toPlanningOutput(row);
             case ToolOutputNames.CANVAS_PUBLISH -> toCanvasPublishOutput(row);
             case ToolOutputNames.EMIT_UI_TREE -> toEmitUiTreeOutput(row);
             case ToolOutputNames.EMIT_UI_PATCH -> toEmitUiPatchOutput(row);
@@ -196,19 +172,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             ));
         }
         return chapters;
-    }
-
-    private ToolStructuredOutput toFileToolOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        return FileToolOutput.builder()
-                .command(stringValue(row, "command"))
-                .primaryFileName(stringValue(row, "primary_file_name", "primaryFileName"))
-                .previewUrl(stringValue(row, "preview_url", "previewUrl"))
-                .downloadUrl(stringValue(row, "download_url", "downloadUrl"))
-                .fileRefs(resolveFileRefs(row))
-                .build();
     }
 
     private ToolStructuredOutput toCodeInterpreterOutput(Map<String, Object> row) {
@@ -265,18 +228,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .build();
     }
 
-    private ToolStructuredOutput toReportToolOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        return ReportToolOutput.builder()
-                .fileType(stringValue(row, "file_type", "fileType"))
-                .summary(stringValue(row, "summary"))
-                .content(stringValue(row, "content"))
-                .fileRefs(resolveFileRefs(row))
-                .build();
-    }
-
     private ToolStructuredOutput toDataAnalysisOutput(Map<String, Object> row) {
         if (row == null) {
             return null;
@@ -317,38 +268,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
                 .build();
     }
 
-    private ToolStructuredOutput toScriptRunnerOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        return ScriptRunnerToolOutput.builder()
-                .skillName(stringValue(row, "skill_name", "skillName"))
-                .scriptName(stringValue(row, "script_name", "scriptName"))
-                .runtime(stringValue(row, "runtime"))
-                .success(booleanValue(row, "success"))
-                .exitCode(integerValue(row, "exit_code", "exitCode"))
-                .stdout(stringValue(row, "stdout"))
-                .stderr(stringValue(row, "stderr"))
-                .summary(stringValue(row, "summary"))
-                .fileRefs(resolveFileRefs(row))
-                .build();
-    }
-
-    private ToolStructuredOutput toPlanningOutput(Map<String, Object> row) {
-        if (row == null) {
-            return null;
-        }
-        return PlanningToolOutput.builder()
-                .command(stringValue(row, "command"))
-                .beforePlan(readPlan(stringValue(row, "before_plan_json", "beforePlanJson")))
-                .afterPlan(readPlan(stringValue(row, "after_plan_json", "afterPlanJson")))
-                .currentStep(stringValue(row, "current_step", "currentStep"))
-                .currentStepIndex(integerValue(row, "current_step_index", "currentStepIndex"))
-                .autoAdvanced(booleanValue(row, "auto_advanced", "autoAdvanced"))
-                .autoFinished(booleanValue(row, "auto_finished", "autoFinished"))
-                .build();
-    }
-
     private ToolOutputView toView(String toolName, Map<String, Object> row, ToolStructuredOutput output) {
         if (row == null) {
             return null;
@@ -371,13 +290,6 @@ public class ToolOutputReaderImpl implements ToolOutputReader {
             return new ArrayList<>();
         }
         return JSON.parseArray(json, DeepSearchStage.class);
-    }
-
-    private Plan readPlan(String json) {
-        if (StringUtils.isBlank(json)) {
-            return null;
-        }
-        return JSON.parseObject(json, Plan.class);
     }
 
     private List<ToolFileRef> resolveFileRefs(Map<String, Object> row) {

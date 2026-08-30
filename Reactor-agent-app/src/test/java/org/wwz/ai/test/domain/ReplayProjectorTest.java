@@ -18,8 +18,6 @@ import org.wwz.ai.domain.agent.ledger.replay.ReplayProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.ToolInvocationProjectorRegistry;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DefaultToolInvocationProjector;
 import org.wwz.ai.domain.agent.ledger.replay.projector.impl.DeepSearchToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.FileToolInvocationProjector;
-import org.wwz.ai.domain.agent.ledger.replay.projector.impl.PlanningToolInvocationProjector;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,8 +32,6 @@ public class ReplayProjectorTest {
     private final ReplayProjector replayProjector = new ReplayProjector(
             new ToolInvocationProjectorRegistry(
                     List.of(
-                            new FileToolInvocationProjector(),
-                            new PlanningToolInvocationProjector(),
                             new DeepSearchToolInvocationProjector(),
                             new DefaultToolInvocationProjector()
                     ),

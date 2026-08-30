@@ -31,6 +31,8 @@ interface SSEConfig<TMessage = unknown> {
   retryOnError?: boolean;
   /** 收到带 id 的业务事件时通知调用方保存游标。 */
   handleEventId?: (eventId: string) => void;
+  /** HTTP SSE 响应成功建立后通知调用方。 */
+  handleOpen?: () => void;
   parser?: (raw: unknown) => TMessage;
   handleMessage: (data: TMessage) => void;
   handleError: (error: Error) => void;
@@ -53,6 +55,7 @@ export default <TMessage = unknown>(
     // 当前入口使用 POST；默认不重发原始请求，避免断线后重复创建任务。
     retryOnError = false,
     handleEventId,
+    handleOpen,
     parser,
     handleMessage,
     handleError,
@@ -66,6 +69,10 @@ export default <TMessage = unknown>(
     signal,
     body: method === 'GET' ? undefined : JSON.stringify(body),
     openWhenHidden: true,
+    onopen() {
+      handleOpen?.();
+      return Promise.resolve();
+    },
     onmessage(event: EventSourceMessage) {
       if (event.id) {
         handleEventId?.(event.id);
