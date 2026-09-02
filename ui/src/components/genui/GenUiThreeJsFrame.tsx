@@ -5,6 +5,7 @@ import {
   WORKSPACE_RESIZE_START_EVENT,
   isWorkspaceResizeEventFor,
 } from "@/utils/workspaceResize";
+import { buildThreeJsSceneDocument } from "./threeJsSceneDocument";
 
 type GeometryKind =
   | "box"
@@ -211,10 +212,18 @@ function disposeObject(obj: THREE.Object3D): void {
 const GenUiThreeJsFrame: FC<Props> = memo((props) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const options = useMemo(() => inferSceneOptions(props), [props]);
+  const sceneScript = typeof props.sceneScript === "string" ? props.sceneScript.trim() : "";
+  const scriptedDocument = useMemo(
+    () =>
+      sceneScript
+        ? buildThreeJsSceneDocument(sceneScript, options)
+        : "",
+    [sceneScript, options]
+  );
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    if (!host || sceneScript) return;
 
     const scene = new THREE.Scene();
     // 每次 options 变化都建立完整的独立 scene；清理函数会销毁旧 renderer，避免旧动画
@@ -427,22 +436,40 @@ const GenUiThreeJsFrame: FC<Props> = memo((props) => {
       disposeObject(scene);
       renderer.dispose();
     };
-  }, [options]);
+  }, [options, sceneScript]);
+
+  const frameStyle = {
+    ...(props.height != null && String(props.height) !== ""
+      ? {
+        minHeight: options.height,
+        height: options.height,
+        maxHeight: "none",
+        aspectRatio: "auto",
+      }
+      : {}),
+    background: options.background,
+  };
 
   return (
     <figure className="overflow-hidden rounded-lg border border-[var(--chat-border)] bg-[var(--chat-surface)]">
-      <div
-        ref={hostRef}
-        role="img"
-        aria-label={options.title}
-        className="w-full min-h-[320px] max-h-[min(64vh,720px)] aspect-[16/9]"
-        style={{
-          ...(props.height != null && String(props.height) !== ""
-            ? { minHeight: options.height, height: options.height, maxHeight: "none", aspectRatio: "auto" }
-            : {}),
-          background: options.background,
-        }}
-      />
+      {sceneScript ? (
+        <iframe
+          title={options.title}
+          srcDoc={scriptedDocument}
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          className="w-full min-h-[320px] max-h-[min(64vh,720px)] aspect-[16/9] border-0"
+          style={frameStyle}
+        />
+      ) : (
+        <div
+          ref={hostRef}
+          role="img"
+          aria-label={options.title}
+          className="w-full min-h-[320px] max-h-[min(64vh,720px)] aspect-[16/9]"
+          style={frameStyle}
+        />
+      )}
     </figure>
   );
 });
