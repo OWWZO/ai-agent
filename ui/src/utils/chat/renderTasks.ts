@@ -39,19 +39,19 @@ function cloneResultMapSnapshot(
   // 只复制渲染链会读取的可变数组，保留其它字段引用以控制复制成本。
   const chapters = resultMap.chapters
     ? Object.fromEntries(
-        Object.entries(resultMap.chapters).map(([key, chapter]) => [
-          key,
-          chapter
-            ? {
-                ...chapter,
-                queries: [...(chapter.queries || [])],
-                docs: (chapter.docs || []).map((bucket) =>
-                  Array.isArray(bucket) ? [...bucket] : []
-                ),
-              }
-            : chapter,
-        ])
-      )
+      Object.entries(resultMap.chapters).map(([key, chapter]) => [
+        key,
+        chapter
+          ? {
+            ...chapter,
+            queries: [...(chapter.queries || [])],
+            docs: (chapter.docs || []).map((bucket) =>
+              Array.isArray(bucket) ? [...bucket] : []
+            ),
+          }
+          : chapter,
+      ])
+    )
     : resultMap.chapters;
 
   return {
@@ -135,6 +135,35 @@ function getChaptersSignature(resultMap?: MESSAGE.ResultMap): string {
     .join(",");
 }
 
+function getArtifactSignature(task: RenderableTask): string {
+  const resultMap = task.resultMap || {};
+  const files: unknown[] = [
+    ...(task.fileList || []),
+    ...(resultMap.fileList || []),
+    ...(task.artifactRefs || []),
+    ...(resultMap.artifactRefs || []),
+  ];
+  return files
+    .map((value) => {
+      const file = (value || {}) as Record<string, unknown>;
+      return [
+        file.displayName,
+        file.fileName,
+        file.name,
+        file.resourceKey,
+        file.previewUrl,
+        file.domainUrl,
+        file.downloadUrl,
+        file.ossUrl,
+        file.missing ? "1" : "0",
+      ]
+        .filter(Boolean)
+        .join("@");
+    })
+    .filter(Boolean)
+    .join(",");
+}
+
 function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
   const resultMap = task.resultMap || {};
   const searchResult = resultMap.searchResult;
@@ -171,9 +200,9 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
         ?.toolCallId ||
       "",
     Array.isArray(resultMap.subAgentProgressLines)
-      ? resultMap.subAgentProgressLines.length
+      ? `${resultMap.subAgentProgressLines.length}:${resultMap.subAgentProgressLines[resultMap.subAgentProgressLines.length - 1] || ""}`
       : 0,
-    String(resultMap.subAgentLiveText || "").length,
+    String(resultMap.subAgentLiveText || ""),
     resultMap.subAgentElapsedMs ?? "",
     // 流式入参增长必须使签名失效，否则 WeakMap 会卡住旧 argumentsText
     typeof resultMap.argumentsText === "string"
@@ -182,15 +211,16 @@ function getTaskRenderSignature(task: RenderableTask, baseId: string): string {
     typeof (resultMap as { resultMap?: { argumentsText?: string } }).resultMap
       ?.argumentsText === "string"
       ? (resultMap as { resultMap?: { argumentsText?: string } }).resultMap!
-          .argumentsText!.length
+        .argumentsText!.length
       : 0,
     toolCallTargetName,
-    task.toolThought?.length || 0,
-    resultMap.answer?.length || 0,
+    task.toolThought || "",
+    resultMap.answer || "",
     resultMap.codeOutput?.length || 0,
     resultMap.data?.length || 0,
     artifactRefs.length,
     artifactRefs[0]?.resourceKey || artifactRefs[0]?.previewUrl || artifactRefs[0]?.downloadUrl || "",
+    getArtifactSignature(task),
     querySignature,
     docsSignature,
     getChaptersSignature(resultMap as MESSAGE.ResultMap),
@@ -208,9 +238,10 @@ function createRenderTask(
   const nextTask = {
     ...task,
     id,
+    __timelineRendered: true,
     resultMap: task.resultMap ? { ...task.resultMap } : task.resultMap,
     plan: clonePlanForRender(task.plan),
-  } as CHAT.Task;
+  } as unknown as CHAT.Task;
 
   if (searchResult && nextTask.resultMap) {
     nextTask.resultMap.searchResult = searchResult as CHAT.Task["resultMap"]["searchResult"];
@@ -303,7 +334,10 @@ function collectDeepSearchChapters(
   }
 
   return [...chapters.entries()]
-    .map(([key, chapter]) => ({ key, chapter }))
+    .map(([key, chapter]) => ({
+      key,
+      chapter
+    }))
     .sort((left, right) => {
       const leftOrder = left.chapter.chapterOrder ?? Number.MAX_SAFE_INTEGER;
       const rightOrder = right.chapter.chapterOrder ?? Number.MAX_SAFE_INTEGER;
@@ -441,7 +475,7 @@ function processDeepSearchTask(
         ...reportTask.resultMap,
         ...inner,
         messageType: "report",
-      };
+      } as unknown as CHAT.Task["resultMap"];
     }
     return [reportTask];
   }
@@ -490,7 +524,7 @@ function processDeepSearchTask(
         chapterStreaming: Boolean(chapter.streaming),
         answer: chapter.summary || "",
         chapters: inner?.chapters,
-      };
+      } as unknown as CHAT.Task["resultMap"];
 
       return renderTask;
     });
@@ -506,7 +540,7 @@ function processDeepSearchTask(
         ...fallback.resultMap,
         ...inner,
         messageType: messageType === "extend" ? "extend" : "search",
-      };
+      } as unknown as CHAT.Task["resultMap"];
     }
     return [fallback];
   }
@@ -549,7 +583,7 @@ function processDeepSearchTask(
       chapterStreaming: Boolean(chapter?.streaming),
       answer: chapter?.summary || "",
       chapters: inner?.chapters,
-    };
+    } as unknown as CHAT.Task["resultMap"];
 
     return renderTask;
   });
@@ -559,6 +593,11 @@ export function processTaskForRender(
   task: RenderableTask,
   baseId: string
 ): CHAT.Task[] {
+  if (
+    (task as CHAT.Task & { __timelineRendered?: boolean }).__timelineRendered
+  ) {
+    return [task as CHAT.Task];
+  }
   const signature = getTaskRenderSignature(task, baseId);
   const cached = taskRenderCache.get(task);
   if (cached?.signature === signature) {

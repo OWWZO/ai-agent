@@ -5,7 +5,12 @@ import {
 } from "@/utils/deepSearch";
 import { buildAction } from "@/utils/chat";
 import { isAgentDispatchTask } from "@/utils/chat/subagent";
-import { getTaskFiles } from "@/utils/taskArtifacts";
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+  resolveTaskToolResultText,
+} from "@/utils/chat/toolCalls";
+import { getTaskFiles, isFileListOnlyTask } from "@/utils/taskArtifacts";
 import { isValidJSON } from "@/utils";
 import type { ActiveRunState } from "./chatView.types";
 
@@ -50,7 +55,7 @@ const WORKSPACE_HIDDEN_MESSAGE_TYPES = new Set([
 
 /**
  * 只有真正“值得抢焦点”的产物才自动打开右侧工作区。
- * tool_call / 纯 tool_result 只留在时间线，避免每一步工具都把双栏拉开。
+ * tool_call / 纯 tool_result 不自动抢焦点，但时间线点击后仍可查看结果。
  * ask_user_question / plan_approval 交互在底部 Dock，不抢右侧工作区。
  */
 const WORKSPACE_ATTENTION_MESSAGE_TYPES = new Set([
@@ -98,10 +103,37 @@ function hasWorkspaceArtifacts(
   }
 }
 
+function resolveTaskToolName(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  return String(
+    resolveTaskToolResult(task)?.toolName ||
+      resolveTaskResultMap(task).toolName ||
+      ""
+  ).toLowerCase();
+}
+
+/** canvas_publish 实时是 tool_call，历史回放是 html；两者都应打开右侧预览。 */
+export function isCanvasPublishPreviewTask(
+  task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
+) {
+  if (!task) {
+    return false;
+  }
+  if (task.messageType === "html") {
+    return true;
+  }
+  return resolveTaskToolName(task) === "canvas_publish";
+}
+
 export function isWorkspaceRenderableTask(
   task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>
 ) {
   if (!task) {
+    return false;
+  }
+
+  if (isFileListOnlyTask(task)) {
     return false;
   }
 
@@ -110,7 +142,7 @@ export function isWorkspaceRenderableTask(
   }
 
   if (task.messageType === "deep_search") {
-    return shouldRenderDeepSearchWorkspace(task.resultMap?.messageType);
+    return shouldRenderDeepSearchWorkspace(resolveTaskResultMap(task).messageType);
   }
 
   return true;
@@ -127,12 +159,19 @@ export function isWorkspaceAttentionTask(
   }
 
   const messageType = task?.messageType || "";
-  if (WORKSPACE_ATTENTION_MESSAGE_TYPES.has(messageType)) {
+  if (messageType === "deep_search") {
     return true;
   }
 
-  if (messageType === "tool_result" && hasWorkspaceArtifacts(task)) {
-    return true;
+  if (isCanvasPublishPreviewTask(task)) {
+    return hasWorkspaceArtifacts(task);
+  }
+
+  if (
+    WORKSPACE_ATTENTION_MESSAGE_TYPES.has(messageType) ||
+    messageType === "tool_result"
+  ) {
+    return hasWorkspaceArtifacts(task);
   }
 
   return false;
@@ -150,6 +189,9 @@ export function isStructuredDataOnlyTask(
 
   const messageType = task.messageType || "";
   if (messageType === "tool_call") {
+    if (isCanvasPublishPreviewTask(task) && hasWorkspaceArtifacts(task)) {
+      return false;
+    }
     // 子智能体卡片本身也不打开右侧：嵌套工具在时间线展开查看，
     // 否则 JSON 出参隐藏后会弹出空白工作区。
     return true;
@@ -163,23 +205,28 @@ export function isStructuredDataOnlyTask(
     return false;
   }
 
-  const toolName =
-    (task as CHAT.Task).toolResult?.toolName ||
-    (task.resultMap as { toolName?: string } | undefined)?.toolName ||
-    "";
-  if (toolName === "internal_search" || toolName === "web_search") {
+  const toolName = String(
+    resolveTaskToolResult(task)?.toolName ||
+      resolveTaskResultMap(task).toolName ||
+      ""
+  ).toLowerCase();
+  if (
+    toolName === "internal_search" ||
+    toolName === "web_search" ||
+    toolName === "websearch" ||
+    toolName === "search"
+  ) {
     return false;
   }
 
-  // Agent 派发结果：右侧当前会把 JSON 观察值收成 empty，禁止点开空白面板。
-  // 子工具列表请在时间线嵌套卡片中查看。
+  // Agent 派发结果：右侧不渲染 JSON 观察值，禁止点开空白面板。
   if (isAgentDispatchTask(task as CHAT.Task)) {
     return true;
   }
 
-  const toolResultText = (task as CHAT.Task).toolResult?.toolResult;
-  // 无文本、或纯 JSON 结构化出参：前端暂不渲染，禁止打开空白面板
-  if (!toolResultText?.trim()) {
+  const toolResultText = resolveTaskToolResultText(task);
+  // 无文本、或纯 JSON 结构化出参：前端不渲染，禁止打开空白面板
+  if (!toolResultText.trim()) {
     return true;
   }
   return isValidJSON(toolResultText);
@@ -221,12 +268,28 @@ export function shouldRefreshWorkspaceTask(eventData?: MESSAGE.EventData) {
   }
 
   const innerType = eventData.resultMap?.messageType || eventData.messageType;
+  if (isFileListOnlyTask({
+    messageType: innerType,
+    resultMap: eventData.resultMap,
+    artifactRefs: eventData.artifactRefs,
+  } as unknown as CHAT.Task)) {
+    return false;
+  }
+
   if (innerType && WORKSPACE_HIDDEN_MESSAGE_TYPES.has(innerType)) {
     return false;
   }
 
   if (innerType === "tool_call") {
-    return false;
+    return isCanvasPublishPreviewTask({
+      messageType: "tool_call",
+      artifactRefs: eventData.artifactRefs,
+      resultMap: eventData.resultMap,
+    } as unknown as CHAT.Task) && hasWorkspaceArtifacts({
+      messageType: "tool_call",
+      artifactRefs: eventData.artifactRefs,
+      resultMap: eventData.resultMap,
+    } as unknown as CHAT.Task);
   }
 
   if (innerType === "tool_result") {
@@ -301,6 +364,9 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
   if (!tool) {
     return false;
   }
+  if (isFileListOnlyTask(tool)) {
+    return false;
+  }
   // 终答/总结类永不作为“进行中”闪动
   if (
     tool.messageType === "task_summary" ||
@@ -322,20 +388,21 @@ export function isTimelineToolActive(tool?: CHAT.Task) {
     return !isTaskFinal(tool) && tool.resultMap?.status !== "success";
   }
   if (tool.messageType === "deep_search") {
-    const stage = resolveDeepSearchStage(tool.resultMap?.messageType);
+    const resultMap = resolveTaskResultMap(tool);
+    const stage = resolveDeepSearchStage(resultMap.messageType);
     if (stage === "report") {
       return !isTaskFinal(tool);
     }
     if (stage === "extend") {
       return true;
     }
-    if (tool.resultMap?.chapterStreaming) {
+    if (resultMap.chapterStreaming) {
       return true;
     }
     if (stage === "chapter_summary") {
       return false;
     }
-    return !resolveChapterSummary(tool.resultMap);
+    return !resolveChapterSummary(resultMap);
   }
   if (CRAFTING_MESSAGE_TYPES.has(tool.messageType || "")) {
     return !isTaskFinal(tool);
@@ -347,7 +414,8 @@ function collectTimelineTools(chat?: CHAT.ChatItem): CHAT.Task[] {
   if (!chat) {
     return [];
   }
-  const isUiTask = (task: CHAT.Task) => task.messageType !== "plan_mode_entered";
+  const isUiTask = (task: { messageType?: string }) =>
+    task.messageType !== "plan_mode_entered" && !isFileListOnlyTask(task as CHAT.Task);
   const fromRendered = (chat.tasks || []).flatMap((group) =>
     (group || [])
       .flatMap((container) => container.children || [])
@@ -496,7 +564,10 @@ export function resolveRunPresence(params: {
 
   return {
     phase,
-    hint: resolveRunPhaseHint(phase, { deepThink, workspaceTitle }),
+    hint: resolveRunPhaseHint(phase, {
+      deepThink,
+      workspaceTitle,
+    }),
     attention,
     workspaceTitle,
   };

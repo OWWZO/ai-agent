@@ -1,14 +1,9 @@
 import { FC, useState, useCallback, useMemo, memo, useEffect, useRef, useSyncExternalStore } from "react";
 import AttachmentList from "@/components/AttachmentList";
-import { getTaskFiles } from "@/utils/taskArtifacts";
-import {
-  Message,
-  MessageContent,
-} from "@/components/ai-elements/message";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
 import RunStatus from "@/components/ActionView/RunStatus";
 import { isPlanSolveConversation } from "@/utils/agentMode";
-import { collectChatArtifactFiles } from "@/utils/markdownArtifacts";
 import {
   buildPlannerRoundsForDisplay,
   syncPlannerVersionCursor,
@@ -16,7 +11,6 @@ import {
 import { PlanSection } from "./PlanSection";
 import { AgentStepTimeline } from "./AgentStepTimeline";
 import { MessageToolbar } from "./MessageToolbar";
-import { resolveTaskSummaryText } from "./contentHelpers";
 import GenUiInline from "@/components/genui/GenUiInline";
 import { findFeaturedGenUi } from "@/utils/chat/genuiState";
 import { buildConversationTaskData } from "@/utils/chat";
@@ -28,6 +22,7 @@ import {
   getLocalUiVersion,
   subscribeGenUiLocalTree,
 } from "@/components/genui/genUiLocalTreeStore";
+import ConclusionSection from "./ConclusionSection";
 
 type Props = {
   chat: CHAT.ChatItem;
@@ -35,8 +30,8 @@ type Props = {
   deepThink: boolean;
   /** 会话级产物；终答 Markdown 相对引用优先用此表，避免只认本轮 */
   sessionArtifactFiles?: CHAT.TFile[];
-  changeTask?: (task: CHAT.Task, chat?: CHAT.ChatItem) => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeTask?: CHAT.OpenTaskHandler;
+  changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
   onUndo?: () => void;
   thinkingPanelOpen?: boolean;
@@ -44,51 +39,7 @@ type Props = {
   onSyncThinking?: (text: string) => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
-};
-
-const ConclusionSection: FC<{
-  chat: CHAT.ChatItem;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
-  sessionArtifactFiles?: CHAT.TFile[];
-}> = ({ chat, changeFile, sessionArtifactFiles }) => {
-  const summaryText = resolveTaskSummaryText(chat.conclusion);
-  const summary = summaryText || "任务已完成";
-  const summaryStreaming =
-    !!chat.loading && chat.conclusion?.messageType === "agent_stream";
-  const attachmentFiles = useMemo(
-    () => getTaskFiles(chat.conclusion),
-    [chat.conclusion]
-  );
-  // 终答相对文件名引用优先会话级产物表，否则回退本轮。
-  const artifactFiles = useMemo(() => {
-    if (sessionArtifactFiles?.length) {
-      return sessionArtifactFiles;
-    }
-    return collectChatArtifactFiles(chat);
-  }, [chat, sessionArtifactFiles]);
-  return (
-    <div className="mt-5">
-      {/* 对齐 kimi-web a-msg：终答正文 + 底部复制脚 */}
-      <Message from="assistant" className="min-w-0 w-full">
-        <MessageContent>
-          <MarkdownRenderer
-            markDownContent={summary}
-            isStreaming={summaryStreaming}
-            artifactFiles={artifactFiles}
-            className="chat-markdown conclusion-markdown kimi-md"
-          />
-        </MessageContent>
-        {!summaryStreaming && summaryText ? (
-          <MessageToolbar response={summaryText} alwaysVisible />
-        ) : null}
-      </Message>
-      <AttachmentList
-        files={attachmentFiles}
-        preview={true}
-        review={(file) => changeFile?.(file, chat)}
-      />
-    </div>
-  );
+  onOpenWorkspaceFiles?: () => void;
 };
 
 const DialogueComponent: FC<Props> = (props) => {
@@ -106,6 +57,7 @@ const DialogueComponent: FC<Props> = (props) => {
     onSyncThinking,
     onOpenToolDiff,
     onOpenAgent,
+    onOpenWorkspaceFiles,
   } = props;
   const isPlanSolveMessage = isPlanSolveConversation(chat.agentType, deepThink);
   const isReactType = !isPlanSolveMessage;
@@ -193,15 +145,24 @@ const DialogueComponent: FC<Props> = (props) => {
     !showStandaloneResponse &&
     (!!thoughtText || !!displayedPlan || timelineChat.tasks.length > 0);
   // plan_thought 的 isFinal 只表示本轮规划思考完成，不等于整个 Agent 已结束。
-  // 只有尚未收到思考终态的最新轮次才允许闪动，后续工具执行阶段保持静止。
+  // 计划已出或思考已终态后不再保持流式展开，避免整轮 loading 期间无法折叠。
   const thoughtStreaming =
     Boolean(chat.loading) &&
+    Boolean(thoughtText.trim()) &&
     thoughtVersionIndex === latestRoundIndex &&
-    selectedThoughtRound?.planThoughtFinal !== true;
+    selectedThoughtRound?.planThoughtFinal !== true &&
+    !selectedThoughtRound?.plan;
 
-  const changeActiveChat = useCallback((task: CHAT.Task, targetChat: CHAT.ChatItem) => {
-    changeTask?.(task, targetChat);
-  }, [changeTask]);
+  const changeActiveChat = useCallback(
+    (
+      task: CHAT.Task,
+      targetChat: CHAT.ChatItem,
+      backTarget?: CHAT.AgentDetailTarget
+    ) => {
+      changeTask?.(task, targetChat, backTarget);
+    },
+    [changeTask]
+  );
 
   useEffect(() => {
     if (thinkingPanelOpen && thoughtText) {
@@ -293,6 +254,7 @@ const DialogueComponent: FC<Props> = (props) => {
               <MarkdownRenderer
                 markDownContent={chat.response}
                 isStreaming={chat.loading}
+                artifactFiles={sessionArtifactFiles}
                 className="chat-markdown kimi-md"
               />
             </MessageContent>
@@ -352,6 +314,7 @@ const DialogueComponent: FC<Props> = (props) => {
             chat={chat}
             changeFile={changeFile}
             sessionArtifactFiles={sessionArtifactFiles}
+            onOpenWorkspaceFiles={onOpenWorkspaceFiles}
           />
         </div>
       ) : null}
@@ -375,7 +338,8 @@ const Dialogue = memo(
     prev.onOpenThinking === next.onOpenThinking &&
     prev.onSyncThinking === next.onSyncThinking &&
     prev.onOpenToolDiff === next.onOpenToolDiff &&
-    prev.onOpenAgent === next.onOpenAgent
+    prev.onOpenAgent === next.onOpenAgent &&
+    prev.onOpenWorkspaceFiles === next.onOpenWorkspaceFiles
 );
 
 export default Dialogue;

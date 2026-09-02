@@ -1,5 +1,6 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
 import {
+  AppWindowIcon,
   BotIcon,
   FilePenLineIcon,
   FilePlusIcon,
@@ -12,13 +13,12 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from "lucide-react";
-import { canOpenTaskWorkspacePanel } from "@/components/ChatView/streamState";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
 import {
   normalizeToolName,
-  opensWorkspacePreferentially,
   toolChip,
   toolLabel,
   toolSummary,
@@ -36,6 +36,7 @@ import {
   resolveToolStreamPath,
   shouldShowToolArgStream,
 } from "./toolStreamPreview";
+import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 
 function toolGlyph(name: string): ReactNode {
   const key = normalizeToolName(name);
@@ -65,6 +66,9 @@ function toolGlyph(name: string): ReactNode {
       return <BotIcon className={cls} />;
     case "askuserquestion":
       return <HelpCircleIcon className={cls} />;
+    case "canvas_publish":
+    case "html":
+      return <AppWindowIcon className={cls} />;
     default:
       return <WrenchIcon className={cls} />;
   }
@@ -78,6 +82,7 @@ type GenericToolCallProps = {
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -87,6 +92,14 @@ type GenericToolCallProps = {
  * 默认工具卡（对齐 kimi GenericTool）。
  * Edit / Agent / AskUser 由 toolRegistry 分流，不走进这里。
  */
+function shouldOpenCanvasPreview(tool: CHAT.Task): boolean {
+  const name = normalizeToolName(resolveTaskToolName(tool));
+  if (name !== "canvas_publish" && name !== "html" && tool.messageType !== "html") {
+    return false;
+  }
+  return getTaskFiles(tool).length > 0;
+}
+
 export const GenericToolCall = memo(function GenericToolCall({
   tool,
   chat,
@@ -95,7 +108,7 @@ export const GenericToolCall = memo(function GenericToolCall({
   stackPosition = "single",
   defaultExpanded,
   changeActiveChat,
-  changePlan,
+  changeFile,
 }: GenericToolCallProps) {
   const name = resolveTaskToolName(tool);
   const arg = resolveTaskToolArg(tool);
@@ -109,26 +122,22 @@ export const GenericToolCall = memo(function GenericToolCall({
     ? streamPath || (argStreaming ? "生成参数中…" : toolSummary(name, arg))
     : toolSummary(name, arg);
   const summaryFull = toolSummary(name, arg, true);
+  const inputJson = parseToolJson(arg);
   const chip = showArgStream
     ? formatToolStreamChip(arg, arg)
     : toolChip({
-        name,
-        arg,
-        output,
-        timing,
-        status,
-      });
+      name,
+      arg,
+      output,
+      timing,
+      status,
+    });
 
   const isRunningBash =
     status === "running" && normalizeToolName(name) === "bash";
   const hasOutput = output.length > 0;
   const canExpand =
-    hasOutput || isRunningBash || Boolean(summaryFull) || showArgStream;
-  const preferWorkspace =
-    !showArgStream &&
-    opensWorkspacePreferentially(name) &&
-    canOpenTaskWorkspacePanel(tool);
-
+    hasOutput || isRunningBash || Boolean(summaryFull) || Boolean(inputJson) || showArgStream;
   const [open, setOpen] = useState(
     () => Boolean(defaultExpanded) || showArgStream
   );
@@ -149,18 +158,8 @@ export const GenericToolCall = memo(function GenericToolCall({
 
   const stacked = stackPosition !== "single";
 
-  const openWorkspace = () => {
-    if (tool.messageType === "plan") {
-      changePlan?.();
-      return;
-    }
-    if (canOpenTaskWorkspacePanel(tool)) {
-      changeActiveChat(tool, chat);
-    }
-  };
-
-  // 入参流期间强制可展开，且不走「只开工作区」
-  const expandable = showArgStream ? true : preferWorkspace ? false : canExpand;
+  // 工具卡片默认内联展开参数和出参；文件附件等独立入口再打开工作区。
+  const expandable = showArgStream || canExpand;
 
   // 入参流：像终答一样直接铺在工具名下方（不依赖折叠 body / status）
   if (showArgStream) {
@@ -207,14 +206,25 @@ export const GenericToolCall = memo(function GenericToolCall({
         setUserToggled(true);
         setOpen((v) => !v);
       }}
-      onOpenWorkspace={openWorkspace}
+      onOpenWorkspace={
+        shouldOpenCanvasPreview(tool)
+          ? () => {
+              const files = getTaskFiles(tool);
+              if (files.length && changeFile) {
+                changeFile(files[0], chat);
+                return;
+              }
+              changeActiveChat(tool, chat);
+            }
+          : undefined
+      }
     >
-      {summaryFull ? (
+      {summaryFull || inputJson ? (
         <div className="kimi-tool-row-summary">
           <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
             参数
           </div>
-          {summaryFull}
+          {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
         </div>
       ) : null}
       <ToolOutputBlock

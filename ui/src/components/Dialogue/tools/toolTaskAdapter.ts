@@ -1,6 +1,9 @@
 import {
   resolveToolCallArgumentsText,
   resolveToolCallInput,
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+  resolveTaskToolResultText,
 } from "@/utils/chat/toolCalls";
 import { isAgentDispatchTask } from "@/utils/chat/subagent";
 import { isTimelineToolActive } from "@/components/ChatView/streamState";
@@ -36,10 +39,11 @@ function pickArgumentsText(
 }
 
 export function resolveTaskToolName(tool: CHAT.Task): string {
-  const resultMap = (tool.resultMap || {}) as Record<string, unknown>;
+  const resultMap = resolveTaskResultMap(tool) as Record<string, unknown>;
   const nested = isRecord(resultMap.resultMap)
     ? (resultMap.resultMap as Record<string, unknown>)
     : {};
+  const resolvedToolResult = resolveTaskToolResult(tool);
   const fromResult =
     (typeof resultMap.toolName === "string" && resultMap.toolName) ||
     (typeof nested.toolName === "string" && nested.toolName) ||
@@ -47,8 +51,8 @@ export function resolveTaskToolName(tool: CHAT.Task): string {
       (tool as { toolName?: string }).toolName) ||
     "";
   const fromToolResult =
-    (typeof tool.toolResult?.toolName === "string" &&
-      tool.toolResult.toolName) ||
+    (typeof resolvedToolResult?.toolName === "string" &&
+      resolvedToolResult.toolName) ||
     "";
   if (isAgentDispatchTask(tool)) {
     return fromResult || fromToolResult || "task";
@@ -58,7 +62,7 @@ export function resolveTaskToolName(tool: CHAT.Task): string {
 
 export function resolveTaskToolArg(tool: CHAT.Task): string {
   const top = tool as unknown as Record<string, unknown>;
-  const resultMap = tool.resultMap as MESSAGE.ResultMap | undefined;
+  const resultMap = resolveTaskResultMap(tool);
   const nested = isRecord(resultMap?.resultMap)
     ? (resultMap!.resultMap as MESSAGE.ResultMap)
     : undefined;
@@ -106,7 +110,7 @@ export function resolveTaskToolArg(tool: CHAT.Task): string {
     }
   }
 
-  const toolParam = tool.toolResult?.toolParam;
+  const toolParam = resolveTaskToolResult(tool)?.toolParam;
   if (isRecord(toolParam) && Object.keys(toolParam).length > 0) {
     try {
       return JSON.stringify(toolParam);
@@ -137,7 +141,7 @@ export function resolveTaskToolStatus(
   tool: CHAT.Task
 ): "running" | "ok" | "error" {
   const top = tool as unknown as Record<string, unknown>;
-  const resultMap = tool.resultMap as MESSAGE.ResultMap | undefined;
+  const resultMap = resolveTaskResultMap(tool);
   const nested = isRecord(resultMap?.resultMap)
     ? (resultMap!.resultMap as Record<string, unknown>)
     : undefined;
@@ -150,7 +154,7 @@ export function resolveTaskToolStatus(
     status === "failed" ||
     status === "error" ||
     status === "danger" ||
-    Boolean((tool.resultMap as Record<string, unknown> | undefined)?.errorMsg)
+    Boolean((resultMap as Record<string, unknown>).errorMsg)
   ) {
     return "error";
   }
@@ -160,7 +164,7 @@ export function resolveTaskToolStatus(
   if (
     tool.finish ||
     tool.isFinal ||
-    tool.resultMap?.isFinal ||
+    resultMap.isFinal ||
     status === "success" ||
     status === "ok" ||
     status === "completed" ||
@@ -172,26 +176,31 @@ export function resolveTaskToolStatus(
 }
 
 export function resolveTaskToolOutput(tool: CHAT.Task): string[] {
+  const resultMap = resolveTaskResultMap(tool);
+  const toolResultText = resolveTaskToolResultText(tool);
   const chunks: string[] = [];
+  const seenBlocks = new Set<string>();
   const push = (value: unknown) => {
     if (typeof value !== "string") return;
     const trimmed = value.replace(/\r\n/g, "\n").trimEnd();
     if (!trimmed) return;
+    if (seenBlocks.has(trimmed)) return;
+    seenBlocks.add(trimmed);
     for (const line of trimmed.split("\n")) {
       chunks.push(line);
     }
   };
 
-  push(tool.toolResult?.toolResult);
+  push(toolResultText);
   push(resolveTaskSummaryText(tool));
   push(tool.result);
-  push(tool.resultMap?.codeOutput);
-  push(tool.resultMap?.data);
-  push(tool.resultMap?.summary);
-  push((tool.resultMap as Record<string, unknown> | undefined)?.errorMsg);
+  push(resultMap.codeOutput);
+  push(resultMap.data);
+  push(resultMap.summary);
+  push((resultMap as Record<string, unknown>).errorMsg);
 
-  if (chunks.length === 0 && tool.resultMap?.code) {
-    push(tool.resultMap.code);
+  if (chunks.length === 0 && resultMap.code) {
+    push(resultMap.code);
   }
 
   return chunks;

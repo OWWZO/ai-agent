@@ -3,6 +3,7 @@ import {
   memo,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -53,9 +54,9 @@ type AgentStepTimelineProps = {
   canThoughtPrev?: boolean;
   canThoughtNext?: boolean;
   planSlot?: ReactNode;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: CHAT.OpenTaskHandler;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
   onOpenThinking?: (text: string) => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -80,8 +81,8 @@ function normalizeComparableText(value: string): string {
     // 保留代码围栏内部源码；纯代码回复也需要参与终答去重比较。
     .replace(/```[^\r\n]*\r?\n([\s\S]*?)```/g, "$1")
     .replace(/[`*_#>()]/g, " ")
-    .replaceAll("[", " ")
-    .replaceAll("]", " ")
+    .replace(/\[/g, " ")
+    .replace(/\]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -190,92 +191,48 @@ const DurationBadge: FC<{ label?: string; active?: boolean }> = ({
   );
 };
 
-/** 深度思考行头：无图标；流式时文字走 understanding 光效 */
-const ThinkingRowHeader: FC<{
-  streaming: boolean;
-  durationLabel?: string;
-  label?: string;
-}> = ({ streaming, durationLabel, label = "深度思考" }) => (
-  <div className="flex w-full min-w-0 items-center gap-2">
-    <span
-      className={cn(
-        "timeline-thinking-label text-[14.5px] font-medium text-[var(--chat-text-muted)]",
-        streaming && "thinking-shimmer"
-      )}
-    >
-      {label}
-    </span>
-    <DurationBadge label={durationLabel} active={streaming} />
-  </div>
-);
-
-const ThoughtHeader: FC<{
-  streaming: boolean;
-  durationLabel?: string;
-  versionLabel?: string;
+/** 多轮规划思考版本切换，嵌在 ThinkingBlock 标题行 */
+const ThoughtVersionSwitcher: FC<{
+  versionLabel: string;
   onPrev?: () => void;
   onNext?: () => void;
   canPrev?: boolean;
   canNext?: boolean;
-}> = ({
-  streaming,
-  durationLabel,
-  versionLabel,
-  onPrev,
-  onNext,
-  canPrev,
-  canNext,
-}) => (
-  <div className="flex w-full items-center gap-2 text-[14.5px] text-[var(--chat-text-muted)]">
-    <span
-      className={cn(
-        "font-medium text-[var(--chat-text-muted)]",
-        streaming && "thinking-shimmer"
-      )}
+}> = ({ versionLabel, onPrev, onNext, canPrev, canNext }) => (
+  <div className="inline-flex items-center gap-0.5 rounded-full bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-[11px] text-[var(--chat-text-muted)]">
+    <button
+      type="button"
+      className="rounded px-0.5 disabled:opacity-30"
+      onClick={(event) => {
+        event.stopPropagation();
+        onPrev?.();
+      }}
+      disabled={!canPrev}
+      aria-label="上一版思考"
     >
-      深度思考
-    </span>
-    {versionLabel ? (
-      <div
-        className="inline-flex items-center gap-0.5 rounded-full bg-[var(--chat-surface-soft)] px-1.5 py-0.5 text-[11px] text-[var(--chat-text-muted)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="rounded px-0.5 disabled:opacity-30"
-          onClick={(event) => {
-            event.stopPropagation();
-            onPrev?.();
-          }}
-          disabled={!canPrev}
-          aria-label="上一版思考"
-        >
-          {"<"}
-        </button>
-        <span>{versionLabel}</span>
-        <button
-          type="button"
-          className="rounded px-0.5 disabled:opacity-30"
-          onClick={(event) => {
-            event.stopPropagation();
-            onNext?.();
-          }}
-          disabled={!canNext}
-          aria-label="下一版思考"
-        >
-          {">"}
-        </button>
-      </div>
-    ) : null}
-    <DurationBadge label={durationLabel} active={streaming} />
+      {"<"}
+    </button>
+    <span>{versionLabel}</span>
+    <button
+      type="button"
+      className="rounded px-0.5 disabled:opacity-30"
+      onClick={(event) => {
+        event.stopPropagation();
+        onNext?.();
+      }}
+      disabled={!canNext}
+      aria-label="下一版思考"
+    >
+      {">"}
+    </button>
   </div>
 );
 
 type StepRowContext = {
   chat: CHAT.ChatItem;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: CHAT.OpenTaskHandler;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
   onOpenThinking?: (text: string) => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
@@ -289,19 +246,14 @@ const CompactStepRow: FC<{
   const thoughtText = asText(step.tool.toolThought);
   const rich = isRichInlineStep(step);
 
-  // 组内原生 CoT：Kimi 5 行直播窗 / 末段 teaser，点击开右侧面板
+  // 组内原生 CoT：标题点击折叠，流式完自动收起
   if (isThought) {
     return (
-      <div className="timeline-segment-enter py-0.5" data-testid="llm-reasoning-step">
-        <ThinkingRowHeader
-          streaming={step.active}
-          durationLabel={step.durationLabel}
-        />
+      <div className="timeline-segment-enter py-0.5 pl-1" data-testid="llm-reasoning-step">
         <ThinkingBlock
           text={thoughtText || "…"}
           streaming={step.active}
-          onOpen={() => ctx.onOpenThinking?.(thoughtText || "…")}
-          className="mt-1 pl-1"
+          durationLabel={step.durationLabel}
         />
       </div>
     );
@@ -334,6 +286,7 @@ const CompactStepRow: FC<{
           durationLabel={step.durationLabel}
           defaultExpanded={step.active}
           changeActiveChat={ctx.changeActiveChat}
+          changeFile={ctx.changeFile}
           changePlan={ctx.changePlan}
           onOpenAgent={ctx.onOpenAgent}
           onOpenToolDiff={ctx.onOpenToolDiff}
@@ -384,6 +337,7 @@ const CompactStepRow: FC<{
         durationLabel={step.durationLabel}
         defaultExpanded={step.active}
         changeActiveChat={ctx.changeActiveChat}
+        changeFile={ctx.changeFile}
         changePlan={ctx.changePlan}
         onOpenToolDiff={ctx.onOpenToolDiff}
         onOpenAgent={ctx.onOpenAgent}
@@ -402,11 +356,14 @@ const StepGroupBlock: FC<{
 }> = memo(({ group, defaultOpen, forceOpen, ctx }) => {
   const [open, setOpen] = useState(defaultOpen);
   const canCollapse = group.collapsible !== false && group.stepCount > 0;
+  const wasForcedRef = useRef(false);
 
   useEffect(() => {
-    if (forceOpen || group.active) {
+    const shouldForce = forceOpen || group.active;
+    if (shouldForce && !wasForcedRef.current) {
       setOpen(true);
     }
+    wasForcedRef.current = shouldForce;
   }, [forceOpen, group.active]);
 
   const toolCardSteps = group.steps.filter(
@@ -438,6 +395,7 @@ const StepGroupBlock: FC<{
               stackPosition={resolveStackPosition(index, toolCardSteps.length)}
               defaultExpanded={step.active}
               changeActiveChat={ctx.changeActiveChat}
+              changeFile={ctx.changeFile}
               changePlan={ctx.changePlan}
               onOpenToolDiff={ctx.onOpenToolDiff}
               onOpenAgent={ctx.onOpenAgent}
@@ -532,25 +490,19 @@ const UserMessageSegment: FC<{ step: ProcessStepRow }> = memo(({ step }) => (
 
 UserMessageSegment.displayName = "UserMessageSegment";
 
-/** 分段深度思考：Kimi 直播窗 / teaser */
+/** 分段深度思考：标题点击折叠，流式完自动收起 */
 const ThinkingSegment: FC<{
   step: ProcessStepRow;
-  onOpenThinking?: (text: string) => void;
-}> = memo(({ step, onOpenThinking }) => {
+}> = memo(({ step }) => {
   const thoughtText = asText(step.tool.toolThought);
   const streaming = step.active;
 
   return (
     <div className="timeline-segment-enter py-0.5" data-testid="process-thinking">
-      <ThinkingRowHeader
-        streaming={streaming}
-        durationLabel={step.durationLabel}
-      />
       <ThinkingBlock
         text={thoughtText || "…"}
         streaming={streaming}
-        onOpen={() => onOpenThinking?.(thoughtText || "…")}
-        className="mt-1"
+        durationLabel={step.durationLabel}
       />
     </div>
   );
@@ -619,12 +571,7 @@ const ProcessSegmentView: FC<{
   ctx: StepRowContext;
 }> = memo(({ segment, isLast, loading, conclusionText = "", ctx }) => {
   if (segment.type === "thinking") {
-    return (
-      <ThinkingSegment
-        step={segment.step}
-        onOpenThinking={ctx.onOpenThinking}
-      />
-    );
+    return <ThinkingSegment step={segment.step} />;
   }
   if (segment.type === "assistant_reply") {
     return (
@@ -767,27 +714,21 @@ const AgentStepTimelineComponent: FC<AgentStepTimelineProps> = (props) => {
     >
       {model.thought ? (
         <div className="timeline-segment-enter mb-2">
-          {model.thought.versionLabel ? (
-            <ThoughtHeader
-              streaming={model.thought.streaming}
-              durationLabel={model.thought.durationLabel}
-              versionLabel={model.thought.versionLabel}
-              onPrev={onThoughtPrev}
-              onNext={onThoughtNext}
-              canPrev={canThoughtPrev}
-              canNext={canThoughtNext}
-            />
-          ) : (
-            <ThinkingRowHeader
-              streaming={model.thought.streaming}
-              durationLabel={model.thought.durationLabel}
-            />
-          )}
           <ThinkingBlock
             text={model.thought.text}
             streaming={model.thought.streaming}
-            onOpen={() => onOpenThinking?.(model.thought!.text)}
-            className="mt-1"
+            durationLabel={model.thought.durationLabel}
+            headerExtra={
+              model.thought.versionLabel ? (
+                <ThoughtVersionSwitcher
+                  versionLabel={model.thought.versionLabel}
+                  onPrev={onThoughtPrev}
+                  onNext={onThoughtNext}
+                  canPrev={canThoughtPrev}
+                  canNext={canThoughtNext}
+                />
+              ) : null
+            }
           />
           {!model.thought.streaming && model.intentLine ? (
             <p className="timeline-assistant-reply mt-1 text-[13px] leading-6">

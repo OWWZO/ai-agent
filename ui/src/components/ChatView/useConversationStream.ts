@@ -285,6 +285,24 @@ function createRunningChat(
   };
 }
 
+/** 新一轮尚未收到模型 usage 前，沿用上一轮最近的真实上下文快照。 */
+export function resolveLatestContextUsage(
+  chatList: readonly CHAT.ChatItem[]
+): CHAT.ContextUsage | undefined {
+  for (let index = chatList.length - 1; index >= 0; index -= 1) {
+    const usage = chatList[index]?.contextUsage;
+    if (
+      usage &&
+      typeof usage.promptTokens === "number" &&
+      Number.isFinite(usage.promptTokens) &&
+      usage.promptTokens >= 0
+    ) {
+      return { ...usage };
+    }
+  }
+  return undefined;
+}
+
 /**
  * guard error 没有结构化 eventData 时，前端需要补一条失败总结，
  * 否则多智能体对话会停留在 loading 态，看不到明确的失败结论。
@@ -1625,12 +1643,18 @@ export function useConversationStream(
     const isActiveStream = () =>
       conversationRef.current.id === conversationId &&
       activeRequestIdRef.current === requestId;
+    const previousContextUsage = resolveLatestContextUsage(
+      baseConversation.chatList || []
+    );
     let currentChat = createRunningChat(
       inputInfo,
       baseConversation.sessionId,
       requestId,
       normalizedDeepThink
     );
+    if (previousContextUsage) {
+      currentChat.contextUsage = previousContextUsage;
+    }
 
     if (normalizedDeepThink) {
       currentChat = {
@@ -1908,8 +1932,7 @@ export function useConversationStream(
       const isPlanThoughtFinal = Boolean(eventData.resultMap?.isFinal || finished);
       // combineData 只负责把事件合并进原始会话，后续再根据事件类型触发工作区同步和最终结论覆盖。
       currentChat = combineData(eventData, currentChat);
-      // 实时收到最终 result 时，优先用结构化结果覆盖掉临时 agent_stream 结论，
-      // 避免界面在当前会话里一直停留在“答案$$$文件名”的原始协议文本。
+      // 实时收到最终 result 时覆盖 agent_stream 结论；$$$ 点名由 ConclusionSection 剥离并映射会话文件。
       // 子 Agent result 带 parentToolUseId，只挂工作区，不能覆盖主对话终答。
       // 有后台任务时后端会推迟 finished；这里仍收口主对话 loading，SSE 继续接收结算事件。
       const isRootResult =

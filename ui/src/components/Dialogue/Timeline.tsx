@@ -13,7 +13,7 @@ import {
   resolveDeepSearchStage,
   shouldRenderDeepSearchPreview,
 } from "@/utils/deepSearch";
-import { getTaskFiles } from "@/utils/taskArtifacts";
+import { getTaskFiles, isFileListOnlyTask } from "@/utils/taskArtifacts";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -43,22 +43,28 @@ import SessionTaskList from "./SessionTaskList";
 import UserBriefCard from "./UserBriefCard";
 import { AskUserToolCall } from "./tools/AskUserToolCall";
 import { isAnsweredAskUserTask } from "./timelineAskUser";
-import { StatusDot } from "./tools/StatusDot";
+import {
+  StatusDot,
+  ToolCallView,
+  resolveStackPosition,
+} from "./tools";
 
 type TimelineProps = {
   chat: CHAT.ChatItem;
   isPlanSolveMessage: boolean;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: CHAT.OpenTaskHandler;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
 };
 
 type ToolItemProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
   changePlan?: () => void;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeActiveChat: CHAT.OpenTaskHandler;
+  changeFile?: CHAT.OpenFileHandler;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
 };
 
 const taskRowClass =
@@ -79,8 +85,14 @@ export const ToolItem: FC<ToolItemProps> = memo(({
   changePlan,
   changeActiveChat,
   changeFile,
+  onOpenToolDiff,
+  onOpenAgent,
 }) => {
   const actionInfo = useMemo(() => buildAction(tool), [tool]);
+
+  if (isFileListOnlyTask(tool)) {
+    return null;
+  }
 
   switch (tool.messageType) {
     case "plan": {
@@ -103,10 +115,13 @@ export const ToolItem: FC<ToolItemProps> = memo(({
       );
     }
     case "llm_reasoning": {
-      const streamingThought = !tool.resultMap?.isFinal;
+      const streamingThought = isTimelineToolActive(tool);
       return (
         <div className="mt-[8px] rounded-2xl border border-[var(--chat-border)]/18 bg-[var(--chat-surface-soft)]/38 px-3 py-2.5">
-          <Reasoning isStreaming={streamingThought} defaultOpen={false}>
+          <Reasoning
+            isStreaming={streamingThought}
+            defaultOpen={streamingThought}
+          >
             <ReasoningTrigger />
             <ReasoningContent>{tool.toolThought || ""}</ReasoningContent>
           </Reasoning>
@@ -271,6 +286,10 @@ export const ToolItem: FC<ToolItemProps> = memo(({
               name: actionInfo.name || "",
             }}
             changeActiveChat={changeActiveChat}
+            changeFile={changeFile}
+            changePlan={changePlan}
+            onOpenToolDiff={onOpenToolDiff}
+            onOpenAgent={onOpenAgent}
           />
         );
       }
@@ -340,8 +359,22 @@ const SubAgentTimelineCard: FC<{
   chat: CHAT.ChatItem;
   subAgent: ReturnType<typeof resolveSubAgentDisplay>;
   actionInfo: { action: string; tool: string; name: string };
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
-}> = memo(({ tool, chat, subAgent, actionInfo, changeActiveChat }) => {
+  changeActiveChat: CHAT.OpenTaskHandler;
+  changeFile?: CHAT.OpenFileHandler;
+  changePlan?: () => void;
+  onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+}> = memo(({
+  tool,
+  chat,
+  subAgent,
+  actionInfo,
+  changeActiveChat,
+  changeFile,
+  changePlan,
+  onOpenToolDiff,
+  onOpenAgent,
+}) => {
   const nested = tool.children || [];
   const nestedCount = nested.length;
   // 有嵌套工具时默认展开，避免历史回放/完成后折叠导致「看不了子工具」
@@ -440,43 +473,20 @@ const SubAgentTimelineCard: FC<{
       </div>
       {expanded && nestedCount > 0 ? (
         <div className="ml-6 border-l border-[var(--chat-border)]/40 pl-3">
-          {nested.map((child, index) => {
-            const childAction = buildAction(child);
-            const childLoading =
-              child.messageType === "tool_call" && !child.resultMap?.isFinal;
-            const canOpenChildPanel = canOpenTaskWorkspacePanel(child);
-            return (
-              <div
-                key={child.id || child.messageId || child.taskId || index}
-                className={
-                  canOpenChildPanel
-                    ? "mt-1.5 flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)] hover:bg-[var(--chat-interactive-hover)]"
-                    : "mt-1.5 flex min-w-0 cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-[var(--chat-text-soft)]"
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (!canOpenChildPanel) {
-                    return;
-                  }
-                  changeActiveChat(child, chat);
-                }}
-              >
-                {childLoading ? (
-                  <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-[var(--chat-text-muted)]" />
-                ) : (
-                  <i
-                    className={`font_family ${getIcon(child.messageType)} shrink-0 text-[14px] text-[var(--chat-text-muted)]`}
-                  />
-                )}
-                <span className="shrink-0 font-medium text-[var(--chat-text)]">
-                  {childAction.action}
-                </span>
-                <span className="truncate">
-                  {childAction.name || childAction.tool || child.toolResult?.toolName || child.resultMap?.toolName}
-                </span>
-              </div>
-            );
-          })}
+          {nested.map((child, index) => (
+            <ToolCallView
+              key={child.id || child.messageId || child.taskId || index}
+              tool={child}
+              chat={chat}
+              stackPosition={resolveStackPosition(index, nested.length)}
+              defaultExpanded={isTimelineToolActive(child)}
+              changeActiveChat={changeActiveChat}
+              changeFile={changeFile}
+              changePlan={changePlan}
+              onOpenToolDiff={onOpenToolDiff}
+              onOpenAgent={onOpenAgent}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -488,7 +498,7 @@ SubAgentTimelineCard.displayName = "SubAgentTimelineCard";
 export const DeepSearchPreviewItem: FC<{
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: CHAT.OpenTaskHandler;
 }> = memo(({ tool, chat, changeActiveChat }) => {
   const model = useMemo(() => buildDeepSearchPreviewModel(tool), [tool]);
 
@@ -573,9 +583,13 @@ const TimelineTaskBlock: FC<{
   chat: CHAT.ChatItem;
   task: CHAT.Task;
   isPlanSolveMessage: boolean;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: (
+    task: CHAT.Task,
+    chat: CHAT.ChatItem,
+    backTarget?: CHAT.AgentDetailTarget
+  ) => void;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
 }> = ({ chat, task, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => {
   const children = task.children || [];
   const digitalEmployee = resolveDigitalEmployee(task);
@@ -699,9 +713,13 @@ const TimelineContent: FC<{
   chat: CHAT.ChatItem;
   tasks: CHAT.Task[];
   isPlanSolveMessage: boolean;
-  changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat: (
+    task: CHAT.Task,
+    chat: CHAT.ChatItem,
+    backTarget?: CHAT.AgentDetailTarget
+  ) => void;
   changePlan?: () => void;
-  changeFile?: (file: CHAT.TFile, chat?: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
 }> = ({ chat, tasks, isPlanSolveMessage, changeActiveChat, changePlan, changeFile }) => {
   return (
     <>

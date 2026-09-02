@@ -54,6 +54,145 @@ export function resolveToolCallInput(resultMap?: MESSAGE.ResultMap) {
   return {};
 }
 
+export type ResolvedToolResult = {
+  toolName?: string;
+  toolResult?: string;
+  toolParam?: Record<string, unknown>;
+  toolCallId?: string;
+};
+
+function readResultMapLayers(task?: Record<string, unknown>) {
+  const layers: Record<string, unknown>[] = [];
+  let current = task?.resultMap;
+  for (let depth = 0; depth < 4 && isRecord(current); depth += 1) {
+    layers.push(current);
+    current = current.resultMap;
+  }
+  return layers;
+}
+
+/** 将任务的多层 resultMap 合并为 renderer 可直接读取的结果视图。 */
+export function resolveTaskResultMap(
+  task?: Partial<MESSAGE.Task> | Partial<CHAT.Task> | Record<string, unknown>
+): MESSAGE.ResultMap {
+  if (!task) {
+    return {} as MESSAGE.ResultMap;
+  }
+
+  const layers = readResultMapLayers(task as Record<string, unknown>);
+  return layers
+    .reduce<Record<string, unknown>>(
+      (merged, layer) => ({
+        ...merged,
+        ...layer,
+      }),
+      {}
+    ) as MESSAGE.ResultMap;
+}
+
+function readToolResultCandidate(value: unknown): ResolvedToolResult | undefined {
+  if (typeof value === "string") {
+    return { toolResult: value };
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const toolResult = value.toolResult;
+  let normalizedText = "";
+  if (typeof toolResult === "string") {
+    normalizedText = toolResult;
+  } else if (toolResult != null) {
+    try {
+      normalizedText = JSON.stringify(toolResult) || "";
+    } catch {
+      normalizedText = String(toolResult);
+    }
+  }
+  const toolParam = isRecord(value.toolParam) ? value.toolParam : undefined;
+  const normalized = {
+    toolName: pickFirstText(value.toolName) || undefined,
+    toolResult: normalizedText || undefined,
+    toolParam,
+    toolCallId: pickFirstText(value.toolCallId) || undefined,
+  };
+
+  return Object.values(normalized).some(Boolean) ? normalized : undefined;
+}
+
+/**
+ * 统一读取 realtime/history/sub-agent 任务里的 tool_result。
+ * 不同事件包装可能把它放在 task、resultMap 或多层 resultMap 下。
+ */
+export function resolveTaskToolResult(
+  task?: Partial<MESSAGE.Task> | Partial<CHAT.Task> | Record<string, unknown>
+): ResolvedToolResult | undefined {
+  if (!task) {
+    return undefined;
+  }
+
+  const record = task as Record<string, unknown>;
+  const layers = readResultMapLayers(record);
+  const candidates = [
+    readToolResultCandidate(record.toolResult),
+    ...layers.map((layer) => readToolResultCandidate(layer.toolResult)),
+  ].filter((candidate): candidate is ResolvedToolResult => Boolean(candidate));
+
+  if (!candidates.length) {
+    return undefined;
+  }
+
+  const firstParam = candidates.find((candidate) => candidate.toolParam)?.toolParam;
+  const result = {
+    toolName: pickFirstText(
+      ...candidates.map((candidate) => candidate.toolName),
+      ...layers.map((layer) => layer.toolName),
+      record.toolName
+    ) || undefined,
+    toolResult: pickFirstText(
+      ...candidates.map((candidate) => candidate.toolResult),
+      ...layers.map((layer) => layer.toolResult)
+    ) || undefined,
+    toolParam:
+      firstParam ||
+      (() => {
+        const input = resolveToolCallInput(record.resultMap as MESSAGE.ResultMap | undefined);
+        return Object.keys(input).length ? input : undefined;
+      })(),
+    toolCallId: pickFirstText(
+      ...candidates.map((candidate) => candidate.toolCallId),
+      ...layers.map((layer) => layer.toolCallId),
+      record.toolCallId
+    ) || undefined,
+  };
+
+  return Object.values(result).some(Boolean) ? result : undefined;
+}
+
+/** 工具结果正文的统一读取入口，兼容旧事件的 data/answer/codeOutput 兜底字段。 */
+export function resolveTaskToolResultText(
+  task?: Partial<MESSAGE.Task> | Partial<CHAT.Task> | Record<string, unknown>
+) {
+  const record = task as Record<string, unknown> | undefined;
+  const result = resolveTaskToolResult(task);
+  if (result?.toolResult?.trim()) {
+    return result.toolResult;
+  }
+
+  const layers = readResultMapLayers(record);
+  return pickFirstText(
+    record?.result,
+    ...layers.map((layer) => layer.result),
+    ...layers.flatMap((layer) => [
+      layer.data,
+      layer.codeOutput,
+      layer.answer,
+      layer.summary,
+      layer.errorMsg,
+    ])
+  );
+}
+
 export function resolveToolCallArgumentsText(resultMap?: MESSAGE.ResultMap) {
   if (!resultMap) {
     return "";
@@ -123,6 +262,7 @@ export function resolveTaskToolCallId(
   const resultMap = (record.resultMap || {}) as Record<string, unknown>;
   const nested = (resultMap.resultMap || {}) as Record<string, unknown>;
   const toolResult = (record.toolResult || {}) as Record<string, unknown>;
+  const resolvedToolResult = resolveTaskToolResult(task);
 
   // 兼容 realtime / history / 多层 resultMap 展开后的多种落点，避免父 Agent
   // 无法登记 toolCallId 导致子工具挂不上 children。
@@ -130,6 +270,7 @@ export function resolveTaskToolCallId(
     resultMap.toolCallId,
     nested.toolCallId,
     toolResult.toolCallId,
+    resolvedToolResult?.toolCallId,
     record.toolCallId,
   );
 }
@@ -153,7 +294,7 @@ export function resolveToolCallActionText(task: CHAT.Task) {
 
 export function isImageGenerationToolResultTask(task?: Partial<MESSAGE.Task>) {
   return task?.messageType === "tool_result" &&
-    task?.toolResult?.toolName === "image_generation_tool";
+    resolveTaskToolResult(task)?.toolName === "image_generation_tool";
 }
 
 export function isImageGenerationFileTask(task?: Partial<MESSAGE.Task>) {
@@ -205,6 +346,74 @@ export function findTaskIndexByToolCallId(
     }
     return resolveTaskToolCallId(task) === toolCallId;
   });
+}
+
+function readHtmlPreviewFileInfo(task: MESSAGE.Task | undefined) {
+  if (!task) {
+    return [];
+  }
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
+  const nested = isRecord(resultMap.resultMap) ? resultMap.resultMap : undefined;
+  const candidates = [
+    nested?.fileInfo,
+    resultMap.fileInfo,
+    task.resultMap?.fileInfo,
+    (task as { fileInfo?: unknown }).fileInfo,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length) {
+      return candidate;
+    }
+  }
+  return [];
+}
+
+/**
+ * canvas_publish 的 html 预览事件应并入原 tool_call 卡，
+ * 保留工具卡片的同时带上 preview/download，供右侧工作区打开。
+ */
+export function mergeHtmlPreviewIntoToolCall(
+  toolTask: MESSAGE.Task,
+  htmlTask: MESSAGE.Task
+): MESSAGE.Task {
+  const htmlMap = resolveTaskResultMap(htmlTask) as Record<string, unknown>;
+  const nested = isRecord(htmlMap.resultMap) ? htmlMap.resultMap : undefined;
+  const fileInfo = readHtmlPreviewFileInfo(htmlTask);
+  const artifactRefs = Array.isArray(htmlTask.artifactRefs) && htmlTask.artifactRefs.length
+    ? [...htmlTask.artifactRefs]
+    : Array.isArray(toolTask.artifactRefs)
+      ? [...toolTask.artifactRefs]
+      : undefined;
+  const previewUrl = pickFirstText(
+    htmlMap.previewUrl,
+    nested?.previewUrl,
+    htmlMap.domainUrl,
+    nested?.domainUrl
+  );
+  const downloadUrl = pickFirstText(
+    htmlMap.downloadUrl,
+    nested?.downloadUrl,
+    htmlMap.ossUrl,
+    nested?.ossUrl
+  );
+  const primaryFileName = pickFirstText(
+    htmlMap.primaryFileName,
+    nested?.primaryFileName,
+    htmlMap.fileName,
+    nested?.fileName
+  );
+
+  return {
+    ...toolTask,
+    ...(artifactRefs?.length ? { artifactRefs } : {}),
+    resultMap: {
+      ...(toolTask.resultMap || {}),
+      ...(fileInfo.length ? { fileInfo } : {}),
+      ...(previewUrl ? { previewUrl } : {}),
+      ...(downloadUrl ? { downloadUrl } : {}),
+      ...(primaryFileName ? { primaryFileName } : {}),
+    },
+  };
 }
 
 export function mergeImageGenerationToolTask(

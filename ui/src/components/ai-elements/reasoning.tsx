@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { MessageResponse } from "./message";
 import { normalizeThinkingText } from "@/utils/markdown";
@@ -63,6 +63,7 @@ export const Reasoning = memo(
     });
 
     const [startTime, setStartTime] = useState<number | null>(null);
+    const wasStreaming = useRef(isStreaming);
 
     // Track duration when streaming starts and ends
     useEffect(() => {
@@ -75,6 +76,15 @@ export const Reasoning = memo(
         setStartTime(null);
       }
     }, [isStreaming, startTime, setDuration]);
+
+    useEffect(() => {
+      if (isStreaming && !wasStreaming.current) {
+        setIsOpen(true);
+      } else if (!isStreaming && wasStreaming.current) {
+        setIsOpen(false);
+      }
+      wasStreaming.current = isStreaming;
+    }, [isStreaming, setIsOpen]);
 
     const handleOpenChange = (newOpen: boolean) => {
       setIsOpen(newOpen);

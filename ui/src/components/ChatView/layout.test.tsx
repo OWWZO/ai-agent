@@ -360,7 +360,7 @@ describe("ChatView layout", () => {
     expect(html).not.toContain("sticky bottom-0");
   });
 
-  it("collapsed right workspace lets the chat panel fill the remaining layout", () => {
+  it("collapsed right workspace returns to centered single-chat shell", () => {
     workspaceLayoutState.rightCollapsed = true;
     workspaceLayoutState.showAction = true;
 
@@ -399,7 +399,9 @@ describe("ChatView layout", () => {
       );
 
       expect(html).toContain('data-workspace-open="false"');
-      expect(html).toMatch(/class="reactor-chat-panel-left[^"]*flex-1/);
+      expect(html).toContain("reactor-single-chat-shell");
+      expect(html).toMatch(/class="reactor-chat-panel-left[^"]*max-w-\[980px\]/);
+      expect(html).not.toContain("reactor-workspace-panel");
       expect(html).not.toContain('style="width:50%"');
     } finally {
       workspaceLayoutState.rightCollapsed = false;

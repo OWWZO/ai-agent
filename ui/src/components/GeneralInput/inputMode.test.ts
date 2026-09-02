@@ -44,4 +44,19 @@ describe("inputMode", () => {
       })
     ).not.toHaveProperty("outputStyle");
   });
+
+  it("思考开启但未指定强度时默认使用高", () => {
+    expect(
+      buildSubmitPayload({
+        question: "分析这个问题",
+        visibleMode: "think",
+        isDataAgent: false,
+        uploadedFiles: [],
+        thinking: true,
+      })
+    ).toMatchObject({
+      thinking: true,
+      thinkingEffort: "high",
+    });
+  });
 });

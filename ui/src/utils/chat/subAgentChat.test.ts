@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chatItemFromSubAgent, subAgentLiveRevision } from "./subAgentChat";
+import { chatItemFromSubAgent } from "./subAgentChat";
 import { deriveAgentProcessModel } from "@/components/Dialogue/agentProcessModel";
 import { resolveTaskSummaryText } from "@/components/Dialogue/contentHelpers";
+import { buildDeepSearchPreviewModel } from "@/utils/deepSearch";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 
 function parentChat(): CHAT.ChatItem {
   return {
@@ -56,7 +58,7 @@ describe("chatItemFromSubAgent", () => {
           },
           finish: true,
           isFinal: true,
-        } as CHAT.Task,
+        } as unknown as CHAT.Task,
       ],
     });
 
@@ -118,23 +120,40 @@ describe("chatItemFromSubAgent", () => {
     ).toBe("正在查看目录结构");
   });
 
-  it("liveRevision changes when nested children grow or stream", () => {
-    const tool = agentTool({ children: [] });
-    const before = subAgentLiveRevision(tool);
-    tool.children = [
-      {
-        id: "read-1",
-        messageId: "read-1",
-        messageType: "tool_call",
-        resultMap: { toolName: "Read", status: "running" },
-        finish: false,
-        isFinal: false,
-      } as CHAT.Task,
-    ];
-    const afterAdd = subAgentLiveRevision(tool);
-    expect(afterAdd).not.toBe(before);
-    tool.children[0].toolThought = "正在读文件";
-    expect(subAgentLiveRevision(tool)).not.toBe(afterAdd);
+  it("same-length live text replacement shows up in the projected chat", () => {
+    const before = chatItemFromSubAgent(
+      agentTool({
+        resultMap: {
+          toolName: "Agent",
+          status: "running",
+          input: {
+            prompt: "scan ui/",
+            subagent_type: "Explore",
+          },
+          subAgentLiveText: "abc",
+        },
+      }),
+      parentChat()
+    );
+    const after = chatItemFromSubAgent(
+      agentTool({
+        resultMap: {
+          toolName: "Agent",
+          status: "running",
+          input: {
+            prompt: "scan ui/",
+            subagent_type: "Explore",
+          },
+          subAgentLiveText: "xyz",
+        },
+      }),
+      parentChat()
+    );
+    const thought = (chat: CHAT.ChatItem) =>
+      chat.tasks[0]?.[0]?.children?.find((child) => child.messageType === "tool_thought")
+        ?.toolThought;
+    expect(thought(before)).toBe("abc");
+    expect(thought(after)).toBe("xyz");
   });
 
   it("does not inject heartbeat progress lines when nested tools already exist", () => {
@@ -267,7 +286,7 @@ describe("chatItemFromSubAgent", () => {
           },
           finish: true,
           isFinal: true,
-        } as CHAT.Task,
+        } as unknown as CHAT.Task,
       ],
     });
     const chat = chatItemFromSubAgent(tool, parentChat());
@@ -300,5 +319,103 @@ describe("chatItemFromSubAgent", () => {
     const chat = chatItemFromSubAgent(tool, parentChat());
     expect(chat.loading).toBe(false);
     expect(resolveTaskSummaryText(chat.conclusion)).toContain("找到 3 个页面");
+  });
+
+  it("reads a nested Agent tool result in the detail panel projection", () => {
+    const tool = agentTool({
+      messageType: "tool_result",
+      finish: true,
+      isFinal: true,
+      resultMap: {
+        status: "success",
+        toolResult: {
+          toolName: "Agent",
+          toolResult: "status=completed\nagentType=Explore\n\n嵌套结果",
+        },
+      } as unknown as CHAT.Task["resultMap"],
+    });
+
+    const chat = chatItemFromSubAgent(tool, parentChat());
+    expect(chat.loading).toBe(false);
+    expect(resolveTaskSummaryText(chat.conclusion)).toContain("嵌套结果");
+  });
+
+  it("preserves child result fileList for the shared conclusion renderer", () => {
+    const tool = agentTool({
+      children: [
+        {
+          id: "child-result",
+          messageId: "child-result",
+          messageType: "result",
+          result: "报告已完成。$$$ child-report.md",
+          fileList: [
+            {
+              fileName: "child-report.md",
+              domainUrl: "https://example.com/child-report.md",
+              ossUrl: "https://example.com/child-report.md",
+              fileSize: 32,
+            },
+          ],
+          resultMap: {
+            taskSummary: "报告已完成。$$$ child-report.md",
+          },
+          finish: true,
+          isFinal: true,
+        } as unknown as CHAT.Task,
+      ],
+    });
+
+    const chat = chatItemFromSubAgent(tool, parentChat());
+    expect(resolveTaskSummaryText(chat.conclusion)).toBe("报告已完成。");
+    expect(getTaskFiles(chat.conclusion)).toEqual([
+      expect.objectContaining({
+        name: "child-report.md",
+        url: "https://example.com/child-report.md",
+      }),
+    ]);
+  });
+
+  it("projects child deep search into the same per-query inline cards as the main timeline", () => {
+    const tool = agentTool({
+      children: [
+        {
+          id: "deep-search-child",
+          messageId: "deep-search-child",
+          messageType: "deep_search",
+          messageTime: "1714041600000",
+          resultMap: {
+            messageType: "search",
+            searchResult: {
+              query: ["查询一", "查询二"],
+              docs: [
+                [
+                  {
+                    link: "https://example.com/1",
+                    title: "来源一",
+                  },
+                ],
+                [
+                  {
+                    link: "https://example.com/2",
+                    title: "来源二",
+                  },
+                ],
+              ],
+            },
+          },
+          finish: true,
+          isFinal: true,
+        } as unknown as CHAT.Task,
+      ],
+    });
+
+    const chat = chatItemFromSubAgent(tool, parentChat());
+    const children = chat.tasks[0]?.[0]?.children || [];
+
+    expect(children).toHaveLength(2);
+    expect(children.map((child) => buildDeepSearchPreviewModel(child)?.query)).toEqual([
+      "查询一",
+      "查询二",
+    ]);
   });
 });

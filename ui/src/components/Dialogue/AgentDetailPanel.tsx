@@ -1,10 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { resolveSubAgentDisplay } from "@/utils/chat/subagent";
-import {
-  chatItemFromSubAgent,
-  subAgentLiveRevision,
-} from "@/utils/chat/subAgentChat";
+import { chatItemFromSubAgent } from "@/utils/chat/subAgentChat";
 import { projectAgentMember } from "@/utils/chat/agentRuntimeProjector";
 import {
   formatAgentElapsed,
@@ -13,53 +10,52 @@ import {
 } from "./agentProgressGroups";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "./tools/StatusDot";
-import { AgentStepTimeline } from "./AgentStepTimeline";
-import {
-  Message,
-  MessageContent,
-} from "@/components/ai-elements/message";
-import MarkdownRenderer from "@/components/ActionPanel/MarkdownRenderer";
-import { MessageToolbar } from "./MessageToolbar";
-import { resolveTaskSummaryText } from "./contentHelpers";
+import Dialogue from "./index";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 
 type AgentDetailPanelProps = {
   tool: CHAT.Task;
   chat: CHAT.ChatItem;
-  /** 子步骤原地突变时由父组件每帧重算，用来打破 tool/chat 引用不变导致的 memo */
-  liveRevision?: string;
   onClose?: () => void;
-  changeActiveChat?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeActiveChat?: CHAT.OpenTaskHandler;
+  changeFile?: CHAT.OpenFileHandler;
+  sessionArtifactFiles?: CHAT.TFile[];
   changePlan?: () => void;
+  onOpenThinking?: (text: string) => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  onOpenWorkspaceFiles?: () => void;
 };
 
 export const AgentDetailPanel = memo(function AgentDetailPanel({
   tool,
   chat,
-  liveRevision,
   onClose,
   changeActiveChat,
   changePlan,
   onOpenToolDiff,
   onOpenAgent,
+  changeFile,
+  sessionArtifactFiles,
+  onOpenThinking,
+  onOpenWorkspaceFiles,
 }: AgentDetailPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const revision = liveRevision ?? subAgentLiveRevision(tool);
-  const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool, revision]);
-  const member = useMemo(() => projectAgentMember(tool), [tool, revision]);
+  const sub = useMemo(() => resolveSubAgentDisplay(tool), [tool]);
+  const member = useMemo(() => projectAgentMember(tool), [tool]);
   const nested = tool.children || [];
   const syntheticChat = useMemo(
     () => chatItemFromSubAgent(tool, chat),
-    [tool, chat, revision]
+    [tool, chat]
   );
   const duration = formatAgentElapsed(sub);
   const phaseLabel = resolveAgentPhaseLabel(member?.phase, sub.status);
   const phaseTone = resolveAgentPhaseTone(phaseLabel);
-  const conclusionText = resolveTaskSummaryText(syntheticChat.conclusion);
   const hasTimeline = syntheticChat.tasks.length > 0;
+  const hasConclusion = Boolean(syntheticChat.conclusion);
+  const hasConclusionFiles = getTaskFiles(syntheticChat.conclusion).length > 0;
   const hasBody =
-    Boolean(syntheticChat.query) || hasTimeline || Boolean(conclusionText);
+    Boolean(syntheticChat.query) || hasTimeline || hasConclusion || hasConclusionFiles;
 
   const handleChangeActiveChat = useCallback(
     (task: CHAT.Task) => {
@@ -79,6 +75,12 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     },
     [onOpenAgent, chat]
   );
+  const handleChangeFile = useCallback(
+    (file: CHAT.TFile) => {
+      changeFile?.(file, chat);
+    },
+    [changeFile, chat]
+  );
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -92,7 +94,6 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
     return () => cancelAnimationFrame(frame);
   }, [
     nested.length,
-    revision,
     sub.content,
     sub.status,
     sub.liveText,
@@ -145,39 +146,20 @@ export const AgentDetailPanel = memo(function AgentDetailPanel({
           </div>
         ) : null}
 
-        {syntheticChat.query ? (
-          <div className="user-message-enter mt-3 ml-auto flex w-full max-w-[78%] flex-col items-end gap-1">
-            <Message from="user" className="max-w-full">
-              <MessageContent>{syntheticChat.query}</MessageContent>
-            </Message>
-          </div>
-        ) : null}
-
-        {hasTimeline ? (
-          <div className="mt-4 w-full">
-            <AgentStepTimeline
-              chat={syntheticChat}
-              isPlanSolveMessage={false}
-              changeActiveChat={handleChangeActiveChat}
-              changePlan={changePlan}
-              onOpenToolDiff={handleOpenToolDiff}
-              onOpenAgent={handleOpenAgent}
-            />
-          </div>
-        ) : null}
-
-        {conclusionText ? (
-          <div className="timeline-segment-enter mt-3 w-full">
-            <Message from="assistant" className="min-w-0 w-full">
-              <MessageContent>
-                <MarkdownRenderer
-                  markDownContent={conclusionText}
-                  className="chat-markdown conclusion-markdown kimi-md"
-                />
-              </MessageContent>
-              <MessageToolbar response={conclusionText} alwaysVisible />
-            </Message>
-          </div>
+        {hasBody ? (
+          <Dialogue
+            key={tool.id || tool.messageId || "subagent-dialogue"}
+            chat={syntheticChat}
+            deepThink={false}
+            sessionArtifactFiles={sessionArtifactFiles}
+            changeTask={handleChangeActiveChat}
+            changeFile={handleChangeFile}
+            changePlan={changePlan}
+            onOpenThinking={onOpenThinking}
+            onOpenToolDiff={handleOpenToolDiff}
+            onOpenAgent={handleOpenAgent}
+            onOpenWorkspaceFiles={onOpenWorkspaceFiles}
+          />
         ) : null}
 
         {!hasBody ? (

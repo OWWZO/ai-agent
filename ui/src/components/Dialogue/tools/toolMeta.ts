@@ -51,6 +51,8 @@ const TOOL_LABELS: Record<string, string> = {
   todo: "Todo",
   task: "Agent",
   askuserquestion: "提问",
+  canvas_publish: "发布画布",
+  html: "发布画布",
 };
 
 export type ToolChipInput = {
@@ -160,6 +162,11 @@ export function toolSummary(name: string, arg: string, full = false): string {
       case "write": {
         const path = filePath(d);
         return path ? c(`${path}  created`) : fallback();
+      }
+      case "canvas_publish":
+      case "html": {
+        const path = str(d.html_path) ?? str(d.htmlPath) ?? filePath(d);
+        return path ? c(path) : fallback();
       }
       case "edit":
       case "multi_edit": {

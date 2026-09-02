@@ -84,6 +84,7 @@ export function handlePlanMessage(
 
   upsertPlannerRound(currentChat, plannerRoundId, (round) => {
     round.plan = nextPlan;
+    round.planThoughtFinal = true;
     round.planMessageId = eventData.messageId;
     round.planTaskId = eventData.taskId;
   });
@@ -110,7 +111,8 @@ export function handlePlanThoughtMessage(
       round.planThought = `${currentThought}${eventData.resultMap.planThought || ""}`;
     }
     // 思考的终态属于 planner round，而不是整轮 Agent；后续工具执行时不能继续闪动。
-    round.planThoughtFinal = isFinal;
+    // 迟到的非 final 增量只补字，不能把已收口的思考重新拉开。
+    round.planThoughtFinal = Boolean(round.planThoughtFinal) || isFinal;
     round.planThoughtMessageId = eventData.messageId;
     round.planThoughtTaskId = eventData.taskId;
   });

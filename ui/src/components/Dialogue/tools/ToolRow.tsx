@@ -64,13 +64,21 @@ export function ToolRow({
     });
   }, []);
 
-  const handleClick = () => {
+  const handleHeadClick = () => {
+    if (onOpenWorkspace) {
+      onOpenWorkspace();
+      return;
+    }
     if (expandable) {
       onToggle?.();
       pinScroll();
-      return;
     }
-    onOpenWorkspace?.();
+  };
+
+  const handleToggleClick = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onToggle?.();
+    pinScroll();
   };
 
   return (
@@ -85,52 +93,61 @@ export function ToolRow({
         stackPosition === "last" && "is-stack-last"
       )}
     >
-      <button
-        ref={headRef}
-        type="button"
-        className="kimi-tool-row-head"
-        aria-expanded={expandable ? open : undefined}
-        onClick={handleClick}
-      >
-        {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
-        <span className="kimi-tool-row-text">
-          <span className="kimi-tool-row-name">{name}</span>
-          {arg ? (
-            <span className="kimi-tool-row-arg" title={arg}>
-              {arg}
-            </span>
-          ) : null}
-        </span>
-        <span className="kimi-tool-row-trailing">
-          <span
-            className={cn(
-              "kimi-tool-row-status",
-              status === "ok" && "is-ok",
-              status === "error" && "is-error"
-            )}
-            role="status"
-            aria-label={status}
-          >
-            {status === "ok" ? (
-              <CheckIcon className="size-3.5" />
-            ) : status === "error" ? (
-              <XIcon className="size-3.5" />
-            ) : (
-              <StatusDot status={status} />
-            )}
+      <div className="kimi-tool-row-head">
+        <button
+          ref={headRef}
+          type="button"
+          className="kimi-tool-row-head-main"
+          onClick={handleHeadClick}
+        >
+          {icon ? <span className="kimi-tool-row-glyph">{icon}</span> : null}
+          <span className="kimi-tool-row-text">
+            <span className="kimi-tool-row-name">{name}</span>
+            {arg ? (
+              <span className="kimi-tool-row-arg" title={arg}>
+                {arg}
+              </span>
+            ) : null}
           </span>
-          {chip ? <span className="kimi-tool-row-chip">{chip}</span> : null}
-          {trailing}
-          {time ? <span className="kimi-tool-row-time">{time}</span> : null}
-        </span>
+          <span className="kimi-tool-row-trailing">
+            <span
+              className={cn(
+                "kimi-tool-row-status",
+                status === "ok" && "is-ok",
+                status === "error" && "is-error"
+              )}
+              role="status"
+              aria-label={status}
+            >
+              {status === "ok" ? (
+                <CheckIcon className="size-3.5" />
+              ) : status === "error" ? (
+                <XIcon className="size-3.5" />
+              ) : (
+                <StatusDot status={status} />
+              )}
+            </span>
+            {chip ? <span className="kimi-tool-row-chip">{chip}</span> : null}
+            {trailing}
+            {time ? <span className="kimi-tool-row-time">{time}</span> : null}
+          </span>
+        </button>
         {expandable ? (
-          open ? (
-            <ChevronDownIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
-          ) : (
-            <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
-          )
+          <button
+            type="button"
+            className="kimi-tool-row-toggle"
+            aria-expanded={open}
+            aria-label={open ? "收起工具详情" : "展开工具详情"}
+            onClick={handleToggleClick}
+          >
+            {open ? (
+              <ChevronDownIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
+            ) : (
+              <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--color-text-faint)]" />
+            )}
+          </button>
         ) : null}
-      </button>
+      </div>
       <div
         className={cn("kimi-tool-row-body", open && "is-open")}
         inert={!open ? true : undefined}

@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ActionViewItemEnum } from "@/utils";
 import querySSE from "@/utils/querySSE";
-import { getStableTaskIdentity } from "@/utils/chat";
+import { buildConversationTaskData, getStableTaskIdentity } from "@/utils/chat";
 import Dialogue from "@/components/Dialogue";
 import DataDialogue from "@/components/Dialogue/DataDialogue";
 import GeneralInput from "@/components/GeneralInput";
@@ -42,7 +42,6 @@ import {
 } from "@/components/ai-elements/conversation";
 import {
   FolderOpen,
-  PanelLeftClose,
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
@@ -53,14 +52,17 @@ import {
   createDraftConversation,
   useConversationStream,
 } from "./useConversationStream";
-import { canOpenTaskWorkspacePanel } from "./streamState";
+import {
+  canOpenTaskWorkspacePanel,
+  isCanvasPublishPreviewTask,
+} from "./streamState";
 import { useWorkspacePanels } from "./useWorkspacePanels";
 import GenUiActionBridge from "@/components/genui/GenUiActionBridge";
-import { resolveTaskToolCallId } from "@/utils/chat/toolCalls";
-import { subAgentLiveRevision } from "@/utils/chat/subAgentChat";
+import { identityKeys, readTaskIdentity } from "@/utils/chat/taskIdentity";
 import {
   collectChatFileTasks,
   collectSessionFileTasks,
+  collectWorkspaceFiles,
   flattenTasksWithFiles,
 } from "@/components/ActionView/workspaceFiles";
 import { collectSessionArtifactFiles } from "@/utils/markdownArtifacts";
@@ -94,6 +96,13 @@ const getTaskStableKey = (task?: CHAT.Task) => {
   return getStableTaskIdentity(task);
 };
 
+const getRenderedChat = (chat: CHAT.ChatItem, deepThink: boolean) => {
+  if (!(chat.multiAgent?.tasks || []).some((group) => group?.length)) {
+    return chat;
+  }
+  return buildConversationTaskData(chat, deepThink).currentChat;
+};
+
 const getFileSnapshot = (file: CHAT.TFile) =>
   [
     file.name,
@@ -106,6 +115,8 @@ const getFileSnapshot = (file: CHAT.TFile) =>
     file.missingReason,
     file.resourceKey,
     file.mimeType,
+    file.relativePath,
+    file.originFileName,
   ]
     .map((value) => String(value ?? ""))
     .join("\u001f");
@@ -161,6 +172,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     tool: CHAT.Task;
     chat: CHAT.ChatItem;
   } | null>(null);
+  const [workspaceBackTarget, setWorkspaceBackTarget] =
+    useState<CHAT.AgentDetailTarget | null>(null);
   const agentPanelClosedRef = useRef(false);
   const [composerDraft, setComposerDraft] = useState<string | null>(null);
   const {
@@ -203,6 +216,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const actionViewRef = ActionView.useActionView();
   const [modal, contextHolder] = Modal.useModal();
   const conversationRef = useRef(conversation);
+  const lastAutoOpenedCanvasPreviewKeyRef = useRef("");
   const [dataLoading, setDataLoading] = useState(false);
   const {
     taskList,
@@ -228,8 +242,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       setPendingPreviewFile(undefined);
       setThinkingDetail(null);
       setToolDiffTask(null);
+      setWorkspaceBackTarget(null);
       agentPanelClosedRef.current = false;
       setAgentDetail(null);
+      lastAutoOpenedCanvasPreviewKeyRef.current = "";
       actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
     },
     onTokenUseUp: () => {
@@ -249,10 +265,13 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // 属于当前会话；这里只重置本组件持有的瞬时状态，历史内容由父状态提供。
     setDataLoading(false);
     setWorkspaceOpenRequested(false);
+    setIsRightCollapsed(false);
     setThinkingDetail(null);
     setToolDiffTask(null);
+    setWorkspaceBackTarget(null);
     agentPanelClosedRef.current = false;
     setAgentDetail(null);
+    lastAutoOpenedCanvasPreviewKeyRef.current = "";
   }, [conversation.id]);
 
   useEffect(() => {
@@ -276,13 +295,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     // taskList 身份空间里，仅靠 getTaskStableKey 会一直卡在打开瞬间的快照。
     setAgentDetail((prev) => {
       if (!prev) return prev;
-      const latestChat =
+      const latestChatSource =
         conversation.chatList?.[conversation.chatList.length - 1] || prev.chat;
-      const toolCallId =
-        resolveTaskToolCallId(prev.tool) ||
-        prev.tool.messageId ||
-        prev.tool.id ||
-        "";
+      const latestChat = getRenderedChat(latestChatSource, conversation.deepThink);
+      const toolCallId = identityKeys(readTaskIdentity(prev.tool))[0] || "";
       const fromChat =
         latestChat && toolCallId
           ? findAgentTaskByToolCallId(latestChat, toolCallId)
@@ -295,7 +311,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
         chat: latestChat || prev.chat
       };
     });
-  }, [taskList, workspaceStreamTask, conversation.chatList]);
+  }, [taskList, workspaceStreamTask, conversation.chatList, conversation.deepThink]);
 
   const commitConversation = useMemoizedFn(
     (conversationId: string, nextConversation: CHAT.ConversationHistory) => {
@@ -354,6 +370,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setAgentDetail(null);
     setPendingPreviewFile(undefined);
     setActiveTask(undefined);
+    setWorkspaceBackTarget(null);
     openRightWorkspace();
   });
 
@@ -366,12 +383,17 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const openToolDiffPanel = useMemoizedFn(
-    (task: CHAT.Task, chat?: CHAT.ChatItem) => {
+    (
+      task: CHAT.Task,
+      chat?: CHAT.ChatItem,
+      backTarget?: CHAT.AgentDetailTarget
+    ) => {
       setToolDiffTask(task);
       setThinkingDetail(null);
       setAgentDetail(null);
       setPendingPreviewFile(undefined);
       setActiveTask(undefined);
+      setWorkspaceBackTarget(backTarget || null);
       openRightWorkspace();
       if (chat) {
         setActiveRunState({
@@ -384,10 +406,15 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const closeToolDiffPanel = useMemoizedFn(() => {
     setToolDiffTask(null);
+    setWorkspaceBackTarget(null);
   });
 
   const openAgentPanel = useMemoizedFn(
-    (task: CHAT.Task, chat: CHAT.ChatItem) => {
+    (
+      task: CHAT.Task,
+      chat: CHAT.ChatItem,
+      backTarget?: CHAT.AgentDetailTarget
+    ) => {
       setAgentDetail({
         tool: task,
         chat
@@ -396,6 +423,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       setToolDiffTask(null);
       setPendingPreviewFile(undefined);
       setActiveTask(undefined);
+      setWorkspaceBackTarget(backTarget || null);
       openRightWorkspace();
       setActiveRunState({
         status: chat.metrics?.status,
@@ -407,6 +435,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   const closeAgentPanel = useMemoizedFn(() => {
     agentPanelClosedRef.current = true;
     setAgentDetail(null);
+    setWorkspaceBackTarget(null);
   });
 
   const closeExclusiveDetail = useMemoizedFn(() => {
@@ -436,46 +465,86 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeExclusiveDetail]);
 
-  const changeTask = useMemoizedFn((task: CHAT.Task, chat?: CHAT.ChatItem) => {
-    // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
-    if (!canOpenTaskWorkspacePanel(task)) {
-      return;
+  const changeTask = useMemoizedFn(
+    (
+      task: CHAT.Task,
+      chat?: CHAT.ChatItem,
+      backTarget?: CHAT.AgentDetailTarget
+    ) => {
+      // Structured data / 子智能体 JSON 观察值当前不渲染，禁止打开空白右侧面板。
+      if (!canOpenTaskWorkspacePanel(task)) {
+        return;
+      }
+      // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
+      // 上一轮打开的文件预览遮住用户刚选择的任务。
+      setThinkingDetail(null);
+      setToolDiffTask(null);
+      setAgentDetail(null);
+      setWorkspaceBackTarget(backTarget || null);
+      openRightWorkspace();
+      // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
+      setPendingPreviewFile(undefined);
+      actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
+      setActiveTask(task);
+      setActiveRunState({
+        status: chat?.metrics?.status,
+        finishedAt: chat?.finishedAt,
+      });
     }
-    // 任务点击同时建立工作区可见性和当前运行快照；先恢复动态跟随，避免
-    // 上一轮打开的文件预览遮住用户刚选择的任务。
-    setThinkingDetail(null);
-    setToolDiffTask(null);
-    setAgentDetail(null);
-    openRightWorkspace();
-    // 工具点击回到「动态」预览，避免被已打开的文件 tab 挡住
-    setPendingPreviewFile(undefined);
-    actionViewRef.current?.changeActionView(ActionViewItemEnum.follow);
-    setActiveTask(task);
-    setActiveRunState({
-      status: chat?.metrics?.status,
-      finishedAt: chat?.finishedAt,
-    });
-  });
+  );
 
-  const changeFile = useMemoizedFn((file: CHAT.TFile, chat?: CHAT.ChatItem) => {
-    // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
-    setThinkingDetail(null);
-    setToolDiffTask(null);
-    setAgentDetail(null);
-    openRightWorkspace();
-    setActiveRunState({
-      status: chat?.metrics?.status,
-      finishedAt: chat?.finishedAt,
-    });
-    // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费。
-    // 两条路径同时保留是为了覆盖“首次打开工作区”和“工作区已存在”两种时序。
-    setPendingPreviewFile(file);
-    actionViewRef.current?.setFilePreview(file);
-  });
+  const changeFile = useMemoizedFn(
+    (
+      file: CHAT.TFile,
+      chat?: CHAT.ChatItem,
+      backTarget?: CHAT.AgentDetailTarget
+    ) => {
+      // 只打开右侧预览 tab；左侧文件管理仅由「查看当前会话的文件」入口进入
+      setThinkingDetail(null);
+      setToolDiffTask(null);
+      setAgentDetail(null);
+      setWorkspaceBackTarget(backTarget || null);
+      openRightWorkspace();
+      setActiveRunState({
+        status: chat?.metrics?.status,
+        finishedAt: chat?.finishedAt,
+      });
+      // 先写入父状态：工作区未挂载时 ref 调用会丢；挂载后由 ActionView 消费。
+      // 两条路径同时保留是为了覆盖“首次打开工作区”和“工作区已存在”两种时序。
+      setPendingPreviewFile(file);
+      actionViewRef.current?.setFilePreview(file);
+    }
+  );
 
   const clearPendingPreviewFile = useMemoizedFn(() => {
     setPendingPreviewFile(undefined);
   });
+
+  useEffect(() => {
+    if (!streamLoading || !workspaceStreamTask) {
+      return;
+    }
+    if (!isCanvasPublishPreviewTask(workspaceStreamTask)) {
+      return;
+    }
+    const files = getTaskFiles(workspaceStreamTask);
+    const file = files[0];
+    if (!file) {
+      return;
+    }
+    const key =
+      file.relativePath ||
+      file.url ||
+      file.downloadUrl ||
+      getStableTaskIdentity(workspaceStreamTask);
+    if (!key || lastAutoOpenedCanvasPreviewKeyRef.current === key) {
+      return;
+    }
+    lastAutoOpenedCanvasPreviewKeyRef.current = key;
+    const liveChat =
+      conversation.chatList[conversation.chatList.length - 1];
+    changeFile(file, liveChat);
+  }, [changeFile, conversation.chatList, streamLoading, workspaceStreamTask]);
 
   useEffect(() => {
     onRegisterApi?.({ openFile: changeFile });
@@ -486,6 +555,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setThinkingDetail(null);
     setToolDiffTask(null);
     setAgentDetail(null);
+    setWorkspaceBackTarget(null);
     openRightWorkspace();
     actionViewRef.current?.openPlanView();
   });
@@ -517,6 +587,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setThinkingDetail(null);
     setToolDiffTask(null);
     setAgentDetail(null);
+    setWorkspaceBackTarget(null);
     agentPanelClosedRef.current = true;
     setWorkspaceOpenRequested(false);
     changeActionStatus(false);
@@ -527,6 +598,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   });
 
   const closeActionView = useMemoizedFn(() => {
+    setWorkspaceBackTarget(null);
     if (isFocusMode) {
       exitFocusMode();
       return;
@@ -534,6 +606,14 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     setWorkspaceOpenRequested(false);
     changeActionStatus(false);
     setIsRightCollapsed(true);
+  });
+
+  const returnToAgentDetail = useMemoizedFn(() => {
+    const target = workspaceBackTarget;
+    if (!target) {
+      return;
+    }
+    openAgentPanel(target.tool, target.chat);
   });
 
   const sendDataMessage = useMemoizedFn((inputInfo: CHAT.TInputInfo) => {
@@ -755,7 +835,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     snapshots: [],
   });
   const sessionArtifactFiles = useMemo(() => {
-    const next = collectSessionArtifactFiles(deferredChatList);
+    const merged: CHAT.TFile[] = [];
+    const seen = new Set<string>();
+    for (const file of [
+      ...collectWorkspaceFiles(sessionFileTasks),
+      ...collectSessionArtifactFiles(deferredChatList),
+    ]) {
+      const key =
+        file.relativePath ||
+        file.resourceKey ||
+        file.url ||
+        file.downloadUrl ||
+        file.name;
+      if (!key || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(file);
+    }
+    const next = merged;
     const nextSnapshots = next.map(getFileSnapshot);
     const cache = sessionArtifactFilesCacheRef.current;
     if (
@@ -770,26 +868,23 @@ const ChatView: ReactorType.FC<Props> = (props) => {
       snapshots: nextSnapshots,
     };
     return next;
-  }, [conversation.id, deferredChatList]);
+  }, [conversation.id, deferredChatList, sessionFileTasks]);
 
+  // 仅有产物注意力 / 手动打开 / 专属详情时才挂右侧；纯工具 taskList 不自动拉开空「动态」。
   const hasWorkspaceContent = Boolean(
     showAction ||
       workspaceOpenRequested ||
       thinkingDetail ||
       toolDiffTask ||
-      agentDetail ||
-      activeTask ||
-      workspaceStreamTask ||
-      taskList.length ||
-      sessionFileTasks.length
+      agentDetail
   );
 
-  const renderMobileWorkspaceTrigger = () =>
-    hasWorkspaceContent ? (
+  const renderWorkspaceReopenTrigger = () =>
+    hasWorkspaceContent && isRightCollapsed ? (
       <button
         type="button"
         onClick={toggleRightPanel}
-        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)] lg:hidden"
+        className="reactor-mobile-workspace-trigger flex h-8 w-8 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
         title="打开工作区"
         aria-label="打开工作区"
       >
@@ -802,27 +897,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
     if (!agentDetail) {
       return null;
     }
-    const liveChat =
+    const liveChatSource =
       conversation.chatList.find(
         (item) => item.requestId === agentDetail.chat.requestId
       ) || agentDetail.chat;
-    const toolId =
-      resolveTaskToolCallId(agentDetail.tool) ||
-      agentDetail.tool.messageId ||
-      agentDetail.tool.id ||
-      "";
+    const liveChat = getRenderedChat(liveChatSource, conversation.deepThink);
+    const toolId = identityKeys(readTaskIdentity(agentDetail.tool))[0] || "";
     const liveTool =
       findAgentTaskByToolCallId(liveChat, toolId) || agentDetail.tool;
     return {
       tool: liveTool,
       chat: liveChat
     };
-  }, [agentDetail, conversation.chatList]);
-  // children 在 handleTaskData 里原地 push，chatList/tool 引用经常不变；
-  // 每轮渲染读当前 children，才能把子 Agent 轨迹推进右侧面板。
-  const agentLiveRevision = liveAgentDetail
-    ? subAgentLiveRevision(liveAgentDetail.tool)
-    : "";
+  }, [agentDetail, conversation.chatList, conversation.deepThink]);
+  const agentDetailBackTarget = liveAgentDetail
+    ? {
+      tool: liveAgentDetail.tool,
+      chat: liveAgentDetail.chat,
+    }
+    : undefined;
 
   useEffect(() => {
     if (agentPanelClosedRef.current || agentDetail) {
@@ -1001,6 +1094,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             onSyncThinking={syncThinkingPanel}
             onOpenToolDiff={openToolDiffPanel}
             onOpenAgent={openAgentPanel}
+            onOpenWorkspaceFiles={onOpenTaskFiles}
           />
         ))}
         {streamLoading ? (
@@ -1031,9 +1125,8 @@ const ChatView: ReactorType.FC<Props> = (props) => {
   };
 
   const renderMultAgent = () => {
-    // Keep the conversation shell mounted while the workspace slot appears.
-    // Only the right slot is added or resized when runtime work becomes visible.
-    const hasWorkspaceLayout = hasWorkspaceContent;
+    // 右侧关闭后回到居中单栏；仅展开时才占用双栏布局，避免留下窄条把主会话拉长。
+    const hasWorkspaceLayout = hasWorkspaceContent && !isRightCollapsed;
 
     return (
       <div
@@ -1044,30 +1137,25 @@ const ChatView: ReactorType.FC<Props> = (props) => {
             ? "gap-1.5 p-1.5 md:p-2"
             : "reactor-single-chat-shell justify-center overflow-hidden px-4 pt-4 md:px-6"
         )}
-        data-workspace-open={
-          hasWorkspaceLayout && !isRightCollapsed ? "true" : "false"
-        }
-        data-workspace-empty={hasWorkspaceLayout ? "false" : "true"}
+        data-workspace-open={hasWorkspaceLayout ? "true" : "false"}
+        data-workspace-empty={hasWorkspaceContent ? "false" : "true"}
         data-chat-read-only={readOnly ? "true" : "false"}
       >
         {/* Left Panel - Chat Area */}
         <div
           ref={leftPanelRef}
-          className={classNames(
+            className={classNames(
             "reactor-chat-panel-left flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
             !hasWorkspaceLayout && "mx-auto h-full w-full max-w-[980px]",
             isLeftCollapsed && !isFocusMode && "w-14 min-w-14",
-            (!isLeftCollapsed || isFocusMode) && !isRightCollapsed && "shrink-0",
-            isRightCollapsed && !isLeftCollapsed && !isFocusMode && "flex-1"
+            (!isLeftCollapsed || isFocusMode) && hasWorkspaceLayout && "shrink-0"
           )}
           style={
             hasWorkspaceLayout
               ? {
                 ...((!isLeftCollapsed || isFocusMode)
                   ? {
-                    width: isRightCollapsed && !isFocusMode
-                      ? undefined
-                      : `var(--workspace-left-width, ${leftPanelWidth}%)`,
+                    width: `var(--workspace-left-width, ${leftPanelWidth}%)`,
                     minWidth: isFocusMode ? 280 : undefined,
                     maxWidth: isFocusMode ? "28%" : undefined,
                   }
@@ -1113,7 +1201,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   {renderHeaderStatus({showDeepThink: hasWorkspaceLayout ? !isFocusMode : true,})}
                   {(!hasWorkspaceLayout || !isFocusMode) ? (
                     <div className="flex shrink-0 items-center gap-1">
-                      {renderMobileWorkspaceTrigger()}
+                      {renderWorkspaceReopenTrigger()}
                       <button
                         type="button"
                         onClick={() => onOpenTaskFiles?.()}
@@ -1183,7 +1271,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
           </div>
         </div>
 
-        {!hasWorkspaceLayout ? null : !isFocusMode && !isLeftCollapsed && !isRightCollapsed && (
+        {hasWorkspaceLayout && !isFocusMode && !isLeftCollapsed ? (
           <div
             aria-label="调整对话区和工作区宽度"
             role="separator"
@@ -1207,9 +1295,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               )}
             />
           </div>
-        )}
+        ) : null}
 
-        {hasWorkspaceLayout && !isRightCollapsed ? (
+        {hasWorkspaceLayout ? (
           <button
             type="button"
             className="reactor-workspace-scrim lg:hidden"
@@ -1220,25 +1308,10 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
         {hasWorkspaceLayout ? (
           <div
-            className={classNames(
-              "reactor-workspace-panel flex min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]",
-              isRightCollapsed && "w-14 min-w-14",
-              !isRightCollapsed && "flex-1"
-            )}
-            data-workspace-collapsed={isRightCollapsed ? "true" : "false"}
+            className="reactor-workspace-panel flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]"
+            data-workspace-collapsed="false"
           >
-            {isRightCollapsed ? (
-            // 折叠状态
-              <div className="flex h-full flex-col items-center py-4">
-                <button
-                  onClick={toggleRightPanel}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--chat-text-soft)] transition-colors hover:bg-[var(--chat-surface-soft)] hover:text-[var(--chat-text)]"
-                  title="展开智能体工作区"
-                >
-                  <PanelLeftClose className="h-5 w-5" />
-                </button>
-              </div>
-            ) : thinkingDetail != null ? (
+            {thinkingDetail != null ? (
               <ThinkingPanel
                 text={thinkingDetail}
                 onClose={() => {
@@ -1255,6 +1328,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 diffCode={toolDiffView.diffCode}
                 output={toolDiffView.output}
                 status={toolDiffView.status}
+                onBack={workspaceBackTarget ? returnToAgentDetail : undefined}
                 onClose={() => {
                   closeToolDiffPanel();
                   if (!showAction && !workspaceOpenRequested) {
@@ -1264,13 +1338,28 @@ const ChatView: ReactorType.FC<Props> = (props) => {
               />
             ) : liveAgentDetail ? (
               <AgentDetailPanel
+                key={
+                  identityKeys(readTaskIdentity(liveAgentDetail.tool))[0] ||
+                  liveAgentDetail.tool.id
+                }
                 tool={liveAgentDetail.tool}
                 chat={liveAgentDetail.chat}
-                liveRevision={agentLiveRevision}
-                changeActiveChat={changeTask}
+                sessionArtifactFiles={sessionArtifactFiles}
+                changeActiveChat={(task, chat) =>
+                  changeTask(task, chat, agentDetailBackTarget)
+                }
                 changePlan={changePlan}
-                onOpenToolDiff={openToolDiffPanel}
-                onOpenAgent={openAgentPanel}
+                changeFile={(file, chat) =>
+                  changeFile(file, chat, agentDetailBackTarget)
+                }
+                onOpenThinking={openThinkingPanel}
+                onOpenToolDiff={(task, chat) =>
+                  openToolDiffPanel(task, chat, agentDetailBackTarget)
+                }
+                onOpenAgent={(task, chat) =>
+                  openAgentPanel(task, chat, agentDetailBackTarget)
+                }
+                onOpenWorkspaceFiles={onOpenTaskFiles}
                 onClose={() => {
                   closeAgentPanel();
                   if (!showAction && !workspaceOpenRequested) {
@@ -1290,6 +1379,7 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                 runState={activeRunState}
                 isFocusMode={isFocusMode}
                 onToggleFocusMode={toggleFocusMode}
+                onBack={workspaceBackTarget ? returnToAgentDetail : undefined}
                 ref={actionViewRef}
                 onClose={closeActionView}
               />
@@ -1344,9 +1434,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
                   product={currentProduct}
                   deepThink={false}
                   send={(info) =>
-                     sendDataMessage({
-                       ...info,
-                       outputStyle: "dataAgent",
+                    sendDataMessage({
+                      ...info,
+                      outputStyle: "dataAgent",
                       deepThink: false,
                     })
                   }
@@ -1364,9 +1454,9 @@ const ChatView: ReactorType.FC<Props> = (props) => {
 
   const sendGenUiMessage = useMemoizedFn((message: string) => {
     sendMessage({
-       message,
-       deepThink: conversation.deepThink,
-      });
+      message,
+      deepThink: conversation.deepThink,
+    });
   });
 
   return (

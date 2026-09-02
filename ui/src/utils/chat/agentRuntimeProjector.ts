@@ -9,6 +9,7 @@ import {
   isRunInBackgroundAgent,
   resolveSubAgentDisplay,
 } from "./subagent";
+import { findBestAgentTask } from "./taskIdentity";
 import { resolveTaskToolCallId } from "./toolCalls";
 import {
   formatDurationLabel,
@@ -17,6 +18,7 @@ import {
   resolveTaskToolOutput,
   resolveTaskToolStatus,
 } from "@/components/Dialogue/tools/toolTaskAdapter";
+import { isFileListOnlyTask } from "@/utils/taskArtifacts";
 import type {
   AgentMember,
   AgentPhase,
@@ -60,12 +62,15 @@ function flattenTimelineTasks(chat: CHAT.ChatItem): CHAT.Task[] {
     for (const container of group || []) {
       const children = (container as CHAT.Task).children;
       if (Array.isArray(children) && children.length > 0) {
-        out.push(...children.filter((task) => task.messageType !== "plan_mode_entered"));
+        out.push(...children.filter((task) =>
+          task.messageType !== "plan_mode_entered" && !isFileListOnlyTask(task)
+        ));
       } else if (
         container &&
         (container as CHAT.Task).messageType &&
         (container as CHAT.Task).messageType !== "task" &&
-        (container as CHAT.Task).messageType !== "plan_mode_entered"
+        (container as CHAT.Task).messageType !== "plan_mode_entered" &&
+        !isFileListOnlyTask(container as CHAT.Task)
       ) {
         out.push(container as CHAT.Task);
       }
@@ -305,33 +310,8 @@ export function projectAgentMemberByToolCallId(
   chat: CHAT.ChatItem,
   toolCallId: string
 ): AgentMember | null {
-  if (!toolCallId) {
-    return null;
-  }
-  const candidates = [
-    ...flattenTimelineTasks(chat),
-    ...flattenFactTasks(chat),
-  ];
-  for (const task of candidates) {
-    if (!isAgentDispatchTask(task)) {
-      continue;
-    }
-    const id = resolveTaskToolCallId(task) || task.messageId || task.id;
-    if (id === toolCallId) {
-      return projectAgentMember(task);
-    }
-    if (Array.isArray(task.children)) {
-      for (const child of task.children) {
-        if (!isAgentDispatchTask(child)) continue;
-        const childId =
-          resolveTaskToolCallId(child) || child.messageId || child.id;
-        if (childId === toolCallId) {
-          return projectAgentMember(child);
-        }
-      }
-    }
-  }
-  return null;
+  const task = findBestAgentTask(chat, toolCallId);
+  return task ? projectAgentMember(task) : null;
 }
 
 /**

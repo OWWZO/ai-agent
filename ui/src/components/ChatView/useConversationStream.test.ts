@@ -1,10 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { applyGuardError } from "./useConversationStream";
+import {
+  applyGuardError,
+  resolveLatestContextUsage,
+} from "./useConversationStream";
 import { resolveActionPanelVisibility } from "./streamState";
 import { parseAgentAnswer } from "@/utils/sseParsers";
 
 describe("useConversationStream helpers", () => {
+  it("新任务沿用上一轮最近的真实上下文快照", () => {
+    const usage = {
+      max: 200000,
+      promptTokens: 24000,
+    };
+    const result = resolveLatestContextUsage([
+      { contextUsage: usage } as CHAT.ChatItem,
+      {} as CHAT.ChatItem,
+      { contextUsage: { max: 200000 } } as CHAT.ChatItem,
+    ]);
+
+    expect(result).toEqual(usage);
+    expect(result).not.toBe(usage);
+  });
+
+  it("没有真实 prompt_tokens 时不生成上下文快照", () => {
+    expect(
+      resolveLatestContextUsage([
+        { contextUsage: { max: 200000 } } as CHAT.ChatItem,
+      ])
+    ).toBeUndefined();
+  });
+
   it("guard error 应将当前 chat 标记为 FAILED 并生成 conclusion", () => {
     const currentChat = {
       requestId: "req-1",

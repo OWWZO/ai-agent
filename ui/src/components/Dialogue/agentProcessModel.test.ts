@@ -217,6 +217,10 @@ describe("agentProcessModel", () => {
       model.segments[4].type === "group" && model.segments[4].group.title
     ).toBe("执行了 2 个步骤");
     expect(model.totalStepCount).toBe(3);
+    const groupIds = model.segments
+      .filter((segment) => segment.type === "group")
+      .map((segment) => segment.type === "group" && segment.group.id);
+    expect(new Set(groupIds).size).toBe(groupIds.length);
   });
 
   it("marks last group active while loading", () => {

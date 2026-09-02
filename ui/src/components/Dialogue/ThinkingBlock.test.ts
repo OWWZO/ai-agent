@@ -14,7 +14,7 @@ describe("thinking paragraph fold", () => {
     expect(parts.length).toBe(3);
   });
 
-  it("single paragraph is not foldable", () => {
-    expect(splitParagraphs("only one").length).toBe(1);
+  it("single paragraph still provides a teaser candidate", () => {
+    expect(splitParagraphs("only one")).toEqual(["only one"]);
   });
 });

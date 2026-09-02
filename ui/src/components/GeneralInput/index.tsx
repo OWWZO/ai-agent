@@ -161,8 +161,8 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
   const [markdownBarOpen, setMarkdownBarOpen] = useState(false);
   const [models, setModels] = useState<LlmModelRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [thinking, setThinking] = useState(false);
-  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(null);
+  const [thinking, setThinking] = useState(true);
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>("high");
   const tempData = useRef<{ compositing?: boolean }>({});
   const inputShellRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -556,7 +556,6 @@ const GeneralInput: ReactorType.FC<Props> = (props) => {
             <PromptInputTools className="reactor-composer-tools reactor-composer-tools-right ml-auto shrink-0 items-center gap-1.5 self-end">
               <ContextRing
                 usage={contextUsage}
-                inputChars={question.length}
                 contextWindow={currentModelMeta?.contextWindow}
               />
               {busy && onStop ? (

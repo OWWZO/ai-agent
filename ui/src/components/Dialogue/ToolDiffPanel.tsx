@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { DiffCodeFence } from "./markdown/KimiCodeFence";
 import { ToolOutputBlock } from "./tools/ToolOutputBlock";
 
@@ -9,6 +9,7 @@ type ToolDiffPanelProps = {
   diffCode: string | null;
   output: string[];
   status?: "running" | "ok" | "error";
+  onBack?: () => void;
   onClose?: () => void;
 };
 
@@ -18,6 +19,7 @@ export const ToolDiffPanel = memo(function ToolDiffPanel({
   diffCode,
   output,
   status = "ok",
+  onBack,
   onClose,
 }: ToolDiffPanelProps) {
   const showDiff = Boolean(diffCode) && status !== "error";
@@ -36,14 +38,27 @@ export const ToolDiffPanel = memo(function ToolDiffPanel({
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-text)]"
-          aria-label="关闭"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onBack ? (
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-text)]"
+              title="返回子 Agent"
+              aria-label="返回子 Agent"
+              onClick={onBack}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-sunken)] hover:text-[var(--color-text)]"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div className="kimi-detail-panel-body">
         {showDiff && diffCode ? (

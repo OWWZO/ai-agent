@@ -1,7 +1,43 @@
 import { resolveSubAgentDisplay } from "./subagent";
+import { buildConversationTaskData } from "../chat";
+import { processTaskForRender } from "./renderTasks";
+import { findBestAgentTask, identityKeys, readTaskIdentity } from "./taskIdentity";
+import { resolveTaskResultMap } from "./toolCalls";
+import { getTaskFiles } from "@/utils/taskArtifacts";
 
 function asText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function taskFileKey(file: CHAT.TFile): string {
+  return file.resourceKey || file.url || file.downloadUrl || file.name;
+}
+
+function collectTaskFiles(task: CHAT.Task): CHAT.TFile[] {
+  const files = new Map<string, CHAT.TFile>();
+  const visit = (current?: CHAT.Task) => {
+    if (!current) {
+      return;
+    }
+    for (const file of getTaskFiles(current)) {
+      const key = taskFileKey(file);
+      if (key) {
+        files.set(key, file);
+      }
+    }
+    for (const child of current.children || []) {
+      visit(child);
+    }
+  };
+  visit(task);
+  return [...files.values()];
+}
+
+function stripArtifactSection(value: string): string {
+  const delimiterIndex = value.indexOf("$$$");
+  return delimiterIndex >= 0
+    ? value.slice(0, delimiterIndex).trim()
+    : value;
 }
 
 function isNativeReasoningTask(task: CHAT.Task): boolean {
@@ -36,8 +72,39 @@ function buildLiveTextTask(
   } as CHAT.Task;
 }
 
-function buildConclusionTask(tool: CHAT.Task, content: string): CHAT.Task {
+function toArtifactRef(file: CHAT.TFile): MESSAGE.ArtifactReference {
+  return {
+    displayName: file.name,
+    resourceKey: file.resourceKey,
+    previewUrl: file.url,
+    downloadUrl: file.downloadUrl,
+    fileSize: file.size,
+    mimeType: file.mimeType,
+    missing: file.missing,
+    missingReason: file.missingReason,
+  };
+}
+
+function buildConclusionTask(
+  tool: CHAT.Task,
+  content: string,
+  source?: CHAT.Task,
+  fallbackFiles: CHAT.TFile[] = []
+): CHAT.Task {
   const id = `${tool.id || tool.messageId || "subagent"}:conclusion`;
+  const sourceRecord = source as unknown as Record<string, unknown> | undefined;
+  const sourceMap = source ? resolveTaskResultMap(source) : {};
+  const sourceFileList = Array.isArray(sourceRecord?.fileList)
+    ? sourceRecord.fileList
+    : Array.isArray(sourceMap.fileList)
+      ? sourceMap.fileList
+      : undefined;
+  const artifactRefs =
+    source?.artifactRefs?.length
+      ? [...source.artifactRefs]
+      : Array.isArray(sourceMap.artifactRefs) && sourceMap.artifactRefs.length
+        ? [...sourceMap.artifactRefs]
+        : fallbackFiles.map(toArtifactRef);
   return {
     id,
     messageId: id,
@@ -48,30 +115,44 @@ function buildConclusionTask(tool: CHAT.Task, content: string): CHAT.Task {
     taskId: tool.taskId,
     finish: true,
     isFinal: true,
+    ...(artifactRefs.length ? { artifactRefs } : {}),
+    ...(sourceFileList?.length ? { fileList: sourceFileList } : {}),
     resultMap: {
+      ...(source?.resultMap || {}),
       isFinal: true,
       taskSummary: content,
       result: content,
+      ...(sourceFileList?.length ? { fileList: sourceFileList } : {}),
     },
   } as CHAT.Task;
 }
 
-function resolveNestedConclusion(children: CHAT.Task[]): string {
+function resolveNestedConclusion(children: CHAT.Task[]): {
+  text: string;
+  task?: CHAT.Task;
+} {
   for (let i = children.length - 1; i >= 0; i -= 1) {
     const child = children[i];
     if (child?.messageType !== "result") {
       continue;
     }
     const resultMap = (child.resultMap || {}) as Record<string, unknown>;
+    const resolvedResultMap = resolveTaskResultMap(child) as Record<string, unknown>;
     const text =
       asText(child.result) ||
       asText(resultMap.result) ||
-      asText(resultMap.taskSummary);
+      asText(resultMap.taskSummary) ||
+      asText(resolvedResultMap.result) ||
+      asText(resolvedResultMap.taskSummary) ||
+      asText(child.taskSummary);
     if (text) {
-      return text;
+      return {
+        text,
+        task: child,
+      };
     }
   }
-  return "";
+  return { text: "" };
 }
 
 function mergeProcessChildren(
@@ -95,51 +176,89 @@ function mergeProcessChildren(
   ];
 }
 
-/**
- * 子 Agent 任务原地突变（children / liveText / status），对象引用不变。
- * 详情面板用这个指纹打破 memo，才能边跑边刷轨迹。
- */
-export function subAgentLiveRevision(tool: CHAT.Task): string {
-  const children = Array.isArray(tool.children) ? tool.children : [];
-  const childKey = children
-    .map((child) => {
-      const map = (child.resultMap || {}) as Record<string, unknown>;
-      return [
-        child.messageId || child.id || "",
-        child.messageType || "",
-        child.finish ? "1" : "0",
-        String(map.status || ""),
-        String(child.toolThought || "").length,
-        String(child.result || "").length,
-        Array.isArray(child.children) ? child.children.length : 0,
-      ].join(":");
-    })
-    .join("|");
-  const map = (tool.resultMap || {}) as Record<string, unknown>;
-  return [
-    children.length,
-    childKey,
-    String(map.status || ""),
-    String(map.subAgentLiveText || "").length,
-    Array.isArray(map.subAgentProgressLines)
-      ? map.subAgentProgressLines.length
-      : 0,
-  ].join("#");
+function isRenderedTask(task: CHAT.Task): boolean {
+  return Boolean(
+    (task as CHAT.Task & { __timelineRendered?: boolean }).__timelineRendered
+  );
+}
+
+function searchAgentByIdentity(
+  chat: CHAT.ChatItem,
+  tool: CHAT.Task
+): CHAT.Task | undefined {
+  for (const key of identityKeys(readTaskIdentity(tool))) {
+    const hit = findBestAgentTask(chat, key);
+    if (hit) {
+      return hit;
+    }
+  }
+  return undefined;
+}
+
+function resolveDetailAgent(tool: CHAT.Task, parentChat: CHAT.ChatItem): CHAT.Task {
+  const fromParent = searchAgentByIdentity(parentChat, tool);
+  if (fromParent?.children?.length) {
+    return fromParent;
+  }
+  const hasProjected = (parentChat.tasks || []).some((group) => group?.length);
+  const hasFacts = (parentChat.multiAgent?.tasks || []).some((group) => group?.length);
+  if (hasFacts && !hasProjected) {
+    const projected = buildConversationTaskData(parentChat, false).currentChat;
+    const fromFacts = searchAgentByIdentity(projected, tool);
+    if (fromFacts) {
+      return fromFacts;
+    }
+  }
+  return fromParent || tool;
+}
+
+function projectSubAgentChildren(children: CHAT.Task[], tool: CHAT.Task): CHAT.Task[] {
+  return children.flatMap((child, index) => {
+    if (isRenderedTask(child)) {
+      return [child];
+    }
+    return processTaskForRender(
+      child,
+      `${tool.id || tool.messageId || "subagent"}:child:${index}:`
+    );
+  });
+}
+
+export function projectChat(
+  facts: CHAT.ChatItem,
+  scope?: string,
+  deepThink = false
+): CHAT.ChatItem {
+  const projected = buildConversationTaskData(facts, deepThink).currentChat;
+  if (!scope) {
+    return projected;
+  }
+  const agent = findBestAgentTask(projected, scope);
+  return agent ? chatItemFromSubAgent(agent, projected) : projected;
 }
 
 /**
- * 把子 Agent 任务投影成主对话同款 ChatItem，供时间线 / 终答复用。
- * 不改 SSE 事实，只做展示层派生。
+ * 子 Agent 详情 = 主投影里该 Agent 的子树，再包一层 query/conclusion。
  */
 export function chatItemFromSubAgent(
   tool: CHAT.Task,
   parentChat: CHAT.ChatItem
 ): CHAT.ChatItem {
-  const sub = resolveSubAgentDisplay(tool);
+  const detailAgent = resolveDetailAgent(tool, parentChat);
+  const sub = resolveSubAgentDisplay(detailAgent);
   const running = sub.status === "running";
-  const nested = Array.isArray(tool.children) ? tool.children : [];
-  const conclusionText = resolveNestedConclusion(nested) || asText(sub.content);
-  const processNested = nested.filter((child) => child.messageType !== "result");
+  const nested = Array.isArray(detailAgent.children) ? detailAgent.children : [];
+  const nestedConclusion = resolveNestedConclusion(nested);
+  const nestedFiles = collectTaskFiles(detailAgent);
+  const parentFiles = getTaskFiles(detailAgent);
+  const conclusionText =
+    stripArtifactSection(
+      nestedConclusion.text || stripArtifactSection(asText(sub.content))
+    );
+  const processNested = projectSubAgentChildren(
+    nested.filter((child) => child.messageType !== "result"),
+    detailAgent
+  );
   // liveText 是真实过程增量。heartbeat 进度行不能冒充轨迹；
   // 只有还没有任何子步骤时才拿来占位，避免把「running · …」当成执行过程。
   const heartbeatText = Array.isArray(sub.progressLines)
@@ -149,15 +268,15 @@ export function chatItemFromSubAgent(
     asText(sub.liveText) ||
     (processNested.length === 0 ? heartbeatText : "");
   const liveTask = liveText
-    ? buildLiveTextTask(tool, liveText, running)
+    ? buildLiveTextTask(detailAgent, liveText, running)
     : null;
   const children = mergeProcessChildren(processNested, liveTask);
 
   const container = {
-    id: tool.id || tool.messageId || "subagent-container",
-    messageId: tool.messageId || tool.id || "subagent-container",
+    id: detailAgent.id || detailAgent.messageId || "subagent-container",
+    messageId: detailAgent.messageId || detailAgent.id || "subagent-container",
     messageType: "task",
-    messageTime: tool.messageTime,
+    messageTime: detailAgent.messageTime,
     requestId: parentChat.requestId,
     taskId: tool.taskId,
     finish: !running,
@@ -168,19 +287,25 @@ export function chatItemFromSubAgent(
 
   return {
     sessionId: parentChat.sessionId,
-    requestId: tool.id || tool.messageId || parentChat.requestId,
+    requestId: detailAgent.id || detailAgent.messageId || parentChat.requestId,
     query: sub.prompt,
-    files: [],
+    files: parentFiles,
     forceStop: false,
     loading: running,
     tasks: children.length ? [[container]] : [],
     timeline: [],
     multiAgent: { tasks: [] },
-    conclusion: conclusionText
-      ? buildConclusionTask(tool, conclusionText)
+    generatedFiles: nestedFiles,
+    conclusion: conclusionText || nestedFiles.length
+      ? buildConclusionTask(
+        detailAgent,
+        conclusionText,
+        nestedConclusion.task,
+        nestedFiles
+      )
       : undefined,
-    startedAt: tool.messageTime,
-    finishedAt: running ? undefined : tool.messageTime,
+    startedAt: detailAgent.messageTime,
+    finishedAt: running ? undefined : detailAgent.messageTime,
     tip: sub.errorMsg || undefined,
   } as CHAT.ChatItem;
 }

@@ -6,7 +6,7 @@ import {
 import { ToolRow, type ToolRowStackPosition } from "./ToolRow";
 import { ToolOutputBlock } from "./ToolOutputBlock";
 import { ToolArgStreamPreview } from "./ToolArgStreamPreview";
-import { formatEditDiffChip, prefersToolDiffPanel } from "./toolDiff";
+import { formatEditDiffChip } from "./toolDiff";
 import { normalizeToolName, toolLabel, toolSummary } from "./toolMeta";
 import {
   formatDurationLabel,
@@ -21,6 +21,7 @@ import {
   resolveToolStreamPath,
   shouldShowToolArgStream,
 } from "./toolStreamPreview";
+import { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 
 type EditToolCallProps = {
   tool: CHAT.Task;
@@ -37,13 +38,10 @@ type EditToolCallProps = {
 
 export const EditToolCall = memo(function EditToolCall({
   tool,
-  chat,
   durationMs,
   durationLabel,
   stackPosition = "single",
   defaultExpanded,
-  changeActiveChat,
-  onOpenToolDiff,
 }: EditToolCallProps) {
   const name = resolveTaskToolName(tool);
   const arg = resolveTaskToolArg(tool);
@@ -57,17 +55,15 @@ export const EditToolCall = memo(function EditToolCall({
     ? streamPath || (argStreaming ? "生成参数中…" : toolSummary(name, arg))
     : toolSummary(name, arg);
   const summaryFull = toolSummary(name, arg, true);
+  const inputJson = parseToolJson(arg);
   const chip = showArgStream
     ? formatToolStreamChip(arg, arg)
     : status === "error"
       ? ""
       : formatEditDiffChip(name, arg) || "edited";
-  const useDiffPanel =
-    !showArgStream && Boolean(onOpenToolDiff) && prefersToolDiffPanel(name);
   const hasOutput = output.length > 0;
-  const canExpandInline =
-    (hasOutput && !useDiffPanel) || Boolean(summaryFull && !useDiffPanel);
-  const expandable = showArgStream ? true : canExpandInline || useDiffPanel;
+  const canExpandInline = hasOutput || Boolean(summaryFull) || Boolean(inputJson);
+  const expandable = showArgStream || canExpandInline;
 
   const [open, setOpen] = useState(
     () => Boolean(defaultExpanded) || showArgStream
@@ -96,10 +92,6 @@ export const EditToolCall = memo(function EditToolCall({
     );
 
   const handleToggle = () => {
-    if (useDiffPanel) {
-      onOpenToolDiff?.(tool, chat);
-      return;
-    }
     if (canExpandInline) {
       setUserToggled(true);
       setOpen((v) => !v);
@@ -145,10 +137,11 @@ export const EditToolCall = memo(function EditToolCall({
       stacked={stackPosition !== "single"}
       stackPosition={stackPosition}
       onToggle={handleToggle}
-      onOpenWorkspace={() => changeActiveChat(tool, chat)}
     >
-      {summaryFull ? (
-        <div className="kimi-tool-row-summary">{summaryFull}</div>
+      {summaryFull || inputJson ? (
+        <div className="kimi-tool-row-summary">
+          {inputJson ? <ToolJsonBlock data={inputJson} /> : summaryFull}
+        </div>
       ) : null}
       <ToolOutputBlock
         lines={output}

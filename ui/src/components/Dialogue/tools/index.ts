@@ -2,6 +2,7 @@ export { StatusDot } from "./StatusDot";
 export { ToolRow } from "./ToolRow";
 export { ToolGroup } from "./ToolGroup";
 export { ToolOutputBlock } from "./ToolOutputBlock";
+export { ToolJsonBlock, parseToolJson } from "./ToolJsonBlock";
 export {
   GenericToolCall,
   aggregateToolStatuses,

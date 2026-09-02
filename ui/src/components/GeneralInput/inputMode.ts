@@ -16,7 +16,7 @@ export function buildSubmitPayload(params: {
   const model = params.model?.trim() || undefined;
   const thinking = params.thinking;
   const thinkingEffort = params.thinking
-    ? params.thinkingEffort || "medium"
+    ? params.thinkingEffort || "high"
     : undefined;
 
   if (params.isDataAgent) {

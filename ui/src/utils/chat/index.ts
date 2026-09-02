@@ -66,6 +66,18 @@ export {
 } from "./subagent";
 
 export {
+  findBestAgentTask,
+  identityKeys,
+  isDistinctToolCallId,
+  readTaskIdentity,
+} from "./taskIdentity";
+
+export {
+  chatItemFromSubAgent,
+  projectChat,
+} from "./subAgentChat";
+
+export {
   projectAgentMember,
   projectAgentMemberByToolCallId,
   projectAssistantChatTurn,

@@ -1,3 +1,9 @@
+import {
+  resolveTaskResultMap,
+  resolveTaskToolResult,
+  resolveTaskToolResultText,
+} from "./toolCalls";
+
 /**
  * 同步 SubAgent（Agent 工具）展示解析。
  * 对齐后端 AgentDispatchTool 的输入/输出约定。
@@ -41,7 +47,7 @@ function nestedResultMap(resultMap?: Record<string, unknown>) {
 }
 
 function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
-  const resultMap = task?.resultMap as Record<string, unknown> | undefined;
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
   const nested = nestedResultMap(resultMap);
   const fromResultMap =
     resultMap?.input ??
@@ -51,7 +57,7 @@ function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
   if (isRecord(fromResultMap)) {
     return fromResultMap;
   }
-  const toolParam = task?.toolResult?.toolParam;
+  const toolParam = resolveTaskToolResult(task)?.toolParam || task?.toolResult?.toolParam;
   if (isRecord(toolParam)) {
     return toolParam;
   }
@@ -68,10 +74,11 @@ function pickInput(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
 
 function resolveToolName(task?: Partial<CHAT.Task> | Partial<MESSAGE.Task>) {
   const top = task as Record<string, unknown> | undefined;
-  const resultMap = task?.resultMap as Record<string, unknown> | undefined;
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
   const nested = nestedResultMap(resultMap);
+  const toolResult = resolveTaskToolResult(task);
   return asText(
-    task?.toolResult?.toolName ||
+    toolResult?.toolName ||
       resultMap?.toolName ||
       nested?.toolName ||
       // tool_call spread 后 toolName 常在顶层
@@ -108,7 +115,7 @@ export function isRunInBackgroundAgent(
   if (input.run_in_background === true || input.runInBackground === true) {
     return true;
   }
-  const resultMap = (task.resultMap || {}) as Record<string, unknown>;
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
   const nested = isRecord(resultMap.resultMap)
     ? (resultMap.resultMap as Record<string, unknown>)
     : {};
@@ -120,9 +127,7 @@ export function isRunInBackgroundAgent(
   ) {
     return true;
   }
-  const observation = asText(
-    task.toolResult?.toolResult || resultMap.toolResult || resultMap.answer
-  );
+  const observation = asText(resolveTaskToolResultText(task));
   if (/run_in_background\s*[:=]\s*true/i.test(observation)) {
     return true;
   }
@@ -250,16 +255,15 @@ export function resolveSubAgentDisplay(
   const prompt = asText(input.prompt);
 
   const observationText = asText(
-    task?.toolResult?.toolResult ||
-      (task?.resultMap as Record<string, unknown> | undefined)?.toolResult ||
-      (task?.resultMap as Record<string, unknown> | undefined)?.answer ||
-      (task?.resultMap as Record<string, unknown> | undefined)?.summary
+    resolveTaskToolResultText(task)
   );
   const parsed = parseAgentObservation(observationText);
 
   let status: SubAgentDisplay["status"] = "unknown";
+  const resultMap = resolveTaskResultMap(task) as Record<string, unknown>;
+  const nested = nestedResultMap(resultMap);
   const resultStatus = asText(
-    (task?.resultMap as Record<string, unknown> | undefined)?.status
+    resultMap.status || nested?.status
   );
   if (parsed.status === "running") {
     status = "running";
@@ -269,17 +273,17 @@ export function resolveSubAgentDisplay(
     status = "completed";
   } else if (
     task?.messageType === "tool_call" &&
-    !task?.resultMap?.isFinal &&
+    !resultMap.isFinal &&
+    nested?.isFinal !== true &&
     resultStatus !== "success"
   ) {
     status = "running";
-  } else if (resultStatus === "success" || task?.resultMap?.isFinal) {
+  } else if (resultStatus === "success" || resultMap.isFinal || nested?.isFinal === true) {
     status = parsed.content || observationText ? "completed" : "unknown";
   } else if (task?.messageType === "tool_call") {
     status = "running";
   }
 
-  const resultMap = (task?.resultMap || {}) as Record<string, unknown>;
   const progressLines = Array.isArray(resultMap.subAgentProgressLines)
     ? (resultMap.subAgentProgressLines as unknown[]).filter(
       (line): line is string => typeof line === "string" && line.trim().length > 0

@@ -19,6 +19,7 @@ export type ToolCallViewProps = {
   stackPosition?: ToolRowStackPosition;
   defaultExpanded?: boolean;
   changeActiveChat: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
+  changeFile?: CHAT.OpenFileHandler;
   changePlan?: () => void;
   onOpenToolDiff?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;
   onOpenAgent?: (task: CHAT.Task, chat: CHAT.ChatItem) => void;

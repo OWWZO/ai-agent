@@ -5,6 +5,7 @@ import {
   resolveSubAgentDisplay,
 } from "@/utils/chat/subagent";
 import { isTimelineToolActive } from "@/components/ChatView/streamState";
+import { isFileListOnlyTask } from "@/utils/taskArtifacts";
 
 export type ProcessStepKind =
   | "thinking"
@@ -413,7 +414,9 @@ function estimateDurations(
 }
 
 function flattenGroupChildren(container: CHAT.Task): CHAT.Task[] {
-  return Array.isArray(container.children) ? container.children : [];
+  return Array.isArray(container.children)
+    ? container.children.filter((task) => !isFileListOnlyTask(task))
+    : [];
 }
 
 function buildStepRows(
@@ -549,10 +552,7 @@ export function segmentProcessSteps(
     segments.push({
       type: "group",
       group: {
-        id:
-          options.container?.id ||
-          options.container?.messageId ||
-          `work-group-${groupSerial}`,
+        id: `${options.container?.id || options.container?.messageId || "work-group"}:${groupSerial}`,
         title: buildGroupTitle(
           options.container,
           displayCount,
@@ -779,12 +779,12 @@ export function deriveAgentProcessModel(
     for (const segment of sliced) {
       if (segment.type === "group") {
         groupSerial += 1;
-        segment.group.id =
-          segment.group.id ||
+        segment.group.id = `${
           slice.container?.id ||
           slice.container?.messageId ||
           slice.container?.taskId ||
-          `group-${slice.groupIndex}-${slice.containerIndex}-${groupSerial}`;
+          "group"
+        }:${slice.groupIndex}:${slice.containerIndex}:${groupSerial}`;
       }
       segments.push(segment);
     }

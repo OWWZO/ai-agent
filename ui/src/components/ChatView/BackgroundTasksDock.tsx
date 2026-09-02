@@ -12,7 +12,7 @@ import {
   isAgentDispatchTask,
   resolveSubAgentDisplay,
 } from "@/utils/chat/subagent";
-import { resolveTaskToolCallId } from "@/utils/chat/toolCalls";
+import { findBestAgentTask } from "@/utils/chat/taskIdentity";
 import type { DockTaskItem } from "@/types/agentRuntime";
 import { StatusDot } from "@/components/Dialogue/tools/StatusDot";
 import { cn } from "@/lib/utils";
@@ -26,31 +26,7 @@ export function findAgentTaskByToolCallId(
   chat: CHAT.ChatItem,
   toolCallId: string
 ): CHAT.Task | null {
-  if (!toolCallId) return null;
-  const scan = (tasks: CHAT.Task[] | undefined): CHAT.Task | null => {
-    for (const task of tasks || []) {
-      if (isAgentDispatchTask(task)) {
-        const id =
-          resolveTaskToolCallId(task) || task.messageId || task.id || "";
-        if (id === toolCallId) return task;
-      }
-      const nested = scan(task.children);
-      if (nested) return nested;
-    }
-    return null;
-  };
-
-  for (const group of chat.tasks || []) {
-    for (const container of group || []) {
-      const hit = scan((container as CHAT.Task).children || [container as CHAT.Task]);
-      if (hit) return hit;
-    }
-  }
-  for (const group of chat.multiAgent?.tasks || []) {
-    const hit = scan(group as CHAT.Task[]);
-    if (hit) return hit;
-  }
-  return null;
+  return findBestAgentTask(chat, toolCallId) || null;
 }
 
 export function findLatestRunningAgentTask(
