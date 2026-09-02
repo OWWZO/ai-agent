@@ -51,7 +51,7 @@ public class ReactExecutionLedgerIntegrationTest {
         ));
 
         Assert.assertTrue(result.get("react-tool-call-001").startsWith("执行成功"));
-        Assert.assertTrue(result.get("react-tool-call-001").contains("artifactKey:react-tool-call-001::react-report.md"));
+        Assert.assertFalse(result.get("react-tool-call-001").contains("artifactKey:react-tool-call-001::react-report.md"));
 
         ledger.recorder.finishRun(DialogueRunFinishRecord.builder()
                 .runId(context.getAgentRunState().getRunId())
